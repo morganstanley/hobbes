@@ -11,10 +11,10 @@ with the project.
 
 1. Ensure any install or build dependencies are removed before the end of the
    layer when doing a build.
-2. Update the README.md/sphinx docs with details of changes to API, behaviour,
+2. Update the README.md docs with details of changes to API, behaviour,
    features, or usage. Include useful file locations and relevant documentation.
 3. Ensure you have signed the Contributor License Agreement available from
-   eti-python-oss [at] morganstanley.com
+   hobbes-dev [at] morganstanley.com
 4. You may merge the Pull Request in once the build has passed and you have the
    sign-off of one other developer, or if you do not have permission to do that,
    you may request the reviewer to merge it for you.
@@ -76,7 +76,7 @@ further defined and clarified by project maintainers.
 ### Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
-reported by contacting the project team at treadmill-core [at] morganstanley.com. All
+reported by contacting the project team at hobbes-dev [at] morganstanley.com. All
 complaints will be reviewed and investigated and will result in a response that
 is deemed necessary and appropriate to the circumstances. The project team is
 obligated to maintain confidentiality with regard to the reporter of an incident.
