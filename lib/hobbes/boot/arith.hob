@@ -1,0 +1,255 @@
+/*
+ * arithmetic overloading
+ */
+
+// zero, one identification (helpful for overloaded arithmetic)
+class HasZero a where
+  zero :: a
+
+instance HasZero short where
+  zero = 0S
+
+instance HasZero int where
+  zero = 0
+
+instance HasZero long where
+  zero = 0L
+
+instance HasZero float where
+  zero = 0.0f
+
+instance HasZero double where
+  zero = 0.0
+
+instance HasZero timespan where
+  zero = 0s
+
+class HasOne a where
+  one :: a
+
+instance HasOne short where
+  one = 1S
+
+instance HasOne int where
+  one = 1
+
+instance HasOne long where
+  one = 1L
+
+instance HasOne float where
+  one = 1.0f
+
+instance HasOne double where
+  one = 1.0
+
+// negation (for signed numbers)
+class Negate a where
+  neg :: a -> a
+
+instance Negate short where
+  neg = sneg
+
+instance Negate int where
+  neg = ineg
+
+instance Negate long where
+  neg = lneg
+
+instance Negate float where
+  neg = fneg
+
+instance Negate double where
+  neg = dneg
+
+instance Negate timespan where
+  neg x = convert(lneg(convert(x)::long))::timespan
+
+// generic addition
+class Add a b c | a b -> c where
+  (+) :: (a,b) -> c
+
+instance Add char char char where
+  (+) = cadd
+
+instance Add byte byte byte where
+  (+) = badd
+
+instance Add short short short where
+  (+) = sadd
+
+instance Add int int int where
+  (+) = iadd
+
+instance Add long long long where
+  (+) = ladd
+
+instance Add float float float where
+  (+) = fadd
+
+instance Add double double double where
+  (+) = dadd
+
+instance Add timespan timespan timespan where
+  x + y = convert((convert(x)::long) + (convert(y)::long)) :: timespan
+
+instance Add time timespan time where
+  x + y = convert((convert(x)::long) + (convert(y)::long)) :: time
+
+instance Add timespan time time where
+  x + y = convert((convert(x)::long) + (convert(y)::long)) :: time
+
+instance Add datetime timespan datetime where
+  x + y = convert((convert(x)::long) + (convert(y)::long)) :: datetime
+
+instance Add datetime time datetime where
+  x + y = convert((convert(x)::long) + (convert(y)::long)) :: datetime
+
+instance (a != b, Add b b b, Convert a b) => Add a b b where
+  x + y = (convert(x) :: b) + y
+
+instance (a != b, Add b b b, Convert a b) => Add b a b where
+  x + y = x + (convert(y) :: b)
+
+// generic subtraction
+class Subtract a b c | a b -> c where
+  (-) :: (a,b) -> c
+
+instance Subtract char char char where
+  (-) = csub
+
+instance Subtract byte byte byte where
+  (-) = bsub
+
+instance Subtract short short short where
+  (-) = ssub
+
+instance Subtract int int int where
+  (-) = isub
+
+instance Subtract long long long where
+  (-) = lsub
+
+instance Subtract float float float where
+  (-) = fsub
+
+instance Subtract double double double where
+  (-) = dsub
+
+instance Subtract timespan timespan timespan where
+  x - y = convert((convert(x)::long) - (convert(y)::long)) :: timespan
+
+instance Subtract time timespan time where
+  x - y = convert((convert(x)::long) - (convert(y)::long)) :: time
+
+instance Subtract datetime timespan datetime where
+  x - y = convert((convert(x)::long) - (convert(y)::long)) :: datetime
+
+instance Subtract time time timespan where
+  x - y = convert((convert(x)::long) - (convert(y)::long)) :: timespan
+
+instance Subtract datetime datetime timespan where
+  x - y = convert((convert(x)::long) - (convert(y)::long)) :: timespan
+
+instance (a != b, Subtract b b b, Convert a b) => Subtract a b b where
+  x - y = (convert(x) :: b) - y
+
+instance (a != b, Subtract b b b, Convert a b) => Subtract b a b where
+  x - y = x - (convert(y) :: b)
+
+// generic multiplication
+class Multiply a b c | a b -> c where
+  (*) :: (a,b) -> c
+
+instance Multiply byte byte byte where
+  (*) = bmul
+
+instance Multiply short short short where
+  (*) = smul
+
+instance Multiply int int int where
+  (*) = imul
+
+instance Multiply long long long where
+  (*) = lmul
+
+instance Multiply float float float where
+  (*) = fmul
+
+instance Multiply double double double where
+  (*) = dmul
+
+instance Multiply int timespan timespan where
+  s * ts = convert(i2l(s) * (convert(ts)::long))::timespan
+instance Multiply long timespan timespan where
+  s * ts = convert(s * (convert(ts)::long))::timespan
+instance Multiply timespan int timespan where
+  ts * s = convert(i2l(s) * (convert(ts)::long))::timespan
+instance Multiply timespan long timespan where
+  ts * s = convert(s * (convert(ts)::long))::timespan
+
+instance (a != b, Multiply b b b, Convert a b) => Multiply a b b where
+  x * y = (convert(x) :: b) * y
+
+instance (a != b, Multiply b b b, Convert a b) => Multiply b a b where
+  x * y = x * (convert(y) :: b)
+
+// generic division
+class Divide a b c | a b -> c where
+  (/) :: (a,b) -> c
+
+instance Divide byte byte byte where
+  (/) = bdiv
+
+instance Divide short short short where
+  (/) = sdiv
+
+instance Divide int int int where
+  (/) = idiv
+
+instance Divide long long long where
+  (/) = ldiv
+
+instance Divide float float float where
+  (/) = fdiv
+
+instance Divide double double double where
+  (/) = ddiv
+
+instance Divide timespan timespan timespan where
+  dt0 / dt1 = let dtn=convert(dt1)::long in convert(dtn*((convert(dt0)::long)/dtn))
+instance Divide time timespan time where
+  t / dt = let dtn=convert(dt)::long in convert(dtn*((convert(t)::long)/dtn))
+instance Divide datetime timespan datetime where
+  t / dt = let dtn=convert(dt)::long in convert(dtn*((convert(t)::long)/dtn))
+
+instance (a != b, Divide b b b, Convert a b) => Divide a b b where
+  x / y = (convert(x) :: b) / y
+
+instance (a != b, Divide b b b, Convert a b) => Divide b a b where
+  x / y = x / (convert(y) :: b)
+
+// generic mod
+class Mod a b c | a b -> c where
+  (%) :: (a,b) -> c
+
+instance Mod char char char where
+  (%) = crem
+
+instance Mod byte byte byte where
+  (%) = brem
+
+instance Mod short short short where
+  (%) = srem
+
+instance Mod int int int where
+  (%) = irem
+
+instance Mod long long long where
+  (%) = lrem
+
+instance (a != b, Mod b b b, Convert a b) => Mod a b b where
+  x % y = (convert(x) :: b) % y
+
+instance (a != b, Mod b b b, Convert a b) => Mod b a b where
+  x % y = x % (convert(y) :: b)
+

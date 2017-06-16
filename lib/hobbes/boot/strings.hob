@@ -1,0 +1,20 @@
+/*
+ * common string processing functions
+ */
+
+toLower :: char -> char
+toLower c = if (c >= 'A' and c <= 'Z') then ((c - 'A') + 'a') else c
+
+lcase :: (Array cs char) => cs -> [char]
+lcase cs = map(toLower, cs[0:])
+
+toUpper :: char -> char
+toUpper c = if (c >= 'a' and c <= 'z') then ((c - 'a') + 'A') else c
+
+ucase :: (Array cs char) => cs -> [char]
+ucase cs = map(toUpper, cs[0:])
+
+// approximate equality between strings is case-insensitive matching
+instance (Array as char, Array bs char) => ApproxEquiv as bs where
+  as ~ bs = lcase(as) === lcase(bs)
+

@@ -1,0 +1,177 @@
+
+// as a convenience we can display some summary information about structured storage files
+instance Print ((file) z w) where
+  print = printFile
+
+// some types can be stored directly as-is
+class StorePrim a
+instance StorePrim ()
+instance StorePrim bool
+instance StorePrim byte
+instance StorePrim char
+instance StorePrim short
+instance StorePrim int
+instance StorePrim long
+instance StorePrim float
+instance StorePrim double
+instance StorePrim time
+instance StorePrim datetime
+instance StorePrim timespan
+instance (p=(h*t), StorePrim h, StorePrim t) => StorePrim p
+instance (r={h*t}, StorePrim h, StorePrim t) => StorePrim r
+instance (v=|h+0|, StorePrim h) => StorePrim v
+instance (v=|h+t|, StorePrim h, StorePrim t) => StorePrim v
+instance (StorePrim a) => StorePrim [:a|n:]
+instance StorePrim a@?
+instance StorePrim a@f
+instance (Data d t, StorePrim t) => StorePrim d
+
+// for other types, what _should_ they look like?
+class StorageType a b | a -> b
+instance (StorePrim a) => StorageType a a
+instance (StorageType a b) => StorageType [:a|n:] [:b|n:]
+instance (StorageType a b) => StorageType [a] [b]@?
+
+// tuples
+class TupleStorageType i o | i -> o
+instance TupleStorageType () ()
+instance (p=(h*t), StorageType h qh, TupleStorageType t qt, (qh*qt)=q) => TupleStorageType p q
+instance (TupleStorageType p q) => StorageType p q
+
+// records
+class RecordStorageType i o | i -> o
+instance RecordStorageType () ()
+instance (p={lbl:h*t}, StorageType h qh, RecordStorageType t qt, {lbl:qh*qt}=q) => RecordStorageType p q
+instance (RecordStorageType p q) => StorageType p q
+
+// variants
+class VariantStorageType i o | i -> o
+instance VariantStorageType 0 0
+instance (p=|lbl:h+t|, StorageType h qh, VariantStorageType t qt, |lbl:qh+qt|=q) => VariantStorageType p q
+instance (VariantStorageType p q) => StorageType p q
+
+// if there's a storage type, you can make it
+class (StorageType a b) => StoreAs w a b where
+  storeAs :: (((file) 1 w), a) -> b
+instance (StorePrim a) => StoreAs w a a where
+  storeAs _ x = x
+
+// some types can be stored in-place
+class (StorageType a b) => StoreInto w a b where
+  storeInto :: (((file) 1 w), a, b) -> ()
+
+instance StoreInto w () () where
+  storeInto _ _ _ = ()
+instance (p=(ph*pt), q=(qh*qt), StoreInto w ph qh, StoreInto w pt qt) => StoreInto w p q where
+  storeInto f p q = do { storeInto(f, p.0, q.0); storeInto(f, tupleTail(p), tupleTail(q)); }
+instance (p=(ph*pt), q=(qh*qt), StoreAs w ph qh, StoreInto w pt qt) => StoreInto w p q where
+  storeInto f p q = do { q.0 <- storeAs(f, p.0); storeInto(f, tupleTail(p), tupleTail(q)); }
+instance (p={ph*pt}, q={qh*qt}, StoreInto w ph qh, StoreInto w pt qt) => StoreInto w p q where
+  storeInto f p q = do { storeInto(f, recordHeadValue(p), recordHeadValue(q)); storeInto(f, recordTail(p), recordTail(q)); }
+instance (p={ph*pt}, q={qh*qt}, StoreAs w ph qh, StoreInto w pt qt) => StoreInto w p q where
+  storeInto f p q = do { recordHeadValue(q) <- storeAs(f, recordHeadValue(p)); storeInto(f, recordTail(p), recordTail(q)); }
+
+// store into fixed-length arrays
+storeIntoSA :: (StoreInto w p q) => (((file) 1 w), [:p|n:], long, [:q|n:]) -> ()
+storeIntoSA f p i q =
+  if (i === salength(p)) then
+    ()
+  else do {
+    storeInto(f, saelem(p, i), saelem(q, i));
+    storeIntoSA(f, p, i+1L, q);
+  }
+instance (StoreInto w p q) => StoreInto w [:p|n:] [:q|n:] where
+  storeInto f p q = storeIntoSA(f, p, 0L, q)
+
+storeIntoAsSA :: (StoreAs w p q) => (((file) 1 w), [:p|n:], long, [:q|n:]) -> ()
+storeIntoAsSA f p i q =
+  if (i === salength(p)) then
+    ()
+  else do {
+    saelem(q,i) <- storeAs(f, saelem(p,i));
+    storeIntoAsSA(f, p, i+1L, q);
+  }
+instance (StoreAs w p q) => StoreInto w [:p|n:] [:q|n:] where
+  storeInto f p q = storeIntoAsSA(f, p, 0L, q)
+
+// we can store-as if we can store-into
+instance (StoreInto w p q) => StoreAs w p q where
+  storeAs f p = do { q = (newPrim()::q); storeInto(f, p, q); return q }
+
+// store into variable-length arrays
+storeIntoA :: (StoreInto w p q) => (((file) 1 w), [p], long, [q]) -> ()
+storeIntoA f p i q =
+  if (i === length(p)) then
+    ()
+  else do {
+    storeInto(f, p[i], q[i]);
+    storeIntoA(f, p, i+1L, q);
+  }
+storeIntoAsA :: (StoreAs w p q) => (((file) 1 w), [p], long, [q]) -> ()
+storeIntoAsA f p i q =
+  if (i === length(p)) then
+    ()
+  else do {
+    q[i] <- storeAs(f, p[i]);
+    storeIntoAsA(f, p, i+1L, q);
+  }
+
+instance (StoreInto w p q) => StoreAs w [p] [q]@? where
+  storeAs f p = do { qh = pallocateArray(f, length(p)); q = pload(f, qh); storeIntoA(f, p, 0L, q); unsafeSetLength(q, length(p)); unload(f, q); return qh }
+instance (StoreAs w p q) => StoreAs w [p] [q]@? where
+  storeAs f p = do { qh = pallocateArray(f, length(p)); q = pload(f, qh); storeIntoAsA(f, p, 0L, q); unsafeSetLength(q, length(p)); unload(f, q); return qh }
+
+// store variants
+class (StorageType p q) => StoreVariantAs w p q where
+  storeVariantAs :: (((file) 1 w), p) -> q
+
+instance (p=|lbl:h+0|, StoreAs w h th, q=|lbl:th+0|) => StoreVariantAs w p q where
+  storeVariantAs f v = variantSplit(v, \h.variantInjectHead(storeAs(f, h)), toClosure(\_.newPrim()))
+instance (p=|lbl:h+t|, q=|lbl:th+tt|, StoreAs w h th, StoreAs w t tt) => StoreVariantAs w p q where
+  storeVariantAs f v = variantSplit(v, \h.variantInjectHead(storeAs(f, h)), \t.variantLiftTail(storeVariantAs(f,t)))
+
+instance (StoreVariantAs w a b) => StoreAs w a b where
+  storeAs f v = storeVariantAs(f,v)
+
+
+
+
+// array comprehension support for stored sequences
+instance SeqDesc (^x.(()+([a]@f*x@f)))@f ("fseq"*f) a
+
+instance Map f c a r ("fseq"*g) ((^x.(()+([a]@g*x@g)))@g) "mrope" (^x.(()+([r]*x))) where
+  fmap f xs = case unroll(load(xs)) of |0:_=nil(), 1:p=cons(fmap(f, load(p.0)) :: [r], fmap(f, p.1))|
+instance FilterMap p pc f c a r ("fseq"*g) (^x.(()+([a]@g*x@g)))@g "mrope" (^x.(()+([r]*x))) where
+  ffilterMap p f xs = case unroll(load(xs)) of |0:_=nil(), 1:c=cons(ffilterMap(p, f, load(c.0)) :: [r], ffilterMap(p, f, c.1))|
+instance FilterMMap f c a r ("fseq"*g) (^x.(()+([a]@g*x@g)))@g "mrope" (^x.(()+([r]*x))) where
+  ffilterMMap f xs = case unroll(load(xs)) of |0:_=nil(), 1:p=cons(ffilterMMap(f, load(p.0)) :: [r], ffilterMMap(f, p.1))|
+
+// support access to stored ropes like arrays
+flfoldl :: ((a,b) -> a, a, ^x.(()+(b*x@f))) -> a
+flfoldl f s xs =
+  match unroll(xs) with
+  | |1=(h, t)| -> flfoldl(f, f(s, h), load(t))
+  | _          -> s
+
+flfind :: (a -> bool, ^x.(()+(a*x@f))) -> (()+a)
+flfind p xs =
+  match unroll(xs) with
+  | |1=(h, t)| where p(h) -> |1=h|
+  | |1=(_, t)|            -> flfind(p, load(t))
+  | _                     -> |0=()|
+
+flfindS :: (s, (s,a) -> s, (s,a) -> bool, ^x.(()+(a*x@f))) -> (()+(s*a))
+flfindS s ss p xs =
+  match unroll(xs) with
+  | |1=(h, t)| where p(s, h) -> |1=(s,h)|
+  | |1=(h, t)|               -> flfindS(ss(s,h), ss, p, load(t))
+  | _                        -> |0=()|
+
+instance Array (^x.(()+([a]@f*x@f))) a where
+  size    xs   = flfoldl(\s vs.s + length(load(vs)), 0L, xs)
+  element xs i = match flfindS(i, \j vs.j-length(load(vs)), \j vs.j < length(load(vs)), xs) with | |1=(j, vs)| -> let lvs = load(vs) in lvs[length(lvs) - (j+1)] | _ -> newPrim()
+
+instance Array (^x.(()+([a]@f*x@f)))@f a where
+  size    xs   = size(load(xs))
+  element xs i = element(load(xs), i)
+

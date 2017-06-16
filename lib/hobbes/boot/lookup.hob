@@ -1,0 +1,42 @@
+/*
+  lookup : generic projection
+*/
+
+// 'static' lookup (where the lookup key is known at compile-time)
+class SLookup r k v | r k -> v where
+  slookup :: r -> v
+
+// 'dynamic' lookup (where the lookup key is known at run-time)
+class Lookup k v b | k v -> b where
+  lookup :: (k, v) -> b
+
+// lookup in an association list
+lookupAssoci :: (Equiv a b) => (b, [a*c], long) -> (()+c)
+lookupAssoci x vs i =
+  if (i == length(vs)) then
+    |0=()|
+  else if (vs[i].0 == x) then
+    |1=vs[i].1|
+  else
+    lookupAssoci(x, vs, i+1)
+
+instance (Equiv a b) => Lookup a [b*c] (()+c) where
+  lookup k vs = lookupAssoci(k, vs, 0L)
+
+// find a value in an array to determine its index
+lookupElemi :: (Eq a) => (a, [a], long) -> long
+lookupElemi k xs i =
+  if (i == length(xs)) then
+    i
+  else if (k === xs[i]) then
+    i
+  else
+    lookupElemi(k, xs, i+1)
+
+instance (Eq a) => Lookup a [a] long where
+  lookup k vs = lookupElemi(k, vs, 0L)
+
+// maybe lookup
+instance (Lookup a b (()+c)) => Lookup a (()+b) (()+c) where
+  lookup k mvs = case mvs of |0:_=|0=()|, 1:vs=lookup(k, vs)|
+

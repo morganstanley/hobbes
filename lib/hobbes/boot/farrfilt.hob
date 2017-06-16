@@ -1,0 +1,278 @@
+/*****
+ * farrfilt : efficient filtering of arrays
+ *****/
+
+data bitvec = [byte]
+
+bvInit :: ([byte], long, byte) -> ()
+bvInit bs i x =
+  if (i == length(bs)) then
+    ()
+  else
+    (let _ = (bs[i] <- x) in bvInit(bs, i+1, x))
+
+newBitvec :: long -> bitvec
+newBitvec n =
+  let
+    t  = n % 8;
+    r  = newArray(1 + ((n / 8) + (if (t > 0L) then 1 else 0)));
+    _  = (r[0] <- tl2b(t));
+    _  = bvInit(r, 1L, 0X00)
+  in
+    (convert(r) :: bitvec)
+
+bvLength :: bitvec -> long
+bvLength bv =
+  let
+    bs = convert(bv) :: [byte]
+  in
+    (8 * (length(bs) - 1)) - if (bs[0] == 0X00) then 0 else (8 - bs[0])
+
+bvIsSet :: (bitvec, long) -> bool
+bvIsSet bv i =
+  let
+    bs = convert(bv) :: [byte];
+    bi = 1 + (i / 8);
+    bj = tl2b(i % 8)
+  in
+    (band(bashr(bs[bi], bj), 0X01) == 0X01)
+
+bvSet :: (bitvec, long, bool) -> ()
+bvSet bv i x =
+  let
+    bs = convert(bv) :: [byte];
+    bi = 1 + (i / 8);
+    bj = tl2b(i % 8);
+    ob = bs[bi];
+    _  = (if x then (bs[bi] <- bor(ob, bshl(0X01, bj))) else (bs[bi] <- band(ob, bnot(bshl(0X01, bj)))))
+  in
+    ()
+
+bvPrintT :: (bitvec, long, long) -> ()
+bvPrintT bs i e =
+  if (i == e) then () else
+   (let
+     _ = putStr(if (bvIsSet(bs, i)) then "1" else "0")
+    in
+     bvPrintT(bs, i+1, e)
+   )
+
+wherePs :: (a -> bool, [a], long, bitvec) -> bitvec
+wherePs p xs i bv =
+  if (i == length(xs)) then
+    bv
+  else
+    (let _ = bvSet(bv, i, p(xs[i])) in wherePs(p, xs, i+1, bv))
+
+whereP :: (a -> bool, [a]) -> bitvec
+whereP p xs = wherePs(p, xs, 0L, newBitvec(length(xs)))
+
+nybBCounts = 0x0112122312232334122323342334344512232334233434452334344534454556122323342334344523343445344545562334344534454556344545564556566712232334233434452334344534454556233434453445455634454556455656672334344534454556344545564556566734454556455656674556566756676778
+
+bvCount8 :: byte -> long
+bvCount8 b =
+  let
+    n  = b2l(b);
+    nc = nybBCounts[n / 2]
+  in
+    b2l(if ((n % 2) == 0) then bashr(nc, 0X04) else band(nc, 0X0f))
+
+whereBs :: (bitvec, long, long, [long], long) -> [long]
+whereBs bv i e ns j =
+  if (i == e) then
+    ns
+  else if (bvIsSet(bv, i)) then
+    (let _ = ns[j] <- i in whereBs(bv, i+1, e, ns, j+1))
+  else
+    whereBs(bv, i+1, e, ns, j)
+
+whereB :: bitvec -> [long]
+whereB bv = whereBs(bv, 0L, bvLength(bv), newArray(counts(bvCount8, 0L, convert(bv) :: [byte], 1L)), 0L)
+
+// select from an array according to an index sequence
+selectStep :: ([a], [long], [a], long) -> ()
+selectStep xs idxs r i =
+  if (i == length(idxs)) then
+    ()
+  else
+    (let _ = r[i] <- xs[idxs[i]] in selectStep(xs, idxs, r, i+1))
+
+select :: ([a], [long]) -> [a]
+select xs idxs =
+  let
+    r  = newArray(length(idxs));
+    _  = selectStep(xs, idxs, r, 0L)
+  in
+    r
+
+selectBStep :: ([a], bitvec, long, long, [a], long) -> [a]
+selectBStep xs idxs i e r j =
+  if (i == e) then
+    r
+  else if (bvIsSet(idxs, i)) then
+    (let _ = r[j] <- xs[i] in selectBStep(xs, idxs, i+1, e, r, j+1))
+  else
+    selectBStep(xs, idxs, i+1, e, r, j)
+
+selectB :: ([a], bitvec) -> [a]
+selectB xs idxs =
+  selectBStep(
+    xs,
+    idxs,
+    0L,
+    bvLength(idxs),
+    newArray(counts(bvCount8, 0L, convert(idxs) :: [byte], 1L)),
+    0L
+  )
+
+selectRStep :: ([a], [a], long, long, long) -> ()
+selectRStep xs r k i e =
+  if (i == e) then
+    ()
+  else
+    (let _ = r[k] <- xs[i] in selectRStep(xs, r, k+1, i+1, e))
+
+selectRange :: ([a], long, long) -> [a]
+selectRange xs lo hi =
+  let
+    nhi = min(length(xs), hi);
+    nlo = min(max(0L, lo), nhi);
+    r   = newArray(max(nhi - nlo, 0L));
+    _   = if (length(r) > 0L) then selectRStep(xs, r, 0L, nlo, nhi) else ()
+  in
+    r
+
+selectKeyStep :: (Ord k k) => ([k*v], long, [k], long, [k*v], long) -> long
+selectKeyStep kvs i ks j r w =
+  if (i >= length(kvs) or j >= length(ks)) then
+    do { unsafeSetLength(r, w); return j }
+  else if (kvs[i].0 < ks[j]) then
+    selectKeyStep(kvs, i+1L, ks, j, r, w)
+  else if (ks[j] < kvs[i].0) then
+    selectKeyStep(kvs, i, ks, j+1L, r, w)
+  else
+    do { r[w] <- kvs[i]; return selectKeyStep(kvs, i+1L, ks, j+1L, r, w+1L) }
+
+// [doc] select key:value pairs out of a sorted array of pairs for a sorted array of keys
+selectKeys :: (Ord k k) => ([k*v], [k]) -> [k*v]
+selectKeys kvs ks = do {
+  r = newArray(length(ks));
+  selectKeyStep(kvs, 0L, ks, 0L, r, 0L);
+  return r
+}
+
+// [doc] select key:value pairs out of a sorted array of pairs for a sorted array of keys from a key-set offset returning the last 'unconsumed' key
+selectKeysFrom :: (Ord k k) => ([k*v], [k], long) -> (long*[k*v])
+selectKeysFrom kvs ks i = do {
+  r = newArray(length(ks));
+  n = selectKeyStep(kvs, 0L, ks, i, r, 0L);
+  return (n,r)
+}
+
+// [doc] returns an array of the elements that satisfy the predicate
+//  [eg] filter(\x. x > 5, [1..10]) == [6,7,8,9,10]
+filter :: (a -> bool, [a]) -> [a]
+filter p xs = selectB(xs, whereP(p, xs))
+
+// simultaneously map and filter
+filterMapStep :: (a -> (()+b), [a], long, [()+b], long) -> long
+filterMapStep f xs i mys j =
+  if (i == length(xs)) then
+    j
+  else
+    (let
+      y = f(xs[i]);
+      _ = mys[i] <- y
+     in
+      filterMapStep(f, xs, i+1, mys, case y of |0:_=j,1:_=j+1|))
+
+selectJust :: ([()+a], long, [a], long) -> [a]
+selectJust xs i ys j =
+  if (i == length(xs)) then
+    ys
+  else
+    case xs[i] of |0:_=selectJust(xs, i+1, ys, j), 1:y=let _ = ys[j] <- y in selectJust(xs, i+1, ys, j+1)|
+
+filterMap :: (a -> (()+b), [a]) -> [b]
+filterMap f xs =
+  let
+    mys = newArray(length(xs));
+    n   = filterMapStep(f, xs, 0L, mys, 0L)
+  in
+    selectJust(mys, 0L, newArray(n), 0L)
+
+/*****
+ * generic map and filter (these will be used by comprehension expressions, but they might as well become the canonical definitions)
+ *****/
+
+class SeqDesc s d a | s -> d a, d a -> s
+class (Function f c a r, SeqDesc i d a, SeqDesc o p r) => Map f c a r d i p o | f -> c a r, c a r -> f, i -> d a, d a -> i, o -> p r, p r -> o, f i -> o, d -> p where
+  fmap :: (f, i) -> o
+
+fmapArrStep :: (Function f c a r) => (f, [a], long, [r]) -> [r]
+fmapArrStep f xs i rs =
+  if (i == length(xs)) then
+    rs
+  else
+    (let _ = rs[i] <- apply(f, xs[i]) in fmapArrStep(f, xs, i+1, rs))
+
+instance SeqDesc [a] "array" a
+
+instance Map f c a b "array" [a] "array" [b] where
+  fmap f xs = fmapArrStep(f, xs, 0L, newArray(length(xs)))
+
+class (Function pf pc a bool, Function f c a r, SeqDesc i d a, SeqDesc o p r) => FilterMap pf pc f c a r d i p o | pf -> pc a, pc a -> pf, f -> c a r, c a r -> f, i -> d a, d a -> i, o -> p r, p r -> o, f i -> o, d -> p where
+  ffilterMap :: (pf, f, i) -> o
+
+ffilterArrStep :: (Function p c a bool) => (p, [a], long, bitvec) -> bitvec
+ffilterArrStep p xs i bv =
+  if (i == length(xs)) then
+    bv
+  else
+    (let _ = bvSet(bv, i, apply(p, xs[i])) in ffilterArrStep(p, xs, i+1, bv))
+
+instance FilterMap p pc f c a r "array" [a] "array" [r] where
+  ffilterMap p f xs = fmap(f, selectB(xs, ffilterArrStep(p, xs, 0L, newBitvec(length(xs)))))
+
+class (Function f c a (()+r), SeqDesc i d a, SeqDesc o p r) => FilterMMap f c a r d i p o | f -> c a r, c a r -> f, i -> d a, d a -> i, o -> p r, p r -> o, f i -> o, d -> p where
+  ffilterMMap :: (f, i) -> o
+
+ffilterMMapStep :: (Function f c a (()+b)) => (f, [a], long, [()+b], long) -> long
+ffilterMMapStep f xs i mys j =
+  if (i == length(xs)) then
+    j
+  else
+    (let
+      y = apply(f, xs[i]);
+      _ = mys[i] <- y
+     in
+      ffilterMMapStep(f, xs, i+1, mys, case y of |0:_=j,1:_=j+1|))
+
+instance FilterMMap f c a r "array" [a] "array" [r] where
+  ffilterMMap f xs = let mys = newArray(length(xs)); n = ffilterMMapStep(f, xs, 0L, mys, 0L) in selectJust(mys, 0L, newArray(n), 0L)
+
+// take with predicates
+takeUntilStep :: (a -> bool, [a], long) -> ([a]*[a])
+takeUntilStep p xs i =
+  if (i == length(xs)) then
+    (xs, [])
+  else if (p(xs[i])) then
+    (selectRange(xs,0L,i), selectRange(xs,i+1,length(xs)))
+  else
+    takeUntilStep(p, xs, i + 1)
+
+takeUntil :: (a -> bool, [a]) -> ([a]*[a])
+takeUntil p xs = takeUntilStep(p, xs, 0L)
+
+takeUntilRStep :: (a -> bool, [a], long) -> ([a]*[a])
+takeUntilRStep p xs i =
+  if (i < 0L) then
+    ([], xs)
+  else if (p(xs[i])) then
+    (selectRange(xs,0L,i), selectRange(xs,i+1,length(xs)))
+  else
+    takeUntilRStep(p, xs, i - 1)
+
+takeUntilR :: (a -> bool, [a]) -> ([a]*[a])
+takeUntilR p xs = takeUntilRStep(p, xs, length(xs) - 1)
+

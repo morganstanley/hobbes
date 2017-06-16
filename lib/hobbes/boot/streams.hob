@@ -1,0 +1,52 @@
+
+// a stream is an infinite sequence of values
+type stream a = ^x.(exists E.(((E, ()) -> (a * x)) * E))
+
+// take one value out of an infinite sequence
+openS :: ((stream) a) -> (a * ((stream) a))
+openS s = apply(unroll(s), ())
+
+// take a sequence of values out of an infinite sequence
+takeSInto :: (int, ((stream) a), [a], long) -> [a]
+takeSInto n s o i =
+  if (n == 0) then
+    o
+  else do {
+    p = openS(s);
+    o[i] <- p.0;
+    return takeSInto(n-1, p.1, o, i+1L)
+  }
+
+takeS :: (int, ((stream) a)) -> [a]
+takeS n s = takeSInto(n, s, newArray(convert(n)), 0L)
+
+// repeat a function forever
+iterateS :: (a, a -> a) -> ((stream) a)
+iterateS s f = roll(\().(s, iterateS(f(s), f)))
+
+// map a function over an infinite sequence
+mapS :: (Function f c a r) => (f, ((stream) a)) -> ((stream) r)
+mapS f s = roll(\().let (h,t) = openS(s) in (apply(f,h), mapS(f,t)))
+
+// filter values out of an infinite sequence (dangerous if it excludes everything!)
+filterS :: (Function f c a bool) => (f, ((stream) a)) -> ((stream) a)
+filterS p s = let (h,t) = openS(s) in if (apply(p,h)) then roll(\().(h, filterS(p,t))) else filterS(p,t)
+
+// filter null values out of a stream of "maybes"
+dropNullsS :: ((stream) (()+a)) -> ((stream) a)
+dropNullsS s = match openS(s) with | (|1=h|,t) -> roll(\().(h, dropNullsS(t))) | (_,t) -> dropNullsS(t)
+
+// support comprehension syntax for streams
+instance SeqDesc ((stream) a) "infstream" a
+
+instance Map f c a r "infstream" ((stream) a) "infstream" ((stream) r) where
+  fmap f xs = mapS(f, xs)
+instance FilterMap p pc f c a r "infstream" ((stream) a) "infstream" ((stream) r) where
+  ffilterMap p f xs = mapS(f, filterS(p, xs))
+instance FilterMMap f c a r "infstream" ((stream) a) "infstream" ((stream) r) where
+  ffilterMMap f xs = dropNullsS(mapS(f, xs))
+
+// print streams by pulling out an arbitrary prefix
+instance (Print [a]) => Print ((stream) a) where
+  print xs = do { print(takeS(10, xs)); putStr("..."); }
+

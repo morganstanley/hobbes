@@ -1,0 +1,61 @@
+/*
+ * sets
+ */
+class Set a s where
+  (in) :: (a, s) -> bool
+
+// an array of values that can be compared for equality constitute a set
+isInArr :: (Equiv a b, Array u b) => (long, a, u) -> bool
+isInArr i x xs =
+  if (i == size(xs)) then
+    false
+  else if (x == element(xs, i)) then
+    true
+  else
+    isInArr(i+1L, x, xs)
+
+instance (Equiv a b, Array u b) => Set a u where
+  x in xs = isInArr(0L, x, xs)
+
+// a sub-array can be sought in a larger array
+equivAt :: (Equiv a b, Array v a, Array u b) => (u, long, v, long) -> bool
+equivAt u i v j =
+  if (i == size(u)) then
+    true
+  else if (j == size(v)) then
+    false
+  else if (element(v, j) == element(u, i)) then
+    equivAt(u, i+1, v, j+1)
+  else
+    false
+
+subSeqInAt :: (Equiv a b, Array v a, Array u b) => (u, v, long) -> bool
+subSeqInAt u v i =
+  if ((size(v) - i) < size(u)) then
+    false
+  else if (equivAt(u, 0L, v, i)) then
+    true
+  else
+    subSeqInAt(u, v, i+1)
+
+instance (Equiv a b, Array v a, Array u b) => Set u v where
+  x in xs = subSeqInAt(x, xs, 0L)
+
+// a uniform tuple of values that can be compared for equality constitutes a set
+instance Set a () where
+  x in _ = false
+
+instance (s=(h*t), Equiv a h, Set a t) => Set a s where
+  x in p = x == p.0 or x in tupleTail(p)
+
+instance (s=(h*t), Set a t) => Set a s where
+  x in p = x in tupleTail(p)
+
+// a predicate on a single value constitutes a set
+instance Set a (a -> bool) where
+  x in f = f(x)
+
+// a 'maybe set' can be a set
+instance (Set a t) => Set a (()+t) where
+  x in mxs = match mxs with | |1=xs| -> x in xs | _ -> false
+

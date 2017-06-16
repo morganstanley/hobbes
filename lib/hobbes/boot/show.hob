@@ -1,0 +1,279 @@
+/*
+ * generic serialization for display
+ */
+class Show a where
+  show :: a -> [char]
+
+// control output precision of floats and doubles
+floatFormatConfig = do {
+  c = (newPrim() :: {floatPrecision:int,doublePrecision:int});
+  c.floatPrecision  <- (-1);
+  c.doublePrecision <- (-1);
+  return c
+}
+
+// primitive serialization
+instance Show () where
+  show _ = ""
+
+instance Show bool where
+  show x = if x then "true" else "false"
+
+instance Show char where
+  show = showChar
+
+instance Show byte where
+  show = showByte
+
+instance Show short where
+  show = showShort
+
+instance Show int where
+  show = showInt
+
+instance Show long where
+  show = showLong
+
+instance Show float where
+  show x = showFloat(x, floatFormatConfig.floatPrecision)
+
+instance Show double where
+  show x = showDouble(x, floatFormatConfig.doublePrecision)
+
+instance Show [byte] where
+  show bs = "0x" ++ concat(map(showByteV,bs))
+
+instance Show [char] where
+  show cs = "\"" ++ cs ++ "\""
+
+instance Show <std.string> where
+  show = showString
+
+instance Show timespan where
+  show = showTimespan
+
+instance Show time where
+  show = showTime
+
+instance Show datetime where
+  show = showDateTime
+
+// serialization for tuples
+class ShowT a where
+  showtup :: a -> [[char]]
+
+instance ShowT () where
+  showtup _ = []
+
+instance (t=(a*tt), Show a, ShowT tt) => ShowT t where
+  showtup x = [show(x.0)] ++ showtup(tupleTail(x))
+
+instance (ShowT t) => Show t where
+  show x = "(" ++ cdelim(showtup(x), ", ") ++ ")"
+
+// serialization for records
+class ShowR a where
+  showrec :: a -> [[char]]
+
+instance ShowR () where
+  showrec _ = []
+
+instance (r={a*rr}, Show a, ShowR rr) => ShowR r where
+  showrec r = [recordHeadLabel(r) ++ "=" ++ show(recordHeadValue(r))] ++ showrec(recordTail(r))
+
+instance (ShowR r) => Show r where
+  show x = "{" ++ cdelim(showrec(x), ", ") ++ "}"
+
+// serialization for variants
+class ShowVarValue a where
+  showVarValue :: a -> [char]
+
+instance ShowVarValue () where
+  showVarValue x = ""
+
+instance (Show a) => ShowVarValue a where
+  showVarValue x = "=" ++ show(x)
+
+instance Show 0 where
+  show _ = "impossible"
+
+instance (v=|a+vt|, ShowVarValue a, Show vt) => Show v where
+  show x = variantSplit(x, \xv."|"++variantHeadLabel(x)++showVarValue(xv)++"|", toClosure(show))
+
+// serialization for arrays
+instance (Show a) => Show [a] where
+  show xs = "[" ++ cdelim(map(show,xs), ", ") ++ "]"
+
+// serialization for fixed-length arrays
+class ShowFixedArrOf e n where
+  showFA :: ([:e|n:], long, long) -> [char]
+
+fixedCAToStr :: ([:char|n:], long, long, [char]) -> [char]
+fixedCAToStr cs i e r =
+  if (i == e) then
+    r
+  else if (saelem(cs, i) == '\0') then do {
+    unsafeSetLength(r, i);
+    return r
+  } else do {
+    r[i] <- saelem(cs, i);
+    return fixedCAToStr(cs, i+1, e, r)
+  }
+
+instance ShowFixedArrOf char n where
+  showFA cs i e = "\"" ++ fixedCAToStr(cs, i, e, newArray(e)) ++ "\""
+
+showSARange :: (a -> [char], [:a|n:], long, long, [[char]]) -> [[char]]
+showSARange showf xs i e r =
+  if (i == e) then
+    r
+  else
+    (let _ = r[i] <- showf(saelem(xs, i)) in
+    showSARange(showf, xs, i+1, e, r))
+
+instance ShowFixedArrOf byte n where
+  showFA bs i e = "0x" ++ concat(showSARange(showByteV, bs, i, e, newArray(e)))
+
+instance (Show a) => ShowFixedArrOf a n where
+  showFA cs i e = "[:" ++ cdelim(showSARange(show, cs, i, e, newArray(e)), ", ") ++ ":]"
+
+instance (ShowFixedArrOf a n) => Show [:a|n:] where
+  show xs = showFA(xs, 0L, salength(xs))
+
+// show lists
+instance (Show a) => Show (^x.(()+(a*x))) where
+  show xs = case unroll(xs) of |0:_="[]", 1:p=show(p.0)++":"++show(p.1)|
+
+// show recursive types if their one-step unrolling is showable
+instance (a ~ b, Show b) => Show a where
+  show x = show(unroll(x))
+
+// show through file references
+instance (Show a) => Show a@f where
+  show x = show(load(x))
+
+/*
+ * generic printing
+ */
+class Print a where
+  print :: a -> ()
+
+instance Print () where
+  print _ = ()
+
+instance Print [byte] where
+  print bs = putStr(show(bs))
+
+instance Print [char] where
+  print cs = let _ = putStr("\""); _ = putStr(cs) in putStr("\"")
+
+// we will later define how certain types can be printed as tables
+// at least one of those cases will overlap with arrays, so we need to try to print as tables prior to trying to print as arrays
+class PrintableAsTable a where
+  printAsTable :: a -> ()
+
+instance (PrintableAsTable a) => Print a where
+  print = printAsTable
+
+// print arrays
+printArray :: (Print a) => ([a], long) -> ()
+printArray xs i =
+  if (i == length(xs)) then
+    ()
+  else if ((i+1) == length(xs)) then
+    print(xs[i])
+  else
+    (let _ = print(xs[i]); _ = putStr(", ") in printArray(xs, i+1))
+
+instance (Print a) => Print [a] where
+  print xs = let _ = putStr("["); _ = printArray(xs, 0L); _ = putStr("]") in ()
+
+// print lists of things
+instance (Print a) => Print (^x.(()+(a*x))) where
+  print xs = case unroll(xs) of |0:_=putStr("[]"), 1:p=let _ = print(p.0); _ = putStr(":") in print(p.1)|
+
+// print records
+class PrintR a where
+  printrec :: (bool,a) -> ()
+
+instance PrintR () where
+  printrec _ _ = ()
+
+instance (r={a*rr}, Print a, PrintR rr) => PrintR r where
+  printrec first r = let _ = if first then () else putStr(", "); _ = putStr(recordHeadLabel(r)); _ = putStr("="); _ = print(recordHeadValue(r)) in printrec(false, recordTail(r))
+
+instance (PrintR r) => Print r where
+  print x = let _ = putStr("{"); _ = printrec(true, x) in putStr("}")
+
+// print tuples
+class PrintT a where
+  printtup :: (bool,a) -> ()
+
+instance PrintT () where
+  printtup _ _ = ()
+
+instance (p=(a*t), Print a, PrintT t) => PrintT p where
+  printtup first p = let _ = if first then () else putStr(", "); _ = print(p.0) in printtup(false, tupleTail(p))
+
+instance (PrintT p) => Print p where
+  print p = let _ = putStr("("); _ = printtup(true, p) in putStr(")")
+
+// for 'maybe' types, we don't need to see the variant structure
+instance (Print a) => Print (()+a) where
+  print m = case m of |0:_=(),1:x=print(x)|
+
+// print variants, the generic case
+class PrintVarPayload a where
+  printVarPayload :: a -> ()
+instance PrintVarPayload () where
+  printVarPayload = id
+instance (Print a) => PrintVarPayload a where
+  printVarPayload x = do { putStr("="); print(x); }
+
+instance (v=|h+0|, Print h) => Print v where
+  print v = variantSplit(v, \h.do{putStr("|"); putStr(variantHeadLabel(v)); printVarPayload(h); putStr("|");}, toClosure(\_.()))
+
+instance (v=|h+t|, Print h, Print t) => Print v where
+  print v = variantSplit(v, \h.do{putStr("|"); putStr(variantHeadLabel(v)); printVarPayload(h); putStr("|");}, toClosure(print))
+
+// print recursive types if their one-step unrolling is printable
+instance (a ~ b, Print b) => Print a where
+  print x = print(unroll(x))
+
+// print printable file references
+instance (Print a) => Print a@f where
+  print x = print(load(x))
+
+// print bit vectors
+instance Print bitvec where
+  print bv = bvPrintT(bv, 0L, bvLength(bv))
+
+// print anything else that's showable
+instance (Show a) => Print a where
+  print x = putStr(show(x))
+
+// we wind up doing this surprisingly often
+println :: (Print a) => a -> ()
+println x = let _ = print(x) in putStr("\n")
+
+putStrLn :: [char] -> ()
+putStrLn x = let _ = putStr(x) in putStr("\n")
+
+/*
+ * generic serialization for format strings (e.g.: `x = $x` => "x = " ++ format(x))
+ */
+class Format a where
+  format :: a -> [char]
+
+instance Format [char] where
+  format = id
+
+instance (Format a) => Format a@f where
+  format x = format(load(x))
+
+instance (Format a) => Format (()+a) where
+  format mx = match mx with | |1=x| -> format(x) | _ -> ""
+
+instance (Show a) => Format a where
+  format = show
+

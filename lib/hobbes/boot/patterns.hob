@@ -1,0 +1,94 @@
+/*
+   support functions for cases of pattern matching
+ */
+
+// used by pattern matching to reduce compilation overhead for very large pattern tables
+lowerBoundFi :: (Ord b b) => ([a], a -> b, b, long, long) -> long
+lowerBoundFi vs vtx x i c =
+  if (c <= 0L) then
+    i
+  else
+    let
+      s  = c / 2L;
+      ii = i + s
+    in
+      if (vtx(vs[ii]) < x) then
+        lowerBoundFi(vs, vtx, x, ii+1L, c - (s + 1L))
+      else
+        lowerBoundFi(vs, vtx, x, i, s)
+
+bsearch :: (Ord b b) => ([a], a -> b, b) -> long
+bsearch vs vtx x =
+  let
+    i = lowerBoundFi(vs, vtx, x, 0L, length(vs))
+  in
+    if (i < length(vs) and vtx(vs[i]) == x) then
+      i
+    else
+      length(vs)
+
+runLongDFA :: ([{reads:long, transitions:[long * |done:int, step:long|], def:|done:int, step:long|}], long, [long]) -> int
+runLongDFA dfa s vs =
+  let
+    st = dfa[s];
+    v  = vs[st.reads];
+    i  = bsearch(st.transitions, \td.td.0, v);
+    td = if (i == length(st.transitions)) then st.def else st.transitions[i].1
+  in
+    case td of
+      |done:x=x, step:ns=runLongDFA(dfa, ns, vs)|
+
+// used by pattern matching to reduce states in the case of char arrays
+packCArrLong :: (Array a char) => (a, long) -> long
+packCArrLong cs i =
+  let sd = lsub(size(cs),i) in
+    (if (llte(sd,0L)) then
+       0L
+     else if (leq(sd,1L)) then
+       packLong(element(cs,i), '\0',                   '\0',                   '\0',                   '\0',                   '\0',                   '\0',                   '\0')
+     else if (leq(sd,2L)) then
+       packLong(element(cs,i), element(cs,ladd(i,1L)), '\0',                   '\0',                   '\0',                   '\0',                   '\0',                   '\0')
+     else if (leq(sd,3L)) then
+       packLong(element(cs,i), element(cs,ladd(i,1L)), element(cs,ladd(i,2L)), '\0',                   '\0',                   '\0',                   '\0',                   '\0')
+     else if (leq(sd,4L)) then
+       packLong(element(cs,i), element(cs,ladd(i,1L)), element(cs,ladd(i,2L)), element(cs,ladd(i,3L)), '\0',                   '\0',                   '\0',                   '\0')
+     else if (leq(sd,5L)) then
+       packLong(element(cs,i), element(cs,ladd(i,1L)), element(cs,ladd(i,2L)), element(cs,ladd(i,3L)), element(cs,ladd(i,4L)), '\0',                   '\0',                   '\0')
+     else if (leq(sd,6L)) then
+       packLong(element(cs,i), element(cs,ladd(i,1L)), element(cs,ladd(i,2L)), element(cs,ladd(i,3L)), element(cs,ladd(i,4L)), element(cs,ladd(i,5L)), '\0',                   '\0')
+     else if (leq(sd,7L)) then
+       packLong(element(cs,i), element(cs,ladd(i,1L)), element(cs,ladd(i,2L)), element(cs,ladd(i,3L)), element(cs,ladd(i,4L)), element(cs,ladd(i,5L)), element(cs,ladd(i,6L)), '\0')
+     else
+       packLong(element(cs,i), element(cs,ladd(i,1L)), element(cs,ladd(i,2L)), element(cs,ladd(i,3L)), element(cs,ladd(i,4L)), element(cs,ladd(i,5L)), element(cs,ladd(i,6L)), element(cs,ladd(i,7L))))
+
+packCArrInt :: (Array a char) => (a, long) -> int
+packCArrInt cs i =
+  let sd = lsub(size(cs),i) in
+    (if (llte(sd,0L)) then
+       0
+     else if (leq(sd,1L)) then
+       packInt(element(cs,i), '\0',                   '\0',                   '\0')
+     else if (leq(sd,2L)) then
+       packInt(element(cs,i), element(cs,ladd(i,1L)), '\0',                   '\0')
+     else if (leq(sd,3L)) then
+       packInt(element(cs,i), element(cs,ladd(i,1L)), element(cs,ladd(i,2L)), '\0')
+     else
+       packInt(element(cs,i), element(cs,ladd(i,1L)), element(cs,ladd(i,2L)), element(cs,ladd(i,3L))))
+
+packCArrShort :: (Array a char) => (a, long) -> short
+packCArrShort cs i =
+  let sd = lsub(size(cs),i) in
+    (if (llte(sd,0L)) then
+       0S
+     else if (leq(sd,1L)) then
+       packShort(element(cs,i), '\0')
+     else
+       packShort(element(cs,i), element(cs,ladd(i,1L))))
+
+packCArrChar :: (Array a char) => (a, long) -> char
+packCArrChar cs i =
+  if (llte(size(cs),i)) then
+    '\0'
+  else
+    (element(cs, i))
+

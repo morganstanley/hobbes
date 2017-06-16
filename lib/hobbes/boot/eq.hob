@@ -1,0 +1,124 @@
+/*
+ * equality/equivalence/nearness overloading
+ */
+class Eq a where
+  (===) :: (a,a) -> bool
+
+class Equiv a b where
+  (==) :: (a,b) -> bool
+
+class ApproxEquiv a b where
+  (~) :: (a,b) -> bool
+
+// we can always make an equivalence from an equality
+instance (Eq a) => Equiv a a where
+  (==) = (===)
+
+// equality on primitive types
+instance Eq () where
+  x === y = true
+
+instance Eq 0 where
+  x === y = false
+
+instance Eq bool where
+  x === y = if x then y else (not(y))
+
+instance Eq char where
+  (===) = ceq
+
+instance Eq byte where
+  (===) = beq
+
+instance Eq short where
+  (===) = seq
+
+instance Eq int where
+  (===) = ieq
+
+instance Eq long where
+  (===) = leq
+
+instance Eq float where
+  (===) = feq
+
+instance Eq double where
+  (===) = deq
+
+instance (Convert a long) => Eq a where
+  x === y = (convert(x)::long) == (convert(y)::long)
+
+// equivalence between convertible types
+instance (a != b, Convert a b, Eq b) => Equiv a b where
+  x == y = (convert(x)::b) === y
+
+instance (a != b, Convert b a, Eq a) => Equiv a b where
+  x == y = x === (convert(y)::a)
+
+// equality on tuples
+instance (t=(a*tt), Eq a, Eq tt) => Eq t where
+  x === y = x.0 === y.0 and tupleTail(x) === tupleTail(y)
+
+// equality on records
+instance (r={a*rr}, Eq a, Eq rr) => Eq r where
+  x === y = recordHeadValue(x) === recordHeadValue(y) and recordTail(x) === recordTail(y)
+
+// equality on variants
+instance (v=|a+vt|, Eq a, Eq vt) => Eq v where
+  x === y = variantSplit(x, \xv.variantSplit(y, \yv.xv === yv, toClosure(\_.false)), \xt.variantSplit(y, toClosure(\_.false), \yt.xt === yt))
+
+// equality on all array types
+eqLenEqArrs :: (Array xs x, Eq x) => (xs, xs, long) -> bool
+eqLenEqArrs a b i =
+  if (i == size(a)) then
+    true
+  else if (element(a, i) === element(b, i)) then
+    eqLenEqArrs(a,b,i+1L)
+  else
+    false
+
+instance (Array xs x, Eq x) => Eq xs where
+  xs === ys = size(xs) === size(ys) and eqLenEqArrs(xs,ys,0L)
+
+// equality on recursive types
+instance (a ~ b, Eq b) => Eq a where
+  xs === ys = unroll(xs) === unroll(ys)
+
+// equality on stored types
+instance (Eq a) => Eq a@f where
+  x === y = (convert(x)::long === convert(y)) or (load(x) === load(y))
+
+// equivalence within sum branches
+instance (Equiv a b, Equiv a c) => Equiv a (b+c) where
+  x == y = case y of |0:xl=x == xl, 1:xr=x == xr|
+
+instance (Equiv a b) => Equiv a (b+c) where
+  x == y = case y of |0:xl=x == xl, 1:_=false|
+
+instance (Equiv a c) => Equiv a (b+c) where
+  x == y = case y of |0:xl=false, 1:xr=x == xr|
+
+
+instance (Equiv a b, Equiv a c) => Equiv (b+c) a where
+  y == x = case y of |0:xl=x == xl, 1:xr=x == xr|
+
+instance (Equiv a b) => Equiv (b+c) a where
+  y == x = case y of |0:xl=x == xl, 1:_=false|
+
+instance (Equiv a c) => Equiv (b+c) a where
+  y == x = case y of |0:xl=false, 1:xr=x == xr|
+
+
+// equivalence between arrays of types whose equivalence can be decided
+eqLenEquivArrs :: (Array as a,  Array bs b, Equiv a b) => (as, bs, long) -> bool
+eqLenEquivArrs as bs i =
+  if (i == size(as)) then
+    true
+  else if (element(as, i) == element(bs, i)) then
+    eqLenEquivArrs(as,bs,i+1L)
+  else
+    false
+
+instance (Array as a, Array bs b, Equiv a b) => Equiv as bs where
+  as == bs = size(as) === size(bs) and eqLenEquivArrs(as, bs, 0L)
+

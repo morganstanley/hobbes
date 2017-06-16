@@ -1,0 +1,161 @@
+/*
+ * a basic in-place quicksort on permutations
+ *  (ie: modify the permutation indexes in-place to determine a sorted permutation)
+ */
+
+swap :: ([a], long, long) -> ()
+swap xs i j =
+  if (i == j) then
+    ()
+  else
+    (let t = xs[i]; _ = xs[i] <- xs[j]; _ = xs[j] <- t in ())
+
+// sort with a user predicate
+sibrPartition :: ((a,a) -> bool, [a], [long], long, long, long, long) -> long
+sibrPartition lt xs idxs pivot b e i =
+  if (b == e) then
+    (let
+       _ = if (i < pivot) then swap(idxs, i, pivot) else ()
+     in
+       i)
+  else if (lt(xs[idxs[b]], xs[idxs[pivot]])) then
+    (let
+       _ = swap(idxs, i, b)
+     in
+       sibrPartition(lt, xs, idxs, if (i == pivot) then b else pivot, b+1, e, i+1))
+  else
+    sibrPartition(lt, xs, idxs, pivot, b+1, e, i)
+
+sortiByRange :: ((a,a) -> bool, [a], [long], long, long) -> ()
+sortiByRange lt xs idxs b e =
+  let
+    span = e - b
+  in
+    if (span <= 1L) then
+      ()
+    else
+      (let
+        j = sibrPartition(lt, xs, idxs, b + (span / 2), b, e, b);
+        _ = sortiByRange(lt, xs, idxs, b,   j);
+        _ = sortiByRange(lt, xs, idxs, j+1, e)
+      in
+        ())
+
+sortiBy :: ((a,a) -> bool, [a]) -> [long]
+sortiBy lt xs =
+  let
+    idxs = range(0L, length(xs) - 1);
+    _    = sortiByRange(lt, xs, idxs, 0L, length(xs))
+  in
+    idxs
+
+// sort with a user projection
+siwrPartition :: (Ord b b) => (a -> b, [a], [long], long, long, long, long) -> long
+siwrPartition p xs idxs pivot b e i =
+  if (b == e) then
+    (let
+       _ = if (i < pivot) then swap(idxs, i, pivot) else ()
+     in
+       i)
+  else if (p(xs[idxs[b]]) < p(xs[idxs[pivot]])) then
+    (let
+       _ = swap(idxs, i, b)
+     in
+       siwrPartition(p, xs, idxs, if (i == pivot) then b else pivot, b+1, e, i+1))
+  else
+    siwrPartition(p, xs, idxs, pivot, b+1, e, i)
+
+sortiWithRange :: (Ord b b) => (a -> b, [a], [long], long, long) -> ()
+sortiWithRange p xs idxs b e =
+  let
+    span = e - b
+  in
+    if (span <= 1L) then
+      ()
+    else
+      (let
+        j = siwrPartition(p, xs, idxs, b + (span / 2), b, e, b);
+        _ = sortiWithRange(p, xs, idxs, b,   j);
+        _ = sortiWithRange(p, xs, idxs, j+1, e)
+      in
+        ())
+
+sortiWith :: (Ord b b) => (a -> b, [a]) -> [long]
+sortiWith p xs =
+  let
+    idxs = range(0L, length(xs) - 1);
+    _    = sortiWithRange(p, xs, idxs, 0L, length(xs))
+  in
+    idxs
+
+// sort with default ordering for a type
+//   note: the more general definition above COULD be used for this -- i.e.: sorti = sortiBy (<)
+//         however, this currently compiles to code that's a bit slower than for this specialized implementation
+//         we should revisit this definition with future optimization improvements
+sirPartition :: (Ord a a) => ([a], [long], long, long, long, long) -> long
+sirPartition xs idxs pivot b e i =
+  if (b == e) then
+    (let
+       _ = if (i < pivot) then swap(idxs, i, pivot) else ()
+     in
+       i)
+  else if (xs[idxs[b]] < xs[idxs[pivot]]) then
+    (let
+       _ = swap(idxs, i, b)
+     in
+       sirPartition(xs, idxs, if (i == pivot) then b else pivot, b+1, e, i+1))
+  else
+    sirPartition(xs, idxs, pivot, b+1, e, i)
+
+sortiRange :: (Ord a a) => (int, [a], [long], long, long) -> ()
+sortiRange lvl xs idxs b e =
+  let
+    span = e - b
+  in
+    if (span <= 1L) then
+      ()
+    else if (lvl > 7) then
+      (let
+        j = sirPartition(xs, idxs, b + (span / 2), b, e, b);
+        _ = sortiRange(lvl, xs, idxs, b,   j);
+        _ = sortiRange(lvl, xs, idxs, j+1, e)
+      in
+        ())
+    else
+      (let
+        j  = sirPartition(xs, idxs, b + (span / 2), b, e, b);
+        _  = sortiRange(lvl+1, xs, idxs, b,   j);
+        _  = sortiRange(lvl+1, xs, idxs, j+1, e)
+      in
+        ())
+
+sorti :: (Ord a a) => [a] -> [long]
+sorti xs =
+  let
+    idxs = range(0L, length(xs) - 1);
+    _    = sortiRange(0, xs, idxs, 0L, length(xs))
+  in
+    idxs
+
+// sort by a user predicate or default ordering for a type
+sortBy :: ((a,a) -> bool, [a]) -> [a]
+sortBy lt xs = select(xs, sortiBy(lt, xs))
+
+sortWith :: (Ord b b) => (a -> b, [a]) -> [a]
+sortWith p xs = select(xs, sortiWith(p, xs))
+
+sort :: (Ord a a) => [a] -> [a]
+sort xs = select(xs, sorti(xs))
+
+// select a range of values from a sorted sequence
+sortedSubRange :: (Ord b b) => (a -> b, b, b, [a]) -> [a]
+sortedSubRange p b e xs =
+  let
+    bi = lowerBoundFi(xs, p, b, 0L, length(xs));
+    ei = lowerBoundFi(xs, p, e, bi, length(xs))
+  in
+    if (bi == length(xs)) then
+      []
+    else
+      selectRange(xs, bi, ei)
+

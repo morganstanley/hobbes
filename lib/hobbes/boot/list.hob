@@ -1,0 +1,109 @@
+
+// list functions
+nil :: () -> (^x.(()+(a*x)))
+nil _ = roll(|0=()|)
+
+cons :: (a, ^x.(()+(a*x))) -> (^x.(()+(a*x)))
+cons x xs = roll(|1=(x,xs)|)
+
+lmap :: (a -> b, (^x.(()+(a*x)))) -> (^x.(()+(b*x)))
+lmap f xs =
+  match unroll(xs) with
+  | |1=(h,t)| -> cons(f(h), lmap(f, t))
+  | _         -> nil()
+
+lmapC :: (exists E.(((E, a) -> b) * E), ^x.(() + (a * x))) -> (^x.(() + (b * x)))
+lmapC f xs =
+  match unroll(xs) with
+  | |1=(h,t)| -> cons(apply(f, h), lmapC(f, t))
+  | _         -> nil()
+
+lfilter :: (a -> bool, ^x.(()+(a*x))) -> (^x.(()+(a*x)))
+lfilter p xs = case unroll(xs) of |0:_=nil(), 1:nxs=if (p(nxs.0)) then cons(nxs.0,lfilter(p,nxs.1)) else lfilter(p,nxs.1)|
+
+lfilterC :: (exists E.(((E,a)->bool)*E), ^x.(()+(a*x))) -> (^x.(()+(a*x)))
+lfilterC p xs = case unroll(xs) of |0:_=nil(), 1:nxs=if (apply(p,nxs.0)) then cons(nxs.0,lfilterC(p,nxs.1)) else lfilterC(p,nxs.1)|
+
+lfoldl :: ((a, b) -> a, a, ^x.(()+(b*x))) -> a
+lfoldl f s xs = case unroll(xs) of |0:_=s, 1:p=lfoldl(f, f(s, p.0), p.1)|
+
+lfoldlC :: (exists E.(((E,a,b) -> a) * E), a, ^x.(()+(b*x))) -> a
+lfoldlC f s xs = case unroll(xs) of |0:_=s, 1:p=lfoldlC(f, unpack c=(f::(exists E.(((E,a,b) -> a) * E))) in (c.0(c.1, s, p.0)), p.1)|
+
+lfoldr :: ((b, a) -> a, a, ^x.(()+(b*x))) -> a
+lfoldr f s xs = case unroll(xs) of |0:_=s, 1:p=f(p.0, lfoldr(f, s, p.1))|
+
+llength :: (^x.(()+(a*x))) -> long
+llength xs = lfoldl(\s _.s+1L, 0L, xs)
+
+lappend :: (^x.(()+(a*x)),^x.(()+(a*x))) -> ^x.(()+(a*x))
+lappend x y = lfoldr(cons, y, x)
+
+toArrayStep :: ([a], long, ^x.(()+(a*x))) -> [a]
+toArrayStep axs i xs = case unroll(xs) of |0:_=axs, 1:p=let _ = axs[i] <- p.0 in toArrayStep(axs, i+1, p.1)|
+
+toArray :: (^x.(()+(a*x))) -> [a]
+toArray xs = toArrayStep(newArray(llength(xs)), 0L, xs)
+
+unfold :: (a -> bool, a -> b, a -> a, a) -> (^x.(()+(b*x)))
+unfold stop val step x =
+  if (stop(x)) then
+    nil()
+  else
+    cons(val(x), unfold(stop, val, step, step(x)))
+
+alflatten :: (^x.(()+([a]*x))) -> [a]
+alflatten xss =
+  let
+    n  = lfoldl(\s xs.s+length(xs), 0L, xss);
+    xs = newArray(n);
+    _  = lfoldlC(\i nxs.let _ = copy(xs, i, nxs) in (i+length(nxs)), 0L, xss)
+  in
+    xs
+
+lreverse xs = lfoldl(\r x.cons(x,r), nil(), xs)
+
+lfind :: (a -> bool, ^x.(()+(a*x))) -> (()+a)
+lfind p xs =
+  match unroll(xs) with
+  | |1=(h, t)| where p(h) -> |1=h|
+  | |1=(_, t)|            -> lfind(p, t)
+  | _                     -> |0=()|
+
+lfindS :: (s, (s,a) -> s, (s,a) -> bool, ^x.(()+(a*x))) -> (()+(s*a))
+lfindS s ss p xs =
+  match unroll(xs) with
+  | |1=(h, t)| where p(s, h) -> |1=(s,h)|
+  | |1=(h, t)|               -> lfindS(ss(s,h), ss, p, t)
+  | _                        -> |0=()|
+
+lselectJust :: ^x.(()+((()+a)*x)) -> ^x.(()+(a*x))
+lselectJust xs =
+  match unroll(xs) with
+  | |1=(|1=x|, t)| -> cons(x, lselectJust(t))
+  | |1=(_,     t)| -> lselectJust(t)
+  | _              -> nil()
+
+// support use of lists and ropes in comprehensions
+instance SeqDesc (^x.(()+([a]*x))) "mrope" a
+instance SeqDesc (^x.(()+(a*x))) "list" a
+
+instance Map f c a r "mrope" (^x.(()+([a]*x))) "mrope" (^x.(()+([r]*x))) where
+  fmap f xs = case unroll(xs) of |0:_=nil(), 1:p=cons(fmap(f, p.0), fmap(f, p.1))|
+instance FilterMap p pc f c a r "mrope" (^x.(()+([a]*x))) "mrope" (^x.(()+([r]*x))) where
+  ffilterMap p f xs = case unroll(xs) of |0:_=nil(), 1:c=cons(ffilterMap(p, f, c.0), ffilterMap(p, f, c.1))|
+instance FilterMMap f c a r "mrope" (^x.(()+([a]*x))) "mrope" (^x.(()+([r]*x))) where
+  ffilterMMap f xs = case unroll(xs) of |0:_=nil(), 1:c=cons(ffilterMMap(f, c.0), ffilterMMap(f, c.1))|
+
+instance Map f c a r "list" (^x.(()+(a*x))) "list" (^x.(()+(r*x))) where
+  fmap f xs = case unroll(xs) of |0:_=nil(), 1:p=cons(apply(f, p.0), fmap(f, p.1))|
+instance FilterMap p pc f c a r "list" (^x.(()+(a*x))) "list" (^x.(()+(r*x))) where
+  ffilterMap p f xs = case unroll(xs) of |0:_=nil(), 1:c=if (apply(p, c.0)) then cons(apply(f, c.0), ffilterMap(p, f, c.1)) else ffilterMap(p, f, c.1)|
+instance FilterMMap f c a r "list" (^x.(()+(a*x))) "list" (^x.(()+(r*x))) where
+  ffilterMMap f xs = lselectJust(fmap(f, xs))
+
+// allow access to ropes as arrays (assuming storage in inner arrays is oldest-to-newest)
+instance Array (^x.(()+([a]*x))) a where
+  size    xs   = lfoldl(\s vs.s + length(vs), 0L, xs)
+  element xs i = match lfindS(i, \j vs.j-length(vs), \j vs.j < length(vs), xs) with | |1=(j, vs)| -> vs[length(vs) - (j+1)] | _ -> newPrim()
+

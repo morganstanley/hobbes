@@ -1,0 +1,433 @@
+
+// some common array functions
+alli :: (a->bool,long,[a]) -> bool
+alli f i xs =
+  if (i == length(xs)) then
+    true
+  else if (not(f(xs[i]))) then
+    false
+  else
+    (alli(f,i+1L,xs))
+
+// [doc] determines whether all elements of the array satisfy the predicate
+all :: (a -> bool, [a]) -> bool
+all f xs = alli(f,0L,xs)
+
+anyi :: (a->bool,long,[a]) -> bool
+anyi f i xs =
+  if (i == length(xs)) then
+    false
+  else if (f(xs[i])) then
+    true
+  else
+    (anyi(f,i+1L,xs))
+
+// [doc] determines whether any element of the array satisfied the predicate
+any :: (a -> bool, [a]) -> bool
+any f xs = anyi(f,0L,xs)
+
+anyiC :: (exists E.(((E,a)->bool)*E), long, [a]) -> bool
+anyiC f i xs =
+  if (i == length(xs)) then
+    false
+  else if (apply(f,xs[i])) then
+    true
+  else
+    (anyiC(f,i+1L,xs))
+
+anyC :: (exists E.(((E,a)->bool)*E), [a]) -> bool
+anyC f xs = anyiC(f,0L,xs)
+
+somei :: (a -> bool, [a], long) -> (()+a)
+somei p xs i =
+  if (i == length(xs)) then
+    |0=()|
+  else if (p(xs[i])) then
+    |1=xs[i]|
+  else
+    somei(p, xs, i+1)
+
+some :: (a -> bool, [a]) -> (()+a)
+some p xs = somei(p, xs, 0L)
+
+someiC :: (exists E.(((E,a) -> bool)*E), [a], long) -> (()+a)
+someiC p xs i =
+  if (i == length(xs)) then
+    |0=()|
+  else if (apply(p,xs[i])) then
+    |1=xs[i]|
+  else
+    someiC(p, xs, i+1)
+
+someC :: (exists E.(((E,a) -> bool)*E), [a]) -> (()+a)
+someC p xs = someiC(p, xs, 0L)
+
+amap :: (a->b, long, [b], [a]) -> [b]
+amap f i ys xs =
+  if (i == length(xs)) then
+    ys
+  else
+    let _ = ys[i] <- f(xs[i]) in
+      amap(f, i+1L, ys, xs)
+
+// [doc] map(f, xs) is the list obtained by applying f to each element of xs
+//  [eg] map(f,[x1, x2, ..., xn] == [f(x1), f(x2), ..., f(xn)]
+map :: (a -> b, [a]) -> [b]
+map f xs = amap(f, 0L, newArray(length(xs)), xs)
+
+mapiC :: (exists E.(((E,a)->b)*E), long, [b], [a]) -> [b]
+mapiC f i ys xs =
+  if (i == length(xs)) then
+    ys
+  else
+    let _ = ys[i] <- apply(f, xs[i]) in
+      mapiC(f, i+1L, ys, xs)
+
+mapC :: (exists E.(((E,a)->b)*E), [a]) -> [b]
+mapC f xs = mapiC(f, 0L, newArray(length(xs)), xs)
+
+mapIdxStep :: (([a],long)->b, [a], long, [b]) -> [b]
+mapIdxStep f xs i ys =
+  if (i == length(xs)) then
+    ys
+  else
+    (let _ = ys[i] <- f(xs, i) in mapIdxStep(f, xs, i+1, ys))
+
+mapIdx :: (([a],long)->b, [a]) -> [b]
+mapIdx f xs = mapIdxStep(f, xs, 0L, newArray(length(xs)))
+
+eachStep :: (a->b, [a], long, long) -> ()
+eachStep f xs i e =
+  if (i == e) then
+    ()
+  else
+    let _ = f(xs[i]) in eachStep(f, xs, i+1, e)
+
+// [doc] each(f, xs) applies f to each element of xs
+each :: (a->b, [a]) -> ()
+each f xs = eachStep(f, xs, 0L, length(xs))
+
+eachRange :: (Ord a a, Add a int a) => (a -> b, a, a) -> ()
+eachRange f i e =
+  if (i < e) then
+    (let _ = f(i) in eachRange(f, i+1, e))
+  else
+    ()
+
+eachiC :: (exists E.(((E, a) -> b) * E), [a], long) -> ()
+eachiC f xs i =
+  if (i == length(xs)) then
+    ()
+  else
+    (let _ = (apply(f :: exists E.(((E, a) -> b) * E), xs[i] :: a) :: b) in eachiC(f, xs, i+1))
+
+eachC :: (exists E.(((E, a) -> b) * E), [a]) -> ()
+eachC f xs = eachiC(f, xs, 0L)
+
+eachRangeC :: (Ord a a, Add a int a) => (exists E.(((E, a) -> b) * E), a, a) -> ()
+eachRangeC f i e =
+  if (i < e) then
+    (let _ = apply(f,i) in eachRangeC(f, i+1, e))
+  else
+    ()
+
+foldli :: ((b,a)->b,b,long,[a])->b
+foldli f s i xs =
+  if (i == length(xs)) then
+    s
+  else
+    (foldli(f,f(s,xs[i]),i+1L,xs))
+
+// [doc] left-associative fold of an array
+foldl :: ((b,a)->b,b,[a]) -> b
+foldl f s xs = foldli(f,s,0L,xs)
+
+foldri :: ((a,b)->b,b,long,[a]) -> b
+foldri f s i xs =
+  if (i == 0) then
+    s
+  else
+    (let j = i - 1 in foldri(f, f(xs[j], s), j, xs))
+
+// [doc] right-associative fold of an array
+foldr :: ((a,b)->b,b,[a]) -> b
+foldr f s xs = foldri(f,s,length(xs),xs)
+
+scanlStep :: ((b,a)->b, b, [a], long, [b]) -> [b]
+scanlStep f s xs i rs =
+  let _ = (rs[i] <- s) in
+  if (i == length(xs)) then rs
+  else scanlStep(f, f(s,xs[i]), xs, i+1L, rs)
+
+// [doc] left-associative fold with history
+scanl :: ((b,a)->b,b,[a]) -> [b]
+scanl f s xs = scanlStep(f, s, xs, 0L, newArray(length(xs)+1L))
+
+// folds over tuples, with closures ...
+foldlT2Step :: ((s,a,b) -> s, s, [a*b], long) -> s
+foldlT2Step f s ps i =
+  if (i == length(ps)) then
+    s
+  else
+    (let p = ps[i] in foldlT2Step(f, f(s, p.0, p.1), ps, i+1))
+
+// [doc] fold a function over an array of pairs (avoids tupling arguments)
+foldlT2 :: ((s,a,b) -> s, s, [a*b]) -> s
+foldlT2 f s ps = foldlT2Step(f, s, ps, 0L)
+
+foldlCT2Step :: (exists E.(((E, s, k, v) -> s)*E), s, [a*b], long) -> s
+foldlCT2Step f s ps i =
+  if (i == length(ps)) then
+    s
+  else
+    (let p = ps[i] in foldlCT2Step(f, apply(f, (s, p.0, p.1)), ps, i+1))
+
+// [doc] fold a closure over an array of pairs (avoids tupling arguments)
+foldlCT2 :: (exists E.(((E, s, k, v) -> s)*E), s, [a*b]) -> s
+foldlCT2 f s ps = foldlCT2Step(f, s, ps, 0L)
+
+// find something in an array
+findIter :: (a -> bool, [a], long) -> (()+a)
+findIter p xs i =
+  if (i == length(xs)) then
+    |0=()|
+  else if (p(xs[i])) then
+    |1=xs[i]|
+  else
+    findIter(p, xs, i+1)
+
+// [doc] returns the leftmost element of the array matching the predicate, or nothing if there is no such element
+find :: (a -> bool, [a]) -> (()+a)
+find p xs = findIter(p,xs,0L)
+
+// count how many values in an array satisfy a predicate
+countTrues :: (a -> bool, long, [a], long) -> long
+countTrues p c xs i =
+  if (i == length(xs)) then
+    c
+  else if (p(xs[i])) then
+    countTrues(p, c+1, xs, i+1)
+  else
+    countTrues(p, c, xs, i+1)
+
+// [doc] returns the number of elements which satisfy the predicate in the array
+countTrue :: (a -> bool, [a]) -> long
+countTrue p xs = countTrues(p, 0L, xs, 0L)
+
+counts :: (a -> long, long, [a], long) -> long
+counts s c xs i =
+  if (i == length(xs)) then
+    c
+  else
+    counts(s, c + s(xs[i]), xs, i+1)
+
+count :: (a -> long, [a]) -> long
+count s xs = counts(s, 0L, xs, 0L)
+
+// [doc] computes the sum of the numbers in an array
+sum :: (HasZero a, Add a a a) => [a] -> a
+sum xs = foldl((+), zero, xs)
+
+// join an array of strings with a delimiter
+cdelimi :: ([[char]], [char], [char], long) -> [char]
+cdelimi ss d a i =
+  if (i == length(ss)) then
+    a
+  else if (i == 0L) then
+    cdelimi(ss, d, ss[0L], 1L)
+  else
+    cdelimi(ss, d, a ++ d ++ ss[i], i+1L)
+
+cdelim :: ([[char]], [char]) -> [char]
+cdelim ss d = cdelimi(ss,d,"",0L)
+
+// generate a range of values in an enumerable type
+rangeInto :: (Ord a a, Add a int a) => (a, a, [a], long) -> [a]
+rangeInto lo hi r i =
+  if (lo > hi) then
+    r
+  else
+    let _ = r[i] <- lo in
+      rangeInto(lo+1, hi, r, i+1)
+
+range :: (Subtract a a a, Convert a long, Ord a a, Add a int a) => (a, a) -> [a]
+range lo hi =
+  let n = (convert(hi - lo) :: long) + 1 in
+    if (n > 0L) then
+      rangeInto(lo, hi, newArray(n), 0L)
+    else
+      []
+
+// generate an array of a given length initialized with a given value
+arepeat :: (a, long, [a]) -> [a]
+arepeat x i r =
+  if (i == length(r)) then
+    r
+  else
+    let _ = r[i] <- x in
+      arepeat(x, i+1L, r)
+
+// [doc] repeat(n, x) is an array of length n with every element being x
+//  [eg] repeat(42, 5) == [42,42,42,42,42]
+repeat :: (a, long) -> [a]
+repeat x n = arepeat(x, 0L, newArray(n))
+
+// [doc] max(x, y) returns the largest of x and y
+max :: (Ord a a) => (a, a) -> a
+max x y = if (x < y) then y else x
+
+maximum :: (Ord a a) => (a, [a]) -> a
+maximum x xs = foldl(max, x, xs)
+
+// [doc] min(x, y) returns the smallest of x and y
+min :: (Ord a a) => (a, a) -> a
+min x y = if (x < y) then x else y
+
+minimum :: (Ord a a) => (a, [a]) -> a
+minimum x xs = foldl(min, x, xs)
+
+// range lifted functions
+amapRange :: (a -> b, [a], long, long, [b], long) -> [b]
+amapRange f xs i e ys j =
+  if (i == e) then
+    ys
+  else
+    let _ = ys[j] <- f(xs[i]) in
+      amapRange(f, xs, i+1L, e, ys, j+1L)
+
+mapRange :: (a -> b, long, long, [a]) -> [b]
+mapRange f i e xs =
+  let
+    ni = min(i, length(xs));
+    ne = min(e, length(xs))
+  in
+    amapRange(f, xs, ni, ne, newArray(ne - ni), 0L)
+
+foldliRange :: ((b,a)->b,b,long,long,[a])->b
+foldliRange f s i e xs =
+  if (i == e) then
+    s
+  else
+    (foldliRange(f,f(s,xs[i]),i+1L,e,xs))
+
+foldlRange :: ((b,a)->b,b,long,long,[a]) -> b
+foldlRange f s i e xs = foldliRange(f,s,i,e,xs)
+
+// array copying
+
+// [doc] copyRange(dst, dstStartIdx, src, srcStartIdx, srcEndIdx). srcEndIdx is exclusive
+copyRange :: ([a], long, [a], long, long) -> ()
+copyRange dst i src srcI srcE =
+  if(srcI >= srcE) then
+    ()
+  else
+    (let _ = dst[i] <- src[srcI] in copyRange(dst, i+1L, src, srcI+1L, srcE))
+
+// [doc] copyFrom(dst, dstStartIdx, src, srcStartIdx)
+copyFrom :: ([a], long, [a], long) -> ()
+copyFrom dst i src j = copyRange(dst, i, src, j, length(src))
+
+// [doc] copy(dest, dest_start_idx, src)
+copy :: ([a], long, [a]) -> ()
+copy dst i src = copyFrom(dst, i, src, 0L)
+
+// copy out of a sequence of arrays into a new array
+concatInto :: ([[a]], long, [a], long) -> [a]
+concatInto xss i xs j =
+  if (i == length(xss)) then
+    xs
+  else do {
+    xsi = xss[i];
+    n   = length(xsi);
+
+    copyRange(xs, j, xsi, 0L, n);
+    return concatInto(xss, i+1L, xs, j+n)
+  }
+
+// [doc] the concatenation of all the elements of an array of arrays
+//  [eg] concat([[1,2], [3,4], [5,6]]) == [1,2,3,4,5,6]
+concat :: [[a]] -> [a]
+concat xs = concatInto(xs, 0L, newArray(sum(map(length, xs))), 0L)
+
+// convert arrays of convertible values
+instance (Convert a b) => Convert [a] [b] where
+  convert xs = map(convert, xs)
+
+// normalize an index for array slicing
+normIdx :: (Array xs x, Convert i long) => (xs, i) -> long
+normIdx xs i =
+  let ci = (convert(i) :: long) in
+    (if (ci < 0L) then
+       max(0L, size(xs) + ci)
+     else
+       min(ci, size(xs)))
+
+// extract a subsequence from an array
+sliceStep :: (Array xs x) => (xs, long, long, [x], long, long) -> [x]
+sliceStep xs i e ss j step =
+  if (i == e) then
+    ss
+  else
+    (let _ = ss[j] <- element(xs, i) in sliceStep(xs, i+1, e, ss, j+step, step))
+
+// extract a subsequence from an array, either forward or backward
+slice :: (Array xs x, Convert i long, Convert j long) => (xs, i, j) -> [x]
+slice xs i j =
+  let
+    ni = normIdx(xs, i);
+    nj = normIdx(xs, j)
+  in
+     if (ni < nj) then
+       sliceStep(xs, ni, nj, newArray(nj - ni), 0L, 1L)
+     else
+       sliceStep(xs, nj, ni, newArray(ni - nj), ni - nj - 1, -1L)
+
+// [doc] takes two arrays and returns an array of corresponding pairs
+//  [eg] zip([1,3,5], [2,4,5]) == [(1,2), (3,4), (5,6)]
+zip :: (Array xs x, Array ys y) => (xs, ys) -> [x*y]
+zip xs ys =
+  let
+    n = min(size(xs), size(ys));
+    r = newArray(n);
+    _ = eachRangeC(\i.let _ = r[i].0 <- element(xs, i); _ = r[i].1 <- element(ys, i) in (), 0L, n)
+  in
+    r
+
+// [doc] map a two-argument function over a pair of arrays
+zipWith :: (Array xs x, Array ys y) => ((x, y) -> z, xs, ys) -> [z]
+zipWith f xs ys =
+  let
+    n = min(size(xs), size(ys));
+    r = newArray(n);
+    _ = eachRangeC(\i.r[i] <- f(element(xs, i), element(ys, i)), 0L, n)
+  in
+    r
+
+// unzip an array of pairs
+unzipStep :: ([a*b], [a], [b], long, long) -> ()
+unzipStep ps xs ys i e =
+  if (i == e) then
+    ()
+  else
+    (let
+       _ = xs[i] <- ps[i].0;
+       _ = ys[i] <- ps[i].1
+     in
+       unzipStep(ps, xs, ys, i+1, e))
+
+// [doc] transforms an array of pairs into an array of first components and an array of second components
+//  [eg] unzip([(1,2), (3,4), (5,6)]) == ([1,3,5], [2,4,5])
+unzip :: [a*b] -> ([a]*[b])
+unzip ps =
+  let
+    n = length(ps);
+    xs = newArray(n);
+    ys = newArray(n);
+    _ = unzipStep(ps, xs, ys, 0L, n)
+  in
+    (xs, ys)
+
+// [doc] returns the elements of an array in reverse order
+reverse :: [a] -> [a]
+reverse xs = slice(xs, length(xs), 0L)
+

@@ -1,0 +1,186 @@
+/*
+ * format tables for display
+ */
+maxRowCount :: long
+maxRowCount = 9223372036854775805L // 2^63 - 2 (max signed int minus two rows for the table header)
+
+tableColumnWidth :: [[char]] -> long
+tableColumnWidth vs = foldl(max, 0L, map(length,vs))
+
+rightJustify :: ([char], long) -> [char]
+rightJustify s n =
+  repeat(' ', n - length(s)) ++ s
+
+formatColumn :: [[char]] -> [[char]]
+formatColumn vs =
+  let
+    w = foldl(\n v.max(n, length(v)), 0L, vs)
+  in
+   [rightJustify(v, w) | v <- vs]
+
+formatNamedColumn :: ([char], [[char]]) -> [[char]]
+formatNamedColumn name vs =
+  let
+    w = foldl(\n v.max(n, length(v)), length(name), vs)
+  in
+   ([rightJustify(name, w), repeat('-', w)] ++ [rightJustify(v, w) | v <- vs])
+
+formatTableColumns :: ([[char]], [[[char]]]) -> [[[char]]]
+formatTableColumns cnames cvs =
+  if (length(cnames) == 0) then
+    map(formatColumn, cvs)
+  else
+    zipWith(formatNamedColumn, cnames, cvs)
+
+// if we can derive tabular data from a type, a formatted table can be derived from it
+class TableFormat a where
+  tableRowCount     :: a -> long
+  tableHeader       :: (a, [char]) -> [[char]]
+  tableColumns      :: a           -> [[[char]]]
+  tableColumnsTrunc :: (a, long)   -> [[[char]]]
+
+class TableView a t | a -> t where
+  openTableView :: a -> t
+
+instance (TableFormat a) => TableView a a where
+  openTableView = id
+
+printTableConfig =
+  let
+    c = (newPrim() :: {maxRows:long});
+    _ = c.maxRows <- 20L
+  in
+    c
+
+printTableRows :: ([[[char]]], long, long, [char]) -> ()
+printTableRows cvs c r eor =
+  if (r == length(cvs[0])) then
+    putStr(eor)
+  else if (c == length(cvs)) then
+    do { putStr("\n"); printTableRows(cvs, 0L, r+1, eor); }
+  else if (c == 0) then
+    do { putStr(cvs[c][r]); printTableRows(cvs, c+1, r, eor); }
+  else
+    do { putStr(" "); putStr(cvs[c][r]); printTableRows(cvs, c+1, r, eor); }
+
+printTableWithTruncation :: (TableFormat a) => (a, long) -> ()
+printTableWithTruncation x maxRows =
+  let
+    header = tableHeader(x, "tbl");
+    trunc  = (tableRowCount(x) > maxRows);
+    cols   = if trunc then tableColumnsTrunc(x, maxRows) else tableColumns(x);
+    fcvs   = formatTableColumns(header, cols)
+  in
+    if (length(fcvs) == 0L) then
+      putStr("\n")
+    else
+      printTableRows(fcvs, 0L, 0L, if trunc then "...\n" else "")
+
+printTable :: (TableView a t, TableFormat t) => a -> ()
+printTable x = printTableWithTruncation(openTableView(x), maxRowCount)
+
+// we can always generate a table from a sequence of records over format-able types
+class RecordFormat a where
+  recordHeader  :: [char] -> ^x.(()+([char]*x))
+  recordColumns :: [a] -> ^x.(()+([[char]]*x))
+
+instance RecordFormat () where
+  recordHeader  _ = nil()
+  recordColumns _ = nil()
+
+instance (p=(h*t), RecordFormat h, RecordFormat t) => RecordFormat p where
+  recordHeader  ty = lappend((recordHeader :: (RecordFormat h)=>[char]->(^x.(()+([char]*x))))(ty), (recordHeader :: (RecordFormat t)=>[char]->(^x.(()+([char]*x))))(ty))
+  recordColumns rs = lappend(recordColumns(map(.0, rs)), recordColumns(unsafeCast(rs)::[t]))
+
+instance (r={h*t}, Format h, RecordFormat t) => RecordFormat r where
+  recordHeader  ty = cons(recordHeadLabel(newPrim()::r), (recordHeader :: (RecordFormat t) => [char]->(^x.(()+([char]*x))))(ty))
+  recordColumns rs = cons(map(\r.format(recordHeadValue(r)), rs), recordColumns(unsafeCast(rs)::[t]))
+
+instance (Array as a, RecordFormat a) => TableFormat as where
+  tableRowCount           = size
+  tableHeader       _  ty = toArray((recordHeader :: (RecordFormat a) => [char]->(^x.(()+([char]*x))))(ty))
+  tableColumns      as    = toArray(recordColumns(as[0:]))
+  tableColumnsTrunc as m  = toArray(recordColumns(as[0:m]))
+
+// we can always generate a table from a sequence of tuples over format-able types
+class MatrixFormat a where
+  matrixColumns :: [a] -> ^x.(()+([[char]]*x))
+
+instance MatrixFormat () where
+  matrixColumns _ = nil()
+
+instance (p=(h*t), MatrixFormat h, MatrixFormat t) => MatrixFormat p where
+  matrixColumns rs = lappend(matrixColumns(map(.0, rs)), matrixColumns(unsafeCast(rs)::[t]))
+
+instance (r=(h*t), Format h, MatrixFormat t) => MatrixFormat r where
+  matrixColumns ps = cons(map(\p.format(p.0), ps), matrixColumns(unsafeCast(ps)::[t]))
+
+instance (Array as a, MatrixFormat a) => TableFormat as where
+  tableRowCount          = size
+  tableHeader       _  _ = []
+  tableColumns      as   = toArray(matrixColumns(as[0:]))
+  tableColumnsTrunc as m = toArray(matrixColumns(as[0:m]))
+
+// now we should prefer to print values as tables where possible (and truncate excess rows)
+instance (TableView a t, TableFormat t) => PrintableAsTable a where
+  printAsTable x = printTableWithTruncation(openTableView(x), printTableConfig.maxRows)
+
+// if we can print something as a table, we can print it as CSV
+printCSV :: (TableView a t, TableFormat t) => a -> ()
+printCSV x = do {
+  t = openTableView(x);
+  cols = tableColumns(t);
+  putStrLn(cdelim([show(h)|h<-tableHeader(t,"csv")], ","));
+  [putStrLn(cdelim([show(c[i])|c<-cols], ",")) | i<-[0L..tableRowCount(t)-1L]];
+}
+
+// and here's a way to "show" a table if we don't want to print it
+showTableWithTruncation :: (TableFormat a) => (a, long) -> [char]
+showTableWithTruncation x maxRows =
+  let
+    header = tableHeader(x, "tbl");
+    trows  = tableRowCount(x);
+    frowc  = min(trows, maxRows);
+    trunc  = (frowc == trows);
+    cols   = if trunc then tableColumnsTrunc(x, maxRows) else tableColumns(x);
+    fcvs   = formatTableColumns(header, cols);
+
+    cs     = [0L..length(fcvs)-1];
+    rs     = [0L..trows-1];
+    ttxt   = cdelim([cdelim([fcvs[c][r] | c <- cs], " ") | r <- rs], "\n")
+  in
+    if trunc then
+      (ttxt ++ "\n...")
+    else
+      ttxt
+
+showTable :: (TableView a t, TableFormat t) => a -> [char]
+showTable x = showTableWithTruncation(openTableView(x), maxRowCount)
+
+// print a table so that it appears "flipped" (column headers as rows in the first column, values in the second column)
+class PrintFRows a where
+  printFRows :: (long, a) -> ()
+
+instance PrintFRows () where
+  printFRows _ _ = ()
+
+instance (r={h*t}, Print h, PrintFRows t) => PrintFRows r where
+  printFRows hlen x = let lbl = recordHeadLabel(x); _ = putStr(lbl); _ = putStr(repeat(' ', hlen - length(lbl))); _ = putStr(" : "); _ = println(recordHeadValue(x)) in printFRows(hlen, recordTail(x))
+
+class MaxFieldNameLen a where
+  maxFieldNameLen :: a -> long
+
+instance MaxFieldNameLen () where
+  maxFieldNameLen _ = 0L
+
+instance (r={_*t}, MaxFieldNameLen t) => MaxFieldNameLen r where
+  maxFieldNameLen x = max(length(recordHeadLabel(x)), maxFieldNameLen(recordTail(x)))
+
+class PrintFlipped a where
+  printFlipped :: a -> ()
+
+instance (MaxFieldNameLen r, PrintFRows r) => PrintFlipped r where
+  printFlipped x = printFRows(maxFieldNameLen(x), x)
+
+instance (FlipType r fr, PrintFlipped fr) => PrintFlipped [r] where
+  printFlipped x = printFlipped(flip(x))
