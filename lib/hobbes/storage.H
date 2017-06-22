@@ -21,6 +21,7 @@
 #include <stdexcept>
 #include <stdlib.h>
 #include <stdint.h>
+#include <assert.h>
 
 #include <linux/futex.h>
 #include <unistd.h>
@@ -955,7 +956,7 @@ template <typename T>
 #define HSTORE_VARIANT_CTOR(n, t) static SelfT n(const t & x) { SelfT r; r.tag = Enum::tag_##n; new (r.data) t(x); return r; }
 #define HSTORE_VARIANT_CTOR_STR(n, t) + "," #n ":" + ::hobbes::storage::store< t >::describe()
 #define HSTORE_VARIANT_CTOR_TAG(n, t) tag_##n,
-#define HSTORE_VARIANT_SIZE_CASE(n, t)  case Enum::tag_##n: return sizeof(int) + ::hobbes::storage::store< t >::size(this->n##_data);
+#define HSTORE_VARIANT_SIZE_CASE(n, t)    case Enum::tag_##n: return sizeof(int) + ::hobbes::storage::store< t >::size(this->n##_data);
 #define HSTORE_VARIANT_WRITE_CASE(n, t) case Enum::tag_##n: return ::hobbes::storage::store<int>::write(p, (int)this->tag) && ::hobbes::storage::store< t >::write(p, this->n##_data);
 #define HSTORE_VARIANT_PCOPY(n, t)      case Enum::tag_##n: new (this->data) t(rhs.n##_data); break;
 #define HSTORE_VARIANT_PDESTROY(n, t)   case Enum::tag_##n: { typedef t __DT; ((__DT*)&this->n##_data)->~__DT(); } break;
@@ -977,7 +978,7 @@ template <typename T>
 #define HSTORE_VARIANT_LBL_CTOR(n, lbl, t) static SelfT n(const t & x) { SelfT r; r.tag = Enum::tag_##n; new (r.data) t(x); return r; }
 #define HSTORE_VARIANT_LBL_CTOR_STR(n, lbl, t) + "," #n ":" + ::hobbes::storage::store< t >::describe()
 #define HSTORE_VARIANT_LBL_CTOR_TAG(n, lbl, t) tag_##n,
-#define HSTORE_VARIANT_LBL_SIZE_CASE(n, lbl, t)  case Enum::tag_##n: return sizeof(int) + ::hobbes::storage::store< t >::size(this->n##_data);
+#define HSTORE_VARIANT_LBL_SIZE_CASE(n, lbl, t)    case Enum::tag_##n: return sizeof(int) + ::hobbes::storage::store< t >::size(this->n##_data);
 #define HSTORE_VARIANT_LBL_WRITE_CASE(n, lbl, t) case Enum::tag_##n: return ::hobbes::storage::store<int>::write(p, (int)this->tag) && ::hobbes::storage::store< t >::write(p, this->n##_data);
 #define HSTORE_VARIANT_LBL_PCOPY(n, lbl, t)      case Enum::tag_##n: new (this->data) t(rhs.n##_data); break;
 #define HSTORE_VARIANT_LBL_PDESTROY(n, lbl, t)   case Enum::tag_##n: { typedef t __DT; ((__DT*)&this->n##_data)->~__DT(); } break;
@@ -1081,7 +1082,11 @@ template <typename T>
   };
 
 // store unit
-struct unit { unit() { } };
+struct unit {
+  unit() { }
+  bool operator==(const unit&) const { return true; }
+  bool operator< (const unit&) const { return false; }
+};
 
 template <>
   struct store<unit> {
@@ -1262,100 +1267,190 @@ template <typename TyList>
     }
   }
 
+// compile-time strings -- used to uniquely identify log statements
+template <size_t N>
+  constexpr char at(size_t i, const char (&s)[N]) {
+    return (i < N) ? s[i] : '\0';
+  }
+template <size_t N>
+  constexpr size_t at8S(size_t i, size_t k, const char (&s)[N]) {
+    return (k==8) ? 0 : ((((size_t)at(i+k,s))<<(8*k))|at8S(i,k+1,s));
+  }
+template <size_t N>
+  constexpr size_t at8(size_t i, const char (&s)[N]) {
+    return at8S(i, 0, s);
+  }
+template <size_t... pcs>
+  struct strpack {
+    static std::string str() {
+      constexpr size_t msg[] = {pcs...};
+      static_assert(msg[(sizeof(msg)/sizeof(msg[0]))-1] == 0, "compile-time string larger than internal max limit (this limit can be bumped in storage.H)");
+      return std::string((const char*)msg);
+    }
+  };
+#define _HSTORE_TSTR32(i,s)   ::hobbes::storage::at8(i+(8*0),s),::hobbes::storage::at8(i+(8*1),s),::hobbes::storage::at8(i+(8*2),s),::hobbes::storage::at8(i+(8*3),s)
+#define _HSTORE_TSTR128(i,s)  _HSTORE_TSTR32(i+(32*0),s),_HSTORE_TSTR32(i+(32*1),s),_HSTORE_TSTR32(i+(32*2),s),_HSTORE_TSTR32(i+(32*3),s)
+#define _HSTORE_TSTR512(i,s)  _HSTORE_TSTR128(i+(128*0),s),_HSTORE_TSTR128(i+(128*1),s),_HSTORE_TSTR128(i+(128*2),s),_HSTORE_TSTR128(i+(128*3),s)
+#define _HSTORE_TSTR1024(i,s) _HSTORE_TSTR512(i+(512*0),s),_HSTORE_TSTR512(i+(512*1),s)
+#define _HSTORE_TSTR(s)       ::hobbes::storage::strpack<_HSTORE_TSTR1024(0,s)>
+
+template <int* X>
+  int forceRegistration() { return *X; }
+template <typename Group, Group* G, typename File, uint32_t Line, typename StmtName, size_t Flags, typename FormatStr, typename ArgTyList>
+  struct StorageStatement {
+    static uint32_t id;
+    StorageStatement() { forceRegistration<&id>(); }
+  };
+template <typename Group, Group* G, typename File, uint32_t Line, typename StmtName, size_t Flags, typename FormatStr, typename ArgTyList>
+  uint32_t StorageStatement<Group, G, File, Line, StmtName, Flags, FormatStr, ArgTyList>::id = G->allocateStorageStatement(File::str(), Line, StmtName::str(), Flags, FormatStr::str(), &makeTyDescF<ArgTyList>);
+
 // allow static registration of storage points
-struct StorageGroup;
-
-struct StorageStatement {
-  StorageGroup*     group;
-  StorageStatement* next;
-  StorageStatement* prev;
-  tydescfn          tdesc;
-  const char*       name;
-  uint64_t          flags;
-  const char*       fmtstr;
-  const char*       file;
-  uint32_t          line;
-  uint32_t          id;
-} __attribute__((packed));
-
-typedef std::map<std::string, StorageStatement*> StorageStatementByName;
-
 enum CommitMethod {
   AutoCommit = 0,
   ManualCommit
 };
 
+template <CommitMethod cm>
 struct StorageGroup {
-  StorageStatement*       head;
-  StorageStatementByName* byName;
-  const char*             name;
-  uint32_t                count;
-  PipeQOS                 qos;
-  CommitMethod            cm;
-  size_t                  mempages;
+  struct StmtData {
+    tydescfn    tdesc;
+    uint64_t    flags;
+    std::string fmtstr;
+    std::string file;
+    uint32_t    line;
+    uint32_t    id;
+  };
+  typedef std::map<std::string, StmtData> StorageStatements;
 
-  writer* pipeData;
-  wpipe*  pipe;
+  StorageStatements* statements;
+  const char*        name;
+  PipeQOS            qos;
+  size_t             mempages;
+  writer*            pipeData;
+  wpipe*             pipe;
 
   ~StorageGroup() {
-    delete this->byName;
+    delete this->statements;
     delete this->pipeData;
     delete this->pipe;
   }
 
   void prepareMeta(bytes* meta) {
+    if (!this->statements) return; // if nothing to record, nothing to prepare
+
     w(HSTORE_VERSION, meta);
     w((int)this->qos, meta);
-    w((int)this->cm, meta);
+    w((int)cm, meta);
 
     // write the count of storage statements, then each statement's static data
-    w(count, meta);
-    for (StorageStatement* s = this->head; s != 0; s = s->next) {
-      ws(s->name,   meta);
-      w (s->flags,  meta);
-      ws(s->fmtstr, meta);
-      ws(s->file,   meta);
-      w (s->line,   meta);
-      w (s->id,     meta);
+    w((uint32_t)this->statements->size(), meta);
+    for (auto s : *this->statements) {
+      ws(s.first,         meta);
+      w (s.second.flags,  meta);
+      ws(s.second.fmtstr, meta);
+      ws(s.second.file,   meta);
+      w (s.second.line,   meta);
+      w (s.second.id,     meta);
       
       bytes td;
-      s->tdesc(&td,0);
+      s.second.tdesc(&td,0);
       ws(td, meta);
     }
   }
 
   wpipe& out() {
-    if (_HSTORE_UNLIKELY(!this->pipe)) {
-      bytes meta;
-      prepareMeta(&meta);
-      
-      size_t pagesz = sysconf(_SC_PAGESIZE);
-      size_t pagec  = 1 + (meta.size() / pagesz) + std::max<size_t>(this->mempages, 10);
-
-      this->pipeData = new writer(meta, "hstore." + std::string(this->name), pagesz, pagec);
-      this->pipe     = new wpipe(this->pipeData, this->qos);
-    }
+    assert(this->pipe);
     return *this->pipe;
   }
 
   inline void init() {
-    out();
+    assert(!this->pipe);
+
+    bytes meta;
+    prepareMeta(&meta);
+    
+    size_t pagesz = sysconf(_SC_PAGESIZE);
+    size_t pagec  = 1 + (meta.size() / pagesz) + std::max<size_t>(this->mempages, 10);
+
+    this->pipeData = new writer(meta, "hstore." + std::string(this->name), pagesz, pagec);
+    this->pipe     = new wpipe(this->pipeData, this->qos);
   }
 
   inline void commit() {
     out().commit();
+  }
+
+  uint32_t allocateStorageStatement(const std::string& file, uint32_t line, const std::string& name, size_t flags, const std::string& fmtstr, tydescfn tdesc) {
+    if (!this->statements) {
+      this->statements = new StorageStatements();
+    }
+
+    auto s = this->statements->find(name);
+    if (s != this->statements->end()) {
+      // this statement has already been added
+      // make sure that all identifying parameters are consistent
+      bytes ety, xty;
+      s->second.tdesc(&ety,0);
+      tdesc(&xty,0);
+      if (ety != xty) {
+        std::string etd, xtd;
+        s->second.tdesc(0,&etd);
+        tdesc(0,&xtd);
+
+        std::cerr
+          << "fatal error: incompatible types for store statement '" << name << "' between:\n"
+          << "  " << s->second.file << ":" << s->second.line << " (" << xtd << ")\n"
+          << "and\n"
+          << "  " << file << ":" << line << " (" << etd << ")\n"
+          << std::endl;
+
+        exit(-1);
+      }
+
+      if (s->second.fmtstr != fmtstr) {
+        std::cerr
+          << "fatal error: incompatible format strings for store statement '" << name << "' between:\n"
+          << "  " << s->second.file << ":" << s->second.line << " (" << s->second.fmtstr << ")\n"
+          << "and\n"
+          << "  " << file << ":" << line << " (" << fmtstr << ")\n"
+          << std::endl;
+
+        exit(-1);
+      }
+
+      if (s->second.flags != flags) {
+        std::cerr
+          << "fatal error: incompatible storage flags for store statement '" << name << "' between:\n"
+          << "  " << s->second.file << ":" << s->second.line << " (" << s->second.flags << ")\n"
+          << "and\n"
+          << "  " << file << ":" << line << " (" << flags << ")\n"
+          << std::endl;
+
+        exit(-1);
+      }
+
+      return s->second.id;
+    }
+
+    // this must be a new statement, give it a new ID and put it in the group list
+    StmtData d;
+    d.tdesc  = tdesc;
+    d.flags  = flags;
+    d.fmtstr = fmtstr;
+    d.file   = file;
+    d.line   = line;
+    d.id     = (uint32_t)this->statements->size();
+
+    (*this->statements)[name] = d;
+    return d.id;
   }
 };
 
 // write a storage statement with payload into a pipe
 template <typename ... Ts>
   struct serialize_values {
-    static size_t size(const Ts&...) {
-      return 0;
-    }
-    static bool write(wpipe&, const Ts&...) {
-      return true;
-    }
+    static size_t size(const Ts&...) { return 0; }
+    static bool write(wpipe&, const Ts&...) { return true; }
   };
 template <typename T, typename ... Ts>
   struct serialize_values<T, Ts...> {
@@ -1366,67 +1461,22 @@ template <typename T, typename ... Ts>
       return store<T>::write(p, x) && serialize_values<Ts...>::write(p, xs...);
     }
   };
+
 template <typename ... Ts>
-  inline bool write(StorageStatement* s, const Ts&... xs) {
-    wpipe& p = s->group->out();
-    if (s->group->cm == AutoCommit && !p.hasSpaceFor(sizeof(uint32_t) + serialize_values<Ts...>::size(xs...))) {
-      s->group->commit();
+  inline bool write(StorageGroup<AutoCommit>* g, uint32_t id, const Ts&... xs) {
+    wpipe& p = g->out();
+    if (!p.hasSpaceFor(sizeof(uint32_t) + serialize_values<Ts...>::size(xs...))) {
+      g->commit();
     }
-    return store<uint32_t>::write(p, s->id) &&
+    return store<uint32_t>::write(p, id) &&
            serialize_values<Ts...>::write(p, xs...);
   }
-
-extern "C" void __attribute__((noinline, __used__, weak, visibility("hidden"))) makeStorageStatement(StorageStatement* e) {
-  // exit early if we've already added this
-  if (e->id || !e->group) {
-    return;
+template <typename ... Ts>
+  inline bool write(StorageGroup<ManualCommit>* g, uint32_t id, const Ts&... xs) {
+    wpipe& p = g->out();
+    return store<uint32_t>::write(p, id) &&
+           serialize_values<Ts...>::write(p, xs...);
   }
-  StorageGroup* group = e->group;
-
-  // check if we've already seen this name before
-  //  (in which case, verify type correctness and conflate IDs)
-  if (!group->byName) {
-    group->byName = new StorageStatementByName();
-  } else {
-    auto x = group->byName->find(e->name);
-    if (x != group->byName->end()) {
-      bytes ety, xty;
-      e->tdesc(&ety,0);
-      x->second->tdesc(&xty,0);
-      if (ety != xty) {
-        std::string etd, xtd;
-        e->tdesc(0,&etd);
-        x->second->tdesc(0,&xtd);
-
-        std::cerr
-          << "fatal error: incompatible types for store statement '" << e->name << "' between:\n"
-          << "  " << x->second->file << ":" << x->second->line << " (" << xtd << ")\n"
-          << "and\n"
-          << "  " << e->file << ":" << e->line << " (" << etd << ")\n"
-          << std::endl;
-
-        exit(-1);
-      }
-      e->id = x->second->id;
-      return;
-    }
-  }
-
-  // this must be a new statement, give it a new ID and put it in the group list
-  e->id = group->count++;
-  (*group->byName)[e->name] = e;
-
-  e->next     = group->head;
-  e->prev     = 0;
-  group->head = e;
-}
-
-extern "C" void __attribute__((noinline, __used__, weak, visibility("hidden"))) destroyStorageStatement(StorageStatement* e) {
-  if (e->group && e->group->head == e) e->group->head = e->next;
-  if (e->next) e->next->prev = e->prev;
-  if (e->prev) e->prev->next = e->next;
-  e->next = e->prev = 0;
-}
 
 // validate arity in log format strings (prevent format strings referring to payload variables that don't exist)
 template <size_t N>
@@ -1454,62 +1504,13 @@ template <size_t N>
     return maxVarRefS(fmt, 0, 0, 0, 0);
   }
 
-// allocate a global storage statement structure inline
-# define ALLOC_HSTORE_STATEMENT(GROUP, METAF, NAME, FLAGS, FMTSTR, FILE, LINE, ARGC)                             \
-({ static_assert(::hobbes::storage::maxVarRef(FMTSTR) <= ARGC, "Log format string and payload arity mismatch");  \
-   register ::hobbes::storage::StorageStatement* __stmt_result;                                                  \
-  __asm__ __volatile__ (                                                                                         \
-    "   leaq 1f(%%rip),%0                           \n" /* <-- (runtime) get pointer to the storage statement */ \
-    ".pushsection .hstoredata.rel,\"wa?\",@progbits \n"                                                          \
-    ".align 8                                       \n" /* <-- global memory for this storage statement */       \
-    "1: .quad  0                                    \n"                                                          \
-    "   .quad  0                                    \n"                                                          \
-    "   .quad  0                                    \n"                                                          \
-    "   .quad  0                                    \n"                                                          \
-    "   .quad  %P3                                  \n"                                                          \
-    "   .quad  %P4                                  \n"                                                          \
-    "   .quad  %P5                                  \n"                                                          \
-    "   .quad  %P6                                  \n"                                                          \
-    "   .long  %P7                                  \n"                                                          \
-    "   .long  0                                    \n"                                                          \
-    ".popsection                                    \n"                                                          \
-    ".pushsection .hstorecode.rel,\"xa?\",@progbits \n"                                                          \
-    ".align 8                                       \n" /* <-- a function to init this storage statement */      \
-    "2: leaq 1b(%%rip),%%rdi                        \n"                                                          \
-    "   movq %p1@GOTPCREL(%%rip),%%rax              \n"                                                          \
-    "   movq %%rax,0(%%rdi)                         \n"                                                          \
-    "   movq %p2@GOTPCREL(%%rip),%%rax              \n"                                                          \
-    "   movq %%rax,24(%%rdi)                        \n"                                                          \
-    "   call makeStorageStatement                   \n"                                                          \
-    "   ret                                         \n"                                                          \
-    "3: leaq 1b(%%rip),%%rdi                        \n" /* <-- a function to destroy this storage statement */   \
-    "   call destroyStorageStatement                \n"                                                          \
-    "   ret                                         \n"                                                          \
-    ".popsection                                    \n"                                                          \
-    ".pushsection .init_array, \"?\"                \n"                                                          \
-    ".align 8                                       \n" /* <-- call the constructor at startup */                \
-    "   .quad 2b                                    \n"                                                          \
-    ".popsection                                    \n"                                                          \
-    ".pushsection .fini_array, \"?\"                \n"                                                          \
-    ".align 8                                       \n" /* <-- call the destructor at shutdown */                \
-    "   .quad 3b                                    \n"                                                          \
-    ".popsection                                    \n"                                                          \
-    : "=r"(__stmt_result) :                                                                                      \
-      "X"(GROUP),                                                                                                \
-      "X"(METAF),                                                                                                \
-      "i"(NAME),                                                                                                 \
-      "i"(FLAGS),                                                                                                \
-      "i"(FMTSTR),                                                                                               \
-      "i"(FILE),                                                                                                 \
-      "i"(LINE): "memory"); __stmt_result; })
-
 // create statement groups
-#define DECLARE_STORAGE_GROUP(NAME)                extern ::hobbes::storage::StorageGroup NAME
-#define DEFINE_STORAGE_GROUP(NAME, pagec, qos, cm) ::hobbes::storage::StorageGroup NAME = { 0, 0, #NAME, 0, qos, cm, pagec, 0, 0 }
+#define DECLARE_STORAGE_GROUP(NAME, cm)            extern ::hobbes::storage::StorageGroup<cm> NAME
+#define DEFINE_STORAGE_GROUP(NAME, pagec, qos, cm) ::hobbes::storage::StorageGroup<cm> NAME = { 0, #NAME, qos, pagec, 0, 0 }
 
 // record some data
 #define APPLY_HSTORE_STMT(GROUP, NAME, FLAGS, FMTSTR, ARGS...) \
-  ::hobbes::storage::write(ALLOC_HSTORE_STATEMENT(&GROUP,&::hobbes::storage::makeTyDescF<decltype(::hobbes::storage::makePayloadTypes(ARGS))>,#NAME,FLAGS,FMTSTR,__FILE__,__LINE__,decltype(::hobbes::storage::makePayloadTypes(ARGS))::count), ## ARGS)
+  ::hobbes::storage::write(&GROUP, ::hobbes::storage::StorageStatement<decltype(GROUP),&GROUP,_HSTORE_TSTR(__FILE__),__LINE__,_HSTORE_TSTR(#NAME),FLAGS,_HSTORE_TSTR(FMTSTR),decltype(::hobbes::storage::makePayloadTypes(ARGS))>::id, ## ARGS)
 
 #define HSTORE(GROUP, NAME, ARGS...)       APPLY_HSTORE_STMT(GROUP, NAME, 0,     "", ## ARGS)
 #define HLOG(GROUP, NAME, FMTSTR, ARGS...) APPLY_HSTORE_STMT(GROUP, NAME, 1, FMTSTR, ## ARGS)
