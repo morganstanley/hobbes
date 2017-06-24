@@ -3,17 +3,21 @@
 #include <hobbes/storage.H>
 #include <hobbes/ipc/net.H>
 #include <hobbes/util/str.H>
+#include <hobbes/util/os.H>
 
 #include <iostream>
 #include <map>
 #include <thread>
 #include <mutex>
 
-#include <sys/epoll.h>
 #include <zlib.h>
 
 #include "session.H"
 #include "netio.H"
+
+#ifdef BUILD_LINUX
+#include <sys/epoll.h>
+#endif
 
 using namespace hobbes;
 
@@ -89,6 +93,7 @@ void read(gzbuffer* in, uint8_t* b, size_t n) {
 
 void read(gzbuffer* in, size_t*   n) { read(in, (uint8_t*)n, sizeof(*n)); }
 void read(gzbuffer* in, uint32_t* n) { read(in, (uint8_t*)n, sizeof(*n)); }
+void read(gzbuffer* in, uint64_t* n) { read(in, (uint8_t*)n, sizeof(*n)); }
 
 void read(gzbuffer* in, std::string* x) {
   size_t n;
@@ -173,6 +178,7 @@ void runRecvConnection(int c, std::string dir) {
   }
 }
 
+#ifdef BUILD_LINUX
 void runRecvServer(int socket, std::string dir) {
   int epfd = epoll_create(1);
   if (epfd < 0) {
@@ -224,6 +230,15 @@ bool pullRemoteData(const std::string& dir, const std::string& listenport) {
     return false;
   }
 }
+#else
+std::thread pullRemoteDataT(const std::string& dir, const std::string& listenport) {
+  throw std::runtime_error("batchrecv nyi");
+}
+
+bool pullRemoteData(const std::string& dir, const std::string& listenport) {
+  throw std::runtime_error("batchrecv nyi");
+}
+#endif
 
 }
 

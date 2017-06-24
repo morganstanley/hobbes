@@ -3,6 +3,7 @@
 #include <hobbes/storage.H>
 #include <hobbes/ipc/net.H>
 #include <hobbes/util/str.H>
+#include <hobbes/util/os.H>
 #include <hobbes/util/perf.H>
 
 #include <iostream>
@@ -11,10 +12,17 @@
 #include <mutex>
 
 #include <glob.h>
-#include <sys/sendfile.h>
 #include <zlib.h>
 
 #include "netio.H"
+
+#ifdef BUILD_LINUX
+#include <sys/sendfile.h>
+#else
+ssize_t sendfile(int toFD, int fromFD, off_t* o, size_t sz) {
+  return -1;
+}
+#endif
 
 using namespace hobbes;
 

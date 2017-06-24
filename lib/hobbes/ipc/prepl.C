@@ -2,6 +2,7 @@
 #include <hobbes/hobbes.H>
 #include <hobbes/ipc/prepl.H>
 #include <hobbes/util/codec.H>
+#include <hobbes/util/os.H>
 #include <unistd.h>
 #include <string.h>
 #include <sys/wait.h>
@@ -315,6 +316,7 @@ void runMachineREPL(cc* c) {
   machineREPLLogFD = open(("./.hproc." + str::from(getpid()) + ".log").c_str(), O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
   dbglog("Started machine-controlled process");
 
+#ifdef BUILD_LINUX
   // log deadly signals
   struct sigaction act;
   memset(&act, 0, sizeof(act));
@@ -326,6 +328,7 @@ void runMachineREPL(cc* c) {
   WSIG(SIGINT);
   WSIG(SIGPIPE);
   WSIG(SIGABRT);
+#endif
 
   try {
     // dispatch stdin events to our line handler

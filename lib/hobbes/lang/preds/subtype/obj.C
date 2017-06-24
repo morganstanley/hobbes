@@ -4,9 +4,24 @@
 #include <hobbes/lang/expr.H>
 #include <hobbes/lang/typeinf.H>
 #include <hobbes/util/str.H>
+#include <hobbes/util/os.H>
 
 namespace hobbes {
 
+#ifdef __clang__
+// TODO -- figure out how to get class type info from clang
+bool Objs::add(const std::type_info* ti) {
+  return false;
+}
+
+bool Objs::pathExists(const std::string&, const std::string&) const {
+  return false;
+}
+
+PtrAdjustmentPath Objs::adjustment(const std::string& derived, const std::string& base) const {
+  throw std::runtime_error("No path exists from the class '" + derived + "' to '" + base + "'.");
+}
+#else
 // object relationship recording and resolution
 void Objs::add(const class_type* ct) {
   std::string cn = str::demangle(ct->name());
@@ -39,40 +54,32 @@ bool Objs::add(const std::type_info* ti) {
   }
 }
 
-bool Objs::add(const std::type_info& ti) {
-  return add(&ti);
-}
+bool Objs::pathExists(const std::string& from, const std::string& to) const {
+  // a path always exists from an object to itself
+  if (from == to) {
+    return true;
+  }
 
-bool Objs::isObjName(const std::string& tn) const {
-  return this->classDefs.find(tn) != this->classDefs.end();
-}
+  // try to find an immediate link, or else paths from all parent classes of 'from'
+  ClassDefs::const_iterator cd = this->classDefs.find(from);
+  if (cd == this->classDefs.end()) {
+    return false;
+  }
 
-bool Objs::isObjType(const MonoTypePtr& mt) const {
-  if (OpaquePtr* op = is<OpaquePtr>(mt)) {
-    return isObjName(op->name());
+  if (const si_class_type* si = dynamic_cast<const si_class_type*>(cd->second)) {
+    return pathExists(str::demangle(si->__base_type->name()), to);
+  } else if (const vmi_class_type* vmi = dynamic_cast<const vmi_class_type*>(cd->second)) {
+    for (unsigned int i = 0; i < vmi->__base_count; ++i) {
+      if (pathExists(str::demangle(vmi->__base_info[i].__base_type->name()), to)) {
+        return true;
+      }
+    }
+    return false;
   } else {
     return false;
   }
 }
 
-std::string show(const PtrAdjustmentPath& p) {
-  if (p.size() == 0) {
-    return "[]";
-  } else {
-    std::string r = "[";
-    r += p[0].show();
-    for (int i = 1; i < p.size(); ++i) {
-      r += ", ";
-      r += p[i].show();
-    }
-    r += "]";
-    return r;
-  }
-}
-
-void appendPath(PtrAdjustmentPath* p, const PtrAdjustmentPath& sfx) {
-  p->insert(p->end(), sfx.begin(), sfx.end());
-}
 
 PtrAdjustmentPath Objs::adjustment(const std::string& derived, const std::string& base) const {
   if (derived == base) {
@@ -108,6 +115,42 @@ PtrAdjustmentPath Objs::adjustment(const std::string& derived, const std::string
     }
     throw std::runtime_error("No path exists from the class '" + derived + "' to '" + base + "'.");
   }
+}
+#endif
+
+bool Objs::add(const std::type_info& ti) {
+  return add(&ti);
+}
+
+bool Objs::isObjName(const std::string& tn) const {
+  return this->classDefs.find(tn) != this->classDefs.end();
+}
+
+bool Objs::isObjType(const MonoTypePtr& mt) const {
+  if (OpaquePtr* op = is<OpaquePtr>(mt)) {
+    return isObjName(op->name());
+  } else {
+    return false;
+  }
+}
+
+std::string show(const PtrAdjustmentPath& p) {
+  if (p.size() == 0) {
+    return "[]";
+  } else {
+    std::string r = "[";
+    r += p[0].show();
+    for (int i = 1; i < p.size(); ++i) {
+      r += ", ";
+      r += p[i].show();
+    }
+    r += "]";
+    return r;
+  }
+}
+
+void appendPath(PtrAdjustmentPath* p, const PtrAdjustmentPath& sfx) {
+  p->insert(p->end(), sfx.begin(), sfx.end());
 }
 
 PtrAdjustmentPath Objs::adjustment(const MonoTypePtr& derived, const MonoTypePtr& base) const {
@@ -190,32 +233,6 @@ bool Objs::mayBeKnown(const MonoTypePtr& mt) const {
   } else {
     // this type may only be known if it's a type-variable or polytype-arg
     return is<TGen>(mt) || is<TVar>(mt);
-  }
-}
-
-bool Objs::pathExists(const std::string& from, const std::string& to) const {
-  // a path always exists from an object to itself
-  if (from == to) {
-    return true;
-  }
-
-  // try to find an immediate link, or else paths from all parent classes of 'from'
-  ClassDefs::const_iterator cd = this->classDefs.find(from);
-  if (cd == this->classDefs.end()) {
-    return false;
-  }
-
-  if (const si_class_type* si = dynamic_cast<const si_class_type*>(cd->second)) {
-    return pathExists(str::demangle(si->__base_type->name()), to);
-  } else if (const vmi_class_type* vmi = dynamic_cast<const vmi_class_type*>(cd->second)) {
-    for (unsigned int i = 0; i < vmi->__base_count; ++i) {
-      if (pathExists(str::demangle(vmi->__base_info[i].__base_type->name()), to)) {
-        return true;
-      }
-    }
-    return false;
-  } else {
-    return false;
   }
 }
 

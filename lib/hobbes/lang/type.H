@@ -1126,35 +1126,6 @@ inline MonoTypePtr closty(const MonoTypes& atys, const MonoTypePtr& rty) {
   return Exists::make("E", tuple(list(functy(tuple(cons(tvar("E"), atys)), rty), tvar("E"))));
 }
 
-inline MonoTypePtr maybeClosArg(const MonoTypePtr& closty) {
-  if (const Exists* c = is<Exists>(closty)) {
-    if (const Record* rty = is<Record>(c->absType())) {
-      if (rty->members().size() == 2 && rty->members()[0].field == ".f0" && rty->members()[1].field == ".f1") {
-        if (const Func* f = is<Func>(rty->members()[0].type)) {
-          if (const Record* aty = is<Record>(f->argument())) {
-            if (aty->members().size() == 2) {
-              return aty->members()[1].type;
-            }
-          }
-        }
-      }
-    }
-  }
-  return MonoTypePtr();
-}
-
-inline MonoTypePtr maybeClosRet(const MonoTypePtr& closty) {
-  if (const Exists* c = is<Exists>(closty)) {
-    if (const Record* rty = is<Record>(c->absType())) {
-      if (rty->members().size() == 2 && rty->members()[0].field == ".f0" && rty->members()[1].field == ".f1") {
-        if (const Func* f = is<Func>(rty->members()[0].type)) {
-          return f->result();
-        }
-      }
-    }
-  }
-}
-
 inline MonoTypePtr tabs(const str::seq& tns, const MonoTypePtr& body) {
   return TAbs::make(tns, body);
 }

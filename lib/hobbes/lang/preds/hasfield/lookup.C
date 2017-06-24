@@ -29,6 +29,7 @@ static bool decFieldName(const MonoTypePtr& fieldName, std::string* fn) {
     return true;
   } else if (const TLong* n = is<TLong>(fieldName)) {
     *fn = ".f" + str::from(n->value());
+    return true;
   } else {
     return false;
   }

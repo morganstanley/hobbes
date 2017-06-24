@@ -2,10 +2,13 @@
 #include <hobbes/hobbes.H>
 #include <hobbes/events/events.H>
 #include <hobbes/util/perf.H>
+#include <hobbes/util/os.H>
 
 #include <chrono>
 #include <queue>
 #include <utility>
+
+#ifdef BUILD_LINUX
 
 #include <sys/epoll.h>
 
@@ -59,7 +62,7 @@ void unregisterEventHandler(int fd) {
   }
 }
 
-void registerEventHandler(int fd, eventhandler fn, void* ud) {
+void registerEventHandler(int fd, eventhandler fn, void* ud, bool) {
   int epfd = threadEPollFD();
 
   eventcbclosure* c = new eventcbclosure(fd, fn, ud);
@@ -99,7 +102,6 @@ bool stepEventLoop() {
     } else if (fds < 0 && errno != EINTR) {
       status = false;
     } else if (!timers.empty()) {
-      // this is a dumb way to do it ... make it less dumb
       std::vector<timer> newTimers;
 
       auto now = std::chrono::high_resolution_clock::now();
@@ -166,3 +168,120 @@ void runEventLoop(int microsecondDuration) {
 
 }
 
+#elif defined(BUILD_OSX)
+
+#include <sys/event.h>
+
+namespace hobbes {
+
+struct eventcbclosure {
+  eventcbclosure(int fd, eventhandler fn, void* ud) : fd(fd), fn(fn), ud(ud) { }
+
+  int          fd;
+  eventhandler fn;
+  void*        ud;
+};
+
+typedef std::map<int, eventcbclosure*> EventClosures;
+
+__thread bool           kqInitialized = false;
+__thread int            kqFD          = 0;
+__thread EventClosures* kqClosures    = 0;
+
+int threadKQFD() {
+  if (!kqInitialized) {
+    kqFD       = kqueue();
+    kqClosures = new EventClosures();
+
+    if (kqFD < 0) {
+      throw std::runtime_error("Failed to allocate kqueue: " + std::string(strerror(errno)));
+    }
+    kqInitialized = true;
+  }
+  return kqFD;
+}
+
+void unregisterEventHandler(int fd) {
+  auto ec = kqClosures->find(fd);
+  if (ec != kqClosures->end()) {
+    struct kevent ke;
+    EV_SET(&ke, fd, EVFILT_READ, EV_DELETE, 0, 0, 0);
+    kevent(threadKQFD(), &ke, 1, 0, 0, 0);
+    delete ec->second;
+  }
+}
+
+void registerEventHandler(int fd, eventhandler fn, void* ud, bool vn) {
+  int kqfd = threadKQFD();
+
+  eventcbclosure* c = new eventcbclosure(fd, fn, ud);
+  (*kqClosures)[fd] = c;
+
+  struct kevent ke;
+  if (vn) {
+    EV_SET(&ke, fd, EVFILT_VNODE, EV_ADD, NOTE_DELETE | NOTE_WRITE, 0, (void*)c);
+  } else {
+    EV_SET(&ke, fd, EVFILT_READ, EV_ADD, 0, 0, (void*)c);
+  }
+  if (kevent(kqfd, &ke, 1, 0, 0, 0) == -1) {
+    delete c;
+    throw std::runtime_error("Failed to add FD to kqueue: " + std::string(strerror(errno)));
+  }
+}
+
+bool stepEventLoop() {
+  while (true) {
+    struct kevent evts[64];
+    int fds = kevent(threadKQFD(), 0, 0, evts, sizeof(evts)/sizeof(evts[0]), 0);
+    if (fds > 0) {
+      for (size_t fd = 0; fd < fds; ++fd) {
+        eventcbclosure* c = (eventcbclosure*)evts[fd].udata;
+        (c->fn)(c->fd, c->ud);
+        resetMemoryPool();
+      }
+      return true;
+    } else if (errno != EINTR) {
+      return false;
+    }
+  }
+}
+
+void runEventLoop() {
+  while (stepEventLoop());
+}
+
+void addTimer(timerfunc f, int millisecInterval) {
+  throw std::runtime_error("addTimer nyi for OSX");
+}
+
+void runEventLoop(int microsecondDuration) {
+  long t  = hobbes::time();
+  long dt = ((long)microsecondDuration) * 1000L;
+  long tf = t + dt;
+
+  do {
+    double nsleft = tf-t;
+    int nstimeout = (ceil(nsleft / 1000000.0));
+    if (nstimeout < 0) nstimeout = 0;
+
+    struct timespec timeout;
+    timeout.tv_sec = 0;
+    timeout.tv_nsec = nstimeout;
+
+    struct kevent evts[64];
+    int fds = kevent(threadKQFD(), 0, 0, evts, sizeof(evts)/sizeof(evts[0]), &timeout);
+    if (fds > 0) {
+      for (size_t fd = 0; fd < fds; ++fd) {
+        eventcbclosure* c = (eventcbclosure*)evts[fd].udata;
+        (c->fn)(c->fd, c->ud);
+        resetMemoryPool();
+      }
+    }
+    t = hobbes::time();
+  } while (t < tf);
+}
+
+}
+
+
+#endif

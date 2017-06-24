@@ -1247,10 +1247,12 @@ struct reachableRowExprsF : public switchMState<UnitV> {
     } else {
       (*this->results)[ei->second] = x->expr();
     }
+    return unitv;
   }
   
   UnitV with(const LoadVars* x) const {
     switchOf(this->dfa->states[x->nextState()], *this);
+    return unitv;
   }
 
   UnitV with(const SwitchVariant* x) const {
@@ -1260,6 +1262,7 @@ struct reachableRowExprsF : public switchMState<UnitV> {
     for (const auto& jmp : x->jumps()) {
       switchOf(this->dfa->states[jmp.second], *this);
     }
+    return unitv;
   }
 };
 
@@ -1313,6 +1316,7 @@ struct makePrimDFASF : public switchMState<UnitV> {
     } else {
       this->dfa->c->builder()->CreateRet(cvalue((int)ei->second));
     }
+    return unitv;
   }
   
   UnitV with(const LoadVars*) const {

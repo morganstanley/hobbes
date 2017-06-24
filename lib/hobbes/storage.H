@@ -23,14 +23,46 @@
 #include <stdint.h>
 #include <assert.h>
 
-#include <linux/futex.h>
 #include <unistd.h>
-#include <sys/syscall.h>
-
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
 #include <fcntl.h>
+
+// a few things have to be OS-specific here
+//  * waiting in shared memory
+#if defined(__APPLE__) && defined(__MACH__)
+namespace hobbes { namespace storage {
+static inline void waitForUpdate(volatile uint32_t* p, int eqV) {
+  while (true) {
+    for (size_t c = 0; c < 4096; ++c) {
+      if (*p != eqV) {
+        return;
+      }
+    }
+    usleep(500);
+  }
+}
+static inline void wakeN(volatile uint32_t* p, int c) {
+  // assume the waiter is polling, nothing to do
+}
+}}
+#else
+#include <linux/futex.h>
+#include <sys/syscall.h>
+
+namespace hobbes { namespace storage {
+static inline long sys_futex(volatile uint32_t* p, int op, int v, struct timespec* timeout, void* p2, int v2) {
+  return syscall(SYS_futex, p, op, v, timeout, p2, v2);
+}
+static inline void waitForUpdate(volatile uint32_t* p, int eqV) {
+  sys_futex(a, FUTEX_WAIT, eqV, 0, 0, 0);
+}
+static inline void wakeN(volatile uint32_t* p, int c) {
+  sys_futex(a, FUTEX_WAKE, c, 0, 0, 0);
+}
+}}
+#endif
 
 namespace hobbes { namespace storage {
 
@@ -41,13 +73,6 @@ typedef std::vector<uint8_t> bytes;
 // write transactions into shared memory
 #define _HSTORE_LIKELY(x)   __builtin_expect((x),1)
 #define _HSTORE_UNLIKELY(x) __builtin_expect((x),0)
-
-static inline long sys_futex(volatile uint32_t* p, int op, int v, struct timespec* timeout, void* p2, int v2) {
-  return syscall(SYS_futex, p, op, v, timeout, p2, v2);
-}
-
-#define _HSTORE_FUTEX_WAIT(a,v) ::hobbes::storage::sys_futex(a, FUTEX_WAIT, v, 0, 0, 0)
-#define _HSTORE_FUTEX_WAKE(a,c) ::hobbes::storage::sys_futex(a, FUTEX_WAKE, c, 0, 0, 0)
 
 template <typename T>
   T align(T x, T m) {
@@ -67,6 +92,11 @@ static inline void uxchg(volatile uint32_t* px, uint32_t nx) {
   );
 }
 #define xchg __sync_lock_test_and_set
+
+// the convention for deriving shared memory region names from group names
+inline std::string sharedMemName(const std::string& groupName) {
+  return "/hstore." + groupName;
+}
 
 // between queue readers and writers, there are only three states of concern:
 //   0: both reader and writer are making progress
@@ -123,6 +153,8 @@ private:
   inline uint32_t           nextIndex(volatile uint32_t* i) const { return (*i + 1) % this->cfg.count; }
 public:
   writer(const bytes& meta, const std::string& shmname, size_t qvalsz, size_t count) {
+    shm_unlink(shmname.c_str());
+
     // sections of shared memory should be aligned to page boundaries
     long pagesz = sysconf(_SC_PAGESIZE);
     if (pagesz == -1) {
@@ -130,7 +162,7 @@ public:
     }
   
     // create the shared memory region
-    int shfd = shm_open(("/" + shmname).c_str(), O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
+    int shfd = shm_open(shmname.c_str(), O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
     if (shfd == -1) {
       throw std::runtime_error("Failed to allocate shared memory for '" + shmname + "': " + strerror(errno));
     }
@@ -175,6 +207,7 @@ public:
   }
 
   ~writer() {
+    shm_unlink(this->shmname.c_str());
   }
 
   inline const pqueue_config& config() const { return this->cfg; }
@@ -190,14 +223,14 @@ public:
         // make sure that we still need to block the writer (in case the read index moved while we were getting here)
         // then block while we're in writer-wait state
         if (*readIndex() == nwi) {
-          _HSTORE_FUTEX_WAIT(waitState(), _HSTORE_STATE_WRITER_WAITING);
+          waitForUpdate(waitState(), _HSTORE_STATE_WRITER_WAITING);
         }
         break;
       case _HSTORE_STATE_READER_WAITING:
         // we previously were in reader-wait state (this should practically never happen)
         // since we wait to write anyway, unblock the reader and try again
         uxchg(waitState(), _HSTORE_STATE_UNBLOCKED);
-        _HSTORE_FUTEX_WAKE(waitState(), 1);
+        wakeN(waitState(), 1);
         break;
       }
     }
@@ -217,7 +250,7 @@ public:
   
     // when the writer advances, the reader can be unblocked
     if (_HSTORE_UNLIKELY(xchg(waitState(), _HSTORE_STATE_UNBLOCKED) == _HSTORE_STATE_READER_WAITING)) {
-      _HSTORE_FUTEX_WAKE(waitState(), 1);
+      wakeN(waitState(), 1);
     }
   }
 };
@@ -343,7 +376,7 @@ struct QueueConnection {
 };
 
 inline QueueConnection consumeGroup(const std::string& gname) {
-  std::string shmname = "/hstore." + gname;
+  std::string shmname = sharedMemName(gname);
 
   // sections of shared memory are aligned to page boundaries
   long pagesz = sysconf(_SC_PAGESIZE);
@@ -450,14 +483,14 @@ public:
         // make sure that we still need to block the reader (in case the write index moved while we were getting here)
         // then block while we're in reader-wait state
         if (*writeIndex() == ri) {
-          _HSTORE_FUTEX_WAIT(waitState(), _HSTORE_STATE_READER_WAITING);
+          waitForUpdate(waitState(), _HSTORE_STATE_READER_WAITING);
         }
         break;
       case _HSTORE_STATE_WRITER_WAITING:
         // we previously were in writer-wait state (this should practically never happen)
         // since we wait to read anyway, unblock the writer and try again
         uxchg(waitState(), _HSTORE_STATE_UNBLOCKED);
-        _HSTORE_FUTEX_WAKE(waitState(), 1);
+        wakeN(waitState(), 1);
         break;
       }
     }
@@ -479,7 +512,7 @@ public:
   
     // when the reader advances, the writer can be unblocked
     if (_HSTORE_UNLIKELY(xchg(waitState(), _HSTORE_STATE_UNBLOCKED) == _HSTORE_STATE_WRITER_WAITING)) {
-      _HSTORE_FUTEX_WAKE(waitState(), 1);
+      wakeN(waitState(), 1);
     }
   }
 };
@@ -595,6 +628,7 @@ _HSTORE_DEFINE_PRIMTYS(int32_t,  "int");
 _HSTORE_DEFINE_PRIMTYS(uint32_t, "int");
 _HSTORE_DEFINE_PRIMTYS(int64_t,  "long");
 _HSTORE_DEFINE_PRIMTYS(uint64_t, "long");
+_HSTORE_DEFINE_PRIMTYS(size_t,   "long");
 _HSTORE_DEFINE_PRIMTYS(float,    "float");
 _HSTORE_DEFINE_PRIMTYS(double,   "double");
 
@@ -1294,8 +1328,8 @@ template <size_t... pcs>
 #define _HSTORE_TSTR1024(i,s) _HSTORE_TSTR512(i+(512*0),s),_HSTORE_TSTR512(i+(512*1),s)
 #define _HSTORE_TSTR(s)       ::hobbes::storage::strpack<_HSTORE_TSTR1024(0,s)>
 
-template <int* X>
-  int forceRegistration() { return *X; }
+template <uint32_t* X>
+  uint32_t forceRegistration() { return *X; }
 template <typename Group, Group* G, typename File, uint32_t Line, typename StmtName, size_t Flags, typename FormatStr, typename ArgTyList>
   struct StorageStatement {
     static uint32_t id;
@@ -1372,7 +1406,7 @@ struct StorageGroup {
     size_t pagesz = sysconf(_SC_PAGESIZE);
     size_t pagec  = 1 + (meta.size() / pagesz) + std::max<size_t>(this->mempages, 10);
 
-    this->pipeData = new writer(meta, "hstore." + std::string(this->name), pagesz, pagec);
+    this->pipeData = new writer(meta, sharedMemName(this->name), pagesz, pagec);
     this->pipe     = new wpipe(this->pipeData, this->qos);
   }
 
@@ -1510,7 +1544,7 @@ template <size_t N>
 
 // record some data
 #define APPLY_HSTORE_STMT(GROUP, NAME, FLAGS, FMTSTR, ARGS...) \
-  ::hobbes::storage::write(&GROUP, ::hobbes::storage::StorageStatement<decltype(GROUP),&GROUP,_HSTORE_TSTR(__FILE__),__LINE__,_HSTORE_TSTR(#NAME),FLAGS,_HSTORE_TSTR(FMTSTR),decltype(::hobbes::storage::makePayloadTypes(ARGS))>::id, ## ARGS)
+  ::hobbes::storage::write(&GROUP, ({static_assert(::hobbes::storage::maxVarRef(FMTSTR) <= decltype(::hobbes::storage::makePayloadTypes(ARGS))::count, "Log format string and payload arity mismatch"); ::hobbes::storage::StorageStatement<decltype(GROUP),&GROUP,_HSTORE_TSTR(__FILE__),__LINE__,_HSTORE_TSTR(#NAME),FLAGS,_HSTORE_TSTR(FMTSTR),decltype(::hobbes::storage::makePayloadTypes(ARGS))>::id;}), ## ARGS)
 
 #define HSTORE(GROUP, NAME, ARGS...)       APPLY_HSTORE_STMT(GROUP, NAME, 0,     "", ## ARGS)
 #define HLOG(GROUP, NAME, FMTSTR, ARGS...) APPLY_HSTORE_STMT(GROUP, NAME, 1, FMTSTR, ## ARGS)

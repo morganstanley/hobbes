@@ -113,7 +113,7 @@ struct buffer {
       this->data = (uint8_t*)malloc(psz);
       this->allocsz = psz;
       if (!this->data) {
-        printf("failed to allocate %lld bytes from %lld bytes!\n", psz, sz);
+        printf("failed to allocate %d bytes from %d bytes!\n", (int)psz, (int)sz);
         exit(-1);
       }
     }

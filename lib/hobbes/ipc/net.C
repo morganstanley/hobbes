@@ -79,7 +79,7 @@ int allocateFileSocketServer(const std::string& filepath) {
   memset(&addr, 0, sizeof(addr));
   addr.sun_family = AF_UNIX;
   unlink(filepath.c_str());
-  snprintf(addr.sun_path, sizeof(addr.sun_path), filepath.c_str());
+  snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", filepath.c_str());
 
   if (bind(s, (sockaddr*)&addr, sizeof(addr)) == -1) {
     close(s);
@@ -144,7 +144,7 @@ int connectFileSocket(const std::string& filepath) {
   sockaddr_un addr;
   memset(&addr, 0, sizeof(addr));
   addr.sun_family = AF_UNIX;
-  snprintf(addr.sun_path, sizeof(addr.sun_path), filepath.c_str());
+  snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", filepath.c_str());
 
   return connectSocket(r, (sockaddr*)&addr, sizeof(addr));
 }

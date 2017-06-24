@@ -75,7 +75,7 @@ DEFINE_HNET_STRUCT(
   (size_t,      bb)
 );
 typedef std::vector<Group> Groups;
-std::ostream& operator<<(std::ostream& os, const Group& g) { os << "{id=\"" << g.id << "\", kid=" << ((g.kid == Kid::Jim()) ? "|Jim|" : "|Bob|") << ", aa=" << g.aa << ", bb=" << g.bb << "}"; }
+std::ostream& operator<<(std::ostream& os, const Group& g) { os << "{id=\"" << g.id << "\", kid=" << ((g.kid == Kid::Jim()) ? "|Jim|" : "|Bob|") << ", aa=" << g.aa << ", bb=" << g.bb << "}"; return os; }
 bool operator==(const Group& lhs, const Group& rhs) { return lhs.id == rhs.id && lhs.kid == rhs.kid && lhs.aa == rhs.aa && lhs.bb == rhs.bb; }
 
 DEFINE_HNET_VARIANT(
@@ -87,7 +87,7 @@ struct showV : public VVisitor<void> { std::ostream& os; showV(std::ostream& os)
   void Bob(const int& x) const { os << "Bob=" << x; }
   void Frank(const std::string& x) const { os << "Frank=\"" << x << "\""; }
 };
-std::ostream& operator<<(std::ostream& os, const V& v) { os << "|"; v.visit(showV(os)); os << "|"; }
+std::ostream& operator<<(std::ostream& os, const V& v) { os << "|"; v.visit(showV(os)); os << "|"; return os; }
 
 
 /**************************

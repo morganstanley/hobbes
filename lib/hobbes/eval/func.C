@@ -840,6 +840,11 @@ public:
   }
 };
 
+/*
+ * NOTE: stdstrsizeF and stdstrelemF assume a certain memory representation for std::string
+ *       this makes them very efficient in e.g. large match expressions on std::string values
+ *       however it also makes them very dangerous for cross platform / cross compiler use
+ *       they have been disabled for this reason but some hobbes users may want to consider this option
 class stdstrsizeF : public op {
   llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) {
     llvm::Value* str    = c->compile(es[0]);
@@ -871,6 +876,10 @@ class stdstrelemF : public op {
     return polytype(qualtype(functy(list(lift<std::string*>::type(db), lift<long>::type(db)), lift<char>::type(db))));
   }
 };
+*/
+size_t stdstrsize(const std::string& x)           { return x.size(); }
+char   stdstrelem(const std::string& x, size_t i) { return x[i]; }
+
 
 class packLongF : public op {
   llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) {
@@ -1040,8 +1049,8 @@ void initDefOperators(cc* c) {
   BINDF(".variantInjectHead", new varInjH());
 
   // hack in some special knowledge about std::string's representation
-  BINDF("stdstrsize", new stdstrsizeF());
-  BINDF("stdstrelem", new stdstrelemF());
+  c->bind("stdstrsize", &stdstrsize);
+  c->bind("stdstrelem", &stdstrelem);
 
   // pack primitive types (a bit of a hack to make pattern matching on strings faster)
   BINDF("packLong",  new packLongF());

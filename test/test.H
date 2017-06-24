@@ -47,6 +47,16 @@ private:
       throw std::runtime_error(__errmsg.str()); \
     } \
   }
+#define EXPECT_NEQ(p,x) \
+  { \
+    auto v = (p); \
+    auto z = (x); \
+    if (v == z) { \
+      std::ostringstream __errmsg; \
+      __errmsg << "Expression '" #p "' == " << v << ", but expected anything else"; \
+      throw std::runtime_error(__errmsg.str()); \
+    } \
+  }
 
 #endif
 

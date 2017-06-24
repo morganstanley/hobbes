@@ -19,6 +19,8 @@ namespace hobbes {
 // an operation, which can emit some specialized assembly code
 class jitcc;
 struct op {
+  virtual ~op();
+
   // type : reports the functional type of this operator (may be polymorphic)
   virtual PolyTypePtr type(typedb&) const = 0;
 

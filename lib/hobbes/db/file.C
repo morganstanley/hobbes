@@ -1225,7 +1225,7 @@ void ensureDirExists(const std::string& path) {
 
   for (const auto& p : ps) {
     pfx << p << "/";
-    if (mkdir(pfx.str().c_str(), S_IRWXU | S_IRWXG | S_IRWXO) == -1 && errno != EEXIST) {
+    if (mkdir(pfx.str().c_str(), S_IRWXU | S_IRWXG | S_IRWXO) == -1 && errno != EEXIST && errno != EISDIR) {
       throw std::runtime_error("Failed to make directory '" + pfx.str() + "' with error: " + strerror(errno));
     }
   }

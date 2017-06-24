@@ -46,12 +46,16 @@ std::string show(const PtrAdjustmentPath& p);
 //  (this implementation only works with GCC)
 class Objs : public SubtypeEliminator {
 public:
+#ifndef __clang__
   typedef __cxxabiv1::__class_type_info     class_type;
   typedef __cxxabiv1::__si_class_type_info  si_class_type;
   typedef __cxxabiv1::__vmi_class_type_info vmi_class_type;
 
   // record class definitions
   void add(const class_type* ct);
+#else
+  typedef int class_type;
+#endif
   bool add(const std::type_info& ti);
   bool add(const std::type_info* ti);
 
@@ -91,4 +95,3 @@ typedef std::shared_ptr<Objs> ObjsPtr;
 }
 
 #endif
-

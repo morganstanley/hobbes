@@ -82,7 +82,7 @@ template <typename T>
     typedef array<T>* ptr;
 
     long size;
-    T    data[]; // unknown length, bytes inline with this structure
+    T    data[1]; // unknown length, bytes inline with this structure
   };
 template <typename T> const T* begin(const array<T>* d) { return d->data; }
 template <typename T> const T* end  (const array<T>* d) { return d->data + d->size; }
@@ -137,6 +137,12 @@ template <typename T, bool InStruct, typename P>
       return defaultLift<T, InStruct>::type(tenv);
     }
   };
+
+// conflate the various names for std::string
+template <>
+  struct lift<std::string, true> { static MonoTypePtr type(typedb&) { return OpaquePtr::make("std::string", sizeof(std::string), true); } };
+template <bool InStruct>
+  struct lift<std::string*, InStruct> { static MonoTypePtr type(typedb&) { return OpaquePtr::make("std::string", InStruct ? sizeof(std::string) : 0, InStruct); } };
 
 // we can lift a list of T as ^x.()+T*x, represented by a pointer whether top-level or inline
 template <typename T>
@@ -206,19 +212,21 @@ template <typename T, bool InStruct>
       } \
     }
 
-HOBBES_LIFT_PRIMITIVE(void,           unit);
-HOBBES_LIFT_PRIMITIVE(unit,           unit);
-HOBBES_LIFT_PRIMITIVE(bool,           bool);
-HOBBES_LIFT_PRIMITIVE(char,           char);
-HOBBES_LIFT_PRIMITIVE(unsigned char,  byte);
-HOBBES_LIFT_PRIMITIVE(short,          short);
-HOBBES_LIFT_PRIMITIVE(unsigned short, short);
-HOBBES_LIFT_PRIMITIVE(int,            int);
-HOBBES_LIFT_PRIMITIVE(unsigned int,   int);
-HOBBES_LIFT_PRIMITIVE(long,           long);
-HOBBES_LIFT_PRIMITIVE(unsigned long,  long);
-HOBBES_LIFT_PRIMITIVE(float,          float);
-HOBBES_LIFT_PRIMITIVE(double,         double);
+HOBBES_LIFT_PRIMITIVE(void,               unit);
+HOBBES_LIFT_PRIMITIVE(unit,               unit);
+HOBBES_LIFT_PRIMITIVE(bool,               bool);
+HOBBES_LIFT_PRIMITIVE(char,               char);
+HOBBES_LIFT_PRIMITIVE(unsigned char,      byte);
+HOBBES_LIFT_PRIMITIVE(short,              short);
+HOBBES_LIFT_PRIMITIVE(unsigned short,     short);
+HOBBES_LIFT_PRIMITIVE(int,                int);
+HOBBES_LIFT_PRIMITIVE(unsigned int,       int);
+HOBBES_LIFT_PRIMITIVE(long,               long);
+HOBBES_LIFT_PRIMITIVE(unsigned long,      long);
+HOBBES_LIFT_PRIMITIVE(long long,          long);
+HOBBES_LIFT_PRIMITIVE(unsigned long long, long);
+HOBBES_LIFT_PRIMITIVE(float,              float);
+HOBBES_LIFT_PRIMITIVE(double,             double);
 
 template <typename T>
   inline MonoTypePtr prim() { return lift<T, false>::type(nulltdb); }

@@ -193,7 +193,9 @@ char** completions(const char* pfx, int start, int end) {
     completionMatches = eval->completionsFor(pfx);
     return rl_completion_matches((char*)pfx, &completionStep);
   } else {
+#if BUILD_LINUX
     rl_bind_key('\t', rl_abort);
+#endif
     return 0;
   }
 }
@@ -476,7 +478,7 @@ void runProcess(const std::string& cmd, std::ostream& out) {
 
   char buf[4096];
   int n;
-  while (n = read(pio[0], buf, sizeof(buf))) {
+  while ((n = read(pio[0], buf, sizeof(buf)))) {
     out.write(buf, n);
   }
   close(pio[0]);
