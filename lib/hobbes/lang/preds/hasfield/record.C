@@ -4,7 +4,7 @@
 
 namespace hobbes {
 
-static MonoTypePtr stdstrty  = opaqueptr<std::string>(false);
+static MonoTypePtr stdstrty  = OpaquePtr::make("std::string", 0, false);
 static MonoTypePtr chararrty = arrayty(primty("char"));
 static MonoTypePtr unitty    = primty("unit");
 

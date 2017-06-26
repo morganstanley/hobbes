@@ -880,7 +880,6 @@ class stdstrelemF : public op {
 size_t stdstrsize(const std::string& x)           { return x.size(); }
 char   stdstrelem(const std::string& x, size_t i) { return x[i]; }
 
-
 class packLongF : public op {
   llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) {
     llvm::Value* c0 = c->builder()->CreateShl(c->builder()->CreateIntCast(c->compile(es[0]), longType(), false), 56);
@@ -1048,7 +1047,7 @@ void initDefOperators(cc* c) {
   BINDF(".variantSplit",      new varSplit());
   BINDF(".variantInjectHead", new varInjH());
 
-  // hack in some special knowledge about std::string's representation
+  // access std::string fields
   c->bind("stdstrsize", &stdstrsize);
   c->bind("stdstrelem", &stdstrelem);
 
