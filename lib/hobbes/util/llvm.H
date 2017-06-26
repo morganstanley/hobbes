@@ -4,7 +4,7 @@
 
 #include <hobbes/util/array.H>
 
-#include <llvm/Config/config.h>
+#include <llvm/Config/llvm-config.h>
 
 #if LLVM_VERSION_MAJOR != 3
 #error "I don't know how to use this version of LLVM"
