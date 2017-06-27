@@ -31,6 +31,8 @@ public:
       return laddr;
     } else if (uint64_t baddr = llvm::SectionMemoryManager::getSymbolAddress(n)) {
       return baddr;
+    } else if (n.size() > 1 && n[0] == '_') {
+      return getSymbolAddress(n.substr(1));
     } else {
       throw std::runtime_error("Internal error, can't resolve symbol: " + n);
     }

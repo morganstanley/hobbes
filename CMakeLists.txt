@@ -5,11 +5,10 @@ set (CMAKE_CXX_STANDARD 11)
 find_package(LLVM REQUIRED CONFIG)
 include_directories(${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
-# we seem to need to pull in several components on the mac, probably doesn't work correctly for all LLVM versions
+# not sure how to select just the necessary components across all LLVM versions
+# for now, pull in everything and hope that the linker will sort it out
 # maybe this should be an OS/LLVM switch?
-llvm_map_components_to_libnames(llvm_libs analysis asmparser asmprinter bitreader bitwriter codegen core engine executionengine instcombine jit lto mc mcanalysis mcjit native nativecodegen scalaropts selectiondag tablegen target transformutils vectorize x86 x86asmparser x86asmprinter x86codegen x86desc x86disassembler x86info x86utils)
-
-enable_testing()
+llvm_map_components_to_libnames(llvm_libs all)
 
 file(GLOB_RECURSE lib_headers lib/*.H)
 file(GLOB_RECURSE lib_source lib/*.C)
