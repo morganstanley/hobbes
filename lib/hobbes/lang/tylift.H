@@ -191,11 +191,6 @@ template <typename F, typename S>
 template <typename F, typename S>
   struct lift< std::pair<F, S>*, false > : public liftPair<F, S> { };
 
-template <>
-  struct lift< std::string, true > { static MonoTypePtr type(typedb&) { return OpaquePtr::make("std::string", sizeof(std::string), true); }  };
-template <>
-  struct lift< std::string*, false > { static MonoTypePtr type(typedb&) { return OpaquePtr::make("std::string", 0, false); }  };
-
 // lift only indeterminate-length arrays passed by reference
 // (arrays are always represented by a pointer but should internally store inline)
 template <typename T>
