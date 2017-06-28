@@ -8,6 +8,7 @@
 #include <map>
 #include <vector>
 #include <string>
+#include <set>
 #include <stdexcept>
 #include <sstream>
 #include <hobbes/util/str.H>
@@ -17,7 +18,8 @@ public:
   typedef void (*PTEST)();
   static TestCoord& instance();
   bool installTest(const std::string& group, const std::string& test, PTEST pf);
-  int runAllTests();
+  std::set<std::string> testGroupNames() const;
+  int runTestGroups(const std::set<std::string>&);
 private:
   typedef std::vector<std::pair<std::string, PTEST>> Tests;
   typedef std::map<std::string, Tests> GroupedTests;

@@ -12,20 +12,34 @@ bool TestCoord::installTest(const std::string& group, const std::string& test, P
   return true;
 }
 
-int TestCoord::runAllTests() {
+std::set<std::string> TestCoord::testGroupNames() const {
+  std::set<std::string> r;
+  for (const auto& g : this->tests) {
+    r.insert(g.first);
+  }
+  return r;
+}
+
+int TestCoord::runTestGroups(const std::set<std::string>& gs) {
   std::vector<std::string> failures;
 
-  std::cout << "Running " << this->tests.size() << " group" << (this->tests.size() == 1 ? "" : "s") << " of tests" << std::endl
+  std::cout << "Running " << gs.size() << " group" << (gs.size() == 1 ? "" : "s") << " of tests" << std::endl
             << "---------------------------------------------------------------------" << std::endl
             << std::endl;
 
   long tt0 = hobbes::tick();
-  for (const auto& g : this->tests) {
-    std::cout << "  " << g.first << " (" << g.second.size() << " test" << (g.second.size() == 1 ? "" : "s") << ")" << std::endl
+  for (const auto& gn : gs) {
+    auto gi = this->tests.find(gn);
+    if (gi == this->tests.end()) {
+      std::cout << "ERROR: no test group named '" << gn << "' exists" << std::endl;
+    }
+    const auto& g = gi->second;
+
+    std::cout << "  " << gn << " (" << g.size() << " test" << (g.size() == 1 ? "" : "s") << ")" << std::endl
               << "  ---------------------------------------------------------" << std::endl;
 
     long gt0 = hobbes::tick();
-    for (const auto& t : g.second) {
+    for (const auto& t : g) {
       std::cout << "    " << t.first << std::flush;
       long t0 = hobbes::tick();
       try {
@@ -33,7 +47,7 @@ int TestCoord::runAllTests() {
         std::cout << " SUCCESS ";
       } catch (std::exception& ex) {
         std::cout << " FAIL ";
-        failures.push_back("[" + g.first + "/" + t.first + "]: " + ex.what());
+        failures.push_back("[" + gn + "/" + t.first + "]: " + ex.what());
       }
       std::cout << "(" << hobbes::describeNanoTime(hobbes::tick()-t0) << ")" << std::endl;
     }
@@ -55,7 +69,15 @@ int TestCoord::runAllTests() {
   return (int)failures.size();
 }
 
-int main(int argc_, char** argv_) {
-  return TestCoord::instance().runAllTests();
+int main(int argc, char** argv) {
+  if (argc <= 1) {
+    return TestCoord::instance().runTestGroups(TestCoord::instance().testGroupNames());
+  } else {
+    std::set<std::string> gs;
+    for (size_t i = 1; i < argc; ++i) {
+      gs.insert(argv[i]);
+    }
+    return TestCoord::instance().runTestGroups(gs);
+  }
 }
 
