@@ -27,12 +27,13 @@ public:
 
   // link symbols across modules :T
   uint64_t getSymbolAddress(const std::string& n) override {
-    if (uint64_t laddr = (uint64_t)this->jit->getSymbolAddress(n)) {
+
+    if (n.size() > 0 && n[0] == '_') {
+      return getSymbolAddress(n.substr(1));
+    } else if (uint64_t laddr = (uint64_t)this->jit->getSymbolAddress(n)) {
       return laddr;
     } else if (uint64_t baddr = llvm::SectionMemoryManager::getSymbolAddress(n)) {
       return baddr;
-    } else if (n.size() > 1 && n[0] == '_') {
-      return getSymbolAddress(n.substr(1));
     } else {
       throw std::runtime_error("Internal error, can't resolve symbol: " + n);
     }
@@ -128,8 +129,8 @@ void* jitcc::getSymbolAddress(const std::string& vn) {
     return gd->second.value;
   }
 
-  // do we have a compiled function with this name?
 #if LLVM_VERSION_MINOR >= 6
+  // do we have a compiled function with this name?
   for (auto ee : this->eengines) {
     if (uint64_t faddr = ee->getFunctionAddress(vn)) {
       return (void*)faddr;
@@ -346,7 +347,7 @@ op* jitcc::lookupOp(const std::string& vn) const {
 }
 
 void jitcc::bindGlobal(const std::string& vn, const MonoTypePtr& ty, void* x) {
-  Global& g = this->globals[vn];
+  Global g;
   g.type  = ty;
   g.value = x;
   if (is<Func>(ty)) {
@@ -383,6 +384,7 @@ void jitcc::bindGlobal(const std::string& vn, const MonoTypePtr& ty, void* x) {
   this->eengine->addGlobalMapping(g.ref.var, g.value);
 #endif
   }
+  this->globals[vn] = g;
 }
 
 llvm::Value* jitcc::maybeRefGlobalV(llvm::Value* v) {
@@ -425,7 +427,9 @@ llvm::GlobalVariable* jitcc::refGlobal(const std::string& vn, llvm::GlobalVariab
   } else if (llvm::GlobalVariable* rgv = mod->getGlobalVariable(vn)) {
     return rgv;
   } else {
-    return new llvm::GlobalVariable(*mod, gv->getType()->getElementType(), gv->isConstant(), llvm::GlobalVariable::ExternalLinkage, 0, vn);
+    auto ret = new llvm::GlobalVariable(*mod, gv->getType()->getElementType(), gv->isConstant(), llvm::GlobalVariable::ExternalLinkage, 0, vn);
+    ret->setAlignment(sizeof(void*));
+    return ret;
   }
 }
 
