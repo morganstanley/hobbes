@@ -9,6 +9,7 @@
 #include <set>
 #include <map>
 #include <functional>
+#include <iostream>
 
 namespace hobbes {
 
@@ -17,6 +18,20 @@ template <typename K, typename V, typename Ord>
   public:
     typedef std::pair<K, K> range;
     typedef std::vector<range> ranges;
+
+    // show the state of this range map
+    void show(std::ostream& out) const {
+      out << "{";
+      if (this->rs.size() != this->vs.size()) {
+        out << "INVALID (" << this->rs.size() << " != " << this->vs.size() << ")";
+      } else if (this->rs.size() > 0) {
+        out << "'" << this->rs[0].first << "-" << this->rs[0].second << "' => " << this->vs[0];
+        for (size_t i = 1; i < this->rs.size(); ++i) {
+          out << ", '" << this->rs[i].first << "-" << this->rs[i].second << "' => " << this->vs[i];
+        }
+      }
+      out << "}";
+    }
 
     // find the value V such that (k0,k1)->V in this and k0 <= k <= k1
     const V* lookup(const K& k) const {

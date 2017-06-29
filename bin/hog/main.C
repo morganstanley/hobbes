@@ -177,6 +177,8 @@ void run(const RunMode& m) {
           case RunMode::batchsend:
             tasks.push_back(new std::thread(std::bind(&pushLocalData, qc, g, ensureDirExists(d), m.clevel, m.batchsendsize, m.batchsendtime, m.sendto)));
             break;
+          default:
+            break;
           }
         } catch (std::exception&) {
           // we might fail to consume the group

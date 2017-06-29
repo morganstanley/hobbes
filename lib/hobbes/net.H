@@ -324,6 +324,7 @@ _HNET_DEFINE_PRIMTYS(int32_t,  "int");
 _HNET_DEFINE_PRIMTYS(uint32_t, "int");
 _HNET_DEFINE_PRIMTYS(int64_t,  "long");
 _HNET_DEFINE_PRIMTYS(uint64_t, "long");
+_HNET_DEFINE_PRIMTYS(size_t,   "long");
 _HNET_DEFINE_PRIMTYS(float,    "float");
 _HNET_DEFINE_PRIMTYS(double,   "double");
 
@@ -1080,7 +1081,7 @@ template <typename T>
     static void        encode(bytes* out)          { w(_HNET_TYCTOR_PRIM, out); ws(T::name(), out); w((bool)true, out); io<typename T::type>::encode(out); }
     static std::string describe()                  { return T::name(); }
     static void        write(int s, const T& x)    { io<typename T::type>::write(s, x.value); }
-    static void        read(int s, T* x)           { io<typename T::type>::read(s, &x.value); }
+    static void        read(int s, T* x)           { io<typename T::type>::read(s, &x->value); }
 
     typedef typename io<typename T::type>::async_read_state async_read_state;
     static void prepare(async_read_state* o) { io<typename T::type>::prepare(o); }

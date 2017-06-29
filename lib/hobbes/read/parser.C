@@ -20,7 +20,7 @@ struct parse_mutex_lock {
    parse_mutex_lock() { parse_mutex.lock(); }
   ~parse_mutex_lock() { parse_mutex.unlock(); }
 };
-#define LOCK_PARSER parse_mutex_lock parse_lock()
+#define LOCK_PARSER parse_mutex_lock parse_lock
 
 ////////////////////////////////////////////////////////
 // bison parser defs

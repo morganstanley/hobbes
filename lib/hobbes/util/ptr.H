@@ -20,11 +20,12 @@ template <typename T, typename ... Args>
 
     const std::shared_ptr<T>& get(const std::function<T*(Args...)>& mk, const Args&... args) {
       std::lock_guard<std::mutex> lock(mutex);
-      std::shared_ptr<T>& r = this->values[std::tuple<Args...>(args...)];
-      if (!r) {
-        r = std::shared_ptr<T>(mk(args...));
-      }
-      return r;
+      auto k = std::tuple<Args...>(args...);
+      const auto& r = this->values[k];
+      if (r) return r;
+      
+      this->values[k] = std::shared_ptr<T>(mk(args...));
+      return this->values[k];
     }
 
     size_t compact() {

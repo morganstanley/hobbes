@@ -457,7 +457,7 @@ void* runClosThread(void* clos) {
 long newThread(char* clos) {
   pthread_t th;
   pthread_create(&th, 0, &runClosThread, (void*)clos);
-  return th;
+  return (long)th;
 }
 
 void threadWait(long x) {

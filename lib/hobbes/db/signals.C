@@ -2,12 +2,16 @@
 #include <hobbes/db/signals.H>
 #include <hobbes/db/file.H>
 #include <hobbes/events/events.H>
+#include <hobbes/util/os.H>
 #include <hobbes/hobbes.H>
 #include <vector>
 #include <set>
-#include <sys/inotify.h>
 #include <string.h>
 #include <errno.h>
+
+#ifdef BUILD_LINUX
+#include <sys/inotify.h>
+#endif
 
 namespace hobbes {
 
@@ -71,14 +75,30 @@ void sweepFileWatch(FileWatch& fw) {
   }
 }
 
-// a simple(-minded?) way to hold on to a global inotify FD
 typedef std::vector<FileWatch> FileWatches;
 
+#ifdef BUILD_LINUX
+// on Linux, we can use inotify to watch for file updates
 struct SystemWatch {
   int         fd;
   FileWatches fileWatches;
 
   SystemWatch() : fd(-1) {
+    w.fd = inotify_init();
+    if (w.fd < 0) {
+      throw std::runtime_error("Failed to initialize inotify (" + std::string(strerror(errno)) + ")");
+    }
+
+    registerEventHandler
+    (
+      w.fd,
+      [](int fd, void*) {
+        char buf[sizeof(struct inotify_event) + NAME_MAX + 1];
+        read(fd, buf, sizeof(buf));
+        sweepFileWatch(watcher()->fileWatches[((inotify_event*)buf)->wd]);
+      },
+      0
+    );
   }
 
   // return the index of the specified watched file structure
@@ -112,27 +132,57 @@ struct SystemWatch {
 
 SystemWatch* watcher() {
   static SystemWatch w;
+  return &w;
+}
+#elif defined(BUILD_OSX)
+struct SystemWatch {
+  FileWatches fileWatches;
 
-  if (w.fd < 0) {
-    w.fd = inotify_init();
-    if (w.fd < 0) {
-      throw std::runtime_error("Failed to initialize inotify (" + std::string(strerror(errno)) + ")");
+  SystemWatch() {
+  }
+
+  static SystemWatch* watcher() {
+    static SystemWatch w;
+    return &w;
+  }
+
+  // return the index of the specified watched file structure
+  //  (if none exists, make one and return that one)
+  size_t watchedFile(const std::string& path, int pfd) {
+    for (size_t i = 0; i < this->fileWatches.size(); ++i) {
+      if (this->fileWatches[i].fd == pfd) {
+        return i;
+      }
     }
+
+    size_t wf = this->fileWatches.size();
+    this->fileWatches.resize(wf + 1);
+
+    this->fileWatches[wf].filePath = path;
+    this->fileWatches[wf].fd       = pfd;
 
     registerEventHandler
     (
-      w.fd,
-      [](int fd, void*) {
-        char buf[sizeof(struct inotify_event) + NAME_MAX + 1];
-        read(fd, buf, sizeof(buf));
-        sweepFileWatch(watcher()->fileWatches[((inotify_event*)buf)->wd]);
+      pfd,
+      [](int fd, void* idx) {
+        sweepFileWatch(watcher()->fileWatches[(size_t)idx]);
       },
-      0
+      (void*)wf,
+      true /* EVFILT_VNODE */
     );
+
+    return wf;
   }
 
-  return &w;
+  FileWatch& fileWatch(reader* r) {
+    return this->fileWatches[watchedFile(r->file(), r->unsafeGetFD())];
+  }
+};
+
+SystemWatch* watcher() {
+  return SystemWatch::watcher();
 }
+#endif
 
 typedef std::pair<bool, uint64_t>                               IsArrOldVal;
 typedef std::pair<uint64_t, IsArrOldVal>                        OffsetData;

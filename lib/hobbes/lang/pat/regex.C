@@ -612,7 +612,7 @@ void findEpsClosure(const NFA& nfa, state s, statemarks* sms, EpsClosure* ec) {
       }
     }
 
-    stateset& stes = (*ec)[s];
+    stateset stes = (*ec)[s];
     stes.insert(s);
     for (auto et : nfa[s].eps) {
       stes.insert(et);
@@ -620,6 +620,7 @@ void findEpsClosure(const NFA& nfa, state s, statemarks* sms, EpsClosure* ec) {
       const stateset& rstes = (*ec)[et];
       stes.insert(rstes.begin(), rstes.end());
     }
+    (*ec)[s] = stes;
   }
 }
 
@@ -712,7 +713,8 @@ state dfaState(const NFA& nfa, const EpsClosure& ec, Nss2Ds* nss2ds, DFA* dfa, c
   // ok, how can we transition out of here?
   // for each case, we'll go to a set of NFA states (recursively)
   for (auto cr : usedCharRanges(nfa, ss)) {
-    (*dfa)[result].chars.insert(cr, dfaState(nfa, ec, nss2ds, dfa, nfaTransition(nfa, ec, ss, cr), rstates));
+    auto ns = dfaState(nfa, ec, nss2ds, dfa, nfaTransition(nfa, ec, ss, cr), rstates);
+    (*dfa)[result].chars.insert(cr, ns);
   }
 
   // our DFA state accepts if any of its NFA states accept
@@ -1078,9 +1080,8 @@ CRegexes makeRegexFn(cc* c, const Regexes& regexes, const LexicalAnnotation& roo
   NFA nfa;
   nfa.resize(1);
   for (size_t i = 0; i < regexes.size(); ++i) {
-    nfa[0].eps.insert(
-      accumRegex(regexes[i], i, &nfa)
-    );
+    auto s = accumRegex(regexes[i], i, &nfa);
+    nfa[0].eps.insert(s);
   }
 
   // now map this NFA to a DFA

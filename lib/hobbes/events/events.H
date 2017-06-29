@@ -15,7 +15,7 @@ typedef bool (*timerfunc)();
 
 void addTimer(timerfunc f, int millisecInterval);
 
-void registerEventHandler(int fd, eventhandler f, void* ud);
+void registerEventHandler(int fd, eventhandler f, void* ud, bool vn = false /* only used on BSD */);
 void unregisterEventHandler(int fd);
 
 // run a single-step or indefinite event loop

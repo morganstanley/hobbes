@@ -44,6 +44,7 @@ MonoTypeUnifier& MonoTypeUnifier::operator=(const MonoTypeUnifier& u) {
   this->m      = M();
 
   this->merge(u);
+  return *this;
 }
 
 const TEnvPtr& MonoTypeUnifier::typeEnv() const {
@@ -363,7 +364,7 @@ MonoTypes MonoTypeUnifier::substitute(const MonoTypes& ts) {
 }
 
 size_t MonoTypeUnifier::merge(const MonoTypeUnifier& u) {
-  this->m.merge(u.m);
+  return this->m.merge(u.m);
 }
 
 MonoTypeSubst MonoTypeUnifier::substitution() {

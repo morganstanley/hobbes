@@ -94,6 +94,6 @@ TEST(Variants, WithFunctions) {
 
 typedef variant<unit, std::pair<const char*, size_t>*> BadT;
 TEST(Variants, DontLiftInlineRefs) {
-  EXPECT_EQ(show(lift<const BadT*>::type(c())), "(() + <std.pair<char const*, unsigned long>>)");
+  EXPECT_NEQ(show(lift<const BadT*>::type(c())), "(() + (<char> * long))");
 }
 

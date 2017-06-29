@@ -1703,6 +1703,7 @@ struct tgenVarsF : public walkTy {
 
   UnitV with(const TGen* v) const {
     this->s->insert(v->id());
+    return unitv;
   }
 };
 
@@ -1841,7 +1842,7 @@ void tvarNames(const MonoTypes& mts, NameSet* out) {
 }
 
 bool isFreeVarNameIn(const TVName& n, const MonoTypePtr& t) {
-  t->freeTVars.find(n) != t->freeTVars.end();
+  return t->freeTVars.find(n) != t->freeTVars.end();
 }
 
 bool isFreeVarNameIn(const TVName& n, const MonoTypes& ts) {

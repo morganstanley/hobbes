@@ -5,10 +5,10 @@ set (CMAKE_CXX_STANDARD 11)
 find_package(LLVM REQUIRED CONFIG)
 include_directories(${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
-# 'x86' module should have covered 'x86asmparser' and 'x86codegen' already, but using 'x86' alone didn't work
-llvm_map_components_to_libnames(llvm_libs x86asmparser x86codegen x86 mcjit passes)
-
-enable_testing()
+# not sure how to select just the necessary components across all LLVM versions
+# for now, pull in everything and hope that the linker will sort it out
+# maybe this should be an OS/LLVM switch?
+llvm_map_components_to_libnames(llvm_libs all)
 
 file(GLOB_RECURSE lib_headers lib/*.H)
 file(GLOB_RECURSE lib_source lib/*.C)
@@ -26,13 +26,13 @@ file(GLOB hi_files bin/hi/*.C)
 file(GLOB_RECURSE hog_files bin/hog/*.C)
 
 add_executable(hobbes-test ${test_files})
-target_link_libraries(hobbes-test hobbes pthread dl rt ncurses tinfo)
+target_link_libraries(hobbes-test hobbes pthread dl ncurses)
 add_test(hobbes-test hobbes-test)
 
 add_executable(hi ${hi_files})
-target_link_libraries(hi hobbes pthread dl rt ncurses tinfo readline)
+target_link_libraries(hi hobbes pthread dl ncurses readline)
 add_executable(hog ${hog_files})
-target_link_libraries(hog hobbes pthread dl rt ncurses tinfo)
+target_link_libraries(hog hobbes pthread dl ncurses)
 
 install(TARGETS hobbes hobbes-pic DESTINATION "lib")
 install(TARGETS hi hog DESTINATION "bin")

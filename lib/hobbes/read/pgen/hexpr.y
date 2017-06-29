@@ -76,6 +76,7 @@ MonoTypePtr forceMonotype(const QualTypePtr& qt, const LexicalAnnotation& la) {
     ds.clear();
   }
   yyParseCC->drainUnqualifyDefs(ds);
+  ds.clear();
 
   // make sure that the output type exists and is realizable
   if (hobbes::satisfied(yyParseCC->typeEnv(), qt->constraints(), &ds)) {

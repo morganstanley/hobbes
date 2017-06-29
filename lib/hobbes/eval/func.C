@@ -877,8 +877,8 @@ class stdstrelemF : public op {
   }
 };
 */
-size_t stdstrsize(const std::string& x) { return x.size(); }
-char stdstrelem(const std::string& x, size_t i) { return x[i]; }
+size_t stdstrsize(const std::string& x)           { return x.size(); }
+char   stdstrelem(const std::string& x, size_t i) { return x[i]; }
 
 class packLongF : public op {
   llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) {

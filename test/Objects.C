@@ -85,6 +85,8 @@ static cc& c() {
   static cc x;
   static bool i = false;
   if (!i) {
+    i = true;
+
     // init bindings
     x.bind("aoage",   memberfn(&ArrObjV::age));
     x.bind("arrobjs", &arrobjs);
@@ -121,8 +123,6 @@ static cc& c() {
       "instance (Show a) => ObjReader () a where\n"
       "  objRead _ i = show(i)\n"
     ));
-
-    i = true;
   }
   return x;
 }

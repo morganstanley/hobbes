@@ -1,4 +1,8 @@
 %{
+#ifdef __clang__
+#pragma clang diagnostic ignored "-Wdeprecated-register"
+#endif
+
 int yycolumn = 1;
 
 #define YY_USER_ACTION \

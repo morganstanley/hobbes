@@ -27,16 +27,25 @@ template <typename T>
     seed ^= hasher(x) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
   }
 
+// hash tuples
 template <std::size_t i, typename ... Ts>
   inline typename std::enable_if<i == sizeof...(Ts), void>::type hashTuple(std::size_t*, const std::tuple<Ts...>&) {
   }
-
 template <std::size_t i, typename ... Ts>
   inline typename std::enable_if<i < sizeof...(Ts), void>::type hashTuple(std::size_t* r, const std::tuple<Ts...>& ms) {
     hashAppend(*r, std::get<i>(ms));
     hashTuple<i+1, Ts...>(r, ms);
   }
+template <typename ... Ts>
+  struct genHash<std::tuple<Ts...>> {
+    inline size_t operator()(const std::tuple<Ts...>& xs) const {
+      size_t r = 0;
+      hashTuple<0, Ts...>(&r, xs);
+      return r;
+    }
+  };
 
+// hash pairs
 template <typename U, typename V>
   struct genHash< std::pair<U, V> > {
     inline size_t operator()(const std::pair<U, V>& x) const {
@@ -47,6 +56,7 @@ template <typename U, typename V>
     }
   };
 
+// hash vectors
 template <typename T>
   struct genHash< std::vector<T> > {
     inline size_t operator()(const std::vector<T>& xs) const {
@@ -55,15 +65,6 @@ template <typename T>
       for (const auto& x : xs) {
         hashAppend<T>(r, x);
       }
-      return r;
-    }
-  };
-
-template <typename ... Ts>
-  struct genHash<std::tuple<Ts...>> {
-    inline size_t operator()(const std::tuple<Ts...>& xs) const {
-      size_t r = 0;
-      hashTuple<0, Ts...>(&r, xs);
       return r;
     }
   };

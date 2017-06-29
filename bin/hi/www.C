@@ -1,13 +1,21 @@
 
+#include <hobbes/util/os.H>
 #include "www.H"
 #include <fstream>
 
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <sys/sendfile.h>
 #include <sys/time.h>
 #include <sys/resource.h>
 #include <fcntl.h>
+
+#ifdef BUILD_LINUX
+#include <sys/sendfile.h>
+#else
+ssize_t sendfile(int toFD, int fromFD, off_t* o, size_t sz) {
+  return -1;
+}
+#endif
 
 namespace hi {
 
@@ -150,6 +158,8 @@ void translateHxpFile(std::istream& in, std::ostream& out) {
     break;
   case AccExp:
     out << ")";
+    break;
+  default:
     break;
   }
 
