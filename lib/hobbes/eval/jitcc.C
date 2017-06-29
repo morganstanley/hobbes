@@ -27,12 +27,14 @@ public:
 
   // link symbols across modules :T
   uint64_t getSymbolAddress(const std::string& n) override {
-
-    if (n.size() > 0 && n[0] == '_') {
-      return getSymbolAddress(n.substr(1));
-    } else if (uint64_t laddr = (uint64_t)this->jit->getSymbolAddress(n)) {
+    if (uint64_t laddr = (uint64_t)this->jit->getSymbolAddress(n)) {
       return laddr;
-    } else if (uint64_t baddr = llvm::SectionMemoryManager::getSymbolAddress(n)) {
+    }
+    if (n.size() > 0 && n[0] == '_') {
+      uint64_t sv = (uint64_t)this->jit->getSymbolAddress(n.substr(1));
+      if (sv) return sv;
+    }
+    if (uint64_t baddr = llvm::SectionMemoryManager::getSymbolAddress(n)) {
       return baddr;
     } else {
       throw std::runtime_error("Internal error, can't resolve symbol: " + n);
