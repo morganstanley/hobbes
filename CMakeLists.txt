@@ -25,14 +25,15 @@ file(GLOB test_files test/*.C)
 file(GLOB hi_files bin/hi/*.C)
 file(GLOB_RECURSE hog_files bin/hog/*.C)
 
+enable_testing()
 add_executable(hobbes-test ${test_files})
-target_link_libraries(hobbes-test hobbes pthread dl ncurses)
+target_link_libraries(hobbes-test hobbes pthread dl ncurses rt)
 add_test(hobbes-test hobbes-test)
 
 add_executable(hi ${hi_files})
 target_link_libraries(hi hobbes pthread dl ncurses readline)
 add_executable(hog ${hog_files})
-target_link_libraries(hog hobbes pthread dl ncurses)
+target_link_libraries(hog hobbes pthread dl ncurses rt)
 
 install(TARGETS hobbes hobbes-pic DESTINATION "lib")
 install(TARGETS hi hog DESTINATION "bin")

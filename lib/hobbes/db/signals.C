@@ -84,20 +84,21 @@ struct SystemWatch {
   FileWatches fileWatches;
 
   SystemWatch() : fd(-1) {
-    w.fd = inotify_init();
-    if (w.fd < 0) {
+    fd = inotify_init();
+    if (fd < 0) {
       throw std::runtime_error("Failed to initialize inotify (" + std::string(strerror(errno)) + ")");
     }
 
     registerEventHandler
     (
-      w.fd,
-      [](int fd, void*) {
+      fd,
+      [](int fd, void* self) {
         char buf[sizeof(struct inotify_event) + NAME_MAX + 1];
         read(fd, buf, sizeof(buf));
-        sweepFileWatch(watcher()->fileWatches[((inotify_event*)buf)->wd]);
+        sweepFileWatch(((SystemWatch*)self)->fileWatches[((inotify_event*)buf)->wd]);
       },
-      0
+      this,
+      false
     );
   }
 
