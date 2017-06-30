@@ -324,7 +324,7 @@ _HNET_DEFINE_PRIMTYS(int32_t,  "int");
 _HNET_DEFINE_PRIMTYS(uint32_t, "int");
 _HNET_DEFINE_PRIMTYS(int64_t,  "long");
 _HNET_DEFINE_PRIMTYS(uint64_t, "long");
-_HNET_DEFINE_PRIMTYS(size_t,   "long");
+//_HNET_DEFINE_PRIMTYS(size_t,   "long");
 _HNET_DEFINE_PRIMTYS(float,    "float");
 _HNET_DEFINE_PRIMTYS(double,   "double");
 

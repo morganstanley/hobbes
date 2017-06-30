@@ -56,10 +56,10 @@ static inline long sys_futex(volatile uint32_t* p, int op, int v, struct timespe
   return syscall(SYS_futex, p, op, v, timeout, p2, v2);
 }
 static inline void waitForUpdate(volatile uint32_t* p, int eqV) {
-  sys_futex(a, FUTEX_WAIT, eqV, 0, 0, 0);
+  sys_futex(p, FUTEX_WAIT, eqV, 0, 0, 0);
 }
 static inline void wakeN(volatile uint32_t* p, int c) {
-  sys_futex(a, FUTEX_WAKE, c, 0, 0, 0);
+  sys_futex(p, FUTEX_WAKE, c, 0, 0, 0);
 }
 }}
 #endif
@@ -628,7 +628,6 @@ _HSTORE_DEFINE_PRIMTYS(int32_t,  "int");
 _HSTORE_DEFINE_PRIMTYS(uint32_t, "int");
 _HSTORE_DEFINE_PRIMTYS(int64_t,  "long");
 _HSTORE_DEFINE_PRIMTYS(uint64_t, "long");
-_HSTORE_DEFINE_PRIMTYS(size_t,   "long");
 _HSTORE_DEFINE_PRIMTYS(float,    "float");
 _HSTORE_DEFINE_PRIMTYS(double,   "double");
 
