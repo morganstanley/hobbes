@@ -1,0 +1,28 @@
+language: cpp
+os:
+  - osx
+compiler:
+  - clang
+env:
+  global:
+    - DEPS=""
+
+matrix:
+  include:
+    - os: osx
+      compiler: clang
+      osx_image: xcode8
+      env:
+        - DEPS="${DEPS} llvm@3.7"
+        - LLVM_DIR=/usr/local/opt/llvm@3.7/lib/llvm-3.7/share/llvm/cmake/
+install:
+  - if [ $TRAVIS_OS_NAME = osx ]; then
+        brew install ${DEPS};
+    fi
+
+script: mkdir build && cd build/ && cmake .. && make  && make test
+
+branches:
+  only:
+    - master
+    - travis
