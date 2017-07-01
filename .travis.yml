@@ -1,12 +1,7 @@
 language: cpp
-os:
-  - osx
-compiler:
-  - clang
 env:
   global:
     - DEPS=""
-
 matrix:
   include:
     - os: osx
@@ -15,15 +10,24 @@ matrix:
       env:
         - DEPS="${DEPS} llvm@3.7"
         - LLVM_DIR=/usr/local/opt/llvm@3.7/lib/llvm-3.7/share/llvm/cmake/
+    - os: linux
+      compiler: g++
+      root: required
+      services:
+        - docker
+      env:
+        - DIST=xenial
+
   allow_failures:
     - os: osx
 
 install:
-  - if [ $TRAVIS_OS_NAME = osx ]; then
-        brew install ${DEPS};
-    fi
+  - if [ $TRAVIS_OS_NAME = osx   ]; then brew install ${DEPS}; fi
+  - if [ $TRAVIS_OS_NAME = linux ]; then cd docker/build &&  docker build . -f ./${DIST}.Dockerfile -t hobbes:build; cd -; fi
 
-script: mkdir build && cd build/ && cmake .. && make  && make test
+script:
+  - if [ $TRAVIS_OS_NAME = osx   ]; then mkdir build && cd build/ && cmake .. && make  && make test; fi
+  - if [ $TRAVIS_OS_NAME = linux ]; then docker run -it -v ${PWD}:/src hobbes:build; fi
 
 branches:
   only:

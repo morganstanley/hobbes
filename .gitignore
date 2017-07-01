@@ -1,2 +1,2 @@
 *.sw?
-build/
+/build/
