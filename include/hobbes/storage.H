@@ -628,6 +628,9 @@ _HSTORE_DEFINE_PRIMTYS(int32_t,  "int");
 _HSTORE_DEFINE_PRIMTYS(uint32_t, "int");
 _HSTORE_DEFINE_PRIMTYS(int64_t,  "long");
 _HSTORE_DEFINE_PRIMTYS(uint64_t, "long");
+#ifdef __clang__
+_HSTORE_DEFINE_PRIMTYS(size_t, "long");
+#endif
 _HSTORE_DEFINE_PRIMTYS(float,    "float");
 _HSTORE_DEFINE_PRIMTYS(double,   "double");
 
