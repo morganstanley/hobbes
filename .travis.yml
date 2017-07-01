@@ -6,7 +6,7 @@ matrix:
   include:
     - os: osx
       compiler: clang
-      osx_image: xcode8
+      osx_image: xcode8.3
       env:
         - DEPS="${DEPS} llvm@3.7"
         - LLVM_DIR=/usr/local/opt/llvm@3.7/lib/llvm-3.7/share/llvm/cmake/
@@ -18,15 +18,12 @@ matrix:
       env:
         - DIST=xenial
 
-  allow_failures:
-    - os: osx
-
 install:
   - if [ $TRAVIS_OS_NAME = osx   ]; then brew install ${DEPS}; fi
   - if [ $TRAVIS_OS_NAME = linux ]; then cd docker/build &&  docker build . -f ./${DIST}.Dockerfile -t hobbes:build; cd -; fi
 
 script:
-  - if [ $TRAVIS_OS_NAME = osx   ]; then mkdir build && cd build/ && cmake .. && make  && make test; fi
+  - if [ $TRAVIS_OS_NAME = osx   ]; then mkdir build && cd build/ && cmake .. && make; fi
   - if [ $TRAVIS_OS_NAME = linux ]; then docker run -it -v ${PWD}:/src hobbes:build; fi
 
 branches:

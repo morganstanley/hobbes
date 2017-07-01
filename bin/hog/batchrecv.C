@@ -91,6 +91,9 @@ void read(gzbuffer* in, uint8_t* b, size_t n) {
   in->read(b, n);
 }
 
+#ifdef __clang__
+void read(gzbuffer* in, size_t*   n) { read(in, (uint8_t*)n, sizeof(*n)); }
+#endif
 void read(gzbuffer* in, uint32_t* n) { read(in, (uint8_t*)n, sizeof(*n)); }
 void read(gzbuffer* in, uint64_t* n) { read(in, (uint8_t*)n, sizeof(*n)); }
 
