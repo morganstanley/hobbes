@@ -1126,14 +1126,13 @@ DFA removeEquivStates(const DFA& dfa, const EqStates& eqs) {
 
     // patch its transitions to account for merged and shifted states
     for (const auto& m : sd.chars.mapping()) {
-      auto eq = eqs.find(m.second);
-      if (eq != eqs.end()) {
-        rsd.chars.insert(m.first, eq->second);
-      } else {
-        auto ss = shifted.find(m.second);
-        if (ss != shifted.end()) {
-          rsd.chars.insert(m.first, ss->second);
-        }
+      auto  eq    = eqs.find(m.second);
+      state tgt   = (eq == eqs.end()) ? m.second : eq->second;
+      auto  shift = shifted.find(tgt);
+      state stgt  = (shift == shifted.end()) ? tgt : shift->second;
+
+      if (stgt != m.second) {
+        rsd.chars.insert(m.first, stgt);
       }
     }
   }
