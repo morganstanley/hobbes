@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <functional>
 #include <sstream>
+#include <string.h>
 
 namespace hobbes {
 
