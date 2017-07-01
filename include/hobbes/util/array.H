@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <functional>
 #include <sstream>
+#include <string.h>
 
 namespace hobbes {
 
@@ -307,6 +308,69 @@ template <typename T>
     append(&r, ys);
     return r;
   }
+
+
+// basic bit-packed 2D bool array (maybe there's already something that does this job?)
+class bit_table {
+public:
+  inline bit_table() : rowc(0), colc(0), data(0) {
+  }
+  inline bit_table(size_t rowc, size_t colc, bool s) : rowc(rowc), colc(colc) {
+    size_t msz = 1+((rowc*colc)/8);
+    this->data = new uint8_t[msz];
+    memset(this->data, s ? 0xFF : 0, msz);
+  }
+  inline bit_table(const bit_table& rhs) : rowc(rhs.rowc), colc(rhs.colc) {
+    size_t msz = 1+((this->rowc*this->colc)/8);
+    this->data = new uint8_t[msz];
+    memcpy(this->data, rhs.data, msz);
+  }
+  inline bit_table& operator=(const bit_table& rhs) {
+    if (this != &rhs) {
+      delete[] this->data;
+      this->rowc = rhs.rowc;
+      this->colc = rhs.colc;
+      size_t msz = 1+((this->rowc*this->colc)/8);
+      this->data = new uint8_t[msz];
+      memcpy(this->data, rhs.data, msz);
+    }
+    return *this;
+  }
+  inline ~bit_table() {
+    delete[] this->data;
+  }
+  inline bool operator()(size_t r, size_t c) const {
+    size_t  i = (r*this->colc)+c;
+    size_t  k = i / 8;
+    uint8_t b = i % 8;
+    return (this->data[k] & (1 << b)) != 0;
+  }
+  inline void set(size_t r, size_t c, bool f) {
+    size_t  i = (r*this->colc)+c;
+    size_t  k = i / 8;
+    uint8_t b = i % 8;
+
+    if (f) {
+      this->data[k] |= 1 << b;
+    } else {
+      this->data[k] &= ~(1 << b);
+    }
+  }
+  inline size_t rows() const { return this->rowc; }
+  inline size_t cols() const { return this->colc; }
+private:
+  uint8_t* data;
+  size_t   rowc, colc;
+};
+inline std::ostream& operator<<(std::ostream& out, const bit_table& bt) {
+  for (size_t r = 0; r != bt.rows(); ++r) {
+    for (size_t c = 0; c != bt.cols(); ++c) {
+      out << (bt(r,c) ? "1 " : "0 ");
+    }
+    out << "\n";
+  }
+  return out;
+}
 
 }
 

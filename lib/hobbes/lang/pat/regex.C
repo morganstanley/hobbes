@@ -1013,7 +1013,7 @@ void makeDFAFunc(cc* c, const std::string& fname, const DFA& dfa, const LexicalA
 }
 
 // merge char-range mappings where possible and conflate duplicate result states
-void minimizeInto(DFA* dfa, const RStates& fstates, RStates* rstates) {
+void mergeCharRangesAndEqResults(DFA* dfa, const RStates& fstates, RStates* rstates) {
   std::map<RegexIdxs, size_t> results;
 
   for (auto& s : *dfa) {
@@ -1035,6 +1035,108 @@ void minimizeInto(DFA* dfa, const RStates& fstates, RStates* rstates) {
       }
     }
   }
+}
+
+/**************************
+ * compress a DFA by merging equivalent states
+ **************************/
+typedef std::map<state, state> EqStates;
+EqStates findEquivStates(const DFA& dfa) {
+  bit_table eqStates(dfa.size(), dfa.size(), false);
+  for (state s = 0; s < dfa.size(); ++s) { eqStates.set(s, s, true); }
+
+  // identify equivalent states to a fixed point
+  // (probably this could be done more efficiently)
+  bool updatedEQ = true;
+  while (updatedEQ) {
+    updatedEQ = false;
+    for (size_t s0 = 0; s0 < dfa.size(); ++s0) {
+      for (size_t s1 = 0; s1 < s0; ++s1) {
+        // if we already know that two states are equivalent, they're still equivalent
+        if (eqStates(s0, s1)) continue;
+
+        // if two states have different accepting bits, they can't be equivalent
+        if (dfa[s0].acc != dfa[s1].acc) continue;
+
+        // if two states have different capture sets, they can't be equivalent
+        if (dfa[s0].begins != dfa[s1].begins) continue;
+        if (dfa[s0].ends   != dfa[s1].ends)   continue;
+
+        // if the shape of mapping sets differs between states, they can't be equivalent
+        auto m0 = dfa[s0].chars.mapping();
+        auto m1 = dfa[s1].chars.mapping();
+        if (m0.size() != m1.size()) continue;
+
+        // if there is a transition (c,q) in s0 and (c,q') in s1 and q != q', then s0 != s1 (in this cycle)
+        bool tsEq = true;
+        for (size_t i = 0; i < m0.size() && tsEq; ++i) {
+          tsEq = m0[i].first == m1[i].first && eqStates(m0[i].second, m1[i].second);
+        }
+        if (tsEq) {
+          eqStates.set(s0, s1, true);
+          updatedEQ = true;
+        }
+      }
+    }
+  }
+
+  // convert to a representation that makes state substitution explicit
+  EqStates r;
+  for (size_t s0 = 0; s0 < dfa.size(); ++s0) {
+    for (size_t s1 = 0; s1 < s0; ++s1) {
+      if (eqStates(s0, s1)) {
+        r[s0] = s1;
+      }
+    }
+  }
+  return r;
+}
+
+DFA removeEquivStates(const DFA& dfa, const EqStates& eqs) {
+  // after removing states, some states will need to be renumbered
+  // we can infer this mapping from the eqstate mapping
+  std::map<state, state> shifted;
+  size_t accShift = 0;
+  for (auto eq = eqs.begin(); eq != eqs.end();) {
+    state s0 = eq->first+1;
+    ++eq;
+    state s1 = (eq == eqs.end()) ? dfa.size() : eq->first;
+    ++accShift;
+
+    for (state s = s0; s < s1; ++s) {
+      shifted[s] = s - accShift;
+    }
+  }
+
+  // now make a new DFA with eq states removed
+  // all references to states need to be
+  // patched up to account for merging/shifting
+  DFA result;
+  result.reserve(dfa.size()-eqs.size());
+
+  for (size_t s = 0; s < dfa.size(); ++s) {
+    const auto& sd = dfa[s];
+
+    // don't include eliminated states
+    if (eqs.find(s) != eqs.end()) continue;
+
+    // bring this state over to the result
+    result.push_back(dfa[s]);
+    auto& rsd = result.back();
+
+    // patch its transitions to account for merged and shifted states
+    for (const auto& m : sd.chars.mapping()) {
+      auto  eq    = eqs.find(m.second);
+      state tgt   = (eq == eqs.end()) ? m.second : eq->second;
+      auto  shift = shifted.find(tgt);
+      state stgt  = (shift == shifted.end()) ? tgt : shift->second;
+
+      if (stgt != m.second) {
+        rsd.chars.insert(m.first, stgt);
+      }
+    }
+  }
+  return result;
 }
 
 /**************************
@@ -1089,8 +1191,11 @@ CRegexes makeRegexFn(cc* c, const Regexes& regexes, const LexicalAnnotation& roo
   RStates fstates;
   disambiguate(nfa, &dfa, &fstates);
 
-  // minimize the results to avoid redundant work in the caller
-  minimizeInto(&dfa, fstates, &result.rstates);
+  // make all char ranges compact and minimize the results to avoid redundant work in the caller
+  mergeCharRangesAndEqResults(&dfa, fstates, &result.rstates);
+
+  // in case of blowup, minimize the size of this DFA
+  dfa = removeEquivStates(dfa, findEquivStates(dfa));
 
   // translate this DFA to a function
   std::string fname = ".regex." + freshName();
