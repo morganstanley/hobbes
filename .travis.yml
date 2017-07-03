@@ -23,7 +23,7 @@ install:
   - if [ $TRAVIS_OS_NAME = linux ]; then cd docker/build &&  docker build . -f ./${DIST}.Dockerfile -t hobbes:build; cd -; fi
 
 script:
-  - if [ $TRAVIS_OS_NAME = osx   ]; then mkdir build && cd build/ && cmake .. && make; fi
+  - if [ $TRAVIS_OS_NAME = osx   ]; then mkdir build && cd build/ && cmake .. && make && make test; fi
   - if [ $TRAVIS_OS_NAME = linux ]; then docker run -it -v ${PWD}:/src hobbes:build; fi
 
 branches:
