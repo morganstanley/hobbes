@@ -89,6 +89,44 @@ struct showV : public VVisitor<void> { std::ostream& os; showV(std::ostream& os)
 };
 std::ostream& operator<<(std::ostream& os, const V& v) { os << "|"; v.visit(showV(os)); os << "|"; return os; }
 
+// make sure that enums with custom ctor IDs transfer correctly
+enum class CustomIDEnum : uint32_t {
+  Red = 55,
+  Green = 12,
+  Blue  = 257
+};
+std::ostream& operator<<(std::ostream& os, const CustomIDEnum& e) {
+  switch (e) {
+  case CustomIDEnum::Red:   os << "|Red|";   break;
+  case CustomIDEnum::Green: os << "|Green|"; break;
+  case CustomIDEnum::Blue:  os << "|Blue|";  break;
+  default:                  os << "???";     break;
+  }
+  return os;
+}
+
+namespace hobbes { namespace net {
+template <>
+  struct io<CustomIDEnum> {
+    typedef void can_memcpy;
+    static void encode(bytes* out) {
+      w(_HNET_TYCTOR_VARIANT, out);
+      w((size_t)3, out);
+      ws("Red",   out); w((uint32_t)(CustomIDEnum::Red),   out); encode_primty("unit", out);
+      ws("Green", out); w((uint32_t)(CustomIDEnum::Green), out); encode_primty("unit", out);
+      ws("Blue",  out); w((uint32_t)(CustomIDEnum::Blue),  out); encode_primty("unit", out);
+    }
+
+    static std::string describe()                          { return "|Red,Green,Blue|"; }
+    static size_t      size(const CustomIDEnum&)           { return sizeof(CustomIDEnum); }
+    static void        write(int s, const CustomIDEnum& x) { io<uint32_t>::write(s, (uint32_t)x); }
+    static void        read(int s, CustomIDEnum* x)        { io<uint32_t>::read(s, (uint32_t*)x); }
+
+    typedef io<uint32_t>::async_read_state async_read_state;
+    static void prepare(async_read_state* o) { io<uint32_t>::prepare(o); }
+    static bool accum(int s, async_read_state* o, CustomIDEnum* x) { return io<uint32_t>::accum(s, o, (uint32_t*)x); }
+  };
+}}
 
 /**************************
  * the synchronous client networking API
@@ -99,7 +137,8 @@ DEFINE_NET_CLIENT(
   (doit,    std::string(),                  "\\().\"missiles launched\""),
   (misc,    NameCounts(std::string,size_t), "\\n c.[(n++\"_\"++show(i), i) | i <- [0L..c]]"),
   (grpv,    V(Group),                       "\\_.|Frank=\"frank\"|"),
-  (recover, Groups(int,int),                "\\i e.[{id=\"group_\"++show(k),kid=|Jim|,aa=convert(k),bb=convert(k)}|k<-[i..e]]")
+  (recover, Groups(int,int),                "\\i e.[{id=\"group_\"++show(k),kid=|Jim|,aa=convert(k),bb=convert(k)}|k<-[i..e]]"),
+  (eidv,    CustomIDEnum(CustomIDEnum),     "id")
 );
 
 TEST(Net, syncClientAPI) {
@@ -115,6 +154,8 @@ TEST(Net, syncClientAPI) {
 
   Groups ros = { {"group_0",Kid::Jim(),0.0,0},{"group_1",Kid::Jim(),1.0,1},{"group_2",Kid::Jim(),2.0,2},{"group_3",Kid::Jim(),3.0,3},{"group_4",Kid::Jim(),4.0,4} };
   EXPECT_EQ(c.recover(0,4), ros);
+
+  EXPECT_EQ(c.eidv(CustomIDEnum::Green), CustomIDEnum::Green);
 }
 
 /**************************
@@ -126,7 +167,8 @@ DEFINE_ASYNC_NET_CLIENT(
   (doit,    std::string(),                  "\\().\"missiles launched\""),
   (misc,    NameCounts(std::string,size_t), "\\n c.[(n++\"_\"++show(i), i) | i <- [0L..c]]"),
   (grpv,    V(Group),                       "\\_.|Frank=\"frank\"|"),
-  (recover, Groups(int,int),                "\\i e.[{id=\"group_\"++show(k),kid=|Jim|,aa=convert(k),bb=convert(k)}|k<-[i..e]]")
+  (recover, Groups(int,int),                "\\i e.[{id=\"group_\"++show(k),kid=|Jim|,aa=convert(k),bb=convert(k)}|k<-[i..e]]"),
+  (eidv,    CustomIDEnum(CustomIDEnum),     "id")
 );
 void stepAsyncClient(int, void* p) { ((AsyncClient*)p)->step(); }
 
@@ -143,6 +185,8 @@ TEST(Net, asyncClientAPI) {
 
   Groups ros = { {"group_0",Kid::Jim(),0.0,0},{"group_1",Kid::Jim(),1.0,1},{"group_2",Kid::Jim(),2.0,2},{"group_3",Kid::Jim(),3.0,3},{"group_4",Kid::Jim(),4.0,4} };
   c.recover(0,4, [&](const Groups& r) { EXPECT_EQ(r, ros); });
+  
+  c.eidv(CustomIDEnum::Green, [](const CustomIDEnum& x) { EXPECT_EQ(x, CustomIDEnum::Green); });
 
   // run a quick epoll loop to process results asynchronously (expect all results within 30 seconds)
   registerEventHandler(c.fd(), &stepAsyncClient, &c);

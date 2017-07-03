@@ -97,6 +97,15 @@ instance (r={h*t}, BlockCodec h, BlockCodec t) => BlockCodec r where
   readFrom fd = let z = (newPrim() :: r); _ = readFromInto(fd, z) in z
   writeTo fd z = let _ = writeTo(fd, recordHeadValue(z)) in writeTo(fd, recordTail(z))
 
+// enum-like variants
+class CanEnumBlockCodec v
+instance (v=|()+0|) => CanEnumBlockCodec v
+instance (v=|()+t|, CanEnumBlockCodec t) => CanEnumBlockCodec v
+
+instance (CanEnumBlockCodec v) => BlockCodec v where
+  readFrom fd   = unsafeCast({t=fdReadInt(fd)})
+  writeTo  fd x = fdWriteInt(fd, (unsafeCast(x)::{t:int}).t)
+
 // variants
 class BlockReadVar v where
   readVarByTag :: (int, int) -> v
