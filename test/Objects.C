@@ -113,6 +113,10 @@ static cc& c() {
     x.bind("doit",   memberfn(&SIBase::doit));
     x.bind("sid",    sid);
 
+// disable implicit coercions under clang -- for now it seems
+// to be impossible to get __class_info details out of
+// clang's RTTI like we do with GCC
+#ifndef __clang__
     compile(&x, x.readModule(
       "class ObjReader a b where\n"
       "  objRead :: (a, b) -> [char]\n"
@@ -123,10 +127,12 @@ static cc& c() {
       "instance (Show a) => ObjReader () a where\n"
       "  objRead _ i = show(i)\n"
     ));
+#endif
   }
   return x;
 }
 
+#ifndef __clang__
 TEST(Objects, Inheritance) {
   EXPECT_TRUE(c().compileFn<bool()>("l.foo(42, 3.14159, 'c') == 10")());
   EXPECT_TRUE(c().compileFn<bool()>("r.foo(42, 3.14159, 'c') == 20")());
@@ -155,6 +161,7 @@ TEST(Objects, Using) {
   Bottom b(7, 8.0, 9);
   EXPECT_TRUE((c().compileFn<bool(const Bottom*)>("b", "do { b.bar(); b.baz(); objRead(b, 10); objRead(b, 3.14159); return objRead(b, 42) == \"7\" }")(&b)));
 }
+#endif
 
 TEST(Objects, Arrays) {
   EXPECT_EQ(c().compileFn<int()>("aoage((arrobjs(9))[0])")(), 42);
