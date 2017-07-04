@@ -167,7 +167,7 @@ void run(const RunMode& m) {
         out << "install a monitor for the '" << g << "' group" << std::endl;
 
         hobbes::registerEventHandler(
-          hobbes::storage::mqlisten(g),
+          hobbes::storage::makeGroupHost(g),
           [g,&tasks,&m](int s) {
             out << "new connection for '" << g << "'" << std::endl;
 

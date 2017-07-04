@@ -175,6 +175,32 @@ inline int mqlisten(const std::string& fileName) {
   return s;
 }
 
+inline std::string tempDir() {
+  const char* td = 0;
+  if ((td = ::getenv("TMPDIR"))) {
+    if (::strlen(td) > 0 && ::access(td, W_OK) == 0) {
+      return std::string(td);
+    }
+  }
+  if ((td = ::getenv("TMP"))) {
+    if (::strlen(td) > 0 && ::access(td, W_OK) == 0) {
+      return std::string(td);
+    }
+  }
+  if (::access("/var/tmp", W_OK) == 0) {
+    return "/var/tmp";
+  }
+  return "/tmp";
+}
+
+inline int connectGroupHost(const std::string& groupName) {
+  return mqconnect(tempDir() + "/hstore." + groupName + ".sk");
+}
+
+inline int makeGroupHost(const std::string& groupName) {
+  return mqlisten(tempDir() + "/hstore." + groupName + ".sk");
+}
+
 // identify this process/thread
 typedef std::pair<uint64_t, uint64_t> ProcThread;
 
@@ -202,7 +228,7 @@ inline std::string sharedMemName(const std::string& groupName) {
 // register the allocation of a shared memory region with this group name in this thread/process
 inline void registerSHMAlloc(int* mqserver, const std::string& groupName) {
   if (*mqserver < 0) {
-    *mqserver = mqconnect(groupName);
+    *mqserver = connectGroupHost(groupName);
   }
 
   ProcThread pt = thisProcThread();
