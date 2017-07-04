@@ -184,7 +184,7 @@ inline ProcThread thisProcThread() {
 #if defined(__APPLE__) && defined(__MACH__)
   pthread_threadid_np(0, &r.second);
 #else
-  r.second = (uint64_t)gettid();
+  r.second = (uint64_t)syscall(SYS_gettid);
 #endif
   return r;
 }
