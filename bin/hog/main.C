@@ -1,6 +1,7 @@
 
 #include <hobbes/storage.H>
 #include <hobbes/util/str.H>
+#include <hobbes/util/codec.H>
 #include <hobbes/util/time.H>
 #include <thread>
 #include <mutex>
@@ -161,32 +162,69 @@ void run(const RunMode& m) {
   } else {
     std::vector<std::thread*> tasks;
 
-    out << "polling for creation of memory regions" << std::endl;
-    while (true) {
-      for (auto g : m.groups) {
-        try {
-          auto qc = hobbes::storage::consumeGroup(g);
+    for (auto g : m.groups) {
+      try {
+        out << "install a monitor for the '" << g << "' group" << std::endl;
 
-          out << "group '" << g << "' ready, preparing to consume its data" << std::endl;
+        hobbes::registerEventHandler(
+          hobbes::storage::mqlisten(g),
+          [g,&tasks,&m](int s) {
+            out << "new connection for '" << g << "'" << std::endl;
 
-          std::string d = hobbes::str::replace<char>(m.dir, "$GROUP", g);
-          switch (m.t) {
-          case RunMode::local:
-            tasks.push_back(new std::thread(std::bind(&recordLocalData, qc, d)));
-            break;
-          case RunMode::batchsend:
-            tasks.push_back(new std::thread(std::bind(&pushLocalData, qc, g, ensureDirExists(d), m.clevel, m.batchsendsize, m.batchsendtime, m.sendto)));
-            break;
-          default:
-            break;
+            int c = accept(s, 0, 0);
+            if (c != -1) {
+              try {
+                uint32_t version = 0;
+                hobbes::fdread(c, &version);
+                if (version != HSTORE_VERSION) {
+                  out << "disconnected client for '" << g << "' due to version mismatch (expected " << HSTORE_VERSION << " but got " << version << ")" << std::endl;
+                  close(c);
+                } else {
+                  hobbes::registerEventHandler(
+                    c,
+                    [g,&tasks,&m](int c) {
+                      try {
+                        uint8_t cmd=0;
+                        hobbes::fdread(c, (char*)&cmd, sizeof(cmd));
+
+                        uint64_t pid=0,tid=0;
+                        hobbes::fdread(c, (char*)&pid, sizeof(pid));
+                        hobbes::fdread(c, (char*)&tid, sizeof(tid));
+                        out << "queue registered for group '" << g << "' from " << pid << ":" << tid << std::endl;
+
+                        auto qc = hobbes::storage::consumeGroup(g, hobbes::storage::ProcThread(pid, tid));
+
+                        std::string d = hobbes::str::replace<char>(m.dir, "$GROUP", g);
+                        switch (m.t) {
+                        case RunMode::local:
+                          tasks.push_back(new std::thread(std::bind(&recordLocalData, qc, d)));
+                          break;
+                        case RunMode::batchsend:
+                          tasks.push_back(new std::thread(std::bind(&pushLocalData, qc, g, ensureDirExists(d), m.clevel, m.batchsendsize, m.batchsendtime, m.sendto)));
+                          break;
+                        default:
+                          break;
+                        }
+                      } catch (std::exception& ex) {
+                        out << "error on connection for '" << g << "': " << ex.what() << std::endl;
+                        close(c);
+                      }
+                    }
+                  );
+                }
+              } catch (std::exception& ex) {
+                out << "error on connection for '" << g << "': " << ex.what() << std::endl;
+                close(c);
+              }
+            }
           }
-        } catch (std::exception&) {
-          // we might fail to consume the group
-          // just try again later
-        }
+        );
+      } catch (std::exception& ex) {
+        out << "error while installing a monitor for '" << g << "': " << ex.what() << std::endl;
+        throw;
       }
-      sleep(10);
     }
+    hobbes::runEventLoop();
   }
 }
 
