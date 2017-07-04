@@ -181,7 +181,11 @@ typedef std::pair<uint64_t, uint64_t> ProcThread;
 inline ProcThread thisProcThread() {
   ProcThread r;
   r.first = (uint64_t)getpid();
+#if defined(__APPLE__) && defined(__MACH__)
   pthread_threadid_np(0, &r.second);
+#else
+  r.second = (uint64_t)gettid();
+#endif
   return r;
 }
 
