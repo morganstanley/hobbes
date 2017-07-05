@@ -93,9 +93,13 @@ struct SystemWatch {
     (
       fd,
       [](int fd, void* self) {
-        char buf[sizeof(struct inotify_event) + NAME_MAX + 1];
-        read(fd, buf, sizeof(buf));
-        sweepFileWatch(((SystemWatch*)self)->fileWatches[((inotify_event*)buf)->wd]);
+        char buf[sizeof(inotify_event) + NAME_MAX + 1];
+        inotify_event* event = (inotify_event*)buf;
+        read(fd, event, sizeof(inotify_event));
+        if (event->len > 0 ) {
+          read(fd, event->name, event->len);
+        }
+        sweepFileWatch(((SystemWatch*)self)->fileWatches[event->wd]);
       },
       this,
       false
