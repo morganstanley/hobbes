@@ -1259,12 +1259,14 @@ template <>
 // make a function for describing store payload types
 template <typename ... Ts>
   struct hstore_payload_types {
+    typedef void head_type;
     static const size_t count = 0;
     static void encode(size_t,bytes*) {}
     static std::string describe() { return ""; }
   };
 template <typename T, typename ... Ts>
   struct hstore_payload_types<T,Ts...> {
+    typedef T head_type;
     static const size_t count = 1 + hstore_payload_types<Ts...>::count;
     static void encode(size_t f, bytes* out) {
       char fn[32];
@@ -1289,12 +1291,19 @@ template <typename TyList>
     if (e) {
       size_t localArity = TyList::count;
 
-      if (localArity > 0) {
+      // don't bother to entuple log argument lists if there's just one argument
+      switch (localArity) {
+      case 0:
+        encode_primty("unit", e);
+        break;
+      case 1:
+        store<typename TyList::head_type>::encode(e);
+        break;
+      default:
         w(_HSTORE_TYCTOR_STRUCT, e);
         w(localArity, e);
         TyList::encode(0, e);
-      } else {
-        encode_primty("unit", e);
+        break;
       }
     }
 

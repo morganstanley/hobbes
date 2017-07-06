@@ -92,8 +92,8 @@ static void* storageFunction(cc*c, const MonoTypePtr& ty, const MonoTypePtr& sto
     return c->unsafeCompileFn(
       primty("unit"),
       str::strings("f", "v", "d"),
-      list(tapp(primty("file"), list(tlong(1), primty("unit"))), ty, entuple(storageType)),
-      fncall(var("storeInto", la), list(var("f", la), mkrecord(list(MkRecord::FieldDef(".f0", var("v", la))), la), var("d", la)), la)
+      list(tapp(primty("file"), list(tlong(1), primty("unit"))), entuple(ty), entuple(storageType)),
+      fncall(var("storeInto", la), list(var("f", la), var("v", la), var("d", la)), la)
     );
   }
 }
@@ -104,7 +104,6 @@ StoredSeries::StoredSeries(cc* c, writer* outputFile, const std::string& fieldNa
   this->storedType = storeAs(c, ty);
   this->storageSize = storageSizeOf(this->storedType);
   this->batchType   = arrayty(this->storedType);
-
   this->storeFn = (StoreFn)storageFunction(c, ty, this->storedType, LexicalAnnotation::null());
 
   try {
@@ -137,10 +136,7 @@ void StoredSeries::record(const void* v, bool signal) {
   //  (allocate a new batch cell if necessary)
   this->batchHead += this->storageSize;
 
-  uint64_t* sz = (uint64_t*)this->batchData;
-  *sz += 1;
-
-  if (*sz == this->batchSize) {
+  if (++(*((uint64_t*)this->batchData)) == this->batchSize) {
     void* oldBatchData = this->batchData;
     consBatchNode(this->batchNode);
     this->outputFile->unsafeUnloadArray(oldBatchData);
@@ -179,7 +175,7 @@ void StoredSeries::bindAs(cc* c, const std::string& vname) {
         nla
       )
     );
-  } else {
+  } else if(is<Record>(this->recordType)) {
     // vname = \x.unsafeWriteToSeries(this, unsafeCast(x :: ty))
     c->define(
       vname,
@@ -188,6 +184,22 @@ void StoredSeries::bindAs(cc* c, const std::string& vname) {
           constant((long)this, nla),
           fncall(var("unsafeCast", nla), list(
             assume(var("x", nla), this->recordType, nla)),
+            nla
+          )),
+          nla
+        ),
+        nla
+      )
+    );
+  } else {
+    // vname = \x.unsafeWriteToSeries(this, unsafeCast({x=x :: ty}))
+    c->define(
+      vname,
+      fn("x",
+        fncall(var("unsafeWriteToSeries", nla), list(
+          constant((long)this, nla),
+          fncall(var("unsafeCast", nla), list(
+            mktuple(assume(var("x", nla), this->recordType, nla), nla)),
             nla
           )),
           nla
