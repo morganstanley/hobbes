@@ -91,7 +91,7 @@ void showUsage() {
 RunMode config(int argc, const char** argv) {
   RunMode r;
   r.t   = RunMode::local;
-  r.dir = "./$GROUP/data-";
+  r.dir = "./$GROUP/$DATE/data";
 
   if (argc == 1) {
     showUsage();
@@ -154,6 +154,22 @@ RunMode config(int argc, const char** argv) {
   return r;
 }
 
+std::string instantiateDir(const std::string& groupName, const std::string& dir) {
+  // instantiate group name
+  std::string x = hobbes::str::replace<char>(dir, "$GROUP", groupName);
+
+  // instantiate date
+  time_t now = ::time(0);
+  if (const tm* t = localtime(&now)) {
+    std::ostringstream ss;
+    ss << t->tm_year + 1900 << "." << (t->tm_mon < 10 ? "0" : "") << t->tm_mon + 1 << "." << (t->tm_mday < 10 ? "0" : "") << t->tm_mday;
+    x = hobbes::str::replace<char>(x, "$DATE", ss.str());
+  }
+
+  // that's all we will substitute
+  return x;
+}
+
 void evalGroupHostConnection(const std::string& groupName, const RunMode& m, std::vector<std::thread>* ts, int c) {
   try {
     uint8_t cmd=0;
@@ -166,7 +182,7 @@ void evalGroupHostConnection(const std::string& groupName, const RunMode& m, std
   
     auto qc = hobbes::storage::consumeGroup(groupName, hobbes::storage::ProcThread(pid, tid));
   
-    std::string d = hobbes::str::replace<char>(m.dir, "$GROUP", groupName);
+    std::string d = instantiateDir(groupName, m.dir);
     switch (m.t) {
     case RunMode::local:
       ts->push_back(std::thread(std::bind(&recordLocalData, qc, d)));

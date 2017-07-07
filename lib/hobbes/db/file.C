@@ -1235,15 +1235,11 @@ std::string withUniqueFilenameBy(const std::string& fprefix, const std::string& 
   // the directory that this file is in can be created if necessary
   ensureDirExists(str::rsplit(fprefix, "/").first);
 
-  // we'll want the current date/time in the name
-  time_t now = ::time(0);
-  const tm* t = localtime(&now);
-  
   // keep trying for new filenames until we get one that's distinct
   size_t inst = 0;
   while (true) {
     std::ostringstream ss;
-    ss << fprefix << t->tm_year + 1900 << "." << (t->tm_mon < 9 ? "0" : "") << t->tm_mon + 1 << "." << t->tm_mday << "-" << inst << fsuffix;
+    ss << fprefix << "-" << inst << fsuffix;
     if (fileOp(ss.str())) {
       return ss.str();
     }
