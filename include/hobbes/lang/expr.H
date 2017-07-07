@@ -773,6 +773,13 @@ inline ExprPtr mkrecord(const MkRecord::FieldDefs& fds, const LexicalAnnotation&
   }
 }
 
+// maybe generalize to make a tuple expr of any size
+inline ExprPtr mktuple(const ExprPtr& e, const LexicalAnnotation& la) {
+  MkRecord::FieldDefs fs;
+  fs.push_back(MkRecord::FieldDef(".f0", e));
+  return mkrecord(fs, la);
+}
+
 inline ExprPtr proj(const ExprPtr& rec, const Record* rty, const std::string& field, const LexicalAnnotation& la) {
   ExprPtr p(new Proj(rec, field, la));
   p->type(qualtype(rec->type()->constraints(), rty->member(field)));
