@@ -15,10 +15,6 @@
 #include "session.H"
 #include "netio.H"
 
-#ifdef BUILD_LINUX
-#include <sys/epoll.h>
-#endif
-
 using namespace hobbes;
 
 namespace hog {
@@ -180,42 +176,23 @@ void runRecvConnection(int c, std::string dir) {
   }
 }
 
-#ifdef BUILD_LINUX
 void runRecvServer(int socket, std::string dir) {
-  int epfd = epoll_create(1);
-  if (epfd < 0) {
-    out << "Failed to allocate epoll FD: " << strerror(errno) << std::endl;
-    exit(-1);
-  }
+  std::vector<std::thread> cthreads;
 
-  struct epoll_event evt;
-  memset(&evt, 0, sizeof(evt));
-  evt.events   = EPOLLIN | EPOLLPRI | EPOLLERR;
-  evt.data.fd  = socket;
-  evt.data.ptr = 0;
-
-  if (epoll_ctl(epfd, EPOLL_CTL_ADD, socket, &evt) != 0) {
-    out << "Failed to add FD to epoll set: " << strerror(errno) << std::endl;
-  }
-
-  std::vector<std::thread*> cthreads;
-
-  while (true) {
-    struct epoll_event evt;
-    int fds = epoll_wait(epfd, &evt, 1, -1);
-    if (fds > 0) {
+  hobbes::registerEventHandler(
+    socket,
+    [&cthreads,dir](int socket) {
       // accept and make a new thread for this connection
       // (not the most efficient way but good for a start)
       int c = accept(socket, 0, 0);
       if (c < 0) {
         out << "failed to accept network connection: " << strerror(errno) << std::endl;
       } else {
-        cthreads.push_back(new std::thread(std::bind(&runRecvConnection, c, dir)));
+        cthreads.push_back(std::thread(std::bind(&runRecvConnection, c, dir)));
       }
-    } else if (fds < 0 && errno != EINTR) {
-      out << "epoll_wait error: " << strerror(errno) << std::endl;
     }
-  }
+  );
+  hobbes::runEventLoop();
 }
 
 std::thread pullRemoteDataT(const std::string& dir, const std::string& listenport) {
@@ -232,15 +209,6 @@ bool pullRemoteData(const std::string& dir, const std::string& listenport) {
     return false;
   }
 }
-#else
-std::thread pullRemoteDataT(const std::string& dir, const std::string& listenport) {
-  throw std::runtime_error("batchrecv nyi");
-}
-
-bool pullRemoteData(const std::string& dir, const std::string& listenport) {
-  throw std::runtime_error("batchrecv nyi");
-}
-#endif
 
 }
 

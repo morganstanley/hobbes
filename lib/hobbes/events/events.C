@@ -9,21 +9,26 @@
 #include <utility>
 
 #ifdef BUILD_LINUX
-
 #include <sys/epoll.h>
+#elif defined(BUILD_OSX)
+#include <sys/event.h>
+#endif
 
 namespace hobbes {
 
 struct eventcbclosure {
-  eventcbclosure(int fd, eventhandler fn, void* ud) : fd(fd), fn(fn), ud(ud) { }
+  eventcbclosure(int fd, const std::function<void(int)>& fn) : fd(fd), fn(fn) { }
 
-  int          fd;
-  eventhandler fn;
-  void*        ud;
+  int                      fd;
+  std::function<void(int)> fn;
 };
-
 typedef std::map<int, eventcbclosure*> EventClosures;
 
+void registerEventHandler(int fd, eventhandler fn, void* ud, bool f) {
+  registerEventHandler(fd, [fn,ud](int c){fn(c,ud);}, f);
+}
+
+#ifdef BUILD_LINUX
 __thread bool           epInitialized = false;
 __thread int            epFD          = 0;
 __thread EventClosures* epClosures    = 0;
@@ -62,10 +67,10 @@ void unregisterEventHandler(int fd) {
   }
 }
 
-void registerEventHandler(int fd, eventhandler fn, void* ud, bool) {
+void registerEventHandler(int fd, const std::function<void(int)>& fn, bool) {
   int epfd = threadEPollFD();
 
-  eventcbclosure* c = new eventcbclosure(fd, fn, ud);
+  eventcbclosure* c = new eventcbclosure(fd, fn);
   (*epClosures)[fd] = c;
 
   struct epoll_event evt;
@@ -96,7 +101,7 @@ bool stepEventLoop() {
     if (fds > 0) {
       for (size_t fd = 0; fd < fds; ++fd) {
         eventcbclosure* c = (eventcbclosure*)evts[fd].data.ptr;
-        (c->fn)(c->fd, c->ud);
+        (c->fn)(c->fd);
         resetMemoryPool();
       }
     } else if (fds < 0 && errno != EINTR) {
@@ -158,7 +163,7 @@ void runEventLoop(int microsecondDuration) {
     if (fds > 0) {
       for (size_t fd = 0; fd < fds; ++fd) {
         eventcbclosure* c = (eventcbclosure*)evts[fd].data.ptr;
-        (c->fn)(c->fd, c->ud);
+        (c->fn)(c->fd);
         resetMemoryPool();
       }
     }
@@ -166,23 +171,7 @@ void runEventLoop(int microsecondDuration) {
   } while (t < tf);
 }
 
-}
-
 #elif defined(BUILD_OSX)
-
-#include <sys/event.h>
-
-namespace hobbes {
-
-struct eventcbclosure {
-  eventcbclosure(int fd, eventhandler fn, void* ud) : fd(fd), fn(fn), ud(ud) { }
-
-  int          fd;
-  eventhandler fn;
-  void*        ud;
-};
-
-typedef std::map<int, eventcbclosure*> EventClosures;
 
 __thread bool           kqInitialized = false;
 __thread int            kqFD          = 0;
@@ -211,10 +200,10 @@ void unregisterEventHandler(int fd) {
   }
 }
 
-void registerEventHandler(int fd, eventhandler fn, void* ud, bool vn) {
+void registerEventHandler(int fd, const std::function<void(int)>& fn, bool vn) {
   int kqfd = threadKQFD();
 
-  eventcbclosure* c = new eventcbclosure(fd, fn, ud);
+  eventcbclosure* c = new eventcbclosure(fd, fn);
   (*kqClosures)[fd] = c;
 
   struct kevent ke;
@@ -236,7 +225,7 @@ bool stepEventLoop() {
     if (fds > 0) {
       for (size_t fd = 0; fd < fds; ++fd) {
         eventcbclosure* c = (eventcbclosure*)evts[fd].udata;
-        (c->fn)(c->fd, c->ud);
+        (c->fn)(c->fd);
         resetMemoryPool();
       }
       return true;
@@ -273,7 +262,7 @@ void runEventLoop(int microsecondDuration) {
     if (fds > 0) {
       for (size_t fd = 0; fd < fds; ++fd) {
         eventcbclosure* c = (eventcbclosure*)evts[fd].udata;
-        (c->fn)(c->fd, c->ud);
+        (c->fn)(c->fd);
         resetMemoryPool();
       }
     }
@@ -281,7 +270,6 @@ void runEventLoop(int microsecondDuration) {
   } while (t < tf);
 }
 
-}
-
-
 #endif
+
+}

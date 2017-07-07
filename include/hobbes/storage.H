@@ -18,6 +18,7 @@
 #include <tuple>
 #include <functional>
 #include <iostream>
+#include <sstream>
 #include <stdexcept>
 #include <stdlib.h>
 #include <stdint.h>
@@ -27,6 +28,11 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
+#include <sys/un.h>
+#include <sys/socket.h>
+#include <sys/ioctl.h>
+#include <netinet/in.h>
+#include <netdb.h>
 #include <fcntl.h>
 
 // a few things have to be OS-specific here
@@ -93,9 +99,143 @@ static inline void uxchg(volatile uint32_t* px, uint32_t nx) {
 }
 #define xchg __sync_lock_test_and_set
 
-// the convention for deriving shared memory region names from group names
+// define a local socket for registering new storage queues
+inline void mqwrite(int fd, const uint8_t* x, size_t len) {
+  size_t i = 0;
+  while (i < len) {
+    ssize_t c = write(fd, x + i, len - i);
+    if (c < 0) {
+      if (errno != EINTR) {
+        throw std::runtime_error("Couldn't write to socket: " + std::string(strerror(errno)));
+      }
+    } else {
+      i += c;
+    }
+  }
+}
+
+inline int mqconnect(const std::string& fileName) {
+  int r = socket(AF_UNIX, SOCK_STREAM, 0);
+  if (r == -1) {
+    throw std::runtime_error("Unable to allocate socket: " + std::string(strerror(errno)));
+  }
+  
+  sockaddr_un addr;
+  memset(&addr, 0, sizeof(addr));
+  addr.sun_family = AF_UNIX;
+  snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", fileName.c_str());
+ 
+  sockaddr* saddr = (sockaddr*)&addr;
+  size_t    len   = sizeof(addr);
+  if (connect(r, saddr, len) == -1) {
+    std::string emsg = "Unable to connect socket: " + std::string(strerror(errno));
+    close(r);
+    throw std::runtime_error(emsg);
+  }
+
+  fd_set wd;
+  FD_ZERO(&wd);
+  FD_SET(r, &wd);
+  if (select(r + 1, 0, &wd, 0, 0) == -1) {
+    std::string emsg = "Failed to connect socket while waiting for writeability: " + std::string(strerror(errno));
+    close(r);
+    throw std::runtime_error(emsg);
+  }
+
+  uint32_t version = HSTORE_VERSION;
+  mqwrite(r, (const uint8_t*)&version, sizeof(version));
+  return r;
+}
+
+inline int mqlisten(const std::string& fileName) {
+  int s = socket(AF_UNIX, SOCK_STREAM, 0);
+  if (s == -1) {
+    throw std::runtime_error("Unable to allocate socket: " + std::string(strerror(errno)));
+  }
+  
+  sockaddr_un addr;
+  memset(&addr, 0, sizeof(addr));
+  addr.sun_family = AF_UNIX;
+  unlink(fileName.c_str());
+  snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", fileName.c_str());
+
+  if (bind(s, (sockaddr*)&addr, sizeof(addr)) == -1) {
+    std::string emsg = "Unable to bind socket to file: " + fileName + " (" + std::string(strerror(errno)) + ")";
+    close(s);
+    throw std::runtime_error(emsg);
+  }
+
+  // and then start to listen
+  if (listen(s, SOMAXCONN) == -1) {
+    std::string emsg = "Unable to listen socket on file: " + fileName + " (" + std::string(strerror(errno)) + ")";
+    close(s);
+    throw std::runtime_error(emsg);
+  }
+
+  return s;
+}
+
+inline std::string tempDir() {
+  const char* td = 0;
+  if ((td = ::getenv("TMPDIR"))) {
+    if (::strlen(td) > 0 && ::access(td, W_OK) == 0) {
+      return std::string(td);
+    }
+  }
+  if ((td = ::getenv("TMP"))) {
+    if (::strlen(td) > 0 && ::access(td, W_OK) == 0) {
+      return std::string(td);
+    }
+  }
+  if (::access("/var/tmp", W_OK) == 0) {
+    return "/var/tmp";
+  }
+  return "/tmp";
+}
+
+inline int connectGroupHost(const std::string& groupName) {
+  return mqconnect(tempDir() + "/hstore." + groupName + ".sk");
+}
+
+inline int makeGroupHost(const std::string& groupName) {
+  return mqlisten(tempDir() + "/hstore." + groupName + ".sk");
+}
+
+// identify this process/thread
+typedef std::pair<uint64_t, uint64_t> ProcThread;
+
+inline ProcThread thisProcThread() {
+  ProcThread r;
+  r.first = (uint64_t)getpid();
+#if defined(__APPLE__) && defined(__MACH__)
+  pthread_threadid_np(0, &r.second);
+#else
+  r.second = (uint64_t)syscall(SYS_gettid);
+#endif
+  return r;
+}
+
+// derive a name for a shared memory region with this group name in this thread/process
+inline std::string sharedMemName(const std::string& groupName, const ProcThread& pt) {
+  std::ostringstream ss;
+  ss << "/" << groupName << "." << pt.first << "." << pt.second;
+  return ss.str();
+}
 inline std::string sharedMemName(const std::string& groupName) {
-  return "/hstore." + groupName;
+  return sharedMemName(groupName, thisProcThread());
+}
+
+// register the allocation of a shared memory region with this group name in this thread/process
+inline void registerSHMAlloc(int* mqserver, const std::string& groupName) {
+  if (*mqserver < 0) {
+    *mqserver = connectGroupHost(groupName);
+  }
+
+  ProcThread pt = thisProcThread();
+  uint8_t msg[1+sizeof(ProcThread)];
+  msg[0] = 0;
+  memcpy(msg+1, &pt, sizeof(ProcThread));
+  mqwrite(*mqserver, msg, sizeof(msg));
 }
 
 // between queue readers and writers, there are only three states of concern:
@@ -375,43 +515,41 @@ struct QueueConnection {
   size_t   pagesz;
 };
 
-inline QueueConnection consumeGroup(const std::string& gname) {
-  std::string shmname = sharedMemName(gname);
-
+inline QueueConnection consumeQueue(const std::string& shmname) {
   // sections of shared memory are aligned to page boundaries
   long pagesz = sysconf(_SC_PAGESIZE);
   if (pagesz == -1) {
-    throw std::runtime_error("Failed to query system page size for '" + gname + "': " + strerror(errno));
+    throw std::runtime_error("Failed to query system page size for '" + shmname + "': " + strerror(errno));
   }
 
   // see if we can open this shared memory region
   int shfd = shm_open(shmname.c_str(), O_RDWR, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
   if (shfd == -1) {
-    throw std::runtime_error("Failed to open shared memory for '" + gname + "': " + strerror(errno));
+    throw std::runtime_error("Failed to open shared memory for '" + shmname + "': " + strerror(errno));
   }
 
   // make sure that the region has been sized
   struct stat msb;
   if (fstat(shfd, &msb) < 0) {
     close(shfd);
-    throw std::runtime_error("Failed to stat shared memory for '" + gname + "': " + strerror(errno));
+    throw std::runtime_error("Failed to stat shared memory for '" + shmname + "': " + strerror(errno));
   }
   if (msb.st_size <= 0) {
     close(shfd);
-    throw std::runtime_error("Shared memory for '" + gname + "' is not ready");
+    throw std::runtime_error("Shared memory for '" + shmname + "' is not ready");
   }
 
   // map memory for this data, ensure it is in a good state
   uint8_t* mem = (uint8_t*)mmap(0, msb.st_size, PROT_READ | PROT_WRITE, MAP_SHARED, shfd, 0);
   if (mem == MAP_FAILED) {
     close(shfd);
-    throw std::runtime_error("Failed to map bytes out of shared memory for '" + gname + "': " + strerror(errno));
+    throw std::runtime_error("Failed to map bytes out of shared memory for '" + shmname + "': " + strerror(errno));
   }
 
   if (!((ShQueueHeader*)mem)->ready) {
     munmap(mem, msb.st_size);
     close(shfd);
-    throw std::runtime_error("Not ready to consume shared memory for '" + gname + "'");
+    throw std::runtime_error("Not ready to consume shared memory for '" + shmname + "'");
   }
 
   // ok, if we get here then we can take ownership of the queue (hence unlink it)
@@ -423,6 +561,10 @@ inline QueueConnection consumeGroup(const std::string& gname) {
   c.datasz = msb.st_size;
   c.pagesz = pagesz;
   return c;
+}
+
+inline QueueConnection consumeGroup(const std::string& gname, const ProcThread& pt) {
+  return consumeQueue(sharedMemName(gname, pt));
 }
 
 // read data out of shared memory
@@ -454,9 +596,6 @@ public:
     this->cfg.readerIndex = &sqd->ri;
     this->cfg.writerIndex = &sqd->wi;
     this->cfg.data        = qc.data + metaLen + sizeof(ShQueueData);
-  }
-
-  reader(const std::string& gname) : reader(consumeGroup(gname)) {
   }
 
   ~reader() {
@@ -1346,7 +1485,7 @@ enum CommitMethod {
   ManualCommit
 };
 
-template <CommitMethod cm>
+template <typename Name, CommitMethod cm>
 struct StorageGroup {
   struct StmtData {
     tydescfn    tdesc;
@@ -1359,15 +1498,14 @@ struct StorageGroup {
   typedef std::map<std::string, StmtData> StorageStatements;
 
   StorageStatements* statements;
-  const char*        name;
   PipeQOS            qos;
   size_t             mempages;
-  writer*            pipeData;
-  wpipe*             pipe;
+  int                mqserver;
+
+  static thread_local wpipe* pipe;
 
   ~StorageGroup() {
     delete this->statements;
-    delete this->pipeData;
     delete this->pipe;
   }
 
@@ -1395,21 +1533,24 @@ struct StorageGroup {
   }
 
   wpipe& out() {
-    assert(this->pipe);
-    return *this->pipe;
-  }
+    if (_HSTORE_LIKELY(this->pipe != 0)) {
+      return *this->pipe;
+    }
 
-  inline void init() {
-    assert(!this->pipe);
-
+    // allocate a shared memory queue for this group, register it with the group server
     bytes meta;
     prepareMeta(&meta);
     
     size_t pagesz = sysconf(_SC_PAGESIZE);
     size_t pagec  = 1 + (meta.size() / pagesz) + std::max<size_t>(this->mempages, 10);
 
-    this->pipeData = new writer(meta, sharedMemName(this->name), pagesz, pagec);
-    this->pipe     = new wpipe(this->pipeData, this->qos);
+    this->pipe = new wpipe(new writer(meta, sharedMemName(Name::str()), pagesz, pagec), this->qos);
+    registerSHMAlloc(&this->mqserver, Name::str());
+    return *this->pipe;
+  }
+
+  inline void init() {
+    out();
   }
 
   inline void commit() {
@@ -1481,6 +1622,8 @@ struct StorageGroup {
     return d.id;
   }
 };
+template <typename Name, CommitMethod cm>
+  thread_local wpipe* StorageGroup<Name, cm>::pipe = 0;
 
 // write a storage statement with payload into a pipe
 template <typename ... Ts>
@@ -1498,8 +1641,8 @@ template <typename T, typename ... Ts>
     }
   };
 
-template <typename ... Ts>
-  inline bool write(StorageGroup<AutoCommit>* g, uint32_t id, const Ts&... xs) {
+template <typename GName, typename ... Ts>
+  inline bool write(StorageGroup<GName, AutoCommit>* g, uint32_t id, const Ts&... xs) {
     wpipe& p = g->out();
     if (!p.hasSpaceFor(sizeof(uint32_t) + serialize_values<Ts...>::size(xs...))) {
       g->commit();
@@ -1507,8 +1650,8 @@ template <typename ... Ts>
     return store<uint32_t>::write(p, id) &&
            serialize_values<Ts...>::write(p, xs...);
   }
-template <typename ... Ts>
-  inline bool write(StorageGroup<ManualCommit>* g, uint32_t id, const Ts&... xs) {
+template <typename GName, typename ... Ts>
+  inline bool write(StorageGroup<GName, ManualCommit>* g, uint32_t id, const Ts&... xs) {
     wpipe& p = g->out();
     return store<uint32_t>::write(p, id) &&
            serialize_values<Ts...>::write(p, xs...);
@@ -1541,8 +1684,8 @@ template <size_t N>
   }
 
 // create statement groups
-#define DECLARE_STORAGE_GROUP(NAME, cm)            extern ::hobbes::storage::StorageGroup<cm> NAME
-#define DEFINE_STORAGE_GROUP(NAME, pagec, qos, cm) ::hobbes::storage::StorageGroup<cm> NAME = { 0, #NAME, qos, pagec, 0, 0 }
+#define DECLARE_STORAGE_GROUP(NAME, cm)            extern ::hobbes::storage::StorageGroup<_HSTORE_TSTR(#NAME),cm> NAME
+#define DEFINE_STORAGE_GROUP(NAME, pagec, qos, cm) ::hobbes::storage::StorageGroup<_HSTORE_TSTR(#NAME),cm> NAME = { 0, qos, pagec, -1 }
 
 // record some data
 #define APPLY_HSTORE_STMT(GROUP, NAME, FLAGS, FMTSTR, ARGS...) \
@@ -1688,10 +1831,6 @@ inline void runReadProcess(const QueueConnection& qc, const std::function<std::f
       break;
     }
   }
-}
-
-inline void runReadProcess(const std::string& qname, const std::function<std::function<void(Transaction&)>(PipeQOS, CommitMethod, const statements&)>& initF) {
-  runReadProcess(consumeGroup(qname), initF);
 }
 
 }}

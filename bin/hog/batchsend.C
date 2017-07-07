@@ -3,6 +3,7 @@
 #include <hobbes/storage.H>
 #include <hobbes/ipc/net.H>
 #include <hobbes/util/str.H>
+#include <hobbes/util/codec.H>
 #include <hobbes/util/os.H>
 #include <hobbes/util/perf.H>
 
@@ -20,7 +21,21 @@
 #include <sys/sendfile.h>
 #else
 ssize_t sendfile(int toFD, int fromFD, off_t* o, size_t sz) {
-  return -1;
+  char buf[4096];
+  size_t i = 0;
+  do {
+    ssize_t di = read(fromFD, buf, sizeof(buf));
+
+    if (di < 0) {
+      if (errno != EINTR) { return -1; }
+    } else if (di == 0) {
+      return 0;
+    } else {
+      try { hobbes::fdwrite(toFD, buf, di); } catch (std::exception&) { return -1; }
+      *o += di;
+    }
+  } while (*o < sz);
+  return 0;
 }
 #endif
 
