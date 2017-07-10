@@ -3,6 +3,7 @@
 #include <hobbes/ipc/net.H>
 #include <hobbes/util/array.H>
 #include <hobbes/util/str.H>
+#include <hobbes/util/os.H>
 
 #include <iostream>
 #include <fstream>
@@ -387,7 +388,7 @@ void printASMTable(const str::seq& insts, const str::seqs& args, unsigned int ma
   unsigned int mc = digitLen(insts.size());
   unsigned int mn = str::maxSize(0, insts);
 
-  std::cout << resetfmt() << setbold();
+  std::cout << resetfmt();
 
   for (unsigned int i = 0; i < std::min<size_t>(insts.size(), args.size()); ++i) {
     if ((i % 2) == 0) {
@@ -397,7 +398,8 @@ void printASMTable(const str::seq& insts, const str::seqs& args, unsigned int ma
     }
 
     // show the line number
-    std::cout << std::string(mc - digitLen(i), ' ')
+    std::cout << setbold()
+              << std::string(mc - digitLen(i), ' ')
               << setfgc(colors.linenumfg) << i << setfgc(colors.linenumdelimfg) << ": ";
 
     // show the instruction
@@ -414,7 +416,7 @@ void printASMTable(const str::seq& insts, const str::seqs& args, unsigned int ma
     }
 
     // next
-    std::cout << std::string(maxlen - fmtLen(argl), ' ') << std::endl;
+    std::cout << std::string(maxlen - fmtLen(argl), ' ') << resetfmt() << std::endl;
   }
 
   std::cout << resetfmt();
@@ -423,7 +425,11 @@ void printASMTable(const str::seq& insts, const str::seqs& args, unsigned int ma
 void printASM(void* p, size_t len) {
   std::string fn = saveData(p, len);
   std::ostringstream ss;
+#ifdef BUILD_LINUX
   runProcess("objdump -D -b binary -m i386 -M intel-mnemonic -M x86-64 --no-show-raw-insn \"" + fn + "\"", ss);
+#else
+  runProcess("ndisasm -u \"" + fn + "\"", ss);
+#endif
   unlink(fn.c_str());
 
   std::istringstream in(ss.str());
@@ -435,12 +441,19 @@ void printASM(void* p, size_t len) {
 
   while (std::getline(in, mline)) {
     ++li;
+#ifdef BUILD_LINUX
     // ignore the objdump output header
     if (li >= 8) {
       str::pair i = str::lsplit(mline, ":");
       str::pair x = str::lsplit(i.second, " ");
       insts.push_back(str::trim(x.first));
       args.push_back(str::csplit(str::trim(x.second), ","));
+#else
+    {
+      str::pair xinst = str::lsplit(str::trim(str::lsplit(mline.substr(10), " ").second), " ");
+      insts.push_back(str::trim(xinst.first));
+      args.push_back(str::csplit(str::trim(xinst.second), ","));
+#endif
 
       maxlen = std::max<unsigned int>(maxlen, fmtLen(args.back()));
     }
@@ -620,12 +633,13 @@ int main(int argc, char** argv) {
     } else if (!args.exitAfterEval) {
       repl(&eval);
     }
+    std::cout << resetfmt();
     return 0;
   } catch (hobbes::annotated_error& ae) {
     printAnnotatedError(ae);
     return -1;
   } catch (std::exception& ex) {
-    std::cout << "Fatal error: " << ex.what() << std::endl;
+    std::cout << "Fatal error: " << ex.what() << resetfmt() << std::endl;
     return -1;
   }
 }
