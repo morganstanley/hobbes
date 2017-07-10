@@ -194,7 +194,7 @@ char** completions(const char* pfx, int start, int end) {
     completionMatches = eval->completionsFor(pfx);
     return rl_completion_matches((char*)pfx, &completionStep);
   } else {
-#if BUILD_LINUX
+#ifdef BUILD_LINUX
     rl_bind_key('\t', rl_abort);
 #endif
     return 0;
