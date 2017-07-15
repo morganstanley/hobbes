@@ -230,10 +230,6 @@ public:
 
   // bind external functions
   void bindExternFunction(const std::string& fname, const MonoTypePtr& fty, void* fn);
-
-  // have we already loaded the standard prelude?
-  // (this is a bit of a hack to avoid some automatic translations that assume prelude functions _within_ the prelude)
-  bool preludeLoaded() const;
 private:
   // the JIT engine that compiles our monotyped expressions
   jitcc jit;
@@ -252,9 +248,6 @@ private:
 
   // global variables
   void definePolyValue(const std::string& vname, const ExprPtr& unsweetExp);
-
-  // the bound root function environment
-  bool booted;
 
   // track C++ object relationships
   ObjsPtr objs;

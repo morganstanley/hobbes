@@ -31,6 +31,8 @@ void upd(const ConstraintPtr&, const HasField&);
 
 // a "has-field eliminator" knows how to resolve a "HasField" constraint at a particular (category of) type
 struct HFEliminator {
+  virtual ~HFEliminator() = default;
+
   // is this HF instance eliminable?
   virtual bool satisfied(const TEnvPtr& tenv, const HasField&, Definitions*) const = 0;
 

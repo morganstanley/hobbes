@@ -160,6 +160,45 @@ mergeWithStep p xs xi ys yi r ri =
 mergeWith :: (Ord k k) => (a -> k, [a], [a]) -> [a]
 mergeWith p xs ys = mergeWithStep(p, xs, 0L, ys, 0L, newArray(length(xs)+length(ys)), 0L)
 
+// merge two sorted sequences with a continuous key (the recursive step)
+cmergeWithStep :: (Ord k0 k1) => (a -> k0, [a], long, (()+a), b -> k1, [b], long, (()+b), [(()+a)*(()+b)], long) -> [(()+a)*(()+b)]
+cmergeWithStep ak as ai la bk bs bi lb rs ri =
+  let
+    aend = (ai == length(as));
+    bend = (bi == length(bs))
+  in
+    if (aend and bend) then
+      do { unsafeSetLength(rs, ri); return rs }
+    else if bend then do {
+      rs[ri] <- (just(as[ai]),lb);
+      return cmergeWithStep(ak, as, ai+1L, la, bk, bs, bi, lb, rs, ri+1L)
+    } else if aend then do {
+      rs[ri] <- (la,just(bs[bi]));
+      return cmergeWithStep(ak, as, ai, la, bk, bs, bi+1L, lb, rs, ri+1L)
+    } else
+     (let
+        ap = ak(as[ai]);
+        bp = bk(bs[bi])
+      in
+        if (ap < bp) then do {
+          nla = just(as[ai]);
+          rs[ri] <- (nla,lb);
+          return cmergeWithStep(ak, as, ai+1L, nla, bk, bs, bi, lb, rs, ri+1L)
+        } else if (ap > bp) then do {
+          nlb = just(bs[bi]);
+          rs[ri] <- (la,nlb);
+          return cmergeWithStep(ak, as, ai, la, bk, bs, bi+1L, nlb, rs, ri+1L)
+        } else do {
+          nla = just(as[ai]);
+          nlb = just(bs[bi]);
+          rs[ri] <- (nla,nlb);
+          return cmergeWithStep(ak, as, ai+1L, nla, bk, bs, bi+1L, nlb, rs, ri+1L)
+        })
+
+// [doc] merge two sorted sequences with a continuous key (having one supercede the other as necessary)
+cmergeWith :: (Ord k0 k1) => (a -> k0, [a], b -> k1, [b]) -> [(()+a)*(()+b)]
+cmergeWith ak as bk bs = cmergeWithStep(ak, as, 0L, nothing, bk, bs, 0L, nothing, newArray(length(as)+length(bs)), 0L)
+
 // [doc] split an ordered association list on a key (left values are < key, right are >= key)
 splitAssocl :: (Ord k k) => ([k*v], k) -> ([k*v]*[k*v])
 splitAssocl kvs k =

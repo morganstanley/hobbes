@@ -1071,6 +1071,7 @@ template <typename T>
 //   (if the expression type is extended but functions on expressions aren't extended, it will be a compile-error)
 template <typename T>
   struct switchExpr {
+    virtual ~switchExpr() = default;
     virtual T with(const Unit* v)      const = 0;
     virtual T with(const Bool* v)      const = 0;
     virtual T with(const Char* v)      const = 0;
@@ -1100,6 +1101,7 @@ template <typename T>
 
 template <typename T>
   struct switchExprC : public switchExpr<T> {
+    virtual ~switchExprC() = default;
     virtual T withConst(const Expr* v)      const = 0;
     virtual T with     (const Var* v)       const = 0;
     virtual T with     (const Let* v)       const = 0;
@@ -1279,6 +1281,7 @@ template <typename K, typename T>
 //   as a function or an in-place mutation
 //
 struct switchExprTyFn : public switchExprC<ExprPtr> {
+  virtual ~switchExprTyFn() = default;
   // whatever type transform is being done (default is the identity transform)
   virtual QualTypePtr withTy(const QualTypePtr& qt) const;
 

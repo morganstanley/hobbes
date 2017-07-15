@@ -464,6 +464,15 @@ public:
     this->offset = 0;
   }
 
+  void rollback() {
+    if (_HSTORE_LIKELY(this->page != 0)) {
+      markPage(_HSTORE_PAGE_STATE_ROLLBACK);
+      this->wq->push();
+    }
+    this->page   = reliable() ? this->wq->next() : this->wq->pollNext();
+    this->offset = 0;
+  }
+
   bool hasSpaceFor(size_t sz) const {
     return this->page && sz < (this->pagesz - this->offset);
   }
@@ -910,6 +919,7 @@ template <typename ... Ts>
 #define HSTORE_STRUCT_FIELD(t, n) t n;
 #define HSTORE_STRUCT_FIELD_ENC(t, n) ::hobbes::storage::ws(#n, out); ::hobbes::storage::w((int)-1, out); ::hobbes::storage::store< t >::encode(out);
 #define HSTORE_STRUCT_FIELD_DESC(t, n) + (", " #n " : " + ::hobbes::storage::store< t >::describe())
+#define HSTORE_STRUCT_FIELD_EQ(t, n) && this->n == rhs.n
 
 #define DEFINE_PACKED_HSTORE_STRUCT(T, FIELDS...) \
   struct T { \
@@ -927,6 +937,9 @@ template <typename ... Ts>
     } \
     static std::string describe() { \
       return "{" + ( std::string("") _HSTORE_MAP(HSTORE_STRUCT_FIELD_DESC, FIELDS) ).substr(2) + "}"; \
+    } \
+    bool operator==(const T& rhs) const { \
+      return true _HSTORE_MAP(HSTORE_STRUCT_FIELD_EQ, FIELDS); \
     } \
   } __attribute__((packed))
 
@@ -956,6 +969,9 @@ template <typename T>
     } \
     static std::string describe() { \
       return "{" + ( std::string("") _HSTORE_MAP(HSTORE_STRUCT_FIELD_DESC, FIELDS) ).substr(2) + "}"; \
+    } \
+    bool operator==(const T& rhs) const { \
+      return true _HSTORE_MAP(HSTORE_STRUCT_FIELD_EQ, FIELDS); \
     } \
     size_t size() const { \
       return HSTORE_FIELD_SIZE(FIELDS); \
@@ -1031,6 +1047,7 @@ template <typename U, typename V>
     static std::string describe() { \
       return (std::string("") _HSTORE_MAP(HSTORE_ENUM_CTOR_STR, CTORS)).substr(1); \
     } \
+    bool operator==(const T& rhs) const { return this->value == rhs.value; } \
   }
 
 template <typename T>
@@ -1564,6 +1581,10 @@ struct StorageGroup {
 
   inline void commit() {
     out().commit();
+  }
+
+  inline void rollback() {
+    out().rollback();
   }
 
   uint32_t allocateStorageStatement(const std::string& file, uint32_t line, const std::string& name, size_t flags, const std::string& fmtstr, tydescfn tdesc) {

@@ -140,7 +140,7 @@ extern int yydebug;
 typedef union YYSTYPE YYSTYPE;
 union YYSTYPE
 {
-#line 292 "hexpr.y" /* yacc.c:1909  */
+#line 293 "hexpr.y" /* yacc.c:1909  */
 
   hobbes::Module*              module;
   hobbes::ModuleDefs*          mdefs;

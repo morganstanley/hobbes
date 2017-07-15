@@ -35,7 +35,7 @@ cc::cc() :
   objs(new Objs()),
   readModuleFileF(&defReadModuleFile), readModuleF(&defReadModule), readExprDefnF(&defReadExprDefn), readExprF(&defReadExpr),
   runModInlinePass(true), genInterpretedMatch(false), checkMatchReachability(true), lowerPrimMatchTables(false), unreachableMatchRowsPtr(nullptr),
-  booted(false), drainingDefs(false)
+  drainingDefs(false)
 {
   // initially, we assume an empty type environment
   this->tenv = TEnvPtr(new TEnv());
@@ -112,8 +112,6 @@ cc::cc() :
 
   // boot
   compileBootCode(*this);
-
-  this->booted = true;
 }
 
 cc::~cc() {
@@ -536,10 +534,6 @@ void cc::bindLLFunc(const std::string& fname, op* f) {
 void cc::bindExternFunction(const std::string& fname, const MonoTypePtr& fty, void* fn) {
   this->tenv->bind(fname, generalize(fty));
   this->jit.bindGlobal(fname, fty, fn);
-}
-
-bool cc::preludeLoaded() const {
-  return this->booted;
 }
 
 inline TEnvPtr allocTEnvFrame(const str::seq& names, const MonoTypes& tys, const TEnvPtr& ptenv) {
