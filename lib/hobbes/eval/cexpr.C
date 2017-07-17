@@ -503,7 +503,8 @@ private:
   std::string vname;
 
   llvm::Value* compileConstArray(const MonoTypePtr& ty, const Values& vs) const {
-    return tryMkConstVarArray(builder(), this->c->module(), toLLVM(ty), vs, is<Array>(ty)); // take care to refer to global array constants by reference (a bit awkward!)
+    auto elemTy = is<Func>(ty) ? ptrType(toLLVM(ty)) : toLLVM(ty);
+    return tryMkConstVarArray(builder(), this->c->module(), elemTy, vs, is<Array>(ty)); // take care to refer to global array constants by reference (a bit awkward!)
   }
 
   llvm::Value* compileConstRecord(const RecordValue& vs, const Record* rty) const {

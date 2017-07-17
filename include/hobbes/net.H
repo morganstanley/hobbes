@@ -153,65 +153,72 @@ inline int initSession(int s, const RPCDefs& rpcds) {
   return s;
 }
 
-inline int makeConnection(int s, sockaddr* saddr, size_t len) {
-  if (connect(s, saddr, len) == -1) {
-    std::ostringstream ss;
-    ss << "Unable to connect socket: " << strerror(errno) << std::flush;
-    close(s);
-    throw std::runtime_error(ss.str());
+inline addrinfo* lookupAddrInfo(const std::string& host, const std::string& port) {
+  struct addrinfo  h;
+  memset(&h, 0, sizeof(h));
+  h.ai_family   = AF_UNSPEC;
+  h.ai_socktype = SOCK_STREAM;
+
+  struct addrinfo* addrs = 0;
+  switch (getaddrinfo(host.c_str(), port.empty() ? 0 : port.c_str(), &h, &addrs)) {
+  case 0:              return addrs;
+  case EAI_ADDRFAMILY: throw std::runtime_error("Cannot make socket connection to " + host + ":" + port);
+  case EAI_AGAIN:      throw std::runtime_error(host + ":" + port + " is temporarily unavailable");
+  case EAI_FAIL:       throw std::runtime_error("Failed to resolve hostname: " + host);
+  case EAI_SYSTEM:     throw std::runtime_error("Error while trying to resolve " + host + ":" + port + " (" + std::string(strerror(errno)) + ")");
+  case EAI_NONAME:     throw std::runtime_error("Failed to resolve " + host + ":" + port);
+  case EAI_SERVICE:    throw std::runtime_error("Failed to resolve service: " + port);
+  defualt:
+  case EAI_BADFLAGS:
+  case EAI_MEMORY:
+  case EAI_SOCKTYPE:   throw std::runtime_error("Unknown error while trying to resolve " + host + ":" + port);
   }
-
-  fd_set wd;
-  FD_ZERO(&wd);
-  FD_SET(s, &wd);
-
-  if (select(s + 1, 0, &wd, 0, 0) == -1) {
-    std::ostringstream ss;
-    ss << "Failed to connect socket while waiting for writeability: " << strerror(errno) << std::flush;
-    close(s);
-    throw std::runtime_error(ss.str());
-  }
-
-  return s;
 }
 
-inline int makeConnection(const hostent& host, int port) {
-  int s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-  if (s == -1) {
-    throw std::runtime_error("Unable to allocate socket: " + std::string(strerror(errno)));
+inline int makeConnection(const std::string& localAddr, const std::string& host, const std::string& port) {
+  struct addrinfo* localAddrs = localAddr.empty() ? 0 : lookupAddrInfo(localAddr, "");
+  struct addrinfo* addrs      = lookupAddrInfo(host, port);
+
+  for (auto p = addrs; p != 0; p = p->ai_next) {
+    int s = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
+    if (s == -1) continue;
+
+    auto la = localAddrs;
+    for (; la != 0; la = la->ai_next) {
+      if (la->ai_family == p->ai_family && la->ai_socktype == p->ai_socktype && la->ai_protocol == p->ai_protocol) {
+        if (bind(s, la->ai_addr, la->ai_addrlen) != -1) {
+          break;
+        }
+      }
+    }
+    if (la == 0 && localAddrs != 0) continue;
+
+    if (connect(s, p->ai_addr, p->ai_addrlen) == -1) {
+      close(s);
+    } else {
+      freeaddrinfo(addrs);
+      return s;
+    }
   }
 
-  sockaddr_in addr;
-  memset(&addr, 0, sizeof(addr));
-  addr.sin_family = AF_INET;
-  addr.sin_addr   = *((in_addr*)(host.h_addr_list[0]));
-  addr.sin_port   = htons(port);
-
-  return makeConnection(s, (sockaddr*)&addr, sizeof(addr));
-}
-
-inline int makeConnection(const std::string& host, size_t port) {
-  if (const hostent* h = (host.size() > 0 && std::isdigit(host[0]) != 0) ? gethostbyaddr(host.c_str(), host.size(), AF_INET) : gethostbyname(host.c_str())) {
-    return makeConnection(*h, port);
-  } else {
-    throw std::runtime_error("Unable to resolve host: " + host);
-  }
+  std::string e = "Cannot connect to " + host + ":" + port + " (" + std::string(strerror(errno)) + ")";
+  freeaddrinfo(addrs);
+  freeaddrinfo(localAddrs);
+  throw std::runtime_error(e);
 }
 
 inline int makeConnection(const std::string& host, const std::string& port) {
-  std::istringstream ss(port);
-  size_t p = 0;
-  ss >> p;
-  if (ss) {
-    return makeConnection(host, p);
-  } else {
-    struct servent* s = getservbyname(port.c_str(), "tcp");
-    if (s != 0) {
-      return makeConnection(host, ntohs(s->s_port));
-    } else {
-      throw std::runtime_error("Failed to resolve port name: " + port);
-    }
-  }
+  return makeConnection("", host, port);
+}
+
+inline int makeConnection(const std::string& localAddr, const std::string& host, size_t port) {
+  std::ostringstream ss;
+  ss << port;
+  return makeConnection(localAddr, host, ss.str());
+}
+
+inline int makeConnection(const std::string& host, size_t port) {
+  return makeConnection("", host, port);
 }
 
 inline int makeConnection(const std::string& hostport) {
@@ -339,7 +346,11 @@ template <typename T>
   };
 
 // support unit
-struct unit { unit() { } };
+struct unit {
+  unit() { }
+  bool operator==(const unit&) const { return true; }
+  bool operator< (const unit&) const { return false; }
+};
 
 template <>
   struct io<unit> {
@@ -347,6 +358,10 @@ template <>
     static std::string describe() { return "()"; }
     static void write(int s, const unit&) { }
     static void read(int s, unit*) { }
+
+    typedef uint8_t async_read_state;
+    static void prepare(uint8_t* o) {}
+    static bool accum(int s, uint8_t* o, unit* x) { return true; }
   };
 
 // support enumerations
@@ -872,6 +887,7 @@ template <>
 #define HNET_STRUCT_FIELD(t, n) t n;
 #define HNET_STRUCT_FIELD_ENC(t, n) ::hobbes::net::ws(#n, out); ::hobbes::net::w((int)-1, out); ::hobbes::net::io< t >::encode(out);
 #define HNET_STRUCT_FIELD_DESC(t, n) + (", " #n " : " + ::hobbes::net::io< t >::describe())
+#define HNET_STRUCT_FIELD_EQ(t, n) && this->n == rhs.n
 
 #define HNET_FIELD_ASYNC_READ_IDX_DEF(_, n) readAt_##n,
 #define HNET_FIELD_ASYNC_READ_STATE_DEC(t, n) ::hobbes::net::io< t >::async_read_state n;
@@ -900,6 +916,9 @@ template <>
     } \
     void read(int s) { \
       HNET_FIELD_READS(FIELDS); \
+    } \
+    bool operator==(const T& rhs) const { \
+      return true _HNET_MAP(HNET_STRUCT_FIELD_EQ, FIELDS); \
     } \
     /* async reading */ \
     enum class FieldIndex : uint32_t { \
@@ -1076,6 +1095,7 @@ template <typename ... Ts>
     _ATY(const _REPTY& x) : value(x) { } \
     _ATY(const _ATY& x) : value(x.value) { } \
     _ATY& operator=(const _ATY& x) { this->value = x.value; return *this; } \
+    bool operator==(const _ATY& x) const { return this->value == x.value; } \
   }
 
 template <typename T>
@@ -1161,12 +1181,16 @@ template <typename ... Args>
     T(int fd) : s(::hobbes::net::initSession(fd, makeRPCDefs())) _HNET_MAP(_HNET_CLIENT_INIT_RPCFUNC, C) { } \
     T(const std::string& host, size_t port) : T(::hobbes::net::makeConnection(host, port)) { } \
     T(const std::string& host, const std::string& port) : T(::hobbes::net::makeConnection(host, port)) { } \
+    T(const std::string& localAddr, const std::string& host, size_t port) : T(::hobbes::net::makeConnection(localAddr, host, port)) { } \
+    T(const std::string& localAddr, const std::string& host, const std::string& port) : T(::hobbes::net::makeConnection(localAddr, host, port)) { } \
     T(const std::string& hostport) : T(::hobbes::net::makeConnection(hostport)) { } \
     virtual ~T() { closeC(); } \
     int fd() const { return this->s; } \
     void reconnect(int fd) { closeC(); this->s = ::hobbes::net::initSession(fd, makeRPCDefs()); } \
     void reconnect(const std::string& host, size_t port) { reconnect(::hobbes::net::makeConnection(host, port)); } \
     void reconnect(const std::string& host, const std::string& port) { reconnect(::hobbes::net::makeConnection(host, port)); } \
+    void reconnect(const std::string& localAddr, const std::string& host, size_t port) { reconnect(::hobbes::net::makeConnection(localAddr, host, port)); } \
+    void reconnect(const std::string& localAddr, const std::string& host, const std::string& port) { reconnect(::hobbes::net::makeConnection(localAddr, host, port)); } \
     void reconnect(const std::string& hostport) { reconnect(::hobbes::net::makeConnection(hostport)); } \
     \
     _HNET_MAP(_HNET_CLIENT_MAKE_RPCFUNC, C) \
@@ -1272,12 +1296,16 @@ template <typename ... Args>
     T(int fd) : s(::hobbes::net::initSession(fd, makeRPCDefs())) _HNET_MAP(_HNET_CLIENT_INIT_ASYNC_RPCFUNC, C) { } \
     T(const std::string& host, size_t port) : T(::hobbes::net::makeConnection(host, port)) { } \
     T(const std::string& host, const std::string& port) : T(::hobbes::net::makeConnection(host, port)) { } \
+    T(const std::string& localAddr, const std::string& host, size_t port) : T(::hobbes::net::makeConnection(localAddr, host, port)) { } \
+    T(const std::string& localAddr, const std::string& host, const std::string& port) : T(::hobbes::net::makeConnection(localAddr, host, port)) { } \
     T(const std::string& hostport) : T(::hobbes::net::makeConnection(hostport)) { } \
     virtual ~T() { closeC(); } \
     int fd() const { return this->s; } \
     void reconnect(int fd) { closeC(); this->s = ::hobbes::net::initSession(fd, makeRPCDefs()); } \
     void reconnect(const std::string& host, size_t port) { reconnect(::hobbes::net::makeConnection(host, port)); } \
     void reconnect(const std::string& host, const std::string& port) { reconnect(::hobbes::net::makeConnection(host, port)); } \
+    void reconnect(const std::string& localAddr, const std::string& host, size_t port) { reconnect(::hobbes::net::makeConnection(localAddr, host, port)); } \
+    void reconnect(const std::string& localAddr, const std::string& host, const std::string& port) { reconnect(::hobbes::net::makeConnection(localAddr, host, port)); } \
     void reconnect(const std::string& hostport) { reconnect(::hobbes::net::makeConnection(hostport)); } \
     void step() { while (this->asyncReaders.size() > 0 && this->asyncReaders.front()->readAndFinish()) { this->asyncReaders.pop(); } } \
     size_t pendingRequests() const { return this->asyncReaders.size(); } \

@@ -51,6 +51,7 @@ typedef std::pair<std::string,size_t> NC;
 bool operator==(const NameCounts& ncs, const std::vector<NC>& ncsc) {
   for (const auto& nc : ncsc) { auto i = ncs.find(nc.first); if (i == ncs.end() || i->second != nc.second) { return false; } } return ncs.size() == ncsc.size();
 }
+
 std::ostream& operator<<(std::ostream& os, const NC& nc) {
   os << "(\"" << nc.first << "\", " << nc.second << ")";
   return os;
@@ -76,16 +77,17 @@ DEFINE_HNET_STRUCT(
 );
 typedef std::vector<Group> Groups;
 std::ostream& operator<<(std::ostream& os, const Group& g) { os << "{id=\"" << g.id << "\", kid=" << ((g.kid == Kid::Jim()) ? "|Jim|" : "|Bob|") << ", aa=" << g.aa << ", bb=" << g.bb << "}"; return os; }
-bool operator==(const Group& lhs, const Group& rhs) { return lhs.id == rhs.id && lhs.kid == rhs.kid && lhs.aa == rhs.aa && lhs.bb == rhs.bb; }
 
 DEFINE_HNET_VARIANT(
   V,
   (Bob, int),
-  (Frank, std::string)
+  (Frank, std::string),
+  (Nothing, hobbes::net::unit)
 );
 struct showV : public VVisitor<void> { std::ostream& os; showV(std::ostream& os) : os(os) { }
   void Bob(const int& x) const { os << "Bob=" << x; }
   void Frank(const std::string& x) const { os << "Frank=\"" << x << "\""; }
+  void Nothing(const hobbes::net::unit& u) const { os << "Nothing=()"; }
 };
 std::ostream& operator<<(std::ostream& os, const V& v) { os << "|"; v.visit(showV(os)); os << "|"; return os; }
 
@@ -137,6 +139,7 @@ DEFINE_NET_CLIENT(
   (doit,    std::string(),                  "\\().\"missiles launched\""),
   (misc,    NameCounts(std::string,size_t), "\\n c.[(n++\"_\"++show(i), i) | i <- [0L..c]]"),
   (grpv,    V(Group),                       "\\_.|Frank=\"frank\"|"),
+  (nothing, V(),                            "\\_.|Nothing=()|"),
   (recover, Groups(int,int),                "\\i e.[{id=\"group_\"++show(k),kid=|Jim|,aa=convert(k),bb=convert(k)}|k<-[i..e]]"),
   (eidv,    CustomIDEnum(CustomIDEnum),     "id")
 );
@@ -148,9 +151,11 @@ TEST(Net, syncClientAPI) {
   EXPECT_EQ(c.misc("foo", 5), list(NC("foo_0",0),NC("foo_1",1),NC("foo_2",2),NC("foo_3",3),NC("foo_4",4),NC("foo_5",5)));
 
   Group grp = { "id", Kid::Jim(), 4.2, 42 };
+  EXPECT_EQ(grp, grp);
   for (size_t i = 0; i < 10; ++i) {
     EXPECT_EQ(c.grpv(grp), V::Frank("frank"));
   }
+  EXPECT_EQ(c.nothing(), V::Nothing(hobbes::net::unit()));
 
   Groups ros = { {"group_0",Kid::Jim(),0.0,0},{"group_1",Kid::Jim(),1.0,1},{"group_2",Kid::Jim(),2.0,2},{"group_3",Kid::Jim(),3.0,3},{"group_4",Kid::Jim(),4.0,4} };
   EXPECT_EQ(c.recover(0,4), ros);
@@ -167,13 +172,14 @@ DEFINE_ASYNC_NET_CLIENT(
   (doit,    std::string(),                  "\\().\"missiles launched\""),
   (misc,    NameCounts(std::string,size_t), "\\n c.[(n++\"_\"++show(i), i) | i <- [0L..c]]"),
   (grpv,    V(Group),                       "\\_.|Frank=\"frank\"|"),
+  (nothing, V(),                            "\\().|Nothing=()|"),
   (recover, Groups(int,int),                "\\i e.[{id=\"group_\"++show(k),kid=|Jim|,aa=convert(k),bb=convert(k)}|k<-[i..e]]"),
   (eidv,    CustomIDEnum(CustomIDEnum),     "id")
 );
 void stepAsyncClient(int, void* p) { ((AsyncClient*)p)->step(); }
 
 TEST(Net, asyncClientAPI) {
-  AsyncClient c("localhost", testServerPort());
+  AsyncClient c("127.0.0.1", "127.0.0.1", testServerPort());
   c.add(1,2, [](int r) { EXPECT_EQ(r, 3); });
   c.doit([](const std::string& r) { EXPECT_EQ(r, "missiles launched") });
   c.misc("foo", 5, [](const NameCounts& ncs) { EXPECT_EQ(ncs, list(NC("foo_0",0),NC("foo_1",1),NC("foo_2",2),NC("foo_3",3),NC("foo_4",4),NC("foo_5",5))); });
@@ -181,6 +187,7 @@ TEST(Net, asyncClientAPI) {
   Group grp = { "id", Kid::Jim(), 4.2, 42 };
   for (size_t i = 0; i < 1000; ++i) {
     c.grpv(grp, [](const V& r) { EXPECT_EQ(r, V::Frank("frank")); });
+    c.nothing([](const V& r  ) { EXPECT_EQ(r, V::Nothing(hobbes::net::unit())); });
   }
 
   Groups ros = { {"group_0",Kid::Jim(),0.0,0},{"group_1",Kid::Jim(),1.0,1},{"group_2",Kid::Jim(),2.0,2},{"group_3",Kid::Jim(),3.0,3},{"group_4",Kid::Jim(),4.0,4} };

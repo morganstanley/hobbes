@@ -1,0 +1,27 @@
+/*
+ * generic deserialization from strings
+ */
+class Read a where
+  read :: [char] -> (()+a)
+
+instance Read () where
+  read s = match s with | "()" -> just(()) | "" -> just(()) | _ -> nothing
+instance Read bool where
+  read b = match b with | "true" -> just(true) | "false" -> just(false) | _ -> nothing
+instance Read int where
+  read = readInt
+instance Read long where
+  read = readLong
+instance Read double where
+  read = readDouble
+
+class ReadVariant v where
+  readVariant :: ([char], [char]) -> (()+v)
+instance (v=|h+0|, Read h) => ReadVariant v where
+  readVariant ctor payload = if (ctor == variantHeadLabel(unsafeCast(())::v)) then mapm(variantInjectHead, read(payload)) else nothing
+instance (v=|h+t|, Read h, ReadVariant t) => ReadVariant v where
+  readVariant ctor payload = if (ctor == variantHeadLabel(unsafeCast(())::v)) then mapm(variantInjectHead, read(payload)) else mapm(variantLiftTail, readVariant(ctor, payload))
+
+instance (ReadVariant v) => Read v where
+  read s = match s with | '\|(?<ctor>[^=]+)=(?<payload>[^\|]+)\|' -> readVariant(ctor, payload) | '\|(?<ctor>[^=|]+)\|' -> readVariant(ctor, "") | _ -> nothing
+

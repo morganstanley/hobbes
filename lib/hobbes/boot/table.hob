@@ -45,12 +45,11 @@ class TableView a t | a -> t where
 instance (TableFormat a) => TableView a a where
   openTableView = id
 
-printTableConfig =
-  let
-    c = (newPrim() :: {maxRows:long});
-    _ = c.maxRows <- 20L
-  in
-    c
+printTableConfig = do {
+  c = (newPrim() :: {maxRows:long});
+  c.maxRows <- 20L;
+  return c
+}
 
 printTableRows :: ([[[char]]], long, long, [char]) -> ()
 printTableRows cvs c r eor =
@@ -121,6 +120,19 @@ instance (Array as a, MatrixFormat a) => TableFormat as where
   tableColumns      as   = toArray(matrixColumns(as[0:]))
   tableColumnsTrunc as m = toArray(matrixColumns(as[0:m]))
 
+// table formatting for maybe values
+instance RecordFormat (()+()) where
+  recordHeader  _ = nil()
+  recordColumns _ = nil()
+instance (r={h*t}, Format h, RecordFormat t) => RecordFormat (()+r) where
+  recordHeader  ty  = (recordHeader :: (RecordFormat r) => [char]->(^x.(()+([char]*x))))(ty)
+  recordColumns mrs = cons(map(\mr.either(mr,"",\r.format(recordHeadValue(r))), mrs), recordColumns(unsafeCast(mrs)::[(()+t)]))
+
+instance MatrixFormat (()+()) where
+  matrixColumns _ = nil()
+instance (p=(h*t), Format h, MatrixFormat t) => MatrixFormat (()+p) where
+  matrixColumns mps = cons(map(\mp.either(mp,"",\p.format(p.0)), mps), matrixColumns(unsafeCast(mps)::[(()+t)]))
+
 // now we should prefer to print values as tables where possible (and truncate excess rows)
 instance (TableView a t, TableFormat t) => PrintableAsTable a where
   printAsTable x = printTableWithTruncation(openTableView(x), printTableConfig.maxRows)
@@ -135,24 +147,25 @@ printCSV x = do {
 }
 
 // and here's a way to "show" a table if we don't want to print it
+showTableRows :: ([[[char]]], [long], long, [char]) -> ^x.(()+([char]*x))
+showTableRows cvs cs r eor =
+  if (r == length(cvs[0])) then
+    cons(eor,nil())
+  else
+    cons(cdelim([cvs[c][r] | c <- cs], " "), showTableRows(cvs, cs, r+1L, eor))
+
 showTableWithTruncation :: (TableFormat a) => (a, long) -> [char]
 showTableWithTruncation x maxRows =
   let
     header = tableHeader(x, "tbl");
-    trows  = tableRowCount(x);
-    frowc  = min(trows, maxRows);
-    trunc  = (frowc == trows);
+    trunc  = (tableRowCount(x) > maxRows);
     cols   = if trunc then tableColumnsTrunc(x, maxRows) else tableColumns(x);
-    fcvs   = formatTableColumns(header, cols);
-
-    cs     = [0L..length(fcvs)-1];
-    rs     = [0L..trows-1];
-    ttxt   = cdelim([cdelim([fcvs[c][r] | c <- cs], " ") | r <- rs], "\n")
+    fcvs   = formatTableColumns(header, cols)
   in
-    if trunc then
-      (ttxt ++ "\n...")
+    if (length(fcvs) == 0L) then
+      ""
     else
-      ttxt
+      cdelim(toArray(showTableRows(fcvs, [0L..length(cols)-1], 0L, if trunc then "..." else "")), "\n")
 
 showTable :: (TableView a t, TableFormat t) => a -> [char]
 showTable x = showTableWithTruncation(openTableView(x), maxRowCount)

@@ -964,7 +964,7 @@ stateidx_t makeDFAState(MDFA* dfa, const PatternRows& xps) {
   // if no column can be chosen, there is only one path -- the immediate return expression
   size_t c = choosePivotColumn(ps);
   if (c < ps[0].patterns.size()) {
-    if (dfa->inPrimSel || !isPrimSelection(dfa->c->alwaysLowerPrimMatchTables(), ps) || !dfa->c->preludeLoaded()) {
+    if (dfa->inPrimSel || !isPrimSelection(dfa->c->alwaysLowerPrimMatchTables(), ps)) {
       result = addState(dfa, makeSuccState(dfa, ps, c));
     } else {
       dfa->inPrimSel = true;

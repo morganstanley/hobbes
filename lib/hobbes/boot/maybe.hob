@@ -104,16 +104,12 @@ instance (Divide a b c) => Divide (()+a) b (()+c) where
 instance (Divide a b c) => Divide a (()+b) (()+c) where
   x / my = match my with | |1=y| -> just(x/y) | _ -> nothing
 
-// table formatting for maybe values
-instance RecordFormat (()+()) where
-  recordHeader  _ = nil()
-  recordColumns _ = nil()
-instance (r={h*t}, Format h, RecordFormat t) => RecordFormat (()+r) where
-  recordHeader  ty  = (recordHeader :: (RecordFormat r) => [char]->(^x.(()+([char]*x))))(ty)
-  recordColumns mrs = cons(map(\mr.either(mr,"",\r.format(recordHeadValue(r))), mrs), recordColumns(unsafeCast(mrs)::[(()+t)]))
+// split a variant tag out into an equivalent enumeration
+class Enum a b | a -> b where
+  enum :: a -> b
 
-instance MatrixFormat (()+()) where
-  matrixColumns _ = nil()
-instance (p=(h*t), Format h, MatrixFormat t) => MatrixFormat (()+p) where
-  matrixColumns mps = cons(map(\mp.either(mp,"",\p.format(p.0)), mps), matrixColumns(unsafeCast(mps)::[(()+t)]))
+instance (v=|lbl:h+0|, |lbl:()+0|=e) => Enum v e where
+  enum = unsafeCast
+instance (v=|lbl:h+t|, Enum t vt, |lbl:()+vt|=e) => Enum v e where
+  enum = unsafeCast
 
