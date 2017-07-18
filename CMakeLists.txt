@@ -49,3 +49,12 @@ target_link_libraries(hog hobbes ncurses ${sys_libs})
 install(TARGETS hobbes hobbes-pic DESTINATION "lib")
 install(TARGETS hi hog DESTINATION "bin")
 install(DIRECTORY "include/hobbes" DESTINATION "include")
+
+# Build on OSX El Capitan 10.11.6 before get_clocktime() was defined:
+OPTION (OSX_EL_CAPITAN "Build for OSX prior to 10.12 Sierra" OFF)
+if(APPLE)
+ if (OSX_EL_CAPITAN)
+   ADD_DEFINITIONS("-DOSX_BEFORE_SIERRA")
+ endif()
+endif()
+
