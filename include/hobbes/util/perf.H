@@ -6,6 +6,7 @@
 #include <sstream>
 #include <iostream>
 #include <time.h>
+#include "timing_mach.h"
 
 namespace hobbes {
 
