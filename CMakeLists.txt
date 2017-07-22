@@ -5,10 +5,14 @@ set (CMAKE_CXX_STANDARD 11)
 find_package(LLVM REQUIRED CONFIG)
 include_directories(${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
-# not sure how to select just the necessary components across all LLVM versions
-# for now, pull in everything and hope that the linker will sort it out
-# maybe this should be an OS/LLVM switch?
-llvm_map_components_to_libnames(llvm_libs all)
+
+if (${LLVM_PACKAGE_VERSION} VERSION_LESS "3.6")
+  set(jit_lib jit)
+else()
+  set(jit_lib mcjit)
+endif()
+# 'x86' module should have covered 'x86asmparser' and 'x86codegen' already, but using 'x86' alone didn't work
+llvm_map_components_to_libnames(llvm_libs x86asmparser x86codegen x86 ipo ${jit_lib})
 
 file(GLOB_RECURSE lib_headers lib/*.H)
 file(GLOB_RECURSE lib_source lib/*.C)
