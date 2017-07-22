@@ -168,11 +168,9 @@ inline addrinfo* lookupAddrInfo(const std::string& host, const std::string& port
   case EAI_SYSTEM:     throw std::runtime_error("Error while trying to resolve " + host + ":" + port + " (" + std::string(strerror(errno)) + ")");
   case EAI_NONAME:     throw std::runtime_error("Failed to resolve " + host + ":" + port);
   case EAI_SERVICE:    throw std::runtime_error("Failed to resolve service: " + port);
-  defualt:
-  case EAI_BADFLAGS:
-  case EAI_MEMORY:
-  case EAI_SOCKTYPE:   throw std::runtime_error("Unknown error while trying to resolve " + host + ":" + port);
+  defualt:             throw std::runtime_error("Unknown error while trying to resolve " + host + ":" + port);
   }
+  return 0;
 }
 
 inline int makeConnection(const std::string& localAddr, const std::string& host, const std::string& port) {

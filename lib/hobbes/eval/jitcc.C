@@ -9,10 +9,15 @@
 #include "llvm/ExecutionEngine/MCJIT.h"
 #endif
 
-#if LLVM_VERSION_MINOR >= 8
+#if LLVM_VERSION_MINOR >= 8 || LLVM_VERSION_MAJOR == 4
 #include "llvm/Analysis/BasicAliasAnalysis.h"
 #endif
 
+#if LLVM_VERSION_MAJOR == 4
+#include "llvm/Transforms/Scalar/GVN.h"
+#endif
+
+#include "llvm/Object/ELFObjectFile.h"
 #include "llvm/ExecutionEngine/JITEventListener.h"
 
 namespace hobbes {
@@ -20,7 +25,7 @@ namespace hobbes {
 // this should be moved out of here eventually
 bool isFileType(const MonoTypePtr&);
 
-#if LLVM_VERSION_MINOR >= 6
+#if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR == 4
 class jitmm : public llvm::SectionMemoryManager {
 public:
   jitmm(jitcc* jit) : jit(jit) { }
@@ -87,7 +92,7 @@ jitcc::jitcc() :
   this->fpm->doInitialization();
 #endif
 
-#if LLVM_VERSION_MINOR >= 6
+#if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR == 4
   this->mpm = new llvm::legacy::PassManager();
   this->mpm->add(llvm::createFunctionInliningPass());
 #endif
@@ -100,7 +105,7 @@ jitcc::~jitcc() {
   }
 
   // release LLVM resources
-#if LLVM_VERSION_MINOR >= 6
+#if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR == 4
   for (auto ee : this->eengines) {
     delete ee;
   }
@@ -131,7 +136,7 @@ void* jitcc::getSymbolAddress(const std::string& vn) {
     return gd->second.value;
   }
 
-#if LLVM_VERSION_MINOR >= 6
+#if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR == 4
   // do we have a compiled function with this name?
   for (auto ee : this->eengines) {
     if (uint64_t faddr = ee->getFunctionAddress(vn)) {
@@ -151,7 +156,7 @@ void jitcc::dump() const {
 }
 
 void* jitcc::getMachineCode(llvm::Function* f, llvm::JITEventListener* listener) {
-#if LLVM_VERSION_MINOR >= 6
+#if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR == 4
   // try to get the machine code for this function out of an existing compiled module
   for (auto ee : this->eengines) {
     if (void* pf = ee->getPointerToFunction(f)) {
@@ -240,7 +245,7 @@ void* jitcc::getMachineCode(llvm::Function* f, llvm::JITEventListener* listener)
 #endif
 }
 
-#if LLVM_VERSION_MINOR >= 7
+#if LLVM_VERSION_MINOR >= 7 || LLVM_VERSION_MAJOR == 4
 // get the machine code produced for a given expression
 // (there must be a simpler way)
 class LenWatch : public llvm::JITEventListener {
@@ -253,10 +258,13 @@ public:
     for (auto s : o.symbols()) {
       const llvm::object::ELFSymbolRef* esr = (llvm::object::ELFSymbolRef*)(&s);
 
-      if (esr && esr->getName()) {
-        std::string n(esr->getName().get().data(), esr->getName().get().size());
-        if (n == this->fname) {
-          this->sz = esr->getSize();
+      if (esr) {
+        auto nr = esr->getName();
+        if (nr) {
+          std::string n(nr.get().data(), nr.get().size());
+          if (n == this->fname) {
+            this->sz = esr->getSize();
+          }
         }
       }
     }

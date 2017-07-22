@@ -6,7 +6,7 @@
 
 #include <llvm/Config/llvm-config.h>
 
-#if LLVM_VERSION_MAJOR != 3
+#if LLVM_VERSION_MAJOR != 3 && LLVM_VERSION_MAJOR != 4
 #error "I don't know how to use this version of LLVM"
 #endif
 
@@ -24,7 +24,12 @@
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/Support/TargetRegistry.h>
 #include <llvm/Support/Signals.h>
+#if LLVM_VERSION_MAJOR == 4
+#include <llvm/Bitcode/BitstreamReader.h>
+#include <llvm/Bitcode/BitstreamWriter.h>
+#else
 #include <llvm/Bitcode/ReaderWriter.h>
+#endif
 #include <llvm/Support/raw_os_ostream.h>
 #include <llvm/ExecutionEngine/ExecutionEngine.h>
 #include <llvm/ExecutionEngine/JITEventListener.h>
@@ -33,7 +38,7 @@
 #if LLVM_VERSION_MINOR == 3
 #include <llvm/Analysis/Verifier.h>
 #include <llvm/PassManager.h>
-#elif LLVM_VERSION_MINOR >= 5
+#elif LLVM_VERSION_MINOR >= 5 || LLVM_VERSION_MAJOR == 4
 #include <llvm/IR/Verifier.h>
 #include <llvm/ExecutionEngine/SectionMemoryManager.h>
 #include <llvm/IR/LegacyPassManager.h>
@@ -47,7 +52,8 @@ namespace hobbes {
 //       this is because we have some cases where we partially compile in one thread and then resume compiling in another thread
 //       we currently keep a global lock on compilers anyway
 inline llvm::LLVMContext& context() {
-  return llvm::getGlobalContext();
+  static llvm::LLVMContext ctx;
+  return ctx;
 }
 
 typedef std::vector<llvm::Type*>     Types;
@@ -444,14 +450,14 @@ inline llvm::Value* structOffset(llvm::IRBuilder<>* b, llvm::Value* p, unsigned 
 #if LLVM_VERSION_MINOR == 7
   // don't pass nullptr? (http://reviews.llvm.org/rL233938)
   return b->CreateStructGEP(nullptr, p, fieldOffset);
-#elif LLVM_VERSION_MINOR >= 8
+#elif LLVM_VERSION_MINOR >= 8 || LLVM_VERSION_MAJOR == 4
   return b->CreateStructGEP(((llvm::PointerType*)p->getType())->getElementType(), p, fieldOffset);
 #else
   return b->CreateStructGEP(p, fieldOffset);
 #endif
 }
 
-#if LLVM_VERSION_MINOR >= 6
+#if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR == 4
 inline llvm::ExecutionEngine* makeExecutionEngine(llvm::Module* m, llvm::SectionMemoryManager* smm) {
   std::string err;
   llvm::ExecutionEngine* ee =
@@ -520,7 +526,7 @@ inline llvm::Function* cloneFunction(llvm::Function *f, llvm::Module *targetMod)
 }
 
 inline llvm::Value* fncall(llvm::IRBuilder<>* b, llvm::Value* vfn, const Values& args) {
-#if LLVM_VERSION_MINOR >= 6
+#if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR == 4
   llvm::Module* thisMod = b->GetInsertBlock()->getParent()->getParent();
 
   llvm::Function* fn = llvm::dyn_cast<llvm::Function>(vfn);
