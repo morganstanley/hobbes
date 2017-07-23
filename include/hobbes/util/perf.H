@@ -2,13 +2,16 @@
 #ifndef HOBBES_UTIL_PERF_HPP_INCLUDED
 #define HOBBES_UTIL_PERF_HPP_INCLUDED
 
+#include <hobbes/util/os.H>
 #include <string>
 #include <sstream>
 #include <iostream>
 #include <time.h>
+#include <sys/time.h>
 
 namespace hobbes {
 
+#if !defined(BUILD_OSX) or defined(CLOCK_REALTIME)
 // access a nanosecond timer to do performance-testing on expressions
 inline long tick() {
   timespec ts;
@@ -28,6 +31,21 @@ inline long time() {
     return 0;
   }
 }
+#else
+// degenerate timers on older versions of OSX
+inline long tick() {
+  struct timeval t;
+  if (gettimeofday(&t, 0)) {
+    return ((t.tv_sec*1000000)+t.tv_usec)*1000;
+  } else {
+    return 0;
+  }
+}
+
+inline long time() {
+  return tick();
+}
+#endif
 
 inline std::string describeNanoTime(long x) {
   static const double micros  = 1000;
