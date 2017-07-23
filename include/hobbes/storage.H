@@ -77,8 +77,8 @@ namespace hobbes { namespace storage {
 typedef std::vector<uint8_t> bytes;
 
 // write transactions into shared memory
-#define _HSTORE_LIKELY(x)   __builtin_expect((x),1)
-#define _HSTORE_UNLIKELY(x) __builtin_expect((x),0)
+#define PRIV_HSTORE_LIKELY(x)   __builtin_expect((x),1)
+#define PRIV_HSTORE_UNLIKELY(x) __builtin_expect((x),0)
 
 template <typename T>
   T align(T x, T m) {
@@ -242,9 +242,9 @@ inline void registerSHMAlloc(int* mqserver, const std::string& groupName) {
 //   0: both reader and writer are making progress
 //   1: the reader is blocked waiting for new values (empty queue)
 //   2: the writer is blocked waiting for the reader to catch up (full queue)
-#define _HSTORE_STATE_UNBLOCKED      0
-#define _HSTORE_STATE_READER_WAITING 1
-#define _HSTORE_STATE_WRITER_WAITING 2
+#define PRIV_HSTORE_STATE_UNBLOCKED      0
+#define PRIV_HSTORE_STATE_READER_WAITING 1
+#define PRIV_HSTORE_STATE_WRITER_WAITING 2
 
 struct pqueue_config {
   pqueue_config() :
@@ -355,21 +355,21 @@ public:
   uint8_t* next() {
     uint32_t nwi = nextIndex(writeIndex());
   
-    while (_HSTORE_UNLIKELY(*readIndex() == nwi)) {
+    while (PRIV_HSTORE_UNLIKELY(*readIndex() == nwi)) {
       // the reader is behind and we've caught up with it, switch into writer-wait mode
-      switch (xchg(waitState(), _HSTORE_STATE_WRITER_WAITING)) {
-      case _HSTORE_STATE_UNBLOCKED:
+      switch (xchg(waitState(), PRIV_HSTORE_STATE_WRITER_WAITING)) {
+      case PRIV_HSTORE_STATE_UNBLOCKED:
         // we previously were unblocked
         // make sure that we still need to block the writer (in case the read index moved while we were getting here)
         // then block while we're in writer-wait state
         if (*readIndex() == nwi) {
-          waitForUpdate(waitState(), _HSTORE_STATE_WRITER_WAITING);
+          waitForUpdate(waitState(), PRIV_HSTORE_STATE_WRITER_WAITING);
         }
         break;
-      case _HSTORE_STATE_READER_WAITING:
+      case PRIV_HSTORE_STATE_READER_WAITING:
         // we previously were in reader-wait state (this should practically never happen)
         // since we wait to write anyway, unblock the reader and try again
-        uxchg(waitState(), _HSTORE_STATE_UNBLOCKED);
+        uxchg(waitState(), PRIV_HSTORE_STATE_UNBLOCKED);
         wakeN(waitState(), 1);
         break;
       }
@@ -378,7 +378,7 @@ public:
   }
   
   uint8_t* pollNext() {
-    if (_HSTORE_UNLIKELY(*readIndex() == nextIndex(writeIndex()))) {
+    if (PRIV_HSTORE_UNLIKELY(*readIndex() == nextIndex(writeIndex()))) {
       return 0;
     } else {
       return value(*writeIndex());
@@ -389,7 +389,7 @@ public:
     uxchg(writeIndex(), nextIndex(writeIndex()));
   
     // when the writer advances, the reader can be unblocked
-    if (_HSTORE_UNLIKELY(xchg(waitState(), _HSTORE_STATE_UNBLOCKED) == _HSTORE_STATE_READER_WAITING)) {
+    if (PRIV_HSTORE_UNLIKELY(xchg(waitState(), PRIV_HSTORE_STATE_UNBLOCKED) == PRIV_HSTORE_STATE_READER_WAITING)) {
       wakeN(waitState(), 1);
     }
   }
@@ -400,10 +400,10 @@ public:
 //   2) page is a continuation of its transaction (intermediate in the total transaction)
 //   3) page successfully terminates the transaction (commit)
 //   4) page prematurely terminates the transaction (rollback)
-#define _HSTORE_PAGE_STATE_TENTATIVE ((uint8_t)0)
-#define _HSTORE_PAGE_STATE_CONT      ((uint8_t)1)
-#define _HSTORE_PAGE_STATE_COMMIT    ((uint8_t)2)
-#define _HSTORE_PAGE_STATE_ROLLBACK  ((uint8_t)3)
+#define PRIV_HSTORE_PAGE_STATE_TENTATIVE ((uint8_t)0)
+#define PRIV_HSTORE_PAGE_STATE_CONT      ((uint8_t)1)
+#define PRIV_HSTORE_PAGE_STATE_COMMIT    ((uint8_t)2)
+#define PRIV_HSTORE_PAGE_STATE_ROLLBACK  ((uint8_t)3)
 
 // writers may record data 'unreliably' (non-blocking) or 'reliably' (block iff waiting for consumer to catch up)
 enum PipeQOS {
@@ -430,17 +430,17 @@ private:
 
   bool stepPage() {
     if (reliable()) {
-      markPage(_HSTORE_PAGE_STATE_CONT);
+      markPage(PRIV_HSTORE_PAGE_STATE_CONT);
       this->wq->push();
 
       this->page   = this->wq->next();
       this->offset = 0;
       return true;
     } else {
-      markPage(_HSTORE_PAGE_STATE_TENTATIVE);
+      markPage(PRIV_HSTORE_PAGE_STATE_TENTATIVE);
       this->wq->push();
       uint8_t* npage = this->wq->pollNext();
-      markPage(npage ? _HSTORE_PAGE_STATE_CONT : _HSTORE_PAGE_STATE_ROLLBACK);
+      markPage(npage ? PRIV_HSTORE_PAGE_STATE_CONT : PRIV_HSTORE_PAGE_STATE_ROLLBACK);
 
       this->page   = npage;
       this->offset = 0;
@@ -456,8 +456,8 @@ public:
   }
 
   void commit() {
-    if (_HSTORE_LIKELY(this->page != 0)) {
-      markPage(_HSTORE_PAGE_STATE_COMMIT);
+    if (PRIV_HSTORE_LIKELY(this->page != 0)) {
+      markPage(PRIV_HSTORE_PAGE_STATE_COMMIT);
       this->wq->push();
     }
     this->page   = reliable() ? this->wq->next() : this->wq->pollNext();
@@ -465,8 +465,8 @@ public:
   }
 
   void rollback() {
-    if (_HSTORE_LIKELY(this->page != 0)) {
-      markPage(_HSTORE_PAGE_STATE_ROLLBACK);
+    if (PRIV_HSTORE_LIKELY(this->page != 0)) {
+      markPage(PRIV_HSTORE_PAGE_STATE_ROLLBACK);
       this->wq->push();
     }
     this->page   = reliable() ? this->wq->next() : this->wq->pollNext();
@@ -480,14 +480,14 @@ public:
   // write a block of bytes within a frame
   bool write(const uint8_t* src, size_t sz) {
     // just for unreliable pipes, we might enter here without a page
-    if (_HSTORE_UNLIKELY(!this->page)) {
+    if (PRIV_HSTORE_UNLIKELY(!this->page)) {
       return false;
     }
 
     size_t remsz = this->pagesz - this->offset;
 
     // most of the time we'll be writing small chunks of data
-    if (_HSTORE_LIKELY(sz < remsz)) {
+    if (PRIV_HSTORE_LIKELY(sz < remsz)) {
       memcpy(this->page + this->offset, src, sz);
       this->offset += sz;
       return true;
@@ -623,21 +623,21 @@ public:
   uint8_t* next() {
     uint32_t ri = *readIndex();
   
-    while (_HSTORE_UNLIKELY(*writeIndex() == ri)) {
+    while (PRIV_HSTORE_UNLIKELY(*writeIndex() == ri)) {
       // there's nothing to read, switch into reader-wait mode
-      switch (xchg(waitState(), _HSTORE_STATE_READER_WAITING)) {
-      case _HSTORE_STATE_UNBLOCKED:
+      switch (xchg(waitState(), PRIV_HSTORE_STATE_READER_WAITING)) {
+      case PRIV_HSTORE_STATE_UNBLOCKED:
         // we previously were unblocked
         // make sure that we still need to block the reader (in case the write index moved while we were getting here)
         // then block while we're in reader-wait state
         if (*writeIndex() == ri) {
-          waitForUpdate(waitState(), _HSTORE_STATE_READER_WAITING);
+          waitForUpdate(waitState(), PRIV_HSTORE_STATE_READER_WAITING);
         }
         break;
-      case _HSTORE_STATE_WRITER_WAITING:
+      case PRIV_HSTORE_STATE_WRITER_WAITING:
         // we previously were in writer-wait state (this should practically never happen)
         // since we wait to read anyway, unblock the writer and try again
-        uxchg(waitState(), _HSTORE_STATE_UNBLOCKED);
+        uxchg(waitState(), PRIV_HSTORE_STATE_UNBLOCKED);
         wakeN(waitState(), 1);
         break;
       }
@@ -647,7 +647,7 @@ public:
 
   // get the next value in the queue if one is present, else null
   uint8_t* pollNext() {
-    if (_HSTORE_UNLIKELY(*writeIndex() == *readIndex())) {
+    if (PRIV_HSTORE_UNLIKELY(*writeIndex() == *readIndex())) {
       return 0;
     } else {
       return value(*readIndex());
@@ -659,7 +659,7 @@ public:
     uxchg(readIndex(), nextIndex(readIndex()));
   
     // when the reader advances, the writer can be unblocked
-    if (_HSTORE_UNLIKELY(xchg(waitState(), _HSTORE_STATE_UNBLOCKED) == _HSTORE_STATE_WRITER_WAITING)) {
+    if (PRIV_HSTORE_UNLIKELY(xchg(waitState(), PRIV_HSTORE_STATE_UNBLOCKED) == PRIV_HSTORE_STATE_WRITER_WAITING)) {
       wakeN(waitState(), 1);
     }
   }
@@ -705,14 +705,14 @@ public:
       // if we've hit the end of the page, mark it done and then try for the next one
       if (this->offset == rpagesz) {
         // wait for the producer to decide what state the page is in
-        while ((*pend >> 24) == _HSTORE_PAGE_STATE_TENTATIVE);
+        while ((*pend >> 24) == PRIV_HSTORE_PAGE_STATE_TENTATIVE);
         uint8_t ps = *pend >> 24;
         if (state) *state = ps;
 
         // if this page is just a continuation, continue reading
         // else we've terminated a transaction
         this->rq->pop();
-        this->page   = (ps == _HSTORE_PAGE_STATE_CONT) ? this->rq->pollNext() : 0;
+        this->page   = (ps == PRIV_HSTORE_PAGE_STATE_CONT) ? this->rq->pollNext() : 0;
         this->offset = 0;
       }
     }
@@ -722,14 +722,14 @@ public:
 };
 
 // type/value serialization (guarded by compile-time predicates)
-#define _HSTORE_TYCTOR_PRIM      ((int)0)
-#define _HSTORE_TYCTOR_TVAR      ((int)2)
-#define _HSTORE_TYCTOR_FIXEDARR  ((int)4)
-#define _HSTORE_TYCTOR_ARR       ((int)5)
-#define _HSTORE_TYCTOR_VARIANT   ((int)6)
-#define _HSTORE_TYCTOR_STRUCT    ((int)7)
-#define _HSTORE_TYCTOR_SIZE      ((int)11)
-#define _HSTORE_TYCTOR_RECURSIVE ((int)13)
+#define PRIV_HSTORE_TYCTOR_PRIM      ((int)0)
+#define PRIV_HSTORE_TYCTOR_TVAR      ((int)2)
+#define PRIV_HSTORE_TYCTOR_FIXEDARR  ((int)4)
+#define PRIV_HSTORE_TYCTOR_ARR       ((int)5)
+#define PRIV_HSTORE_TYCTOR_VARIANT   ((int)6)
+#define PRIV_HSTORE_TYCTOR_STRUCT    ((int)7)
+#define PRIV_HSTORE_TYCTOR_SIZE      ((int)11)
+#define PRIV_HSTORE_TYCTOR_RECURSIVE ((int)13)
 
 template <typename T, typename P = void>
   struct store {
@@ -753,11 +753,11 @@ inline void ws(const bytes& x, bytes* out) {
 }
 
 inline void encode_primty(const char* tn, bytes* out) {
-  w(_HSTORE_TYCTOR_PRIM, out);
+  w(PRIV_HSTORE_TYCTOR_PRIM, out);
   ws(tn, out);
   w((bool)false, out);
 }
-#define _HSTORE_DEFINE_PRIMTYS(T, n) \
+#define PRIV_HSTORE_DEFINE_PRIMTYS(T, n) \
   template <> \
     struct store<T> { \
       typedef void can_memcpy; \
@@ -767,20 +767,20 @@ inline void encode_primty(const char* tn, bytes* out) {
       static bool        write(wpipe& p, const T& x) { return p.write((const uint8_t*)&x, sizeof(x)); } \
     }
 
-_HSTORE_DEFINE_PRIMTYS(bool,     "bool");
-_HSTORE_DEFINE_PRIMTYS(uint8_t,  "byte");
-_HSTORE_DEFINE_PRIMTYS(char,     "char");
-_HSTORE_DEFINE_PRIMTYS(int16_t,  "short");
-_HSTORE_DEFINE_PRIMTYS(uint16_t, "short");
-_HSTORE_DEFINE_PRIMTYS(int32_t,  "int");
-_HSTORE_DEFINE_PRIMTYS(uint32_t, "int");
-_HSTORE_DEFINE_PRIMTYS(int64_t,  "long");
-_HSTORE_DEFINE_PRIMTYS(uint64_t, "long");
+PRIV_HSTORE_DEFINE_PRIMTYS(bool,     "bool");
+PRIV_HSTORE_DEFINE_PRIMTYS(uint8_t,  "byte");
+PRIV_HSTORE_DEFINE_PRIMTYS(char,     "char");
+PRIV_HSTORE_DEFINE_PRIMTYS(int16_t,  "short");
+PRIV_HSTORE_DEFINE_PRIMTYS(uint16_t, "short");
+PRIV_HSTORE_DEFINE_PRIMTYS(int32_t,  "int");
+PRIV_HSTORE_DEFINE_PRIMTYS(uint32_t, "int");
+PRIV_HSTORE_DEFINE_PRIMTYS(int64_t,  "long");
+PRIV_HSTORE_DEFINE_PRIMTYS(uint64_t, "long");
 #ifdef __clang__
-_HSTORE_DEFINE_PRIMTYS(size_t, "long");
+PRIV_HSTORE_DEFINE_PRIMTYS(size_t, "long");
 #endif
-_HSTORE_DEFINE_PRIMTYS(float,    "float");
-_HSTORE_DEFINE_PRIMTYS(double,   "double");
+PRIV_HSTORE_DEFINE_PRIMTYS(float,    "float");
+PRIV_HSTORE_DEFINE_PRIMTYS(double,   "double");
 
 template <typename T, typename P = void>
   struct cannot_memcpy {
@@ -849,7 +849,7 @@ template <typename ... Ts>
       size_t localArity = arity; // required because 'arity' doesn't have an address
 
       if (localArity > 0) {
-        w(_HSTORE_TYCTOR_STRUCT, out);
+        w(PRIV_HSTORE_TYCTOR_STRUCT, out);
         w(localArity, out);
         store_tuple_types<Ts...>::encode(0, out);
       } else {
@@ -869,52 +869,52 @@ template <typename ... Ts>
   };
 
 // very basic macro metaprogramming
-#define _HSTORE_FIRST(a, ...) a
-#define _HSTORE_SECOND(a, b, ...) b
-#define _HSTORE_JOIN(a,b) a ## b
-#define _HSTORE_IS_NEGATE(...) _HSTORE_SECOND(__VA_ARGS__, 0)
-#define _HSTORE_NOT(x) _HSTORE_IS_NEGATE(_HSTORE_JOIN(_HSTORE__NOT_, x))
-#define _HSTORE__NOT_0 NEGATE, 1
-#define _HSTORE_BOOL(x) _HSTORE_NOT(_HSTORE_NOT(x))
-#define _HSTORE_IF_ELSE(condition) _HSTORE__IF_ELSE(_HSTORE_BOOL(condition))
-#define _HSTORE__IF_ELSE(condition) _HSTORE_JOIN(_HSTORE__IF_, condition)
-#define _HSTORE__IF_1(...) __VA_ARGS__ _HSTORE__IF_1_ELSE
-#define _HSTORE__IF_0(...)             _HSTORE__IF_0_ELSE
-#define _HSTORE__IF_1_ELSE(...)
-#define _HSTORE__IF_0_ELSE(...) __VA_ARGS__
-#define _HSTORE_EMPTY()
-#define _HSTORE_EVAL(...) _HSTORE_EVAL256(__VA_ARGS__)
-#define _HSTORE_EVAL256(...) _HSTORE_EVAL128(_HSTORE_EVAL128(__VA_ARGS__))
-#define _HSTORE_EVAL128(...) _HSTORE_EVAL64(_HSTORE_EVAL64(__VA_ARGS__))
-#define _HSTORE_EVAL64(...) _HSTORE_EVAL32(_HSTORE_EVAL32(__VA_ARGS__))
-#define _HSTORE_EVAL32(...) _HSTORE_EVAL16(_HSTORE_EVAL16(__VA_ARGS__))
-#define _HSTORE_EVAL16(...) _HSTORE_EVAL8(_HSTORE_EVAL8(__VA_ARGS__))
-#define _HSTORE_EVAL8(...) _HSTORE_EVAL4(_HSTORE_EVAL4(__VA_ARGS__))
-#define _HSTORE_EVAL4(...) _HSTORE_EVAL2(_HSTORE_EVAL2(__VA_ARGS__))
-#define _HSTORE_EVAL2(...) _HSTORE_EVAL1(_HSTORE_EVAL1(__VA_ARGS__))
-#define _HSTORE_EVAL1(...) __VA_ARGS__
-#define _HSTORE_DEFER2(m) m _HSTORE_EMPTY _HSTORE_EMPTY()()
-#define _HSTORE_HAS_PARGS(...) _HSTORE_BOOL(_HSTORE_FIRST(_HSTORE__EOAP_ __VA_ARGS__)())
-#define _HSTORE__EOAP_(...) _HSTORE_BOOL(_HSTORE_FIRST(_HSTORE__EOA_ __VA_ARGS__)())
-#define _HSTORE__EOA_() 0
-#define _HSTORE_MAP(f, VS...) _HSTORE_EVAL(_HSTORE_MAPP(f, VS))
-#define _HSTORE_MAPP(f, H, T...)        \
+#define PRIV_HSTORE_FIRST(a, ...) a
+#define PRIV_HSTORE_SECOND(a, b, ...) b
+#define PRIV_HSTORE_JOIN(a,b) a ## b
+#define PRIV_HSTORE_IS_NEGATE(...) PRIV_HSTORE_SECOND(__VA_ARGS__, 0)
+#define PRIV_HSTORE_NOT(x) PRIV_HSTORE_IS_NEGATE(PRIV_HSTORE_JOIN(PRIV_HSTORE_SNOT_, x))
+#define PRIV_HSTORE_SNOT_0 NEGATE, 1
+#define PRIV_HSTORE_BOOL(x) PRIV_HSTORE_NOT(PRIV_HSTORE_NOT(x))
+#define PRIV_HSTORE_IF_ELSE(condition) PRIV_HSTORE_SIF_ELSE(PRIV_HSTORE_BOOL(condition))
+#define PRIV_HSTORE_SIF_ELSE(condition) PRIV_HSTORE_JOIN(PRIV_HSTORE_SIF_, condition)
+#define PRIV_HSTORE_SIF_1(...) __VA_ARGS__ PRIV_HSTORE_SIF_1_ELSE
+#define PRIV_HSTORE_SIF_0(...)             PRIV_HSTORE_SIF_0_ELSE
+#define PRIV_HSTORE_SIF_1_ELSE(...)
+#define PRIV_HSTORE_SIF_0_ELSE(...) __VA_ARGS__
+#define PRIV_HSTORE_EMPTY()
+#define PRIV_HSTORE_EVAL(...) PRIV_HSTORE_EVAL256(__VA_ARGS__)
+#define PRIV_HSTORE_EVAL256(...) PRIV_HSTORE_EVAL128(PRIV_HSTORE_EVAL128(__VA_ARGS__))
+#define PRIV_HSTORE_EVAL128(...) PRIV_HSTORE_EVAL64(PRIV_HSTORE_EVAL64(__VA_ARGS__))
+#define PRIV_HSTORE_EVAL64(...) PRIV_HSTORE_EVAL32(PRIV_HSTORE_EVAL32(__VA_ARGS__))
+#define PRIV_HSTORE_EVAL32(...) PRIV_HSTORE_EVAL16(PRIV_HSTORE_EVAL16(__VA_ARGS__))
+#define PRIV_HSTORE_EVAL16(...) PRIV_HSTORE_EVAL8(PRIV_HSTORE_EVAL8(__VA_ARGS__))
+#define PRIV_HSTORE_EVAL8(...) PRIV_HSTORE_EVAL4(PRIV_HSTORE_EVAL4(__VA_ARGS__))
+#define PRIV_HSTORE_EVAL4(...) PRIV_HSTORE_EVAL2(PRIV_HSTORE_EVAL2(__VA_ARGS__))
+#define PRIV_HSTORE_EVAL2(...) PRIV_HSTORE_EVAL1(PRIV_HSTORE_EVAL1(__VA_ARGS__))
+#define PRIV_HSTORE_EVAL1(...) __VA_ARGS__
+#define PRIV_HSTORE_DEFER2(m) m PRIV_HSTORE_EMPTY PRIV_HSTORE_EMPTY()()
+#define PRIV_HSTORE_HAS_PARGS(...) PRIV_HSTORE_BOOL(PRIV_HSTORE_FIRST(PRIV_HSTORE_SEOAP_ __VA_ARGS__)())
+#define PRIV_HSTORE_SEOAP_(...) PRIV_HSTORE_BOOL(PRIV_HSTORE_FIRST(PRIV_HSTORE_SEOA_ __VA_ARGS__)())
+#define PRIV_HSTORE_SEOA_() 0
+#define PRIV_HSTORE_MAP(f, VS...) PRIV_HSTORE_EVAL(PRIV_HSTORE_MAPP(f, VS))
+#define PRIV_HSTORE_MAPP(f, H, T...)        \
   f H                                 \
-  _HSTORE_IF_ELSE(_HSTORE_HAS_PARGS(T))(  \
-    _HSTORE_DEFER2(_HSTORE__MAPP)()(f, T) \
+  PRIV_HSTORE_IF_ELSE(PRIV_HSTORE_HAS_PARGS(T))(  \
+    PRIV_HSTORE_DEFER2(PRIV_HSTORE_SMAPP)()(f, T) \
   )(                                  \
   )
-#define _HSTORE__MAPP() _HSTORE_MAPP
+#define PRIV_HSTORE_SMAPP() PRIV_HSTORE_MAPP
 
 // support storing packed, reflective structs
 #define HSTORE_FIELDC_SUCC(t,n) +1
-#define HSTORE_FIELD_COUNT(FIELDS...) (0 _HSTORE_MAP(HSTORE_FIELDC_SUCC, FIELDS))
+#define HSTORE_FIELD_COUNT(FIELDS...) (0 PRIV_HSTORE_MAP(HSTORE_FIELDC_SUCC, FIELDS))
 
 #define HSTORE_FIELDS_SUCC(t,n) +::hobbes::storage::store< t >::size(this-> n)
-#define HSTORE_FIELD_SIZE(FIELDS...) (0 _HSTORE_MAP(HSTORE_FIELDS_SUCC, FIELDS))
+#define HSTORE_FIELD_SIZE(FIELDS...) (0 PRIV_HSTORE_MAP(HSTORE_FIELDS_SUCC, FIELDS))
 
 #define HSTORE_FIELDW_SUCC(t,n) &&::hobbes::storage::store< t >::write(p, this-> n)
-#define HSTORE_FIELD_WRITES(FIELDS...) (true _HSTORE_MAP(HSTORE_FIELDW_SUCC, FIELDS))
+#define HSTORE_FIELD_WRITES(FIELDS...) (true PRIV_HSTORE_MAP(HSTORE_FIELDW_SUCC, FIELDS))
 
 #define HSTORE_STRUCT_FIELD(t, n) t n;
 #define HSTORE_STRUCT_FIELD_ENC(t, n) ::hobbes::storage::ws(#n, out); ::hobbes::storage::w((int)-1, out); ::hobbes::storage::store< t >::encode(out);
@@ -923,23 +923,23 @@ template <typename ... Ts>
 
 #define DEFINE_PACKED_HSTORE_STRUCT(T, FIELDS...) \
   struct T { \
-    _HSTORE_MAP(HSTORE_STRUCT_FIELD, FIELDS) /* struct fields */ \
+    PRIV_HSTORE_MAP(HSTORE_STRUCT_FIELD, FIELDS) /* struct fields */ \
     typedef void is_packed_hstore_struct; /* identify this type as a packed struct */ \
     static void encode(::hobbes::storage::bytes* out) { \
       size_t localArity = HSTORE_FIELD_COUNT(FIELDS); \
       if (localArity > 0) { \
-        ::hobbes::storage::w(_HSTORE_TYCTOR_STRUCT, out); \
+        ::hobbes::storage::w(PRIV_HSTORE_TYCTOR_STRUCT, out); \
         ::hobbes::storage::w(localArity, out); \
-        _HSTORE_MAP(HSTORE_STRUCT_FIELD_ENC, FIELDS) \
+        PRIV_HSTORE_MAP(HSTORE_STRUCT_FIELD_ENC, FIELDS) \
       } else { \
         ::hobbes::storage::encode_primty("unit", out); \
       } \
     } \
     static std::string describe() { \
-      return "{" + ( std::string("") _HSTORE_MAP(HSTORE_STRUCT_FIELD_DESC, FIELDS) ).substr(2) + "}"; \
+      return "{" + ( std::string("") PRIV_HSTORE_MAP(HSTORE_STRUCT_FIELD_DESC, FIELDS) ).substr(2) + "}"; \
     } \
     bool operator==(const T& rhs) const { \
-      return true _HSTORE_MAP(HSTORE_STRUCT_FIELD_EQ, FIELDS); \
+      return true PRIV_HSTORE_MAP(HSTORE_STRUCT_FIELD_EQ, FIELDS); \
     } \
   } __attribute__((packed))
 
@@ -955,23 +955,23 @@ template <typename T>
 // support storing standard, reflective structs
 #define DEFINE_HSTORE_STRUCT(T, FIELDS...) \
   struct T { \
-    _HSTORE_MAP(HSTORE_STRUCT_FIELD, FIELDS) /* struct fields */ \
+    PRIV_HSTORE_MAP(HSTORE_STRUCT_FIELD, FIELDS) /* struct fields */ \
     typedef void is_hstore_struct; /* identify this type as a struct */ \
     static void encode(::hobbes::storage::bytes* out) { \
       size_t localArity = HSTORE_FIELD_COUNT(FIELDS); \
       if (localArity > 0) { \
-        ::hobbes::storage::w(_HSTORE_TYCTOR_STRUCT, out); \
+        ::hobbes::storage::w(PRIV_HSTORE_TYCTOR_STRUCT, out); \
         ::hobbes::storage::w(localArity, out); \
-        _HSTORE_MAP(HSTORE_STRUCT_FIELD_ENC, FIELDS) \
+        PRIV_HSTORE_MAP(HSTORE_STRUCT_FIELD_ENC, FIELDS) \
       } else { \
         ::hobbes::storage::encode_primty("unit", out); \
       } \
     } \
     static std::string describe() { \
-      return "{" + ( std::string("") _HSTORE_MAP(HSTORE_STRUCT_FIELD_DESC, FIELDS) ).substr(2) + "}"; \
+      return "{" + ( std::string("") PRIV_HSTORE_MAP(HSTORE_STRUCT_FIELD_DESC, FIELDS) ).substr(2) + "}"; \
     } \
     bool operator==(const T& rhs) const { \
-      return true _HSTORE_MAP(HSTORE_STRUCT_FIELD_EQ, FIELDS); \
+      return true PRIV_HSTORE_MAP(HSTORE_STRUCT_FIELD_EQ, FIELDS); \
     } \
     size_t size() const { \
       return HSTORE_FIELD_SIZE(FIELDS); \
@@ -993,7 +993,7 @@ template <typename T>
 template <typename U, typename V>
   struct store<std::pair<U,V>> {
     static void encode(bytes* out) {
-      w(_HSTORE_TYCTOR_STRUCT, out);
+      w(PRIV_HSTORE_TYCTOR_STRUCT, out);
       w((size_t)2, out);
       
       ws(".f0", out);
@@ -1029,7 +1029,7 @@ template <typename U, typename V>
   struct T { \
     typedef void is_hstore_enum; \
     enum class Enum : uint32_t { \
-      _HSTORE_MAP(HSTORE_ENUM_CTOR_DEF, CTORS) \
+      PRIV_HSTORE_MAP(HSTORE_ENUM_CTOR_DEF, CTORS) \
       COUNT \
     }; \
     Enum value; \
@@ -1038,14 +1038,14 @@ template <typename U, typename V>
     T& operator=(Enum v) { this->value = v; return *this; } \
     operator Enum() { return this->value; } \
     typedef T SelfT; \
-    _HSTORE_MAP(HSTORE_ENUM_CTOR_CTOR, CTORS) \
+    PRIV_HSTORE_MAP(HSTORE_ENUM_CTOR_CTOR, CTORS) \
     static void encode(::hobbes::storage::bytes* out) { \
-      ::hobbes::storage::w(_HSTORE_TYCTOR_VARIANT, out); \
-      ::hobbes::storage::w((size_t)(0 _HSTORE_MAP(HSTORE_ENUM_CTORC_SUCC, CTORS)), out); \
-      _HSTORE_MAP(HSTORE_ENUM_CTOR_ENCODE, CTORS); \
+      ::hobbes::storage::w(PRIV_HSTORE_TYCTOR_VARIANT, out); \
+      ::hobbes::storage::w((size_t)(0 PRIV_HSTORE_MAP(HSTORE_ENUM_CTORC_SUCC, CTORS)), out); \
+      PRIV_HSTORE_MAP(HSTORE_ENUM_CTOR_ENCODE, CTORS); \
     } \
     static std::string describe() { \
-      return (std::string("") _HSTORE_MAP(HSTORE_ENUM_CTOR_STR, CTORS)).substr(1); \
+      return (std::string("") PRIV_HSTORE_MAP(HSTORE_ENUM_CTOR_STR, CTORS)).substr(1); \
     } \
     bool operator==(const T& rhs) const { return this->value == rhs.value; } \
   }
@@ -1096,7 +1096,7 @@ template <typename T>
       return *this; \
     } \
     static void encode(::hobbes::storage::bytes* out) { \
-      ::hobbes::storage::w(_HSTORE_TYCTOR_VARIANT, out); \
+      ::hobbes::storage::w(PRIV_HSTORE_TYCTOR_VARIANT, out); \
       ::hobbes::storage::w((size_t)(0 CTORCOUNT), out); \
       VENCODE; \
     } \
@@ -1151,7 +1151,7 @@ template <typename T>
 #define HSTORE_VARIANT_SIZE_CASE(n, t)    case Enum::tag_##n: return sizeof(int) + ::hobbes::storage::store< t >::size(this->n##_data);
 #define HSTORE_VARIANT_WRITE_CASE(n, t) case Enum::tag_##n: return ::hobbes::storage::store<int>::write(p, (int)this->tag) && ::hobbes::storage::store< t >::write(p, this->n##_data);
 #define HSTORE_VARIANT_PCOPY(n, t)      case Enum::tag_##n: new (this->data) t(rhs.n##_data); break;
-#define HSTORE_VARIANT_PDESTROY(n, t)   case Enum::tag_##n: { typedef t __DT; ((__DT*)&this->n##_data)->~__DT(); } break;
+#define HSTORE_VARIANT_PDESTROY(n, t)   case Enum::tag_##n: { typedef t PRIV_DT; ((PRIV_DT*)&this->n##_data)->~PRIV_DT(); } break;
 #define HSTORE_VARIANT_SUCC(n, t) +1
 #define HSTORE_VARIANT_CTOR_OPAQUEDATA(n, t) t n##_data;
 #define HSTORE_VARIANT_CTOR_ENCODE(n, t) \
@@ -1164,7 +1164,7 @@ template <typename T>
 #define HSTORE_VARIANT_EQCASE(n, t) case Enum::tag_##n: return (this->n##_data == rhs.n##_data);
 
 #define DEFINE_HSTORE_VARIANT(T, CTORS...) \
-  DEFINE_HSTORE_VARIANT_GEN(T, _HSTORE_MAP(HSTORE_VARIANT_VDECL, CTORS), _HSTORE_MAP(HSTORE_VARIANT_CTOR, CTORS), _HSTORE_MAP(HSTORE_VARIANT_PCOPY, CTORS), _HSTORE_MAP(HSTORE_VARIANT_PDESTROY, CTORS), _HSTORE_MAP(HSTORE_VARIANT_SUCC, CTORS), _HSTORE_MAP(HSTORE_VARIANT_CTOR_ENCODE, CTORS), _HSTORE_MAP(HSTORE_VARIANT_CTOR_STR, CTORS), _HSTORE_MAP(HSTORE_VARIANT_SIZE_CASE, CTORS), _HSTORE_MAP(HSTORE_VARIANT_WRITE_CASE, CTORS), _HSTORE_MAP(HSTORE_VARIANT_VCASE, CTORS), _HSTORE_MAP(HSTORE_VARIANT_EQCASE, CTORS), _HSTORE_MAP(HSTORE_VARIANT_CTOR_TAG, CTORS), _HSTORE_MAP(HSTORE_VARIANT_CTOR_OPAQUEDATA, CTORS))
+  DEFINE_HSTORE_VARIANT_GEN(T, PRIV_HSTORE_MAP(HSTORE_VARIANT_VDECL, CTORS), PRIV_HSTORE_MAP(HSTORE_VARIANT_CTOR, CTORS), PRIV_HSTORE_MAP(HSTORE_VARIANT_PCOPY, CTORS), PRIV_HSTORE_MAP(HSTORE_VARIANT_PDESTROY, CTORS), PRIV_HSTORE_MAP(HSTORE_VARIANT_SUCC, CTORS), PRIV_HSTORE_MAP(HSTORE_VARIANT_CTOR_ENCODE, CTORS), PRIV_HSTORE_MAP(HSTORE_VARIANT_CTOR_STR, CTORS), PRIV_HSTORE_MAP(HSTORE_VARIANT_SIZE_CASE, CTORS), PRIV_HSTORE_MAP(HSTORE_VARIANT_WRITE_CASE, CTORS), PRIV_HSTORE_MAP(HSTORE_VARIANT_VCASE, CTORS), PRIV_HSTORE_MAP(HSTORE_VARIANT_EQCASE, CTORS), PRIV_HSTORE_MAP(HSTORE_VARIANT_CTOR_TAG, CTORS), PRIV_HSTORE_MAP(HSTORE_VARIANT_CTOR_OPAQUEDATA, CTORS))
 
 // (with explicit ctor names)
 #define HSTORE_VARIANT_LBL_CTOR(n, lbl, t) static SelfT n(const t & x) { SelfT r; r.tag = Enum::tag_##n; new (r.data) t(x); return r; }
@@ -1173,7 +1173,7 @@ template <typename T>
 #define HSTORE_VARIANT_LBL_SIZE_CASE(n, lbl, t)    case Enum::tag_##n: return sizeof(int) + ::hobbes::storage::store< t >::size(this->n##_data);
 #define HSTORE_VARIANT_LBL_WRITE_CASE(n, lbl, t) case Enum::tag_##n: return ::hobbes::storage::store<int>::write(p, (int)this->tag) && ::hobbes::storage::store< t >::write(p, this->n##_data);
 #define HSTORE_VARIANT_LBL_PCOPY(n, lbl, t)      case Enum::tag_##n: new (this->data) t(rhs.n##_data); break;
-#define HSTORE_VARIANT_LBL_PDESTROY(n, lbl, t)   case Enum::tag_##n: { typedef t __DT; ((__DT*)&this->n##_data)->~__DT(); } break;
+#define HSTORE_VARIANT_LBL_PDESTROY(n, lbl, t)   case Enum::tag_##n: { typedef t PRIV_DT; ((PRIV_DT*)&this->n##_data)->~PRIV_DT(); } break;
 #define HSTORE_VARIANT_LBL_SUCC(n, lbl, t) +1
 #define HSTORE_VARIANT_LBL_CTOR_OPAQUEDATA(n, lbl, t) t n##_data;
 #define HSTORE_VARIANT_LBL_CTOR_ENCODE(n, lbl, t) \
@@ -1186,7 +1186,7 @@ template <typename T>
 #define HSTORE_VARIANT_LBL_EQCASE(n, lbl, t) case Enum::tag_##n: return (this->n##_data == rhs.n##_data);
 
 #define DEFINE_HSTORE_VARIANT_WITH_LABELS(T, CTORS...) \
-  DEFINE_HSTORE_VARIANT_GEN(T, _HSTORE_MAP(HSTORE_VARIANT_LBL_VDECL, CTORS), _HSTORE_MAP(HSTORE_VARIANT_LBL_CTOR, CTORS), _HSTORE_MAP(HSTORE_VARIANT_LBL_PCOPY, CTORS), _HSTORE_MAP(HSTORE_VARIANT_LBL_PDESTROY, CTORS), _HSTORE_MAP(HSTORE_VARIANT_LBL_SUCC, CTORS), _HSTORE_MAP(HSTORE_VARIANT_LBL_CTOR_ENCODE, CTORS), _HSTORE_MAP(HSTORE_VARIANT_LBL_CTOR_STR, CTORS), _HSTORE_MAP(HSTORE_VARIANT_LBL_SIZE_CASE, CTORS), _HSTORE_MAP(HSTORE_VARIANT_LBL_WRITE_CASE, CTORS), _HSTORE_MAP(HSTORE_VARIANT_LBL_VCASE, CTORS), _HSTORE_MAP(HSTORE_VARIANT_LBL_EQCASE, CTORS), _HSTORE_MAP(HSTORE_VARIANT_LBL_CTOR_TAG, CTORS), _HSTORE_MAP(HSTORE_VARIANT_LBL_CTOR_OPAQUEDATA, CTORS))
+  DEFINE_HSTORE_VARIANT_GEN(T, PRIV_HSTORE_MAP(HSTORE_VARIANT_LBL_VDECL, CTORS), PRIV_HSTORE_MAP(HSTORE_VARIANT_LBL_CTOR, CTORS), PRIV_HSTORE_MAP(HSTORE_VARIANT_LBL_PCOPY, CTORS), PRIV_HSTORE_MAP(HSTORE_VARIANT_LBL_PDESTROY, CTORS), PRIV_HSTORE_MAP(HSTORE_VARIANT_LBL_SUCC, CTORS), PRIV_HSTORE_MAP(HSTORE_VARIANT_LBL_CTOR_ENCODE, CTORS), PRIV_HSTORE_MAP(HSTORE_VARIANT_LBL_CTOR_STR, CTORS), PRIV_HSTORE_MAP(HSTORE_VARIANT_LBL_SIZE_CASE, CTORS), PRIV_HSTORE_MAP(HSTORE_VARIANT_LBL_WRITE_CASE, CTORS), PRIV_HSTORE_MAP(HSTORE_VARIANT_LBL_VCASE, CTORS), PRIV_HSTORE_MAP(HSTORE_VARIANT_LBL_EQCASE, CTORS), PRIV_HSTORE_MAP(HSTORE_VARIANT_LBL_CTOR_TAG, CTORS), PRIV_HSTORE_MAP(HSTORE_VARIANT_LBL_CTOR_OPAQUEDATA, CTORS))
 
 template <typename T>
   struct store<T, typename T::is_hstore_variant> {
@@ -1212,7 +1212,7 @@ template <typename T>
 template <>
   struct store<recursion> {
     static void encode(bytes* out) {
-      w(_HSTORE_TYCTOR_TVAR, out);
+      w(PRIV_HSTORE_TYCTOR_TVAR, out);
       ws("x", out);
     }
     static std::string describe() {
@@ -1241,7 +1241,7 @@ template <>
 template <typename T>
   struct store<recursive<T>> {
     static void encode(bytes* out) {
-      w(_HSTORE_TYCTOR_RECURSIVE, out);
+      w(PRIV_HSTORE_TYCTOR_RECURSIVE, out);
       ws("x", out);
       store<T>::encode(out);
     }
@@ -1289,22 +1289,22 @@ template <>
   };
 
 // store opaque type aliases
-#define DEFINE_HSTORE_TYPE_ALIAS(_ATY, _REPTY) \
-  struct _ATY { \
+#define DEFINE_HSTORE_TYPE_ALIAS(PRIV_ATY, PRIV_REPTY) \
+  struct PRIV_ATY { \
     typedef void is_hstore_alias; \
-    typedef _REPTY type; \
-    static const char* name() { return #_ATY; } \
-    inline operator _REPTY() { return this->value; } \
-    _REPTY value; \
-    _ATY() : value() { } \
-    _ATY(const _REPTY& x) : value(x) { } \
-    _ATY(const _ATY& x) : value(x.value) { } \
-    _ATY& operator=(const _ATY& x) { this->value = x.value; return *this; } \
+    typedef PRIV_REPTY type; \
+    static const char* name() { return #PRIV_ATY; } \
+    inline operator PRIV_REPTY() { return this->value; } \
+    PRIV_REPTY value; \
+    PRIV_ATY() : value() { } \
+    PRIV_ATY(const PRIV_REPTY& x) : value(x) { } \
+    PRIV_ATY(const PRIV_ATY& x) : value(x.value) { } \
+    PRIV_ATY& operator=(const PRIV_ATY& x) { this->value = x.value; return *this; } \
   }
 
 template <typename T>
   struct store<T, typename T::is_hstore_alias> {
-    static void        encode(bytes* out)          { w(_HSTORE_TYCTOR_PRIM, out); ws(T::name(), out); w((bool)true, out); store<typename T::type>::encode(out); }
+    static void        encode(bytes* out)          { w(PRIV_HSTORE_TYCTOR_PRIM, out); ws(T::name(), out); w((bool)true, out); store<typename T::type>::encode(out); }
     static std::string describe()                  { return T::name(); }
     static size_t      size(const T& x)            { return store<typename T::type>::size(x.value); }
     static bool        write(wpipe& p, const T& x) { return store<typename T::type>::write(p, x.value); }
@@ -1314,9 +1314,9 @@ template <typename T>
 template <typename T, size_t N>
   struct fixedArrTyDesc {
     static void encode(bytes* out) {
-      w(_HSTORE_TYCTOR_FIXEDARR, out);
+      w(PRIV_HSTORE_TYCTOR_FIXEDARR, out);
       store<T>::encode(out);
-      w(_HSTORE_TYCTOR_SIZE, out);
+      w(PRIV_HSTORE_TYCTOR_SIZE, out);
       w((long)N, out);
     }
 
@@ -1365,7 +1365,7 @@ template <typename T, size_t N>
 // support storage of vectors
 template <typename T>
   struct store<std::vector<T>, typename store<T>::can_memcpy> {
-    static void encode(bytes* out) { w(_HSTORE_TYCTOR_ARR, out); store<T>::encode(out); }
+    static void encode(bytes* out) { w(PRIV_HSTORE_TYCTOR_ARR, out); store<T>::encode(out); }
     static std::string describe() { return "[" + store<T>::describe() + "]"; }
     static size_t size(const std::vector<T>& xs) { return sizeof(size_t) + (xs.size() * sizeof(T)); }
     static bool write(wpipe& p, const std::vector<T>& xs) { size_t n = xs.size(); return store<size_t>::write(p, n) && p.write((const uint8_t*)&xs[0], n * sizeof(T)); }
@@ -1373,7 +1373,7 @@ template <typename T>
 
 template <typename T>
   struct store<std::vector<T>, typename cannot_memcpy<T>::type> {
-    static void encode(bytes* out) { w(_HSTORE_TYCTOR_ARR, out); store<T>::encode(out); }
+    static void encode(bytes* out) { w(PRIV_HSTORE_TYCTOR_ARR, out); store<T>::encode(out); }
     static std::string describe() { return "[" + store<T>::describe() + "]"; }
     static size_t size(const std::vector<T>& xs) {
       size_t t = sizeof(size_t);
@@ -1399,14 +1399,14 @@ template <typename T>
 // support storage of strings
 template <>
   struct store<const char*> {
-    static void encode(bytes* out) { w(_HSTORE_TYCTOR_ARR, out); store<char>::encode(out); }
+    static void encode(bytes* out) { w(PRIV_HSTORE_TYCTOR_ARR, out); store<char>::encode(out); }
     static std::string describe() { return "[char]"; }
     static size_t size(const char* s) { return sizeof(size_t) + strlen(s); }
     static bool write(wpipe& p, const char* s) { size_t n = strlen(s); return store<size_t>::write(p, n) && p.write((const uint8_t*)s, n); }
   };
 template <>
   struct store<std::string> {
-    static void encode(bytes* out) { w(_HSTORE_TYCTOR_ARR, out); store<char>::encode(out); }
+    static void encode(bytes* out) { w(PRIV_HSTORE_TYCTOR_ARR, out); store<char>::encode(out); }
     static std::string describe() { return "[char]"; }
     static size_t size(const std::string& s) { return sizeof(size_t) + s.size(); }
     static bool write(wpipe& p, const std::string& s) { size_t n = s.size(); return store<size_t>::write(p, n) && p.write((const uint8_t*)s.data(), n); }
@@ -1456,7 +1456,7 @@ template <typename TyList>
         store<typename TyList::head_type>::encode(e);
         break;
       default:
-        w(_HSTORE_TYCTOR_STRUCT, e);
+        w(PRIV_HSTORE_TYCTOR_STRUCT, e);
         w(localArity, e);
         TyList::encode(0, e);
         break;
@@ -1489,11 +1489,11 @@ template <size_t... pcs>
       return std::string((const char*)msg);
     }
   };
-#define _HSTORE_TSTR32(i,s)   ::hobbes::storage::at8(i+(8*0),s),::hobbes::storage::at8(i+(8*1),s),::hobbes::storage::at8(i+(8*2),s),::hobbes::storage::at8(i+(8*3),s)
-#define _HSTORE_TSTR128(i,s)  _HSTORE_TSTR32(i+(32*0),s),_HSTORE_TSTR32(i+(32*1),s),_HSTORE_TSTR32(i+(32*2),s),_HSTORE_TSTR32(i+(32*3),s)
-#define _HSTORE_TSTR512(i,s)  _HSTORE_TSTR128(i+(128*0),s),_HSTORE_TSTR128(i+(128*1),s),_HSTORE_TSTR128(i+(128*2),s),_HSTORE_TSTR128(i+(128*3),s)
-#define _HSTORE_TSTR1024(i,s) _HSTORE_TSTR512(i+(512*0),s),_HSTORE_TSTR512(i+(512*1),s)
-#define _HSTORE_TSTR(s)       ::hobbes::storage::strpack<_HSTORE_TSTR1024(0,s)>
+#define PRIV_HSTORE_TSTR32(i,s)   ::hobbes::storage::at8(i+(8*0),s),::hobbes::storage::at8(i+(8*1),s),::hobbes::storage::at8(i+(8*2),s),::hobbes::storage::at8(i+(8*3),s)
+#define PRIV_HSTORE_TSTR128(i,s)  PRIV_HSTORE_TSTR32(i+(32*0),s),PRIV_HSTORE_TSTR32(i+(32*1),s),PRIV_HSTORE_TSTR32(i+(32*2),s),PRIV_HSTORE_TSTR32(i+(32*3),s)
+#define PRIV_HSTORE_TSTR512(i,s)  PRIV_HSTORE_TSTR128(i+(128*0),s),PRIV_HSTORE_TSTR128(i+(128*1),s),PRIV_HSTORE_TSTR128(i+(128*2),s),PRIV_HSTORE_TSTR128(i+(128*3),s)
+#define PRIV_HSTORE_TSTR1024(i,s) PRIV_HSTORE_TSTR512(i+(512*0),s),PRIV_HSTORE_TSTR512(i+(512*1),s)
+#define PRIV_HSTORE_TSTR(s)       ::hobbes::storage::strpack<PRIV_HSTORE_TSTR1024(0,s)>
 
 template <uint32_t* X>
   uint32_t forceRegistration() { return *X; }
@@ -1559,7 +1559,7 @@ struct StorageGroup {
   }
 
   wpipe& out() {
-    if (_HSTORE_LIKELY(this->pipe != 0)) {
+    if (PRIV_HSTORE_LIKELY(this->pipe != 0)) {
       return *this->pipe;
     }
 
@@ -1714,12 +1714,12 @@ template <size_t N>
   }
 
 // create statement groups
-#define DECLARE_STORAGE_GROUP(NAME, cm)            extern ::hobbes::storage::StorageGroup<_HSTORE_TSTR(#NAME),cm> NAME
-#define DEFINE_STORAGE_GROUP(NAME, pagec, qos, cm) ::hobbes::storage::StorageGroup<_HSTORE_TSTR(#NAME),cm> NAME = { 0, qos, pagec, -1 }
+#define DECLARE_STORAGE_GROUP(NAME, cm)            extern ::hobbes::storage::StorageGroup<PRIV_HSTORE_TSTR(#NAME),cm> NAME
+#define DEFINE_STORAGE_GROUP(NAME, pagec, qos, cm) ::hobbes::storage::StorageGroup<PRIV_HSTORE_TSTR(#NAME),cm> NAME = { 0, qos, pagec, -1 }
 
 // record some data
 #define APPLY_HSTORE_STMT(GROUP, NAME, FLAGS, FMTSTR, ARGS...) \
-  ::hobbes::storage::write(&GROUP, ({static_assert(::hobbes::storage::maxVarRef(FMTSTR) <= decltype(::hobbes::storage::makePayloadTypes(ARGS))::count, "Log format string and payload arity mismatch"); ::hobbes::storage::StorageStatement<decltype(GROUP),&GROUP,_HSTORE_TSTR(__FILE__),__LINE__,_HSTORE_TSTR(#NAME),FLAGS,_HSTORE_TSTR(FMTSTR),decltype(::hobbes::storage::makePayloadTypes(ARGS))>::id;}), ## ARGS)
+  ::hobbes::storage::write(&GROUP, ({static_assert(::hobbes::storage::maxVarRef(FMTSTR) <= decltype(::hobbes::storage::makePayloadTypes(ARGS))::count, "Log format string and payload arity mismatch"); ::hobbes::storage::StorageStatement<decltype(GROUP),&GROUP,PRIV_HSTORE_TSTR(__FILE__),__LINE__,PRIV_HSTORE_TSTR(#NAME),FLAGS,PRIV_HSTORE_TSTR(FMTSTR),decltype(::hobbes::storage::makePayloadTypes(ARGS))>::id;}), ## ARGS)
 
 #define HSTORE(GROUP, NAME, ARGS...)       APPLY_HSTORE_STMT(GROUP, NAME, 0,     "", ## ARGS)
 #define HLOG(GROUP, NAME, FMTSTR, ARGS...) APPLY_HSTORE_STMT(GROUP, NAME, 1, FMTSTR, ## ARGS)
@@ -1848,10 +1848,10 @@ inline void runReadProcess(const QueueConnection& qc, const std::function<std::f
     txn.resize(txn.size() - (blockSize - p.read(&txn[i], blockSize, &txnFlag)));
 
     switch (txnFlag) {
-    case _HSTORE_PAGE_STATE_ROLLBACK:
+    case PRIV_HSTORE_PAGE_STATE_ROLLBACK:
       txn.clear();
       break;
-    case _HSTORE_PAGE_STATE_COMMIT: {
+    case PRIV_HSTORE_PAGE_STATE_COMMIT: {
       Transaction txnr(&txn[0], txn.size());
       txnF(txnr);
       txn.clear();
