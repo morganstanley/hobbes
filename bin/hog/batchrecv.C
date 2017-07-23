@@ -87,7 +87,7 @@ void read(gzbuffer* in, uint8_t* b, size_t n) {
   in->read(b, n);
 }
 
-#ifdef __clang__
+#if defined(__APPLE__) && defined(__MACH__)
 void read(gzbuffer* in, size_t*   n) { read(in, (uint8_t*)n, sizeof(*n)); }
 #endif
 void read(gzbuffer* in, uint32_t* n) { read(in, (uint8_t*)n, sizeof(*n)); }
