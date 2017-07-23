@@ -35,7 +35,7 @@ inline long time() {
 // degenerate timers on older versions of OSX
 inline long tick() {
   struct timeval t;
-  if (gettimeofday(&t, 0)) {
+  if (gettimeofday(&t, 0) == 0) {
     return ((t.tv_sec*1000000)+t.tv_usec)*1000;
   } else {
     return 0;
