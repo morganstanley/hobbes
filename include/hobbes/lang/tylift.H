@@ -371,7 +371,7 @@ template <typename ... CTys>
 #define DEFINE_ENUM(T, CTORS...) \
   struct T { \
     enum Enum : unsigned int { \
-      _HOBPP_MAP(HOBBES_ENUM_CTOR, CTORS) \
+      HOBPP_MAP(HOBBES_ENUM_CTOR, CTORS) \
     }; \
     explicit operator bool() const = delete; \
     \
@@ -381,7 +381,7 @@ template <typename ... CTys>
     \
     static MetaSeq meta() { \
       MetaSeq r; \
-      _HOBPP_MAP(HOBBES_ENUM_METAENT, CTORS) \
+      HOBPP_MAP(HOBBES_ENUM_METAENT, CTORS) \
       return r; \
     } \
     \
@@ -424,13 +424,13 @@ template <typename T>
 
 #define DEFINE_STRUCT(T, FIELDS...) \
   struct T { \
-    _HOBPP_MAP(HOBBES_STRUCT_FIELD, FIELDS) \
+    HOBPP_MAP(HOBBES_STRUCT_FIELD, FIELDS) \
     \
     typedef void is_hobbes_struct; \
     typedef T SelfT; \
     static ::hobbes::MonoTypePtr meta(::hobbes::typedb& tenv) { \
       ::hobbes::Record::Members r; \
-      _HOBPP_MAP(HOBBES_META_FIELD, FIELDS) \
+      HOBPP_MAP(HOBBES_META_FIELD, FIELDS) \
       return ::hobbes::Record::make(r); \
     } \
   }
