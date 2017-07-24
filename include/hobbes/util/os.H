@@ -6,6 +6,7 @@
 #define HOBBES_UTIL_OS_HPP_INCLUDED
 
 #if defined(__APPLE__) && defined(__MACH__)
+#include <Availability.h>
 #define BUILD_OSX
 #else
 #define BUILD_LINUX
