@@ -168,7 +168,7 @@ inline addrinfo* lookupAddrInfo(const std::string& host, const std::string& port
   case EAI_SYSTEM:     throw std::runtime_error("Error while trying to resolve " + host + ":" + port + " (" + std::string(strerror(errno)) + ")");
   case EAI_NONAME:     throw std::runtime_error("Failed to resolve " + host + ":" + port);
   case EAI_SERVICE:    throw std::runtime_error("Failed to resolve service: " + port);
-  defualt:             throw std::runtime_error("Unknown error while trying to resolve " + host + ":" + port);
+  default:             throw std::runtime_error("Unknown error while trying to resolve " + host + ":" + port);
   }
   return 0;
 }
@@ -329,7 +329,7 @@ _HNET_DEFINE_PRIMTYS(int32_t,  "int");
 _HNET_DEFINE_PRIMTYS(uint32_t, "int");
 _HNET_DEFINE_PRIMTYS(int64_t,  "long");
 _HNET_DEFINE_PRIMTYS(uint64_t, "long");
-#ifdef __clang__
+#if defined(__APPLE__) && defined(__MACH__)
 _HNET_DEFINE_PRIMTYS(size_t,   "long");
 #endif
 _HNET_DEFINE_PRIMTYS(float,    "float");
