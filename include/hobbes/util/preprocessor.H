@@ -7,43 +7,43 @@
 
 namespace hobbes {
 
-#define _HOBPP_FIRST(a, ...) a
-#define _HOBPP_SECOND(a, b, ...) b
-#define _HOBPP_CAT(a,b) a ## b
-#define _HOBPP_IS_PROBE(...) _HOBPP_SECOND(__VA_ARGS__, 0)
-#define _HOBPP_PROBE() ~, 1
-#define _HOBPP_NOT(x) _HOBPP_IS_PROBE(_HOBPP_CAT(_HOBPP__NOT_, x))
-#define _HOBPP__NOT_0 _HOBPP_PROBE()
-#define _HOBPP_BOOL(x) _HOBPP_NOT(_HOBPP_NOT(x))
-#define _HOBPP_IF_ELSE(condition) _HOBPP__IF_ELSE(_HOBPP_BOOL(condition))
-#define _HOBPP__IF_ELSE(condition) _HOBPP_CAT(_HOBPP__IF_, condition)
-#define _HOBPP__IF_1(...) __VA_ARGS__ _HOBPP__IF_1_ELSE
-#define _HOBPP__IF_0(...)             _HOBPP__IF_0_ELSE
-#define _HOBPP__IF_1_ELSE(...)
-#define _HOBPP__IF_0_ELSE(...) __VA_ARGS__
-#define _HOBPP_EMPTY()
-#define _HOBPP_EVAL(...) _HOBPP_EVAL256(__VA_ARGS__)
-#define _HOBPP_EVAL256(...) _HOBPP_EVAL128(_HOBPP_EVAL128(__VA_ARGS__))
-#define _HOBPP_EVAL128(...) _HOBPP_EVAL64(_HOBPP_EVAL64(__VA_ARGS__))
-#define _HOBPP_EVAL64(...) _HOBPP_EVAL32(_HOBPP_EVAL32(__VA_ARGS__))
-#define _HOBPP_EVAL32(...) _HOBPP_EVAL16(_HOBPP_EVAL16(__VA_ARGS__))
-#define _HOBPP_EVAL16(...) _HOBPP_EVAL8(_HOBPP_EVAL8(__VA_ARGS__))
-#define _HOBPP_EVAL8(...) _HOBPP_EVAL4(_HOBPP_EVAL4(__VA_ARGS__))
-#define _HOBPP_EVAL4(...) _HOBPP_EVAL2(_HOBPP_EVAL2(__VA_ARGS__))
-#define _HOBPP_EVAL2(...) _HOBPP_EVAL1(_HOBPP_EVAL1(__VA_ARGS__))
-#define _HOBPP_EVAL1(...) __VA_ARGS__
-#define _HOBPP_DEFER2(m) m _HOBPP_EMPTY _HOBPP_EMPTY()()
-#define _HOBPP_HAS_PARGS(...) _HOBPP_BOOL(_HOBPP_FIRST(_HOBPP__EOAP_ __VA_ARGS__)())
-#define _HOBPP__EOAP_(...) _HOBPP_BOOL(_HOBPP_FIRST(_HOBPP__EOA_ __VA_ARGS__)())
-#define _HOBPP__EOA_() 0
-#define _HOBPP_MAP(f, VS...) _HOBPP_EVAL(_HOBPP_MAPP(f, VS))
-#define _HOBPP_MAPP(f, H, T...)        \
+#define HOBPP_FIRST(a, ...) a
+#define HOBPP_SECOND(a, b, ...) b
+#define HOBPP_CAT(a,b) a ## b
+#define HOBPP_IS_PROBE(...) HOBPP_SECOND(__VA_ARGS__, 0)
+#define HOBPP_PROBE() ~, 1
+#define HOBPP_NOT(x) HOBPP_IS_PROBE(HOBPP_CAT(HOBPP_SNOT_, x))
+#define HOBPP_SNOT_0 HOBPP_PROBE()
+#define HOBPP_BOOL(x) HOBPP_NOT(HOBPP_NOT(x))
+#define HOBPP_IF_ELSE(condition) HOBPP_SIF_ELSE(HOBPP_BOOL(condition))
+#define HOBPP_SIF_ELSE(condition) HOBPP_CAT(HOBPP_SIF_, condition)
+#define HOBPP_SIF_1(...) __VA_ARGS__ HOBPP_SIF_1_ELSE
+#define HOBPP_SIF_0(...)             HOBPP_SIF_0_ELSE
+#define HOBPP_SIF_1_ELSE(...)
+#define HOBPP_SIF_0_ELSE(...) __VA_ARGS__
+#define HOBPP_EMPTY()
+#define HOBPP_EVAL(...) HOBPP_EVAL256(__VA_ARGS__)
+#define HOBPP_EVAL256(...) HOBPP_EVAL128(HOBPP_EVAL128(__VA_ARGS__))
+#define HOBPP_EVAL128(...) HOBPP_EVAL64(HOBPP_EVAL64(__VA_ARGS__))
+#define HOBPP_EVAL64(...) HOBPP_EVAL32(HOBPP_EVAL32(__VA_ARGS__))
+#define HOBPP_EVAL32(...) HOBPP_EVAL16(HOBPP_EVAL16(__VA_ARGS__))
+#define HOBPP_EVAL16(...) HOBPP_EVAL8(HOBPP_EVAL8(__VA_ARGS__))
+#define HOBPP_EVAL8(...) HOBPP_EVAL4(HOBPP_EVAL4(__VA_ARGS__))
+#define HOBPP_EVAL4(...) HOBPP_EVAL2(HOBPP_EVAL2(__VA_ARGS__))
+#define HOBPP_EVAL2(...) HOBPP_EVAL1(HOBPP_EVAL1(__VA_ARGS__))
+#define HOBPP_EVAL1(...) __VA_ARGS__
+#define HOBPP_DEFER2(m) m HOBPP_EMPTY HOBPP_EMPTY()()
+#define HOBPP_HAS_PARGS(...) HOBPP_BOOL(HOBPP_FIRST(HOBPP_SEOAP_ __VA_ARGS__)())
+#define HOBPP_SEOAP_(...) HOBPP_BOOL(HOBPP_FIRST(HOBPP_SEOA_ __VA_ARGS__)())
+#define HOBPP_SEOA_() 0
+#define HOBPP_MAP(f, VS...) HOBPP_EVAL(HOBPP_MAPP(f, VS))
+#define HOBPP_MAPP(f, H, T...)        \
   f H                                 \
-  _HOBPP_IF_ELSE(_HOBPP_HAS_PARGS(T))(  \
-    _HOBPP_DEFER2(_HOBPP__MAPP)()(f, T) \
+  HOBPP_IF_ELSE(HOBPP_HAS_PARGS(T))(  \
+    HOBPP_DEFER2(HOBPP_SMAPP)()(f, T) \
   )(                                  \
   )
-#define _HOBPP__MAPP() _HOBPP_MAPP
+#define HOBPP_SMAPP() HOBPP_MAPP
 
 }
 
