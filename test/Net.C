@@ -112,7 +112,7 @@ template <>
   struct io<CustomIDEnum> {
     typedef void can_memcpy;
     static void encode(bytes* out) {
-      w(_HNET_TYCTOR_VARIANT, out);
+      w(PRIV_HNET_TYCTOR_VARIANT, out);
       w((size_t)3, out);
       ws("Red",   out); w((uint32_t)(CustomIDEnum::Red),   out); encode_primty("unit", out);
       ws("Green", out); w((uint32_t)(CustomIDEnum::Green), out); encode_primty("unit", out);
