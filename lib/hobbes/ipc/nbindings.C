@@ -123,7 +123,7 @@ public:
     }
 
     ExprPtr with(const Var* v) const {
-      if (v->value() == connectVar()) {
+      if (v->value() == connectVar() && hasConstraint(this->constraint, v->type())) {
         return mktunit(v->la());
       } else {
         return wrapWithTy(v->type(), new Var(v->value(), v->la()));
@@ -240,7 +240,7 @@ public:
     }
   
     ExprPtr with(const Var* v) const {
-      if (v->value() == netInvoke()) {
+      if (v->value() == netInvoke() && hasConstraint(this->constraint, v->type())) {
         return var(this->invokeFn, removeConstraint(this->constraint, v->type()), v->la());
       } else {
         return wrapWithTy(v->type(), new Var(v->value(), v->la()));
@@ -402,7 +402,7 @@ public:
     }
   
     ExprPtr with(const Var* v) const {
-      if (v->value() == receive()) {
+      if (v->value() == receive() && hasConstraint(this->constraint, v->type())) {
         return var(this->receiveFn, removeConstraint(this->constraint, v->type()), v->la());
       } else {
         return wrapWithTy(v->type(), new Var(v->value(), v->la()));
