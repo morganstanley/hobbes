@@ -283,18 +283,14 @@ template <typename K, typename V, typename Ord>
           lr.first = Ord::succ(rr.second);
           break;
         case LRE:
-          r.push_back(range(lr.first, rr.first));
-          if (Ord::lt(rr.first, rr.second)) {
-            r.push_back(range(Ord::succ(rr.first), rr.second));
-          }
+          r.push_back(range(lr.first, Ord::pred(rr.first)));
+          r.push_back(range(rr.first, rr.second));
           ++i;
           ++j;
           break;
         case RLE:
-          r.push_back(range(rr.first, lr.first));
-          if (Ord::lt(lr.first, lr.second)) {
-            r.push_back(range(Ord::succ(lr.first), lr.second));
-          }
+          r.push_back(range(rr.first, Ord::pred(lr.first)));
+          r.push_back(range(lr.first, lr.second));
           ++i;
           ++j;
           break;
@@ -312,13 +308,17 @@ template <typename K, typename V, typename Ord>
           break;
         case LRLR:
           r.push_back(range(lr.first, Ord::pred(rr.first)));
-          r.push_back(range(rr.first, Ord::pred(lr.second)));
+          if (rr.first != lr.second) {
+            r.push_back(range(rr.first, Ord::pred(lr.second)));
+          }
           ++i;
           rr.first = lr.second;
           break;
         case RLRL:
-          r.push_back(range(rr.first, lr.first-1));
-          r.push_back(range(lr.first, rr.second-1));
+          r.push_back(range(rr.first, Ord::pred(lr.first)));
+          if (lr.first != rr.second) {
+            r.push_back(range(lr.first, Ord::pred(rr.second)));
+          }
           ++j;
           lr.first = rr.second;
           break;
