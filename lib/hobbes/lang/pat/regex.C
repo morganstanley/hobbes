@@ -421,11 +421,11 @@ typedef std::vector<NFAState> NFA;
 
 // for a given set of NFA states, find the set of non-overlapping char ranges
 CharRanges usedCharRanges(const NFA& nfa, const stateset& ss) {
-  CharRanges r;
+  CharRanges rs;
   for (auto s : ss) {
-    r = nfa[s].chars.disjointRanges(r);
+    rs = nfa[s].chars.disjointRanges(rs);
   }
-  return r;
+  return rs;
 }
 
 // accumulate a regex match into an NFA
@@ -652,16 +652,24 @@ stateset epsState(const EpsClosure& ec, const stateset& ss) {
   return r;
 }
 
+void print(std::ostream& out, const stateset& ss) {
+  out << "{";
+  auto s = ss.begin();
+  if (s != ss.end()) {
+    out << *s;
+    ++s;
+    for (; s != ss.end(); ++s) {
+      out << ", " << *s;
+    }
+  }
+  out << "}";
+}
+
 void print(std::ostream& out, const EpsClosure& ec) {
   for (const auto& eset : ec) {
-    out << eset.first << " -> {";
-    auto ss = eset.second.begin();
-    out << *ss;
-    ++ss;
-    for (; ss != eset.second.end(); ++ss) {
-      out << ", " << *ss;
-    }
-    out << "}" << std::endl;
+    out << eset.first << " -> ";
+    print(out, eset.second);
+    out << std::endl;
   }
 }
 
@@ -703,7 +711,9 @@ typedef std::map<stateset, state> Nss2Ds;
 state dfaState(const NFA& nfa, const EpsClosure& ec, Nss2Ds* nss2ds, DFA* dfa, const stateset& ss, RStates* rstates) {
   // did we already make this state?  if so, just return it
   auto didIt = nss2ds->find(ss);
-  if (didIt != nss2ds->end()) { return didIt->second; }
+  if (didIt != nss2ds->end()) {
+    return didIt->second;
+  }
 
   // we need to make this state -- allocate it and remember it
   state result = dfa->size();
