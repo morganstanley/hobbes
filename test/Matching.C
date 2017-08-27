@@ -130,6 +130,9 @@ TEST(Matching, Regex) {
 
   // verify binding in regex matches
   EXPECT_EQ(makeStdString(c().compileFn<const array<char>*()>("match \"foobar\" with | 'f(?<os>o*)bar' -> os | _ -> \"???\"")()), "oo");
+
+  // verify misc expressions
+  EXPECT_EQ(c().compileFn<int()>("match \"Roba\" with | 'Ka|Roba|Raa' -> 1 | _ -> 0")(), 1);
 }
 
 TEST(Matching, Support) {

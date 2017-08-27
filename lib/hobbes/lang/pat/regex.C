@@ -1091,11 +1091,13 @@ EqStates findEquivStates(const DFA& dfa) {
   }
 
   // convert to a representation that makes state substitution explicit
+  //  (follow mapped-to states in case they are also mapped)
   EqStates r;
   for (size_t s0 = 0; s0 < dfa.size(); ++s0) {
     for (size_t s1 = 0; s1 < s0; ++s1) {
       if (eqStates(s0, s1)) {
-        r[s0] = s1;
+        auto s1t = r.find(s1);
+        r[s0] = s1t == r.end() ? s1 : s1t->second;
       }
     }
   }
