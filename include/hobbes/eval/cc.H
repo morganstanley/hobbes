@@ -11,6 +11,7 @@
 #include <hobbes/lang/typepreds.H>
 #include <hobbes/read/parser.H>
 #include <hobbes/eval/jitcc.H>
+#include <hobbes/eval/search.H>
 
 #include <hobbes/util/func.H>
 #include <hobbes/util/llvm.H>
@@ -81,7 +82,15 @@ public:
 
   typedef ExprPtr (*readExprFn)(cc*, const std::string&);
   ExprPtr readExpr(const std::string&);
+  MonoTypePtr readMonoType(const std::string&);
   void setReadExprFn(readExprFn);
+
+  // search for paths from one type to another
+  // (currently just one-step paths, may be useful to consider multi-step paths)
+  SearchEntries search(const MonoTypePtr&, const MonoTypePtr&);
+  SearchEntries search(const ExprPtr&, const MonoTypePtr&);
+  SearchEntries search(const std::string&, const MonoTypePtr&);
+  SearchEntries search(const std::string&, const std::string&);
 private:
   readModuleFileFn readModuleFileF;
   readModuleFn     readModuleF;
@@ -231,6 +240,9 @@ public:
   // bind external functions
   void bindExternFunction(const std::string& fname, const MonoTypePtr& fty, void* fn);
 private:
+  // cache for expression search results
+  SearchCache searchCache;
+
   // the JIT engine that compiles our monotyped expressions
   jitcc jit;
 

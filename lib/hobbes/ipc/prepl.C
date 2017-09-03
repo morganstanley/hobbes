@@ -149,7 +149,8 @@ void dbglog(const std::string& msg) {
 #define CMD_REPL_TYPEOF     ((int)3)
 #define CMD_REPL_TENV       ((int)4)
 #define CMD_REPL_DEFINE     ((int)5)
-#define CMD_COUNT           ((int)6) /* must be the last value to accurately count how many 'commands' there are */
+#define CMD_REPL_SEARCH     ((int)6)
+#define CMD_COUNT           ((int)7) /* must be the last value to accurately count how many 'commands' there are */
 
 void runMachineREPLStep(cc* c) {
   // our local state
@@ -271,6 +272,44 @@ void runMachineREPLStep(cc* c) {
       fdwrite(STDOUT_FILENO, (char)0);
       break;
     }
+    case CMD_REPL_SEARCH: {
+      // search for paths from a source expression to a destination type
+      std::string expr, ty;
+      fdread(STDIN_FILENO, &expr);
+      fdread(STDIN_FILENO, &ty);
+
+      dbglog("search '" + expr + "' ? " + ty);
+
+      std::string msg;
+      try {
+        std::ostringstream ss;
+        auto ses = c->search(expr, ty);
+        if (ses.size() > 0) {
+          std::map<std::string, std::string> stbl;
+          for (const auto& se : ses) {
+            stbl[se.sym] = show(se.ty);
+          }
+
+          str::seqs cols;
+          cols.push_back(str::seq());
+          cols.push_back(str::seq());
+          cols.push_back(str::seq());
+          for (const auto& sse : stbl) {
+            cols[0].push_back(sse.first);
+            cols[1].push_back("::");
+            cols[2].push_back(sse.second);
+          }
+          str::printHeadlessLeftAlignedTable(ss, cols);
+        }
+        msg = ss.str();
+      } catch (std::exception& ex) {
+        msg = "*** " + std::string(ex.what());
+        dbglog(msg);
+      }
+      fdwrite(STDOUT_FILENO, msg.data(), msg.size());
+      fdwrite(STDOUT_FILENO, (char)0);
+      break;
+    }
     default:
       // any other command is interpreted as a previously-compiled function to execute
       thunkFs[cmd]();
@@ -340,6 +379,12 @@ void runMachineREPL(cc* c) {
     dbglog("**** " + std::string(ex.what()));
   }
   dbglog("ending machine REPL");
+}
+
+void procSearch(proc* p, const std::string& expr, const std::string& ty) {
+  fdwrite(p->write_fd, CMD_REPL_SEARCH);
+  fdwrite(p->write_fd, expr);
+  fdwrite(p->write_fd, ty);
 }
 
 void procDefine(proc* p, const std::string& vname, const std::string& x) {

@@ -117,6 +117,11 @@ cc::cc() :
 cc::~cc() {
 }
 
+SearchEntries cc::search(const MonoTypePtr& src, const MonoTypePtr& dst) { return hobbes::search(*this, this->searchCache, src, dst); }
+SearchEntries cc::search(const ExprPtr&     e,   const MonoTypePtr& dst) { return hobbes::search(*this, this->searchCache, e, dst); }
+SearchEntries cc::search(const std::string& e,   const MonoTypePtr& dst) { return search(readExpr(e), dst); }
+SearchEntries cc::search(const std::string& e,   const std::string& t)   { return search(readExpr(e), readMonoType(t)); }
+
 ModulePtr cc::readModuleFile(const std::string& x) { return this->readModuleFileF(this, x); }
 void cc::setReadModuleFileFn(readModuleFileFn f) { this->readModuleFileF = f; }
 
@@ -128,6 +133,14 @@ void cc::setReadExprDefnFn(readExprDefnFn f) { this->readExprDefnF = f; }
 
 ExprPtr cc::readExpr(const std::string& x) { return this->readExprF(this, x); }
 void cc::setReadExprFn(readExprFn f) { this->readExprF = f; }
+MonoTypePtr cc::readMonoType(const std::string& x) {
+  ExprPtr e = readExpr("()::"+x);
+  if (const Assump* a = is<Assump>(e)) {
+    return a->ty()->monoType();
+  } else {
+    throw std::runtime_error("Couldn't parse as type: " + x);
+  }
+}
 
 ExprPtr cc::unsweetenExpression(const TEnvPtr& te, const ExprPtr& e) {
   return unsweetenExpression(te, "", e);
