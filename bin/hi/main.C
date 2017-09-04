@@ -151,20 +151,21 @@ void showShellHelp(const CmdDescs& cds) {
 
 void showShellHelp() {
   CmdDescs cds;
-  cds.push_back(CmdDesc(":h",   "Show this help"));
-  cds.push_back(CmdDesc(":q",   "Quit the hi shell"));
-  cds.push_back(CmdDesc(":a",   "Print the active LLVM module"));
-  cds.push_back(CmdDesc(":t",   "Print all global variable::type bindings"));
-  cds.push_back(CmdDesc(":d S", "Print the docs for a symbol"));
-  cds.push_back(CmdDesc(":t E", "Show the type of the expression E"));
-  cds.push_back(CmdDesc(":p E", "Show the type of E with hidden type classes left intact"));
-  cds.push_back(CmdDesc(":l F", "Load the hobbes script or image file F"));
-  cds.push_back(CmdDesc(":u E", "Show the 'unsweeten' transform of E"));
-  cds.push_back(CmdDesc(":x E", "Show the x86 assembly code produced by compiling E"));
-  cds.push_back(CmdDesc(":e E", "Find the average run-time of E (in CPU cycles)"));
-  cds.push_back(CmdDesc(":z E", "Evaluate E and show a breakdown of compilation/evaluation time"));
-  cds.push_back(CmdDesc(":c N", "Describe the type class named N"));
-  cds.push_back(CmdDesc(":i N", "Show instances and instance generators for the type class N"));
+  cds.push_back(CmdDesc(":h",     "Show this help"));
+  cds.push_back(CmdDesc(":q",     "Quit the hi shell"));
+  cds.push_back(CmdDesc(":s E T", "Search for paths from the expression E to the type T"));
+  cds.push_back(CmdDesc(":a",     "Print the active LLVM module"));
+  cds.push_back(CmdDesc(":t",     "Print all global variable::type bindings"));
+  cds.push_back(CmdDesc(":d S",   "Print the docs for a symbol"));
+  cds.push_back(CmdDesc(":t E",   "Show the type of the expression E"));
+  cds.push_back(CmdDesc(":p E",   "Show the type of E with hidden type classes left intact"));
+  cds.push_back(CmdDesc(":l F",   "Load the hobbes script or image file F"));
+  cds.push_back(CmdDesc(":u E",   "Show the 'unsweeten' transform of E"));
+  cds.push_back(CmdDesc(":x E",   "Show the x86 assembly code produced by compiling E"));
+  cds.push_back(CmdDesc(":e E",   "Find the average run-time of E (in CPU cycles)"));
+  cds.push_back(CmdDesc(":z E",   "Evaluate E and show a breakdown of compilation/evaluation time"));
+  cds.push_back(CmdDesc(":c N",   "Describe the type class named N"));
+  cds.push_back(CmdDesc(":i N",   "Show instances and instance generators for the type class N"));
   showShellHelp(cds);
 }
 
@@ -278,23 +279,19 @@ void evalLine(char* x) {
     }
 
     // should we do something other than evaluate the input expression?
-    enum EvMode { Eval, ShowASM, Typeof, PuglyTypeof, Unsweeten, PerfTest, BreakdownEval };
+    enum EvMode { Eval, ShowASM, Typeof, PuglyTypeof, Unsweeten, PerfTest, BreakdownEval, SearchDefs };
     EvMode em = Eval;
 
     if (line.size() > 3 && line[0] == ':') {
-      if (line[1] == 'x') {
-        em = ShowASM;
-      } else if (line[1] == 't') {
-        em = Typeof;
-      } else if (line[1] == 'p') {
-        em = PuglyTypeof;
-      } else if (line[1] == 'u') {
-        em = Unsweeten;
-      } else if (line[1] == 'e') {
-        em = PerfTest;
-      } else if (line[1] == 'z') {
-        em = BreakdownEval;
-      } else {
+      switch (line[1]) {
+      case 'x': em = ShowASM;       break;
+      case 't': em = Typeof;        break;
+      case 'p': em = PuglyTypeof;   break;
+      case 'u': em = Unsweeten;     break;
+      case 'e': em = PerfTest;      break;
+      case 'z': em = BreakdownEval; break;
+      case 's': em = SearchDefs;    break;
+      default:
         throw std::runtime_error("Unrecognized command: " + line);
       }
       line = line.substr(3);
@@ -327,6 +324,9 @@ void evalLine(char* x) {
       break;
     case BreakdownEval:
       eval->breakdownEvalExpr(line);
+      break;
+    case SearchDefs:
+      eval->searchDefs(line);
       break;
     }
 

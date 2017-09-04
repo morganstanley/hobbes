@@ -20,6 +20,7 @@ struct proc {
 };
 
 void spawn(const std::string&, proc*);
+void procSearch(proc*, const std::string&, const std::string&);
 void procDefine(proc*, const std::string&, const std::string&);
 void procEval(proc*, const std::string&);
 void procTypeof(proc* p, const std::string& x);

@@ -51,6 +51,7 @@ public:
 
   void perfTestExpr(const std::string& expr);
   void breakdownEvalExpr(const std::string& expr);
+  void searchDefs(const std::string& expr_to_type);
   void resetREPLCycle();
 private:
   hobbes::cc ctx;

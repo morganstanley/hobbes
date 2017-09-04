@@ -259,5 +259,35 @@ void evaluator::resetREPLCycle() {
   hobbes::resetMemoryPool();
 }
 
+void showSearchResults(const std::string& expr, const hobbes::SearchEntries& ses) {
+  if (ses.size() > 0) {
+    std::map<std::string, std::string> stbl;
+    for (const auto& se : ses) {
+      stbl[se.sym] = hobbes::show(se.ty);
+    }
+
+    hobbes::str::seqs cols;
+    cols.push_back(hobbes::str::seq());
+    cols.push_back(hobbes::str::seq());
+    cols.push_back(hobbes::str::seq());
+    for (const auto& sse : stbl) {
+      cols[0].push_back(sse.first);
+      cols[1].push_back("::");
+      cols[2].push_back(sse.second);
+    }
+    hobbes::str::printHeadlessLeftAlignedTable(std::cout, cols);
+    std::cout << std::endl;
+  }
+}
+
+void evaluator::searchDefs(const std::string& expr_to_type) {
+  auto p = hobbes::str::rsplit(expr_to_type, "?");
+  if (p.first.empty()) {
+    showSearchResults(expr_to_type, this->ctx.search(expr_to_type, "a"));
+  } else {
+    showSearchResults(p.first, this->ctx.search(p.first, p.second));
+  }
+}
+
 }
 
