@@ -1200,6 +1200,8 @@ template <typename T>
 struct recursion {
   void* value;
   recursion(void* x) : value(x) { }
+  bool operator == (const ::hobbes::storage::recursion&) const {
+    return value == value;
 };
 
 template <typename T>
