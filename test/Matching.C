@@ -121,12 +121,13 @@ TEST(Matching, Regex) {
   EXPECT_EQ(c().compileFn<int()>("match \"foo\" 42 with | 'a(b|c)' 1 -> 1 | 'ab' 2 -> 2 | 'ac' 3 -> 3 | _ _ -> 4")(), 4);
 
   // verify unreachable row determination
+  bool unreachableExn = false;
   try {
     c().compileFn<int()>("match \"foo123ooo\" with | '123|foo.*' -> 0 | 'foo.*' -> 1 | _ -> -1");
-    EXPECT_FALSE("failed to determine expected unreachable regex row");
   } catch (std::exception&) {
-    EXPECT_TRUE(true);
+    unreachableExn = true;
   }
+  EXPECT_TRUE(unreachableExn && "failed to determine expected unreachable regex row");
 
   // verify binding in regex matches
   EXPECT_EQ(makeStdString(c().compileFn<const array<char>*()>("match \"foobar\" with | 'f(?<os>o*)bar' -> os | _ -> \"???\"")()), "oo");

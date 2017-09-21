@@ -102,11 +102,21 @@ TEST(Structs, Bindings) {
 }
 
 TEST(Structs, Assignment) {
+  bool assignExn = false;
   try {
     c().compileFn<void()>("bob.x <- 'c'")();
-    EXPECT_TRUE( false && "Expected char assignment to int field to fail to compile (mistake in assignment compilation?)" );
   } catch (std::exception&) {
+    assignExn = true;
   }
+  EXPECT_TRUE( assignExn && "Expected char assignment to int field to fail to compile (mistake in assignment compilation?)" );
+
+  bool introExn = false;
+  try {
+    c().compileFn<int()>("{x=1, x='c'}.x");
+  } catch (std::exception&) {
+    introExn = true;
+  }
+  EXPECT_TRUE( introExn && "Expected rejection of record introduction with duplicate field names" );
 
   c().compileFn<void()>("bob.x <- 90")();
   EXPECT_TRUE(c().compileFn<bool()>("bob.x == 90")());

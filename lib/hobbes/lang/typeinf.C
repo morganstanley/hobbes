@@ -712,8 +712,13 @@ struct expTypeInfF : public switchExprM<UnitV> {
 
   UnitV with(MkRecord* v) {
     QualTypes ftys;
+    str::set fnames;
 
     for (MkRecord::FieldDefs::const_iterator f = v->fields().begin(); f != v->fields().end(); ++f) {
+      if (!fnames.insert(f->first).second) {
+        throw annotated_error(*v, "Duplicate field name introduction: " + f->first);
+      }
+
       switchOf(f->second, *this);
       ftys.push_back(f->second->type());
     }
