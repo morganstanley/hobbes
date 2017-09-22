@@ -1,5 +1,6 @@
 
 #include <hobbes/hobbes.H>
+#include <hobbes/util/perf.H>
 #include "test.H"
 
 using namespace hobbes;
@@ -205,4 +206,33 @@ TEST(Matching, matchFromStringToIntIsCorrect) {
   EXPECT_TRUE(r);  
 }
 
+TEST(Matching, largeRegexDFAFinishesReasonablyQuickly) {
+  auto t0 = tick();
+  c().compileFn<void()>(
+    "match \"a\" with\n"
+    "| '.*MOGUSJGTCA' where false -> ()\n"
+    "| '.+' where false -> ()\n"
+    "| '..........' where false -> ()\n"
+    "| '..AP.+' where false -> ()\n"
+    "| '..GU.+' where false -> ()\n"
+    "| '.?%.+' where false -> ()\n"
+    "| '.?%..AP.+' where false -> ()\n"
+    "| '.?%..GU.+' where false -> ()\n"
+    "| '.?%ME.+' where false -> ()\n"
+    "| '.?&.+' where false -> ()\n"
+    "| '.?&..AP.+' where false -> ()\n"
+    "| '.?&..GU.+' where false -> ()\n"
+    "| '.?&ME.+' where false -> ()\n"
+    "| '.?[%&].+' where false -> ()\n"
+    "| '.?[%&].+1==.?[%&].+' where false -> ()\n"
+    "| '05DVAAAB9' where false -> ()\n"
+    "| 'IMEAT_AXXBCD_ZM_ABCDEF' where false -> ()\n"
+    "| 'IMEAT_AXX_UVW_ABCDEF' where false -> ()\n"
+    "| 'IMEAT_AXXDCB_DE_ABCDEF' where false -> ()\n"
+    "| 'IMEAT_JWEWQP_DE_ABCDEF' where false -> ()\n"
+    "| _ -> ()\n"
+  )();
+
+  EXPECT_TRUE(tick()-t0 < 1UL*60*60*1000*1000*1000);
+}
 

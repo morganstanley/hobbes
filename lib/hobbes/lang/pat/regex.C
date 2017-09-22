@@ -868,15 +868,23 @@ static ExprPtr transitionAsCharSwitch(const std::string& fname, const DFAState& 
 }
 
 static ExprPtr charInRange(const ExprPtr& c, const std::pair<rchar_t, rchar_t>& crange, const LexicalAnnotation& rootLA) {
-  return
-    fncall(
-      var("and", rootLA),
-      list(
-        fncall(var("<=", rootLA), list(constant((uint8_t)crange.first, rootLA), c), rootLA),
-        fncall(var("<=", rootLA), list(c, constant((uint8_t)crange.second, rootLA)), rootLA)
-      ),
-      rootLA
-    );
+  if (crange.first == 0 && crange.second == 255) {
+    return constant(true, rootLA);
+  } else if (crange.first == 0) {
+    return fncall(var("blte", rootLA), list(c, constant((uint8_t)crange.second, rootLA)), rootLA);
+  } else if (crange.first == crange.second) {
+    return fncall(var("beq", rootLA), list(c, constant((uint8_t)crange.first, rootLA)), rootLA);
+  } else {
+    return
+      fncall(
+        var("and", rootLA),
+        list(
+          fncall(var("blte", rootLA), list(constant((uint8_t)crange.first, rootLA), c), rootLA),
+          fncall(var("blte", rootLA), list(c, constant((uint8_t)crange.second, rootLA)), rootLA)
+        ),
+        rootLA
+      );
+  }
 }
 
 static ExprPtr transitionAsRangeChecks(const std::string& fname, const std::vector<std::pair<std::pair<rchar_t,rchar_t>, state>>& ranges, const ExprPtr& charExpr, const ExprPtr& defaultResult, const LexicalAnnotation& rootLA) {
@@ -933,7 +941,7 @@ static ExprPtr transitionMapping(const std::string& fname, const DFAState& s, co
   }
 }
 
-void makeDFAFunc(cc* c, const std::string& fname, const DFA& dfa, const LexicalAnnotation& rootLA) {
+void makeExprDFAFunc(cc* c, const std::string& fname, const MonoTypePtr& captureTy, const DFA& dfa, const LexicalAnnotation& rootLA) {
   // F(cap,cs,i,e,s) =
   //   switch (s) {
   //   ...
@@ -953,13 +961,17 @@ void makeDFAFunc(cc* c, const std::string& fname, const DFA& dfa, const LexicalA
   //       ...
   //   ...
   Switch::Bindings bs;
+  MonoTypePtr arrT = freshTypeVar();
+  QualTypePtr qarrElemTy = qualtype(list(ConstraintPtr(new Constraint("Array", list(arrT, primty("char"))))), functy(list(arrT, primty("long")), primty("char")));
+  QualTypePtr qarrT = qualtype(list(ConstraintPtr(new Constraint("Array", list(arrT, primty("char"))))), arrT);
+
   for (size_t s = 0; s < dfa.size(); ++s) {
     // all transitions out of this state
     ExprPtr dispatchExpr =
       transitionMapping(
         fname,
         dfa[s],
-        fncall(var("element", rootLA), list(var("cs", rootLA), var("i", rootLA)), rootLA),
+        fncall(var("elem", rootLA), list(var("cs", rootLA), var("i", rootLA)), rootLA),
         constant((int)-1, rootLA),
         rootLA
       );
@@ -1008,18 +1020,69 @@ void makeDFAFunc(cc* c, const std::string& fname, const DFA& dfa, const LexicalA
   ExprPtr fndef =
     fn(str::strings("cap", "cs", "i", "e", "s"),
       let("n", fncall(var("ladd", rootLA), list(var("i", rootLA), constant((long)1, rootLA)), rootLA),
+      let("elem", assume(var("element", rootLA), qarrElemTy, rootLA),
         switchE(
           var("s", rootLA),
           bs,
           constant((int)-1, rootLA),
           rootLA
         ),
-        rootLA
-      ),
+      rootLA),rootLA),
       rootLA
     );
 
-  c->define(fname, fndef);
+  c->define(fname, assume(fndef, qualtype(qarrT->constraints(), functy(list(captureTy, arrT, primty("long"), primty("long"), primty("int")), primty("int"))), rootLA));
+}
+
+typedef std::pair<char,char>  CRange;
+typedef std::pair<CRange,int> CTransition;
+typedef array<CTransition>    CTransitions;
+
+DEFINE_STRUCT(
+  DFAStateRep,
+  (CTransitions*, transitions),
+  (int,           acc)
+);
+
+array<DFAStateRep>* makeDFARep(cc* c, const DFA& dfa) {
+  auto result = (array<DFAStateRep>*)c->memalloc(sizeof(size_t) + dfa.size() * sizeof(DFAStateRep));
+  for (size_t i = 0; i < dfa.size(); ++i) {
+    DFAStateRep& s = result->data[i];
+    auto ctnm = dfa[i].chars.mapping();
+    s.transitions = (CTransitions*)c->memalloc(sizeof(size_t) + ctnm.size() * sizeof(CTransition));
+    for (size_t j = 0; j < ctnm.size(); ++j) {
+      s.transitions->data[j] = ctnm[j];
+    }
+    s.transitions->size = ctnm.size();
+    s.acc = dfa[i].acc;
+  }
+  result->size = dfa.size();
+  return result;
+}
+
+void makeInterpDFAFunc(cc* c, const std::string& fname, const MonoTypePtr& captureTy, const DFA& dfa, const LexicalAnnotation& rootLA) {
+  MonoTypePtr arrT = freshTypeVar();
+  QualTypePtr qarrElemTy = qualtype(list(ConstraintPtr(new Constraint("Array", list(arrT, primty("char"))))), functy(list(arrT, primty("long")), primty("char")));
+  QualTypePtr qarrT = qualtype(list(ConstraintPtr(new Constraint("Array", list(arrT, primty("char"))))), arrT);
+
+  std::string regexDFADef = ".regexDFA." + freshName();
+  c->bind(regexDFADef, makeDFARep(c, dfa));
+
+  ExprPtr fndef =
+    fn(str::strings("cap", "cs", "i", "e", "s"),
+      fncall(var("runRegexDFA", rootLA), list(var("cs", rootLA), var("i", rootLA), var("e", rootLA), var("s", rootLA), var(regexDFADef, rootLA)), rootLA),
+      rootLA
+    );
+
+  c->define(fname, assume(fndef, qualtype(qarrT->constraints(), functy(list(captureTy, arrT, primty("long"), primty("long"), primty("int")), primty("int"))), rootLA));
+}
+
+void makeDFAFunc(cc* c, const std::string& fname, const MonoTypePtr& captureTy, const DFA& dfa, const LexicalAnnotation& rootLA) {
+  if (dfa.size() < 1000 || !isUnit(captureTy)) {
+    makeExprDFAFunc(c, fname, captureTy, dfa, rootLA);
+  } else {
+    makeInterpDFAFunc(c, fname, captureTy, dfa, rootLA);
+  }
 }
 
 // merge char-range mappings where possible and conflate duplicate result states
@@ -1211,7 +1274,7 @@ CRegexes makeRegexFn(cc* c, const Regexes& regexes, const LexicalAnnotation& roo
 
   // translate this DFA to a function
   std::string fname = ".regex." + freshName();
-  makeDFAFunc(c, fname, dfa, rootLA);
+  makeDFAFunc(c, fname, regexCaptureBufferType(regexes), dfa, rootLA);
 
   // and that's the function that the outer match logic should use
   result.fname = fname;

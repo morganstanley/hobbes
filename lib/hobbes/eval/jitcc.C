@@ -550,6 +550,13 @@ void jitcc::popGlobalRegion(size_t x) {
   setThreadRegion(x);
 }
 
+void* jitcc::memalloc(size_t sz) {
+  size_t r = pushGlobalRegion();
+  void* result = ::hobbes::memalloc(sz);
+  popGlobalRegion(r);
+  return result;
+}
+
 llvm::Value* jitcc::lookupVar(const std::string& vn, const MonoTypePtr& vty) {
   // all units are the same
   if (isUnit(vty)) {

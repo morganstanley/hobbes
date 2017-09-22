@@ -92,3 +92,27 @@ packCArrChar cs i =
   else
     (element(cs, i))
 
+// DFA interpretation specifically for large regular expressions
+nextRegexDFAState c cps i =
+  if (i == size(cps)) then
+    i
+  else if (c < cps[i].0.0) then
+    size(cps)
+  else if (c <= cps[i].0.1) then
+    i
+  else
+    nextRegexDFAState(c, cps, i+1)
+
+runRegexDFA cs i e s dfa =
+  if (i == e) then
+    dfa[s].acc
+  else
+    let
+      st = dfa[s].transitions;
+      ns = nextRegexDFAState(element(cs, i), st, 0L)
+    in
+      if (ns < size(st)) then
+        runRegexDFA(cs, i+1, e, st[ns].1, dfa)
+      else
+        (-1)
+

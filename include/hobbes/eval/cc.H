@@ -239,6 +239,9 @@ public:
 
   // bind external functions
   void bindExternFunction(const std::string& fname, const MonoTypePtr& fty, void* fn);
+
+  // allocate global data
+  void* memalloc(size_t);
 private:
   // cache for expression search results
   SearchCache searchCache;
