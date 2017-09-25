@@ -549,6 +549,10 @@ void cc::bindExternFunction(const std::string& fname, const MonoTypePtr& fty, vo
   this->jit.bindGlobal(fname, fty, fn);
 }
 
+void* cc::memalloc(size_t sz) {
+  return this->jit.memalloc(sz);
+}
+
 inline TEnvPtr allocTEnvFrame(const str::seq& names, const MonoTypes& tys, const TEnvPtr& ptenv) {
   if (names.size() == 0) {
     return ptenv;

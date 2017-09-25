@@ -107,6 +107,9 @@ public:
 
   // inline all global definitions within an expression
   ExprPtr inlineGlobals(const ExprPtr&);
+
+  // allocate some global data attached to this JIT
+  void* memalloc(size_t);
 private:
   // produce some machine code for a compiled function
   void* getMachineCode(llvm::Function*, llvm::JITEventListener* listener = 0);
