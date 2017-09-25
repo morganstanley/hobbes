@@ -45,8 +45,18 @@ instance Eq float where
 instance Eq double where
   (===) = deq
 
-instance (Convert a long) => Eq a where
-  x === y = (convert(x)::long) == (convert(y)::long)
+instance Eq timespan where
+  x === y = (convert(x)::long) === convert(y)
+instance Eq time where
+  x === y = (convert(x)::long) === convert(y)
+instance Eq datetime where
+  x === y = (convert(x)::long) === convert(y)
+
+instance (Eq a) => Eq a@f where
+  x === y = ((convert(x)::long) === convert(y)) or load(x) === load(y)
+
+instance (Equiv a b) => Equiv a@f b@g where
+  x == y = load(x) == load(y)
 
 // equivalence between convertible types
 instance (a != b, Convert a b, Eq b) => Equiv a b where
