@@ -82,6 +82,25 @@ std::string freshTempFile(const std::string& dirPfx) {
   }
 }
 
+struct Session {
+  // the file being written into
+  hobbes::writer* db;
+
+  // sections of the file for structured data
+  typedef std::vector<hobbes::StoredSeries*> StoredSeriess;
+  StoredSeriess streams;
+
+  // functions for actually writing stream data
+  typedef void (*WriteFn)(hobbes::storage::Transaction*);
+  typedef std::vector<WriteFn> WriteFns;
+
+  WriteFns writeFns;
+
+  // scratch space to accumulate transaction descriptions
+  // (just used for manual-commit sessions)
+  std::vector<size_t> txnScratch;
+};
+
 ProcessTxnF initStorageSession(Session* s, const std::string& dirPfx, storage::PipeQOS qos, storage::CommitMethod cm, const storage::statements& stmts) {
   static std::mutex initMtx; // make sure that only one thread initializes at a time
   std::lock_guard<std::mutex> lk(initMtx);
@@ -189,6 +208,74 @@ ProcessTxnF initStorageSession(Session* s, const std::string& dirPfx, storage::P
         s->db->signalUpdate();
       };
   }
+}
+
+// support merging log session data where type structures are identical
+class SessionGroup {
+public:
+  virtual ~SessionGroup() { }
+  virtual ProcessTxnF appendStorageSession(const std::string& dirPfx, hobbes::storage::PipeQOS qos, hobbes::storage::CommitMethod cm, const hobbes::storage::statements& stmts) = 0;
+};
+
+class ConsolidateGroup : public SessionGroup {
+public:
+  ProcessTxnF appendStorageSession(const std::string& dirPfx, hobbes::storage::PipeQOS qos, hobbes::storage::CommitMethod cm, const hobbes::storage::statements& stmts) {
+    std::lock_guard<std::mutex> slock(this->m);
+    for (auto* cs : this->sessions) {
+      if (dirPfx == cs->dirPfx && qos == cs->qos && cm == cs->cm && stmts == cs->stmts) {
+        return csfn(cs);
+      }
+    }
+
+    auto* cs = new CSession;
+    cs->dirPfx = dirPfx;
+    cs->qos    = qos;
+    cs->cm     = cm;
+    cs->stmts  = stmts;
+    cs->sproc  = initStorageSession(&cs->s, dirPfx, qos, cm, stmts);
+    this->sessions.push_back(cs);
+    return csfn(cs);
+  }
+private:
+  struct CSession {
+    std::string                   dirPfx;
+    hobbes::storage::PipeQOS      qos;
+    hobbes::storage::CommitMethod cm;
+    hobbes::storage::statements   stmts;
+    Session                       s;
+    std::mutex                    sm;
+    ProcessTxnF                   sproc;
+  };
+  std::vector<CSession*> sessions;
+  std::mutex m;
+
+  static ProcessTxnF csfn(CSession* cs) {
+    return 
+      [cs](storage::Transaction& txn) {
+        std::lock_guard<std::mutex> slock(cs->sm);
+        cs->sproc(txn);
+      };
+  }
+};
+
+class SimpleGroup : public SessionGroup {
+public:
+  ProcessTxnF appendStorageSession(const std::string& dirPfx, hobbes::storage::PipeQOS qos, hobbes::storage::CommitMethod cm, const hobbes::storage::statements& stmts) {
+    Session* s = new Session;
+    return initStorageSession(s, dirPfx, qos, cm, stmts);
+  }
+};
+
+SessionGroup* makeSessionGroup(bool consolidate) {
+  if (consolidate) {
+    return new ConsolidateGroup();
+  } else {
+    return new SimpleGroup();
+  }
+}
+
+ProcessTxnF appendStorageSession(SessionGroup* sg, const std::string& dirPfx, hobbes::storage::PipeQOS qos, hobbes::storage::CommitMethod cm, const hobbes::storage::statements& stmts) {
+  return sg->appendStorageSession(dirPfx, qos, cm, stmts);
 }
 
 }

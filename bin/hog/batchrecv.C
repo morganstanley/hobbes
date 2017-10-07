@@ -125,7 +125,7 @@ void read(gzbuffer* in, storage::statements* stmts) {
   }
 }
 
-void runRecvConnection(int c, std::string dir) {
+void runRecvConnection(SessionGroup* sg, int c, std::string dir) {
   buffer inb, outb, txn;
   outb.reserve(1 * 1024 * 1024); // reserve 1MB for buffering
 
@@ -147,8 +147,7 @@ void runRecvConnection(int c, std::string dir) {
     storage::statements stmts;
     read(&zb, &stmts);
 
-    Session session;
-    auto txnF = initStorageSession(&session, str::replace<char>(dir, "$GROUP", group), (storage::PipeQOS)qos, (storage::CommitMethod)cm, stmts);
+    auto txnF = appendStorageSession(sg, str::replace<char>(dir, "$GROUP", group), (storage::PipeQOS)qos, (storage::CommitMethod)cm, stmts);
 
     ssend(c, &ack, sizeof(ack));
 
@@ -176,33 +175,34 @@ void runRecvConnection(int c, std::string dir) {
   }
 }
 
-void runRecvServer(int socket, std::string dir) {
+void runRecvServer(int socket, std::string dir, bool consolidate) {
+  SessionGroup* sg = makeSessionGroup(consolidate);
   std::vector<std::thread> cthreads;
 
   hobbes::registerEventHandler(
     socket,
-    [&cthreads,dir](int socket) {
+    [sg,&cthreads,dir](int socket) {
       // accept and make a new thread for this connection
       // (not the most efficient way but good for a start)
       int c = accept(socket, 0, 0);
       if (c < 0) {
         out << "failed to accept network connection: " << strerror(errno) << std::endl;
       } else {
-        cthreads.push_back(std::thread(std::bind(&runRecvConnection, c, dir)));
+        cthreads.push_back(std::thread(std::bind(&runRecvConnection, sg, c, dir)));
       }
     }
   );
   hobbes::runEventLoop();
 }
 
-std::thread pullRemoteDataT(const std::string& dir, const std::string& listenport) {
+std::thread pullRemoteDataT(const std::string& dir, const std::string& listenport, bool consolidate) {
   int s = hobbes::allocateServer(listenport);
-  return std::thread(std::bind(&runRecvServer, s, dir));
+  return std::thread(std::bind(&runRecvServer, s, dir, consolidate));
 }
 
-bool pullRemoteData(const std::string& dir, const std::string& listenport) {
+bool pullRemoteData(const std::string& dir, const std::string& listenport, bool consolidate) {
   try {
-    auto recvThread = pullRemoteDataT(dir, listenport);
+    auto recvThread = pullRemoteDataT(dir, listenport, consolidate);
     return true;
   } catch (std::exception& ex) {
     out << "failed to run receive server @ " << listenport << ": " << ex.what() << std::endl;

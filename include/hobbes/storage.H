@@ -1415,7 +1415,7 @@ template <>
 // make a function for describing store payload types
 template <typename ... Ts>
   struct hstore_payload_types {
-    typedef void head_type;
+    typedef unit head_type;
     static const size_t count = 0;
     static void encode(size_t,bytes*) {}
     static std::string describe() { return ""; }
@@ -1735,6 +1735,16 @@ struct statement {
   bytes       type;
 
   inline bool isLog() const { return (this->flags & 1) == 1; }
+
+  inline bool operator==(const statement& rhs) const {
+    return this->name   == rhs.name   &&
+           this->flags  == rhs.flags  &&
+           this->fmtstr == rhs.fmtstr &&
+           this->file   == rhs.file   &&
+           this->line   == rhs.line   &&
+           this->id     == rhs.id     &&
+           this->type   == rhs.type;
+  }
 };
 typedef std::vector<statement> statements;
 
