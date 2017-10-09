@@ -19,9 +19,10 @@ namespace hog {
 // we can run in one of three modes
 struct RunMode {
   enum type { local, batchsend, batchrecv };
-  type        t;
-  std::string dir;
+  type                  t;
+  std::string           dir;
   std::set<std::string> groups;
+  bool                  consolidate;
 
   // batchsend
   size_t      clevel;
@@ -79,19 +80,21 @@ void showUsage() {
   <<
     "hog : record structured data locally or to a remote process\n"
     "\n"
-    "  usage: hog [-d <dir>] [-g group+] [-p t s host:port] [-s port]\n"
+    "  usage: hog [-d <dir>] [-g group+] [-p t s host:port] [-s port] [-c]\n"
     "where\n"
     "  -d <dir>         : decides where structured data (or temporary data) is stored\n"
     "  -g group+        : decides which data to record from memory on this machine\n"
     "  -p t s host:port : decides to send data to a remote process every t time units or every s uncompressed bytes written\n"
     "  -s port          : decides to receive data on the given port\n"
+    "  -c               : decides to store equally-typed data across processes in a single file\n"
   << std::endl;
 }
 
 RunMode config(int argc, const char** argv) {
   RunMode r;
-  r.t   = RunMode::local;
-  r.dir = "./$GROUP/$DATE/data";
+  r.t           = RunMode::local;
+  r.dir         = "./$GROUP/$DATE/data";
+  r.consolidate = false;
 
   if (argc == 1) {
     showUsage();
@@ -143,6 +146,8 @@ RunMode config(int argc, const char** argv) {
         throw std::runtime_error("need port to receive remote data");
       }
       r.t = RunMode::batchrecv;
+    } else if (arg == "-c") {
+      r.consolidate = true;
     } else {
       throw std::runtime_error("invalid argument: " + arg);
     }
@@ -170,7 +175,7 @@ std::string instantiateDir(const std::string& groupName, const std::string& dir)
   return x;
 }
 
-void evalGroupHostConnection(const std::string& groupName, const RunMode& m, std::vector<std::thread>* ts, int c) {
+void evalGroupHostConnection(SessionGroup* sg, const std::string& groupName, const RunMode& m, std::vector<std::thread>* ts, int c) {
   try {
     uint8_t cmd=0;
     hobbes::fdread(c, (char*)&cmd, sizeof(cmd));
@@ -185,7 +190,7 @@ void evalGroupHostConnection(const std::string& groupName, const RunMode& m, std
     std::string d = instantiateDir(groupName, m.dir);
     switch (m.t) {
     case RunMode::local:
-      ts->push_back(std::thread(std::bind(&recordLocalData, qc, d)));
+      ts->push_back(std::thread(std::bind(&recordLocalData, sg, qc, d)));
       break;
     case RunMode::batchsend:
       ts->push_back(std::thread(std::bind(&pushLocalData, qc, groupName, ensureDirExists(d), m.clevel, m.batchsendsize, m.batchsendtime, m.sendto)));
@@ -201,9 +206,11 @@ void evalGroupHostConnection(const std::string& groupName, const RunMode& m, std
 }
 
 void runGroupHost(const std::string& groupName, const RunMode& m, std::vector<std::thread>* ts) {
+  SessionGroup* sg = makeSessionGroup(m.consolidate);
+
   hobbes::registerEventHandler(
     hobbes::storage::makeGroupHost(groupName),
-    [groupName,ts,&m](int s) {
+    [sg,groupName,ts,&m](int s) {
       out << "new connection for '" << groupName << "'" << std::endl;
   
       int c = accept(s, 0, 0);
@@ -217,8 +224,8 @@ void runGroupHost(const std::string& groupName, const RunMode& m, std::vector<st
           } else {
             hobbes::registerEventHandler(
               c,
-              [groupName,ts,&m](int c) {
-                evalGroupHostConnection(groupName, m, ts, c);
+              [sg,groupName,ts,&m](int c) {
+                evalGroupHostConnection(sg, groupName, m, ts, c);
               }
             );
           }
@@ -234,7 +241,7 @@ void runGroupHost(const std::string& groupName, const RunMode& m, std::vector<st
 void run(const RunMode& m) {
   out << "hog running in mode : " << m << std::endl;
   if (m.t == RunMode::batchrecv) {
-    pullRemoteDataT(m.dir, m.localport).join();
+    pullRemoteDataT(m.dir, m.localport, m.consolidate).join();
   } else if (m.groups.size() > 0) {
     std::vector<std::thread> tasks;
 

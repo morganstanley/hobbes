@@ -8,9 +8,10 @@
 #include <string>
 #include <functional>
 #include <hobbes/storage.H>
+#include "session.H"
 
 namespace hog {
-void recordLocalData(const hobbes::storage::QueueConnection&, const std::string& dir);
+void recordLocalData(SessionGroup*, const hobbes::storage::QueueConnection&, const std::string& dir);
 }
 
 #endif

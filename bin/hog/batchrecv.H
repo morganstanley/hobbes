@@ -11,8 +11,8 @@
 
 namespace hog {
 
-std::thread pullRemoteDataT(const std::string& dir, const std::string& listenport);
-bool pullRemoteData(const std::string& dir, const std::string& listenport);
+std::thread pullRemoteDataT(const std::string& dir, const std::string& listenport, bool consolidate = false);
+bool pullRemoteData(const std::string& dir, const std::string& listenport, bool consolidate = false);
 
 }
 

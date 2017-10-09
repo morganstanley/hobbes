@@ -16,6 +16,7 @@
 #include <zlib.h>
 
 #include "netio.H"
+#include "session.H"
 
 #ifdef BUILD_LINUX
 #include <sys/sendfile.h>
@@ -170,6 +171,8 @@ struct BatchSendSession {
   std::thread      sendingThread;
 
   BatchSendSession(const std::string& groupName, const std::string& dir, size_t clevel, const std::string& sendto) : buffer(0), c(0), sz(0), dir(dir), sendto(sendto) {
+    ensureDirExists(dir);
+
     this->clevel       = std::min<size_t>(9, std::max<size_t>(clevel, 1));
     this->tempfilename = dir + "/.current.hstore.transactions";
 
@@ -247,8 +250,9 @@ static void initNetSession(BatchSendSession* s, const std::string& groupName, co
 }
 
 void pushLocalData(const storage::QueueConnection& qc, const std::string& groupName, const std::string& dir, size_t clevel, size_t batchsendsize, long batchsendtime, const std::string& sendto) {
+  auto pt = hobbes::storage::thisProcThread();
   batchsendsize = std::max<size_t>(10*1024*1024, batchsendsize);
-  BatchSendSession sn(groupName, dir, clevel, sendto);
+  BatchSendSession sn(groupName, dir + "/tmp_" + str::from(pt.first) + "-" + str::from(pt.second) + "/", clevel, sendto);
   long t0 = hobbes::time();
   batchsendtime *= 1000;
 

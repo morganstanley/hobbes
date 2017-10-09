@@ -11,28 +11,13 @@
 
 namespace hog {
 
-struct Session {
-  // the file being written into
-  hobbes::writer* db;
+// make a storage file (via appendStorageSession) and produce a function to write transactions into it
+// support optionally merging log session data where type structures are identical
+class SessionGroup;
+SessionGroup* makeSessionGroup(bool consolidate = false);
 
-  // sections of the file for structured data
-  typedef std::vector<hobbes::StoredSeries*> StoredSeriess;
-  StoredSeriess streams;
-
-  // functions for actually writing stream data
-  typedef void (*WriteFn)(hobbes::storage::Transaction*);
-  typedef std::vector<WriteFn> WriteFns;
-
-  WriteFns writeFns;
-
-  // scratch space to accumulate transaction descriptions
-  // (just used for manual-commit sessions)
-  std::vector<size_t> txnScratch;
-};
-
-// initStorageSession : make a unique storage file and a function to write transactions into it
 typedef std::function<void(hobbes::storage::Transaction&)> ProcessTxnF;
-ProcessTxnF initStorageSession(Session* s, const std::string& dirPfx, hobbes::storage::PipeQOS qos, hobbes::storage::CommitMethod cm, const hobbes::storage::statements& stmts);
+ProcessTxnF appendStorageSession(SessionGroup*, const std::string& dirPfx, hobbes::storage::PipeQOS qos, hobbes::storage::CommitMethod cm, const hobbes::storage::statements& stmts);
 
 // common way to prepare output directories from dir prefix patterns
 std::string ensureDirExists(const std::string& dirPfx);
