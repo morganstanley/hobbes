@@ -128,6 +128,14 @@ uint64_t StoredSeries::writePosition() const {
   return this->batchDataRef + ((size_t)(((uint8_t*)this->batchHead) - ((uint8_t*)this->batchData))) + sizeof(size_t);
 }
 
+void StoredSeries::clear(bool signal) {
+  consBatchNode(allocBatchNode(this->outputFile));
+
+  if (signal) {
+    this->outputFile->signalUpdate();
+  }
+}
+
 void StoredSeries::record(const void* v, bool signal) {
   // store this data at the stream head
   this->storeFn(this->outputFile, v, this->batchHead);

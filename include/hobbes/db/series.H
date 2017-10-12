@@ -32,6 +32,9 @@ public:
   // what is the head write position in this file?
   // (this can be used to make a file reference to recorded values)
   uint64_t writePosition() const;
+
+  // "clear" the data (just reset the root node, ignore old data)
+  void clear(bool signal = true);
 private:
   writer*     outputFile;
   MonoTypePtr recordType;
@@ -67,6 +70,9 @@ template <typename T>
     }
     void operator()(const T& x, bool signal = true) {
       this->storage.record(&x, signal);
+    }
+    void clear(bool signal = true) {
+      this->storage.clear(signal);
     }
   private:
     StoredSeries storage;
