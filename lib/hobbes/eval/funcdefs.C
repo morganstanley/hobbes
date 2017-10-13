@@ -422,13 +422,10 @@ double random(double low, double high) {
   return low + ((high - low) * (((double)rand()) / ((double)RAND_MAX)));
 }
 
-long lrand(long low, long high) {
-  return low + (rand() % (high - low));
-}
-
-long truncd(double x) {
-  return x;
-}
+long lrand(long low, long high) { return low + (rand() % (high - low)); }
+long lceil(double x) { return ceil(x); }
+long lfloor(double x) { return floor(x); }
+long truncd(double x) { return x; }
 
 void dbglog(const std::string&);
 void failvarmatch(const array<char>* file, size_t line, const array<char>* txt, char* addr) {
@@ -662,8 +659,8 @@ void initStdFuncDefs(cc& ctx) {
   srand(::time(0));
   ctx.bind("random", &random);
   ctx.bind("lrand",  &lrand);
-  ctx.bind("ceil",   &ceil);
-  ctx.bind("floor",  &floor);
+  ctx.bind("ceil",   &lceil);
+  ctx.bind("floor",  &lfloor);
   ctx.bind("truncd", &truncd);
 
   // this should never be called, it's only here to do something in the event of variant tag match failure

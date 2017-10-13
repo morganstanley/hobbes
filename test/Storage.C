@@ -128,6 +128,19 @@ TEST(Storage, SeriesAPI) {
       ss(st);
     }
 
+    c().define("f", "inputFile :: (LoadFile \"" + fname + "\" w) => w");
+    EXPECT_TRUE(c().compileFn<bool()>("[x|{x=x}<-f.series_test][:0] == [0..9]")());
+
+    ss.clear();
+    for (size_t i = 0; i < 5; ++i) {
+      SeriesTest st;
+      st.x = i;
+      st.y = 3.14159 * ((double)i);
+      st.z = makeString("string_" + str::from(i));
+      ss(st);
+    }
+    EXPECT_TRUE(c().compileFn<bool()>("[x|{x=x}<-f.series_test][:0] == [0..4]")());
+
     unlink(fname.c_str());
   } catch (...) {
     unlink(fname.c_str());
