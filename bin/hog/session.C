@@ -133,7 +133,11 @@ ProcessTxnF initStorageSession(Session* s, const std::string& dirPfx, storage::P
       txnEntries.push_back(Variant::Member(stmt.name, filerefty(ss->storageType()), stmt.id));
     }
 
-    if (cm != storage::AutoCommit) {
+    if (cm == storage::AutoCommit) {
+      out << " ==> log :: <any of the above>" << std::endl;
+
+      s->streams.push_back(new StoredSeries(c, s->db, "log", Variant::make(txnEntries), 10000));
+    } else {
       out << " ==> transactions :: <any of the above>" << std::endl;
 
       Record::Members txnRecord;
@@ -172,7 +176,9 @@ ProcessTxnF initStorageSession(Session* s, const std::string& dirPfx, storage::P
         while (txn.canRead(sizeof(uint32_t))) {
           uint32_t id = *txn.read<uint32_t>();
           if (id < s->writeFns.size()) {
+            std::pair<uint32_t, long> log(id, s->streams[id]->writePosition());
             s->writeFns[id](&txn);
+            s->streams.back()->record(&log, false);
           } else {
             out << "got bad log id #" << id << std::endl;
           }
