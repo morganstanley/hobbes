@@ -293,8 +293,7 @@ DRegex diffRegex(const RegexPtr& lhs, const std::string& x, size_t i) {
       // now the group body just matches as if inline
       // (but we may bind to the group match result)
       DRegex g = diffRegex(epsilon(), x, i+1);
-      DRegex s = diffRegex(bindTo(b, g.second), x, g.first);
-      return DRegex(s.first, sequence(lhs, s.second));
+      return diffRegex(sequence(lhs, bindTo(b, g.second)), x, g.first);
     }
     case '|': {
       DRegex n = diffRegex(epsilon(), x, i+1);
