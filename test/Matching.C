@@ -113,6 +113,7 @@ TEST(Matching, Regex) {
   EXPECT_EQ(c().compileFn<int()>("match \"a\\n\" with | '[^a-z]\\n' -> 0 | _ -> 1")(), 1);
   EXPECT_EQ(c().compileFn<int()>("match \"0\\n\" with | '[^a-z]\\n' -> 0 | _ -> 1")(), 0);
   EXPECT_EQ(c().compileFn<int()>("match \"8675309\" with | '[0-9]+' -> 0 | _ -> 1")(), 0);
+  EXPECT_TRUE(c().compileFn<bool()>("\"b\" matches 'a(z)|b'")());
 
   // verify correct match/fallback logic with regexes and multiple columns
   EXPECT_EQ(c().compileFn<int()>("match \"ab\" 1 with | 'a(b|c)' 1 -> 1 | 'ab' 2 -> 2 | 'ac' 3 -> 3 | _ _ -> 4")(), 1);
