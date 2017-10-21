@@ -10,16 +10,26 @@
 namespace hobbes {
 
 // low-level representation decisions ...
-inline bool hasPointerRep(const MonoTypePtr& t) {
+inline MonoTypePtr repType(const MonoTypePtr& t) {
   if (const Prim* pt = is<Prim>(t)) {
     if (pt->representation()) {
-      return hasPointerRep(pt->representation());
+      return pt->representation();
+    }
+  } else if (const TApp* a = is<TApp>(t)) {
+    if (const TAbs* tf = is<TAbs>(repType(a->fn()))) {
+      return substitute(substitution(tf->args(), a->args()), tf->body());
     }
   }
-  if (const OpaquePtr* op = is<OpaquePtr>(t)) {
+  return t;
+}
+
+inline bool hasPointerRep(const MonoTypePtr& t) {
+  MonoTypePtr rt = repType(t);
+
+  if (const OpaquePtr* op = is<OpaquePtr>(rt)) {
     return !op->storedContiguously();
   }
-  return is<Record>(t) || is<FixedArray>(t) || is<Array>(t) || is<Variant>(t) || is<Recursive>(t);
+  return is<Record>(rt) || is<FixedArray>(rt) || is<Array>(rt) || is<Variant>(rt) || is<Recursive>(rt);
 }
 
 inline bool hasPointerRep(const PolyTypePtr& t) {
@@ -30,17 +40,13 @@ inline bool hasPointerRep(const PolyTypePtr& t) {
   }
 }
 
-inline bool isLargeType(const MonoTypePtr& mty) {
-  if (const Prim* pt = is<Prim>(mty)) {
-    if (pt->representation()) {
-      return isLargeType(pt->representation());
-    }
-  }
+inline bool isLargeType(const MonoTypePtr& t) {
+  MonoTypePtr rt = repType(t);
 
-  if (const OpaquePtr* p = is<OpaquePtr>(mty)) {
+  if (const OpaquePtr* p = is<OpaquePtr>(rt)) {
     return p->storedContiguously();
   } else {
-    return is<Record>(mty) || is<FixedArray>(mty) || is<Variant>(mty);
+    return is<Record>(rt) || is<FixedArray>(rt) || is<Variant>(rt);
   }
 }
 
