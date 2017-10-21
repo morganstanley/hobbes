@@ -213,5 +213,5 @@ selectAssoclRange kvs k0 k1 =
   let
     i = lowerBoundFi(kvs, .0, k0, 0L, length(kvs))
   in
-    selectRange(kvs, i, lowerBoundFi(kvs, .0, k1, i,  length(kvs)))
+    selectRange(kvs, i, lowerBoundFi(kvs, .0, k1, i, length(kvs)-i))
 
