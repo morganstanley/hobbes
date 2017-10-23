@@ -13,11 +13,11 @@ namespace hobbes {
 inline MonoTypePtr repType(const MonoTypePtr& t) {
   if (const Prim* pt = is<Prim>(t)) {
     if (pt->representation()) {
-      return pt->representation();
+      return repType(pt->representation());
     }
   } else if (const TApp* a = is<TApp>(t)) {
     if (const TAbs* tf = is<TAbs>(repType(a->fn()))) {
-      return substitute(substitution(tf->args(), a->args()), tf->body());
+      return repType(substitute(substitution(tf->args(), a->args()), tf->body()));
     }
   }
   return t;
