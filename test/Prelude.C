@@ -18,6 +18,12 @@ TEST(Prelude, AMapping) {
 TEST(Prelude, Arith) {
 }
 
+TEST(Prelude, Timespan) {
+  EXPECT_EQ(microseconds(c().compileFn<timespanT()>("20us")()), 20);
+  EXPECT_EQ(milliseconds(c().compileFn<timespanT()>("20ms")()), 20);
+  EXPECT_EQ(seconds(c().compileFn<timespanT()>("20s")()), 20);
+}
+
 TEST(Prelude, COrd) {
   EXPTEST("(convert({a=1,b=2,c=3}) :: {c:long,a:int}) == {c=3L,a=1}");
 
