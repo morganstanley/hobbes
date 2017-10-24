@@ -17,6 +17,10 @@ namespace hobbes {
 extern const char timespanTNV[];
 typedef typeAlias<timespanTNV, int64_t> timespanT;
 
+inline uint64_t microseconds(const timespanT& ts) { return ts.value; }
+inline uint64_t milliseconds(const timespanT& ts) { return microseconds(ts) / 1000; }
+inline uint64_t seconds     (const timespanT& ts) { return milliseconds(ts) / 1000; }
+
 extern const char timeTNV[];
 typedef typeAlias<timeTNV, int64_t> timeT;
 
