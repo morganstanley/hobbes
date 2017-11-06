@@ -256,26 +256,32 @@ void pushLocalData(const storage::QueueConnection& qc, const std::string& groupN
   long t0 = hobbes::time();
   batchsendtime *= 1000;
 
-  storage::runReadProcess(
-    qc,
+  std::function<void()> batchCheckF;
+  if (batchsendtime == 0) {
+    batchCheckF = [&]() { if (sn.sz >= batchsendsize) sn.stepFile(); };
+  } else {
+    batchCheckF = [&]() {
+      long t1 = hobbes::time();
+      if (((t1-t0) >= batchsendtime) || sn.sz >= batchsendsize) {
+        sn.stepFile();
+        t0 = t1;
+      }
+    };
+  }
 
+  storage::runReadProcessWithTimeout(
+    qc,
     [&](storage::PipeQOS qos, storage::CommitMethod cm, const storage::statements& ss) {
       initNetSession(&sn, groupName, dir, qos, cm, ss);
       return
         [&](storage::Transaction& txn) {
           write(&sn, txn.size());
           write(&sn, txn.ptr(), txn.size());
-
-          long t1 = hobbes::time();
-          if (
-            (batchsendtime > 0 && ((t1-t0) >= batchsendtime)) ||
-            (sn.sz >= batchsendsize)
-          ) {
-            sn.stepFile();
-            t0 = t1;
-          }
+          batchCheckF();
         };
-    }
+    },
+    batchsendtime,
+    batchCheckF
   );
 }
 

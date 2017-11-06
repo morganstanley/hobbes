@@ -31,6 +31,7 @@
 #include <sys/un.h>
 #include <sys/socket.h>
 #include <sys/ioctl.h>
+#include <sys/time.h>
 #include <netinet/in.h>
 #include <netdb.h>
 #include <fcntl.h>
@@ -39,12 +40,56 @@
 //  * waiting in shared memory
 #if defined(__APPLE__) && defined(__MACH__)
 namespace hobbes { namespace storage {
+
+#if defined(CLOCK_REALTIME)
+inline long poll_tickNS() {
+  timespec ts;
+  if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0) {
+    return ts.tv_sec * 1000000000L + ts.tv_nsec;
+  } else {
+    return 0;
+  }
+}
+#else
+inline long poll_tickNS() {
+  struct timeval t;
+  if (gettimeofday(&t, 0) == 0) {
+    return ((t.tv_sec*1000000)+t.tv_usec)*1000;
+  } else {
+    return 0;
+  }
+}
+#endif
+
 static inline void waitForUpdate(volatile uint32_t* p, int eqV) {
   while (true) {
     for (size_t c = 0; c < 4096; ++c) {
       if (*p != eqV) {
         return;
       }
+    }
+    usleep(500);
+  }
+}
+static inline void waitForUpdate(volatile uint32_t* p, int eqV, size_t timeoutNS, const std::function<void()>& timeoutF) {
+  if (timeoutNS == 0) {
+    waitForUpdate(p, eqV);
+    return;
+  }
+
+  long t0 = poll_tickNS();
+
+  while (true) {
+    for (size_t c = 0; c < 4096; ++c) {
+      if (*p != eqV) {
+        return;
+      }
+    }
+
+    long t1 = poll_tickNS();
+    if ((t1-t0) >= timeoutNS) {
+      timeoutF();
+      t0 = t1;
     }
     usleep(500);
   }
@@ -63,6 +108,26 @@ static inline long sys_futex(volatile uint32_t* p, int op, int v, struct timespe
 }
 static inline void waitForUpdate(volatile uint32_t* p, int eqV) {
   sys_futex(p, FUTEX_WAIT, eqV, 0, 0, 0);
+}
+static inline void waitForUpdate(volatile uint32_t* p, int eqV, size_t timeoutNS, const std::function<void()>& timeoutF) {
+  if (timeoutNS == 0) {
+    waitForUpdate(p, eqV);
+    return;
+  }
+
+  struct timespec ts;
+  ts.tv_sec  = timeoutNS / 1000000000L;
+  ts.tv_nsec = timeoutNS % 1000000000L;
+
+  bool c = true;
+  while (c) {
+    int r = sys_futex(p, FUTEX_WAIT, eqV, &ts, 0, 0);
+        c = r < 0 && errno == ETIMEDOUT;
+
+    if (c) {
+      timeoutF();
+    }
+  }
 }
 static inline void wakeN(volatile uint32_t* p, int c) {
   sys_futex(p, FUTEX_WAKE, c, 0, 0, 0);
@@ -620,7 +685,7 @@ public:
   }
 
   // get the next value in the queue, blocking if necessary
-  uint8_t* next() {
+  uint8_t* next(size_t timeoutNS, const std::function<void()>& timeoutF) {
     uint32_t ri = *readIndex();
   
     while (PRIV_HSTORE_UNLIKELY(*writeIndex() == ri)) {
@@ -631,7 +696,7 @@ public:
         // make sure that we still need to block the reader (in case the write index moved while we were getting here)
         // then block while we're in reader-wait state
         if (*writeIndex() == ri) {
-          waitForUpdate(waitState(), PRIV_HSTORE_STATE_READER_WAITING);
+          waitForUpdate(waitState(), PRIV_HSTORE_STATE_READER_WAITING, timeoutNS, timeoutF);
         }
         break;
       case PRIV_HSTORE_STATE_WRITER_WAITING:
@@ -680,9 +745,9 @@ public:
   }
 
   // read a range of bytes out of the 'pipe' into a user-supplied buffer
-  size_t read(uint8_t* dst, size_t sz, uint8_t* state) {
+  size_t read(uint8_t* dst, size_t sz, uint8_t* state, size_t timeoutNS, const std::function<void()>& timeoutF) {
     if (!this->page) {
-      this->page = this->rq->next();
+      this->page = this->rq->next(timeoutNS, timeoutF);
     }
   
     size_t doff = 0;
@@ -1809,7 +1874,7 @@ private:
   size_t         i;
 };
 
-inline void runReadProcess(const QueueConnection& qc, const std::function<std::function<void(Transaction&)>(PipeQOS, CommitMethod, const statements&)>& initF) {
+inline void runReadProcessWithTimeout(const QueueConnection& qc, const std::function<std::function<void(Transaction&)>(PipeQOS, CommitMethod, const statements&)>& initF, size_t timeoutNS, const std::function<void()>& timeoutF) {
   reader rd(qc);
   rpipe  p(&rd);
 
@@ -1855,7 +1920,7 @@ inline void runReadProcess(const QueueConnection& qc, const std::function<std::f
     txn.resize(txn.size() + blockSize);
 
     uint8_t txnFlag = 0;
-    txn.resize(txn.size() - (blockSize - p.read(&txn[i], blockSize, &txnFlag)));
+    txn.resize(txn.size() - (blockSize - p.read(&txn[i], blockSize, &txnFlag, timeoutNS, timeoutF)));
 
     switch (txnFlag) {
     case PRIV_HSTORE_PAGE_STATE_ROLLBACK:
@@ -1871,6 +1936,10 @@ inline void runReadProcess(const QueueConnection& qc, const std::function<std::f
       break;
     }
   }
+}
+
+inline void runReadProcess(const QueueConnection& qc, const std::function<std::function<void(Transaction&)>(PipeQOS, CommitMethod, const statements&)>& initF) {
+  runReadProcessWithTimeout(qc, initF, 0, [](){});
 }
 
 }}
