@@ -28,7 +28,7 @@ extern const char datetimeTNV[];
 typedef typeAlias<datetimeTNV, int64_t> datetimeT;
 
 // allocate some memory in the calling thread's memory pool
-char* memalloc(long n);
+char* memalloc(size_t);
 
 // string representations, I/O
 const array<char>* makeString(const std::string& x);

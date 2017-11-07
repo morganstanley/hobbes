@@ -81,11 +81,11 @@ size_t makeMemRegion(const array<char>* n) {
   return addThreadRegion(makeStdString(n), new region(32768));
 }
 
-char* memalloc(long n) {
+char* memalloc(size_t n) {
   return (char*)threadRegion().malloc(n);
 }
 
-char* memallocz(long n) {
+char* memallocz(size_t n) {
   char* r = (char*)threadRegion().malloc(n);
   memset(r, 0, n);
   return r;
