@@ -7,19 +7,19 @@
 namespace hobbes {
 
 struct mempage {
-  void*        base;
-  unsigned int size;
-  unsigned int read;
-  mempage*     succ;
+  void*    base;
+  size_t   size;
+  size_t   read;
+  mempage* succ;
 };
 
 class region {
 public:
-  region(unsigned int minPageSize, unsigned int initialFreePages = 1, unsigned int maxPageSize = /*1GB*/ 1*1024*1024*1024);
+  region(size_t minPageSize, size_t initialFreePages = 1, size_t maxPageSize = /*1GB*/ 1*1024*1024*1024);
   ~region();
 
   // allocate 'sz' bytes of memory
-  void* malloc(unsigned int sz);
+  void* malloc(size_t sz);
 
   // deallocate all pages (make sure you're not holding any references after this)
   void clear();
@@ -38,18 +38,18 @@ public:
   // support catastrophic self-destruct on memory caps
   void abortAtMemCeiling(size_t);
 private:
-  unsigned int minPageSize;
-  unsigned int maxPageSize;
-  unsigned int lastAllocPageSize;
-  bool         abortOnOOM;
-  size_t       maxTotalAllocation;
-  size_t       totalAllocation;
+  size_t minPageSize;
+  size_t maxPageSize;
+  size_t lastAllocPageSize;
+  bool   abortOnOOM;
+  size_t maxTotalAllocation;
+  size_t totalAllocation;
 
   mempage* usedp;
   mempage* freep;
 
-  mempage* newpage(mempage* succ, unsigned int sz);
-  void allocpage(unsigned int sz);
+  mempage* newpage(mempage* succ, size_t sz);
+  void allocpage(size_t sz);
   
   void freepage(mempage* p);
   void freepages(mempage* p);
