@@ -45,33 +45,57 @@ instance (p++s=a, Function f p rf, Function rf s r) => Function f a r where
 /*
   abstract over "array-ness" (abstracting pattern-matches over 'array-like' things)
 */
-class Array a i | a -> i where
-  size    :: a -> long
-  element :: (a, long) -> i
+class Array xs x | xs -> x where
+  size     :: xs -> long
+  element  :: (xs, long) -> x
+  elements :: (xs, long, long) -> [x]
+
+// a default implementation of 'elements' in terms of 'element' (good enough if indexing is fast)
+instance Convert long long where
+  convert = id
+
+selectElementsInto :: (xs, (xs, long) -> x, long, long, [x], long, long) -> [x]
+selectElementsInto xs lkup i e ss j step =
+  if (leq(i, e)) then
+    ss
+  else
+    do { ss[j] <- lkup(xs, i); return selectElementsInto(xs, lkup, ladd(i,1L), e, ss, ladd(j,step), step) }
+
+defElementsWith :: (xs, (xs, long) -> x, long, long) -> [x]
+defElementsWith xs lkup i e = selectElementsInto(xs, lkup, i, e, newArray(lsub(e,i)), 0L, 1L)
 
 instance Array [a] a where
   size = length
   element x i = x[i]
+  elements xs i e = defElementsWith(xs, \x i.x[i], i, e)
 
 instance Array [:a|n:] a where
   size = salength
   element = saelem
+  elements xs i e = defElementsWith(xs, saelem, i, e)
 
 instance Array <std.string> char where
   size = stdstrsize
   element = stdstrelem
+  elements xs i e = defElementsWith(xs, stdstrelem, i, e)
 
 instance Array <char> char where
   size = cstrlen
   element = cstrelem
+  elements xs i e = defElementsWith(xs, cstrelem, i, e)
 
 instance Array (<char> * long) char where
   size    p   = p.1
   element p i = cptrrefby(p.0, i)
+  elements xs i e = defElementsWith(xs, \(p,_) i.cptrrefby(p,i), i, e)
 
 instance Array (long * <char>) char where
   size    p   = p.0
   element p i = cptrrefby(p.1, i)
+  elements xs i e = defElementsWith(xs, \(_,p) i.cptrrefby(p,i), i, e)
+
+reverse :: [a] -> [a]
+reverse xs = selectElementsInto(xs, element, 0L, size(xs), newArray(size(xs)), lsub(size(xs),1L), lneg(1L))
 
 // sometimes it's a trivial/obvious single-step to array-ness
 class ArrayView t a | t -> a where

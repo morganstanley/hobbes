@@ -103,7 +103,21 @@ instance FilterMMap f c a r "list" (^x.(()+(a*x))) "list" (^x.(()+(r*x))) where
   ffilterMMap f xs = lselectJust(fmap(f, xs))
 
 // allow access to ropes as arrays (assuming storage in inner arrays is oldest-to-newest)
+lfindSliceSpan :: (^x.(()+([a]*x)), long, long, long) -> ^x.(()+([a]*x))
+lfindSliceSpan n k i e =
+  match unroll(n) with
+  | |1=(xs,t)| where k < e ->
+    let
+      nk = k+length(xs);
+    in
+      if (nk < i) then
+        lfindSliceSpan(t, nk, i, e)
+      else
+        cons(xs[length(xs)-max(0L,i-k):length(xs)-min(length(xs),e-k)], lfindSliceSpan(t, nk, i, e))
+  | _ -> nil()
+
 instance Array (^x.(()+([a]*x))) a where
-  size    xs   = lfoldl(\s vs.s + length(vs), 0L, xs)
-  element xs i = match lfindS(i, \j vs.j-length(vs), \j vs.j < length(vs), xs) with | |1=(j, vs)| -> vs[length(vs) - (j+1)] | _ -> newPrim()
+  size     xs     = lfoldl(\s vs.s + length(vs), 0L, xs)
+  element  xs i   = match lfindS(i, \j vs.j-length(vs), \j vs.j < length(vs), xs) with | |1=(j, vs)| -> vs[length(vs) - (j+1)] | _ -> newPrim()
+  elements xs i e = concat(toArray(lfindSliceSpan(xs, 0L, i, e)))
 

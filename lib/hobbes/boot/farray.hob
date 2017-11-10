@@ -362,14 +362,6 @@ normIdx xs i =
      else
        min(ci, size(xs)))
 
-// extract a subsequence from an array
-sliceStep :: (Array xs x) => (xs, long, long, [x], long, long) -> [x]
-sliceStep xs i e ss j step =
-  if (i == e) then
-    ss
-  else
-    (let _ = ss[j] <- element(xs, i) in sliceStep(xs, i+1, e, ss, j+step, step))
-
 // extract a subsequence from an array, either forward or backward
 slice :: (Array xs x, Convert i long, Convert j long) => (xs, i, j) -> [x]
 slice xs i j =
@@ -377,13 +369,13 @@ slice xs i j =
     ni = normIdx(xs, i);
     nj = normIdx(xs, j)
   in
-     if (ni < nj) then
-       sliceStep(xs, ni, nj, newArray(nj - ni), 0L, 1L)
-     else
-       sliceStep(xs, nj, ni, newArray(ni - nj), ni - nj - 1, -1L)
+    if (ni < nj) then
+      elements(xs, ni, nj)
+    else
+      reverse(elements(xs, nj, ni))
 
 // [doc] takes two arrays and returns an array of corresponding pairs
-//  [eg] zip([1,3,5], [2,4,5]) == [(1,2), (3,4), (5,6)]
+//  [eg] zip([1,3,5], [2,4,6]) == [(1,2), (3,4), (5,6)]
 zip :: (Array xs x, Array ys y) => (xs, ys) -> [x*y]
 zip xs ys =
   let
@@ -426,8 +418,4 @@ unzip ps =
     _ = unzipStep(ps, xs, ys, 0L, n)
   in
     (xs, ys)
-
-// [doc] returns the elements of an array in reverse order
-reverse :: [a] -> [a]
-reverse xs = slice(xs, length(xs), 0L)
 
