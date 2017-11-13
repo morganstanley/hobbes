@@ -167,11 +167,27 @@ flfindS s ss p xs =
   | |1=(h, t)|               -> flfindS(ss(s,h), ss, p, load(t))
   | _                        -> |0=()|
 
+flfindSliceSpan :: (^x.(()+([a]@f*x@f)), long, long, long) -> ^x.(()+([a]*x))
+flfindSliceSpan n k i e =
+  match unroll(n) with
+  | |1=(h,t)| where k < e ->
+    let
+      xs = load(h);
+      nk = k+length(xs);
+    in
+      if (nk < i) then
+        flfindSliceSpan(load(t), nk, i, e)
+      else
+        cons(xs[length(xs)-max(0L,i-k):length(xs)-min(length(xs),e-k)], flfindSliceSpan(load(t), nk, i, e))
+  | _ -> nil()
+
 instance Array (^x.(()+([a]@f*x@f))) a where
-  size    xs   = flfoldl(\s vs.s + length(load(vs)), 0L, xs)
-  element xs i = match flfindS(i, \j vs.j-length(load(vs)), \j vs.j < length(load(vs)), xs) with | |1=(j, vs)| -> let lvs = load(vs) in lvs[length(lvs) - (j+1)] | _ -> newPrim()
+  size     xs     = flfoldl(\s vs.s + length(load(vs)), 0L, xs)
+  element  xs i   = match flfindS(i, \j vs.j-length(load(vs)), \j vs.j < length(load(vs)), xs) with | |1=(j, vs)| -> let lvs = load(vs) in lvs[length(lvs) - (j+1)] | _ -> newPrim()
+  elements xs i e = concat(toArray(flfindSliceSpan(xs, 0L, i, e)))
 
 instance Array (^x.(()+([a]@f*x@f)))@f a where
-  size    xs   = size(load(xs))
-  element xs i = element(load(xs), i)
+  size     xs     = size(load(xs))
+  element  xs i   = element(load(xs), i)
+  elements xs i e = elements(load(xs), i, e)
 

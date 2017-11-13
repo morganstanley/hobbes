@@ -40,6 +40,9 @@ instance Convert a a where
 instance Convert a@f a where
   convert = load
 
+instance (Convert a b) => Convert a@f b where
+  convert x = convert(load(x))
+
 // convert to a prefix record by plain casting
 class Castable a b where
   cast :: a -> b
