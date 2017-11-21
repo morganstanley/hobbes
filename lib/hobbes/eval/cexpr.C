@@ -713,8 +713,8 @@ public:
     if (!rty) { throw annotated_error(*v, "Internal compiler error, compiling record without record type: " + show(v) + " :: " + show(v->type())); }
 
     Constants rcs;
-    for (auto e : exprs(v->fields())) {
-      if (llvm::Constant* c = switchOf(e, *this)) {
+    for (auto f : v->fields()) {
+      if (llvm::Constant* c = switchOf(f.second, compileConstExpF(this->c, this->vname+"."+f.first))) {
         rcs.push_back(c);
       } else {
         return 0;
