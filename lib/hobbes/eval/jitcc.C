@@ -460,13 +460,13 @@ llvm::Value* jitcc::loadConstant(const std::string& vn) {
   if (cv != this->constants.end()) {
     if (is<Array>(cv->second.mtype)) {
       return builder()->CreateLoad(refGlobal(vn, cv->second.ref));
-    } else {
-      llvm::Value* r = refGlobal(vn, cv->second.ref);
+    } else if (llvm::Value* r = refGlobal(vn, cv->second.ref)) {
       return hasPointerRep(cv->second.mtype) ? r : builder()->CreateLoad(r);
+    } else {
+      return cv->second.value;
     }
-  } else {
-    return 0;
   }
+  return 0;
 }
 
 void jitcc::defineGlobal(const std::string& vn, const ExprPtr& ue) {
