@@ -46,3 +46,15 @@ TEST(Definitions, RecType) {
   EXPECT_TRUE(c().compileFn<bool()>("llen(cons(9L,nil())) == 1L")());
   EXPECT_TRUE(c().compileFn<bool()>("llen(cons(9S,nil())) == 1L")());
 }
+
+TEST(Definitions, FuncAliases) {
+  c().define("f1", "(\\(). 42)::()->int");
+  c().define("f2", "f1");
+  EXPECT_EQ(c().compileFn<int()>("f2()")(), 42)
+}
+
+TEST(Definitions, StructsWithFns) {
+  c().define("prof", "{x=[1,2,3], y=\\().putStrLn(\"hello world\")}");
+  EXPECT_EQ(c().compileFn<int()>("sum(prof.x)")(), 6);
+}
+
