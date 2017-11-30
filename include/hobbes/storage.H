@@ -1101,7 +1101,7 @@ template <typename U, typename V>
     T() : value() { } \
     T(Enum v) : value(v) { } \
     T& operator=(Enum v) { this->value = v; return *this; } \
-    operator Enum() { return this->value; } \
+    operator Enum() const { return this->value; } \
     typedef T SelfT; \
     PRIV_HSTORE_MAP(HSTORE_ENUM_CTOR_CTOR, CTORS) \
     static void encode(::hobbes::storage::bytes* out) { \
