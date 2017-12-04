@@ -37,7 +37,7 @@ In addition, the build process will produce two utility programs, `hi` and `hog`
 
 Let's consider how to embed hobbes in a simple C++ program.  This code implements a very basic shell, similar to `hi`:
 
-```
+```C++
 #include <iostream>
 #include <stdexcept>
 #include <hobbes/hobbes.H>
@@ -230,13 +230,13 @@ If we're using hobbes inside of a C++ process (as opposed to just running script
 
 For example, consider a C++ function that we might have already defined:
 
-```
+```C++
 int applyDiscreteWeighting(int x, int y) { return x * y; }
 ```
 
 Now we can import this definition into our previous program, and bind it to our `hobbes::cc` instance by adding this line:
 
-```
+```C++
   c.bind("applyDiscreteWeighting", &applyDiscreteWeighting);
 ```
 
@@ -251,7 +251,7 @@ Then when we run our program, its shell will allow use of this function and will
 
 In other cases, it may be more convenient to use a type understood natively by hobbes and with dynamic memory allocation:
 
-```
+```C++
 typedef std::pair<size_t, const hobbes::array<char>*> MyRecord;
 
 const hobbes::array<MyRecord>* loadRecords(int key) {
@@ -288,7 +288,7 @@ These calls to `hobbes::makeArray` and `hobbes::makeString` will allocate out of
 
 If we'd prefer to represent records by structs with significant field names rather than as tuples, we can instead define our type with the `DEFINE_STRUCT` macro (this is purely a syntactic difference -- the final runtime representation of tuples and structs is identical in hobbes).  For example, if we'd defined the `MyRecord` type in the previous example this way:
 
-```
+```C++
 DEFINE_STRUCT(MyRecord,
   (size_t, index),
   (const hobbes::array<char>*, name)
@@ -297,7 +297,7 @@ DEFINE_STRUCT(MyRecord,
 
 And change the initialization code in `loadRecords` to refer to these fields by name:
 
-```
+```C++
 // [...]
     rs->data[i].index = i;
     rs->data[i].name  = hobbes::makeString(names[i % 4]);
@@ -324,7 +324,7 @@ index    name
 
 We can also bind "in reverse" using C function types, so that rather than making our C++ code appear to be valid hobbes symbols, we can make hobbes expressions appear to be valid C++ symbols.  For example, consider a C++ binding like:
 
-```
+```C++
 int iter2(int (*pf)(int,int), int x) {
   return pf(pf(x, x), pf(x, x));
 }
@@ -342,7 +342,7 @@ Here we've bound a function that itself takes a function as input, and we can us
 
 Variants can be passed between C++ and hobbes as the `hobbes::variant<...>` type:
 
-```
+```C++
 typedef hobbes::variant<int, const hobbes::array<char>*> classification;
 
 const classification* classifyParameter(int x) {
@@ -370,7 +370,7 @@ In the process of binding application variables and functions to a `hobbes::cc` 
 
 For example, consider a binding case like this (meant to represent a complex type hierarchy):
 
-```
+```C++
 class Top {
 public:
   Top(int x, double y, int z) : x(x), y(y), z(z) { }
@@ -425,7 +425,7 @@ If the default logic for lifting your C++ type is insufficient, the `hobbes::lif
 
 Rather than using hobbes to "pull" application data with ad-hoc dynamic queries, we can also use hobbes to "push" large volumes of application data to local or remote storage for real-time or historical analysis.  In this case, we don't need a compiler instance but instead just need to define some basic quality-of-service parameters for the storage process.  For example, let's consider a simple mock weather monitor:
 
-```
+```C++
 #include <hobbes/storage.H>
 #include <stdlib.h>
 
@@ -539,7 +539,7 @@ In more complex applications, we might use this ability to accumulate statistics
 
 We could also want to record batched or "transactional" data where our storage statements need to be correlated.  For example, consider a mock cheeseburger order management application:
 
-```
+```C++
 #include <hobbes/storage.H>
 #include <stdlib.h>
 
@@ -633,7 +633,7 @@ Just as we may need a lightweight, efficient method to record structured applica
 
 We can cut to the chase with a simple test program:
 
-```
+```C++
 #include <iostream>
 #include <hobbes/net.H>
 
@@ -854,7 +854,7 @@ The hobbes language supports a form of [pattern matching](http://caml.inria.fr/p
 
 An important special case of match expressions are C++ `switch` statements, as the C++ code:
 
-```
+```C++
 switch (x) {
 case 0:  return "foo";
 case 1:  return "bar";
@@ -892,7 +892,7 @@ match x y with
 
 where we'd otherwise have to write a `switch` statement like:
 
-```
+```C++
 switch (x) {
 case 0:
   switch (y) {
@@ -1265,7 +1265,7 @@ This distinction is important because is allows hobbes to derive more efficient 
 
 The C++ interface to hobbes supports the introduction of custom "unqualifiers" (and the system of type classes described earlier is just one such "unqualifier" implementation).  The standard set of unqualifiers is defined in `hobbes/lang/preds/` but it's possible to introduce your own by implementing the `Unqualifier` interface, which allows all of the mechanisms described so far.  This definition is located in `hobbes/lang/tyunqualify.H`:
 
-```
+```C++
 struct Unqualifier {
   // bind any implied type variables in a constraint
   virtual bool refine(const TEnvPtr& tenv, const ConstraintPtr& cst, MonoTypeUnifier* u, Definitions* ds) = 0;
