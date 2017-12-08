@@ -15,6 +15,13 @@ template <typename R, typename ... Args>
     typedef R result_type;
   };
 
+template <typename R, typename ... Args>
+  struct func<R(*)(Args...)> {
+    static const std::size_t arity = sizeof...(Args);
+    typedef R (*type)(Args...);
+    typedef R result_type;
+  };
+
 template <typename R, typename C, typename ... Args>
   struct func<R(C::*)(Args...)> {
     static const std::size_t arity = sizeof...(Args);

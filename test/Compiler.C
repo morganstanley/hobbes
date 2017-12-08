@@ -51,3 +51,8 @@ TEST(Compiler, liftApathy) {
   EXPECT_EQ(show(lift<const BV&>::type(c())), "(<char> * long)");
 }
 
+TEST(Compiler, compileFnTypes) {
+  EXPECT_EQ(c().compileFn<int(const std::string&)>("_","42")(""), 42);
+  EXPECT_EQ(c().compileFn<int(*)(const std::string&)>("_","42")(""), 42);
+}
+
