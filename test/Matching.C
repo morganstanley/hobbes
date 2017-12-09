@@ -1,6 +1,7 @@
 
 #include <hobbes/hobbes.H>
 #include <hobbes/util/perf.H>
+#include <thread>
 #include "test.H"
 
 using namespace hobbes;
@@ -235,5 +236,35 @@ TEST(Matching, largeRegexDFAFinishesReasonablyQuickly) {
   )();
 
   EXPECT_TRUE(tick()-t0 < 1UL*60*60*1000*1000*1000);
+}
+
+TEST(Matching, noRaceInterpMatch) {
+  c().alwaysLowerPrimMatchTables(true);
+  c().buildInterpretedMatches(true);
+  auto f = c().compileFn<int(const std::string&)>("x",
+    "match x with\n"
+    "| \"foo\" -> 0\n"
+    "| \"bar\" -> 1\n"
+    "| _       -> 2"
+  );
+  size_t wrongMatches = 0;
+  std::vector<std::thread*> ps;
+  for (size_t p = 0; p < 10; ++p) {
+    ps.push_back(new std::thread(([&]() {
+      auto t0 = tick();
+      while (wrongMatches == 0 && tick()-t0 < 1UL*1000*1000*1000) {
+        if (f("foo") != 0) {
+          ++wrongMatches;
+        }
+        if (f("bar") != 1) {
+          ++wrongMatches;
+        }
+        hobbes::resetMemoryPool();
+      }
+    })));
+  }
+  for (auto p : ps) { p->join(); delete p; }
+  EXPECT_EQ(wrongMatches, 0);
+  c().buildInterpretedMatches(false);
 }
 
