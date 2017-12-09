@@ -1566,33 +1566,12 @@ void makeInterpretedPrimMatchFunction(const std::string& fname, MDFA* dfa, state
   std::string dfavar = fname + "_data";
   dfa->c->bind(polytype(dfaStateType()), dfavar, dfaStates);
 
-  // also we'll need to make an argument vector for DFA evaluations
-  std::string runvargs = fname + "_args";
-  array<long>* vargsv = (array<long>*)malloc(sizeof(long) + (vargs.size() * sizeof(long)));
-  vargsv->size = vargs.size();
-  dfa->c->bind(polytype(arrayty(MonoTypePtr(Prim::make("long")))), runvargs, vargsv);
-
-  // then we can interpret this DFA by filling in the pre-allocated argument vector and then running our generic DFA evaluation function over the definition
-  ExprPtr fbody = fncall(varName(dfa, "runLongDFA"), list(var(dfavar, dfa->rootLA), ExprPtr(new Long(0, dfa->rootLA)), var(runvargs, dfa->rootLA)), dfa->rootLA);
-
-  for (const auto& arg : argpos) {
-    ExprPtr setarg =
-      ExprPtr(
-        new Assign(
-          ExprPtr(new AIndex(var(runvargs, dfa->rootLA), ExprPtr(new Long(arg.second, dfa->rootLA)), dfa->rootLA)),
-          var(arg.first, dfa->rootLA),
-          dfa->rootLA
-        )
-      );
-
-    fbody = let("_", setarg, fbody, dfa->rootLA);
-  }
-
+  // then we can interpret this DFA by filling in a fresh argument vector and then running our generic DFA evaluation function over the definition
   ExprPtr runDFADef =
     ExprPtr(
       new Fn(
         vnames,
-        fbody,
+        fncall(varName(dfa, "runLongDFA"), list(var(dfavar, dfa->rootLA), ExprPtr(new Long(0, dfa->rootLA)), ExprPtr(new MkArray(vargs, dfa->rootLA))), dfa->rootLA),
         dfa->rootLA
       )
     );
