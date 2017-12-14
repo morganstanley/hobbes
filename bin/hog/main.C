@@ -21,6 +21,7 @@ struct RunMode {
   enum type { local, batchsend, batchrecv };
   type                  t;
   std::string           dir;
+  std::string           groupServerDir;
   std::set<std::string> groups;
   bool                  consolidate;
 
@@ -51,10 +52,10 @@ std::ostream& operator<<(std::ostream& o, const std::set<std::string>& xs) {
 std::ostream& operator<<(std::ostream& o, const RunMode& m) {
   switch (m.t) {
   case RunMode::local:
-    o << "|local={ dir=\"" << m.dir << "\", groups=" << m.groups << " }|";
+    o << "|local={ dir=\"" << m.dir << "\", serverDir=\"" << m.groupServerDir << "\", groups=" << m.groups << " }|";
     break;
   case RunMode::batchsend:
-    o << "|batchsend={ dir=\"" << m.dir << "\", clevel=" << m.clevel << ", batchsendsize=" << m.batchsendsize << "B, sendto=" << m.sendto << ", groups=" << m.groups << " }|";
+    o << "|batchsend={ dir=\"" << m.dir << "\", serverDir=\"" << m.groupServerDir << "\", clevel=" << m.clevel << ", batchsendsize=" << m.batchsendsize << "B, sendto=" << m.sendto << ", groups=" << m.groups << " }|";
     break;
   case RunMode::batchrecv:
     o << "|batchrecv={ dir=\"" << m.dir << "\", localport=" << m.localport << " }|";
@@ -80,21 +81,23 @@ void showUsage() {
   <<
     "hog : record structured data locally or to a remote process\n"
     "\n"
-    "  usage: hog [-d <dir>] [-g group+] [-p t s host:port] [-s port] [-c]\n"
+    "  usage: hog [-d <dir>] [-g group+] [-p t s host:port] [-s port] [-c] [-m <dir>]\n"
     "where\n"
     "  -d <dir>         : decides where structured data (or temporary data) is stored\n"
     "  -g group+        : decides which data to record from memory on this machine\n"
     "  -p t s host:port : decides to send data to a remote process every t time units or every s uncompressed bytes written\n"
     "  -s port          : decides to receive data on the given port\n"
     "  -c               : decides to store equally-typed data across processes in a single file\n"
+    "  -m <dir>         : decides where to place the domain socket for producer registration (default: " << hobbes::storage::defaultStoreDir() << ")\n"
   << std::endl;
 }
 
 RunMode config(int argc, const char** argv) {
   RunMode r;
-  r.t           = RunMode::local;
-  r.dir         = "./$GROUP/$DATE/data";
-  r.consolidate = false;
+  r.t              = RunMode::local;
+  r.dir            = "./$GROUP/$DATE/data";
+  r.groupServerDir = hobbes::storage::defaultStoreDir();
+  r.consolidate    = false;
 
   if (argc == 1) {
     showUsage();
@@ -148,13 +151,25 @@ RunMode config(int argc, const char** argv) {
       r.t = RunMode::batchrecv;
     } else if (arg == "-c") {
       r.consolidate = true;
+    } else if (arg == "-m") {
+      ++i;
+      if (i < argc) {
+        r.groupServerDir = argv[i];
+      } else {
+        throw std::runtime_error("need domain socket directory for producer registration");
+      }
     } else {
       throw std::runtime_error("invalid argument: " + arg);
     }
   }
 
-  if ((r.t == RunMode::local || r.t == RunMode::batchsend) && r.groups.size() == 0) {
-    throw std::runtime_error("can't record data because no groups have been specified");
+  if (r.t == RunMode::local || r.t == RunMode::batchsend) {
+    if (r.groups.size() == 0) {
+      throw std::runtime_error("can't record data because no groups have been specified");
+    }
+    if (::access(r.groupServerDir.c_str(), W_OK) != 0) {
+      throw std::runtime_error("can't record domain socket for producer registration (" + std::string(strerror(errno)) + "): " + r.groupServerDir);
+    }
   }
   return r;
 }
@@ -209,7 +224,7 @@ void runGroupHost(const std::string& groupName, const RunMode& m, std::vector<st
   SessionGroup* sg = makeSessionGroup(m.consolidate);
 
   hobbes::registerEventHandler(
-    hobbes::storage::makeGroupHost(groupName),
+    hobbes::storage::makeGroupHost(groupName, m.groupServerDir),
     [sg,groupName,ts,&m](int s) {
       out << "new connection for '" << groupName << "'" << std::endl;
   
