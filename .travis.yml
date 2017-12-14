@@ -19,6 +19,8 @@ matrix:
     - os: linux
       compiler: g++
       root: required
+      dist: trusty
+      group: deprecated-2017Q4
       services:
         - docker
       env:
