@@ -14,6 +14,7 @@
 
 #include "session.H"
 #include "netio.H"
+#include "path.H"
 
 using namespace hobbes;
 
@@ -147,7 +148,7 @@ void runRecvConnection(SessionGroup* sg, int c, std::string dir) {
     storage::statements stmts;
     read(&zb, &stmts);
 
-    auto txnF = appendStorageSession(sg, str::replace<char>(dir, "$GROUP", group), (storage::PipeQOS)qos, (storage::CommitMethod)cm, stmts);
+    auto txnF = appendStorageSession(sg, instantiateDir(group, dir), (storage::PipeQOS)qos, (storage::CommitMethod)cm, stmts);
 
     ssend(c, &ack, sizeof(ack));
 

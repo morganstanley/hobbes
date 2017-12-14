@@ -7,12 +7,16 @@
 #include <mutex>
 #include <condition_variable>
 #include <stdexcept>
+#include <vector>
 
 #include "local.H"
 #include "batchsend.H"
 #include "batchrecv.H"
 #include "session.H"
 #include "netio.H"
+#include "path.H"
+
+#include <signal.h>
 
 namespace hog {
 
@@ -26,10 +30,10 @@ struct RunMode {
   bool                  consolidate;
 
   // batchsend
-  size_t      clevel;
-  size_t      batchsendsize;
-  long        batchsendtime;
-  std::string sendto;
+  size_t                   clevel;
+  size_t                   batchsendsize;
+  long                     batchsendtime;
+  std::vector<std::string> sendto;
 
   // batchrecv
   std::string localport;
@@ -46,6 +50,20 @@ std::ostream& operator<<(std::ostream& o, const std::set<std::string>& xs) {
     }
   }
   o << "}";
+  return o;
+}
+
+std::ostream& operator<<(std::ostream& o, const std::vector<std::string>& xs) {
+  o << "[";
+  if (xs.size() > 0) {
+    auto x = xs.begin();
+    o << "\"" << *x << "\"";
+    ++x;
+    for (; x != xs.end(); ++x) {
+      o << ", \"" << *x << "\"";
+    }
+  }
+  o << "]";
   return o;
 }
 
@@ -81,14 +99,14 @@ void showUsage() {
   <<
     "hog : record structured data locally or to a remote process\n"
     "\n"
-    "  usage: hog [-d <dir>] [-g group+] [-p t s host:port] [-s port] [-c] [-m <dir>]\n"
+    "  usage: hog [-d <dir>] [-g group+] [-p t s host:port+] [-s port] [-c] [-m <dir>]\n"
     "where\n"
-    "  -d <dir>         : decides where structured data (or temporary data) is stored\n"
-    "  -g group+        : decides which data to record from memory on this machine\n"
-    "  -p t s host:port : decides to send data to a remote process every t time units or every s uncompressed bytes written\n"
-    "  -s port          : decides to receive data on the given port\n"
-    "  -c               : decides to store equally-typed data across processes in a single file\n"
-    "  -m <dir>         : decides where to place the domain socket for producer registration (default: " << hobbes::storage::defaultStoreDir() << ")\n"
+    "  -d <dir>          : decides where structured data (or temporary data) is stored\n"
+    "  -g group+         : decides which data to record from memory on this machine\n"
+    "  -p t s host:port+ : decides to send data to remote process(es) every t time units or every s uncompressed bytes written\n"
+    "  -s port           : decides to receive data on the given port\n"
+    "  -c                : decides to store equally-typed data across processes in a single file\n"
+    "  -m <dir>          : decides where to place the domain socket for producer registration (default: " << hobbes::storage::defaultStoreDir() << ")\n"
   << std::endl;
 }
 
@@ -125,7 +143,7 @@ RunMode config(int argc, const char** argv) {
       }
       --i;
     } else if (arg == "-p") {
-      if (i+3 < argc) {
+      if (i+2 < argc) {
         r.clevel = 6;
 
         ++i;
@@ -133,13 +151,21 @@ RunMode config(int argc, const char** argv) {
 
         ++i;
         r.batchsendsize = sizeInBytes(argv[i]);
-
-        ++i;
-        r.sendto = argv[i];
-
-        r.t = RunMode::batchsend;
       } else {
-        throw std::runtime_error("need delay time, max size, and remote host:port to push data");
+        throw std::runtime_error("need delay time and max size to push data");
+      }
+
+      ++i;
+      while (i < argc && argv[i][0] != '-') {
+        r.sendto.push_back(argv[i]);
+        ++i;
+      }
+      --i;
+
+      if (r.sendto.empty()) {
+        throw std::runtime_error("need remote host:port to push data");
+      } else {
+        r.t = RunMode::batchsend;
       }
     } else if (arg == "-s") {
       ++i;
@@ -172,22 +198,6 @@ RunMode config(int argc, const char** argv) {
     }
   }
   return r;
-}
-
-std::string instantiateDir(const std::string& groupName, const std::string& dir) {
-  // instantiate group name
-  std::string x = hobbes::str::replace<char>(dir, "$GROUP", groupName);
-
-  // instantiate date
-  time_t now = ::time(0);
-  if (const tm* t = localtime(&now)) {
-    std::ostringstream ss;
-    ss << t->tm_year + 1900 << "." << (t->tm_mon < 10 ? "0" : "") << t->tm_mon + 1 << "." << (t->tm_mday < 10 ? "0" : "") << t->tm_mday;
-    x = hobbes::str::replace<char>(x, "$DATE", ss.str());
-  }
-
-  // that's all we will substitute
-  return x;
 }
 
 void evalGroupHostConnection(SessionGroup* sg, const std::string& groupName, const RunMode& m, std::vector<std::thread>* ts, int c) {
@@ -259,6 +269,8 @@ void run(const RunMode& m) {
     pullRemoteDataT(m.dir, m.localport, m.consolidate).join();
   } else if (m.groups.size() > 0) {
     std::vector<std::thread> tasks;
+
+    signal(SIGPIPE, SIG_IGN);
 
     for (auto g : m.groups) {
       try {
