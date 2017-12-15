@@ -240,8 +240,13 @@ inline int mqlisten(const std::string& fileName) {
   return s;
 }
 
-inline std::string tempDir() {
+inline std::string defaultStoreDir() {
   const char* td = 0;
+  if ((td = ::getenv("HOBBES_STORE_DIR"))) {
+    if (::strlen(td) > 0 && ::access(td, W_OK) == 0) {
+      return std::string(td);
+    }
+  }
   if ((td = ::getenv("TMPDIR"))) {
     if (::strlen(td) > 0 && ::access(td, W_OK) == 0) {
       return std::string(td);
@@ -258,12 +263,12 @@ inline std::string tempDir() {
   return "/tmp";
 }
 
-inline int connectGroupHost(const std::string& groupName) {
-  return mqconnect(tempDir() + "/hstore." + groupName + ".sk");
+inline int connectGroupHost(const std::string& groupName, const std::string& sdir = defaultStoreDir()) {
+  return mqconnect(sdir + "/hstore." + groupName + ".sk");
 }
 
-inline int makeGroupHost(const std::string& groupName) {
-  return mqlisten(tempDir() + "/hstore." + groupName + ".sk");
+inline int makeGroupHost(const std::string& groupName, const std::string& sdir = defaultStoreDir()) {
+  return mqlisten(sdir + "/hstore." + groupName + ".sk");
 }
 
 // identify this process/thread
