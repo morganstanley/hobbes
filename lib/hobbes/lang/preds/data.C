@@ -10,12 +10,10 @@ std::string DataP::constraintName() {
 
 bool DataP::refine(const TEnvPtr&, const ConstraintPtr& c, MonoTypeUnifier* u, Definitions*) {
   if (c->name() == DataP::constraintName() && c->arguments().size() == 2) {
-    if (const Prim* pt = is<Prim>(c->arguments()[0])) {
-      if (pt->representation()) {
-        size_t z = u->size();
-        mgu(c->arguments()[1], pt->representation(), u);
-        return z != u->size();
-      }
+    if (hasFreeVariables(c->arguments()[1])) {
+      size_t z = u->size();
+      mgu(c->arguments()[1], repType(c->arguments()[0]), u);
+      return z != u->size();
     }
   }
   return false;
@@ -23,11 +21,7 @@ bool DataP::refine(const TEnvPtr&, const ConstraintPtr& c, MonoTypeUnifier* u, D
 
 bool DataP::satisfied(const TEnvPtr& tenv, const ConstraintPtr& c, Definitions*) const {
   if (c->name() == DataP::constraintName() && c->arguments().size() == 2) {
-    if (const Prim* pt = is<Prim>(c->arguments()[0])) {
-      if (pt->representation()) {
-        return *c->arguments()[1] == *pt->representation();
-      }
-    }
+    return *c->arguments()[1] == *repType(c->arguments()[0]) && !(*c->arguments()[0] == *c->arguments()[1]);
   }
   return false;
 }
@@ -37,10 +31,8 @@ bool DataP::satisfiable(const TEnvPtr& tenv, const ConstraintPtr& c, Definitions
     return false;
   } else if (is<TVar>(c->arguments()[0])) {
     return true;
-  } else if (const Prim* pt = is<Prim>(c->arguments()[0])) {
-    return pt->representation() && unifiable(tenv, pt->representation(), c->arguments()[1]);
   } else {
-    return false;
+    return unifiable(tenv, repType(c->arguments()[0]), c->arguments()[1]);
   }
 }
 

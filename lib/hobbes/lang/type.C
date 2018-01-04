@@ -505,12 +505,12 @@ bool isFileRef(const MonoTypePtr& mt) {
 }
 
 // memory alignment for monotypes -- this may need to be looked at more closely and factored out of this module
-unsigned int alignment(const MonoTypePtr& ty) {
+unsigned int alignment(const MonoTypePtr& pty) {
+  MonoTypePtr ty = repType(pty);
+
   if (const Prim* pty = is<Prim>(ty)) {
     if (isUnit(ty)) {
       return 1;
-    } else if (pty->representation()) {
-      return alignment(pty->representation());
     } else {
       return sizeOf(ty);
     }
@@ -534,9 +534,6 @@ unsigned int alignment(const MonoTypePtr& ty) {
     return sizeof(void*);
   } else if (isFileRef(ty)) {
     return sizeof(uint64_t);
-  } else if (is<TApp>(ty)) {
-    // TODO: apply through type functions
-    return 1;
   } else {
     return 1;
   }
@@ -2065,6 +2062,20 @@ MonoTypes simplifyVarNames(const MonoTypes& mts) {
   return substitute(canonicalNameSubst(tvarNames(mts)), mts);
 }
 
+// reduce types to their primitive representation
+MonoTypePtr repType(const MonoTypePtr& t) {
+  if (const Prim* pt = is<Prim>(t)) {
+    if (pt->representation()) {
+      return repType(pt->representation());
+    }
+  } else if (const TApp* a = is<TApp>(t)) {
+    if (const TAbs* tf = is<TAbs>(repType(a->fn()))) {
+      return repType(substitute(substitution(tf->args(), a->args()), tf->body()));
+    }
+  }
+  return t;
+}
+
 // compute the size of a monotype (in bytes)
 typedef unsigned int nat;
 nat nadd(nat lhs, nat rhs) { return lhs + rhs; }
@@ -2660,6 +2671,7 @@ MonoTypePtr decodeFrom(const bytes& in, unsigned int* n) {
   case OpaquePtr::type_case_id:  return decodeOpaquePtr(in, n);
   case TVar::type_case_id:       return decodeTVar(in, n);
   case TGen::type_case_id:       return decodeTGen(in, n);
+  case TAbs::type_case_id:       return decodeTAbs(in, n);
   case TApp::type_case_id:       return decodeTApp(in, n);
   case FixedArray::type_case_id: return decodeFixedArr(in, n);
   case Array::type_case_id:      return decodeArr(in, n);

@@ -10,19 +10,6 @@
 namespace hobbes {
 
 // low-level representation decisions ...
-inline MonoTypePtr repType(const MonoTypePtr& t) {
-  if (const Prim* pt = is<Prim>(t)) {
-    if (pt->representation()) {
-      return repType(pt->representation());
-    }
-  } else if (const TApp* a = is<TApp>(t)) {
-    if (const TAbs* tf = is<TAbs>(repType(a->fn()))) {
-      return repType(substitute(substitution(tf->args(), a->args()), tf->body()));
-    }
-  }
-  return t;
-}
-
 inline bool hasPointerRep(const MonoTypePtr& t) {
   MonoTypePtr rt = repType(t);
 
