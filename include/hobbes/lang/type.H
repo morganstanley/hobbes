@@ -1004,6 +1004,9 @@ MonoTypePtr   simplifyVarNames(const MonoType&);
 MonoTypePtr   simplifyVarNames(const MonoTypePtr&);
 MonoTypes     simplifyVarNames(const MonoTypes& mts);
 
+// forget fancy type aliases, determine a reduced representation type
+MonoTypePtr repType(const MonoTypePtr&);
+
 // simplify working with type structures lifting of C++ types
 inline MonoTypePtr primty(const char* x) {
   return Prim::make(x);
