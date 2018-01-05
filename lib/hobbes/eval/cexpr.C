@@ -137,7 +137,7 @@ public:
     //   this allows us to use primitive instructions / control-flow
     if (Var* fv = is<Var>(stripAssumpHead(v->fn()))) {
       if (op* o = lookupOp(fv->value())) {
-        return o->apply(this->c, requireMonotype(v->args()), requireMonotype(v->type()), v->args());
+        return o->apply(this->c, requireMonotype(this->c->typeEnv(), v->args()), requireMonotype(v->type()), v->args());
       }
     }
 

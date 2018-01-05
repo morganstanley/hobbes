@@ -1345,8 +1345,8 @@ Case::Bindings switchOf(const Case::Bindings& bs, const switchExpr<ExprPtr>& f);
 Switch::Bindings switchOf(const Switch::Bindings& bs, const switchExpr<ExprPtr>& f);
 
 // require that a mono-type can be extracted from an expression
-const MonoTypePtr& requireMonotype(const ExprPtr&);
-MonoTypes requireMonotype(const Exprs&);
+const MonoTypePtr& requireMonotype(const TEnvPtr&, const ExprPtr&);
+MonoTypes requireMonotype(const TEnvPtr&, const Exprs&);
 
 // add explicit type assumption terms where we have annotations
 ExprPtr liftTypesAsAssumptions(const ExprPtr& e);

@@ -1,5 +1,6 @@
 
 #include <hobbes/lang/expr.H>
+#include <hobbes/lang/preds/class.H>
 #include <hobbes/util/array.H>
 #include <hobbes/util/time.H>
 #include <hobbes/util/codec.H>
@@ -1218,13 +1219,13 @@ struct liftTypeAsAssumpF : public switchExprTyFn {
   }
 };
 
-const MonoTypePtr& requireMonotype(const ExprPtr& e) {
+const MonoTypePtr& requireMonotype(const TEnvPtr& tenv, const ExprPtr& e) {
   if (e->type() == QualTypePtr()) {
     throw annotated_error(*e, "Expression '" + show(e) + "' not explicitly annotated.  Internal compiler error.");
   }
 
   if (e->type()->constraints().size() > 0) {
-    Constraints cs = simplifyVarNames(e->type())->constraints();
+    Constraints cs = expandHiddenTCs(tenv, simplifyVarNames(e->type())->constraints());
     std::ostringstream ss;
     ss << "Failed to compile expression due to unresolved type constraint" << (cs.size() > 1 ? "s" : "") << ":";
     for (const auto& c : cs) {
@@ -1236,10 +1237,10 @@ const MonoTypePtr& requireMonotype(const ExprPtr& e) {
   return e->type()->monoType();
 }
 
-MonoTypes requireMonotype(const Exprs& es) {
+MonoTypes requireMonotype(const TEnvPtr& tenv, const Exprs& es) {
   MonoTypes r;
   for (auto e : es) {
-    r.push_back(requireMonotype(e));
+    r.push_back(requireMonotype(tenv, e));
   }
   return r;
 }

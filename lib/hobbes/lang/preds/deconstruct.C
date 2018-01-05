@@ -129,11 +129,7 @@ static bool asRestruct(const MonoTypePtr& t, MonoTypePtr* rty) {
   if (!ctor) return false;
 
   if (ctor->value() == "->" && ms.size() == 3) {
-    if (is<Record>(ms[1].type) && is<Record>(ms[1].type)->isTuple()) {
-      *rty = MonoTypePtr(Func::make(ms[1].type, ms[2].type));
-    } else {
-      *rty = MonoTypePtr(Func::make(tuple(list(ms[1].type)), ms[2].type));
-    }
+    *rty = MonoTypePtr(Func::make(tuple(list(ms[1].type)), ms[2].type));
     return true;
   } else if (ctor->value() == "array" && ms.size() == 2) {
     *rty = MonoTypePtr(Array::make(ms[1].type));
@@ -145,11 +141,7 @@ static bool asRestruct(const MonoTypePtr& t, MonoTypePtr* rty) {
     *rty = ms[1].type;
     return true;
   } else if (ctor->value() == "closure" && ms.size() == 3) {
-    if (is<Record>(ms[1].type) && is<Record>(ms[1].type)->isTuple()) {
-      *rty = MonoTypePtr(Exists::make("E", tuple(list(functy(cons(tvar("E"), selectTypes(is<Record>(ms[1].type)->members())), ms[2].type), tvar("E")))));
-    } else {
-      *rty = MonoTypePtr(Exists::make("E", tuple(list(functy(list(tvar("E"), ms[1].type), ms[2].type), tvar("E")))));
-    }
+    *rty = MonoTypePtr(Exists::make("E", tuple(list(functy(list(tvar("E"), ms[1].type), ms[2].type), tvar("E")))));
     return true;
   }
 
