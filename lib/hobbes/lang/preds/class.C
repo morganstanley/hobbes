@@ -218,12 +218,27 @@ bool TClass::satisfied(const TEnvPtr& tenv, const ConstraintPtr& c, Definitions*
     if (*f) return true;
   }
 
+  // consider whether all implied constraints are satisfied
+  for (const auto& req : this->reqs) {
+    if (!::hobbes::satisfied(tenv, instantiate(c->arguments(), req), ds)) {
+      return false;
+    }
+  }
+
+  // finally see if we can get an instance
   return matches(tenv, c->arguments(), 0, ds).size() == 1;
 }
 
 bool TClass::satisfiable(const TEnvPtr& tenv, const ConstraintPtr& c, Definitions* ds) const {
   // take care of the obvious
   if (c->arguments().size() != this->tvs) return false;
+
+  // consider satisfiability across all constraints implied by this class
+  for (const auto& req : this->reqs) {
+    if (!::hobbes::satisfiable(tenv, instantiate(c->arguments(), req), ds)) {
+      return false;
+    }
+  }
 
   // for empty class definitions, assume allow constraint usage before definitions
   if (this->tcinstdb.values().size() == 0 && this->tcinstancefns.size() == 0) {

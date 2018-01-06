@@ -175,7 +175,7 @@ foldlT2Step f s ps i =
 foldlT2 :: ((s,a,b) -> s, s, [a*b]) -> s
 foldlT2 f s ps = foldlT2Step(f, s, ps, 0L)
 
-foldlCT2Step :: (exists E.(((E, s, k, v) -> s)*E), s, [a*b], long) -> s
+foldlCT2Step :: (exists E.(((E, (s*k*v)) -> s)*E), s, [a*b], long) -> s
 foldlCT2Step f s ps i =
   if (i == length(ps)) then
     s
@@ -183,7 +183,7 @@ foldlCT2Step f s ps i =
     (let p = ps[i] in foldlCT2Step(f, apply(f, (s, p.0, p.1)), ps, i+1))
 
 // [doc] fold a closure over an array of pairs (avoids tupling arguments)
-foldlCT2 :: (exists E.(((E, s, k, v) -> s)*E), s, [a*b]) -> s
+foldlCT2 :: (exists E.(((E, (s*k*v)) -> s)*E), s, [a*b]) -> s
 foldlCT2 f s ps = foldlCT2Step(f, s, ps, 0L)
 
 // find something in an array

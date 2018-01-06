@@ -18,19 +18,19 @@ namespace hobbes {
 #define REF_REC_TAIL  "recordTail"
 #define REF_TUP_TAIL  "tupleTail"
 
-Record::Members stripHiddenFields(const Record* rty) {
+MonoTypePtr stripHiddenFields(const Record* rty) {
   Record::Members ms;
   for (const auto& m : rty->members()) {
     if (m.field.size() < 2 || (m.field[0] != '.' || m.field[1] != 'p')) {
       ms.push_back(Record::Member(m.field, m.type));
     }
   }
-  return ms;
+  return Record::make(ms);
 }
 
 MonoTypePtr stripHiddenFields(const MonoTypePtr& ty) {
   if (const Record* rty = is<Record>(ty)) {
-    return MonoTypePtr(Record::make(stripHiddenFields(rty)));
+    return stripHiddenFields(rty);
   } else {
     return ty;
   }
@@ -128,13 +128,13 @@ bool RecordDeconstructor::satisfied(const TEnvPtr&, const ConstraintPtr& cst, De
 
   if (cr.asTuple) {
     if (tty) {
-      return *rty == *Record::make(cr.headType, tty->members());
+      return *stripHiddenFields(rty) == *stripHiddenFields(Record::make(cr.headType, tty->members()));
     } else {
       return *rty->headMember().type == *cr.headType;
     }
   } else {
     if (tty) {
-      return *rty == *Record::make(fname->value(), cr.headType, tty->members());
+      return *stripHiddenFields(rty) == *stripHiddenFields(Record::make(fname->value(), cr.headType, tty->members()));
     } else {
       return rty->headMember().field == fname->value() && *rty->headMember().type == *cr.headType;
     }

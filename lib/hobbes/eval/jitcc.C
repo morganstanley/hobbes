@@ -50,8 +50,8 @@ private:
 };
 #endif
 
-jitcc::jitcc() :
-  currentModule(0), irbuilder(0),
+jitcc::jitcc(const TEnvPtr& tenv) :
+  tenv(tenv), currentModule(0), irbuilder(0),
   globalData(32768 /* min global page size = 32K */),
   ignoreLocalScope(false)
 {
@@ -115,6 +115,10 @@ jitcc::~jitcc() {
 #endif
 
   delete this->irbuilder;
+}
+
+const TEnvPtr& jitcc::typeEnv() const {
+  return this->tenv;
 }
 
 llvm::IRBuilder<>* jitcc::builder() const {
@@ -474,7 +478,7 @@ void jitcc::defineGlobal(const std::string& vn, const ExprPtr& ue) {
   this->globalExprs[vn] = ue;
 
   typedef void (*Thunk)();
-  MonoTypePtr uety = requireMonotype(ue);
+  MonoTypePtr uety = requireMonotype(this->tenv, ue);
 
   if (isUnit(uety)) {
     // no storage necessary for units
@@ -660,7 +664,7 @@ void jitcc::compileFunctions(const LetRec::Bindings& bs, std::vector<llvm::Funct
     this->globalExprs[b.first] = b.second;
 
     if (const Fn* f = is<Fn>(stripAssumpHead(b.second))) {
-      if (const Func* fty = is<Func>(requireMonotype(b.second))) {
+      if (const Func* fty = is<Func>(requireMonotype(this->tenv, b.second))) {
         fs.push_back(UCF(b.first, f->varNames(), fty->parameters(), f->body()));
       } else {
         throw std::runtime_error("Internal error, mutual recursion must be defined over mono-typed functions");
@@ -691,7 +695,7 @@ void jitcc::unsafeCompileFunctions(UCFS* ufs) {
 
   // prepare the environment for these mutually-recursive definitions
   for (size_t f = 0; f < fs.size(); ++f) {
-    llvm::Function* fval = allocFunction(fs[f].name.empty() ? ("/" + freshName()) : fs[f].name, fs[f].argtys, requireMonotype(fs[f].exp));
+    llvm::Function* fval = allocFunction(fs[f].name.empty() ? ("/" + freshName()) : fs[f].name, fs[f].argtys, requireMonotype(this->tenv, fs[f].exp));
     if (fval == 0) {
       throw std::runtime_error("Failed to allocate function");
     }
@@ -704,7 +708,7 @@ void jitcc::unsafeCompileFunctions(UCFS* ufs) {
   for (size_t f = 0; f < fs.size(); ++f) {
     llvm::Function*   fval = fs[f].result;
     const UCF&        ucf  = fs[f];
-    MonoTypePtr       rty  = requireMonotype(ucf.exp);
+    MonoTypePtr       rty  = requireMonotype(this->tenv, ucf.exp);
     llvm::BasicBlock* bb   = llvm::BasicBlock::Create(context(), "entry", fval);
 
     this->builder()->SetInsertPoint(bb);
@@ -791,7 +795,7 @@ Values compile(jitcc* c, const Exprs& es) {
 Values compileArgs(jitcc* c, const Exprs& es) {
   Values r;
   for (auto e : es) {
-    MonoTypePtr  et = requireMonotype(e);
+    MonoTypePtr  et = requireMonotype(c->typeEnv(), e);
     llvm::Value* ev = c->compile(e);
 
     if (const Prim* pt = is<Prim>(et)) {

@@ -32,9 +32,10 @@ struct op {
 // a JIT compiler for monotyped expressions
 class jitcc {
 public:
-  jitcc();
+  jitcc(const TEnvPtr&);
   ~jitcc();
 
+  const TEnvPtr&     typeEnv() const;
   llvm::IRBuilder<>* builder() const;
   llvm::Module*      module();
 
@@ -111,6 +112,8 @@ public:
   // allocate some global data attached to this JIT
   void* memalloc(size_t);
 private:
+  TEnvPtr tenv;
+
   // produce some machine code for a compiled function
   void* getMachineCode(llvm::Function*, llvm::JITEventListener* listener = 0);
 

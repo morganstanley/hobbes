@@ -3,21 +3,10 @@
 */
 class (Deconstruct f (c*a*r)) => Function f c a r | f -> c a r, c a r -> f where
   apply :: (f, a) -> r
-
-// eventually it'd be better to make this a generic definition for any arity
 instance Function (a -> r) "->" a r where
   apply f x = f(x)
-instance Function ((a,b)->r) "->" (a*b) r where
-  apply = applyCFn
-instance Function ((a,b,c)->r) "->" (a*b*c) r where
-  apply = applyCFn
-
 instance Function (exists E.(((E,a)->r)*E)) "closure" a r where
   apply c x = unpack z = (c :: exists E.(((E,a)->r)*E)) in (z.0(z.1,x))
-instance Function (exists E.(((E,a,b)->r)*E)) "closure" (a*b) r where
-  apply c x = unpack z = (c :: exists E.(((E,a,b)->r)*E)) in (z.0(z.1,x.0,x.1))
-instance Function (exists E.(((E,a,b,c)->r)*E)) "closure" (a*b*c) r where
-  apply c x = unpack z = (c :: exists E.(((E,a,b,c)->r)*E)) in (z.0(z.1,x.0,x.1,x.2))
 
 // also this should be generalized to any arity
 toClosure :: (a -> b) -> (exists E.(((E, a) -> b) * E))

@@ -246,9 +246,6 @@ private:
   // cache for expression search results
   SearchCache searchCache;
 
-  // the JIT engine that compiles our monotyped expressions
-  jitcc jit;
-
   // optimization options
   bool runModInlinePass;
   bool genInterpretedMatch;
@@ -266,6 +263,9 @@ private:
 
   // track C++ object relationships
   ObjsPtr objs;
+
+  // the JIT engine that compiles our monotyped expressions
+  jitcc jit;
 private:
   // disable copying
   cc(const cc&);
