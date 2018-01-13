@@ -665,6 +665,84 @@ template <typename U, typename V>
     }
   };
 
+// support fixed-length array of mem-copyable type
+template <typename T, size_t N>
+  struct FixedArrTyDesc {
+    static void encode(bytes* out) {
+      w(PRIV_HNET_TYCTOR_FIXEDARR, out);
+      io<T>::encode(out);
+      w(PRIV_HNET_TYCTOR_SIZE, out);
+      w<long>(N, out);
+    }
+    static std::string describe() {
+      char nf[32];
+      snprintf(nf, sizeof(nf), "%lld", (unsigned long long)N);
+      return "[:" + io<T>::describe() + "|" + std::string(nf) + ":]";
+    }
+  };
+
+template <typename T, size_t N>
+  struct FixedArrMemcpyReadWrite {
+    static void read(int s, T (*x)[N]) { recvData(s, (uint8_t*)x, sizeof(T) * N); }
+    static void write(int s, const T (&x)[N]) { sendData(s, (const uint8_t*)x, sizeof(T) * N); }
+
+    struct async_read_state {
+      size_t bytesRead;
+    };
+
+    static void prepare(async_read_state* o) {
+      o->bytesRead = 0;
+    }
+
+    static bool accum(int s, async_read_state* o, T (*x)[N]) {
+      const auto len = sizeof(T) * N;
+      uint8_t* buf = (uint8_t*)&((*x)[0]);
+      o->bytesRead += recvDataPartial(s, buf + o->bytesRead, len - o->bytesRead);
+      return o->bytesRead == len;
+    }
+  };
+
+template <typename T, size_t N>
+  struct FixedArrIterReadWrite {
+    static void read(int s, T (*x)[N]) {
+      for (auto i = 0; i < N; ++i) {
+        io<T>::read(s, &(*x)[i]);
+      }
+    }
+
+    static void write(int s, const T (&x)[N]) {
+      for (auto i = 0; i < N; ++i) {
+        io<T>::write(s, x[i]);
+      }
+    }
+
+    struct async_read_state {
+      typedef typename io<T>::async_read_state ElemS;
+
+      size_t idx;
+      ElemS  elemS;
+    };
+
+    static void prepare(async_read_state* o) {
+      o->idx = 0;
+      io<T>::prepare(&o->elemS);
+    }
+
+    static bool accum(int s, async_read_state* o, T (*x)[N]) {
+      if (io<T>::accum(s, &o->elemS, &(*x)[o->idx])) {
+        ++o->idx;
+        io<T>::prepare(&o->elemS);
+      }
+      return o->idx == N;
+    }
+  };
+
+template <typename T, size_t N>
+struct io<T[N], typename io<T>::can_memcpy> : FixedArrTyDesc<T, N>, FixedArrMemcpyReadWrite<T, N> {};
+
+template <typename T, size_t N>
+struct io<T[N], typename cannot_memcpy<T>::type> : FixedArrTyDesc<T, N>, FixedArrIterReadWrite<T, N> {};
+
 // support vectors of mem-copyable type
 template <typename T>
   struct io<std::vector<T>, typename io<T>::can_memcpy> {

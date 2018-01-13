@@ -130,6 +130,12 @@ template <>
   };
 }}
 
+using rgb_t = int[3];
+DEFINE_HNET_STRUCT(
+  RGB,
+  (rgb_t, val)
+);
+
 /**************************
  * the synchronous client networking API
  **************************/
@@ -141,7 +147,8 @@ DEFINE_NET_CLIENT(
   (grpv,    V(Group),                       "\\_.|Frank=\"frank\"|"),
   (nothing, V(),                            "\\_.|Nothing=()|"),
   (recover, Groups(int,int),                "\\i e.[{id=\"group_\"++show(k),kid=|Jim|,aa=convert(k),bb=convert(k)}|k<-[i..e]]"),
-  (eidv,    CustomIDEnum(CustomIDEnum),     "id")
+  (eidv,    CustomIDEnum(CustomIDEnum),     "id"),
+  (inverse, RGB(RGB),                       "\\x.let _=saelem(x.val,0L)<-(255-saelem(x.val,0L));_=saelem(x.val,1L)<-(255-saelem(x.val,1L));_=saelem(x.val,2L)<-(255-saelem(x.val,2L)); in x")
 );
 
 TEST(Net, syncClientAPI) {
@@ -161,6 +168,9 @@ TEST(Net, syncClientAPI) {
   EXPECT_EQ(c.recover(0,4), ros);
 
   EXPECT_EQ(c.eidv(CustomIDEnum::Green), CustomIDEnum::Green);
+
+  auto inv = c.inverse(RGB{{0,255,0}});
+  EXPECT_EQ(std::vector<int>(inv.val,inv.val+3), std::vector<int>({255,0,255}));
 }
 
 /**************************
@@ -174,7 +184,8 @@ DEFINE_ASYNC_NET_CLIENT(
   (grpv,    V(Group),                       "\\_.|Frank=\"frank\"|"),
   (nothing, V(),                            "\\().|Nothing=()|"),
   (recover, Groups(int,int),                "\\i e.[{id=\"group_\"++show(k),kid=|Jim|,aa=convert(k),bb=convert(k)}|k<-[i..e]]"),
-  (eidv,    CustomIDEnum(CustomIDEnum),     "id")
+  (eidv,    CustomIDEnum(CustomIDEnum),     "id"),
+  (inverse, RGB(RGB),                       "\\x.let _=saelem(x.val,0L)<-(255-saelem(x.val,0L));_=saelem(x.val,1L)<-(255-saelem(x.val,1L));_=saelem(x.val,2L)<-(255-saelem(x.val,2L)); in x")
 );
 void stepAsyncClient(int, void* p) { ((AsyncClient*)p)->step(); }
 
@@ -194,6 +205,8 @@ TEST(Net, asyncClientAPI) {
   c.recover(0,4, [&](const Groups& r) { EXPECT_EQ(r, ros); });
   
   c.eidv(CustomIDEnum::Green, [](const CustomIDEnum& x) { EXPECT_EQ(x, CustomIDEnum::Green); });
+
+  c.inverse(RGB{{0,255,0}}, [](const RGB& inv) { EXPECT_EQ(std::vector<int>(inv.val,inv.val+3), std::vector<int>({255,0,255})); });
 
   // run a quick epoll loop to process results asynchronously (expect all results within 30 seconds)
   registerEventHandler(c.fd(), &stepAsyncClient, &c);

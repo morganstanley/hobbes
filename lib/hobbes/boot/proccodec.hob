@@ -70,6 +70,25 @@ instance (BlockCodec a) => BlockCodec [a] where
   readFrom fd = let r = newArray(readFrom(fd) :: long); _ = readFromIntoArr(fd, r, 0L) in r
   writeTo fd xs = let _ = writeTo(fd, length(xs)) in writeToArr(fd, xs, 0L)
 
+// static arrays
+readFromIntoSA :: (BlockCodec a) => (int, [:a|n:], long, long) -> ()
+readFromIntoSA fd xs i end =
+  if (i == end) then
+    ()
+  else
+    (let _ = saelem(xs, i) <- readFrom(fd) in readFromIntoSA(fd, xs, i+1, end))
+
+writeToSA :: (BlockCodec a) => (int, [:a|n:], long, long) -> ()
+writeToSA fd xs i end =
+  if (i == end) then
+    ()
+  else
+    (let _ = writeTo(fd, saelem(xs, i)) in writeToSA(fd, xs, i+1, end))
+
+instance BlockCodec [:a|n:] where
+  readFrom fd = let r = newPrim(); _ = readFromIntoSA(fd, r, 0L, salength(r)) in r
+  writeTo fd xs = writeToSA(fd, xs, 0L, salength(xs))
+
 // tuples, records
 class BlockDecInto a where
   readFromInto :: (int, a) -> ()
