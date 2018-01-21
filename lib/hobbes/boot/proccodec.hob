@@ -85,7 +85,7 @@ writeToSA fd xs i end =
   else
     (let _ = writeTo(fd, saelem(xs, i)) in writeToSA(fd, xs, i+1, end))
 
-instance BlockCodec [:a|n:] where
+instance (BlockCodec a) => BlockCodec [:a|n:] where
   readFrom fd = let r = newPrim(); _ = readFromIntoSA(fd, r, 0L, salength(r)) in r
   writeTo fd xs = writeToSA(fd, xs, 0L, salength(xs))
 
