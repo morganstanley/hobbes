@@ -476,12 +476,14 @@ Now, at the same time that this program runs, we will also want to run another p
 $ hog
 hog : record structured data locally or to a remote process
 
-  usage: hog [-d <dir>] [-g group+] [-p t s host:port] [-s port]
+  usage: hog [-d <dir>] [-g group+] [-p t s host:port+] [-s port] [-c] [-m <dir>]
 where
-  -d <dir>         : decides where structured data (or temporary data) is stored
-  -g group+        : decides which data to record from memory on this machine
-  -p t s host:port : decides to send data to a remote process every t time units or every s uncompressed bytes written
-  -s port          : decides to receive data on the given port
+  -d <dir>          : decides where structured data (or temporary data) is stored
+  -g group+         : decides which data to record from memory on this machine
+  -p t s host:port+ : decides to send data to remote process(es) every t time units or every s uncompressed bytes written
+  -s port           : decides to receive data on the given port
+  -c                : decides to store equally-typed data across processes in a single file
+  -m <dir>          : decides where to place the domain socket for producer registration
 $
 ```
 

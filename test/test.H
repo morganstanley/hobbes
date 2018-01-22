@@ -31,12 +31,18 @@ private:
   bool install_##G##_##N = TestCoord::instance().installTest(#G, #N, &test_##G##_##N); \
   void test_##G##_##N()
 
+#define FILEINFO(file, line) (std::string("(") + hobbes::str::rsplit(file, "/").second + ":" + std::to_string(line) + ")")
+
 #define EXPECT_TRUE(p) \
   if (!(p)) { \
-    throw std::runtime_error("Expression false, expected true: " #p); \
+    std::ostringstream __errmsg; \
+    __errmsg << "Expression false, expected true: " #p << " " << FILEINFO(__FILE__, __LINE__); \
+    throw std::runtime_error(__errmsg.str()); \
   }
 #define EXPECT_FALSE(p) \
   if ((p)) { \
+    std::ostringstream __errmsg; \
+    __errmsg << "Expression true, expected false: " #p << " " << FILEINFO(__FILE__, __LINE__); \
     throw std::runtime_error("Expression true, expected false: " #p); \
   }
 #define EXPECT_EQ(p,x) \
@@ -45,7 +51,7 @@ private:
     auto z = (x); \
     if (!(v == z)) { \
       std::ostringstream __errmsg; \
-      __errmsg << "Expression '" #p "' == " << v << ", but expected " << z; \
+      __errmsg << "Expression '" #p "' == " << v << ", but expected " << z << " " << FILEINFO(__FILE__, __LINE__); \
       throw std::runtime_error(__errmsg.str()); \
     } \
   }
@@ -55,7 +61,7 @@ private:
     auto z = (x); \
     if (v == z) { \
       std::ostringstream __errmsg; \
-      __errmsg << "Expression '" #p "' == " << v << ", but expected anything else"; \
+      __errmsg << "Expression '" #p "' == " << v << ", but expected anything else" << " " << FILEINFO(__FILE__, __LINE__); \
       throw std::runtime_error(__errmsg.str()); \
     } \
   }

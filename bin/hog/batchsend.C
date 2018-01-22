@@ -11,6 +11,7 @@
 #include <map>
 #include <thread>
 #include <mutex>
+#include <vector>
 
 #include <glob.h>
 #include <zlib.h>
@@ -44,6 +45,38 @@ using namespace hobbes;
 
 namespace hog {
 
+struct Destination {
+  Destination(const std::string& localdir, const std::string& hostport)
+    : localdir(localdir), hostport(hostport), connection(-1), handshaked(false)
+  {
+  }
+
+  const std::string localdir;
+  const std::string hostport;
+  int               connection;
+  bool              handshaked;
+
+  void markdown() {
+    ::close(connection);
+    connection = -1;
+    handshaked = false;
+  }
+};
+
+std::ostream& operator<<(std::ostream& o, const std::vector<Destination>& xs) {
+  o << "[";
+  if (xs.size() > 0) {
+    auto x = xs.begin();
+    o << "\"" << x->hostport << "\"";
+    ++x;
+    for (; x != xs.end(); ++x) {
+      o << ", \"" << x->hostport << "\"";
+    }
+  }
+  o << "]";
+  return o;
+}
+
 void sendFileContents(int connection, int sfd) {
   struct stat sb;
   fstat(sfd, &sb);
@@ -72,39 +105,34 @@ void sendFileContents(int connection, int sfd) {
 }
 
 void sendSegmentFiles(int connection, const std::string& localdir) {
-  while (true) {
-    // poll for segment files
-    typedef std::map<time_t, std::set<std::string>> OrderedSegFiles;
-    OrderedSegFiles segfiles;
+  // poll for segment files
+  typedef std::map<time_t, std::set<std::string>> OrderedSegFiles;
+  OrderedSegFiles segfiles;
 
-    glob_t g;
-    if (glob((localdir + "/segment-*.gz").c_str(), GLOB_NOSORT, 0, &g) == 0) {
-      for (size_t i = 0; i < g.gl_pathc; ++i) {
-        struct stat st;
-        if (stat(g.gl_pathv[i], &st) == 0) {
-          segfiles[st.st_ctime].insert(g.gl_pathv[i]);
-        } else {
-          out << "couldn't stat '" << g.gl_pathv[i] << "' (" << strerror(errno) << ")" << std::endl;
-        }
-      }
-      globfree(&g);
-    }
-
-    // try to send all segments in order and then discard them
-    for (const auto& sfns : segfiles) {
-      for (const auto& sfn : sfns.second) {
-        int fd = open(sfn.c_str(), O_RDONLY);
-        if (fd == -1) {
-          out << "couldn't open '" << sfn << "' (" << strerror(errno) << ")" << std::endl;
-        } else {
-          sendFileContents(connection, fd);
-          unlink(sfn.c_str());
-        }
+  glob_t g;
+  if (glob((localdir + "/segment-*.gz").c_str(), GLOB_NOSORT, 0, &g) == 0) {
+    for (size_t i = 0; i < g.gl_pathc; ++i) {
+      struct stat st;
+      if (stat(g.gl_pathv[i], &st) == 0) {
+        segfiles[st.st_ctime].insert(g.gl_pathv[i]);
+      } else {
+        out << "couldn't stat '" << g.gl_pathv[i] << "' (" << strerror(errno) << ")" << std::endl;
       }
     }
+    globfree(&g);
+  }
 
-    // wait a while, poll again
-    sleep(1);
+  // try to send all segments in order and then discard them
+  for (const auto& sfns : segfiles) {
+    for (const auto& sfn : sfns.second) {
+      int fd = open(sfn.c_str(), O_RDONLY);
+      if (fd == -1) {
+        out << "couldn't open '" << sfn << "' (" << strerror(errno) << ")" << std::endl;
+      } else {
+        sendFileContents(connection, fd);
+        unlink(sfn.c_str());
+      }
+    }
   }
 }
 
@@ -124,28 +152,75 @@ void sendInitMessage(int connection, const std::string& groupName, const std::st
   }
 }
 
-void runConnectedSegmentSendingProcess(int connection, const std::string& groupName, const std::string& localdir) {
+void sendInitMessageToAll(const std::string& groupName, std::vector<Destination>& destinations) {
+  for (auto & d : destinations) {
+    if (!d.handshaked) {
+      try {
+        sendInitMessage(d.connection, groupName, d.localdir);
+        d.handshaked = true;
+      } catch (const std::exception& ex) {
+        out << "error while sending init message: " << ex.what() << std::endl;
+        d.markdown();
+      }
+    }
+  }
+}
+
+void sendSegmentFilesToAll(std::vector<Destination>& destinations) {
+  bool yield = false;
+  while (!yield) {
+    for (auto & d : destinations) {
+      if (d.handshaked) {
+        try {
+          sendSegmentFiles(d.connection, d.localdir);
+        } catch (const std::exception& ex) {
+          out << "error while sending segment file: " << ex.what() << std::endl;
+          d.markdown();
+          yield = true;
+        }
+      } else {
+        yield = true;
+      }
+    }
+  }
+}
+
+void runConnectedSegmentSendingProcess(const std::string& groupName, std::vector<Destination>& destinations) {
   try {
-    sendInitMessage(connection, groupName, localdir);
-    sendSegmentFiles(connection, localdir);
-    close(connection);
+    sendInitMessageToAll(groupName, destinations);
+    sendSegmentFilesToAll(destinations);
   } catch (...) {
-    close(connection);
+    for (auto & d : destinations) {
+      d.markdown();
+    }
     throw;
   }
 }
 
-void runSegmentSendingProcess(std::string groupName, std::string hostport, std::string localdir) {
-  if (hostport.empty()) {
+void connect(std::vector<Destination>& destinations) {
+  for (auto & d : destinations) {
+    if (d.connection == -1) {
+      try {
+        d.connection = hobbes::connectSocket(d.hostport);
+      } catch (std::exception& ex) {
+        out << "error during establishing connection to " << d.hostport << ": " << ex.what() << std::endl;
+        d.markdown();
+      }
+    }
+  }
+}
+
+void runSegmentSendingProcess(const std::string groupName, std::vector<Destination> destinations) {
+  if (destinations.empty()) {
     out << "no batchsend host specified, compressed segment files will accumulate locally" << std::endl;
   } else {
-    out << "running segment sending process publishing to '" << hostport << "'" << std::endl;
+    out << "running segment sending process publishing to " << destinations << std::endl;
     while (true) {
       try {
-        int c = hobbes::connectSocket(hostport);
-        runConnectedSegmentSendingProcess(c, groupName, localdir);
+        connect(destinations);
+        runConnectedSegmentSendingProcess(groupName, destinations);
       } catch (std::exception& ex) {
-        out << "error while trying to push to '" << hostport << "': " << ex.what() << std::endl;
+        out << "error while trying to push data: " << ex.what() << std::endl;
       }
       sleep(10);
     }
@@ -161,24 +236,28 @@ std::string segmentFileName(uint32_t seg) {
 }
 
 struct BatchSendSession {
-  struct gzFile_s* buffer;
-  uint32_t         c;
-  size_t           sz;
-  size_t           clevel;
-  std::string      dir;
-  std::string      sendto;
-  std::string      tempfilename;
-  std::thread      sendingThread;
+  struct gzFile_s*         buffer;
+  uint32_t                 c;
+  size_t                   sz;
+  size_t                   clevel;
+  std::string              dir;
+  std::string              tempfilename;
+  std::vector<Destination> destinations;
+  std::thread              sendingThread;
 
-  BatchSendSession(const std::string& groupName, const std::string& dir, size_t clevel, const std::string& sendto) : buffer(0), c(0), sz(0), dir(dir), sendto(sendto) {
-    ensureDirExists(dir);
+  BatchSendSession(const std::string& groupName, const std::string& dir, size_t clevel, const std::vector<std::string>& sendto)
+    : buffer(0), c(0), sz(0), dir(dir) {
+    for (const auto & hostport : sendto) {
+      auto localdir = ensureDirExists(dir + "/" + hostport + "/");
+      destinations.push_back(Destination{localdir, hostport});
+    }
 
     this->clevel       = std::min<size_t>(9, std::max<size_t>(clevel, 1));
     this->tempfilename = dir + "/.current.hstore.transactions";
 
     allocFile();
 
-    this->sendingThread = std::thread(std::bind(&runSegmentSendingProcess, groupName, sendto, dir));
+    this->sendingThread = std::thread(std::bind(&runSegmentSendingProcess, groupName, destinations));
   }
 
   void allocFile() {
@@ -189,9 +268,11 @@ struct BatchSendSession {
   void stepFile() {
     gzclose(this->buffer);
 
-    // we should save the init message to a special file, else pick a generic segment file name
-    std::string pubfilename = this->dir + "/" + ((this->c == 0) ? "init.gz" : segmentFileName(this->c));
-    link(this->tempfilename.c_str(), pubfilename.c_str());
+    for (const auto & destination : destinations) {
+      // we should save the init message to a special file, else pick a generic segment file name
+      std::string pubfilename = destination.localdir + "/" + ((this->c == 0) ? "init.gz" : segmentFileName(this->c));
+      link(this->tempfilename.c_str(), pubfilename.c_str());
+    }
     unlink(this->tempfilename.c_str());
     ++this->c;
 
@@ -249,7 +330,7 @@ static void initNetSession(BatchSendSession* s, const std::string& groupName, co
   s->stepFile();
 }
 
-void pushLocalData(const storage::QueueConnection& qc, const std::string& groupName, const std::string& dir, size_t clevel, size_t batchsendsize, long batchsendtime, const std::string& sendto) {
+void pushLocalData(const storage::QueueConnection& qc, const std::string& groupName, const std::string& dir, size_t clevel, size_t batchsendsize, long batchsendtime, const std::vector<std::string>& sendto) {
   auto pt = hobbes::storage::thisProcThread();
   batchsendsize = std::max<size_t>(10*1024*1024, batchsendsize);
   BatchSendSession sn(groupName, dir + "/tmp_" + str::from(pt.first) + "-" + str::from(pt.second) + "/", clevel, sendto);
