@@ -148,3 +148,8 @@ instance (BlockReadVar v, BlockWriteVar v) => BlockCodec v where
   readFrom fd = readVarByTag(fd, readFrom(fd))
   writeTo fd v = writeVarWithTag(fd, 0, v)
 
+// opaque types whose representations can be encoded
+instance (Data t r, BlockCodec r) => BlockCodec t where
+  readFrom fd = unsafeCast(readFrom(fd)::r)
+  writeTo fd x = writeTo(fd, unsafeCast(x)::r)
+
