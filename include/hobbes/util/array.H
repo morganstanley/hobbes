@@ -313,7 +313,7 @@ template <typename T>
 // basic bit-packed 2D bool array (maybe there's already something that does this job?)
 class bit_table {
 public:
-  inline bit_table() : rowc(0), colc(0), data(0) {
+  inline bit_table() : data(0), rowc(0), colc(0) {
   }
   inline bit_table(size_t rowc, size_t colc, bool s) : rowc(rowc), colc(colc) {
     size_t msz = 1+((rowc*colc)/8);

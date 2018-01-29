@@ -116,10 +116,10 @@ template <typename Char>
   std::basic_string<Char> trim(const std::basic_string<Char>& s) {
     if (s.empty()) return s;
 
-    unsigned int begin = 0;
-    unsigned int end   = 0;
+    size_t begin = 0;
+    size_t end   = 0;
 
-    for (int i = 0; i < s.size(); ++i) {
+    for (size_t i = 0; i < s.size(); ++i) {
       int c = (int)s[i];
       if (!std::isspace(c) && c != 0) {
         begin = i;
@@ -128,7 +128,7 @@ template <typename Char>
     }
 
     // finally, find the last non-whitespace character
-    for (int i = s.size() - 1; i >= 0; --i) {
+    for (size_t i = s.size() - 1; i >= 0; --i) {
       int c = (int)s[i];
       if (!std::isspace(c) && c != 0) {
         end = i + 1;
