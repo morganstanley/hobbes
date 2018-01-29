@@ -128,10 +128,10 @@ template <typename Char>
     }
 
     // finally, find the last non-whitespace character
-    for (size_t i = s.size() - 1; i >= 0; --i) {
-      int c = (int)s[i];
+    for (size_t i = s.size(); i > 0; --i) {
+      int c = (int)s[i-1];
       if (!std::isspace(c) && c != 0) {
-        end = i + 1;
+        end = i;
         break;
       }
     }
