@@ -833,7 +833,7 @@ bool Variant::Member::operator<(const Variant::Member& rhs) const {
   }
 }
 
-Variant::Variant(const Members& ms) : ms(ms), payloadSizeM(-1) {
+Variant::Variant(const Members& ms) : payloadSizeM(-1), ms(ms) {
   for (const Member& m : ms) {
     this->freeTVars = setUnion(this->freeTVars, m.type->freeTVars);
     this->tgenCount = std::max<int>(this->tgenCount, m.type->tgenCount);

@@ -30,15 +30,19 @@ file(GLOB hi_files bin/hi/*.C)
 file(GLOB_RECURSE hog_files bin/hog/*.C)
 
 if(UNIX AND NOT APPLE)
-   set(LINUX TRUE)
- endif()
+  set(LINUX TRUE)
+endif()
 
 if(APPLE)
   set(sys_libs pthread dl)
+  set(cxx_flags "-Wreorder")
 endif()
 if(LINUX)
   set(sys_libs pthread dl rt)
+  set(cxx_flags "-Wreorder")
 endif()
+
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${cxx_flags}")
 
 enable_testing()
 add_executable(hobbes-test ${test_files})

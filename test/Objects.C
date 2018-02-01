@@ -38,7 +38,7 @@ public:
 
 class Bottom : public Left, public Right {
 public:
-  Bottom(int x, double y, int z) : Left(x*z, y*y, z*x), Right(x*x, y*y, z*z), Top(x, y, z) { }
+  Bottom(int x, double y, int z) : Top(x, y, z), Left(x*z, y*y, z*x), Right(x*x, y*y, z*z) { }
 
   int foo(int,double,char) { return 30; }
   int zzz()                { return 3333; }

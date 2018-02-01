@@ -52,8 +52,8 @@ private:
 
 jitcc::jitcc(const TEnvPtr& tenv) :
   tenv(tenv), currentModule(0), irbuilder(0),
-  globalData(32768 /* min global page size = 32K */),
-  ignoreLocalScope(false)
+  ignoreLocalScope(false),
+  globalData(32768 /* min global page size = 32K */)
 {
   llvm::InitializeNativeTarget();
   llvm::InitializeNativeTargetAsmParser();

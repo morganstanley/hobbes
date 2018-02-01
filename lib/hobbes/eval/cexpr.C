@@ -68,7 +68,7 @@ llvm::ConstantInt* toLLVMConstantInt(const PrimitivePtr& p) {
 // compilation is just a case analysis on expression constructors
 class compileExpF : public switchExpr<llvm::Value*> {
 public:
-  compileExpF(const std::string& vname, jitcc* c) : vname(vname), c(c) {
+  compileExpF(const std::string& vname, jitcc* c) : c(c), vname(vname) {
   }
 
   llvm::Value* with(const Unit*    ) const { return cvalue(true); } // should get optimized away -- unit should have no runtime representation
@@ -628,7 +628,7 @@ llvm::Value* toLLVM(jitcc* c, const std::string& vname, const ExprPtr& exp) {
 class compileConstExpF : public switchExpr<llvm::Constant*> {
 public:
   std::string vname;
-  compileConstExpF(jitcc* c, const std::string& vname) : c(c), vname(vname) { }
+  compileConstExpF(jitcc* c, const std::string& vname) : vname(vname), c(c) { }
 
   llvm::Constant* with(const Unit*    ) const { return cvalue(true); } // should get optimized away -- unit should have no runtime representation
   llvm::Constant* with(const Bool*   v) const { return cvalue(v->value()); }
