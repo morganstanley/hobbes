@@ -14,7 +14,7 @@ namespace hobbes {
 stateidx_t nullState = (stateidx_t)-1;
 
 // match DFA state defs
-MState::MState(int cid) : cid(cid), refs(0), isPrimMatchRoot(false) { }
+MState::MState(int cid) : refs(0), isPrimMatchRoot(false), cid(cid) { }
 int MState::case_id() const { return this->cid; }
 
 LoadVars::LoadVars(const Defs& ds, stateidx_t next) : ds(ds), next(next) { }

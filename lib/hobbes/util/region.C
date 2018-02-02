@@ -10,8 +10,7 @@ void dbglog(const std::string&);
 
 region::region(size_t minPageSize, size_t initialFreePages, size_t maxPageSize) :
   minPageSize(minPageSize), maxPageSize(maxPageSize), lastAllocPageSize(minPageSize),
-  usedp(0), freep(0),
-  abortOnOOM(false), maxTotalAllocation(0), totalAllocation(0)
+  abortOnOOM(false), maxTotalAllocation(0), totalAllocation(0), usedp(0), freep(0)
 {
   this->usedp = newpage(0, minPageSize);
 

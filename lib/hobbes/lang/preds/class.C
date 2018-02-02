@@ -499,7 +499,7 @@ void TCInstance::show(std::ostream& out) const {
 // generate class instances from class instance functions
 ////////
 TCInstanceFn::TCInstanceFn(const std::string& tcname, const Constraints& reqs, const MonoTypes& itys, const MemberMapping& mmap, const LexicalAnnotation& la) :
-  LexicallyAnnotated(la), tcname(tcname), reqs(reqs), itys(itys), mmap(mmap)
+  LexicallyAnnotated(la), tcname(tcname), reqs(reqs), mmap(mmap), itys(itys)
 {
 }
 

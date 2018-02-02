@@ -32,12 +32,19 @@ namespace hobbes {
 
 // the compiler
 cc::cc() :
+  readModuleFileF(&defReadModuleFile),
+  readModuleF(&defReadModule),
+  readExprDefnF(&defReadExprDefn),
+  readExprF(&defReadExpr),
+  drainingDefs(false),
+  unreachableMatchRowsPtr(nullptr),
+  runModInlinePass(true),
+  genInterpretedMatch(false),
+  checkMatchReachability(true),
+  lowerPrimMatchTables(false),
   tenv(new TEnv()),
   objs(new Objs()),
-  jit(this->tenv),
-  readModuleFileF(&defReadModuleFile), readModuleF(&defReadModule), readExprDefnF(&defReadExprDefn), readExprF(&defReadExpr),
-  runModInlinePass(true), genInterpretedMatch(false), checkMatchReachability(true), lowerPrimMatchTables(false), unreachableMatchRowsPtr(nullptr),
-  drainingDefs(false)
+  jit(this->tenv)
 {
   // initialize the environment of primitive instructions
   initDefOperators(this);
