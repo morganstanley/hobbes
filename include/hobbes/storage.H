@@ -791,6 +791,33 @@ public:
   }
 };
 
+// basic compile-time strings
+template <size_t N>
+  constexpr char at(size_t i, const char (&s)[N]) {
+    return (i < N) ? s[i] : '\0';
+  }
+template <size_t N>
+  constexpr size_t at8S(size_t i, size_t k, const char (&s)[N]) {
+    return (k==8) ? 0 : ((((size_t)at(i+k,s))<<(8*k))|at8S(i,k+1,s));
+  }
+template <size_t N>
+  constexpr size_t at8(size_t i, const char (&s)[N]) {
+    return at8S(i, 0, s);
+  }
+template <size_t... pcs>
+  struct strpack {
+    static std::string str() {
+      constexpr size_t msg[] = {pcs...};
+      static_assert(msg[(sizeof(msg)/sizeof(msg[0]))-1] == 0, "compile-time string larger than internal max limit (this limit can be bumped in storage.H)");
+      return std::string((const char*)msg);
+    }
+  };
+#define PRIV_HSTORE_TSTR32(i,s)   ::hobbes::storage::at8(i+(8*0),s),::hobbes::storage::at8(i+(8*1),s),::hobbes::storage::at8(i+(8*2),s),::hobbes::storage::at8(i+(8*3),s)
+#define PRIV_HSTORE_TSTR128(i,s)  PRIV_HSTORE_TSTR32(i+(32*0),s),PRIV_HSTORE_TSTR32(i+(32*1),s),PRIV_HSTORE_TSTR32(i+(32*2),s),PRIV_HSTORE_TSTR32(i+(32*3),s)
+#define PRIV_HSTORE_TSTR512(i,s)  PRIV_HSTORE_TSTR128(i+(128*0),s),PRIV_HSTORE_TSTR128(i+(128*1),s),PRIV_HSTORE_TSTR128(i+(128*2),s),PRIV_HSTORE_TSTR128(i+(128*3),s)
+#define PRIV_HSTORE_TSTR1024(i,s) PRIV_HSTORE_TSTR512(i+(512*0),s),PRIV_HSTORE_TSTR512(i+(512*1),s)
+#define PRIV_HSTORE_TSTR(s)       ::hobbes::storage::strpack<PRIV_HSTORE_TSTR1024(0,s)>
+
 // type/value serialization (guarded by compile-time predicates)
 #define PRIV_HSTORE_TYCTOR_PRIM      ((int)0)
 #define PRIV_HSTORE_TYCTOR_TVAR      ((int)2)
@@ -1482,28 +1509,68 @@ template <>
     static bool write(wpipe& p, const std::string& s) { size_t n = s.size(); return store<size_t>::write(p, n) && p.write((const uint8_t*)s.data(), n); }
   };
 
+// support values carrying field names (easier to record structs without making an explicit struct type)
+template <typename F, typename T>
+  struct namedValue {
+    T value;
+    namedValue(const T& v) : value(v) { }
+  };
+
+template <typename F, typename T>
+  struct store<namedValue<F,T>> {
+    static void encode(bytes* out) { store<T>::encode(out); }
+    static std::string describe() { return store<T>::describe(); }
+    static size_t size(const namedValue<F,T>& x) { return store<T>::size(x.value); }
+    static bool write(wpipe& p, const namedValue<F,T>& x) { return store<T>::write(p, x.value); }
+  };
+
+#define HNAME(N,E) ::hobbes::storage::namedValue<PRIV_HSTORE_TSTR(#N),decltype(E)>(E)
+
 // make a function for describing store payload types
+template <typename T>
+  struct hstore_argl_name {
+    static const bool isTuple = true;
+    static void nameDesc(const char* prefix, size_t idx, char* buffer, size_t buflen) {
+      snprintf(buffer, buflen, prefix, (unsigned long long)idx);
+    }
+  };
+template <typename F, typename T>
+  struct hstore_argl_name<namedValue<F,T>> {
+    static const bool isTuple = false;
+    static void nameDesc(const char*, size_t, char* buffer, size_t buflen) {
+      strncpy(buffer, F::str().c_str(), buflen);
+    }
+  };
+
 template <typename ... Ts>
   struct hstore_payload_types {
     typedef unit head_type;
     static const size_t count = 0;
-    static void encode(size_t,bytes*) {}
-    static std::string describe() { return ""; }
+    static const bool isTuple = true;
+    static void encode(const char*,size_t,bytes*) {}
+    static std::string describe(const char*,size_t) { return ""; }
   };
 template <typename T, typename ... Ts>
   struct hstore_payload_types<T,Ts...> {
     typedef T head_type;
     static const size_t count = 1 + hstore_payload_types<Ts...>::count;
-    static void encode(size_t f, bytes* out) {
-      char fn[32];
-      snprintf(fn, sizeof(fn), ".f%lld", (unsigned long long)f);
+    static const bool isTuple = hstore_argl_name<T>::isTuple && hstore_payload_types<Ts...>::isTuple;
+    static void encode(const char* fmt, size_t f, bytes* out) {
+      char fn[128];
+      hstore_argl_name<T>::nameDesc(fmt, f, fn, sizeof(fn));
       ws(fn, out);
       w((int)-1, out);
       store<T>::encode(out);
-      hstore_payload_types<Ts...>::encode(f+1, out);
+      hstore_payload_types<Ts...>::encode(fmt, f+1, out);
     }
-    static std::string describe() {
-      return "*" + store<T>::describe() + hstore_payload_types<Ts...>::describe();
+    static std::string describe(const char* fmt, size_t f) {
+      if (fmt) {
+        char fn[128];
+        hstore_argl_name<T>::nameDesc(fmt, f, fn, sizeof(fn));
+        return "," + std::string(fn) + ":" + store<T>::describe() + hstore_payload_types<Ts...>::describe(fmt, f+1);
+      } else {
+        return "*" + store<T>::describe() + hstore_payload_types<Ts...>::describe(0,0);
+      }
     }
   };
 template <typename ... Ts>
@@ -1516,54 +1583,38 @@ template <typename TyList>
   void makeTyDescF(bytes* e, std::string* d) {
     if (e) {
       size_t localArity = TyList::count;
+      bool   isTuple    = TyList::isTuple;
 
-      // don't bother to entuple log argument lists if there's just one argument
-      switch (localArity) {
-      case 0:
-        encode_primty("unit", e);
-        break;
-      case 1:
-        store<typename TyList::head_type>::encode(e);
-        break;
-      default:
+      if (!isTuple) {
         w(PRIV_HSTORE_TYCTOR_STRUCT, e);
         w(localArity, e);
-        TyList::encode(0, e);
-        break;
+        TyList::encode("field%lld", 0, e);
+      } else {
+        // don't bother to entuple log argument lists if there's just one argument
+        switch (localArity) {
+        case 0:
+          encode_primty("unit", e);
+          break;
+        case 1:
+          store<typename TyList::head_type>::encode(e);
+          break;
+        default:
+          w(PRIV_HSTORE_TYCTOR_STRUCT, e);
+          w(localArity, e);
+          TyList::encode(".f%lld", 0, e);
+          break;
+        }
       }
     }
 
     if (d) {
-      *d = TyList::describe().substr(1);
+      if (TyList::isTuple) {
+        *d = TyList::describe(0,0).substr(1);
+      } else {
+        *d = "{" + TyList::describe("field%lld",0).substr(1) + "}";
+      }
     }
   }
-
-// compile-time strings -- used to uniquely identify log statements
-template <size_t N>
-  constexpr char at(size_t i, const char (&s)[N]) {
-    return (i < N) ? s[i] : '\0';
-  }
-template <size_t N>
-  constexpr size_t at8S(size_t i, size_t k, const char (&s)[N]) {
-    return (k==8) ? 0 : ((((size_t)at(i+k,s))<<(8*k))|at8S(i,k+1,s));
-  }
-template <size_t N>
-  constexpr size_t at8(size_t i, const char (&s)[N]) {
-    return at8S(i, 0, s);
-  }
-template <size_t... pcs>
-  struct strpack {
-    static std::string str() {
-      constexpr size_t msg[] = {pcs...};
-      static_assert(msg[(sizeof(msg)/sizeof(msg[0]))-1] == 0, "compile-time string larger than internal max limit (this limit can be bumped in storage.H)");
-      return std::string((const char*)msg);
-    }
-  };
-#define PRIV_HSTORE_TSTR32(i,s)   ::hobbes::storage::at8(i+(8*0),s),::hobbes::storage::at8(i+(8*1),s),::hobbes::storage::at8(i+(8*2),s),::hobbes::storage::at8(i+(8*3),s)
-#define PRIV_HSTORE_TSTR128(i,s)  PRIV_HSTORE_TSTR32(i+(32*0),s),PRIV_HSTORE_TSTR32(i+(32*1),s),PRIV_HSTORE_TSTR32(i+(32*2),s),PRIV_HSTORE_TSTR32(i+(32*3),s)
-#define PRIV_HSTORE_TSTR512(i,s)  PRIV_HSTORE_TSTR128(i+(128*0),s),PRIV_HSTORE_TSTR128(i+(128*1),s),PRIV_HSTORE_TSTR128(i+(128*2),s),PRIV_HSTORE_TSTR128(i+(128*3),s)
-#define PRIV_HSTORE_TSTR1024(i,s) PRIV_HSTORE_TSTR512(i+(512*0),s),PRIV_HSTORE_TSTR512(i+(512*1),s)
-#define PRIV_HSTORE_TSTR(s)       ::hobbes::storage::strpack<PRIV_HSTORE_TSTR1024(0,s)>
 
 template <uint32_t* X>
   uint32_t forceRegistration() { return *X; }
