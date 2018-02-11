@@ -42,6 +42,7 @@ cc::cc() :
   genInterpretedMatch(false),
   checkMatchReachability(true),
   lowerPrimMatchTables(false),
+  columnwiseMatches(false),
   tenv(new TEnv()),
   objs(new Objs()),
   jit(this->tenv)
@@ -619,6 +620,9 @@ bool cc::requireMatchReachability() const { return this->checkMatchReachability;
 
 void cc::alwaysLowerPrimMatchTables(bool f) { this->lowerPrimMatchTables = f; }
 bool cc::alwaysLowerPrimMatchTables() const { return this->lowerPrimMatchTables; }
+
+void cc::buildColumnwiseMatches(bool f) { this->columnwiseMatches = f; }
+bool cc::buildColumnwiseMatches() const { return this->columnwiseMatches; }
 
 }
 

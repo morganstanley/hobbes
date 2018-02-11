@@ -946,7 +946,12 @@ bool shouldDecomposeColumnwise(MDFA* dfa, const PatternRows& ps) {
     return false;
   }
 
-  // there's some overhead with this method, so don't bother doing this for small tables
+  // there's some overhead with this method, so only do it if the user asks for it
+  if (!dfa->c->buildColumnwiseMatches()) {
+    return false;
+  }
+
+  // don't bother doing this for small tables
   if (ps.size() * ps[0].patterns.size() < 100) {
     return false;
   }
@@ -956,23 +961,34 @@ bool shouldDecomposeColumnwise(MDFA* dfa, const PatternRows& ps) {
 }
 
 // calculate a set of implied rows from a single column of a match table
-ExprPtr makeColRowsetCalcExpr(MDFA* dfa, const PatternRows& ps, size_t c, const std::string& rsetVarName) {
-  auto rsetVar    = var(rsetVarName, dfa->rootLA);
-  auto rsetVarLen = fncall(var("length", dfa->rootLA), rsetVar, dfa->rootLA);
-  auto rowmarkRef = ExprPtr(new AIndex(rsetVar, rsetVarLen, dfa->rootLA));
+ExprPtr makeColRowsetCalcExpr(MDFA* dfa, const PatternRows& ps, size_t c, const std::string& rcVarName) {
+  bool isFinal = c == ps[0].patterns.size() - 1;
 
   PatternRows cps;
   for (size_t r = 0; r < ps.size(); ++r) {
-    auto markRowExpr =
-      let(
-        "_", assign(rowmarkRef, constant((int)r, dfa->rootLA), dfa->rootLA),
-        fncall(var("unsafeSetLength", dfa->rootLA), list(rsetVar, fncall(var("ladd", dfa->rootLA), list(rsetVarLen, constant((size_t)1, dfa->rootLA)), dfa->rootLA)), dfa->rootLA),
-        dfa->rootLA
-      );
+    auto rcVar = ExprPtr(new AIndex(var(rcVarName, dfa->rootLA), constant((size_t)r, dfa->rootLA), dfa->rootLA));
 
-    cps.push_back(PatternRow(list(ps[r].patterns[c]), let("_", markRowExpr, constant(false, dfa->rootLA), dfa->rootLA), mktunit(dfa->rootLA)));
+    if (!isFinal) {
+      auto markRowExpr = assign(rcVar, fncall(var("iadd", dfa->rootLA), list(rcVar, constant((int)1, dfa->rootLA)), dfa->rootLA), dfa->rootLA);
+      cps.push_back(PatternRow(list(ps[r].patterns[c]), let("_", markRowExpr, constant(false, dfa->rootLA), dfa->rootLA), mktunit(dfa->rootLA)));
+    } else {
+      if (r < ps.size()-1) {
+        auto checkCount = fncall(var("ieq", dfa->rootLA), list(rcVar, constant((int)ps[0].patterns.size()-1, dfa->rootLA)), dfa->rootLA);
+        cps.push_back(PatternRow(list(ps[r].patterns[c]), ps[r].guard ? fncall(var("and",dfa->rootLA), list(checkCount, ps[r].guard), dfa->rootLA) : checkCount, ps[r].result));
+      } else {
+        if (ps[r].guard != ExprPtr()) {
+          throw annotated_error(*ps[r].guard, "Inexhaustive patterns in match expression after guard");
+        }
+        cps.push_back(PatternRow(list(ps[r].patterns[c]), ps[r].result));
+      }
+
+      // always ref the row result (may leave unreachable rows undetected)
+      addState(dfa, MStatePtr(new FinishExpr(ps[r].result)));
+    }
   }
-  cps.push_back(PatternRow(list(PatternPtr(new MatchAny("_", dfa->rootLA))), mktunit(dfa->rootLA)));
+  if (!isFinal) {
+    cps.push_back(PatternRow(list(PatternPtr(new MatchAny("_", dfa->rootLA))), mktunit(dfa->rootLA)));
+  }
 
   return liftDFAExpr(dfa->c, cps, dfa->rootLA);
 }
@@ -981,17 +997,20 @@ ExprPtr makeColRowsetCalcExpr(MDFA* dfa, const PatternRows& ps, size_t c, const 
 stateidx_t makeColAggrDFAState(MDFA* dfa, const PatternRows& ps) {
   // make an expr for each column to compute its implied rowset
   LoadVars::Defs sdefs;
-  str::seq       snames;
-
-  for (size_t c = 0; c < ps[0].patterns.size(); ++c) {
-    snames.push_back(".vs." + freshName());
-    sdefs.push_back(LoadVars::Def(snames.back(), fncall(var("newArray", dfa->rootLA), list(constant((size_t)ps.size(), dfa->rootLA)), dfa->rootLA)));
-    sdefs.push_back(LoadVars::Def("_", makeColRowsetCalcExpr(dfa, ps, c, snames.back())));
+  std::string    rcname = ".rc." + freshName();
+  
+  sdefs.push_back(LoadVars::Def(rcname, fncall(var("repeat", dfa->rootLA), list(constant((int)0, dfa->rootLA), constant((size_t)ps.size(), dfa->rootLA)), dfa->rootLA)));
+  for (size_t c = 0; c < ps[0].patterns.size()-1; ++c) {
+    sdefs.push_back(LoadVars::Def("_", makeColRowsetCalcExpr(dfa, ps, c, rcname)));
   }
 
-  stateidx_t seekRowState = addState(dfa, MStatePtr(new FinishExpr(constant((int)-1, dfa->rootLA))));
-
-  return addState(dfa, MStatePtr(new LoadVars(sdefs, seekRowState)));
+  return
+    addState(dfa, MStatePtr(
+      new LoadVars(
+        sdefs,
+        addState(dfa, MStatePtr(new FinishExpr(makeColRowsetCalcExpr(dfa, ps, ps[0].patterns.size()-1, rcname))))
+      )
+    ));
 }
 
 // convert a pattern table to a DFA state by picking a column to discriminate on, branching to subtables on that column value
