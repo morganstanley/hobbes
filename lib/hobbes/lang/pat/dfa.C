@@ -939,26 +939,88 @@ PrimFArgs makePrimFArgs(const PatternRows& ps) {
   return args;
 }
 
-// make a state out of the input pattern table (recursively constructing sub-states as necessary)
-stateidx_t makeDFAState(MDFA* dfa, const PatternRows& xps) {
-  PatternRows ps;
-  dropUnusedColumns(&ps, xps);
-
-  // if we can deconstruct strings here, do it before anything else
-  // (it has a potential runtime performance impact and should only be done to reduce compilation time for large schemas)
-  size_t strc = canMakeCharArrStateAtColumn(ps);
-  if (strc < ps[0].patterns.size()) {
-    return addState(dfa, makeCharArrayState(dfa, ps, strc));
+// does it make sense and is it worthwhile to decompose this table column-wise?
+bool shouldDecomposeColumnwise(MDFA* dfa, const PatternRows& ps) {
+  // it only makes sense to decompose columnwise if the table has at least one row, at least two columns
+  if (ps.size() == 0 || ps[0].patterns.size() <= 1) {
+    return false;
   }
 
+  // there's some overhead with this method, so only do it if the user asks for it
+  if (!dfa->c->buildColumnwiseMatches()) {
+    return false;
+  }
+
+  // don't bother doing this for small tables
+  if (ps.size() * ps[0].patterns.size() < 100) {
+    return false;
+  }
+
+  // the logic in makeColRowsetCalcExpr assumes column counts fit in a byte
+  if (ps[0].patterns.size() > 256) {
+    return false;
+  }
+
+  // OK let's do it!
+  return true;
+}
+
+// calculate a set of implied rows from a single column of a match table
+ExprPtr makeColRowsetCalcExpr(MDFA* dfa, const PatternRows& ps, size_t c, const std::string& rcVarName) {
+  bool isFinal = c == ps[0].patterns.size() - 1;
+
+  PatternRows cps;
+  for (size_t r = 0; r < ps.size(); ++r) {
+    auto rcVar = fncall(var("saelem", dfa->rootLA), list(var(rcVarName, dfa->rootLA), constant((size_t)r, dfa->rootLA)), dfa->rootLA);
+
+    if (!isFinal) {
+      auto markRowExpr = assign(rcVar, fncall(var("badd", dfa->rootLA), list(rcVar, constant((uint8_t)1, dfa->rootLA)), dfa->rootLA), dfa->rootLA);
+      cps.push_back(PatternRow(list(ps[r].patterns[c]), let("_", markRowExpr, constant(false, dfa->rootLA), dfa->rootLA), mktunit(dfa->rootLA)));
+    } else {
+      if (r < ps.size()-1) {
+        auto checkCount = fncall(var("beq", dfa->rootLA), list(rcVar, constant((uint8_t)(ps[0].patterns.size()-1), dfa->rootLA)), dfa->rootLA);
+        cps.push_back(PatternRow(list(ps[r].patterns[c]), ps[r].guard ? fncall(var("and",dfa->rootLA), list(checkCount, ps[r].guard), dfa->rootLA) : checkCount, ps[r].result));
+      } else {
+        if (ps[r].guard != ExprPtr()) {
+          throw annotated_error(*ps[r].guard, "Inexhaustive patterns in match expression after guard");
+        }
+        cps.push_back(PatternRow(list(ps[r].patterns[c]), ps[r].result));
+      }
+
+      // always ref the row result (may leave unreachable rows undetected)
+      addState(dfa, MStatePtr(new FinishExpr(ps[r].result)));
+    }
+  }
+  if (!isFinal) {
+    cps.push_back(PatternRow(list(PatternPtr(new MatchAny("_", dfa->rootLA))), mktunit(dfa->rootLA)));
+  }
+
+  return liftDFAExpr(dfa->c, cps, dfa->rootLA);
+}
+
+// convert a pattern table to a DFA state by aggregating test results for each column
+stateidx_t makeColAggrDFAState(MDFA* dfa, const PatternRows& ps) {
+  // make an expr for each column to compute its implied rowset
+  LoadVars::Defs sdefs;
+  std::string    rcname = ".rc." + freshName();
+  
+  sdefs.push_back(LoadVars::Def(rcname, assume(fncall(var("newPrimZ", dfa->rootLA), list(mktunit(dfa->rootLA)), dfa->rootLA), arrayty(primty("byte"), ps.size()), dfa->rootLA)));
+  for (size_t c = 0; c < ps[0].patterns.size()-1; ++c) {
+    sdefs.push_back(LoadVars::Def("_", makeColRowsetCalcExpr(dfa, ps, c, rcname)));
+  }
+
+  return
+    addState(dfa, MStatePtr(
+      new LoadVars(
+        sdefs,
+        addState(dfa, MStatePtr(new FinishExpr(makeColRowsetCalcExpr(dfa, ps, ps[0].patterns.size()-1, rcname))))
+      )
+    ));
+}
+
+// convert a pattern table to a DFA state by picking a column to discriminate on, branching to subtables on that column value
+stateidx_t makeColPivotDFAState(MDFA* dfa, const PatternRows& ps) {
   stateidx_t result = nullState;
-
-  // did we already produce this state?  if so, just add to its ref-count and return it
-  auto tcfg = dfa->tableCfgStates.find(ps);
-  if (tcfg != dfa->tableCfgStates.end()) {
-    addRef(dfa, tcfg->second);
-    return tcfg->second;
-  }
 
   // choose a column to deconstruct
   // if no column can be chosen, there is only one path -- the immediate return expression
@@ -1001,6 +1063,34 @@ stateidx_t makeDFAState(MDFA* dfa, const PatternRows& xps) {
   return result;
 }
 
+// make a state out of the input pattern table (recursively constructing sub-states as necessary)
+stateidx_t makeDFAState(MDFA* dfa, const PatternRows& xps) {
+  PatternRows ps;
+  dropUnusedColumns(&ps, xps);
+
+  // if we can deconstruct strings here, do it before anything else
+  // (it has a potential runtime performance impact and should only be done to reduce compilation time for large schemas)
+  size_t strc = canMakeCharArrStateAtColumn(ps);
+  if (strc < ps[0].patterns.size()) {
+    return addState(dfa, makeCharArrayState(dfa, ps, strc));
+  }
+
+  // did we already produce this state?  if so, just add to its ref-count and return it
+  auto tcfg = dfa->tableCfgStates.find(ps);
+  if (tcfg != dfa->tableCfgStates.end()) {
+    addRef(dfa, tcfg->second);
+    return tcfg->second;
+  }
+
+  // for very large tables, we can avoid giant DFAs and long compile times by column-wise decomposition
+  // otherwise, create a branch point with sub-tables based on a chosen column
+  if (shouldDecomposeColumnwise(dfa, ps)) {
+    return makeColAggrDFAState(dfa, ps);
+  } else {
+    return makeColPivotDFAState(dfa, ps);
+  }
+}
+
 // deconstruct the pattern match table to produce the equivalent DFA
 stateidx_t makeDFA(MDFA* dfa, const PatternRows& ps, const LexicalAnnotation& la) {
   dfa->rootLA = la;
@@ -1029,7 +1119,7 @@ stateidx_t makeDFA(MDFA* dfa, const PatternRows& ps, const LexicalAnnotation& la
   
     if (unreachableRows.size() > 0) {
       std::ostringstream fss;
-      fss << "Unreachable pattern" << (unreachableRows.size() > 1 ? "s" : "") << " in match expression:\n";
+      fss << "Unreachable row" << (unreachableRows.size() > 1 ? "s" : "") << " in match expression:\n";
       for (size_t ur : unreachableRows) {
         fss << "  " << show(ps[ur]) << std::endl;
       }

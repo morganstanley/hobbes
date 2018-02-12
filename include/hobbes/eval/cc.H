@@ -230,6 +230,8 @@ public:
   bool requireMatchReachability() const;
   void alwaysLowerPrimMatchTables(bool);
   bool alwaysLowerPrimMatchTables() const;
+  void buildColumnwiseMatches(bool f);
+  bool buildColumnwiseMatches() const;
 
   // allow caller to gather a vector of unreachable rows arising from match compilation
   UnreachableMatchRowsPtr unreachableMatchRowsPtr;
@@ -251,6 +253,7 @@ private:
   bool genInterpretedMatch;
   bool checkMatchReachability;
   bool lowerPrimMatchTables;
+  bool columnwiseMatches;
 
   // the bound root type-def environment
   TEnvPtr          tenv;

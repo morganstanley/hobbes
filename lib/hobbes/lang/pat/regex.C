@@ -102,6 +102,13 @@ template <typename T>
     }
   }
 
+std::string show(const Regex& rgx) {
+  std::ostringstream ss;
+  rgx.show(ss);
+  return ss.str();
+}
+std::string show(const RegexPtr& rgx) { return show(*rgx); }
+
 // shorthand constructors for regex AST forms
 RegexPtr epsilon() {
   return RegexPtr(new REps());
