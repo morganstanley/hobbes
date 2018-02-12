@@ -588,7 +588,11 @@ bool canMakeCharArrayState(const PatternRows& ps, size_t c) {
   return seemsLegit;
 }
 
-size_t canMakeCharArrStateAtColumn(const PatternRows& ps) {
+size_t canMakeCharArrStateAtColumn(MDFA* dfa, const PatternRows& ps) {
+  if (dfa->c->buildColumnwiseMatches()) {
+    return ps[0].patterns.size(); // don't bother packing strings if we're compiling columnwise
+  }
+
   for (size_t c = 0; c < ps[0].patterns.size(); ++c) {
     if (canMakeCharArrayState(ps, c)) {
       return c;
@@ -966,7 +970,7 @@ bool shouldDecomposeColumnwise(MDFA* dfa, const PatternRows& ps) {
 }
 
 // calculate a set of implied rows from a single column of a match table
-ExprPtr makeColRowsetCalcExpr(MDFA* dfa, const PatternRows& ps, size_t c, const std::string& rcVarName) {
+ExprPtr makeColRowsetCalcExpr(MDFA* dfa, const PatternRows& ps, size_t c, const std::string& rcVarName, std::vector<uint8_t>* skipCounts) {
   bool isFinal = c == ps[0].patterns.size() - 1;
 
   PatternRows cps;
@@ -974,11 +978,15 @@ ExprPtr makeColRowsetCalcExpr(MDFA* dfa, const PatternRows& ps, size_t c, const 
     auto rcVar = fncall(var("saelem", dfa->rootLA), list(var(rcVarName, dfa->rootLA), constant((size_t)r, dfa->rootLA)), dfa->rootLA);
 
     if (!isFinal) {
-      auto markRowExpr = assign(rcVar, fncall(var("badd", dfa->rootLA), list(rcVar, constant((uint8_t)1, dfa->rootLA)), dfa->rootLA), dfa->rootLA);
-      cps.push_back(PatternRow(list(ps[r].patterns[c]), let("_", markRowExpr, constant(false, dfa->rootLA), dfa->rootLA), mktunit(dfa->rootLA)));
+      if (refutable(ps[r].patterns[c])) {
+        auto markRowExpr = assign(rcVar, fncall(var("badd", dfa->rootLA), list(rcVar, constant((uint8_t)1, dfa->rootLA)), dfa->rootLA), dfa->rootLA);
+        cps.push_back(PatternRow(list(ps[r].patterns[c]), let("_", markRowExpr, constant(false, dfa->rootLA), dfa->rootLA), mktunit(dfa->rootLA)));
+      } else {
+        ++(*skipCounts)[r];
+      }
     } else {
       if (r < ps.size()-1) {
-        auto checkCount = fncall(var("beq", dfa->rootLA), list(rcVar, constant((uint8_t)(ps[0].patterns.size()-1), dfa->rootLA)), dfa->rootLA);
+        auto checkCount = fncall(var("beq", dfa->rootLA), list(rcVar, constant((uint8_t)(ps[0].patterns.size()-(1+(*skipCounts)[r])), dfa->rootLA)), dfa->rootLA);
         cps.push_back(PatternRow(list(ps[r].patterns[c]), ps[r].guard ? fncall(var("and",dfa->rootLA), list(checkCount, ps[r].guard), dfa->rootLA) : checkCount, ps[r].result));
       } else {
         if (ps[r].guard != ExprPtr()) {
@@ -1001,19 +1009,20 @@ ExprPtr makeColRowsetCalcExpr(MDFA* dfa, const PatternRows& ps, size_t c, const 
 // convert a pattern table to a DFA state by aggregating test results for each column
 stateidx_t makeColAggrDFAState(MDFA* dfa, const PatternRows& ps) {
   // make an expr for each column to compute its implied rowset
-  LoadVars::Defs sdefs;
-  std::string    rcname = ".rc." + freshName();
+  LoadVars::Defs       sdefs;
+  std::string          rcname = ".rc." + freshName();
+  std::vector<uint8_t> skipCounts(ps.size(), 0);
   
   sdefs.push_back(LoadVars::Def(rcname, assume(fncall(var("newPrimZ", dfa->rootLA), list(mktunit(dfa->rootLA)), dfa->rootLA), arrayty(primty("byte"), ps.size()), dfa->rootLA)));
   for (size_t c = 0; c < ps[0].patterns.size()-1; ++c) {
-    sdefs.push_back(LoadVars::Def("_", makeColRowsetCalcExpr(dfa, ps, c, rcname)));
+    sdefs.push_back(LoadVars::Def("_", makeColRowsetCalcExpr(dfa, ps, c, rcname, &skipCounts)));
   }
 
   return
     addState(dfa, MStatePtr(
       new LoadVars(
         sdefs,
-        addState(dfa, MStatePtr(new FinishExpr(makeColRowsetCalcExpr(dfa, ps, ps[0].patterns.size()-1, rcname))))
+        addState(dfa, MStatePtr(new FinishExpr(makeColRowsetCalcExpr(dfa, ps, ps[0].patterns.size()-1, rcname, &skipCounts))))
       )
     ));
 }
@@ -1070,7 +1079,7 @@ stateidx_t makeDFAState(MDFA* dfa, const PatternRows& xps) {
 
   // if we can deconstruct strings here, do it before anything else
   // (it has a potential runtime performance impact and should only be done to reduce compilation time for large schemas)
-  size_t strc = canMakeCharArrStateAtColumn(ps);
+  size_t strc = canMakeCharArrStateAtColumn(dfa, ps);
   if (strc < ps[0].patterns.size()) {
     return addState(dfa, makeCharArrayState(dfa, ps, strc));
   }
