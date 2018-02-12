@@ -956,6 +956,11 @@ bool shouldDecomposeColumnwise(MDFA* dfa, const PatternRows& ps) {
     return false;
   }
 
+  // the logic in makeColRowsetCalcExpr assumes column counts fit in a byte
+  if (ps[0].patterns.size() > 256) {
+    return false;
+  }
+
   // OK let's do it!
   return true;
 }
@@ -966,14 +971,14 @@ ExprPtr makeColRowsetCalcExpr(MDFA* dfa, const PatternRows& ps, size_t c, const 
 
   PatternRows cps;
   for (size_t r = 0; r < ps.size(); ++r) {
-    auto rcVar = ExprPtr(new AIndex(var(rcVarName, dfa->rootLA), constant((size_t)r, dfa->rootLA), dfa->rootLA));
+    auto rcVar = fncall(var("saelem", dfa->rootLA), list(var(rcVarName, dfa->rootLA), constant((size_t)r, dfa->rootLA)), dfa->rootLA);
 
     if (!isFinal) {
-      auto markRowExpr = assign(rcVar, fncall(var("iadd", dfa->rootLA), list(rcVar, constant((int)1, dfa->rootLA)), dfa->rootLA), dfa->rootLA);
+      auto markRowExpr = assign(rcVar, fncall(var("badd", dfa->rootLA), list(rcVar, constant((uint8_t)1, dfa->rootLA)), dfa->rootLA), dfa->rootLA);
       cps.push_back(PatternRow(list(ps[r].patterns[c]), let("_", markRowExpr, constant(false, dfa->rootLA), dfa->rootLA), mktunit(dfa->rootLA)));
     } else {
       if (r < ps.size()-1) {
-        auto checkCount = fncall(var("ieq", dfa->rootLA), list(rcVar, constant((int)ps[0].patterns.size()-1, dfa->rootLA)), dfa->rootLA);
+        auto checkCount = fncall(var("beq", dfa->rootLA), list(rcVar, constant((uint8_t)(ps[0].patterns.size()-1), dfa->rootLA)), dfa->rootLA);
         cps.push_back(PatternRow(list(ps[r].patterns[c]), ps[r].guard ? fncall(var("and",dfa->rootLA), list(checkCount, ps[r].guard), dfa->rootLA) : checkCount, ps[r].result));
       } else {
         if (ps[r].guard != ExprPtr()) {
@@ -999,7 +1004,7 @@ stateidx_t makeColAggrDFAState(MDFA* dfa, const PatternRows& ps) {
   LoadVars::Defs sdefs;
   std::string    rcname = ".rc." + freshName();
   
-  sdefs.push_back(LoadVars::Def(rcname, fncall(var("repeat", dfa->rootLA), list(constant((int)0, dfa->rootLA), constant((size_t)ps.size(), dfa->rootLA)), dfa->rootLA)));
+  sdefs.push_back(LoadVars::Def(rcname, assume(fncall(var("newPrimZ", dfa->rootLA), list(mktunit(dfa->rootLA)), dfa->rootLA), arrayty(primty("byte"), ps.size()), dfa->rootLA)));
   for (size_t c = 0; c < ps[0].patterns.size()-1; ++c) {
     sdefs.push_back(LoadVars::Def("_", makeColRowsetCalcExpr(dfa, ps, c, rcname)));
   }
