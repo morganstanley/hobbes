@@ -895,7 +895,7 @@ size_t choosePivotColumn(const PatternRows& ps) {
 // is a pattern table just a set of primitive selection rules?
 bool isPrimSelection(bool alwaysLowerPrimMatchTables, const PatternRows& ps) {
   // heuristically avoid prim selection derivation for "small tables"
-  if (!alwaysLowerPrimMatchTables && (ps.size() < 500 || (ps.size() > 1 && ps[0].patterns.size() > 15))) {
+  if (!alwaysLowerPrimMatchTables && ps.size() < 500) {
     return false;
   }
 
@@ -1401,9 +1401,19 @@ struct makePrimDFASF : public switchMState<UnitV> {
       }
     }
 
-    llvm::SwitchInst* s = this->dfa->c->builder()->CreateSwitch(arg(x->switchVar()), blockForState(x->defaultState()), x->jumps().size());
-    for (const auto& jmp : x->jumps()) {
-      s->addCase(toLLVMConstantInt(jmp.first), blockForState(jmp.second));
+    if (x->jumps().size() > 0 && is<Double>(x->jumps().begin()->first)) {
+      llvm::SwitchInst* s = this->dfa->c->builder()->CreateSwitch(this->dfa->c->builder()->CreateBitCast(arg(x->switchVar()), longType()), blockForState(x->defaultState()), x->jumps().size());
+      for (const auto& jmp : x->jumps()) {
+        if (const Double* d = is<Double>(jmp.first)) {
+          double x = d->value();
+          s->addCase(civalue(*reinterpret_cast<long*>(&x)), blockForState(jmp.second));
+        }
+      }
+    } else {
+      llvm::SwitchInst* s = this->dfa->c->builder()->CreateSwitch(arg(x->switchVar()), blockForState(x->defaultState()), x->jumps().size());
+      for (const auto& jmp : x->jumps()) {
+        s->addCase(toLLVMConstantInt(jmp.first), blockForState(jmp.second));
+      }
     }
     return unitv;
   }
