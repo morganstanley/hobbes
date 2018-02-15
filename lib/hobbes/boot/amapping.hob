@@ -58,6 +58,12 @@ instance Array [a] a where
   element x i = x[i]
   elements xs i e = defElementsWith(xs, \x i.x[i], i, e)
 
+fstrlen cs i = if (leq(i,salength(cs))) then i else if (ceq(saelem(cs,i),'\0')) then i else fstrlen(cs,ladd(i,1L))
+instance Array [:char|n:] char where
+  size cs = fstrlen(cs,0L)
+  element = saelem
+  elements cs i e = defElementsWith(cs, saelem, i, e)
+
 instance Array [:a|n:] a where
   size = salength
   element = saelem
