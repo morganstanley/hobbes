@@ -15,6 +15,7 @@
 #include <hobbes/lang/preds/appendsto.H>
 #include <hobbes/lang/preds/consrecord.H>
 #include <hobbes/lang/preds/consvariant.H>
+#include <hobbes/lang/preds/vapp.H>
 #include <hobbes/lang/preds/equal.H>
 #include <hobbes/lang/preds/not.H>
 #include <hobbes/lang/preds/recty.H>

@@ -98,6 +98,7 @@ cc::cc() :
 
   // support deconstructing variants (compile-time reflection on variants)
   this->tenv->bind(VariantDeconstructor::constraintName(), UnqualifierPtr(new VariantDeconstructor()));
+  this->tenv->bind(VariantAppP::constraintName(), UnqualifierPtr(new VariantAppP()));
 
   // support appending (appendable) types
   this->tenv->bind(AppendsToUnqualifier::constraintName(), UnqualifierPtr(new AppendsToUnqualifier()));
