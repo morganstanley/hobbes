@@ -66,5 +66,20 @@ private:
     } \
   }
 
+#define EXPECT_EXCEPTION(p) \
+  { \
+    bool __pass = true; \
+    try { \
+      (p); \
+      __pass = false; \
+    } catch (...) { \
+    } \
+    if (!__pass) { \
+      std::ostringstream __errmsg; \
+      __errmsg << "Expression '" #p "' ran successfully but an exception was expected" << " " << FILEINFO(__FILE__, __LINE__); \
+      throw std::runtime_error(__errmsg.str()); \
+    } \
+  }
+
 #endif
 
