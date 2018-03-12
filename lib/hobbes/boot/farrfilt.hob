@@ -105,16 +105,16 @@ select xs idxs =
   in
     r
 
-selectBStep :: ([a], bitvec, long, long, [a], long) -> [a]
+selectBStep :: (Array as a) => (as, bitvec, long, long, [a], long) -> [a]
 selectBStep xs idxs i e r j =
   if (i == e) then
     r
   else if (bvIsSet(idxs, i)) then
-    (let _ = r[j] <- xs[i] in selectBStep(xs, idxs, i+1, e, r, j+1))
+    (let _ = r[j] <- element(xs,i) in selectBStep(xs, idxs, i+1, e, r, j+1))
   else
     selectBStep(xs, idxs, i+1, e, r, j)
 
-selectB :: ([a], bitvec) -> [a]
+selectB :: (Array as a) => (as, bitvec) -> [a]
 selectB xs idxs =
   selectBStep(
     xs,
@@ -209,12 +209,12 @@ class SeqDesc s d a | s -> d a, d a -> s
 class (Function f c a r, SeqDesc i d a, SeqDesc o p r) => Map f c a r d i p o | f -> c a r, c a r -> f, i -> d a, d a -> i, o -> p r, p r -> o, f i -> o, d -> p where
   fmap :: (f, i) -> o
 
-fmapArrStep :: (Function f c a r) => (f, [a], long, [r]) -> [r]
+fmapArrStep :: (Function f c a r, Array as a) => (f, as, long, [r]) -> [r]
 fmapArrStep f xs i rs =
-  if (i == length(xs)) then
+  if (i == size(xs)) then
     rs
   else
-    (let _ = rs[i] <- apply(f, xs[i]) in fmapArrStep(f, xs, i+1, rs))
+    (let _ = rs[i] <- apply(f, element(xs,i)) in fmapArrStep(f, xs, i+1, rs))
 
 instance SeqDesc [a] "array" a
 
@@ -224,12 +224,12 @@ instance Map f c a b "array" [a] "array" [b] where
 class (Function pf pc a bool, Function f c a r, SeqDesc i d a, SeqDesc o p r) => FilterMap pf pc f c a r d i p o | pf -> pc a, pc a -> pf, f -> c a r, c a r -> f, i -> d a, d a -> i, o -> p r, p r -> o, f i -> o, d -> p where
   ffilterMap :: (pf, f, i) -> o
 
-ffilterArrStep :: (Function p c a bool) => (p, [a], long, bitvec) -> bitvec
+ffilterArrStep :: (Function p c a bool, Array as a) => (p, as, long, bitvec) -> bitvec
 ffilterArrStep p xs i bv =
-  if (i == length(xs)) then
+  if (i == size(xs)) then
     bv
   else
-    (let _ = bvSet(bv, i, apply(p, xs[i])) in ffilterArrStep(p, xs, i+1, bv))
+    (let _ = bvSet(bv, i, apply(p, element(xs,i))) in ffilterArrStep(p, xs, i+1, bv))
 
 instance FilterMap p pc f c a r "array" [a] "array" [r] where
   ffilterMap p f xs = fmap(f, selectB(xs, ffilterArrStep(p, xs, 0L, newBitvec(length(xs)))))
@@ -237,13 +237,13 @@ instance FilterMap p pc f c a r "array" [a] "array" [r] where
 class (Function f c a (()+r), SeqDesc i d a, SeqDesc o p r) => FilterMMap f c a r d i p o | f -> c a r, c a r -> f, i -> d a, d a -> i, o -> p r, p r -> o, f i -> o, d -> p where
   ffilterMMap :: (f, i) -> o
 
-ffilterMMapStep :: (Function f c a (()+b)) => (f, [a], long, [()+b], long) -> long
+ffilterMMapStep :: (Function f c a (()+b), Array as a) => (f, as, long, [()+b], long) -> long
 ffilterMMapStep f xs i mys j =
-  if (i == length(xs)) then
+  if (i == size(xs)) then
     j
   else
     (let
-      y = apply(f, xs[i]);
+      y = apply(f, element(xs,i));
       _ = mys[i] <- y
      in
       ffilterMMapStep(f, xs, i+1, mys, case y of |0:_=j,1:_=j+1|))

@@ -43,6 +43,7 @@ private:
   size_t      storageSize;
   MonoTypePtr batchType;
   size_t      batchSize;
+  size_t      batchStorageSize;
 
   uint64_t  batchDataRef;
   void*     batchData;

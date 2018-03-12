@@ -3,6 +3,7 @@
 #include <hobbes/db/file.H>
 #include <hobbes/db/series.H>
 #include <hobbes/db/signals.H>
+#include <hobbes/fregion.H>
 #include "test.H"
 
 using namespace hobbes;
@@ -95,7 +96,7 @@ TEST(Storage, Create) {
     int n = 1020;
     array<int>* vs = f.define<int>("vs", n);
     EXPECT_TRUE(vs != 0);
-    EXPECT_TRUE(vs->size == 0);
+    EXPECT_TRUE(vs->size == 1020);
 
     initSeq(vs, 0, 0, n);
     EXPECT_EQ(sum(vs), sumFromTo(0, 1019));
@@ -264,7 +265,7 @@ TEST(Storage, EarlyStaging) {
 
     cc rc;
     rc.define("f", "inputFile :: (LoadFile \"" + fname + "\" x) => x");
-    EXPECT_TRUE(rc.compileFn<bool()>("capacity(f.vs) == 100")());
+    EXPECT_TRUE(rc.compileFn<bool()>("length(load(f.vs)) == 100")());
 
     unlink(fname.c_str());
   } catch (...) {
@@ -280,14 +281,14 @@ TEST(Storage, ScriptSignals) {
     cc wc;
     wc.define("f",     "writeFile(\"" + fname + "\") :: ((file) _ {vs:[int]@?})");
     wc.define("pushv", "\\f vs v.do { lvs = load(vs); lvs[length(lvs)] <- v; unsafeSetLength(lvs, length(lvs) + 1); signalUpdate(f); }");
-    wc.compileFn<void()>("f.vs <- allocateArray(1000L)")();
+    wc.compileFn<void()>("do{f.vs <- allocateArray(1000L);unsafeSetLength(load(f.vs),0L);}")();
 
     // start a reader with a watch on the writer's array set to increment a couple of local values
     cc rc;
     std::pair<long, int> lensum(0, 0);
     rc.bind("lensum", &lensum);
     rc.define("f", "readFile(\"" + fname + "\") :: ((file) _ {vs:[int]@?})");
-    rc.compileFn<void()>("addFileSignal(f.vs, \\_.let _ = lensum.0 <- length(load(f.vs)); _ = lensum.1 <- sum(load(f.vs)) in true)")();
+    rc.compileFn<void()>("addFileSignal(f.vs, \\_.do{lensum.0 <- length(load(f.vs));lensum.1 <- sum(load(f.vs)); return true})")();
 
     // now write a few changes and make sure that they're detected
     wc.compileFn<void()>("pushv(f, f.vs, 0)")();
@@ -363,6 +364,54 @@ TEST(Storage, Lift) {
     EXPECT_EQ(rc.compileFn<int()>("sum([x|(x,_)<-f.xs])")(), 5050);
 
     unlink(fname.c_str());
+  } catch (...) {
+    unlink(fname.c_str());
+    throw;
+  }
+}
+
+DEFINE_HFREGION_ENUM(
+  FRTestFood,
+  (Hamburger),
+  (HotDog),
+  (Pickle)
+);
+
+DEFINE_HFREGION_VARIANT(
+  MStr,
+  (nothing, char),
+  (just,    std::string)
+);
+
+DEFINE_HFREGION_STRUCT(
+  FRTest,
+  (int,                      x),
+  (double,                   y),
+  (std::vector<std::string>, z),
+  (FRTestFood,               u),
+  (MStr,                     v)
+);
+
+TEST(Storage, FRegionCompatibility) {
+  std::string fname = mkFName();
+  try {
+    fregion::writer f(fname);
+    auto& s = f.series<FRTest>("frtest");
+    for (size_t i = 0; i < 1000; ++i) {
+      FRTest t;
+      t.x = (int)i;
+      t.y = 3.14159*((double)i);
+      t.z.push_back("a");
+      t.z.push_back("b");
+      t.z.push_back("c");
+      t.u = FRTestFood::HotDog();
+      t.v = MStr::just("chicken");
+      s(t);
+    }
+
+    cc rc;
+    rc.define("f", "inputFile :: (LoadFile \"" + fname + "\" w) => w");
+    EXPECT_EQ(rc.compileFn<size_t()>("size([() | x <- f.frtest, x.z == [\"a\", \"b\", \"c\"] and x.u === |HotDog| and x.v matches |just=\"chicken\"|])")(), 1000);
   } catch (...) {
     unlink(fname.c_str());
     throw;

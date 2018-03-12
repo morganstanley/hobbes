@@ -6,6 +6,10 @@
 class SLookup r k v | r k -> v where
   slookup :: r -> v
 
+// support a typical shorthand on opaque types to access their internal representation
+instance (Data p t) => SLookup p "t" t where
+  slookup = unsafeCast
+
 // 'dynamic' lookup (where the lookup key is known at run-time)
 class Lookup k v b | k v -> b where
   lookup :: (k, v) -> b
