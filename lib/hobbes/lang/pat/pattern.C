@@ -629,7 +629,11 @@ ExprPtr compileMatch(cc* c, const Exprs& es, const PatternRows& ps, const Lexica
 }
 
 ExprPtr compileMatchTest(cc* c, const ExprPtr& e, const PatternPtr& p, const LexicalAnnotation& rootLA) {
-  if (!refutable(p)) {
+  auto anames = accessibleBindingNames(p);
+
+  if (anames.size() > 0) {
+    throw annotated_error(*p, "Inaccessible names in 'matches' test: " + str::cdelim(toVector(anames), ", "));
+  } else if (!refutable(p)) {
     return ExprPtr(new Bool(true, rootLA));
   } else {
     return compileMatch(c, list(e), list(PatternRow(list(p), ExprPtr(new Bool(true, rootLA))), PatternRow(list(PatternPtr(new MatchAny("_", rootLA))), ExprPtr(new Bool(false, rootLA)))), rootLA);
@@ -652,7 +656,6 @@ struct refutableP : public switchPattern<bool> {
     }
     return false;
   }
-
 };
 
 bool refutable(const PatternPtr& p) {
@@ -665,6 +668,53 @@ bool isUnitPat(const PatternPtr& p) {
   } else {
     return false;
   }
+}
+
+struct accBindingNamesF : public switchPattern<UnitV> {
+  str::set* r;
+  accBindingNamesF(str::set* r) : r(r) { }
+
+  UnitV with(const MatchLiteral*) const {
+    return unitv;
+  }
+
+  UnitV with(const MatchAny* v) const {
+    if (v->value().size() > 0 && v->value() != "_" && v->value()[0] != '.') {
+      this->r->insert(v->value());
+    }
+    return unitv;
+  }
+
+  UnitV with(const MatchArray* ps) const {
+    for (size_t i = 0; i < ps->size(); ++i) {
+      switchOf(ps->pattern(i), *this);
+    }
+    return unitv;
+  }
+
+  UnitV with(const MatchRegex* v) const {
+    auto vbs = bindingNames(v->value());
+    this->r->insert(vbs.begin(), vbs.end());
+    return unitv;
+  }
+
+  UnitV with(const MatchVariant* v) const {
+    switchOf(v->value(), *this);
+    return unitv;
+  }
+
+  UnitV with(const MatchRecord* ps) const {
+    for (auto i : ps->indexes()) {
+      switchOf(ps->pattern(i).second, *this);
+    }
+    return unitv;
+  }
+};
+
+str::set accessibleBindingNames(const PatternPtr& p) {
+  str::set r;
+  switchOf(p, accBindingNamesF(&r));
+  return r;
 }
 
 }

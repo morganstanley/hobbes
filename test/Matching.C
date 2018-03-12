@@ -149,6 +149,14 @@ TEST(Matching, Support) {
 TEST(Matching, Tests) {
   EXPECT_TRUE(c().compileFn<bool()>("\"8675309\" matches '[0-9]+'")());
   EXPECT_TRUE(c().compileFn<bool()>("(1,2) matches (1,2)")());
+
+  // make sure that tests with inaccessible names are rejected
+  EXPECT_EXCEPTION(c().compileFn<bool()>("\"JIMMY\" matches JIMMY")());
+  EXPECT_EXCEPTION(c().compileFn<bool()>("[{x=just(\"JIMMY\")}] matches [{x=|1=JIMMY|}]")());
+  
+  // make sure that tests with inaccessible _ names are allowed
+  EXPECT_TRUE(c().compileFn<bool()>("\"JIMMY\" matches _")());
+  EXPECT_TRUE(c().compileFn<bool()>("[{x=just(\"JIMMY\")}] matches [{x=|1=_|}]")());
 }
 
 TEST(Matching, Functions) {
