@@ -98,7 +98,7 @@ inline long mkTime(int h, int m, int s, int u) {
   t.tm_mday  = 1;
   t.tm_mon   = 0;
   t.tm_year  = 70;
-  t.tm_isdst = 0;
+  t.tm_isdst = -1;
 
   return (mktime(&t) * 1000 * 1000) + u;
 }
@@ -150,7 +150,7 @@ inline long mkDateTime(int y, int mon, int d, int h, int min, int s, int u) {
   t.tm_mday  = d;
   t.tm_mon   = mon - 1;
   t.tm_year  = y - 1900;
-  t.tm_isdst = 0;
+  t.tm_isdst = -1;
 
   return (mktime(&t) * 1000L * 1000L) + u;
 }

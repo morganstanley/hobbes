@@ -356,22 +356,6 @@ struct dbRefFileF : public op {
   }
 };
 
-// get a reference to an element within a stored array
-struct dbArrIdxRefF : public op {
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) {
-    FRefT frt = assumeFRefT(rty, es[0]->la());
-
-    llvm::Value* dataStart = c->builder()->CreateAdd(c->compile(es[0]), cvalue((long)(sizeof(size_t)*2))); // data begins past the capacity and length values
-    llvm::Value* offset    = c->builder()->CreateMul(c->compile(es[1]), cvalue((long)(sizeOf(frt.first)))); // our offset is an index in terms of the element size of this array
-
-    return c->builder()->CreateAdd(dataStart, offset);
-  }
-
-  PolyTypePtr type(typedb&) const {
-    return PolyTypePtr(new PolyType(4, qualtype(functy(list(tapp(primty("fileref"), list(arrayty(tgen(0)), tgen(1))), primty("long")), tapp(primty("fileref"), list(tgen(0), tgen(1)))))));
-  }
-};
-
 // unload values loaded from storage files
 void dbunloadv(long db, long ptr, long sz) {
   ((reader*)(db))->unsafeUnload((void*)ptr, sz);
@@ -432,7 +416,9 @@ long dballoc(long db, long datasz, size_t align) {
 
 struct dballocF : public op {
   llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) {
-    llvm::Value* db  = c->compile(es[0]);
+    FRefT frt = assumeFRefT(rty, LexicalAnnotation::null());
+
+    llvm::Value* db  = c->compileAtGlobalScope(frt.second);
 
     llvm::Function* f = c->lookupFunction(".dballoc");
     if (!f) { throw std::runtime_error("Expected 'dballoc' function as call"); }
@@ -442,10 +428,7 @@ struct dballocF : public op {
   }
 
   PolyTypePtr type(typedb&) const {
-    static MonoTypePtr tg0(TGen::make(0));
-    static MonoTypePtr tg1(TGen::make(1));
-    static PolyTypePtr npty(new PolyType(2, qualtype(Func::make(tuple(list(tapp(primty("file"), list(tlong(1), tg0)))), tapp(primty("fileref"), list(tg1))))));
-    return npty;
+    return PolyTypePtr(new PolyType(2, qualtype(Func::make(tuple(list(primty("unit"))), tapp(primty("fileref"), list(tgen(0), tgen(1)))))));
   }
 };
 
@@ -1127,9 +1110,6 @@ void initStorageFileDefs(FieldVerifier* fv, cc& c) {
   // read the file part out of a typed file reference
   c.bindLLFunc("file", new dbRefFileF());
 
-  // access a stored array element by index
-  c.bindLLFunc("arrayIndexRef", new dbArrIdxRefF());
-
   // unload a value that's been loaded from a file
   c.bind(".dbunloadv", &dbunloadv);
   c.bind(".dbunloaddarr", &dbunloaddarr);
@@ -1141,8 +1121,9 @@ void initStorageFileDefs(FieldVerifier* fv, cc& c) {
   c.bindLLFunc("store",  new dbstoreF());
   c.bindLLFunc("pstore", new dbstorePF());
 
-  // allocate an array out of a file
+  // allocate an values/arrays out of a file
   c.bind(".dballocarr", &dballocarr);
+  c.bindLLFunc("allocate",       new dballocF());
   c.bindLLFunc("allocateArray",  new dballocArrF());
   c.bindLLFunc("pallocateArray", new dballocArrPF());
 

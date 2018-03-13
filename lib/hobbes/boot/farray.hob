@@ -96,16 +96,16 @@ mapIdxStep f xs i ys =
 mapIdx :: (([a],long)->b, [a]) -> [b]
 mapIdx f xs = mapIdxStep(f, xs, 0L, newArray(length(xs)))
 
-eachStep :: (a->b, [a], long, long) -> ()
+eachStep :: (Function f c a r, Array as a) => (f, as, long, long) -> ()
 eachStep f xs i e =
   if (i == e) then
     ()
   else
-    let _ = f(xs[i]) in eachStep(f, xs, i+1, e)
+    do{apply(f,element(xs,i)); return eachStep(f, xs, i+1, e)}
 
 // [doc] each(f, xs) applies f to each element of xs
-each :: (a->b, [a]) -> ()
-each f xs = eachStep(f, xs, 0L, length(xs))
+each :: (Function f c a r, Array as a) => (f, as) -> ()
+each f xs = eachStep(f, xs, 0L, size(xs))
 
 eachRange :: (Ord a a, Add a int a) => (a -> b, a, a) -> ()
 eachRange f i e =
