@@ -412,6 +412,16 @@ TEST(Storage, FRegionCompatibility) {
     cc rc;
     rc.define("f", "inputFile :: (LoadFile \"" + fname + "\" w) => w");
     EXPECT_EQ(rc.compileFn<size_t()>("size([() | x <- f.frtest, x.z == [\"a\", \"b\", \"c\"] and x.u === |HotDog| and x.v matches |just=\"chicken\"|])")(), 1000);
+
+    fregion::reader rf(fname);
+    auto rs = rf.series<FRTest>("frtest");
+    FRTest t;
+    size_t j = 0;
+    while (rs.next(&t)) {
+      EXPECT_EQ(t.x, (int)j);
+      ++j;
+    }
+    unlink(fname.c_str());
   } catch (...) {
     unlink(fname.c_str());
     throw;

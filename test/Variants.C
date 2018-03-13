@@ -97,3 +97,7 @@ TEST(Variants, DontLiftInlineRefs) {
   EXPECT_NEQ(show(lift<const BadT*>::type(c())), "(() + (<char> * long))");
 }
 
+TEST(Variants, Generic) {
+  EXPECT_TRUE(c().compileFn<bool()>("variantApp(|car=6L|::|car:long,house:[char],dog:double|,{car=toClosure(\\x.x+x*x),house=toClosure(length),dog=toClosure(\\_.0L)}) == 42")());
+}
+
