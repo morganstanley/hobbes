@@ -7,6 +7,7 @@
 
 #include <hobbes/lang/expr.H>
 #include <hobbes/lang/pat/regex.H>
+#include <hobbes/util/str.H>
 #include <hobbes/util/hash.H>
 #include <hobbes/util/lannotation.H>
 
@@ -274,6 +275,9 @@ bool refutable(const PatternPtr&);
 
 // is a pattern a match on unit?
 bool isUnitPat(const PatternPtr&);
+
+// what variable names are introduced by a pattern (excluding _)?
+str::set accessibleBindingNames(const PatternPtr&);
 
 }
 
