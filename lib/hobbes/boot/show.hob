@@ -101,8 +101,12 @@ instance (v=|a+vt|, ShowVarValue a, Show vt) => Show v where
   show x = variantSplit(x, \xv."|"++variantHeadLabel(x)++showVarValue(xv)++"|", toClosure(show))
 
 // serialization for arrays
+instance (Array cs char) => Show cs where
+  show cs = show(cs[0:])
 instance (Show a) => Show [a] where
   show xs = "[" ++ cdelim(map(show,xs), ", ") ++ "]"
+instance (Array as a, Show a) => Show as where
+  show xs = show(xs[0:])
 
 // serialization for fixed-length arrays
 class ShowFixedArrOf e n where
@@ -164,9 +168,6 @@ instance Print () where
 instance Print [byte] where
   print bs = putStr(show(bs))
 
-instance Print [char] where
-  print cs = let _ = putStr("\""); _ = putStr(cs) in putStr("\"")
-
 // we will later define how certain types can be printed as tables
 // at least one of those cases will overlap with arrays, so we need to try to print as tables prior to trying to print as arrays
 class PrintableAsTable a where
@@ -176,17 +177,20 @@ instance (PrintableAsTable a) => Print a where
   print = printAsTable
 
 // print arrays
-printArray :: (Print a) => ([a], long) -> ()
-printArray xs i =
-  if (i == length(xs)) then
-    ()
-  else if ((i+1) == length(xs)) then
-    print(xs[i])
-  else
-    (let _ = print(xs[i]); _ = putStr(", ") in printArray(xs, i+1))
+instance Print [char] where
+  print cs = do { putStr("\""); putStr(cs); putStr("\""); }
+instance (Array cs char) => Print cs where
+  print cs = do { putStr("\""); putStr(cs[0:]); putStr("\""); }
 
-instance (Print a) => Print [a] where
-  print xs = let _ = putStr("["); _ = printArray(xs, 0L); _ = putStr("]") in ()
+printArray :: (Array as a, Print a) => (as, long) -> ()
+printArray xs i =
+  if (i == size(xs)) then
+    ()
+  else
+    do { putStr(", "); print(element(xs, i)); printArray(xs, i+1); }
+
+instance (Array as a, Print a) => Print as where
+  print xs = if (size(xs)==0) then putStr("[]") else do { putStr("["); print(element(xs, 0L)); printArray(xs, 1L); putStr("]"); }
 
 // print lists of things
 instance (Print a) => Print (^x.(()+(a*x))) where
@@ -267,6 +271,8 @@ class Format a where
 
 instance Format [char] where
   format = id
+instance (Array cs char) => Format cs where
+  format cs = format(cs[0:])
 
 instance (Format a) => Format a@f where
   format x = format(load(x))

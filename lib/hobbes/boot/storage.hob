@@ -146,6 +146,65 @@ instance FilterMap p pc f c a r ("fseq"*g) (^x.(()+([a]@g*x@g)))@g "mrope" (^x.(
 instance FilterMMap f c a r ("fseq"*g) (^x.(()+([a]@g*x@g)))@g "mrope" (^x.(()+([r]*x))) where
   ffilterMMap f xs = case unroll(load(xs)) of |0:_=nil(), 1:p=cons(ffilterMMap(f, load(p.0)) :: [r], ffilterMMap(f, p.1))|
 
+// array comprehension support for sequences stored with compile-time buffer lengths
+data carray a n = {avail:long, buffer:[:a|n:]}
+
+instance Array (carray a n) a where
+  size     c     = c.t.avail
+  element  c i   = element(c.t.buffer, i)
+  elements c i e = elements(c.t.buffer, i, e)
+
+instance SeqDesc (carray a n) "carray" a
+
+instance Map f c a r "carray" (carray a n) "array" [r] where
+  fmap f xs = fmapArrStep(f, xs, 0L, newArray(size(xs)))
+instance FilterMap p pc f c a r "carray" (carray a n) "array" [r] where
+  ffilterMap p f xs = fmap(f, selectB(xs, ffilterArrStep(p, xs, 0L, newBitvec(size(xs)))))
+instance FilterMMap f c a r "carray" (carray a n) "array" [r] where
+  ffilterMMap f xs = let mys = newArray(size(xs)); n = ffilterMMapStep(f, xs, 0L, mys, 0L) in selectJust(mys, 0L, newArray(n), 0L)
+
+instance SeqDesc (^x.(()+((carray a n)@f*x@f)))@f ("cfseq"*f) a
+
+instance Map f c a r ("cfseq"*g) ((^x.(()+((carray a n)@g*x@g)))@g) "mrope" (^x.(()+([r]*x))) where
+  fmap f xs = case unroll(load(xs)) of |0:_=nil(), 1:p=cons(fmap(f, load(p.0)) :: [r], fmap(f, p.1))|
+instance FilterMap p pc f c a r ("cfseq"*g) (^x.(()+((carray a n)@g*x@g)))@g "mrope" (^x.(()+([r]*x))) where
+  ffilterMap p f xs = case unroll(load(xs)) of |0:_=nil(), 1:c=cons(ffilterMap(p, f, load(c.0)) :: [r], ffilterMap(p, f, c.1))|
+instance FilterMMap f c a r ("cfseq"*g) (^x.(()+((carray a n)@g*x@g)))@g "mrope" (^x.(()+([r]*x))) where
+  ffilterMMap f xs = case unroll(load(xs)) of |0:_=nil(), 1:p=cons(ffilterMMap(f, load(p.0)) :: [r], ffilterMMap(f, p.1))|
+
+// array comprehension support for legacy stored arrays
+data darray a = long*long*[:a|1:]
+
+darr :: ((darray a)) -> [a]
+darr = unsafeCast
+
+instance Convert (darray a) [a] where
+  convert = darr
+
+instance Array (darray a) a where
+  size     d     = size(darr(d))
+  element  d i   = element(darr(d), i)
+  elements d i e = elements(darr(d), i, e)
+
+instance SeqDesc (darray a) "darray" a
+
+instance Map f c a r "darray" (darray a) "array" [r] where
+  fmap f xs = fmapArrStep(f, xs, 0L, newArray(size(xs)))
+instance FilterMap p pc f c a r "darray" (darray a) "array" [r] where
+  ffilterMap p f xs = fmap(f, selectB(xs, ffilterArrStep(p, xs, 0L, newBitvec(size(xs)))))
+instance FilterMMap f c a r "darray" (darray a) "array" [r] where
+  ffilterMMap f xs = let mys = newArray(size(xs)); n = ffilterMMapStep(f, xs, 0L, mys, 0L) in selectJust(mys, 0L, newArray(n), 0L)
+
+instance SeqDesc (^x.(()+((darray a)@f*x@f)))@f ("dfseq"*f) a
+
+instance Map f c a r ("dfseq"*g) ((^x.(()+((darray a)@g*x@g)))@g) "mrope" (^x.(()+([r]*x))) where
+  fmap f xs = case unroll(load(xs)) of |0:_=nil(), 1:p=cons(fmap(f, load(p.0)) :: [r], fmap(f, p.1))|
+instance FilterMap p pc f c a r ("dfseq"*g) (^x.(()+((darray a)@g*x@g)))@g "mrope" (^x.(()+([r]*x))) where
+  ffilterMap p f xs = case unroll(load(xs)) of |0:_=nil(), 1:c=cons(ffilterMap(p, f, load(c.0)) :: [r], ffilterMap(p, f, c.1))|
+instance FilterMMap f c a r ("dfseq"*g) (^x.(()+((darray a)@g*x@g)))@g "mrope" (^x.(()+([r]*x))) where
+  ffilterMMap f xs = case unroll(load(xs)) of |0:_=nil(), 1:p=cons(ffilterMMap(f, load(p.0)) :: [r], ffilterMMap(f, p.1))|
+
+
 // support access to stored ropes like arrays
 flfoldl :: ((a,b) -> a, a, ^x.(()+(b*x@f))) -> a
 flfoldl f s xs =
@@ -167,26 +226,26 @@ flfindS s ss p xs =
   | |1=(h, t)|               -> flfindS(ss(s,h), ss, p, load(t))
   | _                        -> |0=()|
 
-flfindSliceSpan :: (^x.(()+([a]@f*x@f)), long, long, long) -> ^x.(()+([a]*x))
+flfindSliceSpan :: (Array as a) => (^x.(()+(as@f*x@f)), long, long, long) -> ^x.(()+([a]*x))
 flfindSliceSpan n k i e =
   match unroll(n) with
   | |1=(h,t)| where k < e ->
     let
       xs = load(h);
-      nk = k+length(xs);
+      nk = k+size(xs);
     in
       if (nk < i) then
         flfindSliceSpan(load(t), nk, i, e)
       else
-        cons(xs[length(xs)-max(0L,i-k):length(xs)-min(length(xs),e-k)], flfindSliceSpan(load(t), nk, i, e))
+        cons(xs[size(xs)-max(0L,i-k):size(xs)-min(size(xs),e-k)], flfindSliceSpan(load(t), nk, i, e))
   | _ -> nil()
 
-instance Array (^x.(()+([a]@f*x@f))) a where
-  size     xs     = flfoldl(\s vs.s + length(load(vs)), 0L, xs)
-  element  xs i   = match flfindS(i, \j vs.j-length(load(vs)), \j vs.j < length(load(vs)), xs) with | |1=(j, vs)| -> let lvs = load(vs) in lvs[length(lvs) - (j+1)] | _ -> newPrim()
+instance (Array as a) => Array (^x.(()+(as@f*x@f))) a where
+  size     xs     = flfoldl(\s vs.s + size(load(vs)), 0L, xs)
+  element  xs i   = match flfindS(i, \j vs.j-size(load(vs)), \j vs.j < size(load(vs)), xs) with | |1=(j, vs)| -> let lvs = load(vs) in element(lvs,size(lvs) - (j+1)) | _ -> newPrim()
   elements xs i e = concat(toArray(flfindSliceSpan(xs, 0L, i, e)))
 
-instance Array (^x.(()+([a]@f*x@f)))@f a where
+instance (Array as a) => Array (^x.(()+(as@f*x@f)))@f a where
   size     xs     = size(load(xs))
   element  xs i   = element(load(xs), i)
   elements xs i e = elements(load(xs), i, e)

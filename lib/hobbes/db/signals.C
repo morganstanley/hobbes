@@ -34,7 +34,7 @@ typedef std::set<ChangeSignal> ChangeSignals;
 typedef std::vector<uint8_t> bytes;
 
 struct ByteRangeWatch {
-  bool                   isArr;
+  bool                   isDArr;
   const volatile size_t* mappedm;
   size_t                 oldValue;
   ChangeSignals          fs;
@@ -55,7 +55,7 @@ void sweepFileWatch(FileWatch& fw) {
 
     size_t newValue = *brw.mappedm;
     if (newValue != brw.oldValue) {
-      size_t ref = brw.isArr ? (brwp.first - sizeof(size_t)) : newValue;
+      size_t ref = brw.isDArr ? (brwp.first - sizeof(size_t)) : newValue;
       brw.oldValue = newValue;
 
       for (ChangeSignals::iterator f = brw.fs.begin(); f != brw.fs.end();) {
@@ -207,7 +207,7 @@ const array<FileWatchData>* fileWatchData() {
       const ByteRangeWatch& brw = brwp.second;
 
       od->data[j].first         = brwp.first;
-      od->data[j].second.first  = brw.isArr;
+      od->data[j].second.first  = brw.isDArr;
       od->data[j].second.second = brw.oldValue;
 
       ++j;
@@ -218,26 +218,26 @@ const array<FileWatchData>* fileWatchData() {
 }
 
 // add a byte-range signal for a file
-void addFileSignal(long file, long off, long sz, bool isArr, ChangeSignal f) {
+void addFileSignal(long file, long off, long sz, bool isDArr, ChangeSignal f) {
   FileWatch& fw = watcher()->fileWatch((reader*)file);
 
   ByteRangeWatch& brw = fw.byteRangeWatches[off];
 
-  if (isArr) {
-    brw.mappedm = (const volatile size_t*)((reader*)file)->unsafeLoadArray(off-sizeof(size_t));
+  if (isDArr) {
+    brw.mappedm = (const volatile size_t*)((reader*)file)->unsafeLoadDArray(off-sizeof(size_t));
   } else {
     brw.mappedm = (const volatile size_t*)((reader*)file)->unsafeLoad(off, sz);
   }
-  brw.isArr = isArr;
+  brw.isDArr = isDArr;
   brw.fs.insert(f);
   brw.oldValue = *brw.mappedm;
 }
 
-void addFileSOSignal(long file, unsigned int so, bool isArr, ChangeSignal f) {
+void addFileSOSignal(long file, unsigned int so, bool isDArr, ChangeSignal f) {
   uint64_t offset;
   size_t   sz;
   ((reader*)file)->storedOffsetDetails(so, &offset, &sz);
-  addFileSignal(file, offset, sz, isArr, f);
+  addFileSignal(file, offset, sz, isDArr, f);
 }
 
 const MonoTypePtr& frefType(const MonoTypePtr& fref);
@@ -253,18 +253,18 @@ struct addFileSignalF : public op {
     llvm::Function* f = c->lookupFunction(".addFileSignal");
     if (!f) { throw std::runtime_error("Expected 'addFileSignal' function as call"); }
 
-    size_t      sz    = 0;
-    MonoTypePtr refty = frefType(tys[0]);
-    bool        isArr = is<Array>(refty);
+    size_t      sz     = 0;
+    MonoTypePtr refty  = frefType(tys[0]);
+    bool        isDArr = storedAsDArray(refty);
 
-    if (isArr) {
+    if (isDArr) {
       sz  = sizeof(long);
       off = c->builder()->CreateAdd(off, cvalue((long)sizeof(long)));
     } else {
       sz = storageSizeOf(refty);
     }
 
-    return fncall(c->builder(), f, list<llvm::Value*>(db, off, cvalue((long)sz), cvalue((bool)isArr), sfn));
+    return fncall(c->builder(), f, list<llvm::Value*>(db, off, cvalue((long)sz), cvalue((bool)isDArr), sfn));
   }
 
   PolyTypePtr type(typedb&) const {
@@ -418,7 +418,7 @@ struct ADBFSigUnqualify : public switchExprTyFn {
   std::string          fname;
   const Record*        frec;
   int                  findex;
-  bool                 isArr;
+  bool                 isDArr;
 
   bool unpackConstraint(const ConstraintPtr& cst) {
     HasField hf;
@@ -429,7 +429,7 @@ struct ADBFSigUnqualify : public switchExprTyFn {
         this->fname  = lbl->value();
         this->frec   = signalRecord(this->stype);
         this->findex = this->frec->index(this->fname);
-        this->isArr  = is<Array>(frefType(this->frec->member(this->fname)));
+        this->isDArr = storedAsDArray(frefType(this->frec->member(this->fname)));
 
         return this->frec != 0;
       }
@@ -497,7 +497,7 @@ struct ADBFSigUnqualify : public switchExprTyFn {
                     list(
                       fncall(var("unsafeCast", functy(list(ap->args()[0]->type()->monoType()), primty("long")), la), list(ap->args()[0]), la),
                       constant(this->findex, la),
-                      constant(this->isArr, la),
+                      constant(this->isDArr, la),
                       fncall(var("unsafeCast", qualtype(functy(list(v->right()->type()->monoType()), functy(list(primty("long")), primty("bool")))), la), list(v->right()), la)
                     ),
                     la

@@ -136,10 +136,23 @@ const MonoTypePtr& frefType(const MonoTypePtr& fref) {
 }
 
 const MonoTypePtr& arrType(const MonoTypePtr& arr) {
-  if (const Array* ta = is<Array>(arr)) {
-    return ta->type();
+  if (const Array* a = is<Array>(arr)) {
+    return a->type();
   }
   throw std::runtime_error("Internal error, expected array type: " + show(arr));
+}
+
+const MonoTypePtr& darrType(const MonoTypePtr& arr) {
+  if (const TApp* ap = is<TApp>(arr)) {
+    if (ap->args().size() == 1) {
+      if (const Prim* f = is<Prim>(ap->fn())) {
+        if (f->name() == "darray") {
+          return ap->args()[0];
+        }
+      }
+    }
+  }
+  throw std::runtime_error("Internal error, expected darray type: " + show(arr));
 }
 
 char* dbloado(long db, unsigned int o) {
@@ -150,8 +163,12 @@ char* dbloadv(long db, long offset, long sz) {
   return (char*)((reader*)(db))->unsafeLoad(offset, sz);
 }
 
-char* dbloadarr(long db, long offset) {
-  return (char*)((reader*)(db))->unsafeLoadArray(offset);
+char* dbloaddarr(long db, long offset) {
+  return (char*)((reader*)(db))->unsafeLoadDArray(offset);
+}
+
+char* dbloadarr(long db, long offset, long esz) {
+  return (char*)((reader*)(db))->unsafeLoadArray(offset, esz);
 }
 
 // load/store root values in storage files
@@ -240,11 +257,16 @@ struct dbloadF : public op {
     }
 
     // are we loading an array or a non-array?
-    if (storedAsArray(rty)) {
+    if (storedAsDArray(rty)) {
+      llvm::Function* f = c->lookupFunction(".dbloaddarr");
+      if (!f) { throw std::runtime_error("Expected 'dbloaddarr' function as call"); }
+
+      return c->builder()->CreateBitCast(fncall(c->builder(), f, list<llvm::Value*>(db, off)), toLLVM(rty, true));
+    } else if (const Array* t = storedAsArray(rty)) {
       llvm::Function* f = c->lookupFunction(".dbloadarr");
       if (!f) { throw std::runtime_error("Expected 'dbloadarr' function as call"); }
 
-      return c->builder()->CreateBitCast(fncall(c->builder(), f, list<llvm::Value*>(db, off)), toLLVM(rty, true));
+      return c->builder()->CreateBitCast(fncall(c->builder(), f, list<llvm::Value*>(db, off, cvalue((long)storageSizeOf(t->type())))), toLLVM(rty, true));
     } else {
       llvm::Function* f = c->lookupFunction(".dbloadv");
       if (!f) { throw std::runtime_error("Expected 'dbloadv' function as call"); }
@@ -278,11 +300,16 @@ struct dbloadPF : public op {
     }
 
     // are we loading an array or a non-array?
-    if (storedAsArray(rty)) {
+    if (storedAsDArray(rty)) {
+      llvm::Function* f = c->lookupFunction(".dbloaddarr");
+      if (!f) { throw std::runtime_error("Expected 'dbloaddarr' function as call"); }
+
+      return c->builder()->CreateBitCast(fncall(c->builder(), f, list<llvm::Value*>(db, off)), toLLVM(rty, true));
+    } else if (const Array* a = storedAsArray(rty)) {
       llvm::Function* f = c->lookupFunction(".dbloadarr");
       if (!f) { throw std::runtime_error("Expected 'dbloadarr' function as call"); }
 
-      return c->builder()->CreateBitCast(fncall(c->builder(), f, list<llvm::Value*>(db, off)), toLLVM(rty, true));
+      return c->builder()->CreateBitCast(fncall(c->builder(), f, list<llvm::Value*>(db, off, cvalue((long)storageSizeOf(a->type())))), toLLVM(rty, true));
     } else {
       llvm::Function* f = c->lookupFunction(".dbloadv");
       if (!f) { throw std::runtime_error("Expected 'dbloadv' function as call"); }
@@ -329,29 +356,17 @@ struct dbRefFileF : public op {
   }
 };
 
-// get a reference to an element within a stored array
-struct dbArrIdxRefF : public op {
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) {
-    FRefT frt = assumeFRefT(rty, es[0]->la());
-
-    llvm::Value* dataStart = c->builder()->CreateAdd(c->compile(es[0]), cvalue((long)(sizeof(size_t)*2))); // data begins past the capacity and length values
-    llvm::Value* offset    = c->builder()->CreateMul(c->compile(es[1]), cvalue((long)(sizeOf(frt.first)))); // our offset is an index in terms of the element size of this array
-
-    return c->builder()->CreateAdd(dataStart, offset);
-  }
-
-  PolyTypePtr type(typedb&) const {
-    return PolyTypePtr(new PolyType(4, qualtype(functy(list(tapp(primty("fileref"), list(arrayty(tgen(0)), tgen(1))), primty("long")), tapp(primty("fileref"), list(tgen(0), tgen(1)))))));
-  }
-};
-
 // unload values loaded from storage files
 void dbunloadv(long db, long ptr, long sz) {
   ((reader*)(db))->unsafeUnload((void*)ptr, sz);
 }
 
-void dbunloadarr(long db, long ptr) {
-  ((reader*)(db))->unsafeUnloadArray((void*)ptr);
+void dbunloaddarr(long db, long ptr) {
+  ((reader*)(db))->unsafeUnloadDArray((void*)ptr);
+}
+
+void dbunloadarr(long db, long ptr, long sz) {
+  ((reader*)(db))->unsafeUnloadArray((void*)ptr, sz);
 }
 
 struct dbunloadF : public op {
@@ -365,11 +380,16 @@ struct dbunloadF : public op {
     }
 
     // are we unloading an array or a non-array?
-    if (storedAsArray(tys[1])) {
+    if (storedAsDArray(tys[1])) {
+      llvm::Function* f = c->lookupFunction(".dbunloaddarr");
+      if (!f) { throw std::runtime_error("Expected 'dbunloaddarr' function as call"); }
+
+      return fncall(c->builder(), f, list<llvm::Value*>(db, val));
+    } else if (const Array* a = storedAsArray(tys[1])) {
       llvm::Function* f = c->lookupFunction(".dbunloadarr");
       if (!f) { throw std::runtime_error("Expected 'dbunloadarr' function as call"); }
 
-      return fncall(c->builder(), f, list<llvm::Value*>(db, val));
+      return fncall(c->builder(), f, list<llvm::Value*>(db, val, cvalue((long)storageSizeOf(a->type()))));
     } else if (!hasPointerRep(tys[1])) {
       return cvalue(true);
     } else {
@@ -396,7 +416,9 @@ long dballoc(long db, long datasz, size_t align) {
 
 struct dballocF : public op {
   llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) {
-    llvm::Value* db  = c->compile(es[0]);
+    FRefT frt = assumeFRefT(rty, LexicalAnnotation::null());
+
+    llvm::Value* db  = c->compileAtGlobalScope(frt.second);
 
     llvm::Function* f = c->lookupFunction(".dballoc");
     if (!f) { throw std::runtime_error("Expected 'dballoc' function as call"); }
@@ -406,10 +428,7 @@ struct dballocF : public op {
   }
 
   PolyTypePtr type(typedb&) const {
-    static MonoTypePtr tg0(TGen::make(0));
-    static MonoTypePtr tg1(TGen::make(1));
-    static PolyTypePtr npty(new PolyType(2, qualtype(Func::make(tuple(list(tapp(primty("file"), list(tlong(1), tg0)))), tapp(primty("fileref"), list(tg1))))));
-    return npty;
+    return PolyTypePtr(new PolyType(2, qualtype(Func::make(tuple(list(primty("unit"))), tapp(primty("fileref"), list(tgen(0), tgen(1)))))));
   }
 };
 
@@ -532,8 +551,8 @@ struct dballocArrPF : public op {
 };
 
 // get the allocated capacity of a stored array
-long dbarrcapacity(long db, long elemsz, long arrref) {
-  return (((reader*)db)->unsafeArrayCapacity(arrref) - 16) / elemsz;
+long dbdarrcapacity(long db, long elemsz, long arrref) {
+  return (((reader*)db)->unsafeDArrayCapacity(arrref) - 16) / elemsz;
 }
 
 struct dbarrCapacityF : public op {
@@ -543,17 +562,17 @@ struct dbarrCapacityF : public op {
     llvm::Value* db  = c->compileAtGlobalScope(frt.second);
     llvm::Value* off = c->compile(es[0]);
 
-    llvm::Function* f = c->lookupFunction(".dbarrcapacity");
-    if (!f) { throw std::runtime_error("Expected 'dbarrcapacity' function as call"); }
+    llvm::Function* f = c->lookupFunction(".dbdarrcapacity");
+    if (!f) { throw std::runtime_error("Expected 'dbdarrcapacity' function as call"); }
 
-    size_t elemsz = storageSizeOf(arrType(frt.first));
+    size_t elemsz = storageSizeOf(darrType(frt.first));
     return fncall(c->builder(), f, list<llvm::Value*>(db, cvalue((long)elemsz), off));
   }
 
   PolyTypePtr type(typedb&) const {
     static MonoTypePtr tg0(TGen::make(0));
     static MonoTypePtr tg1(TGen::make(1));
-    static PolyTypePtr npty(new PolyType(3, qualtype(Func::make(tuple(list(tapp(primty("fileref"), list(arrayty(tg0), tg1)))), primty("long")))));
+    static PolyTypePtr npty(new PolyType(3, qualtype(Func::make(tuple(list(tapp(primty("fileref"), list(darrayty(tg0), tg1)))), primty("long")))));
     return npty;
   }
 };
@@ -563,10 +582,10 @@ struct dbarrCapacityPF : public op {
     llvm::Value* db  = c->compile(es[0]);
     llvm::Value* off = c->compile(es[1]);
 
-    llvm::Function* f = c->lookupFunction(".dbarrcapacity");
-    if (!f) { throw std::runtime_error("Expected 'dbarrcapacity' function as call"); }
+    llvm::Function* f = c->lookupFunction(".dbdarrcapacity");
+    if (!f) { throw std::runtime_error("Expected 'dbdarrcapacity' function as call"); }
 
-    size_t elemsz = storageSizeOf(arrType(frefType(tys[1])));
+    size_t elemsz = storageSizeOf(darrType(frefType(tys[1])));
     return fncall(c->builder(), f, list<llvm::Value*>(db, cvalue((long)elemsz), off));
   }
 
@@ -574,7 +593,7 @@ struct dbarrCapacityPF : public op {
     static MonoTypePtr tg0(TGen::make(0));
     static MonoTypePtr tg1(TGen::make(1));
     static MonoTypePtr tg2(TGen::make(2));
-    static PolyTypePtr npty(new PolyType(3, qualtype(Func::make(tuple(list(tapp(primty("file"), list(tg0, tg1)), tapp(primty("fileref"), list(arrayty(tg2))))), primty("long")))));
+    static PolyTypePtr npty(new PolyType(3, qualtype(Func::make(tuple(list(tapp(primty("file"), list(tg0, tg1)), tapp(primty("fileref"), list(darrayty(tg2))))), primty("long")))));
     return npty;
   }
 };
@@ -1082,19 +1101,18 @@ void initStorageFileDefs(FieldVerifier* fv, cc& c) {
   c.bind(".dbloado", &dbloado);
 
   // load a value out of a file from an internal offset (determined at run-time)
-  c.bind(".dbloadv",   &dbloadv);
-  c.bind(".dbloadarr", &dbloadarr);
+  c.bind(".dbloadv",    &dbloadv);
+  c.bind(".dbloaddarr", &dbloaddarr);
+  c.bind(".dbloadarr",  &dbloadarr);
   c.bindLLFunc("load", new dbloadF());
   c.bindLLFunc("pload", new dbloadPF());
 
   // read the file part out of a typed file reference
   c.bindLLFunc("file", new dbRefFileF());
 
-  // access a stored array element by index
-  c.bindLLFunc("arrayIndexRef", new dbArrIdxRefF());
-
   // unload a value that's been loaded from a file
   c.bind(".dbunloadv", &dbunloadv);
+  c.bind(".dbunloaddarr", &dbunloaddarr);
   c.bind(".dbunloadarr", &dbunloadarr);
   c.bindLLFunc("unload", new dbunloadF());
 
@@ -1103,13 +1121,14 @@ void initStorageFileDefs(FieldVerifier* fv, cc& c) {
   c.bindLLFunc("store",  new dbstoreF());
   c.bindLLFunc("pstore", new dbstorePF());
 
-  // allocate an array out of a file
+  // allocate an values/arrays out of a file
   c.bind(".dballocarr", &dballocarr);
+  c.bindLLFunc("allocate",       new dballocF());
   c.bindLLFunc("allocateArray",  new dballocArrF());
   c.bindLLFunc("pallocateArray", new dballocArrPF());
 
   // get stored array capacity
-  c.bind(".dbarrcapacity", &dbarrcapacity);
+  c.bind(".dbdarrcapacity", &dbdarrcapacity);
   c.bindLLFunc("capacity",  new dbarrCapacityF());
   c.bindLLFunc("pcapacity", new dbarrCapacityPF());
 
