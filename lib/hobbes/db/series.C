@@ -134,7 +134,7 @@ const MonoTypePtr& StoredSeries::storageType() const {
 }
 
 uint64_t StoredSeries::writePosition() const {
-  return this->batchDataRef + ((size_t)(((uint8_t*)this->batchHead) - ((uint8_t*)this->batchData))) + sizeof(size_t);
+  return this->batchDataRef + ((size_t)(((uint8_t*)this->batchHead) - ((uint8_t*)this->batchData)));
 }
 
 void StoredSeries::clear(bool signal) {
@@ -228,7 +228,7 @@ void StoredSeries::bindAs(cc* c, const std::string& vname) {
 }
 
 void StoredSeries::consBatchNode(uint64_t nextPtr) {
-  this->batchDataRef = this->outputFile->unsafeStoreToOffset(this->batchStorageSize, this->batchSize);
+  this->batchDataRef = this->outputFile->unsafeStoreToOffset(this->batchStorageSize, sizeof(size_t));
   this->batchData    = this->outputFile->unsafeLoad(this->batchDataRef, this->batchStorageSize);
   this->batchHead    = ((uint8_t*)this->batchData) + sizeof(long);
   this->batchNode    = allocBatchNode(this->outputFile, this->outputFile->unsafeOffsetOf(this->batchType, this->batchData), nextPtr);

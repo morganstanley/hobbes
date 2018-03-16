@@ -91,10 +91,12 @@ reader::reader(imagefile* f) : fdata(f) {
 
   // and translate bindings
   for (const auto& b : this->fdata->bindings) {
-    SBinding sb;
-    sb.type   = decodeBindingByVersion(this->fdata->version, b.second.type);
-    sb.offset = this->fdata->version==0 ? b.second.boffset : b.second.offset;
-    this->sbindings[b.first] = sb;
+    if (b.first.size() > 0 && b.first[0] != '.') {
+      SBinding sb;
+      sb.type   = decodeBindingByVersion(this->fdata->version, b.second.type);
+      sb.offset = this->fdata->version==0 ? b.second.boffset : b.second.offset;
+      this->sbindings[b.first] = sb;
+    }
   }
 }
 
@@ -408,9 +410,13 @@ uint64_t writer::unsafeStoreDArrayToOffset(size_t esize, size_t len) {
 }
 
 void* writer::unsafeStoreArray(size_t esize, size_t len) {
-  unsigned char* result = (unsigned char*)allocAnon(sizeof(long) + (len * esize), sizeof(size_t));
-  *((long*)result) = len;
-  return result;
+  if (len > 0) {
+    unsigned char* result = (unsigned char*)allocAnon(sizeof(long) + (len * esize), sizeof(size_t));
+    *((long*)result) = len;
+    return result;
+  } else {
+    return mapFileData(this->fdata, this->fdata->empty_array, sizeof(size_t));
+  }
 }
 
 uint64_t writer::unsafeStoreArrayToOffset(size_t esize, size_t len) {

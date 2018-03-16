@@ -227,6 +227,7 @@ struct imagefile {
   // mutable incremental read/write state
   size_t file_size;
   size_t head_toc_pos; // the head position for writing TOC entries
+  size_t empty_array;  // empty arrays of all types can be aliased
 
   // the fewest number of pages to mmap at one time
   // (this prevents us from making too many tiny mmap regions and hitting the OS map limit)
@@ -293,20 +294,29 @@ inline void allocPage(imagefile* f) {
 }
 
 // trivial read and write to files, assuming type T is POD
+inline void fdwrite(imagefile* f, const char* x, size_t len) {
+  size_t i = 0;
+  while (i < len) {
+    ssize_t di = write(f->fd, x + i, len - i);
+
+    if (di < 0) {
+      if (errno != EINTR) {
+        raiseSysError("Failed to write " + str::from(len) + " bytes to file", f->path);
+      }
+    } else if (di == 0) {
+      raiseSysError("Empty write error", f->path);
+    } else {
+      i += di;
+    }
+  }
+}
 template <typename T>
   inline void write(imagefile* f, const T& x) {
-    ssize_t wr = ::write(f->fd, (const void*)&x, sizeof(T));
-    if ((wr == (ssize_t)-1) || (wr != sizeof(T))) {
-      raiseSysError("Failed to write " + str::demangle<T>() + " to file", f->path);
-    }
+    fdwrite(f, (const char*)&x, sizeof(T));
   }
 template <typename TIter>
   inline void writes(imagefile* f, TIter begin, TIter end) {
-    size_t  bsz = sizeof(*begin) * (end - begin);
-    ssize_t wr  = ::write(f->fd, (const void*)&(*(begin)), bsz);
-    if ((wr == (ssize_t)-1) || (wr != bsz)) {
-      raiseSysError("Failed to write " + str::demangle< decltype(*begin) >() + " sequence to file", f->path);
-    }
+    fdwrite(f, (const char*)&(*begin), (end - begin) * sizeof(*begin));
   }
 inline void write(imagefile* f, const std::string& x) {
   write(f, x.size());
@@ -317,20 +327,29 @@ inline void write(imagefile* f, const std::vector<unsigned char>& xs) {
   writes(f, xs.begin(), xs.end());
 }
 
+inline void fdread(const imagefile* f, char* x, size_t len) {
+  size_t i = 0;
+  while (i < len) {
+    ssize_t di = read(f->fd, x + i, len - i);
+
+    if (di < 0) {
+      if (errno != EINTR) {
+        raiseSysError("Failed to read " + str::from(len) + " bytes from file", f->path);
+      }
+    } else if (di == 0) {
+      raiseSysError("Empty read error", f->path);
+    } else {
+      i += di;
+    }
+  }
+}
 template <typename T>
   inline void read(const imagefile* f, T* x) {
-    ssize_t rr = ::read(f->fd, (void*)x, sizeof(T));
-    if ((rr == (ssize_t)-1) || (rr != sizeof(T))) {
-      raiseSysError("Failed to read " + str::demangle<T>() + " from file", f->path);
-    }
+    fdread(f, (char*)x, sizeof(T));
   }
 template <typename T>
   inline void reads(const imagefile* f, size_t sz, T* x) {
-    size_t  bsz = sz * sizeof(T);
-    ssize_t rr  = ::read(f->fd, (void*)x, bsz);
-    if ((rr == (ssize_t)-1) || (rr != bsz)) {
-      raiseSysError("Failed to read " + str::demangle<T>() + " sequence from file", f->path);
-    }
+    fdread(f, (char*)x, sz * sizeof(T));
   }
 inline void read(imagefile* f, std::string* x) {
   size_t sz = 0;
@@ -931,6 +950,17 @@ inline imagefile* openFile(const std::string& fname, bool readonly, uint16_t min
       readFile(f, minVersion, maxVersion);
     }
 
+    // keep a dummy value for writing all 0-length arrays
+    if (!readonly) {
+      auto za = f->bindings.find(".za");
+      if (za != f->bindings.end()) {
+        f->empty_array = za->second.offset;
+      } else {
+        f->empty_array = findSpace(f, pagetype::data, sizeof(size_t), sizeof(size_t));
+        addBinding(f, ".za", bytes(), f->empty_array);
+      }
+    }
+
     // there, we've loaded this file
     return f;
   } catch (...) {
@@ -1446,15 +1476,19 @@ template <>
     static size_t alignment() { return sizeof(size_t); }
 
     static void write(imagefile* f, void* p, const std::string& x) {
-      auto bc = sizeof(size_t) + x.size();
+      if (x.size() > 0) {
+        auto bc = sizeof(size_t) + x.size();
 
-      size_t dloc = findSpace(f, pagetype::data, bc, sizeof(size_t));
-      uint8_t* d = (uint8_t*)mapFileData(f, dloc, bc);
-      *((size_t*)d) = x.size();
-      memcpy(d+sizeof(size_t), x.data(), x.size());
-      unmapFileData(f, d, bc);
+        size_t dloc = findSpace(f, pagetype::data, bc, sizeof(size_t));
+        uint8_t* d = (uint8_t*)mapFileData(f, dloc, bc);
+        *((size_t*)d) = x.size();
+        memcpy(d+sizeof(size_t), x.data(), x.size());
+        unmapFileData(f, d, bc);
 
-      *((size_t*)p) = dloc;
+        *((size_t*)p) = dloc;
+      } else {
+        *((size_t*)p) = f->empty_array;
+      }
     }
     static void read (imagefile* f, const void* p, std::string* x) {
       auto     dloc = *((size_t*)p);
@@ -1518,15 +1552,19 @@ template <typename T>
   struct store<std::vector<T>, typename tbool<store<T>::can_memcpy>::type> : public storeVectorDef<T> {
     static const bool can_memcpy = false;
     static void write(imagefile* f, void* p, const std::vector<T>& x) {
-      auto bc = sizeof(size_t) + sizeof(T)*x.size();
+      if (x.size() > 0) {
+        auto bc = sizeof(size_t) + sizeof(T)*x.size();
 
-      size_t dloc = findSpace(f, pagetype::data, bc, sizeof(size_t));
-      uint8_t* d = (uint8_t*)mapFileData(f, dloc, bc);
-      *((size_t*)d) = x.size();
-      memcpy(d+sizeof(size_t), &x[0], sizeof(T)*x.size());
-      unmapFileData(f, d, bc);
+        size_t dloc = findSpace(f, pagetype::data, bc, sizeof(size_t));
+        uint8_t* d = (uint8_t*)mapFileData(f, dloc, bc);
+        *((size_t*)d) = x.size();
+        memcpy(d+sizeof(size_t), &x[0], sizeof(T)*x.size());
+        unmapFileData(f, d, bc);
 
-      *((size_t*)p) = dloc;
+        *((size_t*)p) = dloc;
+      } else {
+        *((size_t*)p) = f->empty_array;
+      }
     }
     static void read(imagefile* f, const void* p, std::vector<T>* x) {
       auto     dloc = *((size_t*)p);
