@@ -10,12 +10,14 @@ matrix:
       env:
         - DEPS="${DEPS} llvm@3.7"
         - LLVM_DIR=/usr/local/opt/llvm@3.7/lib/llvm-3.7/share/llvm/cmake/
+        - CTEST_OUTPUT_ON_FAILURE=1
     - os: osx
       compiler: clang
       osx_image: xcode8
       env:
         - DEPS="${DEPS} llvm@3.7"
         - LLVM_DIR=/usr/local/opt/llvm@3.7/lib/llvm-3.7/share/llvm/cmake/
+        - CTEST_OUTPUT_ON_FAILURE=1
     - os: linux
       compiler: g++
       root: required
@@ -25,6 +27,7 @@ matrix:
         - docker
       env:
         - DIST=xenial
+        - CTEST_OUTPUT_ON_FAILURE=1
 
 install:
   - if [ $TRAVIS_OS_NAME = osx   ]; then brew update && brew install ${DEPS}; fi
