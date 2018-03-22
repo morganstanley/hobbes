@@ -34,7 +34,7 @@ static bool isDArray(const MonoTypePtr& t) {
 }
 
 MonoTypePtr darrayty(const MonoTypePtr& t) {
-  return tapp(primty("darray", tabs(str::strings("x"), tuple(list(primty("long"), primty("long"), arrayty(t, 1))))), list(t));
+  return tapp(primty("darray", tabs(str::strings("x"), arrayty(t))), list(t));
 }
 
 // the representation of file reference types changed after v0

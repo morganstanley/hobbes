@@ -428,3 +428,7 @@ TEST(Storage, FRegionCompatibility) {
   }
 }
 
+TEST(Storage, DArrayMemLayout) {
+  EXPECT_TRUE(c().compileFn<bool()>("show([unsafeCast(\"jimmy\")::((darray char)),unsafeCast(\"chicken\")]) == \"[\\\"jimmy\\\", \\\"chicken\\\"]\"")());
+}
+
