@@ -2184,7 +2184,7 @@ template <typename T>
 template <typename T>
   class wseries : public seriesi {
   public:
-    wseries(imagefile* f, const std::string& seqname, size_t batchSize, const bytes& tdef = storeTypeDef<T>()) : f(f), seqname(seqname), batchSize(batchSize), tdef(tdef), writeCB([](uint64_t){}) {
+    wseries(imagefile* f, const std::string& seqname, size_t batchSize, const bytes& tdef = storeTypeDef<T>()) : tdef(tdef), f(f), seqname(seqname), batchSize(batchSize), writeCB([](uint64_t){}) {
       // determine sequence types
       this->stdef = storedSeqTypeDef(this->tdef, store<T>::size(), this->batchSize);
 
