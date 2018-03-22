@@ -544,12 +544,12 @@ template <typename T>
   }
 
 // (with implicit ctor names)
-#define HNET_VARIANT_CTOR(n, t) static SelfT n(const t & x) { SelfT r; r.tag = Enum::tag_##n; new (r.data) t(x); return r; }
+#define HNET_VARIANT_CTOR(n, t) static SelfT n(const t & x) { SelfT r; r.tag = Enum::tag_##n; new (&r.n##_data) t(x); return r; }
 #define HNET_VARIANT_CTOR_STR(n, t) + "," #n ":" + ::hobbes::net::io< t >::describe()
 #define HNET_VARIANT_CTOR_TAG(n, t) tag_##n,
 #define HNET_VARIANT_WRITE_CASE(n, t) case Enum::tag_##n: ::hobbes::net::io<int>::write(s, (int)this->tag); ::hobbes::net::io< t >::write(s, this->n##_data); break;
-#define HNET_VARIANT_READ_CASE(n, t)  case Enum::tag_##n: new (this->data) t(); ::hobbes::net::io< t >::read(s, &this->n##_data); break;
-#define HNET_VARIANT_PCOPY(n, t)      case Enum::tag_##n: new (this->data) t(rhs.n##_data); break;
+#define HNET_VARIANT_READ_CASE(n, t)  case Enum::tag_##n: new (&this->n##_data) t(); ::hobbes::net::io< t >::read(s, &this->n##_data); break;
+#define HNET_VARIANT_PCOPY(n, t)      case Enum::tag_##n: new (&this->n##_data) t(rhs.n##_data); break;
 #define HNET_VARIANT_PDESTROY(n, t)   case Enum::tag_##n: { typedef t PRIV_DT; ((PRIV_DT*)&this->n##_data)->~PRIV_DT(); } break;
 #define HNET_VARIANT_SUCC(n, t) +1
 #define HNET_VARIANT_CTOR_OPAQUEDATA(n, t) t n##_data;
@@ -563,19 +563,19 @@ template <typename T>
 #define HNET_VARIANT_EQCASE(n, t) case Enum::tag_##n: return (this->n##_data == rhs.n##_data);
 
 #define HNET_VARIANT_AIOSTATE_DATA(n, t) ::hobbes::net::io<t>::async_read_state n##_aioS;
-#define HNET_VARIANT_AIOSTATE_INIT(n, t) case Enum::tag_##n: { new (o->payloadS.data) ::hobbes::net::io<t>::async_read_state(); ::hobbes::net::io<t>::prepare(&o->payloadS.n##_aioS); new (x->data) t(); } break;
+#define HNET_VARIANT_AIOSTATE_INIT(n, t) case Enum::tag_##n: { new (o->payloadS.data) ::hobbes::net::io<t>::async_read_state(); ::hobbes::net::io<t>::prepare(&o->payloadS.n##_aioS); new (&x->n##_data) t(); } break;
 #define HNET_VARIANT_AIOSTATE_ACCUM(n, t) case Enum::tag_##n: return ::hobbes::net::io<t>::accum(s, &o->payloadS.n##_aioS, &x->n##_data);
 
 #define DEFINE_HNET_VARIANT(T, CTORS...) \
   DEFINE_HNET_VARIANT_GEN(T, PRIV_HNET_MAP(HNET_VARIANT_VDECL, CTORS), PRIV_HNET_MAP(HNET_VARIANT_CTOR, CTORS), PRIV_HNET_MAP(HNET_VARIANT_PCOPY, CTORS), PRIV_HNET_MAP(HNET_VARIANT_PDESTROY, CTORS), PRIV_HNET_MAP(HNET_VARIANT_SUCC, CTORS), PRIV_HNET_MAP(HNET_VARIANT_CTOR_ENCODE, CTORS), PRIV_HNET_MAP(HNET_VARIANT_CTOR_STR, CTORS), PRIV_HNET_MAP(HNET_VARIANT_WRITE_CASE, CTORS), PRIV_HNET_MAP(HNET_VARIANT_READ_CASE, CTORS), PRIV_HNET_MAP(HNET_VARIANT_VCASE, CTORS), PRIV_HNET_MAP(HNET_VARIANT_EQCASE, CTORS), PRIV_HNET_MAP(HNET_VARIANT_CTOR_TAG, CTORS), PRIV_HNET_MAP(HNET_VARIANT_CTOR_OPAQUEDATA, CTORS), PRIV_HNET_MAP(HNET_VARIANT_AIOSTATE_DATA, CTORS), PRIV_HNET_MAP(HNET_VARIANT_AIOSTATE_INIT, CTORS), PRIV_HNET_MAP(HNET_VARIANT_AIOSTATE_ACCUM, CTORS))
 
 // (with explicit ctor names)
-#define HNET_VARIANT_LBL_CTOR(n, lbl, t) static SelfT n(const t & x) { SelfT r; r.tag = Enum::tag_##n; new (r.data) t(x); return r; }
+#define HNET_VARIANT_LBL_CTOR(n, lbl, t) static SelfT n(const t & x) { SelfT r; r.tag = Enum::tag_##n; new (&r.n##_data) t(x); return r; }
 #define HNET_VARIANT_LBL_CTOR_STR(n, lbl, t) + "," #n ":" + ::hobbes::net::io< t >::describe()
 #define HNET_VARIANT_LBL_CTOR_TAG(n, lbl, t) tag_##n,
 #define HNET_VARIANT_LBL_WRITE_CASE(n, lbl, t) case Enum::tag_##n: ::hobbes::net::io<int>::write(s, (int)this->tag); ::hobbes::net::io< t >::write(s, this->n##_data); break;
-#define HNET_VARIANT_LBL_READ_CASE(n, lbl, t)  case Enum::tag_##n: new (this->data) t(); ::hobbes::net::io< t >::read(s, &this->n##_data); break;
-#define HNET_VARIANT_LBL_PCOPY(n, lbl, t)      case Enum::tag_##n: new (this->data) t(rhs.n##_data); break;
+#define HNET_VARIANT_LBL_READ_CASE(n, lbl, t)  case Enum::tag_##n: new (&this->n##_data) t(); ::hobbes::net::io< t >::read(s, &this->n##_data); break;
+#define HNET_VARIANT_LBL_PCOPY(n, lbl, t)      case Enum::tag_##n: new (&this->n##_data) t(rhs.n##_data); break;
 #define HNET_VARIANT_LBL_PDESTROY(n, lbl, t)   case Enum::tag_##n: { typedef t PRIV_DT; ((PRIV_DT*)&this->n##_data)->~PRIV_DT(); } break;
 #define HNET_VARIANT_LBL_SUCC(n, lbl, t) +1
 #define HNET_VARIANT_LBL_CTOR_OPAQUEDATA(n, lbl, t) t n##_data;
@@ -589,7 +589,7 @@ template <typename T>
 #define HNET_VARIANT_LBL_EQCASE(n, lbl, t) case Enum::tag_##n: return (this->n##_data == rhs.n##_data);
 
 #define HNET_VARIANT_LBL_CTOR_AIOSTATE_DATA(n, lbl, t) ::hobbes::net::io<t>::async_read_state n##_aioS;
-#define HNET_VARIANT_LBL_CTOR_AIOSTATE_INIT(n, lbl, t) case Enum::tag_##n: { new (o->payloadS.data) ::hobbes::net::io<t>::async_read_state(); ::hobbes::net::io<t>::prepare(&o->payloadS.n##_aioS); new (x->data) t(); } break;
+#define HNET_VARIANT_LBL_CTOR_AIOSTATE_INIT(n, lbl, t) case Enum::tag_##n: { new (o->payloadS.data) ::hobbes::net::io<t>::async_read_state(); ::hobbes::net::io<t>::prepare(&o->payloadS.n##_aioS); new (&x->n##_data) t(); } break;
 #define HNET_VARIANT_LBL_CTOR_AIOSTATE_ACCUM(n, lbl, t) case Enum::tag_##n: return ::hobbes::net::io<t>::accum(s, &o->payloadS.n##_aioS, &x->n##_data);
 
 #define DEFINE_HNET_VARIANT_WITH_LABELS(T, CTORS...) \

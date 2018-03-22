@@ -19,6 +19,10 @@ using namespace hobbes::fregion;
 
 namespace hobbes {
 
+bool isDBFile(const std::string& f) {
+  return isFRegion(f);
+}
+
 // does a type represent a 'darray' (the previous storage for all arrays "up to capacity")?
 static bool isDArray(const MonoTypePtr& t) {
   if (const TApp* ap = is<TApp>(t)) {

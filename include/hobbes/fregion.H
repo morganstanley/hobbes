@@ -531,9 +531,6 @@ inline void appendTOCData(imagefile* f, const pagetable& newpages) {
     // the number of pagedata slots that we will fill on this cycle
     size_t slots_write = std::min(slots_avail, slots_left);
 
-    // the number of bytes written
-    size_t bytes_written = slots_write * sizeof(pagedata);
-
     // move to this page offset, and write all of the pagedata entries that we can
     seekAbs(f, f->head_toc_pos);
     writes(f, newpages.begin() + idx, newpages.begin() + idx + slots_write);
@@ -1883,9 +1880,9 @@ template <typename T>
 
 // support storing variants
 #define PRIV_HFREGION_VARIANT_TYARGL(n, t)    , t
-#define PRIV_HFREGION_VARIANT_CTOR(n, t)      static SelfT n(const t & x) { SelfT r; r.tag = Enum::tag_##n; new (r.data) t(x); return r; }
-#define PRIV_HFREGION_VARIANT_PCOPY(n, t)     case Enum::tag_##n: new (this->data) t(rhs.n##_data); break;
-#define PRIV_HFREGION_VARIANT_GINIT(n, t)     case Enum::tag_##n: new (this->data) t(); v.template init<t>(&this->n##_data); break;
+#define PRIV_HFREGION_VARIANT_CTOR(n, t)      static SelfT n(const t & x) { SelfT r; r.tag = Enum::tag_##n; new (&r.n##_data) t(x); return r; }
+#define PRIV_HFREGION_VARIANT_PCOPY(n, t)     case Enum::tag_##n: new (&this->n##_data) t(rhs.n##_data); break;
+#define PRIV_HFREGION_VARIANT_GINIT(n, t)     case Enum::tag_##n: new (&this->n##_data) t(); v.template init<t>(&this->n##_data); break;
 #define PRIV_HFREGION_VARIANT_PDESTROY(n, t)  case Enum::tag_##n: { typedef t PRIV_DT; ((PRIV_DT*)&this->n##_data)->~PRIV_DT(); } break;
 #define PRIV_HFREGION_VARIANT_CTOR_TAG(n, t)  tag_##n,
 #define PRIV_HFREGION_VARIANT_CTOR_DATA(n, t) t n##_data;
@@ -1956,6 +1953,7 @@ template <typename T>
       void gvisit(V& v) const { \
         switch (this->tag) { \
         PRIV_HFREGION_MAP(PRIV_HFREGION_VARIANT_GVCASE, CTORS) \
+        default: break; \
         } \
       } \
     template <typename V> \
@@ -2403,7 +2401,7 @@ private:
 template <typename T>
   class rseries : public seriesi {
   public:
-    rseries(imagefile* f, const std::string& seqname, const bytes& tdef, const binding& b) : f(f), tdef(tdef), batchSize(inferBatchSize(b.type)) {
+    rseries(imagefile* f, const std::string& seqname, const bytes& tdef, const binding& b) : tdef(tdef), f(f), batchSize(inferBatchSize(b.type)) {
       // determine value and sequence types
       this->stdef = storedSeqTypeDef(this->tdef, store<T>::size(), this->batchSize);
 

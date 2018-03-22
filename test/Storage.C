@@ -409,6 +409,8 @@ TEST(Storage, FRegionCompatibility) {
       s(t);
     }
 
+    EXPECT_TRUE(isDBFile(fname));
+
     cc rc;
     rc.define("f", "inputFile :: (LoadFile \"" + fname + "\" w) => w");
     EXPECT_EQ(rc.compileFn<size_t()>("size([() | x <- f.frtest, x.z == [\"a\", \"b\", \"c\"] and x.u === |HotDog| and x.v matches |just=\"chicken\"|])")(), 1000);
