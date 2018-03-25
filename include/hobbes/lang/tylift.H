@@ -7,6 +7,7 @@
 #include <hobbes/util/ptr.H>
 #include <hobbes/util/str.H>
 #include <hobbes/util/variant.H>
+#include <hobbes/util/tuple.H>
 #include <hobbes/util/preprocessor.H>
 #include <string>
 #include <vector>
@@ -149,7 +150,7 @@ template <typename T>
   struct liftSeq {
     static MonoTypePtr type(typedb& tenv) {
       // ^x.()+T*x
-      return Recursive::make("x", Variant::make(list(Variant::Member(".f0", primty("unit"), 0), Variant::Member(".f1", tuple(list(lift<T, true>::type(tenv), tvar("x"))), 1))));
+      return Recursive::make("x", Variant::make(list(Variant::Member(".f0", primty("unit"), 0), Variant::Member(".f1", tuplety(list(lift<T, true>::type(tenv), tvar("x"))), 1))));
     }
   };
 
@@ -417,6 +418,30 @@ template <typename T>
   struct lift<T, true, typename T::is_hobbes_enum> : public liftEnum<T> { };
 template <typename T>
   struct lift<T*, false, typename T::is_hobbes_enum> : public liftEnum<T> { };
+
+// lift plain tuples
+template <typename ... Fields>
+  struct liftTuple {
+    static void addFields(size_t, Record::Members*, typedb&) { }
+    static MonoTypePtr type(typedb& tenv) { return Prim::make("unit"); }
+  };
+template <typename Field, typename ... Fields>
+  struct liftTuple<Field, Fields...> {
+    static void addFields(size_t i, Record::Members* ms, typedb& tenv) {
+      ms->push_back(Record::Member(".f"+str::from(i), lift<Field, true>::type(tenv)));
+      liftTuple<Fields...>::addFields(i+1, ms, tenv);
+    }
+    static MonoTypePtr type(typedb& tenv) {
+      Record::Members ms;
+      addFields(0, &ms, tenv);
+      return Record::make(ms);
+    }
+  };
+
+template <typename ... Fields>
+  struct lift<tuple<Fields...>, true> : public liftTuple<Fields...> { };
+template <typename ... Fields>
+  struct lift<tuple<Fields...>*, false> : public liftTuple<Fields...> { };
 
 // allow basic reflective structs
 #define HOBBES_STRUCT_FIELD(t, n) t n;

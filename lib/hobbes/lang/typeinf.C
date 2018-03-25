@@ -612,7 +612,7 @@ struct expTypeInfF : public switchExprM<UnitV> {
     MonoTypes argl = freshTypeVars(v->varNames().size());
     switchOf(v->body(), expTypeInfF(fnFrame(this->tenv, v->varNames(), argl), this->u, this->ds));
 
-    v->type(qt(v->body()->type()->constraints(), MonoTypePtr(Func::make(tuple(argl), v->body()->type()->monoType()))));
+    v->type(qt(v->body()->type()->constraints(), MonoTypePtr(Func::make(tuplety(argl), v->body()->type()->monoType()))));
     return unitv;
   }
 

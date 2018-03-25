@@ -917,7 +917,7 @@ l1mtargl: l1mtype          { $$ = autorelease(new MonoTypes()); $$->push_back(*$
 ltmtype : ltmtype l0mtype { $$ = $1; $$->push_back(*$2); }
         | l0mtype         { $$ = autorelease(new MonoTypes()); $$->push_back(*$1); }
 
-l0mtype: l0mtargl "->" l1mtype { $$ = autorelease(new MonoTypePtr(Func::make(tuple(*$1), *$3))); }
+l0mtype: l0mtargl "->" l1mtype { $$ = autorelease(new MonoTypePtr(Func::make(tuplety(*$1), *$3))); }
        | mtuplist              { $$ = autorelease(new MonoTypePtr(makeTupleType(*$1))); }
        | msumlist              { $$ = autorelease(new MonoTypePtr(makeSumType(*$1))); }
 

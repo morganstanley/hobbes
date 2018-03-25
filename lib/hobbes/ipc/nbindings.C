@@ -307,10 +307,10 @@ private:
               MonoTypePtr unitt=primty("unit"), bytet=primty("byte"), intt=primty("int"), longt=primty("long");
 
               MonoTypePtr urfnty = functy(list(intt), opaqueptr<char>(false));
-              MonoTypePtr rfnty  = functy(list(intt), tuple(list(outty)));
+              MonoTypePtr rfnty  = functy(list(intt), tuplety(list(outty)));
 
               ConstraintPtr incst  = ConstraintPtr(new Constraint("BlockCodec", list(inty)));
-              ConstraintPtr outcst = ConstraintPtr(new Constraint("BlockCodec", list(tuple(list(outty)))));
+              ConstraintPtr outcst = ConstraintPtr(new Constraint("BlockCodec", list(tuplety(list(outty)))));
               ExprPtr qinvokeFn =
                 fn(str::strings(".ch", ".expr", ".x"),
                   // write the 'invoke expression' indicator byte
@@ -475,7 +475,7 @@ private:
                 proj(
                   assume(
                     fncall(
-                      var("unsafeCast", functy(list(opaqueptr<char>(false)), tuple(list(ty))), la), list(
+                      var("unsafeCast", functy(list(opaqueptr<char>(false)), tuplety(list(ty))), la), list(
                         fncall(
                           var("unsafeClientRead", functy(list(primty("long"), primty("long")), opaqueptr<char>(false)), la),
                           list(
@@ -487,7 +487,7 @@ private:
                       ),
                       la
                     ),
-                    tuple(list(ty)),
+                    tuplety(list(ty)),
                     la
                   ),
                   ".f0",

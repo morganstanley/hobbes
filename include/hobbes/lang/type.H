@@ -1068,7 +1068,7 @@ inline MonoTypePtr tstring(const std::string& x) {
   return TString::make(x);
 }
 
-inline MonoTypePtr tuple(const MonoTypes& mtys = MonoTypes()) {
+inline MonoTypePtr tuplety(const MonoTypes& mtys = MonoTypes()) {
   if (mtys.size() == 0) {
     return primty("unit");
   } else {
@@ -1106,7 +1106,7 @@ inline MonoTypePtr tstrings(const std::vector<std::string>& xs) {
   for (const auto& x : xs) {
     ts.push_back(tstring(x));
   }
-  return tuple(ts);
+  return tuplety(ts);
 }
 
 inline MonoTypePtr functy(const MonoTypePtr& aty, const MonoTypePtr& rty) {
@@ -1115,18 +1115,18 @@ inline MonoTypePtr functy(const MonoTypePtr& aty, const MonoTypePtr& rty) {
 
 inline MonoTypePtr functy(const MonoTypes& atys, const MonoTypePtr& rty) {
   if (atys.size() == 0) {
-    return Func::make(tuple(list(tuple())), rty);
+    return Func::make(tuplety(list(tuplety())), rty);
   } else {
-    return Func::make(tuple(atys), rty);
+    return Func::make(tuplety(atys), rty);
   }
 }
 
 inline MonoTypePtr closty(const MonoTypePtr& aty, const MonoTypePtr& rty) {
-  return Exists::make("E", tuple(list(functy(tuple(list(tvar("E"), aty)), rty), tvar("E"))));
+  return Exists::make("E", tuplety(list(functy(tuplety(list(tvar("E"), aty)), rty), tvar("E"))));
 }
 
 inline MonoTypePtr closty(const MonoTypes& atys, const MonoTypePtr& rty) {
-  return Exists::make("E", tuple(list(functy(tuple(cons(tvar("E"), atys)), rty), tvar("E"))));
+  return Exists::make("E", tuplety(list(functy(tuplety(cons(tvar("E"), atys)), rty), tvar("E"))));
 }
 
 inline MonoTypePtr tabs(const str::seq& tns, const MonoTypePtr& body) {

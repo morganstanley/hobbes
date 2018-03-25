@@ -197,7 +197,7 @@ PolyTypePtr Objs::generalize(const MonoTypePtr& mt) const {
     }
   }
 
-  return polytype(tvs, qualtype(cs, MonoTypePtr(Func::make(tuple(nfatys), nfrty))));
+  return polytype(tvs, qualtype(cs, MonoTypePtr(Func::make(tuplety(nfatys), nfrty))));
 }
 
 bool Objs::refine(const TEnvPtr&, const MonoTypePtr&, const MonoTypePtr&, MonoTypeUnifier*) {
@@ -241,7 +241,7 @@ bool Objs::mayBeKnown(const MonoTypePtr& mt) const {
 ExprPtr applyVtblAdjustment(const ExprPtr& e, int o, const std::string& targetTy) {
   MonoTypePtr tty(OpaquePtr::make(targetTy, 8, false));
   ExprPtr adj(new Var(".adjustVtblPtr", e->la()));
-  adj->type(qualtype(MonoTypePtr(Func::make(tuple(list(e->type()->monoType(), MonoTypePtr(Prim::make("int")))), tty))));
+  adj->type(qualtype(MonoTypePtr(Func::make(tuplety(list(e->type()->monoType(), MonoTypePtr(Prim::make("int")))), tty))));
   ExprPtr off(new Int(o, e->la()));
   off->type(qualtype(MonoTypePtr(Prim::make("int"))));
   ExprPtr ap(new App(adj, list(e, off), e->la()));
@@ -252,7 +252,7 @@ ExprPtr applyVtblAdjustment(const ExprPtr& e, int o, const std::string& targetTy
 ExprPtr applyOffsetAdjustment(const ExprPtr& e, int o, const std::string& targetTy) {
   MonoTypePtr tty(OpaquePtr::make(targetTy, 8, false));
   ExprPtr adj(new Var(".adjustPtr", e->la()));
-  adj->type(qualtype(MonoTypePtr(Func::make(tuple(list(e->type()->monoType(), MonoTypePtr(Prim::make("int")))), tty))));
+  adj->type(qualtype(MonoTypePtr(Func::make(tuplety(list(e->type()->monoType(), MonoTypePtr(Prim::make("int")))), tty))));
   ExprPtr off(new Int(o, e->la()));
   off->type(qualtype(MonoTypePtr(Prim::make("int"))));
   ExprPtr ap(new App(adj, list(e, off), e->la()));

@@ -14,13 +14,13 @@ ExprPtr makeTuple(const Exprs& exprs, const LexicalAnnotation& la) {
 }
 
 QualTypePtr concreteClosureMethodType(const MonoTypePtr& envty, const MonoTypes& fargtys, const MonoTypePtr& rty) {
-  return qualtype(MonoTypePtr(Func::make(tuple(cons(envty, fargtys)), rty)));
+  return qualtype(MonoTypePtr(Func::make(tuplety(cons(envty, fargtys)), rty)));
 }
 
 QualTypePtr abstractClosureType(const Fn* f, const MonoTypes& fargtys, const MonoTypePtr& rty) {
   MonoTypes fargs = cons(MonoTypePtr(TVar::make("E")), fargtys);
 
-  return qualtype(MonoTypePtr(Exists::make("E", tuple(list(MonoTypePtr(Func::make(tuple(fargs), rty)), MonoTypePtr(TVar::make("E")))))));
+  return qualtype(MonoTypePtr(Exists::make("E", tuplety(list(MonoTypePtr(Func::make(tuplety(fargs), rty)), MonoTypePtr(TVar::make("E")))))));
 }
 
 ExprPtr closLookup(const std::string& envVarName, const VarSet& vs, const MonoTypePtr& envty, const ExprPtr& fbody, const LexicalAnnotation& la) {
@@ -45,7 +45,7 @@ ExprPtr closureEnv(const VarSet& vs, const MonoTypePtr& envty, const LexicalAnno
 }
 
 MonoTypePtr concreteClosureEnvType(unsigned int size) {
-  return tuple(freshTypeVars(size));
+  return tuplety(freshTypeVars(size));
 }
 
 ExprPtr makeClosureOver(const Fn* f, const VarSet& vs) {

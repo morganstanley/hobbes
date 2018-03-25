@@ -173,6 +173,11 @@ DEFINE_STRUCT(AlignB,
   (ibft, data)
 );
 
+TEST(Structs, LiftTuple) {
+  hobbes::tuple<short, int, std::string> p(42, 314159, "jimmy");
+  EXPECT_TRUE(c().compileFn<bool(const hobbes::tuple<short,int,std::string>&)>("p", "p==(42,314159,\"jimmy\")")(p));
+}
+
 typedef variant<unit, AlignA> MaybeAlignA;
 typedef variant<unit, AlignB> MaybeAlignB;
 

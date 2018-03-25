@@ -78,7 +78,7 @@ public:
       } else if (f->name() == "[]" && v->args().size() == 1) {
         return switchOf(MonoTypePtr(Array::make(v->args()[0])), *this);
       } else if (f->name() == "list" && v->args().size() == 1) {
-        return switchOf(MonoTypePtr(Recursive::make("x", sumtype(primty("unit"), tuple(list(v->args()[0], tvar("x")))))), *this);
+        return switchOf(MonoTypePtr(Recursive::make("x", sumtype(primty("unit"), tuplety(list(v->args()[0], tvar("x")))))), *this);
       } else if (f->name() == "file") {
         return longType();
       } else if (f->name() == "fileref") {

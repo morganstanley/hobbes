@@ -37,7 +37,7 @@ struct destructType : public switchType<bool> {
   }
 
   bool with(const FixedArray* v) const {
-    *this->r = tuple(list(
+    *this->r = tuplety(list(
       tstring("fixedarray"),
       v->type(),
       v->length()
@@ -46,7 +46,7 @@ struct destructType : public switchType<bool> {
   }
 
   bool with(const Array* v) const {
-    *this->r = tuple(list(
+    *this->r = tuplety(list(
       tstring("array"),
       v->type()
     ));
@@ -64,7 +64,7 @@ struct destructType : public switchType<bool> {
   bool with(const Func* v) const {
     auto ps = v->parameters();
 
-    *this->r = tuple(list(
+    *this->r = tuplety(list(
       tstring("->"),
       (ps.size() == 1) ? ps[0] : v->argument(), // a little bit of a hack -- we need to deal with tuple argls better ...
       v->result()
@@ -80,9 +80,9 @@ struct destructType : public switchType<bool> {
         if (const Func* cfn = is<Func>(crec->members()[0].type)) {
           MonoTypes ps = cfn->parameters();
           if (ps.size() >= 2 && *ps[0] == *tvar(v->absTypeName())) {
-            *this->r = tuple(list(
+            *this->r = tuplety(list(
               tstring("closure"),
-              (ps.size() == 2) ? ps[1] : tuple(drop(ps, 1)),
+              (ps.size() == 2) ? ps[1] : tuplety(drop(ps, 1)),
               cfn->result()
             ));
             return true;
@@ -94,7 +94,7 @@ struct destructType : public switchType<bool> {
   }
 
   bool with(const Recursive* v) const {
-    *this->r = tuple(list(
+    *this->r = tuplety(list(
       tstring("recursive"),
       MonoTypePtr(Recursive::make(v->recTypeName(), v->recType()))
     ));
@@ -129,7 +129,7 @@ static bool asRestruct(const MonoTypePtr& t, MonoTypePtr* rty) {
   if (!ctor) return false;
 
   if (ctor->value() == "->" && ms.size() == 3) {
-    *rty = MonoTypePtr(Func::make(tuple(list(ms[1].type)), ms[2].type));
+    *rty = MonoTypePtr(Func::make(tuplety(list(ms[1].type)), ms[2].type));
     return true;
   } else if (ctor->value() == "array" && ms.size() == 2) {
     *rty = MonoTypePtr(Array::make(ms[1].type));
@@ -141,7 +141,7 @@ static bool asRestruct(const MonoTypePtr& t, MonoTypePtr* rty) {
     *rty = ms[1].type;
     return true;
   } else if (ctor->value() == "closure" && ms.size() == 3) {
-    *rty = MonoTypePtr(Exists::make("E", tuple(list(functy(list(tvar("E"), ms[1].type), ms[2].type), tvar("E")))));
+    *rty = MonoTypePtr(Exists::make("E", tuplety(list(functy(list(tvar("E"), ms[1].type), ms[2].type), tvar("E")))));
     return true;
   }
 

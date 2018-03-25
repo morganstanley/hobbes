@@ -252,7 +252,7 @@ public:
 
   PolyTypePtr type(typedb&) const {
     static MonoTypePtr tg0(TGen::make(0));
-    static PolyTypePtr ifty(new PolyType(1, qualtype(Func::make(tuple(list(MonoTypePtr(Prim::make("bool")), tg0, tg0)), tg0))));
+    static PolyTypePtr ifty(new PolyType(1, qualtype(Func::make(tuplety(list(MonoTypePtr(Prim::make("bool")), tg0, tg0)), tg0))));
     return ifty;
   }
 };
@@ -267,7 +267,7 @@ public:
   PolyTypePtr type(typedb&) const {
     static MonoTypePtr tg0(TGen::make(0));
     static MonoTypePtr tlong(Prim::make("long"));
-    static PolyTypePtr alenty(new PolyType(1, qualtype(Func::make(tuple(list(MonoTypePtr(Array::make(tg0)))), tlong))));
+    static PolyTypePtr alenty(new PolyType(1, qualtype(Func::make(tuplety(list(MonoTypePtr(Array::make(tg0)))), tlong))));
 
     return alenty;
   }
@@ -309,7 +309,7 @@ public:
   PolyTypePtr type(typedb&) const {
     static MonoTypePtr tg0(TGen::make(0));
     static MonoTypePtr earr(Array::make(tg0));
-    static PolyTypePtr fty(new PolyType(1, qualtype(Func::make(tuple(list(earr,earr)), earr))));
+    static PolyTypePtr fty(new PolyType(1, qualtype(Func::make(tuplety(list(earr,earr)), earr))));
 
     return fty;
   }
@@ -347,7 +347,7 @@ class salenexp : public op {
     static MonoTypePtr tg0(TGen::make(0));
     static MonoTypePtr tg1(TGen::make(1));
     static MonoTypePtr tlong(Prim::make("long"));
-    static PolyTypePtr alenty(new PolyType(2, qualtype(Func::make(tuple(list(MonoTypePtr(FixedArray::make(tg0, tg1)))), tlong))));
+    static PolyTypePtr alenty(new PolyType(2, qualtype(Func::make(tuplety(list(MonoTypePtr(FixedArray::make(tg0, tg1)))), tlong))));
 
     return alenty;
   }
@@ -372,7 +372,7 @@ class saelem : public op {
     static MonoTypePtr tg0(TGen::make(0));
     static MonoTypePtr tg1(TGen::make(1));
     static MonoTypePtr tlong(Prim::make("long"));
-    static PolyTypePtr aelemty(new PolyType(2, qualtype(Func::make(tuple(list(MonoTypePtr(FixedArray::make(tg0, tg1)), tlong)), tg0))));
+    static PolyTypePtr aelemty(new PolyType(2, qualtype(Func::make(tuplety(list(MonoTypePtr(FixedArray::make(tg0, tg1)), tlong)), tg0))));
     return aelemty;
   }
 };
@@ -402,7 +402,7 @@ class saacopy : public op {
     static MonoTypePtr vaty(Array::make(tg0));
     static MonoTypePtr lty (Prim::make("long"));
     static MonoTypePtr rty (Prim::make("unit"));
-    static PolyTypePtr fty(new PolyType(2, qualtype(Func::make(tuple(list(faty, vaty, lty)), rty))));
+    static PolyTypePtr fty(new PolyType(2, qualtype(Func::make(tuplety(list(faty, vaty, lty)), rty))));
     return fty;
   }
 };
@@ -442,7 +442,7 @@ public:
     static MonoTypePtr tg0(TGen::make(0));
     static MonoTypePtr tg1(TGen::make(1));
     static MonoTypePtr tf(Func::make(tg0, tg1));
-    static MonoTypePtr apt(Func::make(tuple(list(tf, tg0)), tg1));
+    static MonoTypePtr apt(Func::make(tuplety(list(tf, tg0)), tg1));
     static PolyTypePtr appt(new PolyType(2, qualtype(apt)));
     return appt;
   }
@@ -457,7 +457,7 @@ public:
 
   PolyTypePtr type(typedb&) const {
     static MonoTypePtr tg0(TGen::make(0));
-    static PolyTypePtr idty(new PolyType(1, qualtype(Func::make(tuple(list(tg0)), tg0))));
+    static PolyTypePtr idty(new PolyType(1, qualtype(Func::make(tuplety(list(tg0)), tg0))));
     return idty;
   }
 };
@@ -477,7 +477,7 @@ public:
   PolyTypePtr type(typedb&) const {
     static MonoTypePtr tg0(TGen::make(0));
     static MonoTypePtr tg1(TGen::make(1));
-    static PolyTypePtr idty(new PolyType(2, qualtype(Func::make(tuple(list(tg0)), tg1))));
+    static PolyTypePtr idty(new PolyType(2, qualtype(Func::make(tuplety(list(tg0)), tg1))));
     return idty;
   }
 };
@@ -500,7 +500,7 @@ public:
 
   PolyTypePtr type(typedb&) const {
     static MonoTypePtr tg0(TGen::make(0));
-    static PolyTypePtr npty(new PolyType(1, qualtype(Func::make(tuple(list(prim<void>())), tg0))));
+    static PolyTypePtr npty(new PolyType(1, qualtype(Func::make(tuplety(list(prim<void>())), tg0))));
     return npty;
   }
 private:
@@ -526,7 +526,7 @@ public:
   PolyTypePtr type(typedb&) const {
     static MonoTypePtr tg0(TGen::make(0));
     static MonoTypePtr tlng = prim<long>();
-    static PolyTypePtr npty(new PolyType(1, qualtype(Func::make(tuple(list(tlng)), arrayty(tg0)))));
+    static PolyTypePtr npty(new PolyType(1, qualtype(Func::make(tuplety(list(tlng)), arrayty(tg0)))));
     return npty;
   }
 };
@@ -543,7 +543,7 @@ public:
   PolyTypePtr type(typedb&) const {
     static MonoTypePtr tg0(TGen::make(0));
     static MonoTypePtr tint(Prim::make("int"));
-    static PolyTypePtr fty(new PolyType(1, qualtype(Func::make(tuple(list(tg0, tint)), tg0))));
+    static PolyTypePtr fty(new PolyType(1, qualtype(Func::make(tuplety(list(tg0, tint)), tg0))));
     return fty;
   }
 };
@@ -576,7 +576,7 @@ public:
   PolyTypePtr type(typedb&) const {
     static MonoTypePtr tg0(TGen::make(0));
     static MonoTypePtr tint(Prim::make("int"));
-    static PolyTypePtr fty(new PolyType(1, qualtype(Func::make(tuple(list(tg0, tint)), tg0))));
+    static PolyTypePtr fty(new PolyType(1, qualtype(Func::make(tuplety(list(tg0, tint)), tg0))));
     return fty;
   }
 };
