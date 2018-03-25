@@ -87,28 +87,28 @@ struct macroExpandF : public switchExprC<ExprPtr> {
   // x and y = if x then y else false
   static ExprPtr macroExpandAnd(const Exprs& es, const LexicalAnnotation& la) {
     MonoTypePtr tbool = MonoTypePtr(Prim::make("bool"));
-    QualTypePtr tbfn  = qualtype(Func::make(tuple(list(tbool, tbool, tbool)), tbool));
+    QualTypePtr tbfn  = qualtype(Func::make(tuplety(list(tbool, tbool, tbool)), tbool));
     return mk(tbool, new App(mk(tbfn, new Var("if", la)), list(es[0], es[1], mk(tbool, new Bool(false, la))), la));
   }
 
   // and => \(x,y).x and y
   static ExprPtr macroEtaLiftAnd(const LexicalAnnotation& la) {
     MonoTypePtr tbool = MonoTypePtr(Prim::make("bool"));
-    QualTypePtr tafn  = qualtype(Func::make(tuple(list(tbool, tbool)), tbool));
+    QualTypePtr tafn  = qualtype(Func::make(tuplety(list(tbool, tbool)), tbool));
     return mk(tafn, new Fn(list<std::string>("x", "y"), macroExpandAnd(list(mk(tbool, new Var("x", la)), mk(tbool, new Var("y", la))), la), la));
   }
   
   // x or y = if x then true else y
   static ExprPtr macroExpandOr(const Exprs& es, const LexicalAnnotation& la) {
     MonoTypePtr tbool = MonoTypePtr(Prim::make("bool"));
-    QualTypePtr tbfn  = qualtype(Func::make(tuple(list(tbool, tbool, tbool)), tbool));
+    QualTypePtr tbfn  = qualtype(Func::make(tuplety(list(tbool, tbool, tbool)), tbool));
     return mk(tbool, new App(mk(tbfn, new Var("if", la)), list(es[0], mk(tbool, new Bool(true, la)), es[1]), la));
   }
 
   // or => \(x,y).x or y
   static ExprPtr macroEtaLiftOr(const LexicalAnnotation& la) {
     MonoTypePtr tbool = MonoTypePtr(Prim::make("bool"));
-    QualTypePtr tafn  = qualtype(Func::make(tuple(list(tbool, tbool)), tbool));
+    QualTypePtr tafn  = qualtype(Func::make(tuplety(list(tbool, tbool)), tbool));
     return mk(tafn, new Fn(list<std::string>("x", "y"), macroExpandOr(list(mk(tbool, new Var("x", la)), mk(tbool, new Var("y", la))), la), la));
   }
 };

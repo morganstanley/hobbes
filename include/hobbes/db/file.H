@@ -63,7 +63,7 @@ template <typename T, bool InStruct>
     static MonoTypePtr type(typedb& tenv) {
       // ^x.()+T*x@n
       MonoTypePtr tlink = MonoTypePtr(TApp::make(MonoTypePtr(Prim::make("fileref")), list(tvar("x"))));
-      MonoTypePtr tcons = tuple(list(lift<T, true>::type(tenv), tlink));
+      MonoTypePtr tcons = tuplety(list(lift<T, true>::type(tenv), tlink));
 
       return MonoTypePtr(Recursive::make("x", MonoTypePtr(Variant::make(list(Variant::Member(".f0", primty("unit"), 0), Variant::Member(".f1", tcons, 1))))));
     }

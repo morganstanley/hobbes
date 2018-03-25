@@ -106,7 +106,7 @@ ExprPtr ProcessP::unqualify(const TEnvPtr& tenv, const ConstraintPtr& cst, const
 
 PolyTypePtr ProcessP::lookup(const std::string& vn) const {
   if (vn == PROCESS_SPAWN) {
-    return polytype(2, qualtype(list(ConstraintPtr(new Constraint(ProcessP::constraintName(), list(tgen(0), tgen(1))))), functy(list(tuple()), tgen(1))));
+    return polytype(2, qualtype(list(ConstraintPtr(new Constraint(ProcessP::constraintName(), list(tgen(0), tgen(1))))), functy(list(tuplety()), tgen(1))));
   } else {
     return PolyTypePtr();
   }

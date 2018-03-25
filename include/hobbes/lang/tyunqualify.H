@@ -17,7 +17,8 @@ typedef std::pair<VarIDs, int> FunDep;
 typedef std::vector<FunDep>    FunDeps;
 
 // if E :: T and R.satisfied(T), then R.unqualify(E)
-struct Unqualifier {
+class Unqualifier {
+public:
   // bind any implied type variables in a constraint
   virtual bool refine(const TEnvPtr& tenv, const ConstraintPtr& cst, MonoTypeUnifier* u, Definitions* ds) = 0;
 

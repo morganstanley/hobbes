@@ -4424,7 +4424,7 @@ yyreduce:
 
   case 294:
 #line 920 "hexpr.y" /* yacc.c:1646  */
-    { (yyval.mtype) = autorelease(new MonoTypePtr(Func::make(tuple(*(yyvsp[-2].mtypes)), *(yyvsp[0].mtype)))); }
+    { (yyval.mtype) = autorelease(new MonoTypePtr(Func::make(tuplety(*(yyvsp[-2].mtypes)), *(yyvsp[0].mtype)))); }
 #line 4429 "hexpr.parse.C" /* yacc.c:1646  */
     break;
 

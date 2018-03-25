@@ -65,13 +65,19 @@ instance (a != b, Convert a b, Eq b) => Equiv a b where
 instance (a != b, Convert b a, Eq a) => Equiv a b where
   x == y = x === (convert(y)::a)
 
-// equality on tuples
+// equality and equivalence on tuples
 instance (t=(a*tt), Eq a, Eq tt) => Eq t where
   x === y = x.0 === y.0 and tupleTail(x) === tupleTail(y)
 
-// equality on records
+instance (a=(ah*at), b=(bh*bt), Equiv ah bh, Equiv at bt) => Equiv a b where
+  x == y = x.0 == y.0 and tupleTail(x) == tupleTail(y)
+
+// equality and equivalence on records
 instance (r={a*rr}, Eq a, Eq rr) => Eq r where
   x === y = recordHeadValue(x) === recordHeadValue(y) and recordTail(x) === recordTail(y)
+
+instance (a={ah*at}, b={bh*bt}, Equiv ah bh, Equiv at bt) => Equiv a b where
+  x == y = recordHeadValue(x) == recordHeadValue(y) and recordTail(x) == recordTail(y)
 
 // equality on variants
 instance (v=|a+vt|, Eq a, Eq vt) => Eq v where

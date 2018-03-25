@@ -39,7 +39,7 @@ QualTypePtr underlyingFnType(const TEnvPtr& tenv, const MonoTypePtr& rty, const 
 
   try {
     QualTypePtr vfty = tenv->lookup(fieldName)->instantiate();
-    MonoTypePtr ifty(Func::make(tuple(trCons(rty, ffty->parameters())), ffty->result()));
+    MonoTypePtr ifty(Func::make(tuplety(trCons(rty, ffty->parameters())), ffty->result()));
     mgu(qualtype(ifty), vfty, s);
     return substitute(s, vfty);
   } catch (std::exception&) {

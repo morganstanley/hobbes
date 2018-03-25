@@ -185,14 +185,14 @@ void prepareStrExpr(Server* s, int c, exprid eid, const std::string& expr, const
   auto la = LexicalAnnotation::null();
 
   if (intys.size() == 0 || (intys.size() == 1 && isUnit(intys[0]))) {
-    s->prepare(c, eid, assume(s->readExpr(expr), functy(tuple(intys), outty), la), tuple());
+    s->prepare(c, eid, assume(s->readExpr(expr), functy(tuplety(intys), outty), la), tuplety());
   } else {
     ExprPtr f = assume(s->readExpr(expr), functy(intys, outty), la);
     Exprs args;
     for (size_t i = 0; i < intys.size(); ++i) {
       args.push_back(proj(var("p", la), ".f"+str::from(i), la));
     }
-    s->prepare(c, eid, fn(str::strings("p"), fncall(f, args, la), la), tuple(intys));
+    s->prepare(c, eid, fn(str::strings("p"), fncall(f, args, la), la), tuplety(intys));
   }
 }
 
