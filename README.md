@@ -505,7 +505,7 @@ $ hog -g WeatherMonitor
 [2018-01-01T09:00:01.848340]: finished preparing statements, writing data to './WeatherMonitor/data-2018.01.01-0.log'
 ```
 
-Now while these two programs (both `hog` and our test program) are left running, we can simultaneously run a third program to load and query this data as it is being recorded.  This is a good use-case for the `hi` program seen previously.  If we enter the same directory where `hog` is running, we can take a look at the data we're recording this way:
+Now while these two programs (both `hog` and our test program) are left running, we can simultaneously run a third program to load and query this data as it is being recorded.  This is a good use-case for the `hi` program seen previously.  If we enter the directory where `hog` is writing its output files, we can take a look at the data we're recording this way:
 
 ```
 $ hi
