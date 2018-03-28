@@ -493,26 +493,26 @@ This shows that we can use this program to consume and store data in one of thre
 2. temporary local storage (batched, compressed) pending successful sends to a remote process
 3. a network server, storing into local files from remote processes
 
-For our test program above, it will be enough to just store data locally.  We can start the producer (our test program above) or the consumer in any order.  Let's assume that the test program is already running, then we can run `hog` like this to begin recording data:
+For our test program above, it will be enough to just store data locally.  We must run the `hog` consumer first before starting the producer (our test program).  If we run `hog` and then start start our test program, we should see `hog` produce output that looks like:
 
 ```
 $ hog -g WeatherMonitor
-[2017-01-01T09:00:00.867323]: hog running in mode : |local={ dir="./", groups={"WeatherMonitor"} }|
-[2017-01-01T09:00:00.867536]: polling for creation of memory regions
-[2017-01-01T09:00:00.873862]: group 'WeatherMonitor' ready, preparing to consume its data
-[2017-01-01T09:00:01.637614]:  ==> carPassed :: ([char]) (#1)
-[2017-01-01T09:00:01.733374]:  ==> sensor :: ([char] * { temp:double, humidity:double }) (#0)
-[2017-01-01T09:00:01.848340]: finished preparing statements, writing data to './WeatherMonitor/data-2017.01.01-0.log'
+[2018-01-01T09:00:00.867323]: hog running in mode : |local={ dir="./", groups={"WeatherMonitor"} }|
+[2018-01-01T09:00:00.867536]: polling for creation of memory regions
+[2018-01-01T09:00:00.873862]: group 'WeatherMonitor' ready, preparing to consume its data
+[2018-01-01T09:00:01.637614]:  ==> carPassed :: ([char]) (#1)
+[2018-01-01T09:00:01.733374]:  ==> sensor :: ([char] * { temp:double, humidity:double }) (#0)
+[2018-01-01T09:00:01.848340]: finished preparing statements, writing data to './WeatherMonitor/data-2018.01.01-0.log'
 ```
 
-Now while these two programs (both `hog` and our test program) are left running, we can simultaneously run a third program to load and query this data as it is being recorded.  This is a good use-case for the `hi` program seen previously.  If we enter the same directory where `hog` is running, we can take a look at the data we're recording this way:
+Now while these two programs (both `hog` and our test program) are left running, we can simultaneously run a third program to load and query this data as it is being recorded.  This is a good use-case for the `hi` program seen previously.  If we enter the directory where `hog` is writing its output files, we can take a look at the data we're recording this way:
 
 ```
 $ hi
 hi : an interactive shell for hobbes
       type ':h' for help on commands
 
-> wm = inputFile :: (LoadFile "./WeatherMonitor/data-2017.01.01-0.log" w) => w
+> wm = inputFile :: (LoadFile "./WeatherMonitor/data-2018.01.01-0.log" w) => w
 > wm.sensor
 AZ {temp=44.572017, humidity=44.582017}
 AZ   {temp=3.575808, humidity=3.585808}
@@ -592,16 +592,16 @@ Now that we have indicated that we're recording meaningful transactions, when we
 
 ```
 $ hog -g Orders
-[2017-01-01T09:00:00.371394]: hog running in mode : |local={ dir="./", groups={"Orders"} }|
-[2017-01-01T09:00:00.371633]: polling for creation of memory regions
-[2017-01-01T09:00:00.371697]: group 'Orders' ready, preparing to consume its data
-[2017-01-01T09:00:01.615395]:  ==> paymentReceived :: (double) (#4)
-[2017-01-01T09:00:01.736183]:  ==> orderCanceled :: () (#3)
-[2017-01-01T09:00:01.753279]:  ==> drinkOrdered :: ([char]) (#2)
-[2017-01-01T09:00:01.838780]:  ==> productOrdered :: ([char]) (#1)
-[2017-01-01T09:00:01.880418]:  ==> customerEntered :: ([char]) (#0)
-[2017-01-01T09:00:01.927219]:  ==> transactions :: <any of the above>
-[2017-01-01T09:00:02.136798]: finished preparing statements, writing data to './Orders/data-2017.01.01-0.log'
+[2018-01-01T09:00:00.371394]: hog running in mode : |local={ dir="./", groups={"Orders"} }|
+[2018-01-01T09:00:00.371633]: polling for creation of memory regions
+[2018-01-01T09:00:00.371697]: group 'Orders' ready, preparing to consume its data
+[2018-01-01T09:00:01.615395]:  ==> paymentReceived :: (double) (#4)
+[2018-01-01T09:00:01.736183]:  ==> orderCanceled :: () (#3)
+[2018-01-01T09:00:01.753279]:  ==> drinkOrdered :: ([char]) (#2)
+[2018-01-01T09:00:01.838780]:  ==> productOrdered :: ([char]) (#1)
+[2018-01-01T09:00:01.880418]:  ==> customerEntered :: ([char]) (#0)
+[2018-01-01T09:00:01.927219]:  ==> transactions :: <any of the above>
+[2018-01-01T09:00:02.136798]: finished preparing statements, writing data to './Orders/data-2018.01.01-0.log'
 ```
 
 And if we simultaneously load this file, we can see that all of our storage statements can be queried as well as this new "transactions" data.  Each transaction is stored as a timestamp and an array of a variant over all possible storage statements so that we can tell which statements were recorded and in what order:
@@ -611,19 +611,19 @@ $ hi
 hi : an interactive shell for hobbes
       type ':h' for help on commands
 
-> orders = inputFile :: (LoadFile "./Orders/data-2017.01.01-0.log" w) => w
+> orders = inputFile :: (LoadFile "./Orders/data-2018.01.01-0.log" w) => w
 > orders.transactions
                       time                                                                                                              entries
 -------------------------- --------------------------------------------------------------------------------------------------------------------
-2017-04-11T12:19:03.244206                                       [|customerEntered=("Pat")|, |productOrdered=("Bacon Salad")|, |orderCanceled|]
-2017-04-11T12:19:03.244172                                 [|customerEntered=("Beatrice")|, |productOrdered=("Cheese Quake")|, |orderCanceled|]
-2017-04-11T12:19:03.244127    [|customerEntered=("Pat")|, |productOrdered=("Cheese Quake")|, |drinkOrdered=("Water")|, |paymentReceived=(6.4)|]
-2017-04-11T12:19:03.244092                               [|customerEntered=("Pat")|, |productOrdered=("Bacon Salad")|, |paymentReceived=(6.4)|]
-2017-04-11T12:19:03.244047 [|customerEntered=("Pat")|, |productOrdered=("Cheese Quake")|, |drinkOrdered=("Lemonade")|, |paymentReceived=(2.1)|]
-2017-04-11T12:19:03.244013                               [|customerEntered=("Pat")|, |productOrdered=("Bacon Salad")|, |paymentReceived=(7.6)|]
-2017-04-11T12:19:03.243978                           [|customerEntered=("Beatrice")|, |productOrdered=("BBQ Attack")|, |paymentReceived=(3.4)|]
-2017-04-11T12:19:03.243944                          [|customerEntered=("Beatrice")|, |productOrdered=("Bacon Salad")|, |paymentReceived=(3.5)|]
-2017-04-11T12:19:03.243910                             [|customerEntered=("Harv")|, |productOrdered=("Cheese Quake")|, |paymentReceived=(6.3)|]
+2018-01-01T12:19:03.244206                                       [|customerEntered=("Pat")|, |productOrdered=("Bacon Salad")|, |orderCanceled|]
+2018-01-01T12:19:03.244172                                 [|customerEntered=("Beatrice")|, |productOrdered=("Cheese Quake")|, |orderCanceled|]
+2018-01-01T12:19:03.244127    [|customerEntered=("Pat")|, |productOrdered=("Cheese Quake")|, |drinkOrdered=("Water")|, |paymentReceived=(6.4)|]
+2018-01-01T12:19:03.244092                               [|customerEntered=("Pat")|, |productOrdered=("Bacon Salad")|, |paymentReceived=(6.4)|]
+2018-01-01T12:19:03.244047 [|customerEntered=("Pat")|, |productOrdered=("Cheese Quake")|, |drinkOrdered=("Lemonade")|, |paymentReceived=(2.1)|]
+2018-01-01T12:19:03.244013                               [|customerEntered=("Pat")|, |productOrdered=("Bacon Salad")|, |paymentReceived=(7.6)|]
+2018-01-01T12:19:03.243978                           [|customerEntered=("Beatrice")|, |productOrdered=("BBQ Attack")|, |paymentReceived=(3.4)|]
+2018-01-01T12:19:03.243944                          [|customerEntered=("Beatrice")|, |productOrdered=("Bacon Salad")|, |paymentReceived=(3.5)|]
+2018-01-01T12:19:03.243910                             [|customerEntered=("Harv")|, |productOrdered=("Cheese Quake")|, |paymentReceived=(6.3)|]
 ...
 ```
 
