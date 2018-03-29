@@ -282,7 +282,7 @@ Expr* makeProjSeq(Expr* rec, const str::seq& fields, const LexicalAnnotation& la
 
 MonoTypePtr monoTypeByName(const std::string& tn) {
   if (isPrimName(tn) || yyParseCC->isTypeAliasName(tn)) {
-    return Prim::make(tn);
+    return yyParseCC->replaceTypeAliases(Prim::make(tn));
   } else if (yyParseCC->isTypeName(tn)) {
     return Prim::make(tn, yyParseCC->namedTypeRepresentation(tn));
   } else {
