@@ -177,10 +177,8 @@ public:
     if (llvm::Value* cr = compileConstArray(aty->type(), vs)) {
       return cr;
     } else {
-      // a hack to determine the element type for arrays
-      // (we store opaque pointers non-contiguously in arrays)
-      bool         isOpaquePtr = is<OpaquePtr>(aty->type());
-      llvm::Type*  elemTy      = toLLVM(aty->type(), isOpaquePtr);
+      bool         isStoredPtr = is<OpaquePtr>(aty->type()) || is<Func>(aty->type()); // consistent with ctype.C, store opaque ptrs and functions in arrays as pointers
+      llvm::Type*  elemTy      = toLLVM(aty->type(), isStoredPtr);
       llvm::Value* p           = compileAllocStmt(sizeof(long) + sizeOf(aty->type()) * vs.size(), ptrType(llvmVarArrType(elemTy)));
 
       // store the array length
@@ -196,7 +194,7 @@ public:
           llvm::Value* ap = offset(builder(), adatap, 0, i);
 
           // we only memcopy into an array if the data is large and isn't an opaque pointer (always write opaque pointers as pointers)
-          if (!isOpaquePtr && isLargeType(aty->type())) {
+          if (!isStoredPtr && isLargeType(aty->type())) {
             builder()->CreateMemCpy(ap, ev, sizeOf(aty->type()), 8);
           } else {
             builder()->CreateStore(ev, ap);
