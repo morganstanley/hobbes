@@ -325,10 +325,12 @@ struct repTypeAliasesF : public switchTyFn {
   }
 
   MonoTypePtr with(const Prim* v) const {
-    auto td = this->ttyDefs.find(v->name());
-    if (td != this->ttyDefs.end()) {
-      if (td->second.first.size() == 0) {
-        return td->second.second;
+    if (!v->representation()) {
+      auto td = this->ttyDefs.find(v->name());
+      if (td != this->ttyDefs.end()) {
+        if (td->second.first.size() == 0) {
+          return td->second.second;
+        }
       }
     }
     return c(v);
