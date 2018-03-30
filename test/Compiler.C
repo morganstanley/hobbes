@@ -56,3 +56,9 @@ TEST(Compiler, compileFnTypes) {
   EXPECT_EQ(c().compileFn<int(*)(const std::string&)>("_","42")(""), 42);
 }
 
+static int appC(const closure<int(int)>& c) { return c(7); }
+TEST(Compiler, liftClosTypes) {
+  c().bind("appC", &appC);
+  EXPECT_EQ(c().compileFn<int()>("(\\x.appC(\\y.x*y-x))(7)")(), 42);
+}
+

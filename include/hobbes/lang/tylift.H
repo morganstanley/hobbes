@@ -269,7 +269,7 @@ template <typename T, size_t N, bool InStruct>
 template <typename T, size_t N, bool InStruct>
   struct lift<const T[N], InStruct> : public liftFixedArray<T, N> { };
 
-// generated lifts for C functions
+// lifts for C functions
 template <typename ... Ts>
   struct typeSeq {
     static void accum(MonoTypes*, typedb&) { }
@@ -302,6 +302,35 @@ template <typename R, typename ... Args>
   struct lift<R(*)(Args...), true> : public liftFunction<R(Args...)> { };
 template <typename R, typename ... Args>
   struct lift<R(*)(Args...), false> : public liftFunction<R(Args...)> { };
+
+// lifts for closures
+template <typename F>
+  struct closure { };
+template <typename R, typename ... Args>
+  struct closure<R(Args...)> {
+    typedef R (*F)(const void*,Args...);
+    F    f;
+    char data[1];
+
+    R operator()(const Args&... args) const {
+      return this->f(&this->data[0], args...);
+    }
+  };
+
+template <typename R, typename ... Args>
+  struct liftClosure {
+    static MonoTypePtr type(typedb& tenv) {
+      auto args = typeSeq<Args...>::liftSeq(tenv);
+      if (args.size() == 0) {
+        return closty(list(primty("unit")), lift<R, false>::type(tenv));
+      } else {
+        return closty(args, lift<R, false>::type(tenv));
+      }
+    }
+  };
+
+template <bool InStruct, typename R, typename ... Args>
+  struct lift<closure<R(Args...)>*, InStruct> : public liftClosure<R, Args...> { };
 
 // lift variant types
 // -- first by lifting constructor names
