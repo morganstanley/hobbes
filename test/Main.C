@@ -32,6 +32,7 @@ int TestCoord::runTestGroups(const std::set<std::string>& gs) {
     auto gi = this->tests.find(gn);
     if (gi == this->tests.end()) {
       std::cout << "ERROR: no test group named '" << gn << "' exists" << std::endl;
+      continue;
     }
     const auto& g = gi->second;
 

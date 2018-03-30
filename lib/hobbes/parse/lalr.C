@@ -324,7 +324,7 @@ itemsets follow(const grammar& g, const itemset& is, const terminals& vs) {
   return r;
 }
 
-void closure(const grammar& g, itemset* is) {
+void gclosure(const grammar& g, itemset* is) {
   // add implied items to a fixed point
   bool changed = true;
   while (changed) {
@@ -339,9 +339,9 @@ void closure(const grammar& g, itemset* is) {
   }
 }
 
-itemset closure(const grammar& g, const itemset& is) {
+itemset gclosure(const grammar& g, const itemset& is) {
   itemset r = is;
-  closure(g, &r);
+  gclosure(g, &r);
   return r;
 }
 
@@ -370,7 +370,7 @@ state_transitions follow(const grammar& g, const itemset& is, const terminalset&
   state_transitions r;
   for (terminalset::const_iterator v = vs.begin(); v != vs.end(); ++v) {
     if (*v != endOfFile::value()) {
-      r[*v] = parserState(closure(g, follow(g, is, *v)), p);
+      r[*v] = parserState(gclosure(g, follow(g, is, *v)), p);
     }
   }
   return r;
@@ -390,7 +390,7 @@ parserdef lr0parser(const grammar& g, terminal* s) {
   p.g[boot].push_back(br);
 
   // enumerate the state space implied by this grammar
-  nat n = parserState(closure(p.g, ruleItems(p.g, boot)), &p);
+  nat n = parserState(gclosure(p.g, ruleItems(p.g, boot)), &p);
   while (n < p.states.size()) {
     const itemset& nis = parserStateDef(p, n);
     p.transitions[n] = follow(p.g, nis, next(p.g, nis), &p);

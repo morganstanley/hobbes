@@ -122,8 +122,8 @@ itemset  follow(const grammar& g, const itemset& is, terminal* v);
 itemsets follow(const grammar& g, const itemset& is, const terminals& vs);
 
 // close an itemset
-itemset closure(const grammar& g, const itemset& is);
-void closure(const grammar& g, itemset* is);
+itemset gclosure(const grammar& g, const itemset& is);
+void gclosure(const grammar& g, itemset* is);
 
 // find or create a state in a parser from a (closed) itemset
 nat parserState(const itemset& s, parserdef* p);
