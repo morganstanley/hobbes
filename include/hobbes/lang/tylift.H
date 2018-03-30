@@ -320,7 +320,12 @@ template <typename R, typename ... Args>
 template <typename R, typename ... Args>
   struct liftClosure {
     static MonoTypePtr type(typedb& tenv) {
-      return closty(typeSeq<Args...>::liftSeq(tenv), lift<R, false>::type(tenv));
+      auto args = typeSeq<Args...>::liftSeq(tenv);
+      if (args.size() == 0) {
+        return closty(list(primty("unit")), lift<R, false>::type(tenv));
+      } else {
+        return closty(args, lift<R, false>::type(tenv));
+      }
     }
   };
 
