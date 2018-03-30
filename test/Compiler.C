@@ -62,3 +62,7 @@ TEST(Compiler, liftClosTypes) {
   EXPECT_EQ(c().compileFn<int()>("(\\x.appC(\\y.x*y-x))(7)")(), 42);
 }
 
+TEST(Compiler, Parsing) {
+  EXPECT_TRUE((c().compileFn<bool(const std::pair<char,char>&)>("p", "p==('\\\\','\\\\')")(std::make_pair('\\','\\'))));
+}
+
