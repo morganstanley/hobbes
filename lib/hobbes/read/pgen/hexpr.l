@@ -146,7 +146,7 @@ std::string* identifier(const char* b, const char* e) {
 "@"                    { return TAT; }
 "$"                    { return TDOLLAR; }
 "?"                    { return TQUESTION; }
-'(\\.|.)'              { SAVE_STR;    return TCHAR; }
+'(\\.|[^'\n\\])+'      { SAVE_STR;    return (hobbes::str::unescape(hobbes::str::trimq(*yylval.string, '\'')).size() <= 1) ? TCHAR : TREGEX; }
 "'"                    { return TSQUOTE; }
 "`"                    { return TEQUOTE; }
 0X[0-9a-fA-F]{2}       { SAVE_STR;    return TBYTE; }
@@ -160,7 +160,6 @@ std::string* identifier(const char* b, const char* e) {
 [0-9]+S                { SAVE_SHORT;  return TSHORT; }
 [0-9]+                 { SAVE_INT;    return TINT; }
 \"(\\.|[^"])*\"        { SAVE_STR;    return TSTRING; }
-'([^']|\\')+'          { SAVE_STR;    return TREGEX; }
 
 [0-9]+ms               { SAVE_STR;    return TTIMEINTERVAL; }
 [0-9]+us               { SAVE_STR;    return TTIMEINTERVAL; }
