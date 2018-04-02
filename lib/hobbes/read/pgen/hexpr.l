@@ -21,12 +21,12 @@ int yycolumn = 1;
 
 #define SAVE_STR    yylval.string = hobbes::autorelease(new std::string(yytext, yytext + yyleng))
 #define SAVE_IDENT  yylval.string = identifier(yytext, yytext + yyleng)
-#define SAVE_BOOL   yylval.boolv = std::string(yytext, yytext + yyleng) != "false"
-#define SAVE_SHORT  yylval.shortv = (short)atoi(yytext)
-#define SAVE_INT    yylval.intv = atoi(yytext)
-#define SAVE_LONG   yylval.longv = atol(std::string(yytext, yytext + yyleng - 1).c_str())
-#define SAVE_FLOAT  yylval.floatv = atof(std::string(yytext, yytext + yyleng).c_str())
-#define SAVE_DOUBLE yylval.doublev = atof(std::string(yytext, yytext + yyleng).c_str())
+#define SAVE_BOOL   std::istringstream(std::string(yytext, yytext + yyleng)) >> std::boolalpha >> yylval.boolv
+#define SAVE_SHORT  yylval.shortv = (short)std::stoi(std::string(yytext, yytext + yyleng))
+#define SAVE_INT    yylval.intv = std::stoi(std::string(yytext, yytext + yyleng))
+#define SAVE_LONG   yylval.longv = std::stol(std::string(yytext, yytext + yyleng - 1))
+#define SAVE_FLOAT  yylval.floatv = std::stof(std::string(yytext, yytext + yyleng))
+#define SAVE_DOUBLE yylval.doublev = std::stod(std::string(yytext, yytext + yyleng))
 
 std::string yyVexpLexError;
 int yyInitToken = 0;
