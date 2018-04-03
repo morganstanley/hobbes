@@ -718,8 +718,9 @@ l6expr: l6expr "(" cargs ")"    { $$ = new App(ExprPtr($1), *$3, m(@1, @4)); }
       | "case" l0expr "of" "|" varfields "|" "default" l0expr { $$ = new Case(ExprPtr($2), *$5, ExprPtr($8), m(@1, @8)); }
 
       /* record construction / elimination */
-      | "{" recfields "}"   { if ($2->size() > 0) { $$ = new MkRecord(*$2, m(@1, @3)); } else { $$ = new Unit(m(@1, @3)); } }
-      | l6expr recfieldpath { $$ = makeProjSeq($1, *$2, m(@1, @2)); }
+      | "{" recfields "}"     { if ($2->size() > 0) { $$ = new MkRecord(*$2, m(@1, @3)); } else { $$ = new Unit(m(@1, @3)); } }
+      | "{" recfields "," "}" { if ($2->size() > 0) { $$ = new MkRecord(*$2, m(@1, @4)); } else { $$ = new Unit(m(@1, @4)); } }
+      | l6expr recfieldpath   { $$ = makeProjSeq($1, *$2, m(@1, @2)); }
 
       /* record sections */
       | recfieldpath { $$ = new Fn(str::strings("x"), proj(var("x", m(@1)), *$1, m(@1)), m(@1)); }
@@ -819,16 +820,21 @@ refutablep: "boolV"                    { $$ = new MatchLiteral(PrimitivePtr(new 
           | "dateTimeV"                { $$ = new MatchLiteral(mkDateTimePrim(*$1, m(@1)), mkDateTimeExpr(*$1, m(@1)), m(@1)); }
           | "regexV"                   { $$ = new MatchRegex(std::string($1->begin() + 1, $1->end() - 1), m(@1)); }
           | "[" patternseq "]"         { $$ = new MatchArray(*$2, m(@1,@3)); }
+          | "[" patternseq "," "]"     { $$ = new MatchArray(*$2, m(@1,@4)); }
           | "|" id "|"                 { $$ = new MatchVariant(*$2, PatternPtr(new MatchLiteral(PrimitivePtr(new Unit(m(@2))), m(@2))), m(@1,@3)); }
           | "|" id "=" pattern "|"     { $$ = new MatchVariant(*$2, PatternPtr($4), m(@1,@5)); }
           | "|" "intV" "=" pattern "|" { $$ = new MatchVariant(".f" + str::from($2), PatternPtr($4), m(@1,@5)); }
           | "(" patternseq ")"         { $$ = pickNestedPat($2, m(@1,@3)); }
+          | "(" patternseq "," ")"     { $$ = pickNestedPat($2, m(@1,@4)); }
           | "{" recpatfields "}"       { $$ = new MatchRecord(*$2, m(@1,@3)); }
+          | "{" recpatfields "," "}"   { $$ = new MatchRecord(*$2, m(@1,@4)); }
           | id                         { $$ = patVarCtorFn(*$1, m(@1)); }
 
-irrefutablep: id                   { $$ = new MatchAny(*$1, m(@1)); }
-            | "(" patternseq ")"   { $$ = pickNestedPat($2, m(@1,@3)); }
-            | "{" recpatfields "}" { $$ = new MatchRecord(*$2, m(@1,@3)); }
+irrefutablep: id                       { $$ = new MatchAny(*$1, m(@1)); }
+            | "(" patternseq ")"       { $$ = pickNestedPat($2, m(@1,@3)); }
+            | "(" patternseq "," ")"   { $$ = pickNestedPat($2, m(@1,@4)); }
+            | "{" recpatfields "}"     { $$ = new MatchRecord(*$2, m(@1,@3)); }
+            | "{" recpatfields "," "}" { $$ = new MatchRecord(*$2, m(@1,@4)); }
 
 pattern: refutablep { $$ = $1; }
 
