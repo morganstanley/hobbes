@@ -296,16 +296,46 @@ inline std::string sharedMemName(const std::string& groupName) {
 }
 
 // register the allocation of a shared memory region with this group name in this thread/process
-inline void registerSHMAlloc(int* mqserver, const std::string& groupName) {
+inline void registerSHMAlloc(int* mqserver, const char* groupName, bool reconnect = false) {
   if (*mqserver < 0) {
     *mqserver = connectGroupHost(groupName);
   }
 
   ProcThread pt = thisProcThread();
   uint8_t msg[1+sizeof(ProcThread)];
-  msg[0] = 0;
+  msg[0] = reconnect ? 1 : 0;
   memcpy(msg+1, &pt, sizeof(ProcThread));
   mqwrite(*mqserver, msg, sizeof(msg));
+}
+
+inline void reconnectSHM(int* mqserver, const char* groupName) {
+  // has the other side disconnected?
+  if (*mqserver >= 0) {
+    fd_set rd;
+    FD_ZERO(&rd);
+    FD_SET(*mqserver, &rd);
+
+    timeval tmout;
+    tmout.tv_sec = 0;
+    tmout.tv_usec = 1;
+
+    auto sr = select(*mqserver+1, &rd, 0, 0, &tmout);
+    if (sr == 1) {
+      char b=0;
+      if (recv(*mqserver, &b, 1, MSG_PEEK) == 0) {
+        close(*mqserver);
+        *mqserver = -1;
+      }
+    }
+  }
+
+  // if we're in a disconnected state, try once to reconnect
+  if (*mqserver < 0) {
+    try {
+      registerSHMAlloc(mqserver, groupName, true);
+    } catch (std::exception& ex) {
+    }
+  }
 }
 
 // between queue readers and writers, there are only three states of concern:
@@ -422,7 +452,7 @@ public:
 
   inline const pqueue_config& config() const { return this->cfg; }
 
-  uint8_t* next() {
+  uint8_t* next(size_t timeoutNS = 0, const std::function<void()>& timeoutF = [](){}) {
     uint32_t nwi = nextIndex(writeIndex());
   
     while (PRIV_HSTORE_UNLIKELY(*readIndex() == nwi)) {
@@ -433,7 +463,7 @@ public:
         // make sure that we still need to block the writer (in case the read index moved while we were getting here)
         // then block while we're in writer-wait state
         if (*readIndex() == nwi) {
-          waitForUpdate(waitState(), PRIV_HSTORE_STATE_WRITER_WAITING);
+          waitForUpdate(waitState(), PRIV_HSTORE_STATE_WRITER_WAITING, timeoutNS, timeoutF);
         }
         break;
       case PRIV_HSTORE_STATE_READER_WAITING:
@@ -484,11 +514,13 @@ enum PipeQOS {
 // wpipe : a "write pipe" (to write an 'arbitrary-length' sequence of data) on top of writers
 class wpipe {
 private:
-  writer*         wq;
-  uint8_t*        page;
-  size_t          pagesz;
-  uint32_t        offset;
-  PipeQOS         qos;
+  writer*               wq;
+  uint8_t*              page;
+  size_t                pagesz;
+  uint32_t              offset;
+  PipeQOS               qos;
+  size_t                timeoutNS;
+  std::function<void()> timeoutF;
 
   void markPage(uint8_t c) {
     *((uint32_t*)(this->page + this->pagesz)) = (((uint32_t)c) << 24) | this->offset;
@@ -503,7 +535,7 @@ private:
       markPage(PRIV_HSTORE_PAGE_STATE_CONT);
       this->wq->push();
 
-      this->page   = this->wq->next();
+      this->page   = this->wq->next(this->timeoutNS, this->timeoutF);
       this->offset = 0;
       return true;
     } else {
@@ -518,7 +550,7 @@ private:
     }
   }
 public:
-  wpipe(writer* wq, PipeQOS qos = Reliable) : wq(wq), pagesz(wq->config().valuesz - sizeof(uint32_t)), offset(0), qos(qos) {
+  wpipe(writer* wq, PipeQOS qos = Reliable, size_t timeoutNS = 0, const std::function<void()>& timeoutF = [](){}) : wq(wq), pagesz(wq->config().valuesz - sizeof(uint32_t)), offset(0), qos(qos), timeoutNS(timeoutNS), timeoutF(timeoutF) {
     if (wq->config().valuesz <= sizeof(uint32_t)) {
       throw std::runtime_error("queue page size too small for use as shared memory pipe");
     }
@@ -530,7 +562,7 @@ public:
       markPage(PRIV_HSTORE_PAGE_STATE_COMMIT);
       this->wq->push();
     }
-    this->page   = reliable() ? this->wq->next() : this->wq->pollNext();
+    this->page   = reliable() ? this->wq->next(this->timeoutNS, this->timeoutF) : this->wq->pollNext();
     this->offset = 0;
   }
 
@@ -539,7 +571,7 @@ public:
       markPage(PRIV_HSTORE_PAGE_STATE_ROLLBACK);
       this->wq->push();
     }
-    this->page   = reliable() ? this->wq->next() : this->wq->pollNext();
+    this->page   = reliable() ? this->wq->next(this->timeoutNS, this->timeoutF) : this->wq->pollNext();
     this->offset = 0;
   }
 
@@ -588,10 +620,11 @@ public:
 };
 
 struct QueueConnection {
-  int      shfd;
-  uint8_t* data;
-  size_t   datasz;
-  size_t   pagesz;
+  int         shfd;
+  uint8_t*    data;
+  size_t      datasz;
+  size_t      pagesz;
+  std::string shmname;
 };
 
 inline QueueConnection consumeQueue(const std::string& shmname) {
@@ -631,14 +664,12 @@ inline QueueConnection consumeQueue(const std::string& shmname) {
     throw std::runtime_error("Not ready to consume shared memory for '" + shmname + "'");
   }
 
-  // ok, if we get here then we can take ownership of the queue (hence unlink it)
-  shm_unlink(shmname.c_str());
-
   QueueConnection c;
-  c.shfd   = shfd;
-  c.data   = mem;
-  c.datasz = msb.st_size;
-  c.pagesz = pagesz;
+  c.shfd    = shfd;
+  c.data    = mem;
+  c.datasz  = msb.st_size;
+  c.pagesz  = pagesz;
+  c.shmname = shmname;
   return c;
 }
 
@@ -806,10 +837,12 @@ template <size_t N>
   }
 template <size_t... pcs>
   struct strpack {
-    static std::string str() {
+    static const char* str() {
       constexpr size_t msg[] = {pcs...};
       static_assert(msg[(sizeof(msg)/sizeof(msg[0]))-1] == 0, "compile-time string larger than internal max limit (this limit can be bumped in storage.H)");
-      return std::string((const char*)msg);
+
+      static const size_t smsg[] = {pcs...};
+      return (const char*)smsg;
     }
   };
 #define PRIV_HSTORE_TSTR32(i,s)   ::hobbes::storage::at8(i+(8*0),s),::hobbes::storage::at8(i+(8*1),s),::hobbes::storage::at8(i+(8*2),s),::hobbes::storage::at8(i+(8*3),s)
@@ -1691,7 +1724,7 @@ struct StorageGroup {
     size_t pagesz = sysconf(_SC_PAGESIZE);
     size_t pagec  = 1 + (meta.size() / pagesz) + std::max<size_t>(this->mempages, 10);
 
-    this->pipe = new wpipe(new writer(meta, sharedMemName(Name::str()), pagesz, pagec), this->qos);
+    this->pipe = new wpipe(new writer(meta, sharedMemName(Name::str()), pagesz, pagec), this->qos, /*if blocked 1ms*/ 1000000L, /*reconnect if needed*/ [&](){ reconnectSHM(&this->mqserver, Name::str()); });
     registerSHMAlloc(&this->mqserver, Name::str());
     return *this->pipe;
   }
@@ -1899,19 +1932,47 @@ inline size_t rs(const reader::MetaData& md, size_t o, bytes* s) {
 
 class Transaction {
 public:
-  Transaction(const uint8_t* data, size_t datasz) : data(data), datasz(datasz), i(0) {
+  // a persistent transaction to retain log data between consumer sessions (if necessary)
+  Transaction(std::string fname) : fd(-1), file_size(0), map_size(0), data(0), data_size(0), wi(0), ri(0) {
+    for (size_t i = 0; i < fname.size(); ++i) {
+      switch (fname[i]) {
+      case '/': fname[i]='_'; break;
+      case ':': fname[i]='_'; break;
+      case '[': fname[i]='_'; break;
+      case ']': fname[i]='_'; break;
+      default:                break;
+      }
+    }
+    fname = "." + fname + ".txn";
+    this->fd = ::open(fname.c_str(), O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
+
+    if (this->fd < 0) {
+      throw std::runtime_error("Unable to open transaction persistence file: " + fname + " (" + std::string(strerror(errno)) + ")");
+    }
+
+    struct stat sb;
+    if (::fstat(this->fd, &sb) < 0) {
+      close(this->fd);
+      throw std::runtime_error("Failed to stat transaction persistence file: " + fname + " (" + std::string(strerror(errno)) + ")");
+    }
+    truncMapFile(sb.st_size == 0 ? /*1MB*/1048576 : sb.st_size);
+  }
+
+  // a non-persistent transaction over constant data (just used by remote consumers)
+  Transaction(const uint8_t* d, size_t len) : fd(-1), file_size(len), map_size(len), data((uint8_t*)d), data_size(0), wi(0), ri(0) {
+    this->data_size = &this->map_size;
   }
 
   bool canRead(size_t x) const {
-    return (this->i+x) <= this->datasz;
+    return (this->ri+x) <= *this->data_size;
   }
 
   const uint8_t* ptr() const {
-    return this->data + this->i;
+    return this->data + this->ri;
   }
 
   void skip(size_t d) {
-    this->i += d;
+    this->ri += d;
   }
 
   template <typename T>
@@ -1922,17 +1983,71 @@ public:
     }
 
   size_t size() const {
-    return this->datasz;
+    return *this->data_size;
+  }
+
+  void clear() {
+    *this->data_size = 0;
+    this->wi = 0;
+    this->ri = 0;
+  }
+
+  bool readToCompletion(rpipe& p, size_t timeoutNS, const std::function<void()>& timeoutF) {
+    static const size_t blockSize = 1024;
+
+    if (this->wi + blockSize >= this->file_size) {
+      truncMapFile(this->file_size + /*1MB*/1048576);
+    }
+
+    uint8_t txnFlag = 0;
+    this->wi += p.read(this->data + this->wi, blockSize, &txnFlag, timeoutNS, timeoutF);
+    *this->data_size = this->wi;
+
+    switch (txnFlag) {
+    case PRIV_HSTORE_PAGE_STATE_ROLLBACK:
+      clear();
+      return false;
+    case PRIV_HSTORE_PAGE_STATE_COMMIT: {
+      return true;
+    }
+    default:
+      return false;
+    }
   }
 private:
-  const uint8_t* data;
-  size_t         datasz;
-  size_t         i;
+  int    fd;
+  size_t file_size;
+  size_t map_size;
+
+  uint8_t* data;
+  size_t*  data_size;
+  size_t   wi;
+  size_t   ri;
+
+  void truncMapFile(size_t sz) {
+    if (::ftruncate(this->fd, sz) == -1) {
+      throw std::runtime_error("Failed to expand transaction persistence file");
+    }
+    this->file_size = sz;
+
+    if (sz > this->map_size) {
+      if (this->data) { ::munmap(this->data-sizeof(size_t), this->map_size); }
+
+      this->map_size = align<size_t>(sz, /*10MB*/10485760);
+      this->data = (uint8_t*)mmap(0, this->map_size, PROT_READ | PROT_WRITE, MAP_SHARED, this->fd, 0);
+      if (this->data == MAP_FAILED) {
+        throw std::runtime_error("Failed to map transaction persistence file");
+      }
+      this->data_size = (size_t*)this->data;
+      this->data      += sizeof(size_t);
+    }
+  }
 };
 
 inline void runReadProcessWithTimeout(const QueueConnection& qc, const std::function<std::function<void(Transaction&)>(PipeQOS, CommitMethod, const statements&)>& initF, size_t timeoutNS, const std::function<void()>& timeoutF) {
-  reader rd(qc);
-  rpipe  p(&rd);
+  Transaction txn(qc.shmname);
+  reader      rd(qc);
+  rpipe       p(&rd);
 
   // initialize
   reader::MetaData md = rd.meta();
@@ -1968,28 +2083,10 @@ inline void runReadProcessWithTimeout(const QueueConnection& qc, const std::func
   auto txnF = initF((PipeQOS)qos, (CommitMethod)cm, ss);
 
   // read transactions and call back into user code
-  bytes txn;
   while (true) {
-    static const size_t blockSize = 1024;
-
-    size_t i = txn.size();
-    txn.resize(txn.size() + blockSize);
-
-    uint8_t txnFlag = 0;
-    txn.resize(txn.size() - (blockSize - p.read(&txn[i], blockSize, &txnFlag, timeoutNS, timeoutF)));
-
-    switch (txnFlag) {
-    case PRIV_HSTORE_PAGE_STATE_ROLLBACK:
+    if (txn.readToCompletion(p, timeoutNS, timeoutF)) {
+      txnF(txn);
       txn.clear();
-      break;
-    case PRIV_HSTORE_PAGE_STATE_COMMIT: {
-      Transaction txnr(&txn[0], txn.size());
-      txnF(txnr);
-      txn.clear();
-      break;
-    }
-    default:
-      break;
     }
   }
 }
