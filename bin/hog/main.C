@@ -29,6 +29,8 @@ struct RunMode {
   std::set<std::string> groups;
   bool                  consolidate;
 
+  hobbes::storage::WaitPolicy wp;
+
   // batchsend
   size_t                   clevel;
   size_t                   batchsendsize;
@@ -107,6 +109,7 @@ void showUsage() {
     "  -s port           : decides to receive data on the given port\n"
     "  -c                : decides to store equally-typed data across processes in a single file\n"
     "  -m <dir>          : decides where to place the domain socket for producer registration (default: " << hobbes::storage::defaultStoreDir() << ")\n"
+    "  -spin             : instruct producer and consumer to spin when either side cannot make progress\n"
   << std::endl;
 }
 
@@ -116,6 +119,7 @@ RunMode config(int argc, const char** argv) {
   r.dir            = "./$GROUP/$DATE/data";
   r.groupServerDir = hobbes::storage::defaultStoreDir();
   r.consolidate    = false;
+  r.wp             = hobbes::storage::WaitPolicy::Platform;
 
   if (argc == 1) {
     showUsage();
@@ -184,6 +188,8 @@ RunMode config(int argc, const char** argv) {
       } else {
         throw std::runtime_error("need domain socket directory for producer registration");
       }
+    } else if (arg == "-spin") {
+      r.wp = hobbes::storage::WaitPolicy::Spin;
     } else {
       throw std::runtime_error("invalid argument: " + arg);
     }
@@ -215,10 +221,10 @@ void evalGroupHostConnection(SessionGroup* sg, const std::string& groupName, con
     std::string d = instantiateDir(groupName, m.dir);
     switch (m.t) {
     case RunMode::local:
-      ts->push_back(std::thread(std::bind(&recordLocalData, sg, qc, d)));
+      ts->push_back(std::thread(std::bind(&recordLocalData, sg, qc, d, m.wp)));
       break;
     case RunMode::batchsend:
-      ts->push_back(std::thread(std::bind(&pushLocalData, qc, groupName, ensureDirExists(d), m.clevel, m.batchsendsize, m.batchsendtime, m.sendto)));
+      ts->push_back(std::thread(std::bind(&pushLocalData, qc, groupName, ensureDirExists(d), m.clevel, m.batchsendsize, m.batchsendtime, m.sendto, m.wp)));
       break;
     default:
       break;
@@ -247,6 +253,7 @@ void runGroupHost(const std::string& groupName, const RunMode& m, std::vector<st
             out << "disconnected client for '" << groupName << "' due to version mismatch (expected " << HSTORE_VERSION << " but got " << version << ")" << std::endl;
             close(c);
           } else {
+            hobbes::fdwrite(c, (uint8_t*)&m.wp, sizeof(m.wp));
             hobbes::registerEventHandler(
               c,
               [sg,groupName,ts,&m](int c) {

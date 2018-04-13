@@ -36,10 +36,13 @@
 #include <netdb.h>
 #include <fcntl.h>
 
+namespace hobbes { namespace storage { namespace internal {
+
 // a few things have to be OS-specific here
-//  * waiting in shared memory
+//  * available waiting strategy in shared memory
+//  * default waiting strategy
 #if defined(__APPLE__) && defined(__MACH__)
-namespace hobbes { namespace storage {
+namespace spin {
 
 #if defined(CLOCK_REALTIME)
 inline long poll_tickNS() {
@@ -97,12 +100,73 @@ static inline void waitForUpdate(volatile uint32_t* p, int eqV, size_t timeoutNS
 static inline void wakeN(volatile uint32_t* p, int c) {
   // assume the waiter is polling, nothing to do
 }
-}}
+
+} // namespace spin
 #else
 #include <linux/futex.h>
 #include <sys/syscall.h>
 
-namespace hobbes { namespace storage {
+namespace spin {
+
+#if defined(CLOCK_REALTIME)
+inline long poll_tickNS() {
+  timespec ts;
+  if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0) {
+    return ts.tv_sec * 1000000000L + ts.tv_nsec;
+  } else {
+    return 0;
+  }
+}
+#else
+inline long poll_tickNS() {
+  struct timeval t;
+  if (gettimeofday(&t, 0) == 0) {
+    return ((t.tv_sec * 1000000) + t.tv_usec) * 1000;
+  } else {
+    return 0;
+  }
+}
+#endif
+
+static inline void waitForUpdate(volatile uint32_t* p, int eqV) {
+  while (true) {
+    for (size_t c = 0; c < 4096; ++c) {
+      if (*p != eqV) {
+        return;
+      }
+    }
+  }
+}
+static inline void waitForUpdate(volatile uint32_t* p, int eqV, size_t timeoutNS, const std::function<void()>& timeoutF) {
+  if (timeoutNS == 0) {
+    waitForUpdate(p, eqV);
+    return;
+  }
+
+  long t0 = poll_tickNS();
+
+  while (true) {
+    for (size_t c = 0; c < 4096; ++c) {
+      if (*p != eqV) {
+        return;
+      }
+    }
+
+    long t1 = poll_tickNS();
+    if ((t1-t0) >= timeoutNS) {
+      timeoutF();
+      t0 = t1;
+    }
+  }
+}
+static inline void wakeN(volatile uint32_t* p, int c) {
+  // assume the waiter is polling, nothing to do
+}
+
+} // namespace spin
+
+namespace futex {
+
 static inline long sys_futex(volatile uint32_t* p, int op, int v, struct timespec* timeout, void* p2, int v2) {
   return syscall(SYS_futex, p, op, v, timeout, p2, v2);
 }
@@ -132,12 +196,49 @@ static inline void waitForUpdate(volatile uint32_t* p, int eqV, size_t timeoutNS
 static inline void wakeN(volatile uint32_t* p, int c) {
   sys_futex(p, FUTEX_WAKE, c, 0, 0, 0);
 }
-}}
+
+} // namespace futex
 #endif
+
+#if defined (__APPLE__) && defined (__MACH__)
+namespace platform = spin;
+#else
+namespace platform = futex;
+#endif
+
+}}}
 
 namespace hobbes { namespace storage {
 
-#define HSTORE_VERSION ((uint32_t)0x00010000)
+typedef void (*WaitFn)(volatile uint32_t*, int, size_t, const std::function<void()>&);
+typedef void (*WakeFn)(volatile uint32_t*, int);
+
+enum WaitPolicy {
+  Platform = 0,
+  Spin,
+};
+
+static inline WaitFn waitFn(const WaitPolicy s) {
+  switch (s) {
+    case Spin: return &internal::spin::waitForUpdate;
+    case Platform:
+    default: return &internal::platform::waitForUpdate;
+  }
+}
+
+static inline WakeFn wakeFn(const WaitPolicy s) {
+  switch (s) {
+    case Spin: return &internal::spin::wakeN;
+    case Platform:
+    default: return &internal::platform::wakeN;
+  }
+}
+
+}}
+
+namespace hobbes { namespace storage {
+
+#define HSTORE_VERSION ((uint32_t)0x00020000)
 
 typedef std::vector<uint8_t> bytes;
 
@@ -155,7 +256,7 @@ template <typename T>
   }
 
 #define PRIV_HSTORE_SPIN_MIN 512
-#define PRIV_HSTORE_SPIN_MAX 4096
+#define PRIV_HSTORE_SPIN_MAX 524288
 
 static inline unsigned spin(unsigned count) {
   for (volatile unsigned i = 0; i != count; ++i);
@@ -183,6 +284,18 @@ inline void mqwrite(int fd, const uint8_t* x, size_t len) {
       }
     } else {
       i += c;
+    }
+  }
+}
+
+inline void mqread(int fd, uint8_t* x, size_t len) {
+  size_t i = 0;
+  while (i < len) {
+    auto ret = read(fd , x + i, len - i);
+    if (ret < 0 && errno != EINTR) {
+      throw std::runtime_error("Couldn't read from socket: " + std::string(strerror(errno)));
+    } else {
+      i += ret;
     }
   }
 }
@@ -403,6 +516,8 @@ private:
   std::string   shmname;
   int           shmfd;
   pqueue_config cfg;
+  WaitFn        waitFn;
+  WakeFn        wakeFn;
 
   inline volatile uint32_t* waitState()                     const { return this->cfg.wstate; }
   inline volatile uint32_t* readIndex()                     const { return this->cfg.readerIndex; }
@@ -410,7 +525,7 @@ private:
   inline uint8_t*           value(size_t i)                 const { return this->cfg.data + (i*this->cfg.valuesz); }
   inline uint32_t           nextIndex(volatile uint32_t* i) const { return (*i + 1) % this->cfg.count; }
 public:
-  writer(const bytes& meta, const std::string& shmname, size_t qvalsz, size_t count) {
+  writer(const bytes& meta, const std::string& shmname, size_t qvalsz, size_t count, const WaitPolicy wp) : waitFn(hobbes::storage::waitFn(wp)), wakeFn(hobbes::storage::wakeFn(wp)) {
     shm_unlink(shmname.c_str());
 
     // sections of shared memory should be aligned to page boundaries
@@ -482,20 +597,20 @@ public:
       } else {
         // the reader is behind and we've caught up with it, switch into writer-wait mode
         switch (xchg(waitState(), PRIV_HSTORE_STATE_WRITER_WAITING)) {
-        case PRIV_HSTORE_STATE_UNBLOCKED:
-          // we previously were unblocked
-          // make sure that we still need to block the writer (in case the read index moved while we were getting here)
-          // then block while we're in writer-wait state
-          if (*readIndex() == nwi) {
-            waitForUpdate(waitState(), PRIV_HSTORE_STATE_WRITER_WAITING, timeoutNS, timeoutF);
-          }
-          break;
-        case PRIV_HSTORE_STATE_READER_WAITING:
-          // we previously were in reader-wait state (this should practically never happen)
-          // since we wait to write anyway, unblock the reader and try again
-          uxchg(waitState(), PRIV_HSTORE_STATE_UNBLOCKED);
-          wakeN(waitState(), 1);
-          break;
+          case PRIV_HSTORE_STATE_UNBLOCKED:
+            // we previously were unblocked
+            // make sure that we still need to block the writer (in case the read index moved while we were getting here)
+            // then block while we're in writer-wait state
+            if (*readIndex() == nwi) {
+              (*waitFn)(waitState(), PRIV_HSTORE_STATE_WRITER_WAITING, timeoutNS, timeoutF);
+            }
+            break;
+          case PRIV_HSTORE_STATE_READER_WAITING:
+            // we previously were in reader-wait state (this should practically never happen)
+            // since we wait to write anyway, unblock the reader and try again
+            uxchg(waitState(), PRIV_HSTORE_STATE_UNBLOCKED);
+            (*wakeFn)(waitState(), 1);
+            break;
         }
       }
     }
@@ -515,7 +630,7 @@ public:
   
     // when the writer advances, the reader can be unblocked
     if (PRIV_HSTORE_UNLIKELY(xchg(waitState(), PRIV_HSTORE_STATE_UNBLOCKED) == PRIV_HSTORE_STATE_READER_WAITING)) {
-      wakeN(waitState(), 1);
+      (*wakeFn)(waitState(), 1);
     }
   }
 };
@@ -709,6 +824,8 @@ private:
   const uint8_t* metad;
   size_t         metasz;
   pqueue_config  cfg;
+  WaitFn         waitFn;
+  WakeFn         wakeFn;
 
   inline volatile uint32_t* waitState()                     const { return this->cfg.wstate; }
   inline volatile uint32_t* readIndex()                     const { return this->cfg.readerIndex; }
@@ -716,7 +833,7 @@ private:
   inline uint8_t*           value(size_t i)                 const { return this->cfg.data + (i*this->cfg.valuesz); }
   inline uint32_t           nextIndex(volatile uint32_t* i) const { return (*i + 1) % this->cfg.count; }
 public:
-  reader(const QueueConnection& qc) : shfd(qc.shfd) {
+  reader(const QueueConnection& qc, const WaitPolicy wp) : shfd(qc.shfd), waitFn(hobbes::storage::waitFn(wp)), wakeFn(hobbes::storage::wakeFn(wp)) {
     // prepare to read the queue description
     ShQueueHeader* hdr     = (ShQueueHeader*)qc.data;
     size_t         metaLen = align<size_t>(sizeof(ShQueueHeader) + hdr->metasz, qc.pagesz);
@@ -763,14 +880,14 @@ public:
             // make sure that we still need to block the reader (in case the write index moved while we were getting here)
             // then block while we're in reader-wait state
             if (*writeIndex() == ri) {
-              waitForUpdate(waitState(), PRIV_HSTORE_STATE_READER_WAITING, timeoutNS, timeoutF);
+              (*waitFn)(waitState(), PRIV_HSTORE_STATE_READER_WAITING, timeoutNS, timeoutF);
             }
             break;
           case PRIV_HSTORE_STATE_WRITER_WAITING:
             // we previously were in writer-wait state (this should practically never happen)
             // since we wait to read anyway, unblock the writer and try again
             uxchg(waitState(), PRIV_HSTORE_STATE_UNBLOCKED);
-            wakeN(waitState(), 1);
+            (*wakeFn)(waitState(), 1);
             break;
         }
       }
@@ -793,7 +910,7 @@ public:
   
     // when the reader advances, the writer can be unblocked
     if (PRIV_HSTORE_UNLIKELY(xchg(waitState(), PRIV_HSTORE_STATE_UNBLOCKED) == PRIV_HSTORE_STATE_WRITER_WAITING)) {
-      wakeN(waitState(), 1);
+      (*wakeFn)(waitState(), 1);
     }
   }
 };
@@ -1756,7 +1873,12 @@ struct StorageGroup {
     size_t pagesz = sysconf(_SC_PAGESIZE);
     size_t pagec  = 1 + (meta.size() / pagesz) + std::max<size_t>(this->mempages, 10);
 
-    this->pipe = new wpipe(new writer(meta, sharedMemName(Name::str()), pagesz, pagec), this->qos, /*if blocked 1ms*/ 1000000L, /*reconnect if needed*/ [&](){ reconnectSHM(&this->mqserver, Name::str()); });
+    this->mqserver = connectGroupHost(Name::str());
+
+    WaitPolicy wp;
+    mqread(this->mqserver, (uint8_t*)&wp, sizeof(wp));
+
+    this->pipe = new wpipe(new writer(meta, sharedMemName(Name::str()), pagesz, pagec, wp), this->qos, /*if blocked 1ms*/ 1000000L, /*reconnect if needed*/ [&](){ reconnectSHM(&this->mqserver, Name::str()); });
     registerSHMAlloc(&this->mqserver, Name::str());
     return *this->pipe;
   }
@@ -2076,9 +2198,9 @@ private:
   }
 };
 
-inline void runReadProcessWithTimeout(const QueueConnection& qc, const std::function<std::function<void(Transaction&)>(PipeQOS, CommitMethod, const statements&)>& initF, size_t timeoutNS, const std::function<void()>& timeoutF) {
+inline void runReadProcessWithTimeout(const QueueConnection& qc, const WaitPolicy wp, const std::function<std::function<void(Transaction&)>(PipeQOS, CommitMethod, const statements&)>& initF, size_t timeoutNS, const std::function<void()>& timeoutF) {
   Transaction txn(qc.shmname);
-  reader      rd(qc);
+  reader      rd(qc, wp);
   rpipe       p(&rd);
 
   // initialize
@@ -2123,8 +2245,8 @@ inline void runReadProcessWithTimeout(const QueueConnection& qc, const std::func
   }
 }
 
-inline void runReadProcess(const QueueConnection& qc, const std::function<std::function<void(Transaction&)>(PipeQOS, CommitMethod, const statements&)>& initF) {
-  runReadProcessWithTimeout(qc, initF, 0, [](){});
+inline void runReadProcess(const QueueConnection& qc, const WaitPolicy wp, const std::function<std::function<void(Transaction&)>(PipeQOS, CommitMethod, const statements&)>& initF) {
+  runReadProcessWithTimeout(qc, wp, initF, 0, [](){});
 }
 
 }}

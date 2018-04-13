@@ -330,7 +330,7 @@ static void initNetSession(BatchSendSession* s, const std::string& groupName, co
   s->stepFile();
 }
 
-void pushLocalData(const storage::QueueConnection& qc, const std::string& groupName, const std::string& dir, size_t clevel, size_t batchsendsize, long batchsendtime, const std::vector<std::string>& sendto) {
+void pushLocalData(const storage::QueueConnection& qc, const std::string& groupName, const std::string& dir, size_t clevel, size_t batchsendsize, long batchsendtime, const std::vector<std::string>& sendto, const hobbes::storage::WaitPolicy wp) {
   auto pt = hobbes::storage::thisProcThread();
   batchsendsize = std::max<size_t>(10*1024*1024, batchsendsize);
   BatchSendSession sn(groupName, dir + "/tmp_" + str::from(pt.first) + "-" + str::from(pt.second) + "/", clevel, sendto);
@@ -352,6 +352,7 @@ void pushLocalData(const storage::QueueConnection& qc, const std::string& groupN
 
   storage::runReadProcessWithTimeout(
     qc,
+    wp,
     [&](storage::PipeQOS qos, storage::CommitMethod cm, const storage::statements& ss) {
       initNetSession(&sn, groupName, dir, qos, cm, ss);
       return
