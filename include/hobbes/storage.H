@@ -154,6 +154,14 @@ template <typename T>
     }
   }
 
+#define PRIV_HSTORE_SPIN_MIN 512
+#define PRIV_HSTORE_SPIN_MAX 4096
+
+static inline unsigned spin(unsigned count) {
+  for (volatile unsigned i = 0; i != count; ++i);
+  return (count << 1);
+}
+
 static inline void uxchg(volatile uint32_t* px, uint32_t nx) {
   __asm__ __volatile__(
     "xchgl %0,%1"
@@ -464,24 +472,31 @@ public:
 
   uint8_t* next(size_t timeoutNS = 0, const std::function<void()>& timeoutF = [](){}) {
     uint32_t nwi = nextIndex(writeIndex());
+
+    unsigned count = PRIV_HSTORE_SPIN_MIN;
   
     while (PRIV_HSTORE_UNLIKELY(*readIndex() == nwi)) {
-      // the reader is behind and we've caught up with it, switch into writer-wait mode
-      switch (xchg(waitState(), PRIV_HSTORE_STATE_WRITER_WAITING)) {
-      case PRIV_HSTORE_STATE_UNBLOCKED:
-        // we previously were unblocked
-        // make sure that we still need to block the writer (in case the read index moved while we were getting here)
-        // then block while we're in writer-wait state
-        if (*readIndex() == nwi) {
-          waitForUpdate(waitState(), PRIV_HSTORE_STATE_WRITER_WAITING, timeoutNS, timeoutF);
+      if (count < PRIV_HSTORE_SPIN_MAX) {
+        // back-off the writer
+        count = spin(count);
+      } else {
+        // the reader is behind and we've caught up with it, switch into writer-wait mode
+        switch (xchg(waitState(), PRIV_HSTORE_STATE_WRITER_WAITING)) {
+        case PRIV_HSTORE_STATE_UNBLOCKED:
+          // we previously were unblocked
+          // make sure that we still need to block the writer (in case the read index moved while we were getting here)
+          // then block while we're in writer-wait state
+          if (*readIndex() == nwi) {
+            waitForUpdate(waitState(), PRIV_HSTORE_STATE_WRITER_WAITING, timeoutNS, timeoutF);
+          }
+          break;
+        case PRIV_HSTORE_STATE_READER_WAITING:
+          // we previously were in reader-wait state (this should practically never happen)
+          // since we wait to write anyway, unblock the reader and try again
+          uxchg(waitState(), PRIV_HSTORE_STATE_UNBLOCKED);
+          wakeN(waitState(), 1);
+          break;
         }
-        break;
-      case PRIV_HSTORE_STATE_READER_WAITING:
-        // we previously were in reader-wait state (this should practically never happen)
-        // since we wait to write anyway, unblock the reader and try again
-        uxchg(waitState(), PRIV_HSTORE_STATE_UNBLOCKED);
-        wakeN(waitState(), 1);
-        break;
       }
     }
     return value(*writeIndex());
@@ -733,24 +748,31 @@ public:
   // get the next value in the queue, blocking if necessary
   uint8_t* next(size_t timeoutNS, const std::function<void()>& timeoutF) {
     uint32_t ri = *readIndex();
+
+    unsigned count = PRIV_HSTORE_SPIN_MIN;
   
     while (PRIV_HSTORE_UNLIKELY(*writeIndex() == ri)) {
-      // there's nothing to read, switch into reader-wait mode
-      switch (xchg(waitState(), PRIV_HSTORE_STATE_READER_WAITING)) {
-      case PRIV_HSTORE_STATE_UNBLOCKED:
-        // we previously were unblocked
-        // make sure that we still need to block the reader (in case the write index moved while we were getting here)
-        // then block while we're in reader-wait state
-        if (*writeIndex() == ri) {
-          waitForUpdate(waitState(), PRIV_HSTORE_STATE_READER_WAITING, timeoutNS, timeoutF);
+      if (count < PRIV_HSTORE_SPIN_MAX) {
+        // try back-off the reader
+        count = spin(count);
+      } else {
+        // there's nothing to read, switch into reader-wait mode
+        switch (xchg(waitState(), PRIV_HSTORE_STATE_READER_WAITING)) {
+          case PRIV_HSTORE_STATE_UNBLOCKED:
+            // we previously were unblocked
+            // make sure that we still need to block the reader (in case the write index moved while we were getting here)
+            // then block while we're in reader-wait state
+            if (*writeIndex() == ri) {
+              waitForUpdate(waitState(), PRIV_HSTORE_STATE_READER_WAITING, timeoutNS, timeoutF);
+            }
+            break;
+          case PRIV_HSTORE_STATE_WRITER_WAITING:
+            // we previously were in writer-wait state (this should practically never happen)
+            // since we wait to read anyway, unblock the writer and try again
+            uxchg(waitState(), PRIV_HSTORE_STATE_UNBLOCKED);
+            wakeN(waitState(), 1);
+            break;
         }
-        break;
-      case PRIV_HSTORE_STATE_WRITER_WAITING:
-        // we previously were in writer-wait state (this should practically never happen)
-        // since we wait to read anyway, unblock the writer and try again
-        uxchg(waitState(), PRIV_HSTORE_STATE_UNBLOCKED);
-        wakeN(waitState(), 1);
-        break;
       }
     }
     return value(*readIndex());
