@@ -3,6 +3,7 @@
 #include <hobbes/ipc/prepl.H>
 #include <hobbes/util/codec.H>
 #include <hobbes/util/os.H>
+#include <sstream>
 #include <unistd.h>
 #include <string.h>
 #include <sys/wait.h>
@@ -208,15 +209,26 @@ void runMachineREPLStep(cc* c) {
 
       dbglog("eval '" + expr + "'");
 
+      // buffer the result to remove any accidental internal terminators
+      std::ostringstream ss;
+      auto stdoutbuffer = std::cout.rdbuf(ss.rdbuf());
       try {
         c->compileFn<void()>("print(" + expr + ")")();
-        std::cout << std::flush;
         resetMemoryPool();
       } catch (std::exception& ex) {
         std::string msg(ex.what());
         dbglog("*** " + msg);
-        fdwrite(STDOUT_FILENO, msg.data(), msg.size());
+        std::cout << msg;
       }
+      std::cout.rdbuf(stdoutbuffer);
+
+      // write buffered output to stdout without internal terminators
+      for (char c : ss.str()) {
+        std::cout << (c==0?'?':c);
+      }
+      std::cout << std::flush;
+
+      // now we can send the result terminator
       fdwrite(STDOUT_FILENO, (char)0);
       break;
     }
