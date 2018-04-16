@@ -211,8 +211,7 @@ void runMachineREPLStep(cc* c) {
 
       // buffer the result to remove any accidental internal terminators
       std::ostringstream ss;
-      auto* stdoutbuffer = std::cout.rdbuf();
-      std::cout.rdbuf(ss.rdbuf());
+      auto stdoutbuffer = std::cout.rdbuf(ss.rdbuf());
       try {
         c->compileFn<void()>("print(" + expr + ")")();
         resetMemoryPool();
