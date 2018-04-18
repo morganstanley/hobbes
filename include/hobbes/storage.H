@@ -264,11 +264,21 @@ inline std::string defaultStoreDir() {
 }
 
 inline int connectGroupHost(const std::string& groupName, const std::string& sdir = defaultStoreDir()) {
-  return mqconnect(sdir + "/hstore." + groupName + ".sk");
+  auto sp = sdir + "/hstore." + groupName + ".sk";
+  try {
+    return mqconnect(sp);
+  } catch (std::exception& e) {
+    throw std::runtime_error("Failed to connect to log consumer for group '" + groupName + "' on socket '" + sp + "' (" + std::string(e.what()) + ")");
+  }
 }
 
 inline int makeGroupHost(const std::string& groupName, const std::string& sdir = defaultStoreDir()) {
-  return mqlisten(sdir + "/hstore." + groupName + ".sk");
+  auto sp = sdir + "/hstore." + groupName + ".sk";
+  try {
+    return mqlisten(sp);
+  } catch (std::exception& e) {
+    throw std::runtime_error("Failed to listen for log connections for group '" + groupName + "' on socket '" + sp + "' (" + std::string(e.what()) + ")");
+  }
 }
 
 // identify this process/thread
