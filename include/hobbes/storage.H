@@ -1720,7 +1720,7 @@ template <typename F, typename T>
   struct hstore_argl_name<namedValue<F,T>> {
     static const bool isTuple = false;
     static void nameDesc(const char*, size_t, char* buffer, size_t buflen) {
-      strncpy(buffer, F::str().c_str(), buflen);
+      strncpy(buffer, F::str(), buflen);
     }
   };
 
