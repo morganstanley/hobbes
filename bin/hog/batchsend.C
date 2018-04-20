@@ -45,6 +45,22 @@ using namespace hobbes;
 
 namespace hog {
 
+class openfd {
+public:
+  openfd(const std::string& path) : ofd(-1) {
+    this->ofd = ::open(path.c_str(), O_RDONLY);
+  }
+  ~openfd() {
+    if (this->ofd != -1) {
+      ::close(this->ofd);
+    }
+  }
+  operator bool() const { return this->ofd != -1; }
+  int fd() const { return this->ofd; }
+private:
+  int ofd;
+};
+
 struct Destination {
   Destination(const std::string& localdir, const std::string& hostport)
     : localdir(localdir), hostport(hostport), connection(-1), handshaked(false)
@@ -77,9 +93,9 @@ std::ostream& operator<<(std::ostream& o, const std::vector<Destination>& xs) {
   return o;
 }
 
-void sendFileContents(int connection, int sfd) {
+void sendFileContents(int connection, const openfd& sfd) {
   struct stat sb;
-  fstat(sfd, &sb);
+  fstat(sfd.fd(), &sb);
 
   // let the remote side know how big this file is
   size_t fsize = sb.st_size;
@@ -88,13 +104,12 @@ void sendFileContents(int connection, int sfd) {
   // send the entire file contents
   off_t offset = 0;
   while (offset < sb.st_size) {
-    if (sendfile(connection, sfd, &offset, sb.st_size) == -1) {
+    if (sendfile(connection, sfd.fd(), &offset, sb.st_size) == -1) {
       if (errno != EAGAIN) {
         throw std::runtime_error("error trying to send file: " + std::string(strerror(errno)));
       }
     }
   }
-  close(sfd);
 
   // make sure that we get an ack from the other side
   uint8_t ack = 0;
@@ -125,12 +140,12 @@ void sendSegmentFiles(int connection, const std::string& localdir) {
   // try to send all segments in order and then discard them
   for (const auto& sfns : segfiles) {
     for (const auto& sfn : sfns.second) {
-      int fd = open(sfn.c_str(), O_RDONLY);
-      if (fd == -1) {
-        out << "couldn't open '" << sfn << "' (" << strerror(errno) << ")" << std::endl;
-      } else {
-        sendFileContents(connection, fd);
+      openfd f(sfn);
+      if (f) {
+        sendFileContents(connection, f);
         unlink(sfn.c_str());
+      } else {
+        out << "couldn't open '" << sfn << "' (" << strerror(errno) << ")" << std::endl;
       }
     }
   }
@@ -140,21 +155,21 @@ void sendInitMessage(int connection, const std::string& groupName, const std::st
   // let's assume that an init message will eventually appear in this directory
   // we can just poll for it
   while (true) {
-    int sfd = open((localdir + "/init.gz").c_str(), O_RDONLY);
-    if (sfd == -1) {
+    openfd sf(localdir + "/init.gz");
+    if (sf) {
+      ssend(connection, groupName);
+      sendFileContents(connection, sf);
+      break;
+    } else {
       out << "waiting to send init message (" << strerror(errno) << ")" << std::endl;
       sleep(10);
-    } else {
-      ssend(connection, groupName);
-      sendFileContents(connection, sfd);
-      break;
     }
   }
 }
 
 void sendInitMessageToAll(const std::string& groupName, std::vector<Destination>& destinations) {
   for (auto & d : destinations) {
-    if (!d.handshaked) {
+    if (!d.handshaked && d.connection != -1) {
       try {
         sendInitMessage(d.connection, groupName, d.localdir);
         d.handshaked = true;
