@@ -427,19 +427,21 @@ inline std::string sharedMemName(const std::string& groupName) {
 }
 
 // register the allocation of a shared memory region with this group name in this thread/process
-inline void registerSHMAlloc(int* mqserver, const char* groupName, bool reconnect = false) {
+inline void registerSHMAlloc(int* mqserver, const char* groupName, const WaitPolicy wp, bool reconnect = false) {
   if (*mqserver < 0) {
     *mqserver = connectGroupHost(groupName);
   }
 
   ProcThread pt = thisProcThread();
-  uint8_t msg[1+sizeof(ProcThread)];
-  msg[0] = reconnect ? 1 : 0;
+  uint8_t msg[1+sizeof(ProcThread)] = {0};
+  uint8_t& cmd = msg[0];
+  cmd |= reconnect ? 1 : 0;
+  cmd |= ((uint8_t)wp) << 1;
   memcpy(msg+1, &pt, sizeof(ProcThread));
   mqwrite(*mqserver, msg, sizeof(msg));
 }
 
-inline void reconnectSHM(int* mqserver, const char* groupName) {
+inline void reconnectSHM(int* mqserver, const char* groupName, const WaitPolicy wp) {
   // has the other side disconnected?
   if (*mqserver >= 0) {
     fd_set rd;
@@ -463,7 +465,7 @@ inline void reconnectSHM(int* mqserver, const char* groupName) {
   // if we're in a disconnected state, try once to reconnect
   if (*mqserver < 0) {
     try {
-      registerSHMAlloc(mqserver, groupName, true);
+      registerSHMAlloc(mqserver, groupName, wp, true);
     } catch (std::exception& ex) {
     }
   }
@@ -1830,8 +1832,13 @@ struct StorageGroup {
   PipeQOS            qos;
   size_t             mempages;
   int                mqserver;
+  WaitPolicy         wp;
 
   static thread_local wpipe* pipe;
+
+  StorageGroup(size_t pagec, const PipeQOS qos) : StorageGroup(pagec, qos, Platform) {}
+  StorageGroup(size_t pagec, const PipeQOS qos, const WaitPolicy wp)
+    : statements(nullptr), qos(qos), mempages(pagec), mqserver(-1), wp(wp) {}
 
   ~StorageGroup() {
     delete this->statements;
@@ -1873,13 +1880,8 @@ struct StorageGroup {
     size_t pagesz = sysconf(_SC_PAGESIZE);
     size_t pagec  = 1 + (meta.size() / pagesz) + std::max<size_t>(this->mempages, 10);
 
-    this->mqserver = connectGroupHost(Name::str());
-
-    WaitPolicy wp;
-    mqread(this->mqserver, (uint8_t*)&wp, sizeof(wp));
-
-    this->pipe = new wpipe(new writer(meta, sharedMemName(Name::str()), pagesz, pagec, wp), this->qos, /*if blocked 1ms*/ 1000000L, /*reconnect if needed*/ [&](){ reconnectSHM(&this->mqserver, Name::str()); });
-    registerSHMAlloc(&this->mqserver, Name::str());
+    this->pipe = new wpipe(new writer(meta, sharedMemName(Name::str()), pagesz, pagec, wp), this->qos, /*if blocked 1ms*/ 1000000L, /*reconnect if needed*/ [&](){ reconnectSHM(&this->mqserver, Name::str(), wp); });
+    registerSHMAlloc(&this->mqserver, Name::str(), wp);
     return *this->pipe;
   }
 
@@ -2023,7 +2025,7 @@ template <size_t N>
 
 // create statement groups
 #define DECLARE_STORAGE_GROUP(NAME, cm)            extern ::hobbes::storage::StorageGroup<PRIV_HSTORE_TSTR(#NAME),cm> NAME
-#define DEFINE_STORAGE_GROUP(NAME, pagec, qos, cm) ::hobbes::storage::StorageGroup<PRIV_HSTORE_TSTR(#NAME),cm> NAME = { 0, qos, pagec, -1 }
+#define DEFINE_STORAGE_GROUP(NAME, pagec, qos, cm, ARGS...) ::hobbes::storage::StorageGroup<PRIV_HSTORE_TSTR(#NAME),cm> NAME(pagec, qos, ## ARGS)
 
 // record some data
 #define APPLY_HSTORE_STMT(GROUP, NAME, FLAGS, FMTSTR, ARGS...) \

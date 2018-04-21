@@ -11,6 +11,7 @@
 #include <cstring>
 #include <cstdio>
 #include <climits>
+#include <thread>
 
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -363,5 +364,44 @@ TEST(Hog, KillAndResume) {
   }
   EXPECT_TRUE(c.compileFn<bool()>("f0.seq[0:] == [3,2,1,0]")());
   EXPECT_TRUE(c.compileFn<bool()>("f1.seq[0:] == [14,13,12,11,10,9,8,7,6,5,4]")());
+}
+
+DEFINE_STORAGE_GROUP(
+  RestartEngine,
+  8,
+  hobbes::storage::Unreliable,
+  hobbes::storage::AutoCommit,
+  hobbes::storage::Spin
+);
+
+TEST(Hog, RestartEngine) {
+  HogApp local(RunMode{{"RestartEngine"}, /* consolidate = */true});
+  local.start();
+  sleep(5);
+
+  auto fn = [](){
+    HLOG(RestartEngine, seq, "seq $0", 0);
+    HLOG(RestartEngine, seq, "seq $0", 1);
+    HLOG(RestartEngine, seq, "seq $0", 2);
+    HLOG(RestartEngine, seq, "seq $0", 3);
+    RestartEngine.commit();
+  };
+
+  std::thread t1(fn), t2(fn);
+  t1.join(); t2.join();
+
+  sleep(5);
+
+  std::thread t3(fn), t4(fn);
+  t3.join(); t4.join();
+
+  sleep(5);
+
+  hobbes::cc c;
+  auto i = 0;
+  for (const auto& log : local.logpaths()) {
+    c.define("f"+hobbes::str::from(i++), "inputFile::(LoadFile \""+log+"\" w)=>w");
+  }
+  EXPECT_TRUE(c.compileFn<bool()>("size(f0.seq[0:]) == 4 * 4")());
 }
 
