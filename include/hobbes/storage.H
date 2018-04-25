@@ -1836,8 +1836,8 @@ struct StorageGroup {
 
   static thread_local wpipe* pipe;
 
-  StorageGroup(size_t pagec, const PipeQOS qos) : StorageGroup(pagec, qos, Platform) {}
-  StorageGroup(size_t pagec, const PipeQOS qos, const WaitPolicy wp)
+  constexpr StorageGroup(size_t pagec, const PipeQOS qos) : StorageGroup(pagec, qos, Platform) {}
+  constexpr StorageGroup(size_t pagec, const PipeQOS qos, const WaitPolicy wp)
     : statements(nullptr), qos(qos), mempages(pagec), mqserver(-1), wp(wp) {}
 
   ~StorageGroup() {
