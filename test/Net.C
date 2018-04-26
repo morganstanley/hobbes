@@ -66,9 +66,9 @@ std::ostream& operator<<(std::ostream& os, const NameCounts& ncsc) {
   return os;
 }
 
-DEFINE_HNET_ENUM(Kid, (Jim), (Bob));
+DEFINE_ENUM(Kid, (Jim), (Bob));
 
-DEFINE_HNET_STRUCT(
+DEFINE_STRUCT(
   Group,
   (std::string, id),
   (Kid,         kid),
@@ -78,16 +78,16 @@ DEFINE_HNET_STRUCT(
 typedef std::vector<Group> Groups;
 std::ostream& operator<<(std::ostream& os, const Group& g) { os << "{id=\"" << g.id << "\", kid=" << ((g.kid == Kid::Jim()) ? "|Jim|" : "|Bob|") << ", aa=" << g.aa << ", bb=" << g.bb << "}"; return os; }
 
-DEFINE_HNET_VARIANT(
+DEFINE_VARIANT(
   V,
-  (Bob, int),
-  (Frank, std::string),
-  (Nothing, hobbes::net::unit)
+  (Bob,     int),
+  (Frank,   std::string),
+  (Nothing, hobbes::unit)
 );
 struct showV : public VVisitor<void> { std::ostream& os; showV(std::ostream& os) : os(os) { }
   void Bob(const int& x) const { os << "Bob=" << x; }
   void Frank(const std::string& x) const { os << "Frank=\"" << x << "\""; }
-  void Nothing(const hobbes::net::unit& u) const { os << "Nothing=()"; }
+  void Nothing(const hobbes::unit& u) const { os << "Nothing=()"; }
 };
 std::ostream& operator<<(std::ostream& os, const V& v) { os << "|"; v.visit(showV(os)); os << "|"; return os; }
 
@@ -110,19 +110,16 @@ std::ostream& operator<<(std::ostream& os, const CustomIDEnum& e) {
 namespace hobbes { namespace net {
 template <>
   struct io<CustomIDEnum> {
-    typedef void can_memcpy;
-    static void encode(bytes* out) {
-      w(PRIV_HNET_TYCTOR_VARIANT, out);
-      w((size_t)3, out);
-      ws("Red",   out); w((uint32_t)(CustomIDEnum::Red),   out); encode_primty("unit", out);
-      ws("Green", out); w((uint32_t)(CustomIDEnum::Green), out); encode_primty("unit", out);
-      ws("Blue",  out); w((uint32_t)(CustomIDEnum::Blue),  out); encode_primty("unit", out);
+    static const bool can_memcpy = true;
+    static ty::desc type() {
+      ty::Variant::Ctors cs;
+      cs.push_back(ty::Variant::Ctor("Red",   (uint32_t)(CustomIDEnum::Red),   ty::prim("unit")));
+      cs.push_back(ty::Variant::Ctor("Green", (uint32_t)(CustomIDEnum::Green), ty::prim("unit")));
+      cs.push_back(ty::Variant::Ctor("Blue",  (uint32_t)(CustomIDEnum::Blue),  ty::prim("unit")));
+      return ty::variant(cs);
     }
-
-    static std::string describe()                          { return "|Red,Green,Blue|"; }
-    static size_t      size(const CustomIDEnum&)           { return sizeof(CustomIDEnum); }
-    static void        write(int s, const CustomIDEnum& x) { io<uint32_t>::write(s, (uint32_t)x); }
-    static void        read(int s, CustomIDEnum* x)        { io<uint32_t>::read(s, (uint32_t*)x); }
+    static void write(int s, const CustomIDEnum& x) { io<uint32_t>::write(s, (uint32_t)x); }
+    static void read(int s, CustomIDEnum* x)        { io<uint32_t>::read(s, (uint32_t*)x); }
 
     typedef io<uint32_t>::async_read_state async_read_state;
     static void prepare(async_read_state* o) { io<uint32_t>::prepare(o); }
@@ -131,7 +128,7 @@ template <>
 }}
 
 using rgb_t = int[3];
-DEFINE_HNET_STRUCT(
+DEFINE_STRUCT(
   RGB,
   (rgb_t, val)
 );
@@ -162,7 +159,7 @@ TEST(Net, syncClientAPI) {
   for (size_t i = 0; i < 10; ++i) {
     EXPECT_EQ(c.grpv(grp), V::Frank("frank"));
   }
-  EXPECT_EQ(c.nothing(), V::Nothing(hobbes::net::unit()));
+  EXPECT_EQ(c.nothing(), V::Nothing(hobbes::unit()));
 
   Groups ros = { {"group_0",Kid::Jim(),0.0,0},{"group_1",Kid::Jim(),1.0,1},{"group_2",Kid::Jim(),2.0,2},{"group_3",Kid::Jim(),3.0,3},{"group_4",Kid::Jim(),4.0,4} };
   EXPECT_EQ(c.recover(0,4), ros);
@@ -185,7 +182,7 @@ DEFINE_ASYNC_NET_CLIENT(
   (nothing, V(),                            "\\().|Nothing=()|"),
   (recover, Groups(int,int),                "\\i e.[{id=\"group_\"++show(k),kid=|Jim|,aa=convert(k),bb=convert(k)}|k<-[i..e]]"),
   (eidv,    CustomIDEnum(CustomIDEnum),     "id"),
-  (inverse, RGB(RGB),                       "\\x.let _=saelem(x.val,0L)<-(255-saelem(x.val,0L));_=saelem(x.val,1L)<-(255-saelem(x.val,1L));_=saelem(x.val,2L)<-(255-saelem(x.val,2L)); in x")
+  (inverse, RGB(RGB),                       "\\x.do{saelem(x.val,0L)<-(255-saelem(x.val,0L));saelem(x.val,1L)<-(255-saelem(x.val,1L));saelem(x.val,2L)<-(255-saelem(x.val,2L)); return x}")
 );
 void stepAsyncClient(int, void* p) { ((AsyncClient*)p)->step(); }
 
@@ -198,7 +195,7 @@ TEST(Net, asyncClientAPI) {
   Group grp = { "id", Kid::Jim(), 4.2, 42 };
   for (size_t i = 0; i < 1000; ++i) {
     c.grpv(grp, [](const V& r) { EXPECT_EQ(r, V::Frank("frank")); });
-    c.nothing([](const V& r  ) { EXPECT_EQ(r, V::Nothing(hobbes::net::unit())); });
+    c.nothing([](const V& r  ) { EXPECT_EQ(r, V::Nothing(hobbes::unit())); });
   }
 
   Groups ros = { {"group_0",Kid::Jim(),0.0,0},{"group_1",Kid::Jim(),1.0,1},{"group_2",Kid::Jim(),2.0,2},{"group_3",Kid::Jim(),3.0,3},{"group_4",Kid::Jim(),4.0,4} };
