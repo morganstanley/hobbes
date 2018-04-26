@@ -285,6 +285,7 @@ void flushData(int first, int last) {
     } \
   } while (0)
 
+#if !defined(BUILD_OSX)
 TEST(Hog, MultiDestination) {
   std::vector<HogApp> batchrecv {
     HogApp(RunMode(availablePort(10000, 10100))),
@@ -404,4 +405,7 @@ TEST(Hog, RestartEngine) {
   }
   EXPECT_TRUE(c.compileFn<bool()>("size(f0.seq[0:]) == 4 * 4")());
 }
+
+#endif
+
 
