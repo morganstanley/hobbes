@@ -1622,10 +1622,13 @@ IDFATransitions* transitions(const ArgPos& argpos, MDFA* dfa, const SwitchVal::J
     }
   }
 
-  IDFATransitions* result = (IDFATransitions*)malloc(sizeof(long) + (ssvj.size() * sizeof(std::pair<long, IDFATransition>)));
+  size_t msz = sizeof(long) + (ssvj.size() * sizeof(std::pair<long, IDFATransition>));
+  IDFATransitions* result = (IDFATransitions*)malloc(msz);
+  memset(result, 0, msz);
   result->size = ssvj.size();
   size_t i = 0;
   for (const auto& svj : ssvj) {
+    new (&result->data[i]) std::pair<long, IDFATransition>();
     result->data[i].first  = svj.first;
     result->data[i].second = svj.second;
     ++i;
@@ -1665,7 +1668,9 @@ void makeInterpretedPrimMatchFunction(const std::string& fname, MDFA* dfa, state
   mapStatesFrom(dfa, state, &localstate);
 
   // construct the DFA description in a consumable format
-  array<IDFAState>* dfaStates = (array<IDFAState>*)malloc(sizeof(long) + (localstate.size() * sizeof(IDFAState)));
+  size_t msz = sizeof(long) + (localstate.size() + sizeof(IDFAState));
+  array<IDFAState>* dfaStates = (array<IDFAState>*)malloc(msz);
+  memset(dfaStates, 0, msz);
   dfaStates->size = localstate.size();
 
   std::set<stateidx_t> dones;

@@ -370,20 +370,20 @@ TEST(Storage, Lift) {
   }
 }
 
-DEFINE_HFREGION_ENUM(
+DEFINE_ENUM(
   FRTestFood,
   (Hamburger),
   (HotDog),
   (Pickle)
 );
 
-DEFINE_HFREGION_VARIANT(
+DEFINE_VARIANT(
   MStr,
   (nothing, char),
   (just,    std::string)
 );
 
-DEFINE_HFREGION_STRUCT(
+DEFINE_STRUCT(
   FRTest,
   (int,                      x),
   (double,                   y),

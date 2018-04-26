@@ -4,7 +4,6 @@
 
 #include <hobbes/lang/type.H>
 #include <hobbes/util/trie.H>
-#include <hobbes/util/variant.H>
 #include <hobbes/lang/typeinf.H>
 #include <map>
 

@@ -73,15 +73,15 @@ TEST(Variants, MemoryLayout) {
 }
 
 DEFINE_ENUM(Color,
-  (Red,   1),
-  (Green, 2),
-  (Blue,  3)
+  (Red),
+  (Green),
+  (Blue)
 );
 
 TEST(Variants, Enums) {
-  Color red   = Color::Red;
-  Color green = Color::Green;
-  Color blue  = Color::Blue;
+  Color red   = Color::Red();
+  Color green = Color::Green();
+  Color blue  = Color::Blue();
 
   EXPECT_EQ((c().compileFn<int(const Color*)>("x", "case x of |Red=0,Green=1,Blue=2|")(&red)),   0);
   EXPECT_EQ((c().compileFn<int(const Color*)>("x", "case x of |Red=0,Green=1,Blue=2|")(&green)), 1);
