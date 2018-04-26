@@ -10,7 +10,7 @@ std::string DataP::constraintName() {
 
 bool DataP::refine(const TEnvPtr&, const ConstraintPtr& c, MonoTypeUnifier* u, Definitions*) {
   if (c->name() == DataP::constraintName() && c->arguments().size() == 2) {
-    if (hasFreeVariables(c->arguments()[1])) {
+    if (!hasFreeVariables(c->arguments()[0]) && hasFreeVariables(c->arguments()[1])) {
       size_t z = u->size();
       mgu(c->arguments()[1], repType(c->arguments()[0]), u);
       return z != u->size();

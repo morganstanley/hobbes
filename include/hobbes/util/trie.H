@@ -6,7 +6,7 @@
 #define HOBBES_UTIL_TRIE_HPP_INCLUDED
 
 #include <vector>
-#include <hobbes/util/variant.H>
+#include <hobbes/reflect.H>
 
 namespace hobbes {
 

@@ -2341,6 +2341,9 @@ template <>
   struct readF<std::string> {
     static std::string read(const bytes& in, unsigned int* n) {
       size_t sz = readF<size_t>::read(in, n);
+      if (sz > (in.size()-*n)) {
+        throw std::runtime_error("Encoded type information is invalid (recorded string with size=" + str::from(sz) + " but only " + str::from(in.size()-*n) + " bytes are available to read)");
+      }
       std::string r((const char*)(&(in[*n])), sz);
       *n += sz;
       return r;

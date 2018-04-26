@@ -37,6 +37,8 @@
 #ifndef HOBBES_HFREGION_H_INCLUDED
 #define HOBBES_HFREGION_H_INCLUDED
 
+#include <hobbes/reflect.H>
+
 #include <string>
 #include <vector>
 #include <map>
@@ -1060,317 +1062,76 @@ inline std::string moveToUniqueFilename(const std::string& oldpath, const std::s
 
 /***********************
  *
- * type-directed storage in structured data files
+ * type description utilities for storage types
  *
  ***********************/
-
-// type encoding logic
-#define PRIV_HFREGION_TYCTOR_PRIM      ((int)0)
-#define PRIV_HFREGION_TYCTOR_TVAR      ((int)2)
-#define PRIV_HFREGION_TYCTOR_FIXEDARR  ((int)4)
-#define PRIV_HFREGION_TYCTOR_ARR       ((int)5)
-#define PRIV_HFREGION_TYCTOR_VARIANT   ((int)6)
-#define PRIV_HFREGION_TYCTOR_STRUCT    ((int)7)
-#define PRIV_HFREGION_TYCTOR_SIZE      ((int)11)
-#define PRIV_HFREGION_TYCTOR_TAPP      ((int)12)
-#define PRIV_HFREGION_TYCTOR_RECURSIVE ((int)13)
-#define PRIV_HFREGION_TYCTOR_TABS      ((int)15)
-
-template <typename T>
-  void w(const T& x, bytes* out) {
-    out->insert(out->end(), (uint8_t*)&x, ((uint8_t*)&x) + sizeof(x));
-  }
-inline void ws(const char* x, bytes* out) {
-  size_t n = strlen(x);
-  w(n, out);
-  out->insert(out->end(), x, x + n);
-}
-inline void ws(const std::string& x, bytes* out) {
-  w((size_t)x.size(), out);
-  out->insert(out->end(), x.begin(), x.end());
-}
-inline void ws(const bytes& x, bytes* out) {
-  w((size_t)x.size(), out);
-  out->insert(out->end(), x.begin(), x.end());
-}
-inline void wmerge(const bytes& in, bytes* out) {
-  out->insert(out->end(), in.begin(), in.end());
+inline ty::desc storedListType(const ty::desc& t, size_t tysize) {
+  return ty::recursive("x", ty::sum(ty::prim("unit"), ty::tup(0, t, align<size_t>(tysize, sizeof(size_t)), ty::fileRef(ty::var("x")))));
 }
 
-inline void encode_primty(const char* tn, bytes* out) {
-  w(PRIV_HFREGION_TYCTOR_PRIM, out);
-  ws(tn, out);
-  w((bool)false, out);
+inline ty::desc batchSeqType(const ty::desc& t, size_t batchSize) {
+  return ty::app(prim("carray", ty::fn("t", "c", ty::rec("avail", 0, ty::prim("long"), "buffer", sizeof(size_t), ty::array(ty::var("t"), ty::var("c"))))), t, ty::nat(batchSize));
 }
 
-inline bytes tprimTypeDef(const char* name, const bytes& repty = bytes()) {
-  bytes o;
-  w(PRIV_HFREGION_TYCTOR_PRIM, &o);
-  ws(name, &o);
-  if (repty.size() == 0) {
-    w((bool)false, &o);
-  } else {
-    w((bool)true, &o);
-    o.insert(o.end(), repty.begin(), repty.end());
-  }
-  return o;
+inline ty::desc storedSeqType(const ty::desc& t, size_t batchSize) {
+  return ty::fileRef(storedListType(ty::fileRef(batchSeqType(t, batchSize)), sizeof(size_t)));
 }
 
-inline bytes tvarTypeDef(const char* x) {
-  bytes o;
-  w(PRIV_HFREGION_TYCTOR_TVAR, &o);
-  ws(x, &o);
-  return o;
-}
-
-inline bytes fileRefTypeDef(const bytes& ty) {
-  bytes o;
-
-  w(PRIV_HFREGION_TYCTOR_TAPP, &o);
-    w(PRIV_HFREGION_TYCTOR_PRIM, &o);
-      ws("fileref", &o);
-      w((bool)true, &o);
-      w(PRIV_HFREGION_TYCTOR_TABS, &o);
-      w((size_t)1, &o);
-      ws("x", &o);
-      wmerge(tprimTypeDef("long"), &o);
-
-    w((size_t)1, &o);
-    wmerge(ty, &o);
-
-  return o;
-}
-
-inline bytes storedListTypeDef(const bytes& ty, size_t tysize) {
-  bytes o;
-
-  w(PRIV_HFREGION_TYCTOR_RECURSIVE, &o);
-    ws("x", &o);
-
-    w(PRIV_HFREGION_TYCTOR_VARIANT, &o);
-    w((size_t)2, &o);
-      ws(".f0", &o);
-      w((int)0, &o);
-      wmerge(tprimTypeDef("unit"), &o);
-
-      ws(".f1", &o);
-      w((int)1, &o);
-      w(PRIV_HFREGION_TYCTOR_STRUCT, &o);
-      w((size_t)2, &o);
-        ws(".f0", &o);
-        w((int)0, &o);
-        wmerge(ty, &o);
-        
-        ws(".f1", &o);
-        w((int)align<size_t>(tysize, sizeof(size_t)), &o);
-        wmerge(fileRefTypeDef(tvarTypeDef("x")), &o);
-
-  return o;
-}
-
-inline bytes batchSeqTypeDef(const bytes& ty, size_t batchSize) {
-  bytes o;
-
-  w(PRIV_HFREGION_TYCTOR_TAPP, &o);
-    w(PRIV_HFREGION_TYCTOR_PRIM, &o);
-    ws("carray", &o);
-    w((bool)true, &o);
-      w(PRIV_HFREGION_TYCTOR_TABS, &o);
-      w((size_t)2, &o);
-      ws("t", &o);
-      ws("c", &o);
-
-      w(PRIV_HFREGION_TYCTOR_STRUCT, &o);
-      w((size_t)2, &o);
-        ws("avail", &o);
-        w((int)0, &o);
-        wmerge(tprimTypeDef("long"), &o);
-
-        ws("buffer", &o);
-        w((int)sizeof(size_t), &o);
-        w(PRIV_HFREGION_TYCTOR_FIXEDARR, &o);
-        wmerge(tvarTypeDef("t"), &o);
-        wmerge(tvarTypeDef("c"), &o);
-
-    w((size_t)2, &o);
-    wmerge(ty, &o);
-
-    w(PRIV_HFREGION_TYCTOR_SIZE, &o);
-    w((size_t)batchSize, &o);
-
-  return o;
-}
-
-inline bytes storedSeqTypeDef(const bytes& ty, size_t tysize, size_t batchSize) {
-  return fileRefTypeDef(storedListTypeDef(fileRefTypeDef(batchSeqTypeDef(ty, batchSize)), sizeof(size_t)));
-}
-
-template <typename T>
-  T r(const bytes& in, size_t* i) {
-    if (in.size() < (*i+sizeof(T))) {
-      throw std::runtime_error("Can't read " + str::demangle<T>() + " from type info");
-    }
-    T r = *((const T*)&in[*i]);
-    *i += sizeof(T);
-    return r;
-  }
-inline std::string rs(const bytes& in, size_t* i) {
-  size_t n = r<size_t>(in, i);
-  if (in.size() < n+*i) {
-    throw std::runtime_error("Can't read string from type info");
-  }
-  auto b = (const char*)&in[*i];
-  std::string r(b, b + n);
-  *i += n;
-  return r;
-}
-
-inline const char* showTC(uint32_t tc) {
-  switch (tc) {
-  case PRIV_HFREGION_TYCTOR_PRIM:      return "prim";
-  case PRIV_HFREGION_TYCTOR_TVAR:      return "tvar";
-  case PRIV_HFREGION_TYCTOR_FIXEDARR:  return "farr";
-  case PRIV_HFREGION_TYCTOR_ARR:       return "arr";
-  case PRIV_HFREGION_TYCTOR_VARIANT:   return "variant";
-  case PRIV_HFREGION_TYCTOR_STRUCT:    return "struct";
-  case PRIV_HFREGION_TYCTOR_SIZE:      return "tlong";
-  case PRIV_HFREGION_TYCTOR_TAPP:      return "tapp";
-  case PRIV_HFREGION_TYCTOR_RECURSIVE: return "rec";
-  case PRIV_HFREGION_TYCTOR_TABS:      return "tlambda";
-  default:                             return "?";
-  }
-}
-
-inline size_t rtde(const bytes& bs, size_t* i) {
-  switch (r<uint32_t>(bs,i)) {
-  case PRIV_HFREGION_TYCTOR_PRIM:
-    rs(bs,i);
-    if (r<bool>(bs,i)) rtde(bs,i);
-    break;
-  case PRIV_HFREGION_TYCTOR_TVAR:
-    rs(bs,i);
-    break;
-  case PRIV_HFREGION_TYCTOR_FIXEDARR:
-    rtde(bs,i);
-    rtde(bs,i);
-    break;
-  case PRIV_HFREGION_TYCTOR_ARR:
-    rtde(bs,i);
-    break;
-  case PRIV_HFREGION_TYCTOR_VARIANT:
-    { size_t n = r<size_t>(bs,i); for (size_t _ = 0; _ < n; ++_) { rs(bs,i); r<uint32_t>(bs,i); rtde(bs,i); } }
-    break;
-  case PRIV_HFREGION_TYCTOR_STRUCT:
-    { size_t n = r<size_t>(bs,i); for (size_t _ = 0; _ < n; ++_) { rs(bs,i); r<uint32_t>(bs,i); rtde(bs,i); } }
-    break;
-  case PRIV_HFREGION_TYCTOR_SIZE:
-    r<size_t>(bs,i);
-    break;
-  case PRIV_HFREGION_TYCTOR_TAPP:
-    rtde(bs,i);
-    { size_t n = r<size_t>(bs,i); for (size_t _ = 0; _ < n; ++_) { rtde(bs,i); } }
-    break;
-  case PRIV_HFREGION_TYCTOR_RECURSIVE:
-    rs(bs,i);
-    rtde(bs,i);
-    break;
-  case PRIV_HFREGION_TYCTOR_TABS:
-    { size_t n = r<size_t>(bs,i); for (size_t _ = 0; _ < n; ++_) { rs(bs,i); } }
-    rtde(bs,i);
-    break;
-  default:
-    throw std::runtime_error("Can't read invalid type description");
-  }
-  return *i;
-}
-inline bytes rtd(const bytes& bs, size_t* i) {
-  size_t b = *i;
-  size_t e = rtde(bs, i);
-  return bytes(bs.begin()+b, bs.begin()+e);
-}
-
-template <typename T>
-  inline void expectEQ(const bytes& bs, size_t* i, const T& t) {
-    if (r<T>(bs, i) != t) {
-      throw std::runtime_error("Stored type information inconsistent with expected type");
+inline ty::desc maybeDerefFileRef(const ty::desc& t) {
+  if (t && t->tid == PRIV_HPPF_TYCTOR_TAPP) {
+    const ty::App* ap = (const ty::App*)t.get();
+    if (ap->f->tid == PRIV_HPPF_TYCTOR_PRIM && ((const ty::Prim*)ap->f.get())->n == "fileref") {
+      if (ap->args.size() >= 1) {
+        return ap->args[0];
+      }
     }
   }
-inline void expectTC(const bytes& bs, size_t* i, uint32_t tc) { expectEQ<uint32_t>(bs,i,tc); }
-inline void expectS(const bytes& bs, size_t* i, const std::string& x) {
-  if (rs(bs, i) != x) {
-    throw std::runtime_error("Stored type information inconsistent with expected type");
+  return ty::desc();
+}
+
+inline ty::desc maybeOpenRecursive(const ty::desc& t) {
+  if (t && t->tid == PRIV_HPPF_TYCTOR_RECURSIVE) {
+    return ((const ty::Recursive*)t.get())->t;
   }
+  return ty::desc();
 }
 
-inline bytes readFileRefTypeDef(const bytes& bs) {
-  size_t i = 0;
-  expectTC(bs, &i, PRIV_HFREGION_TYCTOR_TAPP);
-  expectTC(bs, &i, PRIV_HFREGION_TYCTOR_PRIM);
-  expectS (bs, &i, "fileref");
-  expectEQ(bs, &i, true);
-  expectTC(bs, &i, PRIV_HFREGION_TYCTOR_TABS);
-  expectEQ(bs, &i, (size_t)1);
-  rs(bs,&i);
-  expectTC(bs, &i, PRIV_HFREGION_TYCTOR_PRIM);
-  expectS (bs, &i, "long");
-  expectEQ(bs, &i, false);
-  expectEQ(bs, &i, (size_t)1);
-  return bytes(bs.begin()+i, bs.end());
-}
-
-inline std::map<std::string, std::pair<uint32_t, bytes>> readVRTypeDef(const bytes& bs, uint32_t evt = PRIV_HFREGION_TYCTOR_VARIANT) {
-  size_t i = 0;
-  expectTC(bs, &i, evt);
-  
-  std::map<std::string, std::pair<uint32_t, bytes>> result;
-  size_t n = r<size_t>(bs, &i);
-  for (size_t _ = 0; _ < n; ++_) {
-    auto     cn = rs(bs, &i);
-    uint32_t id = r<uint32_t>(bs, &i);
-    bytes    td = rtd(bs, &i);
-
-    result[cn] = std::pair<uint32_t,bytes>(id,td);
+inline ty::desc maybeNthSum(const ty::desc& t, size_t n) {
+  if (t && t->tid == PRIV_HPPF_TYCTOR_VARIANT) {
+    const ty::Variant::Ctors& cs = ((ty::Variant*)t.get())->ctors;
+    if (n < cs.size() && cs[0].at<0>() == ".f0") {
+      return cs[n].at<2>();
+    }
   }
-  return result;
+  return ty::desc();
 }
 
-inline bytes readSeqTypeDef(const bytes& bs) {
-  bytes  rbs = readFileRefTypeDef(bs);
-  size_t i   = 0;
-  expectTC(rbs, &i, PRIV_HFREGION_TYCTOR_RECURSIVE);
-  rs(rbs, &i);
-
-  auto vd = readVRTypeDef(bytes(rbs.begin()+i, rbs.end()));
-  auto z  = vd.find(".f1");
-  if (z == vd.end()) { throw std::runtime_error("Invalid stored variant definition for sequence type"); }
-
-  auto rd = readVRTypeDef(z->second.second, PRIV_HFREGION_TYCTOR_STRUCT);
-  auto q = rd.find(".f0");
-  if (q == rd.end()) { throw std::runtime_error("Invalid stored variant definition for sequence type"); }
-
-  return q->second.second;
-}
-
-inline std::pair<bytes, size_t> readBatchTypeDef(const bytes& bs) {
-  size_t i = 0;
-  expectTC(bs, &i, PRIV_HFREGION_TYCTOR_TAPP);
-  expectTC(bs, &i, PRIV_HFREGION_TYCTOR_PRIM);
-  expectS (bs, &i, "carray");
-  expectEQ(bs, &i, true);
-  rtde(bs, &i);
-  expectEQ(bs, &i, (size_t)2);
-  auto bbs = rtd(bs,&i);
-  expectTC(bs, &i, PRIV_HFREGION_TYCTOR_SIZE);
-  size_t len = r<size_t>(bs,&i);
-  return std::pair<bytes,size_t>(bbs,len);
-}
-
-inline bytes readBatchSeqTypeDef(const bytes& bs) {
-  return readBatchTypeDef(readFileRefTypeDef(readSeqTypeDef(bs))).first;
+inline ty::desc maybeNthProd(const ty::desc& t, size_t n) {
+  if (t && t->tid == PRIV_HPPF_TYCTOR_STRUCT) {
+    const ty::Struct::Fields& fs = ((ty::Struct*)t.get())->fields;
+    if (n < fs.size() && fs[0].at<0>() == ".f0") {
+      return fs[n].at<2>();
+    }
+  }
+  return ty::desc();
 }
 
 inline size_t inferBatchSize(const bytes& bs) {
-  return readBatchTypeDef(readFileRefTypeDef(readSeqTypeDef(bs))).second;
+  ty::desc dty = ty::decode(bs);
+
+  if (ty::desc t = maybeDerefFileRef(maybeNthProd(maybeNthSum(maybeOpenRecursive(maybeDerefFileRef(dty)), 1), 0))) {
+    if (t->tid == PRIV_HPPF_TYCTOR_TAPP) {
+      const ty::App* buf = (const ty::App*)t.get();
+      if (buf->f->tid == PRIV_HPPF_TYCTOR_PRIM) {
+        if (((ty::Prim*)buf->f.get())->n == "carray") {
+          if (buf->args.size() >= 2 && buf->args[1]->tid == PRIV_HPPF_TYCTOR_SIZE) {
+            return ((ty::Nat*)buf->args[1].get())->x;
+          }
+        }
+      }
+    }
+  }
+  throw std::runtime_error("Invalid stored sequence type, can't infer size: " + ty::show(dty));
 }
 
 // the main interface for type translation into slog data
@@ -1383,15 +1144,11 @@ template <typename ... Ts>
 template <typename T, typename ... Ts>
   struct all_memcpyable<T, Ts...> { static const bool value = store<T>::can_memcpy && all_memcpyable<Ts...>::value; };
 
-template <bool f> struct tbool { };
-template <>       struct tbool<true> { typedef void type; };
-
 // codecs for built-in types
 #define PRIV_HFREGION_DEFINE_PRIMTYS(T, n) \
   template <> \
     struct store<T> { \
-      static void        encode(bytes* out)                           { encode_primty(n, out); } \
-      static std::string describe()                                   { return n; } \
+      static ty::desc    storeType()                                  { return ty::prim(n); } \
       static const bool  can_memcpy = true; \
       static size_t      size()                                       { return sizeof(T); } \
       static size_t      alignment()                                  { return sizeof(T); } \
@@ -1417,18 +1174,7 @@ PRIV_HFREGION_DEFINE_PRIMTYS(double,   "double");
 // store fixed-length arrays
 template <typename T, size_t N>
   struct storeFixedArrayDef {
-    static void encode(bytes* out) {
-      w(PRIV_HFREGION_TYCTOR_FIXEDARR, out);
-      store<T>::encode(out);
-      w(PRIV_HFREGION_TYCTOR_SIZE, out);
-      w((long)N, out);
-    }
-
-    static std::string describe() {
-      std::ostringstream ss;
-      ss << "[:" << store<T>::describe() << "|" << N << ":]";
-      return ss.str();
-    }
+    static ty::desc storeType() { return ty::array(store<T>::storeType(), ty::nat(N)); }
 
     static size_t size()      { return store<T>::size() * N; }
     static size_t alignment() { return store<T>::alignment(); }
@@ -1462,13 +1208,7 @@ template <typename T, size_t N>
 template <>
   struct store<std::string> {
     static const bool can_memcpy = false;
-    static void encode(bytes* o) {
-      bytes c;
-      w(PRIV_HFREGION_TYCTOR_ARR, &c);
-      encode_primty("char", &c);
-      wmerge(fileRefTypeDef(c), o);
-    }
-    static std::string describe() { return "[char]"; }
+    static ty::desc storeType() { return ty::fileRef(ty::array(ty::prim("char"))); }
     static size_t size() { return sizeof(size_t); }
     static size_t alignment() { return sizeof(size_t); }
 
@@ -1499,49 +1239,10 @@ template <>
     }
   };
 
-// store pairs
-template <typename U, typename V>
-  struct storePairDef {
-    static void encode(bytes* o) {
-      w(PRIV_HFREGION_TYCTOR_STRUCT, o);
-      w((size_t)2, o);
-        ws(".f0", o); w((int)0, o);                                                      store<U>::encode(o);
-        ws(".f1", o); w((int)align<size_t>(store<U>::size(), store<V>::alignment()), o); store<V>::encode(o);
-    }
-    static std::string describe() { return store<U>::describe() + " * " + store<V>::describe(); }
-    static size_t alignment() { return std::max<size_t>(store<U>::alignment(), store<V>::alignment()); }
-    static size_t size() { auto usz = store<U>::size(); return align<size_t>(usz + (align<size_t>(usz, store<V>::alignment()) - usz) + store<V>::size(), alignment()); }
-  };
-
-template <typename U, typename V>
-  struct store<std::pair<U,V>, typename tbool<all_memcpyable<U, V>::value>::type> : public storePairDef<U,V> {
-    static const bool can_memcpy = true;
-    static void write(imagefile*, void* p,       const std::pair<U,V>& x) { memcpy(p, &x, sizeof(x)); }
-    static void read (imagefile*, const void* p, std::pair<U,V>* x)       { memcpy(x, p, sizeof(*x)); }
-  };
-template <typename U, typename V>
-  struct store<std::pair<U,V>, typename tbool<!all_memcpyable<U, V>::value>::type> : public storePairDef<U,V> {
-    static const bool can_memcpy = false;
-    static void write(imagefile* f, void* p, const std::pair<U,V>& x) {
-      store<U>::write(f, p, x.first);
-      store<V>::write(f, ((uint8_t*)p)+align<size_t>(store<U>::size(), store<V>::alignment()), x.second);
-    }
-    static void read (imagefile* f, const void* p, std::pair<U,V>* x) {
-      store<U>::read(f, p, &x->first);
-      store<V>::read(f, ((uint8_t*)p)+align<size_t>(store<U>::size(), store<V>::alignment()), &x->second);
-    }
-  };
-
 // store vectors
 template <typename T>
   struct storeVectorDef {
-    static void encode(bytes* o) {
-      bytes c;
-      w(PRIV_HFREGION_TYCTOR_ARR, &c);
-      store<T>::encode(&c);
-      wmerge(fileRefTypeDef(c), o);
-    }
-    static std::string describe() { return "[" + store<T>::describe() + "]"; }
+    static ty::desc storeType() { return ty::fileRef(ty::array(store<T>::storeType())); }
     static size_t size() { return sizeof(size_t); }
     static size_t alignment() { return sizeof(size_t); }
   };
@@ -1613,88 +1314,102 @@ template <typename T>
     }
   };
 
-// very basic macro metaprogramming
-#define PRIV_HFREGION_FIRST(a, ...) a
-#define PRIV_HFREGION_SECOND(a, b, ...) b
-#define PRIV_HFREGION_JOIN(a,b) a ## b
-#define PRIV_HFREGION_IS_NEGATE(...) PRIV_HFREGION_SECOND(__VA_ARGS__, 0)
-#define PRIV_HFREGION_NOT(x) PRIV_HFREGION_IS_NEGATE(PRIV_HFREGION_JOIN(PRIV_HFREGION_SNOT_, x))
-#define PRIV_HFREGION_SNOT_0 NEGATE, 1
-#define PRIV_HFREGION_BOOL(x) PRIV_HFREGION_NOT(PRIV_HFREGION_NOT(x))
-#define PRIV_HFREGION_IF_ELSE(condition) PRIV_HFREGION_SIF_ELSE(PRIV_HFREGION_BOOL(condition))
-#define PRIV_HFREGION_SIF_ELSE(condition) PRIV_HFREGION_JOIN(PRIV_HFREGION_SIF_, condition)
-#define PRIV_HFREGION_SIF_1(...) __VA_ARGS__ PRIV_HFREGION_SIF_1_ELSE
-#define PRIV_HFREGION_SIF_0(...)             PRIV_HFREGION_SIF_0_ELSE
-#define PRIV_HFREGION_SIF_1_ELSE(...)
-#define PRIV_HFREGION_SIF_0_ELSE(...) __VA_ARGS__
-#define PRIV_HFREGION_EMPTY()
-#define PRIV_HFREGION_EVAL(...) PRIV_HFREGION_EVAL256(__VA_ARGS__)
-#define PRIV_HFREGION_EVAL256(...) PRIV_HFREGION_EVAL128(PRIV_HFREGION_EVAL128(__VA_ARGS__))
-#define PRIV_HFREGION_EVAL128(...) PRIV_HFREGION_EVAL64(PRIV_HFREGION_EVAL64(__VA_ARGS__))
-#define PRIV_HFREGION_EVAL64(...) PRIV_HFREGION_EVAL32(PRIV_HFREGION_EVAL32(__VA_ARGS__))
-#define PRIV_HFREGION_EVAL32(...) PRIV_HFREGION_EVAL16(PRIV_HFREGION_EVAL16(__VA_ARGS__))
-#define PRIV_HFREGION_EVAL16(...) PRIV_HFREGION_EVAL8(PRIV_HFREGION_EVAL8(__VA_ARGS__))
-#define PRIV_HFREGION_EVAL8(...) PRIV_HFREGION_EVAL4(PRIV_HFREGION_EVAL4(__VA_ARGS__))
-#define PRIV_HFREGION_EVAL4(...) PRIV_HFREGION_EVAL2(PRIV_HFREGION_EVAL2(__VA_ARGS__))
-#define PRIV_HFREGION_EVAL2(...) PRIV_HFREGION_EVAL1(PRIV_HFREGION_EVAL1(__VA_ARGS__))
-#define PRIV_HFREGION_EVAL1(...) __VA_ARGS__
-#define PRIV_HFREGION_DEFER2(m) m PRIV_HFREGION_EMPTY PRIV_HFREGION_EMPTY()()
-#define PRIV_HFREGION_HAS_PARGS(...) PRIV_HFREGION_BOOL(PRIV_HFREGION_FIRST(PRIV_HFREGION_SEOAP_ __VA_ARGS__)())
-#define PRIV_HFREGION_SEOAP_(...) PRIV_HFREGION_BOOL(PRIV_HFREGION_FIRST(PRIV_HFREGION_SEOA_ __VA_ARGS__)())
-#define PRIV_HFREGION_SEOA_() 0
-#define PRIV_HFREGION_MAP(f, VS...) PRIV_HFREGION_EVAL(PRIV_HFREGION_MAPP(f, VS))
-#define PRIV_HFREGION_MAPP(f, H, T...)        \
-  f H                                 \
-  PRIV_HFREGION_IF_ELSE(PRIV_HFREGION_HAS_PARGS(T))(  \
-    PRIV_HFREGION_DEFER2(PRIV_HFREGION_SMAPP)()(f, T) \
-  )(                                  \
-  )
-#define PRIV_HFREGION_SMAPP() PRIV_HFREGION_MAPP
+// store pairs
+template <typename U, typename V>
+  struct storePairDef {
+    static ty::desc storeType() {
+      return ty::tup(0, store<U>::storeType(), align<size_t>(store<U>::size(), store<V>::alignment()), store<V>::storeType());
+    }
+    static size_t alignment() { return std::max<size_t>(store<U>::alignment(), store<V>::alignment()); }
+    static size_t size() { auto usz = store<U>::size(); return align<size_t>(usz + (align<size_t>(usz, store<V>::alignment()) - usz) + store<V>::size(), alignment()); }
+  };
+
+template <typename U, typename V>
+  struct store<std::pair<U,V>, typename tbool<all_memcpyable<U, V>::value>::type> : public storePairDef<U,V> {
+    static const bool can_memcpy = true;
+    static void write(imagefile*, void* p,       const std::pair<U,V>& x) { memcpy(p, &x, sizeof(x)); }
+    static void read (imagefile*, const void* p, std::pair<U,V>* x)       { memcpy(x, p, sizeof(*x)); }
+  };
+template <typename U, typename V>
+  struct store<std::pair<U,V>, typename tbool<!all_memcpyable<U, V>::value>::type> : public storePairDef<U,V> {
+    static const bool can_memcpy = false;
+    static void write(imagefile* f, void* p, const std::pair<U,V>& x) {
+      store<U>::write(f, p, x.first);
+      store<V>::write(f, ((uint8_t*)p)+align<size_t>(store<U>::size(), store<V>::alignment()), x.second);
+    }
+    static void read (imagefile* f, const void* p, std::pair<U,V>* x) {
+      store<U>::read(f, p, &x->first);
+      store<V>::read(f, ((uint8_t*)p)+align<size_t>(store<U>::size(), store<V>::alignment()), &x->second);
+    }
+  };
+
+// store tuples
+template <size_t i, size_t n, typename ... Ts>
+  struct storeTupleDef {
+    typedef typename nth<i, Ts...>::type H;
+    typedef tuple<Ts...>                 TT;
+    typedef typename TT::offs            offs;
+    typedef storeTupleDef<i+1, n, Ts...> Recurse;
+
+    static void fieldDefs(ty::Struct::Fields* fs) {
+      fs->push_back(ty::Struct::Field(".f" + str::from(i), (int)offsetAt<i, offs>::value, store<H>::storeType()));
+      Recurse::fieldDefs(fs);
+    }
+    static ty::desc storeType() { ty::Struct::Fields fs; fieldDefs(&fs); return ty::record(fs); }
+
+    static size_t alignment() { return TT::alignment; }
+    static size_t size()      { return TT::size;      }
+
+    static void incrWrite(imagefile* f, void* p, const tuple<Ts...>& x) {
+      store<H>::write(f, p, x.template at<i>());
+      Recurse::incrWrite(f, p, x);
+    }
+    static void incrRead(imagefile* f, const void* p, tuple<Ts...>* x) {
+      store<H>::read(f, p, &x->template at<i>());
+      Recurse::incrRead(f, p, x);
+    }
+  };
+template <size_t n, typename ... Ts>
+  struct storeTupleDef<n, n, Ts...> {
+    static void fieldDefs(ty::Struct::Fields*) { }
+    static ty::desc storeType()   { return ty::prim("unit"); }
+    static size_t alignment()     { return  0; }
+    static size_t size()          { return  0; }
+
+    static void incrWrite(imagefile*, void*, const tuple<Ts...>&) { }
+    static void incrRead (imagefile*, const void*, tuple<Ts...>*) { }
+  };
+
+template <typename ... Ts>
+  struct store<tuple<Ts...>, typename tbool<all_memcpyable<Ts...>::value>::type> : public storeTupleDef<0, sizeof...(Ts), Ts...> {
+    static const bool can_memcpy = true;
+    static void write(imagefile*, void* p,       const tuple<Ts...>& x) { memcpy(p, &x, sizeof( x)); }
+    static void read (imagefile*, const void* p, tuple<Ts...>* x)       { memcpy(x,  p, sizeof(*x)); }
+  };
+template <typename ... Ts>
+  struct store<tuple<Ts...>, typename tbool<!all_memcpyable<Ts...>::value>::type> : public storeTupleDef<0, sizeof...(Ts), Ts...> {
+    static const bool can_memcpy = false;
+    typedef storeTupleDef<0, sizeof...(Ts), Ts...> Reflect;
+
+    static void write(imagefile* f, void* p, const tuple<Ts...>& x) {
+      Reflect::incrWrite(f, p, x);
+    }
+    static void read (imagefile* f, const void* p, tuple<Ts...>* x) {
+      Reflect::incrRead(f, p, x);
+    }
+  };
 
 // store reflective structs
-#define PRIV_HFREGION_STRUCT_FIELD(t, n) t n;
-#define PRIV_HFREGION_STRUCT_FIELD_VISIT(t, n) v.template visit<t>(#n);
-#define PRIV_HFREGION_STRUCT_FIELD_EQ(t, n) && this->n == rhs.n
-#define PRIV_HFREGION_STRUCT_FIELD_TYARGL(t, n) , t
-
-#define DEFINE_HFREGION_STRUCT(T, FIELDS...) \
-  struct T { \
-    PRIV_HFREGION_MAP(PRIV_HFREGION_STRUCT_FIELD, FIELDS) /* struct fields */ \
-    static const bool is_hfregion_struct = true; /* identify this type as a struct */ \
-    static const bool can_memcpy = ::hobbes::fregion::all_memcpyable<int PRIV_HFREGION_MAP(PRIV_HFREGION_STRUCT_FIELD_TYARGL, FIELDS) >::value; \
-    template <typename V> \
-      static void meta(V& v) { \
-        PRIV_HFREGION_MAP(PRIV_HFREGION_STRUCT_FIELD_VISIT, FIELDS) \
-      }\
-    bool operator==(const T& rhs) const { \
-      return true PRIV_HFREGION_MAP(PRIV_HFREGION_STRUCT_FIELD_EQ, FIELDS); \
-    } \
-  }
-
-struct encodeStructF {
-  bytes*  o;
-  size_t  offset;
-  size_t* c;
-  encodeStructF(bytes* o, size_t* c) : o(o), offset(0), c(c) { }
+struct defStructF {
+  ty::Struct::Fields* fs;
+  size_t offset;
+  defStructF(ty::Struct::Fields* fs) : fs(fs), offset(0) { }
 
   template <typename T>
     void visit(const char* fname) {
       size_t i = align<size_t>(this->offset, store<T>::alignment());
-      ws(fname, this->o);
-      w((int)i, this->o);
-      store<T>::encode(this->o);
+      this->fs->push_back(ty::Struct::Field(fname, i, store<T>::storeType()));
       this->offset = i + store<T>::size();
-      ++(*this->c);
-    }
-};
-
-struct describeStructF {
-  str::seq* ss;
-  describeStructF(str::seq* ss) : ss(ss) { }
-
-  template <typename T>
-    void visit(const char* fname) {
-      ss->push_back(std::string(fname) + ":" + store<T>::describe());
     }
 };
 
@@ -1712,30 +1427,13 @@ struct calcSizeF {
 
 template <typename T>
   struct storeStructDef {
-    static void encode(bytes* o) {
-      bytes t;
-      size_t c=0;
-      encodeStructF esF(&t, &c);
-      T::meta(esF);
-      if (c > 0) {
-        w(PRIV_HFREGION_TYCTOR_STRUCT, o);
-        w((size_t)c, o);
-        wmerge(t, o);
-      } else {
-        encode_primty("unit", o);
-      }
+    static ty::desc storeType() {
+      ty::Struct::Fields fs;
+      defStructF df(&fs);
+      T::meta(df);
+      return ty::record(fs);
     }
-    static std::string describe() {
-      str::seq fs;
-      describeStructF dsF(&fs);
-      T::meta(dsF);
 
-      if (fs.size() > 0) {
-        return "{" + str::cdelim(fs, ", ") + "}";
-      } else {
-        return "()";
-      }
-    }
     static size_t size() {
       size_t sz       = 0;
       size_t maxAlign = 1;
@@ -1753,7 +1451,7 @@ template <typename T>
   };
 
 template <typename T>
-  struct store<T, typename tbool<T::is_hfregion_struct && T::can_memcpy>::type> : public storeStructDef<T> {
+  struct store<T, typename tbool<T::is_hmeta_struct && store<typename T::as_tuple_type>::can_memcpy>::type> : public storeStructDef<T> {
     static const bool can_memcpy = true;
     static void write(imagefile*, void* p,       const T& x) { memcpy(p, &x, sizeof(T)); }
     static void read (imagefile*, const void* p, T*       x) { memcpy(x,  p, sizeof(T)); }
@@ -1798,7 +1496,7 @@ struct readFieldF {
 };
 
 template <typename T>
-  struct store<T, typename tbool<T::is_hfregion_struct && !T::can_memcpy>::type> : public storeStructDef<T> {
+  struct store<T, typename tbool<T::is_hmeta_struct && !store<typename T::as_tuple_type>::can_memcpy>::type> : public storeStructDef<T> {
     static const bool can_memcpy = false;
     static void write(imagefile* f, void* p, const T& x) {
       writeFieldF wfF(f, (uint8_t*)p, (const uint8_t*)&x);
@@ -1811,66 +1509,14 @@ template <typename T>
   };
 
 // store reflective enumerations
-#define PRIV_HFREGION_ENUM_CTOR_DEF(n) n ,
-#define PRIV_HFREGION_ENUM_CTOR_CTOR(n) static const SelfT n() { return SelfT(SelfT::Enum::n); }
-#define PRIV_HFREGION_ENUM_META(n) m->push_back(std::pair<std::string,int>(#n, (int)SelfT::Enum::n));
-#define PRIV_HFREGION_ENUM_SHOW(n) case SelfT::Enum::n : return "|" #n "|";
-
-#define DEFINE_HFREGION_ENUM(T, CTORS...) \
-  struct T { \
-    typedef void is_hfregion_enum; \
-    enum class Enum : uint32_t { \
-      PRIV_HFREGION_MAP(PRIV_HFREGION_ENUM_CTOR_DEF, CTORS) \
-      COUNT \
-    }; \
-    Enum value; \
-    T() : value() { } \
-    T(Enum v) : value(v) { } \
-    T& operator=(Enum v) { this->value = v; return *this; } \
-    operator Enum() const { return this->value; } \
-    typedef T SelfT; \
-    PRIV_HFREGION_MAP(PRIV_HFREGION_ENUM_CTOR_CTOR, CTORS) \
-    static void meta(std::vector<std::pair<std::string,int>>* m) { \
-      PRIV_HFREGION_MAP(PRIV_HFREGION_ENUM_META, CTORS); \
-    } \
-    bool operator==(const T& rhs) const { return this->value == rhs.value; } \
-    std::string show() const { switch (this->value) { PRIV_HFREGION_MAP(PRIV_HFREGION_ENUM_SHOW, CTORS); default: return "?"; } } \
-  }
-
 template <typename T>
-  struct store<T, typename T::is_hfregion_enum> {
+  struct store<T, typename tbool<T::is_hmeta_enum>::type> {
     static const bool can_memcpy = true;
+    
+    static ty::desc storeType() {
+      return ty::enumdef(T::meta());
+    }
 
-    static void encode(bytes* o) {
-      std::vector<std::pair<std::string,int>> m;
-      T::meta(&m);
-      if (m.size() > 0) {
-        w(PRIV_HFREGION_TYCTOR_VARIANT, o);
-        w((size_t)m.size(), o);
-        for (const auto& md : m) {
-          ws(md.first, o);
-          w((int)md.second, o);
-          encode_primty("unit", o);
-        }
-      } else {
-        encode_primty("unit", o);
-      }
-    }
-    static std::string describe() {
-      std::vector<std::pair<std::string,int>> m;
-      T::meta(&m);
-      if (m.size() > 0) {
-        std::ostringstream ss;
-        ss << "|" << m[0].first;
-        for (size_t i = 1; i < m.size(); ++i) {
-          ss << ", " << m[i].first;
-        }
-        ss << "|";
-        return ss.str();
-      } else {
-        return "()";
-      }
-    }
     static size_t size() { return sizeof(uint32_t); }
     static size_t alignment() { return sizeof(uint32_t); }
 
@@ -1878,108 +1524,70 @@ template <typename T>
     static void read (imagefile*, const void* p, T*       x) { memcpy(x,  p, sizeof(uint32_t)); }
   };
 
-// support storing variants
-#define PRIV_HFREGION_VARIANT_TYARGL(n, t)    , t
-#define PRIV_HFREGION_VARIANT_CTOR(n, t)      static SelfT n(const t & x) { SelfT r; r.tag = Enum::tag_##n; new (&r.n##_data) t(x); return r; }
-#define PRIV_HFREGION_VARIANT_PCOPY(n, t)     case Enum::tag_##n: new (&this->n##_data) t(rhs.n##_data); break;
-#define PRIV_HFREGION_VARIANT_GINIT(n, t)     case Enum::tag_##n: new (&this->n##_data) t(); v.template init<t>(&this->n##_data); break;
-#define PRIV_HFREGION_VARIANT_PDESTROY(n, t)  case Enum::tag_##n: { typedef t PRIV_DT; ((PRIV_DT*)&this->n##_data)->~PRIV_DT(); } break;
-#define PRIV_HFREGION_VARIANT_CTOR_TAG(n, t)  tag_##n,
-#define PRIV_HFREGION_VARIANT_CTOR_DATA(n, t) t n##_data;
-#define PRIV_HFREGION_VARIANT_EQCASE(n, t)    case Enum::tag_##n: return (this->n##_data == rhs.n##_data);
-#define PRIV_HFREGION_VARIANT_META(n, t)      v.template ctor<t>(#n, (int)Enum::tag_##n);
-#define PRIV_HFREGION_VARIANT_VDECL(n, t)     virtual R n(const t & x) const = 0;
-#define PRIV_HFREGION_VARIANT_VCASE(n, t)     case Enum::tag_##n: return v. n (this->n##_data);
-#define PRIV_HFREGION_VARIANT_GVCASE(n, t)    case Enum::tag_##n: return v.template visit<t>(#n, (int)Enum::tag_##n, this->n##_data);
+// store variants
+template <size_t i, size_t n, typename ... Ts>
+  struct storeVariantDef {
+    typedef typename nth<i, Ts...>::type   H;
+    typedef variant<Ts...>                 VT;
+    typedef storeVariantDef<i+1, n, Ts...> Recurse;
 
-#define DEFINE_HFREGION_VARIANT(T, CTORS...) \
-  template <typename R> \
-    struct T##Visitor { \
-      PRIV_HFREGION_MAP(PRIV_HFREGION_VARIANT_VDECL, CTORS) \
-    }; \
-  struct T { \
-    static const bool is_hfregion_variant = true; \
-    typedef T SelfT; \
-    static const bool can_memcpy = ::hobbes::fregion::all_memcpyable<int PRIV_HFREGION_MAP(PRIV_HFREGION_VARIANT_TYARGL, CTORS) >::value; \
-    T() : tag(Enum::COUNT) { } \
-    PRIV_HFREGION_MAP(PRIV_HFREGION_VARIANT_CTOR, CTORS) \
-    T(const T& rhs) : tag(rhs.tag) { \
-      switch (this->tag) { \
-      PRIV_HFREGION_MAP(PRIV_HFREGION_VARIANT_PCOPY, CTORS) \
-      default: break; \
-      } \
-    } \
-    ~T() { \
-      switch (this->tag) { \
-      PRIV_HFREGION_MAP(PRIV_HFREGION_VARIANT_PDESTROY, CTORS) \
-      default: break; \
-      } \
-    } \
-    T& operator=(const T& rhs) { \
-      if (this == &rhs) return *this; \
-      switch (this->tag) { \
-      PRIV_HFREGION_MAP(PRIV_HFREGION_VARIANT_PDESTROY, CTORS) \
-      default: break; \
-      } \
-      this->tag = rhs.tag; \
-      switch (this->tag) { \
-      PRIV_HFREGION_MAP(PRIV_HFREGION_VARIANT_PCOPY, CTORS) \
-      default: break; \
-      } \
-      return *this; \
-    } \
-    template <typename V> \
-      static void meta(V& v) { \
-        PRIV_HFREGION_MAP(PRIV_HFREGION_VARIANT_META, CTORS) \
-      } \
-    template <typename R> \
-      R visit(const T##Visitor<R>& v) const { \
-        switch (this->tag) { \
-        PRIV_HFREGION_MAP(PRIV_HFREGION_VARIANT_VCASE, CTORS) \
-        default: throw std::runtime_error("while deconstructing the " #T " variant, cannot decide payload type because tag is invalid"); \
-        } \
-      } \
-    bool operator==(const T& rhs) const { \
-      if (this->tag != rhs.tag) { \
-        return false; \
-      } else { \
-        switch (this->tag) { \
-        PRIV_HFREGION_MAP(PRIV_HFREGION_VARIANT_EQCASE, CTORS) \
-        default: return false; \
-        } \
-      } \
-    } \
-    template <typename V> \
-      void gvisit(V& v) const { \
-        switch (this->tag) { \
-        PRIV_HFREGION_MAP(PRIV_HFREGION_VARIANT_GVCASE, CTORS) \
-        default: break; \
-        } \
-      } \
-    template <typename V> \
-      void ginit(uint32_t t, V& v) { \
-        switch (this->tag) { \
-        PRIV_HFREGION_MAP(PRIV_HFREGION_VARIANT_PDESTROY, CTORS) \
-        default: break; \
-        } \
-        this->tag = (Enum)t; \
-        switch (this->tag) { \
-        PRIV_HFREGION_MAP(PRIV_HFREGION_VARIANT_GINIT, CTORS) \
-        default: break; \
-        } \
-      } \
-  private: \
-    enum class Enum : uint32_t { \
-      PRIV_HFREGION_MAP(PRIV_HFREGION_VARIANT_CTOR_TAG, CTORS) \
-      COUNT \
-    }; \
-    Enum tag; \
-    union { \
-      char data[1]; \
-      PRIV_HFREGION_MAP(PRIV_HFREGION_VARIANT_CTOR_DATA, CTORS) \
-    }; \
-  }
+    static void ctorDefs(ty::Variant::Ctors* cs) {
+      cs->push_back(ty::Variant::Ctor(".f" + str::from(i), (int)i, store<H>::storeType()));
+      Recurse::ctorDefs(cs);
+    }
+    static ty::desc storeType() { ty::Variant::Ctors cs; ctorDefs(&cs); return ty::variant(cs); }
 
+    static size_t maxSize()      { return std::max<size_t>(store<H>::size(),      Recurse::maxSize());      }
+    static size_t maxAlignment() { return std::max<size_t>(store<H>::alignment(), Recurse::maxAlignment()); }
+    static size_t tagOffset()    { return align<size_t>(sizeof(uint32_t), maxAlignment()); }
+
+    static size_t size()      { return align<size_t>(align<size_t>(sizeof(uint32_t), maxAlignment()) + maxSize(), maxAlignment()); }
+    static size_t alignment() { return std::max<size_t>(sizeof(uint32_t), maxAlignment()); }
+  };
+template <size_t n, typename ... Ts>
+  struct storeVariantDef<n, n, Ts...> {
+    static void ctorDefs(ty::Variant::Ctors*) { }
+    static ty::desc storeType()   { return ty::prim("void"); }
+    static size_t maxSize()       { return 0;  }
+    static size_t maxAlignment()  { return 1;  }
+  };
+
+template <typename ... Ts>
+  struct store<variant<Ts...>, typename tbool<all_memcpyable<Ts...>::value>::type> : public storeVariantDef<0, sizeof...(Ts), Ts...> {
+    static const bool can_memcpy = true;
+    static void write(imagefile*, void* p,       const variant<Ts...>& x) { memcpy(p, &x, sizeof( x)); }
+    static void read (imagefile*, const void* p, variant<Ts...>* x)       { memcpy(x,  p, sizeof(*x)); }
+  };
+
+template <size_t tag, typename T, typename M>
+  struct variantGenWrite {
+    static void fn(T* vd, imagefile* f, void* p, size_t tagOffset) {
+      *((uint32_t*)p) = tag;
+      store<T>::write(f, ((uint8_t*)p) + tagOffset, *vd);
+    }
+  };
+template <size_t tag, typename T, typename M>
+  struct variantGenRead {
+    static void fn(T* vd, imagefile* f, const void* p, size_t tagOffset) {
+      new (vd) T();
+      store<T>::read(f, ((const uint8_t*)p) + tagOffset, vd);
+    }
+  };
+template <typename ... Ts>
+  struct store<variant<Ts...>, typename tbool<!all_memcpyable<Ts...>::value>::type> : public storeVariantDef<0, sizeof...(Ts), Ts...> {
+    static const bool can_memcpy = false;
+    typedef storeVariantDef<0, sizeof...(Ts), Ts...> Reflect;
+
+    static void write(imagefile* f, void* p, const variant<Ts...>& x) {
+      x.template apply<void, variantGenWrite, void, imagefile*, void*, size_t>(f, p, Reflect::tagOffset());
+    }
+    static void read (imagefile* f, const void* p, variant<Ts...>* x) {
+      x->unsafeTag() = *((const uint32_t*)p);
+      variantApp<void, variantGenRead, void, tuple<Ts...>, imagefile*, const void*, size_t>::apply(x->unsafeTag(), x->unsafePayload(), f, p, Reflect::tagOffset());
+    }
+  };
+
+// store variants with named constructors
 struct printVF {
   std::ostringstream* ss;
   printVF(std::ostringstream* ss) : ss(ss) { }
@@ -1998,27 +1606,13 @@ template <typename T>
     return ss.str();
   }
 
-struct encodeVariantF {
-  bytes*  o;
-  size_t* c;
-  encodeVariantF(bytes* o, size_t* c) : o(o), c(c) { }
+struct descVariantF {
+  ty::Variant::Ctors* ctors;
+  descVariantF(ty::Variant::Ctors* ctors) : ctors(ctors) { }
 
   template <typename T>
     void ctor(const char* n, int id) {
-      ws(n, this->o);
-      w(id, this->o);
-      store<T>::encode(this->o);
-      ++(*this->c);
-    }
-};
-
-struct describeVariantF {
-  str::seq* ss;
-  describeVariantF(str::seq* ss) : ss(ss) { }
-
-  template <typename T>
-    void ctor(const char* n, int id) {
-      ss->push_back(std::string(n) + ":" + store<T>::describe());
+      this->ctors->push_back(ty::Variant::Ctor(n, id, store<T>::storeType()));
     }
 };
 
@@ -2035,132 +1629,37 @@ struct calcVSizeF {
 };
 
 template <typename T>
-  struct storeVariantDef {
-    static void encode(bytes* o) {
-      bytes t;
-      size_t c=0;
-      encodeVariantF esF(&t, &c);
-      T::meta(esF);
-      if (c > 0) {
-        w(PRIV_HFREGION_TYCTOR_VARIANT, o);
-        w((size_t)c, o);
-        wmerge(t, o);
-      } else {
-        encode_primty("unit", o);
-      }
-    }
-    static std::string describe() {
-      str::seq fs;
-      describeVariantF dvF(&fs);
-      T::meta(dvF);
+  struct store<T, typename tbool<T::is_hmeta_variant>::type> {
+    typedef typename T::as_variant_type VT;
+    static const bool can_memcpy = store<VT>::can_memcpy;
 
-      if (fs.size() > 0) {
-        return "|" + str::cdelim(fs, ", ") + "|";
-      } else {
-        return "()";
-      }
+    static ty::desc storeType() {
+      ty::Variant::Ctors cs;
+      descVariantF f(&cs);
+      T::meta(f);
+      return ty::variant(cs);
     }
-    static size_t size() {
-      size_t maxSize  = 0;
-      size_t maxAlign = 1;
-      calcVSizeF csF(&maxSize, &maxAlign);
-      T::meta(csF);
-      return align<size_t>(align<size_t>(sizeof(uint32_t), maxAlign) + maxSize, maxAlign);
-    }
-    static size_t alignment() {
-      size_t maxSize  = 0;
-      size_t maxAlign = 1;
-      calcVSizeF csF(&maxSize, &maxAlign);
-      T::meta(csF);
-      return std::max<size_t>(sizeof(uint32_t), maxAlign);
-    }
-  };
 
-template <typename T>
-  struct store<T, typename tbool<T::is_hfregion_variant && T::can_memcpy>::type> : public storeVariantDef<T> {
-    static const bool can_memcpy = true;
-    static void write(imagefile*, void* p,       const T& x) { memcpy(p, &x, sizeof(T)); }
-    static void read (imagefile*, const void* p, T*       x) { memcpy(x,  p, sizeof(T)); }
-  };
+    static void write(imagefile* f, void* p,       const T& x) { store<VT>::write(f, p, *((const VT*)&x)); }
+    static void read (imagefile* f, const void* p, T*       x) { store<VT>::read (f, p, (VT*)x); }
 
-struct genWriteVF {
-  imagefile* f;
-  uint8_t*   d;
-  size_t     to;
-  genWriteVF(imagefile* f, uint8_t* d, size_t to) : f(f), d(d), to(to) { }
-  template <typename T>
-    void visit(const char*, uint32_t tag, const T& x) {
-      *((uint32_t*)this->d) = tag;
-      store<T>::write(this->f, this->d + this->to, x);
-    }
-};
-
-struct genReadVF {
-  imagefile* f;
-  uint8_t*   d;
-  genReadVF(imagefile* f, uint8_t* d) : f(f), d(d) { }
-  template <typename T>
-    void init(T* x) {
-      store<T>::read(this->f, this->d, x);
-    }
-};
-
-template <typename T>
-  struct store<T, typename tbool<T::is_hfregion_variant && !T::can_memcpy>::type> : public storeVariantDef<T> {
-    static const bool can_memcpy = false;
-    static size_t calcTagOffset() {
-      size_t maxSize  = 0;
-      size_t maxAlign = 1;
-      calcVSizeF csF(&maxSize, &maxAlign);
-      T::meta(csF);
-      return align<size_t>(sizeof(uint32_t), maxAlign);
-    }
-    static void write(imagefile* f, void* p, const T& x) {
-      static size_t tagOffset = calcTagOffset();
-      genWriteVF wf(f, (uint8_t*)p, tagOffset);
-      x.gvisit(wf);
-    }
-    static void read(imagefile* f, const void* p, T* x) {
-      static size_t tagOffset = calcTagOffset();
-      genReadVF rf(f, ((uint8_t*)p) + tagOffset);
-      x->ginit(*((uint32_t*)p), rf);
-    }
+    static size_t size() { return store<VT>::size(); }
+    static size_t alignment() { return store<VT>::alignment(); }
   };
 
 // store opaque type aliases
-#define DEFINE_HFREGION_TYPE_ALIAS(PRIV_ATY, PRIV_REPTY) \
-  struct PRIV_ATY { \
-    typedef void is_hfregion_alias; \
-    typedef PRIV_REPTY type; \
-    static const char* name() { return #PRIV_ATY; } \
-    inline operator PRIV_REPTY() { return this->value; } \
-    PRIV_REPTY value; \
-    PRIV_ATY() : value() { } \
-    PRIV_ATY(const PRIV_REPTY& x) : value(x) { } \
-    PRIV_ATY(const PRIV_ATY& x) : value(x.value) { } \
-    PRIV_ATY& operator=(const PRIV_ATY& x) { this->value = x.value; return *this; } \
-    bool operator==(const PRIV_ATY& x) const { return this->value == x.value; } \
-  }
-
 template <typename T>
-  struct store<T, typename T::is_hfregion_alias> {
+  struct store<T, typename tbool<T::is_hmeta_alias>::type> {
     typedef typename T::type RT;
 
-    static void        encode(bytes* o)                               { store<RT>::encode(o); }
-    static std::string describe()                                     { return T::name(); }
+    static ty::desc storeType() { return ty::prim(T::name(), store<RT>::storeType()); ; }
+
     static const bool  can_memcpy = store<RT>::can_memcpy;
     static size_t      size()                                         { return store<RT>::size(); }
     static size_t      alignment()                                    { return store<RT>::alignment(); }
     static void        write(imagefile* f, void* p,       const T& x) { store<RT>::write(f, p, x.value); }
     static void        read (imagefile* f, const void* p, T* x)       { store<RT>::read(f, p, &x->value); }
   };
-
-template <typename T>
-  inline bytes storeTypeDef() {
-    bytes r;
-    store<T>::encode(&r);
-    return r;
-  }
 
 /***********************
  *
@@ -2170,8 +1669,7 @@ template <typename T>
 
 struct seriesi {
   virtual ~seriesi() { }
-  virtual const bytes& typeDef() const = 0;
-  virtual std::string typeDesc() const = 0;
+  virtual const ty::desc& typeDef() const = 0;
 };
 
 // how much space does a stored array batch use?
@@ -2184,22 +1682,22 @@ template <typename T>
 template <typename T>
   class wseries : public seriesi {
   public:
-    wseries(imagefile* f, const std::string& seqname, size_t batchSize, const bytes& tdef = storeTypeDef<T>()) : tdef(tdef), f(f), seqname(seqname), batchSize(batchSize), writeCB([](uint64_t){}) {
+    wseries(imagefile* f, const std::string& seqname, size_t batchSize, const ty::desc& tdef = store<T>::storeType()) : tdef(tdef), f(f), seqname(seqname), batchSize(batchSize), writeCB([](uint64_t){}) {
       // determine sequence types
-      this->stdef = storedSeqTypeDef(this->tdef, store<T>::size(), this->batchSize);
+      this->stdef = storedSeqType(this->tdef, this->batchSize);
 
       // allocate space for this sequence and prepare to write
       auto b = this->f->bindings.find(this->seqname);
       if (b == this->f->bindings.end()) {
         // this sequence is not yet defined, so define it and begin writing to it
         size_t dloc = findSpace(this->f, pagetype::data, sizeof(size_t), sizeof(size_t));
-        addBinding(this->f, this->seqname, this->stdef, dloc);
         this->headNodeRef = (uint64_t*)mapFileData(this->f, dloc, sizeof(size_t));
         consBatchNode(allocBatchNode());
+        addBinding(this->f, this->seqname, ty::encoding(this->stdef), dloc);
       } else {
         // the sequence is already defined, make sure it has the right type def and then resume writing to it
-        if (b->second.type != this->stdef) {
-          throw std::runtime_error("File already defines series '" + this->seqname + "' with type inconsistent with " + store<T>::describe());
+        if (b->second.type != ty::encoding(this->stdef)) {
+          throw std::runtime_error("File already defines series '" + this->seqname + "' with type inconsistent with " + ty::show(store<T>::storeType()));
         } else {
           this->headNodeRef = (uint64_t*)mapFileData(this->f, b->second.offset, sizeof(size_t));
           restartFromBatchNode();
@@ -2208,8 +1706,8 @@ template <typename T>
     }
     ~wseries() {
     }
-    const bytes&       typeDef()  const { return this->tdef; }
-    std::string        typeDesc() const { return store<T>::describe(); }
+
+    const ty::desc&    typeDef()  const { return this->tdef; }
     const std::string& name()     const { return this->seqname; }
     imagefile*         file()     const { return this->f; }
 
@@ -2226,8 +1724,8 @@ template <typename T>
   public:
     void setWriteCB(const std::function<void(uint64_t)>& f) { this->writeCB = f; }
   private:
-    bytes      tdef;      // the type for a single sequence value
-    bytes      stdef;     // the type for the whole sequence
+    ty::desc tdef;  // the type for a single sequence value
+    ty::desc stdef; // the type for the whole sequence
 
     imagefile*                    f;          // the file we're writing into
     std::string                   seqname;    // the name of this sequence in the file
@@ -2285,44 +1783,25 @@ template <typename T>
   };
 template <typename ... Wss>
   struct seqVar {
-    static void stepEnc(imagefile*, size_t*, bytes*, const Wss& ...) { }
-    static bytes encode(imagefile* f, const Wss& ...) { bytes r; encode_primty("unit", &r); return r; }
-    static void stepDesc(str::seq*, const Wss& ...) { }
-    static std::string describe(const Wss& ...) { return "()"; }
+    static void stepEnc(ty::Variant::Ctors*, size_t*, const Wss& ...) { }
+    static ty::desc storeType(imagefile*, const Wss& ...) { return ty::prim("unit"); }
     static void setWriteCBs(uint32_t, const std::function<void(uint32_t,uint64_t)>&, Wss& ... wss) { }
   };
 template <typename Ws, typename ... Wss>
   struct seqVar<Ws, Wss...> {
-    static void stepEnc(imagefile* f, size_t* c, bytes* o, const Ws& s, const Wss& ... wss) {
-      ws(s.name(), o);
-      w((int)*c, o);
-      wmerge(fileRefTypeDef(s.typeDef()), o);
+    static void stepEnc(ty::Variant::Ctors* cs, size_t* c, const Ws& s, const Wss& ... wss) {
+      cs->push_back(ty::Variant::Ctor(s.name(), *c, ty::fileRef(s.typeDefinition())));
       ++*c;
-      seqVar<Wss...>::stepEnc(f, c, o, wss...);
+      seqVar<Wss...>::stepEnc(cs, c, wss...);
     }
-    static bytes encode(imagefile* f, const Ws& s, const Wss& ... wss) {
+    static ty::desc storeType(imagefile* f, const Ws& s, const Wss& ... wss) {
       if (f != s.file()) {
         throw std::runtime_error("Error, can't sequence series stored in different files");
       }
-
+      ty::Variant::Ctors cs;
       size_t c = 0;
-      bytes ds;
-      stepEnc(f, &c, &ds, s, wss...);
-
-      bytes r;
-      w(PRIV_HFREGION_TYCTOR_VARIANT, &r);
-      w(c, &r);
-      wmerge(ds, &r);
-      return r;
-    }
-    static void stepDesc(str::seq* cds, const Ws& s, const Wss& ... wss) {
-      cds->push_back(s.name() + ":" + s.typeDesc());
-      seqVar<Wss...>::stepDesc(cds, wss...);
-    }
-    static std::string describe(const Ws& s, const Wss& ... wss) {
-      str::seq cds;
-      stepDesc(&cds, s, wss...);
-      return "|" + str::cdelim(cds, ", ") + "|";
+      stepEnc(&cs, &c, s, wss...);
+      return ty::variant(cs);
     }
     static void setWriteCBs(uint32_t id, const std::function<void(uint32_t,uint64_t)>& fn, Ws& s, Wss& ... wss) {
       s.setWriteCB([id,fn](uint64_t p) { fn(id, p); });
@@ -2332,16 +1811,14 @@ template <typename Ws, typename ... Wss>
 template <typename ... Wss>
   class wsseq : public seriesi {
   public:
-    wsseq(imagefile* f, const std::string& n, Wss& ... wss) : log(f, n, 10000, seqVar<Wss...>::encode(f, wss...)), desc(seqVar<Wss...>::describe(wss...)) {
+    wsseq(imagefile* f, const std::string& n, Wss& ... wss) : log(f, n, 10000, seqVar<Wss...>::storeType(f, wss...)) {
       seqVar<Wss...>::setWriteCBs(0, [this](uint32_t id, uint64_t p){this->log(std::pair<uint32_t,uint64_t>(id,p));}, wss...);
     }
     ~wsseq() {
     }
-    const bytes& typeDef()  const { return this->log.typeDef(); }
-    std::string  typeDesc() const { return this->desc; }
+    const ty::desc& typeDef()  const { return this->log.typeDef(); }
   private:
     wseries<std::pair<uint32_t,size_t>> log;
-    std::string                         desc;
   };
 class writer {
 public:
@@ -2358,13 +1835,10 @@ public:
     wseries<T>& series(const std::string& n, size_t batchSize = 10000) {
       auto s = this->ss.find(n);
       if (s != this->ss.end()) {
-        bytes tdesc;
-        store<T>::encode(&tdesc);
-
-        if (s->second->typeDef() == tdesc) {
+        if (s->second->typeDef() == store<T>::storeType()) {
           return *((wseries<T>*)s->second);
         } else {
-          throw std::runtime_error("Inconsistent usage of '" + n + "' as type " + store<T>::describe() + " (but declared as type " + s->second->typeDesc() + ")");
+          throw std::runtime_error("Inconsistent usage of '" + n + "' as type " + ty::show(store<T>::storeType()) + " (but declared as type " + ty::show(s->second->typeDef()) + ")");
         }
       } else {
         auto r = new wseries<T>(this->f, n, batchSize);
@@ -2377,10 +1851,10 @@ public:
     void recordOrdering(const std::string& n, Wss& ... wss) {
       auto s = this->ss.find(n);
       if (s != this->ss.end()) {
-        bytes tdesc = seqVar<Wss...>::encode(this->f, wss...);
+        ty::desc tdesc = seqVar<Wss...>::storeType(this->f, wss...);
 
         if (s->second->typeDef() != tdesc) {
-          throw std::runtime_error("Inconsistent usage of '" + n + "' as type " + seqVar<Wss...>::describe(wss...) + " (but declared as type " + s->second->typeDesc() + ")");
+          throw std::runtime_error("Inconsistent usage of '" + n + "' as type " + ty::show(tdesc) + " (but declared as type " + ty::show(s->second->typeDef()) + ")");
         }
       } else {
         this->ss[n] = new wsseq<Wss...>(this->f, n, wss...);
@@ -2401,12 +1875,12 @@ private:
 template <typename T>
   class rseries : public seriesi {
   public:
-    rseries(imagefile* f, const std::string& seqname, const bytes& tdef, const binding& b) : tdef(tdef), f(f), batchSize(inferBatchSize(b.type)) {
+    rseries(imagefile* f, const std::string& seqname, const ty::desc& tdef, const binding& b) : tdef(tdef), f(f), batchSize(inferBatchSize(b.type)) {
       // determine value and sequence types
-      this->stdef = storedSeqTypeDef(this->tdef, store<T>::size(), this->batchSize);
+      this->stdef = storedSeqType(this->tdef, this->batchSize);
 
-      if (b.type != this->stdef) {
-        throw std::runtime_error("File defines series '" + seqname + "' with type inconsistent with " + store<T>::describe());
+      if (b.type != encoding(this->stdef)) {
+        throw std::runtime_error("File defines series '" + seqname + "' with type inconsistent with " + ty::show(store<T>::storeType()));
       }
 
       // load all nodes, prepare to walk in-order
@@ -2414,13 +1888,13 @@ template <typename T>
       loadReadState(*n);
       unmapFileData(this->f, n, sizeof(size_t));
     }
-    rseries(imagefile* f, const std::string& seqname) : rseries(f, seqname, storeTypeDef<T>(), loadBinding(f, seqname)) {
+    rseries(imagefile* f, const std::string& seqname) : rseries(f, seqname, store<T>::storeType(), loadBinding(f, seqname)) {
     }
     ~rseries() {
     }
-    const bytes& typeDef()  const { return this->tdef; }
-    std::string  typeDesc() const { return store<T>::describe(); }
-    imagefile*   file()     const { return this->f; }
+
+    const ty::desc& typeDef() const { return this->tdef; }
+    imagefile*      file()    const { return this->f; }
 
     bool next(T* x) {
       if (this->headLen) {
@@ -2439,8 +1913,8 @@ template <typename T>
       }
     }
   private:
-    bytes      tdef;      // the type for a single sequence value
-    bytes      stdef;     // the type for the whole sequence
+    ty::desc tdef;  // the type for a single sequence value
+    ty::desc stdef; // the type for the whole sequence
 
     imagefile* f;
     size_t     batchSize;
@@ -2505,8 +1979,8 @@ public:
       if (v == this->logDef.varDef.end()) {
         throw std::runtime_error("Constructor undefined in ordering: " + std::string(n));
       }
-      if (v->second.second != storeTypeDef<T>()) {
-        throw std::runtime_error("Constructor '" + n + "' defined in ordering, but not with type " + store<T>::describe());
+      if (ty::encoding(v->second.second) != ty::encoding(store<T>::storeType())) {
+        throw std::runtime_error("Constructor '" + n + "' defined in ordering, but not with type " + ty::show(store<T>::storeType()));
       }
 
       // bind a function to process values out of this ordering
@@ -2532,11 +2006,11 @@ public:
     return false;
   }
 private:
-  typedef std::map<std::string, std::pair<uint32_t, bytes>> VarDef;
+  typedef std::map<std::string, std::pair<uint32_t, ty::desc>> VarDef;
   typedef std::unordered_map<uint32_t, std::function<void(imagefile*,uint64_t)>> VarCtorBindings;
   struct LogDef {
     // the encoded ordering variant type and seq binding
-    bytes          tdesc;
+    ty::desc       tdesc;
     const binding* b;
     
     // the parsed ordering variant definition
@@ -2554,11 +2028,13 @@ private:
     }
     
     LogDef r;
-    r.tdesc = readBatchSeqTypeDef(b->second.type);
+    r.tdesc = ty::decode(b->second.type);
     r.b     = &b->second;
 
-    for (const auto& vd : readVRTypeDef(r.tdesc)) {
-      r.varDef[vd.first] = std::pair<uint32_t, bytes>(vd.second.first, readFileRefTypeDef(vd.second.second));
+    if (r.tdesc->tid == PRIV_HPPF_TYCTOR_VARIANT) {
+      for (const auto& ctor : ((ty::Variant*)r.tdesc.get())->ctors) {
+        r.varDef[ctor.at<0>()] = std::pair<uint32_t, ty::desc>(ctor.at<1>(), ctor.at<2>());
+      }
     }
     return r;
   }
@@ -2580,13 +2056,12 @@ public:
     rseries<T>& series(const std::string& name) {
       auto s = this->ss.find(name);
       if (s != this->ss.end()) {
-        bytes tdesc;
-        store<T>::encode(&tdesc);
+        ty::desc tdesc = store<T>::storeType();
 
         if (s->second->typeDef() == tdesc) {
           return *((rseries<T>*)s->second);
         } else {
-          throw std::runtime_error("Inconsistent usage of '" + name + "' as type " + store<T>::describe() + " (but declared as type " + s->second->typeDesc() + ")");
+          throw std::runtime_error("Inconsistent usage of '" + name + "' as type " + ty::show(tdesc) + " (but declared as type " + ty::show(s->second->typeDef()) + ")");
         }
       } else {
         auto r = new rseries<T>(this->f, name);

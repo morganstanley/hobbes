@@ -2,12 +2,11 @@
 #ifndef HOBBES_LANG_TYPELIFT_HPP_INCLUDED
 #define HOBBES_LANG_TYPELIFT_HPP_INCLUDED
 
+#include <hobbes/reflect.H>
 #include <hobbes/lang/type.H>
 #include <hobbes/util/array.H>
 #include <hobbes/util/ptr.H>
 #include <hobbes/util/str.H>
-#include <hobbes/util/variant.H>
-#include <hobbes/util/tuple.H>
 #include <hobbes/util/preprocessor.H>
 #include <string>
 #include <vector>
@@ -394,49 +393,14 @@ template <typename ... CTys>
 template <typename ... CTys>
   struct lift< variant<CTys...>*, false > : public liftVariant< variant<CTys...> > { };
 
-// allow basic reflective enumerations
-#define HOBBES_ENUM_CTOR(n, v) n = v,
-#define HOBBES_ENUM_METAENT(n, v) r.push_back(MetaEnt(#n, v));
-
-#define DEFINE_ENUM(T, CTORS...) \
-  struct T { \
-    enum Enum : unsigned int { \
-      HOBPP_MAP(HOBBES_ENUM_CTOR, CTORS) \
-    }; \
-    explicit operator bool() const = delete; \
-    \
-    typedef void is_hobbes_enum; \
-    typedef std::pair<std::string, unsigned int> MetaEnt; \
-    typedef std::vector<MetaEnt> MetaSeq; \
-    \
-    static MetaSeq meta() { \
-      MetaSeq r; \
-      HOBPP_MAP(HOBBES_ENUM_METAENT, CTORS) \
-      return r; \
-    } \
-    \
-    Enum value; \
-    operator Enum() const { \
-      return this->value; \
-    } \
-    T& operator=(Enum x) { \
-      this->value = x; \
-      return *this; \
-    } \
-    T() : value(Enum()) { } \
-    T(const T& x) : value(x.value) { } \
-    T(Enum x) : value(x) { } \
-  }
-
+// lift reflective enumerations
 template <typename T>
   struct liftEnum {
     static MonoTypePtr type(typedb&) {
       Variant::Members vms;
 
-      typedef typename T::MetaSeq MS;
-      MS ms = T::meta();
-      for (typename MS::const_iterator m = ms.begin(); m != ms.end(); ++m) {
-        vms.push_back(Variant::Member(m->first, Prim::make("unit"), (unsigned int)(m->second)));
+      for (const auto& m : T::meta()) {
+        vms.push_back(Variant::Member(m.first, Prim::make("unit"), (unsigned int)(m.second)));
       }
 
       return Variant::make(vms);
@@ -444,9 +408,9 @@ template <typename T>
   };
 
 template <typename T>
-  struct lift<T, true, typename T::is_hobbes_enum> : public liftEnum<T> { };
+  struct lift<T, true, typename tbool<T::is_hmeta_enum>::type> : public liftEnum<T> { };
 template <typename T>
-  struct lift<T*, false, typename T::is_hobbes_enum> : public liftEnum<T> { };
+  struct lift<T*, false, typename tbool<T::is_hmeta_enum>::type> : public liftEnum<T> { };
 
 // lift plain tuples
 template <typename ... Fields>
@@ -472,34 +436,35 @@ template <typename ... Fields>
 template <typename ... Fields>
   struct lift<tuple<Fields...>*, false> : public liftTuple<Fields...> { };
 
-// allow basic reflective structs
-#define HOBBES_STRUCT_FIELD(t, n) t n;
-#define HOBBES_META_FIELD(t, n) r.push_back(::hobbes::Record::Member(#n, ::hobbes::lift<t, true>::type(tenv), offsetof(SelfT, n)));
+// lift reflective structs
+struct inferFieldTypeF {
+  Record::Members* ms;
+  size_t           o;
+  typedb*          tenv;
+  inferFieldTypeF(Record::Members* ms, typedb* tenv) : ms(ms), o(0), tenv(tenv) { }
 
-#define DEFINE_STRUCT(T, FIELDS...) \
-  struct T { \
-    HOBPP_MAP(HOBBES_STRUCT_FIELD, FIELDS) \
-    \
-    typedef void is_hobbes_struct; \
-    typedef T SelfT; \
-    static ::hobbes::MonoTypePtr meta(::hobbes::typedb& tenv) { \
-      ::hobbes::Record::Members r; \
-      HOBPP_MAP(HOBBES_META_FIELD, FIELDS) \
-      return ::hobbes::Record::make(r); \
-    } \
-  }
+  template <typename T>
+    void visit(const char* fname) {
+      this->o = align<size_t>(this->o, alignof(T));
+      ms->push_back(Record::Member(fname, lift<T, true>::type(*this->tenv), this->o));
+      this->o += sizeof(T);
+    }
+};
 
 template <typename T>
   struct liftStruct {
     static MonoTypePtr type(typedb& tenv) {
-      return T::meta(tenv);
+      Record::Members ms;
+      inferFieldTypeF f(&ms, &tenv);
+      T::meta(f);
+      return Record::make(ms);
     }
   };
 
 template <typename T>
-  struct lift<T, true, typename T::is_hobbes_struct> : public liftStruct<T> { };
+  struct lift<T, true, typename tbool<T::is_hmeta_struct>::type> : public liftStruct<T> { };
 template <typename T>
-  struct lift<T*, false, typename T::is_hobbes_struct> : public liftStruct<T> { };
+  struct lift<T*, false, typename tbool<T::is_hmeta_struct>::type> : public liftStruct<T> { };
 
 // perhaps some lifts might depend on their C++ values
 template <typename T>
