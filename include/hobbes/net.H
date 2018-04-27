@@ -385,8 +385,8 @@ template <typename ... Ctors>
           o->readTag = false;
           o->payloadState.unsafeTag() = x->unsafeTag();
           variantApp<void, variantAsyncInit, void, tuple<Ctors...>, void*>::apply(x->unsafeTag(), x->unsafePayload(), o->payloadState.unsafePayload());
-          return false;
         }
+        return false;
       } else {
         return variantApp<bool, variantAsyncAccum, void, tuple<Ctors...>, int, void*>::apply(x->unsafeTag(), x->unsafePayload(), s, o->payloadState.unsafePayload());
       }
@@ -715,7 +715,7 @@ template <>
   struct io<std::string> {
     static const bool can_memcpy = false;
     static ty::desc type() { return ty::array(io<char>::type()); }
-    static void write(int s, const std::string& x) { io<size_t>::write(s, x.size()); sendData(s, (const uint8_t*)x.data(), x.size()); }
+    static void write(int s, const std::string& x) { io<size_t>::write(s, x.size()); sendData(s, (const uint8_t*)&x[0], x.size()); }
     static void read(int s, std::string* x) { size_t n = 0; io<size_t>::read(s, &n); x->resize(n); recvData(s, (uint8_t*)&(*x)[0], n); }
 
     // async reading of strings
@@ -814,6 +814,7 @@ template <typename ... Fs>
           return false;
         }
       }
+      return false;
     }
   };
 
