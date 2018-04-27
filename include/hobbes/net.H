@@ -759,7 +759,7 @@ template <size_t i, size_t n, typename ... Fs>
     static void accFields(ty::Struct::Fields* fs) {
       std::ostringstream ss;
       ss << ".f" << i;
-      fs->push_back(ty::Struct::Field(ss.str(), (int)offsetAt<i, offs>::value, io<H>::type()));
+      fs->push_back(ty::Struct::Field(ss.str(), -1, io<H>::type()));
       Recurse::accFields(fs);
     }
     static ty::desc type() { ty::Struct::Fields fs; accFields(&fs); return ty::record(fs); }
