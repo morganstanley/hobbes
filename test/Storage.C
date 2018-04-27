@@ -4,6 +4,7 @@
 #include <hobbes/db/series.H>
 #include <hobbes/db/signals.H>
 #include <hobbes/fregion.H>
+#include <hobbes/cfregion.H>
 #include "test.H"
 
 using namespace hobbes;
@@ -432,5 +433,75 @@ TEST(Storage, FRegionCompatibility) {
 
 TEST(Storage, DArrayMemLayout) {
   EXPECT_TRUE(c().compileFn<bool()>("show([unsafeCast(\"jimmy\")::((darray char)),unsafeCast(\"chicken\")]) == \"[\\\"jimmy\\\", \\\"chicken\\\"]\"")());
+}
+
+static const size_t recordCount = 100;
+
+DEFINE_VARIANT(
+  MyVariant,
+  (jimmy, int),
+  (bob, std::string)
+);
+
+struct ShowMyVariant : MyVariantVisitor<int> {
+  int jimmy(const int& x) const { std::cout << "|jimmy=" << x << "|"; return 0; }
+  int bob(const std::string& x) const { std::cout << "|bob=" << x << "|"; return 0; }
+};
+
+DEFINE_ENUM(
+  Color,
+  (Red),
+  (Green),
+  (Blue),
+  (Magenta)
+);
+
+DEFINE_STRUCT(
+  MyStruct,
+  (int,       x),
+  (uint8_t,   y),
+  (Color,     c),
+  (MyVariant, v)
+);
+
+TEST(Storage, CFRegionIO) {
+  std::string fname = mkFName();
+  try {
+    // write some compressed data
+    {
+      hobbes::fregion::cwriter w(fname);
+      auto& xs = w.series<MyStruct>("xs");
+      for (size_t i = 0; i < 100; ++i) {
+        MyStruct s;
+        s.x = i;
+        s.y = i;
+        s.c = (Color::Enum)(i%4);
+        if (i%2 == 0) {
+          s.v = MyVariant::jimmy((int)42.0*sin(i));
+        } else {
+          s.v = MyVariant::bob("I am bob #" + str::from(i));
+        }
+        xs(s);
+      }
+    }
+
+    // verify that it reads back in-order correctly
+    {
+      hobbes::fregion::creader r(fname);
+      auto& xs = r.series<MyStruct>("xs");
+      size_t i = 0;
+      MyStruct s;
+      while (xs.next(&s)) {
+        EXPECT_EQ(s.x, i);
+        EXPECT_EQ(s.y, ((uint8_t)i));
+        ++i;
+      }
+    }
+
+    unlink(fname.c_str());
+  } catch (...) {
+    unlink(fname.c_str());
+    throw;
+  }
 }
 
