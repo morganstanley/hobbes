@@ -693,7 +693,7 @@ template <typename K, typename T>
         break;
       case ReadS::TS:
         if (io<T>::accum(s, &o->tS, &o->t)) {
-          (*x)[o->k] = o->t;
+          x->insert(std::pair<K,T>(o->k, o->t));
           --o->len;
           o->readS = ReadS::KS;
           io<K>::prepare(&o->kS);
@@ -716,7 +716,7 @@ template <>
     static const bool can_memcpy = false;
     static ty::desc type() { return ty::array(io<char>::type()); }
     static void write(int s, const std::string& x) { io<size_t>::write(s, x.size()); sendData(s, (const uint8_t*)x.data(), x.size()); }
-    static void read(int s, std::string* x) { size_t n = 0; io<size_t>::read(s, &n); x->resize(n); recvData(s, (uint8_t*)x->data(), n); }
+    static void read(int s, std::string* x) { size_t n = 0; io<size_t>::read(s, &n); x->resize(n); recvData(s, (uint8_t*)&(*x)[0], n); }
 
     // async reading of strings
     struct async_read_state {
@@ -741,7 +741,7 @@ template <>
           o->readLen = false;
         }
       } else {
-        uint8_t* buf = (uint8_t*)x->data();
+        uint8_t* buf = (uint8_t*)&(*x)[0];
         o->bytesRead += recvDataPartial(s, buf + o->bytesRead, o->byteLen - o->bytesRead);
       }
       return !o->readLen && o->bytesRead == o->byteLen;
