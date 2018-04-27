@@ -5,6 +5,8 @@
  * A macro 'DEFINE_VARIANT(T, (cn0, T0), ... (cnN, TN))' is included to be equivalent to '|cn0:T0, ..., cnN:TN|'
  * A type 'tuple<T0, ..., TN>' is included to be equivalent to '(T0 * ... * TN)' and have standard memory layout
  * A type 'variant<T0, ..., TN>' is included to be equivalent to '(T0 + ... + TN)' and have standard memory layout
+ *
+ * functions are also included to read and write serialized type descriptions
  */
 
 #ifndef HOBBES_REFLECT_H_INCLUDED
@@ -163,6 +165,23 @@ template <typename ... Fields>
         return *((typename nth<k, Fields...>::type*)(this->buffer + offsetAt<k, offs>::value));
       }
   };
+template <>
+  struct tuple<> {
+    static const size_t alignment = 1;
+    static const size_t size      = 0;
+
+    tuple() { }
+    tuple(const tuple<>&) { }
+    ~tuple() { }
+
+    tuple<>& operator=(const tuple<>&) { return *this; }
+    bool operator==(const tuple<>&) const { return true; }
+  };
+
+template <size_t i, typename T>
+  struct tupType { };
+template <size_t i, typename ... Ts>
+  struct tupType<i, tuple<Ts...>> { typedef typename nth<i, Ts...>::type type; };
 
 // map a function over a tuple's types (useful for structurally-derived types)
 template <typename ... Ts>
@@ -186,11 +205,16 @@ template <template <typename T> class F, typename H>
   struct fmap<F, tuple<H>> {
     typedef tuple<typename F<H>::type> type;
   };
+template <template <typename T> class F>
+  struct fmap<F, tuple<>> {
+    typedef tuple<> type;
+  };
 
 // the trivially true proposition -- ie: C's "void" with its one value constructible
 struct unit {
   unit() { }
   bool operator==(const unit&) const { return true; }
+  bool operator< (const unit&) const { return false; }
 };
 
 // drop the first type from a sequence to determine a tuple type
@@ -426,6 +450,11 @@ template <typename T, typename ... Ctors>
 
 template <typename ... Ts>             struct variantTail           {                              };
 template <typename T, typename ... Ts> struct variantTail<T, Ts...> { typedef variant<Ts...> type; };
+
+template <typename T>
+  struct toVariant { };
+template <typename ... Ts>
+  struct toVariant<tuple<Ts...>> { typedef variant<Ts...> type; };
 
 // reflective variants with constructor names
 #define PRIV_HPPF_VARIANT_TYARGL(n, t)    , t
@@ -697,9 +726,17 @@ struct Fn : public D {
   Args args;
   desc t;
 };
-inline desc fn(const Fn::Args&    args, const desc& t) { return desc(new Fn(args, t)); }
-inline desc fn(const std::string& arg,  const desc& t) { Fn::Args args; args.push_back(arg); return fn(args, t); }
-inline desc fn(const std::string& arg0, const std::string& arg1,  const desc& t) { Fn::Args args; args.push_back(arg0); args.push_back(arg1); return fn(args, t); }
+inline desc fnc(const Fn::Args&    args, const desc& t) { return desc(new Fn(args, t)); }
+
+template <typename ... Tys>
+  struct fnAcc { static desc acc(Fn::Args*) { assert(false && "fn must define arg list and body"); return desc(); } };
+template <>
+  struct fnAcc<desc> { static desc acc(Fn::Args* args, const desc& t) { return fnc(*args, t); } };
+template <size_t N, typename ... Tys>
+  struct fnAcc<char[N], Tys...> { static desc acc(Fn::Args* args, const char (&n)[N], const Tys& ... tt) { args->push_back(n); return fnAcc<Tys...>::acc(args, tt...); } };
+
+template <typename ... Tys>
+  inline desc fn(const Tys& ... tt) { Fn::Args args; return fnAcc<Tys...>::acc(&args, tt...); }
 
 struct App : public D {
   typedef std::vector<desc> Args;
@@ -924,7 +961,7 @@ inline desc decodeFrom(const bytes& bs, size_t* i) {
       }
       desc t = decodeFrom(bs, i);
 
-      return fn(args, t);
+      return fnc(args, t);
     }
 
   default:

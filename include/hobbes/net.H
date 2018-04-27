@@ -9,8 +9,10 @@
  *
  */
 
-#ifndef HNET_H_INCLUDED
-#define HNET_H_INCLUDED
+#ifndef HOBBES_HNET_H_INCLUDED
+#define HOBBES_HNET_H_INCLUDED
+
+#include <hobbes/reflect.H>
 
 #include <vector>
 #include <queue>
@@ -228,94 +230,24 @@ inline int makeConnection(const std::string& hostport) {
   }
 }
 
-// very basic macro metaprogramming
-#define PRIV_HNET_FIRST(a, ...) a
-#define PRIV_HNET_SECOND(a, b, ...) b
-#define PRIV_HNET_JOIN(a,b) a ## b
-#define PRIV_HNET_IS_NEGATE(...) PRIV_HNET_SECOND(__VA_ARGS__, 0)
-#define PRIV_HNET_NOT(x) PRIV_HNET_IS_NEGATE(PRIV_HNET_JOIN(PRIV_HNET_SNOT_, x))
-#define PRIV_HNET_SNOT_0 NEGATE, 1
-#define PRIV_HNET_BOOL(x) PRIV_HNET_NOT(PRIV_HNET_NOT(x))
-#define PRIV_HNET_IF_ELSE(condition) PRIV_HNET_SIF_ELSE(PRIV_HNET_BOOL(condition))
-#define PRIV_HNET_SIF_ELSE(condition) PRIV_HNET_JOIN(PRIV_HNET_SIF_, condition)
-#define PRIV_HNET_SIF_1(...) __VA_ARGS__ PRIV_HNET_SIF_1_ELSE
-#define PRIV_HNET_SIF_0(...)             PRIV_HNET_SIF_0_ELSE
-#define PRIV_HNET_SIF_1_ELSE(...)
-#define PRIV_HNET_SIF_0_ELSE(...) __VA_ARGS__
-#define PRIV_HNET_EMPTY()
-#define PRIV_HNET_EVAL(...) PRIV_HNET_EVAL256(__VA_ARGS__)
-#define PRIV_HNET_EVAL256(...) PRIV_HNET_EVAL128(PRIV_HNET_EVAL128(__VA_ARGS__))
-#define PRIV_HNET_EVAL128(...) PRIV_HNET_EVAL64(PRIV_HNET_EVAL64(__VA_ARGS__))
-#define PRIV_HNET_EVAL64(...) PRIV_HNET_EVAL32(PRIV_HNET_EVAL32(__VA_ARGS__))
-#define PRIV_HNET_EVAL32(...) PRIV_HNET_EVAL16(PRIV_HNET_EVAL16(__VA_ARGS__))
-#define PRIV_HNET_EVAL16(...) PRIV_HNET_EVAL8(PRIV_HNET_EVAL8(__VA_ARGS__))
-#define PRIV_HNET_EVAL8(...) PRIV_HNET_EVAL4(PRIV_HNET_EVAL4(__VA_ARGS__))
-#define PRIV_HNET_EVAL4(...) PRIV_HNET_EVAL2(PRIV_HNET_EVAL2(__VA_ARGS__))
-#define PRIV_HNET_EVAL2(...) PRIV_HNET_EVAL1(PRIV_HNET_EVAL1(__VA_ARGS__))
-#define PRIV_HNET_EVAL1(...) __VA_ARGS__
-#define PRIV_HNET_DEFER2(m) m PRIV_HNET_EMPTY PRIV_HNET_EMPTY()()
-#define PRIV_HNET_HAS_PARGS(...) PRIV_HNET_BOOL(PRIV_HNET_FIRST(PRIV_HNET_SEOAP_ __VA_ARGS__)())
-#define PRIV_HNET_SEOAP_(...) PRIV_HNET_BOOL(PRIV_HNET_FIRST(PRIV_HNET_SEOA_ __VA_ARGS__)())
-#define PRIV_HNET_SEOA_() 0
-#define PRIV_HNET_MAP(f, VS...) PRIV_HNET_EVAL(PRIV_HNET_MAPP(f, VS))
-#define PRIV_HNET_MAPP(f, H, T...)        \
-  f H                                 \
-  PRIV_HNET_IF_ELSE(PRIV_HNET_HAS_PARGS(T))(  \
-    PRIV_HNET_DEFER2(PRIV_HNET_SMAPP)()(f, T) \
-  )(                                  \
-  )
-#define PRIV_HNET_SMAPP() PRIV_HNET_MAPP
-
 /*****************************
- * BEGIN serialization by type / type-family
+ *
+ * io<T> : the main interface for type-directed network serialization/deserialization
+ *
  *****************************/
 template <typename T, typename P = void>
   struct io {
   };
 
-// type serialization
-#define PRIV_HNET_TYCTOR_PRIM      ((int)0)
-#define PRIV_HNET_TYCTOR_TVAR      ((int)2)
-#define PRIV_HNET_TYCTOR_FIXEDARR  ((int)4)
-#define PRIV_HNET_TYCTOR_ARR       ((int)5)
-#define PRIV_HNET_TYCTOR_VARIANT   ((int)6)
-#define PRIV_HNET_TYCTOR_STRUCT    ((int)7)
-#define PRIV_HNET_TYCTOR_SIZE      ((int)11)
-#define PRIV_HNET_TYCTOR_RECURSIVE ((int)13)
-
-template <typename T>
-  void w(const T& x, bytes* out) {
-    out->insert(out->end(), (uint8_t*)&x, ((uint8_t*)&x) + sizeof(x));
-  }
-inline void ws(const char* x, bytes* out) {
-  size_t n = strlen(x);
-  w(n, out);
-  out->insert(out->end(), x, x + n);
-}
-inline void ws(const std::string& x, bytes* out) {
-  w((size_t)x.size(), out);
-  out->insert(out->end(), x.begin(), x.end());
-}
-inline void ws(const bytes& x, bytes* out) {
-  w((size_t)x.size(), out);
-  out->insert(out->end(), x.begin(), x.end());
-}
-
-inline void encode_primty(const char* tn, bytes* out) {
-  w(PRIV_HNET_TYCTOR_PRIM, out);
-  ws(tn, out);
-  w((bool)false, out);
-}
-
 // primitive serialization
 #define PRIV_HNET_DEFINE_PRIMTYS(T, n) \
   template <> \
     struct io<T> { \
-      typedef void can_memcpy; \
-      static void        encode(bytes* out)       { encode_primty(n, out); } \
-      static std::string describe()               { return n; } \
+      static const bool can_memcpy = true; \
+      static ty::desc    type()                   { return ty::prim(n); } \
       static void        write(int s, const T& x) { sendData(s, (const uint8_t*)&x, sizeof(x)); } \
       static void        read(int s, T* x)        { recvData(s, (uint8_t*)x, sizeof(T)); } \
+      \
       typedef uint8_t async_read_state; \
       static void prepare(uint8_t* o) { *o = 0; } \
       static bool accum(int s, uint8_t* o, T* x) { *o += recvDataPartial(s, ((uint8_t*)x) + *o, sizeof(T) - *o); return *o == sizeof(T); } \
@@ -335,27 +267,14 @@ PRIV_HNET_DEFINE_PRIMTYS(size_t,   "long");
 PRIV_HNET_DEFINE_PRIMTYS(float,    "float");
 PRIV_HNET_DEFINE_PRIMTYS(double,   "double");
 
-template <typename T, typename P = void>
-  struct cannot_memcpy {
-    typedef void type;
-  };
-template <typename T>
-  struct cannot_memcpy<T, typename io<T>::can_memcpy> {
-  };
-
 // support unit
-struct unit {
-  unit() { }
-  bool operator==(const unit&) const { return true; }
-  bool operator< (const unit&) const { return false; }
-};
-
 template <>
   struct io<unit> {
-    static void encode(bytes* out) { encode_primty("unit", out); }
-    static std::string describe() { return "()"; }
-    static void write(int s, const unit&) { }
-    static void read(int s, unit*) { }
+    static const bool can_memcpy = false;
+
+    static ty::desc type()                    { return ty::prim("unit"); }
+    static void     write(int s, const unit&) { }
+    static void     read (int s, unit*)       { }
 
     typedef uint8_t async_read_state;
     static void prepare(uint8_t* o) {}
@@ -363,269 +282,154 @@ template <>
   };
 
 // support enumerations
-#define HNET_ENUM_CTOR_DEF(n) n ,
-#define HNET_ENUM_CTOR_CTOR(n) static const SelfT n() { return SelfT(SelfT::Enum::n); }
-#define HNET_ENUM_CTORC_SUCC(n) +1
-#define HNET_ENUM_CTOR_STR(n) + "|" #n
-#define HNET_ENUM_CTOR_ENCODE(n) \
-  ::hobbes::net::ws(#n, out); \
-  ::hobbes::net::w((uint32_t)(Enum :: n), out); \
-  ::hobbes::net::encode_primty("unit", out);
-#define HNET_ENUM_TOSTR_CASE(n) \
-  case SelfT :: Enum :: n: o << "|" #n "|"; break;
-
-#define DEFINE_HNET_ENUM(T, CTORS...) \
-  struct T { \
-    typedef void is_hnet_enum; \
-    enum class Enum : uint32_t { \
-      PRIV_HNET_MAP(HNET_ENUM_CTOR_DEF, CTORS) \
-      COUNT \
-    }; \
-    Enum value; \
-    T() : value() { } \
-    T(Enum v) : value(v) { } \
-    T& operator=(Enum v) { this->value = v; return *this; } \
-    operator Enum() { return this->value; } \
-    typedef T SelfT; \
-    PRIV_HNET_MAP(HNET_ENUM_CTOR_CTOR, CTORS) \
-    static void encode(::hobbes::net::bytes* out) { \
-      ::hobbes::net::w(PRIV_HNET_TYCTOR_VARIANT, out); \
-      ::hobbes::net::w((size_t)(0 PRIV_HNET_MAP(HNET_ENUM_CTORC_SUCC, CTORS)), out); \
-      PRIV_HNET_MAP(HNET_ENUM_CTOR_ENCODE, CTORS); \
-    } \
-    static std::string describe() { \
-      return (std::string("") PRIV_HNET_MAP(HNET_ENUM_CTOR_STR, CTORS)).substr(1); \
-    } \
-    bool operator==(const T& rhs) const { return this->value == rhs.value; } \
-  }; \
-  inline std::ostream& operator<<(std::ostream& o, const T& x) { \
-    typedef T SelfT; \
-    switch (x.value) { \
-    PRIV_HNET_MAP(HNET_ENUM_TOSTR_CASE, CTORS) \
-    default: \
-      o << "|?|"; \
-      break; \
-    } \
-    return o; \
-  }
-
 template <typename T>
-  struct io<T, typename T::is_hnet_enum> {
-    typedef void can_memcpy;
-    static void        encode(bytes* out)          { T::encode(out); }
-    static std::string describe()                  { return T::describe(); }
-    static size_t      size(const T&)              { return sizeof(T); }
-    static void        write(int s, const T& x)    { io<uint32_t>::write(s, (uint32_t)x.value); }
-    static void        read(int s, T* x)           { io<uint32_t>::read(s, (uint32_t*)&x->value); }
+  struct io<T, typename tbool<T::is_hmeta_enum>::type> {
+    static const bool can_memcpy = true;
+
+    static ty::desc type()                   { return ty::enumdef(T::meta()); }
+    static void     write(int s, const T& x) { io<uint32_t>::write(s, (uint32_t)x.value); }
+    static void     read(int s, T* x)        { io<uint32_t>::read(s, (uint32_t*)&x->value); }
 
     typedef uint8_t async_read_state;
     static void prepare(uint8_t* o) { *o = 0; }
     static bool accum(int s, uint8_t* o, T* x) { *o += recvDataPartial(s, ((uint8_t*)x) + *o, sizeof(uint32_t) - *o); return *o == sizeof(uint32_t); }
   };
 
-// support variants (with and without explicit constructor names)
-#define DEFINE_HNET_VARIANT_GEN(T, VDECL, VCTORS, VCOPY, VDESTROY, CTORCOUNT, VENCODE, VDESC, VWRITE, VREAD, VVISITCASE, VEQCASE, CTAGS, CDATA, CAIOSTATES, CAIOSTATEINIT, CAIOREAD) \
-  template <typename R> \
-    struct T##Visitor { \
-      VDECL \
-    }; \
-  struct T { \
-    typedef void is_hnet_variant; \
-    typedef T SelfT; \
-    T() : tag(Enum::COUNT) { } \
-    VCTORS \
-    T(const T& rhs) : tag(rhs.tag) { \
-      switch (this->tag) { \
-      VCOPY \
-      default: break; \
-      } \
-    } \
-    ~T() { \
-      switch (this->tag) { \
-      VDESTROY \
-      default: break; \
-      } \
-    } \
-    T& operator=(const T& rhs) { \
-      if (this == &rhs) return *this; \
-      switch (this->tag) { \
-      VDESTROY \
-      default: break; \
-      } \
-      this->tag = rhs.tag; \
-      switch (this->tag) { \
-      VCOPY \
-      default: break; \
-      } \
-      return *this; \
-    } \
-    static void encode(::hobbes::net::bytes* out) { \
-      ::hobbes::net::w(PRIV_HNET_TYCTOR_VARIANT, out); \
-      ::hobbes::net::w((size_t)(0 CTORCOUNT), out); \
-      VENCODE; \
-    } \
-    static std::string describe() { \
-      return "|" + (std::string("") VDESC).substr(1) + "|"; \
-    } \
-    void write(int s) const { \
-      switch (this->tag) { \
-      VWRITE \
-      default: break; \
-      } \
-    } \
-    void read(int s) { \
-      switch (this->tag) { \
-      VDESTROY \
-      default: break; \
-      } \
-      this->tag = Enum::COUNT; \
-      ::hobbes::net::io<uint32_t>::read(s, (uint32_t*)&this->tag); \
-      switch (this->tag) { \
-      VREAD \
-      default: break; \
-      } \
-    } \
-    template <typename R> \
-      R visit(const T##Visitor<R>& v) const { \
-        switch (this->tag) { \
-        VVISITCASE \
-        default: throw std::runtime_error("while deconstructing the " #T " variant, cannot decide payload type because tag is invalid"); \
-        } \
-      } \
-    bool operator==(const T& rhs) const { \
-      if (this->tag != rhs.tag) { \
-        return false; \
-      } else { \
-        switch (this->tag) { \
-        VEQCASE \
-        default: return false; \
-        } \
-      } \
-    } \
-  private: \
-    enum class Enum : uint32_t { \
-      CTAGS \
-      COUNT \
-    }; \
-    Enum tag; \
-    union { \
-      char data[1]; \
-      CDATA \
-    }; \
-  public: \
-    typedef ::hobbes::net::io<uint32_t>::async_read_state TagState; \
-    union PayloadState { \
-      char data[1]; \
-      CAIOSTATES \
-    }; \
-    struct async_read_state { \
-      bool         readTag; \
-      TagState     tagS; \
-      PayloadState payloadS; \
-    }; \
-    static void prepare(async_read_state* o) { o->readTag = true; ::hobbes::net::io<uint32_t>::prepare(&o->tagS); } \
-    static bool accum(int s, async_read_state* o, T* x) { \
-      if (o->readTag) { \
-        if (::hobbes::net::io<uint32_t>::accum(s, &o->tagS, (uint32_t*)&x->tag)) { \
-          o->readTag = false; \
-          switch (x->tag) { \
-          CAIOSTATEINIT \
-          default: break; \
-          } \
-        } \
-      } else { \
-        switch (x->tag) { \
-        CAIOREAD \
-        default: break; \
-        } \
-      } \
-      return false; \
-    } \
-  }
+// support variants
+template <size_t i, size_t n, typename ... Ts>
+  struct descVariantTy {
+    typedef typename nth<i, Ts...>::type H;
+    typedef descVariantTy<i+1, n, Ts...> Recurse;
 
-// (with implicit ctor names)
-#define HNET_VARIANT_CTOR(n, t) static SelfT n(const t & x) { SelfT r; r.tag = Enum::tag_##n; new (&r.n##_data) t(x); return r; }
-#define HNET_VARIANT_CTOR_STR(n, t) + "," #n ":" + ::hobbes::net::io< t >::describe()
-#define HNET_VARIANT_CTOR_TAG(n, t) tag_##n,
-#define HNET_VARIANT_WRITE_CASE(n, t) case Enum::tag_##n: ::hobbes::net::io<int>::write(s, (int)this->tag); ::hobbes::net::io< t >::write(s, this->n##_data); break;
-#define HNET_VARIANT_READ_CASE(n, t)  case Enum::tag_##n: new (&this->n##_data) t(); ::hobbes::net::io< t >::read(s, &this->n##_data); break;
-#define HNET_VARIANT_PCOPY(n, t)      case Enum::tag_##n: new (&this->n##_data) t(rhs.n##_data); break;
-#define HNET_VARIANT_PDESTROY(n, t)   case Enum::tag_##n: { typedef t PRIV_DT; ((PRIV_DT*)&this->n##_data)->~PRIV_DT(); } break;
-#define HNET_VARIANT_SUCC(n, t) +1
-#define HNET_VARIANT_CTOR_OPAQUEDATA(n, t) t n##_data;
-#define HNET_VARIANT_CTOR_ENCODE(n, t)      \
-  ::hobbes::net::ws(#n, out); \
-  ::hobbes::net::w((uint32_t)Enum::tag_##n, out); \
-  ::hobbes::net::io< t >::encode(out);
-
-#define HNET_VARIANT_VDECL(n, t) virtual R n(const t & x) const = 0;
-#define HNET_VARIANT_VCASE(n, t) case Enum::tag_##n: return v.n (this->n##_data);
-#define HNET_VARIANT_EQCASE(n, t) case Enum::tag_##n: return (this->n##_data == rhs.n##_data);
-
-#define HNET_VARIANT_AIOSTATE_DATA(n, t) ::hobbes::net::io<t>::async_read_state n##_aioS;
-#define HNET_VARIANT_AIOSTATE_INIT(n, t) case Enum::tag_##n: { new (o->payloadS.data) ::hobbes::net::io<t>::async_read_state(); ::hobbes::net::io<t>::prepare(&o->payloadS.n##_aioS); new (&x->n##_data) t(); } break;
-#define HNET_VARIANT_AIOSTATE_ACCUM(n, t) case Enum::tag_##n: return ::hobbes::net::io<t>::accum(s, &o->payloadS.n##_aioS, &x->n##_data);
-
-#define DEFINE_HNET_VARIANT(T, CTORS...) \
-  DEFINE_HNET_VARIANT_GEN(T, PRIV_HNET_MAP(HNET_VARIANT_VDECL, CTORS), PRIV_HNET_MAP(HNET_VARIANT_CTOR, CTORS), PRIV_HNET_MAP(HNET_VARIANT_PCOPY, CTORS), PRIV_HNET_MAP(HNET_VARIANT_PDESTROY, CTORS), PRIV_HNET_MAP(HNET_VARIANT_SUCC, CTORS), PRIV_HNET_MAP(HNET_VARIANT_CTOR_ENCODE, CTORS), PRIV_HNET_MAP(HNET_VARIANT_CTOR_STR, CTORS), PRIV_HNET_MAP(HNET_VARIANT_WRITE_CASE, CTORS), PRIV_HNET_MAP(HNET_VARIANT_READ_CASE, CTORS), PRIV_HNET_MAP(HNET_VARIANT_VCASE, CTORS), PRIV_HNET_MAP(HNET_VARIANT_EQCASE, CTORS), PRIV_HNET_MAP(HNET_VARIANT_CTOR_TAG, CTORS), PRIV_HNET_MAP(HNET_VARIANT_CTOR_OPAQUEDATA, CTORS), PRIV_HNET_MAP(HNET_VARIANT_AIOSTATE_DATA, CTORS), PRIV_HNET_MAP(HNET_VARIANT_AIOSTATE_INIT, CTORS), PRIV_HNET_MAP(HNET_VARIANT_AIOSTATE_ACCUM, CTORS))
-
-// (with explicit ctor names)
-#define HNET_VARIANT_LBL_CTOR(n, lbl, t) static SelfT n(const t & x) { SelfT r; r.tag = Enum::tag_##n; new (&r.n##_data) t(x); return r; }
-#define HNET_VARIANT_LBL_CTOR_STR(n, lbl, t) + "," #n ":" + ::hobbes::net::io< t >::describe()
-#define HNET_VARIANT_LBL_CTOR_TAG(n, lbl, t) tag_##n,
-#define HNET_VARIANT_LBL_WRITE_CASE(n, lbl, t) case Enum::tag_##n: ::hobbes::net::io<int>::write(s, (int)this->tag); ::hobbes::net::io< t >::write(s, this->n##_data); break;
-#define HNET_VARIANT_LBL_READ_CASE(n, lbl, t)  case Enum::tag_##n: new (&this->n##_data) t(); ::hobbes::net::io< t >::read(s, &this->n##_data); break;
-#define HNET_VARIANT_LBL_PCOPY(n, lbl, t)      case Enum::tag_##n: new (&this->n##_data) t(rhs.n##_data); break;
-#define HNET_VARIANT_LBL_PDESTROY(n, lbl, t)   case Enum::tag_##n: { typedef t PRIV_DT; ((PRIV_DT*)&this->n##_data)->~PRIV_DT(); } break;
-#define HNET_VARIANT_LBL_SUCC(n, lbl, t) +1
-#define HNET_VARIANT_LBL_CTOR_OPAQUEDATA(n, lbl, t) t n##_data;
-#define HNET_VARIANT_LBL_CTOR_ENCODE(n, lbl, t) \
-  ::hobbes::net::ws(#lbl, out); \
-  ::hobbes::net::w((uint32_t)Enum::tag_##n, out); \
-  ::hobbes::net::io< t >::encode(out);
-
-#define HNET_VARIANT_LBL_VDECL(n, lbl, t) virtual R n(const t & x) const = 0;
-#define HNET_VARIANT_LBL_VCASE(n, lbl, t) case Enum::tag_##n: return v. n (this->n##_data);
-#define HNET_VARIANT_LBL_EQCASE(n, lbl, t) case Enum::tag_##n: return (this->n##_data == rhs.n##_data);
-
-#define HNET_VARIANT_LBL_CTOR_AIOSTATE_DATA(n, lbl, t) ::hobbes::net::io<t>::async_read_state n##_aioS;
-#define HNET_VARIANT_LBL_CTOR_AIOSTATE_INIT(n, lbl, t) case Enum::tag_##n: { new (o->payloadS.data) ::hobbes::net::io<t>::async_read_state(); ::hobbes::net::io<t>::prepare(&o->payloadS.n##_aioS); new (&x->n##_data) t(); } break;
-#define HNET_VARIANT_LBL_CTOR_AIOSTATE_ACCUM(n, lbl, t) case Enum::tag_##n: return ::hobbes::net::io<t>::accum(s, &o->payloadS.n##_aioS, &x->n##_data);
-
-#define DEFINE_HNET_VARIANT_WITH_LABELS(T, CTORS...) \
-  DEFINE_HNET_VARIANT_GEN(T, PRIV_HNET_MAP(HNET_VARIANT_LBL_VDECL, CTORS), PRIV_HNET_MAP(HNET_VARIANT_LBL_CTOR, CTORS), PRIV_HNET_MAP(HNET_VARIANT_LBL_PCOPY, CTORS), PRIV_HNET_MAP(HNET_VARIANT_LBL_PDESTROY, CTORS), PRIV_HNET_MAP(HNET_VARIANT_LBL_SUCC, CTORS), PRIV_HNET_MAP(HNET_VARIANT_LBL_CTOR_ENCODE, CTORS), PRIV_HNET_MAP(HNET_VARIANT_LBL_CTOR_STR, CTORS), PRIV_HNET_MAP(HNET_VARIANT_LBL_WRITE_CASE, CTORS), PRIV_HNET_MAP(HNET_VARIANT_LBL_READ_CASE, CTORS), PRIV_HNET_MAP(HNET_VARIANT_LBL_VCASE, CTORS), PRIV_HNET_MAP(HNET_VARIANT_LBL_EQCASE, CTORS), PRIV_HNET_MAP(HNET_VARIANT_LBL_CTOR_TAG, CTORS), PRIV_HNET_MAP(HNET_VARIANT_LBL_CTOR_OPAQUEDATA, CTORS), PRIV_HNET_MAP(HNET_VARIANT_LBL_CTOR_AIOSTATE_DATA, CTORS), PRIV_HNET_MAP(HNET_VARIANT_LBL_CTOR_AIOSTATE_INIT, CTORS), PRIV_HNET_MAP(HNET_VARIANT_LBL_CTOR_AIOSTATE_ACCUM, CTORS))
-
+    static void ctorDefs(ty::Variant::Ctors* cs) {
+      std::ostringstream fn;
+      fn << ".f" << i;
+      cs->push_back(ty::Variant::Ctor(fn.str(), (int)i, io<H>::type()));
+    }
+    static ty::desc type() {
+      ty::Variant::Ctors cs;
+      ctorDefs(&cs);
+      return ty::variant(cs);
+    }
+  };
+template <size_t n, typename ... Ts>
+  struct descVariantTy<n, n, Ts...> {
+    static void ctorDefs(ty::Variant::Ctors*) { }
+    static ty::desc type()   { return ty::prim("void"); }
+  };
+template <size_t tag, typename T, typename M>
+  struct variantGenWrite {
+    static void fn(T* vd, int s) {
+      io<T>::write(s, *vd);
+    }
+  };
+template <size_t tag, typename T, typename M>
+  struct variantGenRead {
+    static void fn(T* vd, int s) {
+      new (vd) T();
+      io<T>::read(s, vd);
+    }
+  };
 template <typename T>
-  struct io<T, typename T::is_hnet_variant> {
-    static void        encode(bytes* out)       { T::encode(out); }
-    static std::string describe()               { return T::describe(); }
-    static void        write(int s, const T& x) { return x.write(s); }
-    static void        read(int s, T* x)        { return x->read(s); }
+  struct AsyncStateOf {
+    typedef typename io<T>::async_read_state type;
+  };
+template <size_t tag, typename T, typename M>
+  struct variantAsyncInit {
+    static void fn(T* p, void* rs) {
+      new (p) T();
 
-    // async reading of variants
-    typedef typename T::async_read_state async_read_state;
-    static void prepare(async_read_state* o) { T::prepare(o); }
-    static bool accum(int s, async_read_state* o, T* x) { return T::accum(s, o, x); }
+      typedef typename io<T>::async_read_state RSType;
+      new (rs) RSType();
+      io<T>::prepare((RSType*)rs);
+    }
+  };
+template <size_t tag, typename T, typename M>
+  struct variantAsyncAccum {
+    static bool fn(T* p, int s, void* rs) {
+      typedef typename io<T>::async_read_state RSType;
+      return io<T>::accum(s, (RSType*)rs, p);
+    }
+  };
+template <typename ... Ctors>
+  struct io<variant<Ctors...>> {
+    static const bool can_memcpy = false;
+
+    static ty::desc type() { return descVariantTy<0, sizeof...(Ctors), Ctors...>::type(); }
+
+    static void write(int s, const variant<Ctors...>& x) {
+      io<uint32_t>::write(s, x.unsafeTag());
+      x.template apply<void, variantGenWrite, void, int>(s);
+    }
+    static void read(int s, variant<Ctors...>* x) {
+      io<uint32_t>::read(s, &x->unsafeTag());
+      variantApp<void, variantGenRead, void, tuple<Ctors...>, int>::apply(x->unsafeTag(), x->unsafePayload(), s);
+    }
+
+    typedef typename io<uint32_t>::async_read_state            TagState;
+    typedef typename fmap<AsyncStateOf, tuple<Ctors...>>::type PayloadSAsTuple;
+    typedef typename toVariant<PayloadSAsTuple>::type          PayloadState;
+
+    struct async_read_state {
+      bool         readTag;
+      TagState     tagState;
+      PayloadState payloadState;
+    };
+    static void prepare(async_read_state* o) {
+      o->readTag = true;
+      io<uint32_t>::prepare(&o->tagState);
+    }
+    static bool accum(int s, async_read_state* o, variant<Ctors...>* x) {
+      if (o->readTag) {
+        if (io<uint32_t>::accum(s, &o->tagState, &x->unsafeTag())) {
+          o->readTag = false;
+          o->payloadState.unsafeTag() = x->unsafeTag();
+          variantApp<void, variantAsyncInit, void, tuple<Ctors...>, void*>::apply(x->unsafeTag(), x->unsafePayload(), o->payloadState.unsafePayload());
+        }
+        return false;
+      } else {
+        return variantApp<bool, variantAsyncAccum, void, tuple<Ctors...>, int, void*>::apply(x->unsafeTag(), x->unsafePayload(), s, o->payloadState.unsafePayload());
+      }
+    }
+  };
+
+// support variants with named constructors
+struct descVariantF {
+  ty::Variant::Ctors* ctors;
+  descVariantF(ty::Variant::Ctors* ctors) : ctors(ctors) { }
+
+  template <typename T>
+    void ctor(const char* n, int id) {
+      this->ctors->push_back(ty::Variant::Ctor(n, id, io<T>::type()));
+    }
+};
+template <typename T>
+  struct io<T, typename tbool<T::is_hmeta_variant>::type> {
+    typedef typename T::as_variant_type VT;
+    static const bool can_memcpy = io<VT>::can_memcpy;
+
+    static ty::desc type() {
+      ty::Variant::Ctors cs;
+      descVariantF f(&cs);
+      T::meta(f);
+      return ty::variant(cs);
+    }
+
+    static void write(int s, const T& x) { io<VT>::write(s, *((const VT*)&x)); }
+    static void read (int s, T* x)       { io<VT>::read(s, (VT*)x); }
+
+    typedef typename io<VT>::async_read_state async_read_state;
+    static void prepare(async_read_state* o)            { io<VT>::prepare(o); }
+    static bool accum(int s, async_read_state* o, T* x) { return io<VT>::accum(s, o, (VT*)x); }
   };
 
 // support pairs
 template <typename U, typename V>
   struct io<std::pair<U,V>> {
-    static void encode(bytes* out) {
-      w(PRIV_HNET_TYCTOR_STRUCT, out);
-      w((size_t)2, out);
-      
-      ws(".f0", out);
-      w((int)-1, out);
-      io<U>::encode(out);
+    static const bool can_memcpy = false;
 
-      ws(".f1", out);
-      w((int)-1, out);
-      io<V>::encode(out);
-    }
-    static std::string describe() {
-      return "(" + io<U>::describe() + "*" + io<V>::describe() + ")";
-    }
+    static ty::desc type() { return ty::tup(-1, io<U>::type(), -1, io<V>::type()); }
+
     static void write(int s, const std::pair<U,V>& p) {
       io<U>::write(s, p.first);
       io<V>::write(s, p.second);
@@ -668,21 +472,13 @@ template <typename U, typename V>
 // support fixed-length array of mem-copyable type
 template <typename T, size_t N>
   struct FixedArrTyDesc {
-    static void encode(bytes* out) {
-      w(PRIV_HNET_TYCTOR_FIXEDARR, out);
-      io<T>::encode(out);
-      w(PRIV_HNET_TYCTOR_SIZE, out);
-      w<long>(N, out);
-    }
-    static std::string describe() {
-      char nf[32];
-      snprintf(nf, sizeof(nf), "%lld", (unsigned long long)N);
-      return "[:" + io<T>::describe() + "|" + std::string(nf) + ":]";
-    }
+    static ty::desc type() { return ty::array(io<T>::type(), ty::nat(N)); }
   };
 
 template <typename T, size_t N>
   struct FixedArrMemcpyReadWrite {
+    static const bool can_memcpy = false;
+
     static void read(int s, T (*x)[N]) { recvData(s, (uint8_t*)x, sizeof(T) * N); }
     static void write(int s, const T (&x)[N]) { sendData(s, (const uint8_t*)x, sizeof(T) * N); }
 
@@ -704,6 +500,8 @@ template <typename T, size_t N>
 
 template <typename T, size_t N>
   struct FixedArrIterReadWrite {
+    static const bool can_memcpy = false;
+
     static void read(int s, T (*x)[N]) {
       for (auto i = 0; i < N; ++i) {
         io<T>::read(s, &(*x)[i]);
@@ -738,16 +536,16 @@ template <typename T, size_t N>
   };
 
 template <typename T, size_t N>
-struct io<T[N], typename io<T>::can_memcpy> : FixedArrTyDesc<T, N>, FixedArrMemcpyReadWrite<T, N> {};
+struct io<T[N], typename tbool<io<T>::can_memcpy>::type> : FixedArrTyDesc<T, N>, FixedArrMemcpyReadWrite<T, N> {};
 
 template <typename T, size_t N>
-struct io<T[N], typename cannot_memcpy<T>::type> : FixedArrTyDesc<T, N>, FixedArrIterReadWrite<T, N> {};
+struct io<T[N], typename tbool<!io<T>::can_memcpy>::type> : FixedArrTyDesc<T, N>, FixedArrIterReadWrite<T, N> {};
 
 // support vectors of mem-copyable type
 template <typename T>
-  struct io<std::vector<T>, typename io<T>::can_memcpy> {
-    static void encode(bytes* out) { w(PRIV_HNET_TYCTOR_ARR, out); io<T>::encode(out); }
-    static std::string describe() { return "[" + io<T>::describe() + "]"; }
+  struct io<std::vector<T>, typename tbool<io<T>::can_memcpy>::type> {
+    static const bool can_memcpy = false;
+    static ty::desc type() { return ty::array(io<T>::type()); }
     static void write(int s, const std::vector<T>& x) { size_t n = x.size(); io<size_t>::write(s, n); if (n > 0) sendData(s, (const uint8_t*)&x[0], sizeof(T) * n); }
     static void read(int s, std::vector<T>* x) { size_t n = 0; io<size_t>::read(s, &n); x->resize(n); if (n > 0) recvData(s, (uint8_t*)&(*x)[0], n); }
 
@@ -783,9 +581,9 @@ template <typename T>
   };
 
 template <typename T>
-  struct io<std::vector<T>, typename cannot_memcpy<T>::type> {
-    static void encode(bytes* out) { w(PRIV_HNET_TYCTOR_ARR, out); io<T>::encode(out); }
-    static std::string describe() { return "[" + io<T>::describe() + "]"; }
+  struct io<std::vector<T>, typename tbool<!io<T>::can_memcpy>::type> {
+    static const bool can_memcpy = false;
+    static ty::desc type() { return ty::array(io<T>::type()); }
     static void write(int s, const std::vector<T>& x) {
       size_t n = x.size();
       io<size_t>::write(s, n);
@@ -839,8 +637,8 @@ template <typename T>
 // support maps (as if vectors of pairs)
 template <typename K, typename T>
   struct io<std::map<K,T>> {
-    static void encode(bytes* out) { io<std::vector<std::pair<K,T>>>::encode(out); }
-    static std::string describe() { return io<std::vector<std::pair<K,T>>>::describe(); }
+    static const bool can_memcpy = false;
+    static ty::desc type() { return io<std::vector<std::pair<K,T>>>::type(); }
     static void write(int s, const std::map<K,T>& x) {
       size_t n = x.size();
       io<size_t>::write(s, n);
@@ -895,7 +693,7 @@ template <typename K, typename T>
         break;
       case ReadS::TS:
         if (io<T>::accum(s, &o->tS, &o->t)) {
-          (*x)[o->k] = o->t;
+          x->insert(std::pair<K,T>(o->k, o->t));
           --o->len;
           o->readS = ReadS::KS;
           io<K>::prepare(&o->kS);
@@ -909,16 +707,16 @@ template <typename K, typename T>
 // support strings (but const char* can only be sent, not received)
 template <>
   struct io<const char*> {
-    static void encode(bytes* out) { w(PRIV_HNET_TYCTOR_ARR, out); io<char>::encode(out); }
-    static std::string describe() { return "[char]"; }
+    static const bool can_memcpy = false;
+    static ty::desc type() { return ty::array(io<char>::type()); }
     static void write(int s, const char* x) { size_t n = strlen(x); io<size_t>::write(s, n); sendData(s, (const uint8_t*)x, n); }
   };
 template <>
   struct io<std::string> {
-    static void encode(bytes* out) { w(PRIV_HNET_TYCTOR_ARR, out); io<char>::encode(out); }
-    static std::string describe() { return "[char]"; }
-    static void write(int s, const std::string& x) { io<size_t>::write(s, x.size()); sendData(s, (const uint8_t*)x.data(), x.size()); }
-    static void read(int s, std::string* x) { size_t n = 0; io<size_t>::read(s, &n); x->resize(n); recvData(s, (uint8_t*)x->data(), n); }
+    static const bool can_memcpy = false;
+    static ty::desc type() { return ty::array(io<char>::type()); }
+    static void write(int s, const std::string& x) { io<size_t>::write(s, x.size()); sendData(s, (const uint8_t*)&x[0], x.size()); }
+    static void read(int s, std::string* x) { size_t n = 0; io<size_t>::read(s, &n); x->resize(n); recvData(s, (uint8_t*)&(*x)[0], n); }
 
     // async reading of strings
     struct async_read_state {
@@ -943,252 +741,144 @@ template <>
           o->readLen = false;
         }
       } else {
-        uint8_t* buf = (uint8_t*)&((*x)[0]);
+        uint8_t* buf = (uint8_t*)&(*x)[0];
         o->bytesRead += recvDataPartial(s, buf + o->bytesRead, o->byteLen - o->bytesRead);
       }
       return !o->readLen && o->bytesRead == o->byteLen;
     }
   };
 
-// support standard, reflective structs
-#define HNET_FIELDC_SUCC(t,n) +1
-#define HNET_FIELD_COUNT(FIELDS...) (0 PRIV_HNET_MAP(HNET_FIELDC_SUCC, FIELDS))
+// support tuples
+template <size_t i, size_t n, typename ... Fs>
+  struct tupInd {
+    typedef typename nth<i, Fs...>::type H;
+    typedef tuple<Fs...>                 TT;
+    typedef typename TT::offs            offs;
+    typedef tupInd<i+1, n, Fs...>        Recurse;
 
-#define HNET_FIELDW_SUCC(t,n) ::hobbes::net::io< t >::write(s, this-> n);
-#define HNET_FIELD_WRITES(FIELDS...) PRIV_HNET_MAP(HNET_FIELDW_SUCC, FIELDS)
+    static void accFields(ty::Struct::Fields* fs) {
+      std::ostringstream ss;
+      ss << ".f" << i;
+      fs->push_back(ty::Struct::Field(ss.str(), -1, io<H>::type()));
+      Recurse::accFields(fs);
+    }
+    static ty::desc type() { ty::Struct::Fields fs; accFields(&fs); return ty::record(fs); }
 
-#define HNET_FIELDR_SUCC(t,n) ::hobbes::net::io< t >::read(s, &this-> n);
-#define HNET_FIELD_READS(FIELDS...) PRIV_HNET_MAP(HNET_FIELDR_SUCC, FIELDS)
+    static void write(int s, const tuple<Fs...>& x) { io<H>::write(s,   x.template at<i>()); Recurse::write(s, x); }
+    static void read (int s, tuple<Fs...>*       x) { io<H>::read (s, &x->template at<i>()); Recurse::read(s, x); }
+  };
+template <size_t n, typename ... Fs>
+  struct tupInd<n, n, Fs...> {
+    static void accFields(ty::Struct::Fields* fs) { }
+    static ty::desc type() { return ty::prim("unit"); }
 
-#define HNET_STRUCT_FIELD(t, n) t n;
-#define HNET_STRUCT_FIELD_ENC(t, n) ::hobbes::net::ws(#n, out); ::hobbes::net::w((int)-1, out); ::hobbes::net::io< t >::encode(out);
-#define HNET_STRUCT_FIELD_DESC(t, n) + (", " #n " : " + ::hobbes::net::io< t >::describe())
-#define HNET_STRUCT_FIELD_EQ(t, n) && this->n == rhs.n
-
-#define HNET_FIELD_ASYNC_READ_IDX_DEF(_, n) readAt_##n,
-#define HNET_FIELD_ASYNC_READ_STATE_DEC(t, n) ::hobbes::net::io< t >::async_read_state n;
-#define HNET_FIELD_ASYNC_READ_STATE_INIT(t, n) ::hobbes::net::io< t >::prepare(&o->fieldStates.n);
-#define HNET_FIELD_ASYNC_READ_FIELD(t, n) case FieldIndex::readAt_##n: if (::hobbes::net::io< t >::accum(s, &o->fieldStates.n, &x->n)) { o->idx = (FieldIndex)(((uint32_t)o->idx) + 1); } break;
-
-#define DEFINE_HNET_STRUCT(T, FIELDS...) \
-  struct T { \
-    PRIV_HNET_MAP(HNET_STRUCT_FIELD, FIELDS) /* struct fields */ \
-    typedef void is_hnet_struct; /* identify this type as a struct */ \
-    static void encode(::hobbes::net::bytes* out) { \
-      size_t arity = HNET_FIELD_COUNT(FIELDS); \
-      if (arity > 0) { \
-        ::hobbes::net::w(PRIV_HNET_TYCTOR_STRUCT, out); \
-        ::hobbes::net::w(arity, out); \
-        PRIV_HNET_MAP(HNET_STRUCT_FIELD_ENC, FIELDS) \
-      } else { \
-        ::hobbes::net::encode_primty("unit", out); \
-      } \
-    } \
-    static std::string describe() { \
-      return "{" + ( std::string("") PRIV_HNET_MAP(HNET_STRUCT_FIELD_DESC, FIELDS) ).substr(2) + "}"; \
-    } \
-    void write(int s) const { \
-      HNET_FIELD_WRITES(FIELDS); \
-    } \
-    void read(int s) { \
-      HNET_FIELD_READS(FIELDS); \
-    } \
-    bool operator==(const T& rhs) const { \
-      return true PRIV_HNET_MAP(HNET_STRUCT_FIELD_EQ, FIELDS); \
-    } \
-    /* async reading */ \
-    enum class FieldIndex : uint32_t { \
-      PRIV_ZeroInit = 0, \
-      PRIV_HNET_MAP(HNET_FIELD_ASYNC_READ_IDX_DEF, FIELDS) \
-      PRIV_FieldListEnd \
-    }; \
-    struct async_read_state { \
-      FieldIndex idx; \
-      struct { \
-      PRIV_HNET_MAP(HNET_FIELD_ASYNC_READ_STATE_DEC, FIELDS) \
-      } fieldStates; \
-    }; \
-    static void prepare(async_read_state* o) { \
-      o->idx = (FieldIndex)1; \
-      PRIV_HNET_MAP(HNET_FIELD_ASYNC_READ_STATE_INIT, FIELDS) \
-    } \
-    static bool accum(int s, async_read_state* o, T* x) { \
-      switch (o->idx) { \
-      PRIV_HNET_MAP(HNET_FIELD_ASYNC_READ_FIELD, FIELDS) \
-      default: break; \
-      } \
-      return o->idx == FieldIndex::PRIV_FieldListEnd; \
-    } \
-  }
-
-template <typename T>
-  struct io<T, typename T::is_hnet_struct> {
-    static void        encode(bytes* out)          { T::encode(out); }
-    static std::string describe()                  { return T::describe(); }
-    static void        write(int s, const T& x)    { x.write(s); }
-    static void        read(int s, T* x)           { x->read(s); }
-
-    typedef typename T::async_read_state async_read_state;
-    static void prepare(async_read_state* o) { T::prepare(o); }
-    static bool accum(int s, async_read_state* o, T* x) { return T::accum(s, o, x); }
+    static void write(int, const tuple<Fs...>&) { }
+    static void read (int, tuple<Fs...>*      ) { }
+  };
+template <size_t tag, typename T, typename M>
+  struct tupAsyncInit {
+    static void fn(T*, void* rs) {
+      typedef typename io<T>::async_read_state RSType;
+      new (rs) RSType();
+      io<T>::prepare((RSType*)rs);
+    }
+  };
+template <size_t tag, typename S, typename Tup>
+  struct tupAsyncAcc {
+    static bool fn(S* rs, int s, Tup* x) {
+      return io<typename tupType<tag, Tup>::type>::accum(s, rs, &x->template at<tag>());
+    }
   };
 
-// tuple/sequence serialization
+template <typename ... Fs>
+  struct io<tuple<Fs...>> {
+    static const bool can_memcpy = false;
+    static ty::desc type()                          { return tupInd<0, sizeof...(Fs), Fs...>::type(); }
+    static void write(int s, const tuple<Fs...>& x) { tupInd<0, sizeof...(Fs), Fs...>::write(s, x); }
+    static void read (int s, tuple<Fs...>* x)       { tupInd<0, sizeof...(Fs), Fs...>::read (s, x); }
+
+    typedef typename fmap<AsyncStateOf, tuple<Fs...>>::type SAsTuple;
+    typedef typename toVariant<SAsTuple>::type              async_read_state;
+
+    static void prepare(async_read_state* o) {
+      o->unsafeTag() = 0;
+      variantApp<void, tupAsyncInit, void, tuple<Fs...>, void*>::apply(o->unsafeTag(), o->unsafePayload(), o->unsafePayload());
+    }
+    static bool accum(int s, async_read_state* o, tuple<Fs...>* x) {
+      if (o->template apply<bool, tupAsyncAcc, tuple<Fs...>, int, tuple<Fs...>*>(s, x)) {
+        ++o->unsafeTag();
+        if (o->unsafeTag() == sizeof...(Fs)) {
+          return true;
+        } else {
+          variantApp<void, tupAsyncInit, void, tuple<Fs...>, void*>::apply(o->unsafeTag(), o->unsafePayload(), o->unsafePayload());
+          return false;
+        }
+      }
+      return false;
+    }
+  };
+
+// support reflective structs
+struct defStructF {
+  ty::Struct::Fields* fs;
+  defStructF(ty::Struct::Fields* fs) : fs(fs) { }
+
+  template <typename T>
+    void visit(const char* fname) {
+      this->fs->push_back(ty::Struct::Field(fname, -1, io<T>::type()));
+    }
+};
+
+template <typename T>
+  struct io<T, typename tbool<T::is_hmeta_struct>::type> {
+    static const bool can_memcpy = false;
+    static ty::desc type() { ty::Struct::Fields fs; defStructF df(&fs); T::meta(df); return ty::record(fs); }
+
+    typedef typename T::as_tuple_type TT;
+    static void write(int s, const T& x) { io<TT>::write(s, *((const TT*)&x)); }
+    static void read (int s, T* x)       { io<TT>::read (s, (TT*)x); }
+
+    typedef typename io<TT>::async_read_state async_read_state;
+    static void prepare(async_read_state* o) { io<TT>::prepare(o); }
+    static bool accum(int s, async_read_state* o, T* x) { return io<TT>::accum(s, o, (TT*)x); }
+  };
+
+// sequence serialization
 template <typename ... Ts>
   struct oSeq {
     static const size_t count = 0;
-    static void        encode(size_t,bytes*)    { }
-    static std::string describe()               { return ""; }
-    static void        write(int, const Ts&...) { }
+    static void write(int, const Ts&...) { }
   };
 template <typename T, typename ... Ts>
   struct oSeq<T, Ts...> {
     static const size_t count = 1 + oSeq<Ts...>::count;
 
-    static void encode(size_t f, bytes* out) {
-      char fn[32];
-      snprintf(fn, sizeof(fn), ".f%lld", (unsigned long long)f);
-      ws(fn, out);
-      w((int)-1, out);
-      io<T>::encode(out);
-
-      oSeq<Ts...>::encode(f+1, out);
-    }
-    static std::string describe() {
-      return io<T>::describe() + "*" + oSeq<Ts...>::describe();
-    }
     static void write(int socket, const T& x, const Ts&... xs) {
       io<T>::write(socket, x);
       oSeq<Ts...>::write(socket, xs...);
     }
   };
 
-template <size_t i, size_t e, typename ... Ts>
-  struct ioTuple {
-    static void write(int s, const std::tuple<Ts...>& t) {
-      io<typename std::tuple_element<i, std::tuple<Ts...>>::type>::write(s, std::get<i>(t));
-      ioTuple<i+1, e, Ts...>::write(s, t);
-    }
-    static void read(int s, std::tuple<Ts...>* t) {
-      io<typename std::tuple_element<i, std::tuple<Ts...>>::type>::read(s, &std::get<i>(*t));
-      ioTuple<i+1, e, Ts...>::read(s, t);
-    }
-  };
-template <size_t e, typename ... Ts>
-  struct ioTuple<e, e, Ts...> {
-    static void write(int s, const std::tuple<Ts...>&) { }
-    static void read(int s, std::tuple<Ts...>*) { }
-  };
-
-template <typename ... Ts>
-  struct aioTupleState {
-    typedef std::tuple<> async_read_state;
-    static void prepare(async_read_state*) { }
-  };
-template <typename T, typename ... Ts>
-  struct aioTupleState<T, Ts...> {
-    typedef typename io<T>::async_read_state FstRS;
-    typedef typename aioTupleState<Ts...>::async_read_state SndRS;
-    typedef std::pair<FstRS, SndRS> async_read_state;
-
-    static void prepare(async_read_state* o) {
-      io<T>::prepare(&o->first);
-      aioTupleState<Ts...>::prepare(&o->second);
-    }
-  };
-template <size_t i, typename T>
-  struct aioTupleStateAt { };
-template <typename U, typename V>
-  struct aioTupleStateAt<0, std::pair<U,V>> {
-    typedef U type;
-    static U* get(std::pair<U,V>* x) { return &x->first; }
-  };
-template <size_t i, typename U, typename V>
-  struct aioTupleStateAt<i, std::pair<U,V>> {
-    typedef typename aioTupleStateAt<i-1, V>::type type;
-    static type* get(std::pair<U,V>* x) { return aioTupleStateAt<i-1, V>::get(&x->second); }
-  };
-
-template <size_t i, size_t e, typename ... Ts>
-  struct aioTupleRead {
-    static bool accum(int s, size_t ti, typename aioTupleState<Ts...>::async_read_state* o, std::tuple<Ts...>* x) {
-      if (ti == i) {
-        return io<typename std::tuple_element<i, std::tuple<Ts...>>::type>::accum(s, aioTupleStateAt<i, typename aioTupleState<Ts...>::async_read_state>::get(o), &std::get<i>(*x));
-      } else {
-        return aioTupleRead<i+1, e, Ts...>::accum(s, ti, o, x);
-      }
-    }
-  };
-template <size_t e, typename ... Ts>
-  struct aioTupleRead<e, e, Ts...> {
-    static bool accum(int s, size_t, typename aioTupleState<Ts...>::async_read_state*, std::tuple<Ts...>*) { return true; }
-  };
-
-template <typename ... Ts>
-  struct io< std::tuple<Ts...> > {
-    static void encode(bytes* out) {
-      size_t arity = oSeq<Ts...>::count;
-
-      if (arity > 0) {
-        w(PRIV_HNET_TYCTOR_STRUCT, out);
-        w(arity, out);
-        oSeq<Ts...>::encode(0, out);
-      } else {
-        encode_primty("unit", out);
-      }
-    }
-    static std::string describe() {
-      std::string x = oSeq<Ts...>::describe();
-      return (x.size() > 1) ? x.substr(0,x.size()-1) : x;
-    }
-    static void write(int s, const std::tuple<Ts...>& t) {
-      ioTuple<0, std::tuple_size<std::tuple<Ts...>>::value, Ts...>::write(s, t);
-    }
-    static void read(int s, std::tuple<Ts...>* t) {
-      ioTuple<0, std::tuple_size<std::tuple<Ts...>>::value, Ts...>::read(s, t);
-    }
-
-    // async reading of tuples
-    typedef std::pair<size_t, typename aioTupleState<Ts...>::async_read_state> async_read_state;
-    static void prepare(async_read_state* o) { o->first = 0; aioTupleState<Ts...>::prepare(&o->second); }
-    static bool accum(int s, async_read_state* o, std::tuple<Ts...>* x) {
-      if (aioTupleRead<0, std::tuple_size<std::tuple<Ts...>>::value, Ts...>::accum(s, o->first, &o->second, x)) {
-        ++o->first;
-      }
-      return o->first == oSeq<Ts...>::count;
-    }
-  };
-
 // support opaque type aliases
-#define DEFINE_HNET_TYPE_ALIAS(PRIV_ATY, PRIV_REPTY) \
-  struct PRIV_ATY { \
-    typedef void is_hnet_alias; \
-    typedef PRIV_REPTY type; \
-    static const char* name() { return #PRIV_ATY; } \
-    inline operator PRIV_REPTY() { return this->value; } \
-    PRIV_REPTY value; \
-    PRIV_ATY() : value() { } \
-    PRIV_ATY(const PRIV_REPTY& x) : value(x) { } \
-    PRIV_ATY(const PRIV_ATY& x) : value(x.value) { } \
-    PRIV_ATY& operator=(const PRIV_ATY& x) { this->value = x.value; return *this; } \
-    bool operator==(const PRIV_ATY& x) const { return this->value == x.value; } \
-  }
-
 template <typename T>
-  struct io<T, typename T::is_hnet_alias> {
-    static void        encode(bytes* out)          { w(PRIV_HNET_TYCTOR_PRIM, out); ws(T::name(), out); w((bool)true, out); io<typename T::type>::encode(out); }
-    static std::string describe()                  { return T::name(); }
-    static void        write(int s, const T& x)    { io<typename T::type>::write(s, x.value); }
-    static void        read(int s, T* x)           { io<typename T::type>::read(s, &x->value); }
+  struct io<T, typename tbool<T::is_hmeta_alias>::type> {
+    typedef typename T::type RT;
+    static const bool can_memcpy = io<RT>::can_memcpy;
 
-    typedef typename io<typename T::type>::async_read_state async_read_state;
-    static void prepare(async_read_state* o) { io<typename T::type>::prepare(o); }
+    static ty::desc type()                   { return ty::prim(T::name(), io<RT>::type()); }
+    static void     write(int s, const T& x) { io<RT>::write(s, x.value); }
+    static void     read (int s, T* x)       { io<RT>::read (s, &x->value); }
+
+    typedef typename io<RT>::async_read_state async_read_state;
+    static void prepare(async_read_state* o)            { io<RT>::prepare(o); }
     static bool accum(int s, async_read_state* o, T* x) { return io<typename T::type>::accum(s, o, &x->value); }
   };
-/*****************************
- * END serialization by type / type-family
- *****************************/
 
+/*****************************
+ *
+ * RPC interfaces coordinating queries against remote processes
+ *
+ *****************************/
 
 // convert C++ compile-time types to hobbes type descriptions
 template <typename F>
@@ -1196,13 +886,13 @@ template <typename F>
   };
 template <typename R, typename ... Args>
   struct RPCTyDef<R(Args...)> {
-    static bytes inputType()  { bytes r; io<std::tuple<Args...>>::encode(&r); return r; }
-    static bytes outputType() { bytes r; io<R>::encode(&r); return r; }
+    static bytes inputType()  { return ty::encoding(io<tuple<Args...>>::type()); }
+    static bytes outputType() { return ty::encoding(io<R>::type()); }
   };
 template <typename ... Args>
   struct RPCTyDef<void(Args...)> {
-    static bytes inputType()  { bytes r; io<std::tuple<Args...>>::encode(&r); return r; }
-    static bytes outputType() { bytes r; encode_primty("unit", &r); return r; }
+    static bytes inputType()  { return ty::encoding(io<tuple<Args...>>::type()); }
+    static bytes outputType() { return ty::encoding(ty::prim("unit")); }
   };
 
 // synchronous request/reply
@@ -1254,7 +944,7 @@ template <typename ... Args>
   private: \
     int s; \
   public: \
-    T(int fd) : s(::hobbes::net::initSession(fd, makeRPCDefs())) PRIV_HNET_MAP(PRIV_HNET_CLIENT_INIT_RPCFUNC, C) { } \
+    T(int fd) : s(::hobbes::net::initSession(fd, makeRPCDefs())) PRIV_HPPF_MAP(PRIV_HNET_CLIENT_INIT_RPCFUNC, C) { } \
     T(const std::string& host, size_t port) : T(::hobbes::net::makeConnection(host, port)) { } \
     T(const std::string& host, const std::string& port) : T(::hobbes::net::makeConnection(host, port)) { } \
     T(const std::string& localAddr, const std::string& host, size_t port) : T(::hobbes::net::makeConnection(localAddr, host, port)) { } \
@@ -1269,15 +959,15 @@ template <typename ... Args>
     void reconnect(const std::string& localAddr, const std::string& host, const std::string& port) { reconnect(::hobbes::net::makeConnection(localAddr, host, port)); } \
     void reconnect(const std::string& hostport) { reconnect(::hobbes::net::makeConnection(hostport)); } \
     \
-    PRIV_HNET_MAP(PRIV_HNET_CLIENT_MAKE_RPCFUNC, C) \
+    PRIV_HPPF_MAP(PRIV_HNET_CLIENT_MAKE_RPCFUNC, C) \
   private: \
     enum ExprIDs { \
       NullExpr = 0 \
-      PRIV_HNET_MAP(PRIV_HNET_CLIENT_MAKE_EXPRID, C) \
+      PRIV_HPPF_MAP(PRIV_HNET_CLIENT_MAKE_EXPRID, C) \
     }; \
     static ::hobbes::net::RPCDefs makeRPCDefs() { \
       ::hobbes::net::RPCDefs result; \
-      PRIV_HNET_MAP(PRIV_HNET_CLIENT_MAKE_RPCDEF, C) \
+      PRIV_HPPF_MAP(PRIV_HNET_CLIENT_MAKE_RPCDEF, C) \
       return result; \
     } \
     void closeC() { \
@@ -1369,7 +1059,7 @@ template <typename ... Args>
   private: \
     int s; \
   public: \
-    T(int fd) : s(::hobbes::net::initSession(fd, makeRPCDefs())) PRIV_HNET_MAP(PRIV_HNET_CLIENT_INIT_ASYNC_RPCFUNC, C) { } \
+    T(int fd) : s(::hobbes::net::initSession(fd, makeRPCDefs())) PRIV_HPPF_MAP(PRIV_HNET_CLIENT_INIT_ASYNC_RPCFUNC, C) { } \
     T(const std::string& host, size_t port) : T(::hobbes::net::makeConnection(host, port)) { } \
     T(const std::string& host, const std::string& port) : T(::hobbes::net::makeConnection(host, port)) { } \
     T(const std::string& localAddr, const std::string& host, size_t port) : T(::hobbes::net::makeConnection(localAddr, host, port)) { } \
@@ -1386,15 +1076,15 @@ template <typename ... Args>
     void step() { while (this->asyncReaders.size() > 0 && this->asyncReaders.front()->readAndFinish()) { this->asyncReaders.pop(); } } \
     size_t pendingRequests() const { return this->asyncReaders.size(); } \
     \
-    PRIV_HNET_MAP(PRIV_HNET_CLIENT_MAKE_ASYNC_RPCFUNC, C) \
+    PRIV_HPPF_MAP(PRIV_HNET_CLIENT_MAKE_ASYNC_RPCFUNC, C) \
   private: \
     enum ExprIDs { \
       NullExpr = 0 \
-      PRIV_HNET_MAP(PRIV_HNET_CLIENT_MAKE_EXPRID, C) \
+      PRIV_HPPF_MAP(PRIV_HNET_CLIENT_MAKE_EXPRID, C) \
     }; \
     static ::hobbes::net::RPCDefs makeRPCDefs() { \
       ::hobbes::net::RPCDefs result; \
-      PRIV_HNET_MAP(PRIV_HNET_CLIENT_MAKE_RPCDEF, C) \
+      PRIV_HPPF_MAP(PRIV_HNET_CLIENT_MAKE_RPCDEF, C) \
       return result; \
     } \
     std::queue<::hobbes::net::AsyncReader*> asyncReaders; \
