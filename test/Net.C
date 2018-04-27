@@ -38,7 +38,9 @@ int testServerPort() {
     std::thread serverProc(std::bind(&runTestServer, 8765, 9500));
     serverProc.detach();
     serverStartup.wait(lk);
-    if (serverPort < 0) throw std::runtime_error("Couldn't allocate port for test server");
+    if (serverPort < 0) {
+      throw std::runtime_error("Couldn't allocate port for test server");
+    }
   }
   return serverPort;
 }
