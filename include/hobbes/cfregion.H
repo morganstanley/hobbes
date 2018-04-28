@@ -19,6 +19,7 @@
 
 #include <hobbes/fregion.H>
 #include <algorithm>
+#include <numeric>
 
 namespace hobbes { namespace fregion {
 
@@ -33,14 +34,14 @@ struct arithn {
   typedef uint32_t code;
   typedef uint32_t freq;
 
-  static const uint32_t cbits    = 16;
-  static const code     cmax     = (code(1) << cbits) - code(1);
-  static const code     cfourth  = code(1) << (cbits-2);
-  static const code     chalf    = 2*cfourth;
-  static const code     c3fourth = 3*cfourth;
+  static constexpr uint32_t cbits    = 16;
+  static constexpr code     cmax     = (code(1) << cbits) - code(1);
+  static constexpr code     cfourth  = code(1) << (cbits-2);
+  static constexpr code     chalf    = 2*cfourth;
+  static constexpr code     c3fourth = 3*cfourth;
 
-  static const uint32_t fbits = 14;
-  static const freq     fmax  = (freq(1) << fbits) - freq(1);
+  static constexpr uint32_t fbits = 14;
+  static constexpr freq     fmax  = (freq(1) << fbits) - freq(1);
 };
 
 // the serialized state of a batch of compressed data
@@ -323,7 +324,9 @@ struct crbitstream {
       this->seg      = (cbatchseg*)mapFileData(this->file, this->seg->nextRef, sizeof(cbatchseg));
       this->bitIndex = 0;
     }
-    return this->seg->bits[this->bitIndex>>3]&(1<<((this->bitIndex++)%8));
+    bool bit = this->seg->bits[this->bitIndex>>3]&(1<<((this->bitIndex)%8));
+    ++this->bitIndex;
+    return bit;
   }
 
   void reset(const cbatch* b) {
@@ -569,8 +572,7 @@ template <typename T>
 
     static void write(cwbitstream* bits, PModel* pm, CModel* cm, T x) {
       for (size_t i = 0; i < sizeof(T); ++i) {
-        compress<uint8_t>::write(bits, &pm->pmodels[i], &cm->cmodels[i], x&0xff);
-        x >>= 8;
+        compress<uint8_t>::write(bits, &pm->pmodels[i], &cm->cmodels[i], ((const uint8_t*)&x)[i]);
       }
     }
 

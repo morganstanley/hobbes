@@ -449,7 +449,7 @@ struct ShowMyVariant : MyVariantVisitor<int> {
 };
 
 DEFINE_ENUM(
-  Color,
+  MyColor,
   (Red),
   (Green),
   (Blue),
@@ -460,7 +460,7 @@ DEFINE_STRUCT(
   MyStruct,
   (int,       x),
   (uint8_t,   y),
-  (Color,     c),
+  (MyColor,     c),
   (MyVariant, v)
 );
 
@@ -475,7 +475,7 @@ TEST(Storage, CFRegionIO) {
         MyStruct s;
         s.x = i;
         s.y = i;
-        s.c = (Color::Enum)(i%4);
+        s.c = (MyColor::Enum)(i%4);
         if (i%2 == 0) {
           s.v = MyVariant::jimmy((int)42.0*sin(i));
         } else {
@@ -494,6 +494,12 @@ TEST(Storage, CFRegionIO) {
       while (xs.next(&s)) {
         EXPECT_EQ(s.x, i);
         EXPECT_EQ(s.y, ((uint8_t)i));
+        EXPECT_EQ(s.c, MyColor((MyColor::Enum)(i%4)));
+        if (i%2 == 0) {
+          EXPECT_EQ(s.v, MyVariant::jimmy((int)42.0*sin(i)));
+        } else {
+          EXPECT_EQ(s.v, MyVariant::bob("I am bob #" + str::from(i)));
+        }
         ++i;
       }
     }
