@@ -23,6 +23,10 @@
 
 namespace hobbes { namespace fregion {
 
+#define PRIV_HCFREGION_LIKELY(x)   __builtin_expect((x),1)
+#define PRIV_HCFREGION_UNLIKELY(x) __builtin_expect((x),0)
+#define PRIV_HCFREGION_COUNTLZ(x)  __builtin_clz((x))
+
 /*******************************************************
  *
  * cwbitstream / crbitstream : arithmetic encoding and decoding of bits
@@ -42,6 +46,28 @@ struct arithn {
 
   static constexpr uint32_t fbits = 14;
   static constexpr freq     fmax  = (freq(1) << fbits) - freq(1);
+
+  // bit patterns to shift in up to 16 ones
+  static code shift1s(code c) {
+    switch (c) {
+    case 0:  return 0;     // 0
+    case 1:  return 1;     // 1
+    case 2:  return 3;     // 11
+    case 3:  return 7;     // 111
+    case 4:  return 15;    // 1111
+    case 5:  return 31;    // 11111
+    case 6:  return 63;    // 111111
+    case 7:  return 127;   // 1111111
+    case 8:  return 255;   // 11111111
+    case 9:  return 511;   // 111111111
+    case 10: return 1023;  // 1111111111
+    case 11: return 2047;  // 11111111111
+    case 12: return 4095;  // 111111111111
+    case 13: return 8191;  // 1111111111111
+    case 14: return 16383; // 11111111111111
+    default: return 32767; // 111111111111111
+    }
+  }
 };
 
 // the serialized state of a batch of compressed data
@@ -73,8 +99,8 @@ DEFINE_STRUCT(
 // a bit buffer segment (sized to fill one page)
 // (an accurate description of this type will patch over the nextRef field later)
 struct csegm {
-  static const size_t bitsLen = 4088;
-  static const size_t maxBits = bitsLen * 8;
+  static constexpr size_t bitsLen = 4088;
+  static constexpr size_t maxBits = bitsLen * 8;
 
   typedef uint8_t BitSeg[bitsLen];
 };
@@ -116,7 +142,7 @@ struct cwbitstream {
     this->batchNodeRoot = rootNode;
 
     // the latest buffer is directly accessible in the initial node
-    static const size_t dsize = 3*sizeof(size_t);
+    static constexpr size_t dsize = 3*sizeof(size_t);
     size_t* d = (size_t*)mapFileData(this->file, rootNode, dsize);
     this->buffer = (cbatch*)mapFileData(this->file, d[1], sizeof(cbatch));
     unmapFileData(this->file, d, dsize);
@@ -224,37 +250,36 @@ struct cwbitstream {
 
   // put an arithmetic encoder bit with an associated roll
   // (as needed for the boundary condition in arithmetic encoder range selection to retain numeric precision)
-  inline void putbit(bool b, uint32_t roll) {
-    if (b) {
-      switch (roll) {
-      case 0: this->putones(1);    break; // 1
-      case 1: this->putbits(1, 2); break; // 10
-      case 2: this->putbits(1, 3); break; // 100
-      case 3: this->putbits(1, 4); break; // 1000
-      case 4: this->putbits(1, 5); break; // 10000
-      case 5: this->putbits(1, 6); break; // 100000
-      case 6: this->putbits(1, 7); break; // 1000000
-      case 7: this->putbits(1, 8); break; // 10000000
-      default:
-        this->putbits(1, 8);
-        this->putzeroes(roll-7);
-        break;
-      }
-    } else {
-      switch (roll) {
-      case 0: this->putzeroes(1);    break; // 0
-      case 1: this->putbits(  2, 2); break; // 01
-      case 2: this->putbits(  6, 3); break; // 011
-      case 3: this->putbits( 14, 4); break; // 0111
-      case 4: this->putbits( 30, 5); break; // 01111
-      case 5: this->putbits( 62, 6); break; // 011111
-      case 6: this->putbits(126, 7); break; // 0111111
-      case 7: this->putbits(254, 8); break; // 01111111
-      default:
-        this->putbits(254, 8);
-        this->putones(roll-7);
-        break;
-      }
+  inline void put0roll(uint32_t roll) {
+    switch (roll) {
+    case 0: this->putzeroes(1);    break; // 0
+    case 1: this->putbits(  2, 2); break; // 01
+    case 2: this->putbits(  6, 3); break; // 011
+    case 3: this->putbits( 14, 4); break; // 0111
+    case 4: this->putbits( 30, 5); break; // 01111
+    case 5: this->putbits( 62, 6); break; // 011111
+    case 6: this->putbits(126, 7); break; // 0111111
+    case 7: this->putbits(254, 8); break; // 01111111
+    default:
+      this->putbits(254, 8);
+      this->putones(roll-7);
+      break;
+    }
+  }
+  inline void put1roll(uint32_t roll) {
+    switch (roll) {
+    case 0: this->putones(1);    break; // 1
+    case 1: this->putbits(1, 2); break; // 10
+    case 2: this->putbits(1, 3); break; // 100
+    case 3: this->putbits(1, 4); break; // 1000
+    case 4: this->putbits(1, 5); break; // 10000
+    case 5: this->putbits(1, 6); break; // 100000
+    case 6: this->putbits(1, 7); break; // 1000000
+    case 7: this->putbits(1, 8); break; // 10000000
+    default:
+      this->putbits(1, 8);
+      this->putzeroes(roll-7);
+      break;
     }
   }
 
@@ -264,32 +289,58 @@ struct cwbitstream {
   
     this->buffer->high = this->buffer->low + (r * chigh / cinterval) - 1;
     this->buffer->low  = this->buffer->low + (r * clow  / cinterval);
-  
+
+    // we need to account for overflow here and shift out bits as our range narrows
+    // if high's most significant bit (MSB) goes from 1 to 0, we can shift out a 0
+    // likewise if low's MSB goes from 0 to 1, we can shift out a 1
+    // and we need to account for the case of near convergence where range precision is lost (accumulating a "roll" if the convergence is 01111... or 10000...)
+    //
+    // in order to speed up this process a little bit, we try to take steps larger than 1 bit at a time
+    // so we check the count of leading 0s on high to step that many 0s
+    // we check the count of 1s on low to step that many 1s
     while (true) {
-      if (this->buffer->high < arithn::chalf) {
-        this->putbit(false, this->buffer->roll);
-        this->buffer->roll = 0;
-      } else if (this->buffer->low >= arithn::chalf) {
-        this->putbit(true, this->buffer->roll);
-        this->buffer->roll = 0;
-      } else if (this->buffer->low >= arithn::cfourth && this->buffer->high < arithn::c3fourth) {
-        ++this->buffer->roll;
-        this->buffer->low  -= arithn::cfourth;
-        this->buffer->high -= arithn::cfourth;
+      arithn::code bc = PRIV_HCFREGION_COUNTLZ(this->buffer->high)-16; // how many 0s can we step through from 'high'?
+      if (bc > 0) {
+        if (this->buffer->roll > 0) {
+          this->put0roll(this->buffer->roll);
+          this->buffer->roll = 0;
+          this->putzeroes(bc-1);
+        } else {
+          this->putzeroes(bc);
+        }
+        this->buffer->low  = (this->buffer->low << bc) & arithn::cmax;
+        this->buffer->high = ((this->buffer->high << bc) | arithn::shift1s(bc)) & arithn::cmax;
       } else {
-        break;
+        bc = PRIV_HCFREGION_COUNTLZ(~(this->buffer->low | 0xFFFF0000))-16; // how many 1s can we step through from 'low'?
+        if (bc > 0) {
+          if (this->buffer->roll > 0) {
+            this->put1roll(this->buffer->roll);
+            this->buffer->roll = 0;
+            this->putones(bc-1);
+          } else {
+            this->putones(bc);
+          }
+          this->buffer->low  = (this->buffer->low << bc) & arithn::cmax;
+          this->buffer->high = ((this->buffer->high << bc) | arithn::shift1s(bc)) & arithn::cmax;
+        } else if (this->buffer->low >= arithn::cfourth && this->buffer->high < arithn::c3fourth) { // are we failing to converge and narrowing our range?
+          ++this->buffer->roll;
+          this->buffer->low  -= arithn::cfourth;
+          this->buffer->high -= arithn::cfourth;
+
+          this->buffer->low  = (this->buffer->low << 1) & arithn::cmax;
+          this->buffer->high = ((this->buffer->high << 1) | 1) & arithn::cmax;
+        } else {
+          break;
+        }
       }
-  
-      this->buffer->low  = (this->buffer->low << 1) & arithn::cmax;
-      this->buffer->high = ((this->buffer->high << 1) | 1) & arithn::cmax;
     }
   }
   
   inline void flush() {
     if (this->buffer->low < arithn::cfourth) {
-      this->putbit(false, this->buffer->roll+1);
+      this->put0roll(this->buffer->roll+1);
     } else {
-      this->putbit(true, this->buffer->roll+1);
+      this->put1roll(this->buffer->roll+1);
     }
     this->buffer->roll=0;
   }
@@ -396,15 +447,17 @@ template <uint8_t maxSymbol>
     typedef uint16_t index_t;
     typedef uint16_t symbol;
 
-    static const index_t symbolCount = ((index_t)maxSymbol)+1;
-    static const symbol  esc         = ((symbol)symbolCount);
+    static constexpr index_t symbolCount = ((index_t)maxSymbol)+1;
+    static constexpr symbol  esc         = ((symbol)symbolCount);
 
     typedef symbol       symbols[symbolCount+1];
+    typedef index_t      indexes[symbolCount+1];
     typedef arithn::freq cfreqs [symbolCount+1];
 
     struct CModel {
       index_t count;
       cumFreqState<maxSymbol>::symbols symbols;
+      cumFreqState<maxSymbol>::indexes indexes;
       cumFreqState<maxSymbol>::cfreqs  cfreqs;
     };
 
@@ -413,13 +466,8 @@ template <uint8_t maxSymbol>
     }
 
     static bool findIndex(const CModel* cm, symbol s, index_t* k) {
-      for (index_t i = 0; i < cm->count; ++i) {
-        if (cm->symbols[i] == s) {
-          *k = i;
-          return true;
-        }
-      }
-      return false;
+      *k = cm->indexes[s];
+      return *k < cm->count;
     }
 
     static bool find(const CModel* cm, symbol s, arithn::code* clow, arithn::code* chigh) {
@@ -453,8 +501,8 @@ template <uint8_t maxSymbol = 0xff>
     typedef typename CFS::symbol    symbol;
     typedef typename CFS::CModel    CModel;
 
-    static const index_t symbolCount = CFS::symbolCount;
-    static const symbol  esc         = CFS::esc;
+    static constexpr index_t symbolCount = CFS::symbolCount;
+    static constexpr symbol  esc         = CFS::esc;
 
     typedef arithn::freq freqs[symbolCount];
     DEFINE_STRUCT(
@@ -471,27 +519,44 @@ template <uint8_t maxSymbol = 0xff>
       std::stable_sort(idxs.begin(), idxs.end(), [&](index_t i0, index_t i1) { return pm.activeFreqs[i0] > pm.activeFreqs[i1]; });
 
       // accumulate ordered symbol and cumulative frequency values
+      size_t zerosAt = idxs.size();
       cm->count = 0;
       cm->cfreqs[0] = 0;
-      for (auto i : idxs) {
-        if (pm.activeFreqs[i] == 0) break; // 0 symbol count means that we don't expect this symbol
-
-        cm->symbols[cm->count]   = (symbol)i;
-        cm->cfreqs [cm->count+1] = cm->cfreqs[cm->count] + pm.activeFreqs[i];
-        ++cm->count;
+      for (size_t k = 0; k < idxs.size(); ++k) {
+        index_t i = idxs[k];
+        if (pm.activeFreqs[i] > 0) {
+          cm->symbols[cm->count]   = (symbol)i;
+          cm->indexes[(symbol)i]   = cm->count;
+          cm->cfreqs [cm->count+1] = cm->cfreqs[cm->count] + pm.activeFreqs[i];
+          ++cm->count;
+        } else {
+          // 0 symbol count means that we don't expect this symbol (or any symbols after)
+          zerosAt = k;
+          break;
+        }
       }
 
       // include the escape symbol if necessary
       if (cm->count < symbolCount) {
         cm->symbols[cm->count] = esc;
+        cm->indexes[esc]       = cm->count;
         cm->cfreqs [cm->count] = (cm->count==0) ? 0 : (cm->cfreqs[cm->count-1]+pm.activeFreqs[cm->symbols[cm->count-1]]);
         ++cm->count;
         cm->cfreqs[cm->count] = cm->cfreqs[cm->count-1]+1;
+      } else {
+        // no index to map back to for esc, it's gone
+        cm->indexes[esc] = cm->count;
+      }
+
+      // map all 0-freq symbols to invalid indexes
+      for (size_t k = zerosAt; k < idxs.size(); ++k) {
+        index_t i = idxs[k];
+        cm->indexes[(symbol)i] = cm->count;
       }
     }
 
     static void add(PModel* pm, CModel* cm, symbol s) {
-      if (pm->c == arithn::fmax) {
+      if (PRIV_HCFREGION_UNLIKELY(pm->c == arithn::fmax)) {
         memcpy(pm->activeFreqs, pm->freqs, sizeof(pm->freqs));
         init(*pm, cm);
         pm->c = 0;
