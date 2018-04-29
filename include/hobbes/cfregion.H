@@ -732,7 +732,7 @@ template <typename T, typename CT>
 
     static void write(cwbitstream* bits, PModel* pm, CModel* cm, const CT& cs) {
       compress<size_t>::write(bits, &pm->first, &cm->first, cs.size());
-      for (char c : cs) {
+      for (const auto& c : cs) {
         compress<T>::write(bits, &pm->second, &cm->second, c);
       }
     }

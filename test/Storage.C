@@ -456,12 +456,15 @@ DEFINE_ENUM(
   (Magenta)
 );
 
+typedef std::vector<std::string> strs;
+
 DEFINE_STRUCT(
   MyStruct,
   (int,       x),
   (uint8_t,   y),
-  (MyColor,     c),
-  (MyVariant, v)
+  (MyColor,   c),
+  (MyVariant, v),
+  (strs,      f)
 );
 
 TEST(Storage, CFRegionIO) {
@@ -479,7 +482,11 @@ TEST(Storage, CFRegionIO) {
         if (i%2 == 0) {
           s.v = MyVariant::jimmy((int)42.0*sin(i));
         } else {
-          s.v = MyVariant::bob("I am bob #" + str::from(i));
+          s.v = MyVariant::bob("bob #" + str::from(i));
+        }
+        s.f.resize(i%10);
+        for (size_t k = 0; k < s.f.size(); ++k) {
+          s.f[k] = str::from(k) + " Yellowstone bears";
         }
         xs(s);
       }
@@ -498,7 +505,11 @@ TEST(Storage, CFRegionIO) {
         if (i%2 == 0) {
           EXPECT_EQ(s.v, MyVariant::jimmy((int)42.0*sin(i)));
         } else {
-          EXPECT_EQ(s.v, MyVariant::bob("I am bob #" + str::from(i)));
+          EXPECT_EQ(s.v, MyVariant::bob("bob #" + str::from(i)));
+        }
+        EXPECT_EQ(s.f.size(), i%10);
+        for (size_t k = 0; k < s.f.size(); ++k) {
+          EXPECT_EQ(s.f[k], str::from(k) + " Yellowstone bears");
         }
         ++i;
       }
