@@ -46,28 +46,6 @@ struct arithn {
 
   static constexpr uint32_t fbits = 14;
   static constexpr freq     fmax  = (freq(1) << fbits) - freq(1);
-
-  // bit patterns to shift in up to 16 ones
-  static code shift1s(code c) {
-    switch (c) {
-    case 0:  return 0;     // 0
-    case 1:  return 1;     // 1
-    case 2:  return 3;     // 11
-    case 3:  return 7;     // 111
-    case 4:  return 15;    // 1111
-    case 5:  return 31;    // 11111
-    case 6:  return 63;    // 111111
-    case 7:  return 127;   // 1111111
-    case 8:  return 255;   // 11111111
-    case 9:  return 511;   // 111111111
-    case 10: return 1023;  // 1111111111
-    case 11: return 2047;  // 11111111111
-    case 12: return 4095;  // 111111111111
-    case 13: return 8191;  // 1111111111111
-    case 14: return 16383; // 11111111111111
-    default: return 32767; // 111111111111111
-    }
-  }
 };
 
 // the serialized state of a batch of compressed data
@@ -309,7 +287,7 @@ struct cwbitstream {
           this->putzeroes(bc);
         }
         this->buffer->low  = (this->buffer->low << bc) & arithn::cmax;
-        this->buffer->high = ((this->buffer->high << bc) | arithn::shift1s(bc)) & arithn::cmax;
+        this->buffer->high = ((this->buffer->high << bc) | ((1<<bc)-1)) & arithn::cmax;
       } else {
         bc = PRIV_HCFREGION_COUNTLZ(~(this->buffer->low | 0xFFFF0000))-16; // how many 1s can we step through from 'low'?
         if (bc > 0) {
@@ -321,7 +299,7 @@ struct cwbitstream {
             this->putones(bc);
           }
           this->buffer->low  = (this->buffer->low << bc) & arithn::cmax;
-          this->buffer->high = ((this->buffer->high << bc) | arithn::shift1s(bc)) & arithn::cmax;
+          this->buffer->high = ((this->buffer->high << bc) | ((1<<bc)-1)) & arithn::cmax;
         } else if (this->buffer->low >= arithn::cfourth && this->buffer->high < arithn::c3fourth) { // are we failing to converge and narrowing our range?
           ++this->buffer->roll;
           this->buffer->low  -= arithn::cfourth;
