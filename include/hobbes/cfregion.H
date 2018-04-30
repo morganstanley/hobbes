@@ -655,17 +655,17 @@ template <typename T, typename Exp, typename Val, Val ExpWidth, Val ValWidth>
     typedef tuple<typename CSign::CModel, typename CExp::CModel, typename CVal::CModel> CModel;
 
     static void init(const PModel& pm, CModel* cm) {
-      CSign::init(pm.at<0>(), &cm->at<0>());
-      CExp ::init(pm.at<1>(), &cm->at<1>());
-      CVal ::init(pm.at<2>(), &cm->at<2>());
+      CSign::init(pm.template at<0>(), &cm->template at<0>());
+      CExp ::init(pm.template at<1>(), &cm->template at<1>());
+      CVal ::init(pm.template at<2>(), &cm->template at<2>());
     }
 
     static void write(cwbitstream* bits, PModel* pm, CModel* cm, T x) {
       Val hx = *((Val*)&x);
 
-      CSign::write(bits, &pm->at<0>(), &cm->at<0>(), hx>>(ExpWidth+ValWidth));
-      CExp ::write(bits, &pm->at<1>(), &cm->at<1>(), ((((Val)1)<<ExpWidth)-((Val)1))&(hx>>ValWidth));
-      CVal ::write(bits, &pm->at<2>(), &cm->at<2>(), hx&((((Val)1)<<ValWidth)-((Val)1)));
+      CSign::write(bits, &pm->template at<0>(), &cm->template at<0>(), hx>>(ExpWidth+ValWidth));
+      CExp ::write(bits, &pm->template at<1>(), &cm->template at<1>(), ((((Val)1)<<ExpWidth)-((Val)1))&(hx>>ValWidth));
+      CVal ::write(bits, &pm->template at<2>(), &cm->template at<2>(), hx&((((Val)1)<<ValWidth)-((Val)1)));
     }
 
     static void read(crbitstream* rbits, PModel* pm, CModel* cm, T* x) {
@@ -673,9 +673,9 @@ template <typename T, typename Exp, typename Val, Val ExpWidth, Val ValWidth>
       Exp  exp;
       Val  val = 0;
 
-      CSign::read(rbits, &pm->at<0>(), &cm->at<0>(), &sig);
-      CExp ::read(rbits, &pm->at<1>(), &cm->at<1>(), &exp);
-      CVal ::read(rbits, &pm->at<2>(), &cm->at<2>(), &val);
+      CSign::read(rbits, &pm->template at<0>(), &cm->template at<0>(), &sig);
+      CExp ::read(rbits, &pm->template at<1>(), &cm->template at<1>(), &exp);
+      CVal ::read(rbits, &pm->template at<2>(), &cm->template at<2>(), &val);
 
       val |= (((Val)(sig?1:0))<<(ExpWidth+ValWidth))|(((Val)exp)<<ValWidth);
       *x = *((T*)&val);
