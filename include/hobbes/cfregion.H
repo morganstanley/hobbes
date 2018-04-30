@@ -645,6 +645,10 @@ template <> struct compress<int>      : public compressByteSeq<int>      { };
 template <> struct compress<uint64_t> : public compressByteSeq<uint64_t> { };
 template <> struct compress<long>     : public compressByteSeq<long>     { };
 
+#if defined(__APPLE__) && defined(__MACH__)
+template <> struct compress<size_t> : public compressByteSeq<size_t> { };
+#endif
+
 // to compress floating point numbers, treat them like a structure {sign:bool, exp:b, val:nat}
 template <typename T, typename Exp, typename Val, Val ExpWidth, Val ValWidth>
   struct compressFloat {
