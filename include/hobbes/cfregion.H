@@ -556,18 +556,22 @@ template <typename T, typename P = void>
   struct compress {
   };
 
-// to compress a single byte, use the dmodel0 model with a max symbol of 0xFF
-template <>
-  struct compress<uint8_t> {
-    typedef dmodel0<> M;
-    typedef M::PModel PModel;
-    typedef M::CModel CModel;
+// compressed a fixed set of values, cast to a (possibly larger) type
+template <uint8_t maxSym, typename AsSym>
+  struct compressFixedSet {
+    typedef dmodel0<maxSym>    M;
+    typedef typename M::PModel PModel;
+    typedef typename M::CModel CModel;
+    typedef typename M::symbol symbol;
+
+    static const arithn::code escRange = ((arithn::code)maxSym)+1;
 
     static void init(const PModel& pm, CModel* cm) {
       M::init(pm, cm);
     }
 
-    static void write(cwbitstream* bits, PModel* pm, CModel* cm, uint8_t c) {
+    static void write(cwbitstream* bits, PModel* pm, CModel* cm, AsSym s) {
+      uint8_t c = (uint8_t)s;
       arithn::code clow, chigh;
       if (M::find(cm, c, &clow, &chigh)) {
         bits->write(clow, chigh, M::interval(cm));
@@ -575,28 +579,34 @@ template <>
         if (M::find(cm, M::esc, &clow, &chigh)) {
           bits->write(clow, chigh, M::interval(cm));
         }
-        bits->write((arithn::code)c, ((arithn::code)c)+1, 256);
+        bits->write((arithn::code)c, ((arithn::code)c)+1, escRange);
       }
       M::add(pm, cm, c);
     }
 
-    static void read(crbitstream* rbits, PModel* pm, CModel* cm, uint8_t* c) {
-      M::symbol s;
+    static void read(crbitstream* rbits, PModel* pm, CModel* cm, AsSym* c) {
+      symbol s;
       arithn::code clow, chigh;
       M::find(cm, rbits->svalue(M::interval(cm)), &s, &clow, &chigh);
       rbits->shift(clow, chigh, M::interval(cm));
 
       if (s == M::esc) {
-        M::symbol nc = (M::symbol)rbits->svalue(256);
-        rbits->shift(nc, nc+1, 256);
+        symbol nc = (symbol)rbits->svalue(escRange);
+        rbits->shift(nc, nc+1, escRange);
         M::add(pm, cm, nc);
-        *c = ((uint8_t)nc);
+        *c = (AsSym)((uint8_t)nc);
       } else {
         M::add(pm, cm, s);
-        *c = ((uint8_t)s);
+        *c = (AsSym)((uint8_t)s);
       }
     }
   };
+
+// to compress a single byte, use a model of a fixed set of symbols up to 0xff
+template <> struct compress<uint8_t> : public compressFixedSet<0xff, uint8_t> { };
+
+// to compress a bool, use a model of a fixed set of symbols up to 0x01
+template <> struct compress<bool> : public compressFixedSet<0x01, bool> { };
 
 // to compress a larger number, treat it like a sequence of independent bytes
 template <typename T>
@@ -627,11 +637,53 @@ template <typename T>
     }
   };
 
-template <> struct compress<char>   : public compressByteSeq<char>   { };
-template <> struct compress<short>  : public compressByteSeq<short>  { };
-template <> struct compress<int>    : public compressByteSeq<int>    { };
-template <> struct compress<long>   : public compressByteSeq<long>   { };
-template <> struct compress<size_t> : public compressByteSeq<size_t> { };
+template <> struct compress<char>     : public compressByteSeq<char>     { };
+template <> struct compress<uint16_t> : public compressByteSeq<uint16_t> { };
+template <> struct compress<short>    : public compressByteSeq<short>    { };
+template <> struct compress<uint32_t> : public compressByteSeq<uint32_t> { };
+template <> struct compress<int>      : public compressByteSeq<int>      { };
+template <> struct compress<uint64_t> : public compressByteSeq<uint64_t> { };
+template <> struct compress<long>     : public compressByteSeq<long>     { };
+
+// to compress floating point numbers, treat them like a structure {sign:bool, exp:b, val:nat}
+template <typename T, typename Exp, typename Val, Val ExpWidth, Val ValWidth>
+  struct compressFloat {
+    typedef compress<bool> CSign;
+    typedef compress<Exp>  CExp;
+    typedef compress<Val>  CVal;
+    typedef tuple<typename CSign::PModel, typename CExp::PModel, typename CVal::PModel> PModel;
+    typedef tuple<typename CSign::CModel, typename CExp::CModel, typename CVal::CModel> CModel;
+
+    static void init(const PModel& pm, CModel* cm) {
+      CSign::init(pm.at<0>(), &cm->at<0>());
+      CExp ::init(pm.at<1>(), &cm->at<1>());
+      CVal ::init(pm.at<2>(), &cm->at<2>());
+    }
+
+    static void write(cwbitstream* bits, PModel* pm, CModel* cm, T x) {
+      Val hx = *((Val*)&x);
+
+      CSign::write(bits, &pm->at<0>(), &cm->at<0>(), hx>>(ExpWidth+ValWidth));
+      CExp ::write(bits, &pm->at<1>(), &cm->at<1>(), ((((Val)1)<<ExpWidth)-((Val)1))&(hx>>ValWidth));
+      CVal ::write(bits, &pm->at<2>(), &cm->at<2>(), hx&((((Val)1)<<ValWidth)-((Val)1)));
+    }
+
+    static void read(crbitstream* rbits, PModel* pm, CModel* cm, T* x) {
+      bool sig;
+      Exp  exp;
+      Val  val = 0;
+
+      CSign::read(rbits, &pm->at<0>(), &cm->at<0>(), &sig);
+      CExp ::read(rbits, &pm->at<1>(), &cm->at<1>(), &exp);
+      CVal ::read(rbits, &pm->at<2>(), &cm->at<2>(), &val);
+
+      val |= (((Val)(sig?1:0))<<(ExpWidth+ValWidth))|(((Val)exp)<<ValWidth);
+      *x = *((T*)&val);
+    }
+  };
+
+template <> struct compress<float>  : public compressFloat< float,  uint8_t, uint32_t,  8, 23> { };
+template <> struct compress<double> : public compressFloat<double, uint16_t, uint64_t, 11, 52> { };
 
 // compress tuples, pairs and structures
 template <typename T> struct PModelOf { typedef typename compress<T>::PModel type; };
@@ -737,53 +789,15 @@ template <size_t C, typename P = void>
   struct compressEnum {
   };
 template <size_t C>
-  struct compressEnum<C, typename tbool<(C < 256)>::type> {
+  struct compressEnum<C, typename tbool<(C < 256)>::type> : public compressFixedSet<((uint8_t)C)-1, uint8_t> {
     typedef uint8_t element;
-    typedef dmodel0<(element)C-1> M;
-    typedef typename M::PModel PModel;
-    typedef typename M::CModel CModel;
-    typedef typename M::symbol symbol;
-
-    static void init(const PModel& pm, CModel* cm) {
-      M::init(pm, cm);
-    }
-
-    static void write(cwbitstream* bits, PModel* pm, CModel* cm, element e) {
-      arithn::code clow, chigh;
-      if (M::find(cm, e, &clow, &chigh)) {
-        bits->write(clow, chigh, M::interval(cm));
-      } else {
-        if (M::find(cm, M::esc, &clow, &chigh)) {
-          bits->write(clow, chigh, M::interval(cm));
-        }
-        bits->write((arithn::code)e, ((arithn::code)e)+1, (arithn::code)C);
-      }
-      M::add(pm, cm, e);
-    }
-
-    static void read(crbitstream* rbits, PModel* pm, CModel* cm, element* e) {
-      symbol s;
-      arithn::code clow, chigh;
-      M::find(cm, rbits->svalue(M::interval(cm)), &s, &clow, &chigh);
-      rbits->shift(clow, chigh, M::interval(cm));
-
-      if (s == M::esc) {
-        symbol nc = (symbol)rbits->svalue((arithn::code)C);
-        rbits->shift(nc, nc+1, (arithn::code)C);
-        M::add(pm, cm, nc);
-        *e = ((element)nc);
-      } else {
-        M::add(pm, cm, s);
-        *e = ((element)s);
-      }
-    }
   };
 
 template <typename T>
   struct compress<T, typename tbool<T::is_hmeta_enum>::type> {
     typedef compressEnum<T::ctorCount> R;
-    typedef typename R::PModel PModel;
-    typedef typename R::CModel CModel;
+    typedef typename R::PModel  PModel;
+    typedef typename R::CModel  CModel;
     typedef typename R::element element;
 
     static void init(const PModel& pm, CModel* cm) {
