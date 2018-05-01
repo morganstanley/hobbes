@@ -86,12 +86,6 @@ DEFINE_VARIANT(
   (Frank,   std::string),
   (Nothing, hobbes::unit)
 );
-struct showV : public VVisitor<void> { std::ostream& os; showV(std::ostream& os) : os(os) { }
-  void Bob(const int& x) const { os << "Bob=" << x; }
-  void Frank(const std::string& x) const { os << "Frank=\"" << x << "\""; }
-  void Nothing(const hobbes::unit& u) const { os << "Nothing=()"; }
-};
-std::ostream& operator<<(std::ostream& os, const V& v) { os << "|"; v.visit(showV(os)); os << "|"; return os; }
 
 // make sure that enums with custom ctor IDs transfer correctly
 enum class CustomIDEnum : uint32_t {

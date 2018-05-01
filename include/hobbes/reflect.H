@@ -216,6 +216,7 @@ struct unit {
   bool operator==(const unit&) const { return true; }
   bool operator< (const unit&) const { return false; }
 };
+inline std::ostream& operator<<(std::ostream& o, const unit&) { o << "()"; return o; }
 
 // drop the first type from a sequence to determine a tuple type
 // (useful with these macro expansions where we can't distinguish first and rest values)
@@ -272,7 +273,8 @@ template <typename T, typename ... Ts> struct tupleTail<T, Ts...> { typedef tupl
     } \
     bool operator==(const T& rhs) const { return this->value == rhs.value; } \
     std::string show() const { switch (this->value) { PRIV_HPPF_MAP(PRIV_HPPF_ENUM_SHOW, CTORS); default: return "?"; } } \
-  }
+  }; \
+  inline std::ostream& operator<<(std::ostream& o, const T& v) { o << v.show(); return o; }
 
 // standard layout sum type with efficient dispatch
 template <bool f, typename T, typename F>
@@ -470,6 +472,7 @@ template <typename ... Ts>
 #define PRIV_HPPF_VARIANT_VDECL(n, t)     virtual R n(const t & x) const = 0;
 #define PRIV_HPPF_VARIANT_VCASE(n, t)     case Enum::tag_##n: return v. n (this->n##_data);
 #define PRIV_HPPF_VARIANT_GVCASE(n, t)    case Enum::tag_##n: return v.template visit<t>(#n, (int)Enum::tag_##n, this->n##_data);
+#define PRIV_HPPF_VARIANT_SHOW(n, t)      case Enum::tag_##n: o << "|" << #n << "=" << this->n##_data << "|"; break;
 
 #define DEFINE_VARIANT(T, CTORS...) \
   template <typename R> \
@@ -548,6 +551,13 @@ template <typename ... Ts>
         default: break; \
         } \
       } \
+    std::ostream& show(std::ostream& o) const { \
+      switch (this->tag) { \
+      PRIV_HPPF_MAP(PRIV_HPPF_VARIANT_SHOW, CTORS) \
+      default: o << "?"; break; \
+      } \
+      return o; \
+    } \
   private: \
     enum class Enum : uint32_t { \
       PRIV_HPPF_MAP(PRIV_HPPF_VARIANT_CTOR_TAG, CTORS) \
@@ -558,7 +568,9 @@ template <typename ... Ts>
       char data[1]; \
       PRIV_HPPF_MAP(PRIV_HPPF_VARIANT_CTOR_DATA, CTORS) \
     }; \
-  }
+  }; \
+  inline std::ostream& operator<<(std::ostream& o, const T& v) { return v.show(o); }
+
 
 // define opaque type aliases
 #define DEFINE_TYPE_ALIAS(PRIV_ATY, PRIV_REPTY) \
