@@ -13,6 +13,27 @@
 #include <sstream>
 #include <hobbes/util/str.H>
 
+struct Result final {
+  enum class Status {
+    Pass,
+    Fail,
+    Skipped,
+  };
+
+  Result(const std::string& name) : testcase(name) {}
+
+  void record(Status s, long d, const std::string& e = "") {
+    status = s;
+    duration = d;
+    error = e;
+  }
+
+  std::string testcase;
+  Status status {Status::Skipped};
+  long duration {0};
+  std::string error;
+};
+
 class TestCoord {
 public:
   typedef void (*PTEST)();
@@ -20,10 +41,15 @@ public:
   bool installTest(const std::string& group, const std::string& test, PTEST pf);
   std::set<std::string> testGroupNames() const;
   int runTestGroups(const std::set<std::string>&);
+
 private:
+  std::string toJSON();
   typedef std::vector<std::pair<std::string, PTEST>> Tests;
   typedef std::map<std::string, Tests> GroupedTests;
+  typedef std::vector<Result> Results;
+  typedef std::map<std::string, Results> GroupedResults;
   GroupedTests tests;
+  GroupedResults results;
 };
 
 #define TEST(G,N) \

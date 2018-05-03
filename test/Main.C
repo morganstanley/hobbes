@@ -1,6 +1,7 @@
-
 #include "test.H"
+#include "format.H"
 #include <hobbes/util/perf.H>
+#include <fstream>
 
 TestCoord& TestCoord::instance() {
   static TestCoord tc;
@@ -9,6 +10,7 @@ TestCoord& TestCoord::instance() {
 
 bool TestCoord::installTest(const std::string& group, const std::string& test, PTEST pf) {
   this->tests[group].push_back(std::make_pair(test, pf));
+  this->results[group].push_back(Result(test));
   return true;
 }
 
@@ -23,6 +25,17 @@ std::set<std::string> TestCoord::testGroupNames() const {
 int TestCoord::runTestGroups(const std::set<std::string>& gs) {
   std::vector<std::string> failures;
 
+  auto updateTerminal = [&failures](const std::string& name, const Result& result) {
+    std::cout << "    " << name;
+    if (result.status == Result::Status::Pass) {
+      std::cout << " SUCCESS ";
+    } else if (result.status == Result::Status::Fail) {
+      std::cout << " FAIL ";
+      failures.push_back(result.error);
+    }
+    std::cout << "(" << hobbes::describeNanoTime(result.duration) << ")" << std::endl;
+  };
+
   std::cout << "Running " << gs.size() << " group" << (gs.size() == 1 ? "" : "s") << " of tests" << std::endl
             << "---------------------------------------------------------------------" << std::endl
             << std::endl;
@@ -35,22 +48,23 @@ int TestCoord::runTestGroups(const std::set<std::string>& gs) {
       continue;
     }
     const auto& g = gi->second;
+    auto & r = this->results[gn];
 
     std::cout << "  " << gn << " (" << g.size() << " test" << (g.size() == 1 ? "" : "s") << ")" << std::endl
               << "  ---------------------------------------------------------" << std::endl;
 
     long gt0 = hobbes::tick();
-    for (const auto& t : g) {
-      std::cout << "    " << t.first << std::flush;
+    for (auto i = 0; i < g.size(); ++i) {
+      const auto & t = g[i];
+      auto & result = r[i];
       long t0 = hobbes::tick();
       try {
         t.second();
-        std::cout << " SUCCESS ";
+        result.record(Result::Status::Pass, hobbes::tick() - t0);
       } catch (std::exception& ex) {
-        std::cout << " FAIL ";
-        failures.push_back("[" + gn + "/" + t.first + "]: " + ex.what());
+        result.record(Result::Status::Fail, hobbes::tick() - t0, "[" + gn + "/" + t.first + "]: " + ex.what());
       }
-      std::cout << "(" << hobbes::describeNanoTime(hobbes::tick()-t0) << ")" << std::endl;
+      updateTerminal(t.first, result);
     }
     std::cout << "  ---------------------------------------------------------" << std::endl
               << "  " << hobbes::describeNanoTime(hobbes::tick()-gt0) << std::endl
@@ -67,7 +81,23 @@ int TestCoord::runTestGroups(const std::set<std::string>& gs) {
     }
   }
 
+  if (auto path = getenv("JSON_REPORT")) {
+    std::ofstream outfile(path, std::ios::out | std::ios::trunc);
+    if (outfile) {
+      outfile << toJSON();
+      std::cout << "JSON report generated: " << path << std::endl;
+    } else {
+      std::cerr << "error in generating JSON report: " << strerror(errno) << std::endl;
+    }
+  }
+
   return (int)failures.size();
+}
+
+std::string TestCoord::toJSON() {
+  std::ostringstream os;
+  showJSON(std::vector<GroupedResults::value_type>(results.begin(), results.end()), os);
+  return os.str();
 }
 
 int main(int argc, char** argv) {
