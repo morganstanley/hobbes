@@ -88,10 +88,10 @@ instance (Ord a b) => Ord a b@f where
 
 // variant ordering
 instance (Ord a c, Ord b d) => Ord (a+b) (c+d) where
-  x <  y = (match x y with | |0=ax| |0=ay| -> ax <  ay | |1=bx| |1=by| -> bx <  by | |0=_| _ -> true  | _ _ -> false)
-  x <= y = (match x y with | |0=ax| |0=ay| -> ax <= ay | |1=bx| |1=by| -> bx <= by | |0=_| _ -> true  | _ _ -> false)
-  x >  y = (match x y with | |0=ax| |0=ay| -> ax >  ay | |1=bx| |1=by| -> bx >  by | |0=_| _ -> false | _ _ -> true)
-  x >= y = (match x y with | |0=ax| |0=ay| -> ax >= ay | |1=bx| |1=by| -> bx >= by | |0=_| _ -> false | _ _ -> true)
+  x <  y = (match x y with | |0=ax| |0=cy| -> ax <  cy | |1=bx| |1=dy| -> bx <  dy | |0=_| _ -> true  | _ _ -> false)
+  x <= y = (match x y with | |0=ax| |0=cy| -> ax <= cy | |1=bx| |1=dy| -> bx <= dy | |0=_| _ -> true  | _ _ -> false)
+  x >  y = (match x y with | |0=ax| |0=cy| -> ax >  cy | |1=bx| |1=dy| -> bx >  dy | |0=_| _ -> false | _ _ -> true)
+  x >= y = (match x y with | |0=ax| |0=cy| -> ax >= cy | |1=bx| |1=dy| -> bx >= dy | |0=_| _ -> false | _ _ -> true)
 
 instance (Ord a b, Ord a c) => Ord a (b+c) where
   x <  y = case y of |0:yv=x <  yv, 1:yv=x <  yv|
