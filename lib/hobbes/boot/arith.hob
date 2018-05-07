@@ -247,6 +247,12 @@ instance Mod int int int where
 instance Mod long long long where
   (%) = lrem
 
+instance Mod double double double where
+  x % y = x - (y * l2d(truncd(x / y)))
+
+instance Mod float float float where
+  x % y = x - (y * l2f(truncd(f2d(x / y))))
+
 instance (a != b, Mod b b b, Convert a b) => Mod a b b where
   x % y = (convert(x) :: b) % y
 

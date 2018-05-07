@@ -64,6 +64,7 @@ template <const char* TN, typename T>
     typeAlias(const T& v) : value(v) { }
     typeAlias() { }
     T value;
+    inline bool operator==(const typeAlias<TN, T>& rhs) const { return this->value == rhs.value; }
   };
 
 // allow the generic definition of simple recursive types

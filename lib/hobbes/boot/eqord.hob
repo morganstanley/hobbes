@@ -74,42 +74,50 @@ instance Ord datetime datetime where
   x >  y = (convert(x)::long) >  (convert(y)::long)
   x >= y = (convert(x)::long) >= (convert(y)::long)
 
-instance (Ord a a) => Ord a@f a@f where
-  x <  y = load(x) < load(y)
-  x <= y = load(x) <= load(y)
-  x >  y = load(x) >  load(y)
-  x >= y = load(x) >= load(y)
+instance (Ord a b) => Ord a@f b where
+  x <  y = load(x) <  y
+  x <= y = load(x) <= y
+  x >  y = load(x) >  y
+  x >= y = load(x) >= y
+
+instance (Ord a b) => Ord a b@f where
+  x <  y = x <  load(y)
+  x <= y = x <= load(y)
+  x >  y = x >  load(y)
+  x >= y = x >= load(y)
 
 // variant ordering
-instance (Ord a a) => Ord a (a+b) where
+instance (Ord a c, Ord b d) => Ord (a+b) (c+d) where
+  x <  y = (match x y with | |0=ax| |0=cy| -> ax <  cy | |1=bx| |1=dy| -> bx <  dy | |0=_| _ -> true  | _ _ -> false)
+  x <= y = (match x y with | |0=ax| |0=cy| -> ax <= cy | |1=bx| |1=dy| -> bx <= dy | |0=_| _ -> true  | _ _ -> false)
+  x >  y = (match x y with | |0=ax| |0=cy| -> ax >  cy | |1=bx| |1=dy| -> bx >  dy | |0=_| _ -> false | _ _ -> true)
+  x >= y = (match x y with | |0=ax| |0=cy| -> ax >= cy | |1=bx| |1=dy| -> bx >= dy | |0=_| _ -> false | _ _ -> true)
+
+instance (Ord a b, Ord a c) => Ord a (b+c) where
+  x <  y = case y of |0:yv=x <  yv, 1:yv=x <  yv|
+  x <= y = case y of |0:yv=x <= yv, 1:yv=x <= yv|
+  x >  y = case y of |0:yv=x >  yv, 1:yv=x >  yv|
+  x >= y = case y of |0:yv=x >= yv, 1:yv=x >= yv|
+instance (Ord a b) => Ord a (b+c) where
   x <  y = case y of |0:yv=x <  yv,1:yv=false|
   x <= y = case y of |0:yv=x <= yv,1:yv=false|
   x >  y = case y of |0:yv=x >  yv,1:yv=false|
   x >= y = case y of |0:yv=x >= yv,1:yv=false|
-
-instance (Ord a a) => Ord (a+b) a where
-  x <  y = y >  x
-  x <= y = y >= x
-  x >  y = y <  x
-  x >= y = y <= x
-
-instance (Ord b b) => Ord b (a+b) where
-  x <  y = case y of |0:yv=false,1:yv=x <  yv|
-  x <= y = case y of |0:yv=false,1:yv=x <= yv|
-  x >  y = case y of |0:yv=false,1:yv=x >  yv|
-  x >= y = case y of |0:yv=false,1:yv=x >= yv|
-
-instance (Ord b b) => Ord (a+b) b where
-  x <  y = y >  x
-  x <= y = y >= x
-  x >  y = y <  x
-  x >= y = y <= x
-
-instance (Ord a a, Ord b b) => Ord (a+b) (a+b) where
-  x <  y = (match x y with | |0=ax| |0=ay| -> ax <  ay | |1=bx| |1=by| -> bx <  by | |0=_| _ -> true  | _ _ -> false)
-  x <= y = (match x y with | |0=ax| |0=ay| -> ax <= ay | |1=bx| |1=by| -> bx <= by | |0=_| _ -> true  | _ _ -> false)
-  x >  y = (match x y with | |0=ax| |0=ay| -> ax >  ay | |1=bx| |1=by| -> bx >  by | |0=_| _ -> false | _ _ -> true)
-  x >= y = (match x y with | |0=ax| |0=ay| -> ax >= ay | |1=bx| |1=by| -> bx >= by | |0=_| _ -> false | _ _ -> true)
+instance (Ord a c) => Ord a (b+c) where
+  x <  y = case y of |0:yv=false, 1:yv=x <  yv|
+  x <= y = case y of |0:yv=false, 1:yv=x <= yv|
+  x >  y = case y of |0:yv=false, 1:yv=x >  yv|
+  x >= y = case y of |0:yv=false, 1:yv=x >= yv|
+instance (Ord a c) => Ord (a+b) c where
+  x <  y = case x of |0:xv=xv <  y,1:yv=false|
+  x <= y = case x of |0:xv=xv <= y,1:yv=false|
+  x >  y = case x of |0:xv=xv >  y,1:yv=false|
+  x >= y = case x of |0:xv=xv >= y,1:yv=false|
+instance (Ord b c) => Ord (a+b) c where
+  x <  y = case x of |0:xv=false, 1:xv=xv <  y|
+  x <= y = case x of |0:xv=false, 1:xv=xv <= y|
+  x >  y = case x of |0:xv=false, 1:xv=xv >  y|
+  x >= y = case x of |0:xv=false, 1:xv=xv >= y|
 
 // we should do this more efficiently ...
 class VariantCtorIndex v where
@@ -183,5 +191,4 @@ instance (a != b, Convert b a) => Ord a b where
   x <= y =  x <= (convert(y)::a)
   x >  y =  x >  (convert(y)::a)
   x >= y =  x >= (convert(y)::a)
-
 
