@@ -12,34 +12,14 @@
 #include <thread>
 #include <mutex>
 #include <vector>
+#include <memory>
 
 #include <glob.h>
 #include <zlib.h>
 
-#include "netio.H"
+#include "network.H"
 #include "session.H"
-
-#ifdef BUILD_LINUX
-#include <sys/sendfile.h>
-#else
-ssize_t sendfile(int toFD, int fromFD, off_t* o, size_t sz) {
-  char buf[4096];
-  size_t i = 0;
-  do {
-    ssize_t di = read(fromFD, buf, sizeof(buf));
-
-    if (di < 0) {
-      if (errno != EINTR) { return -1; }
-    } else if (di == 0) {
-      return 0;
-    } else {
-      try { hobbes::fdwrite(toFD, buf, di); } catch (std::exception&) { return -1; }
-      *o += di;
-    }
-  } while (*o < sz);
-  return 0;
-}
-#endif
+#include "out.H"
 
 using namespace hobbes;
 
@@ -55,7 +35,7 @@ public:
       ::close(this->ofd);
     }
   }
-  operator bool() const { return this->ofd != -1; }
+  explicit operator bool() const { return this->ofd != -1; }
   int fd() const { return this->ofd; }
 private:
   int ofd;
@@ -63,18 +43,17 @@ private:
 
 struct Destination {
   Destination(const std::string& localdir, const std::string& hostport)
-    : localdir(localdir), hostport(hostport), connection(-1), handshaked(false)
+    : localdir(localdir), hostport(hostport), handshaked(false)
   {
   }
 
-  const std::string localdir;
-  const std::string hostport;
-  int               connection;
-  bool              handshaked;
+  const std::string          localdir;
+  const std::string          hostport;
+  std::unique_ptr<NetConnection> connection;
+  bool                       handshaked;
 
   void markdown() {
-    ::close(connection);
-    connection = -1;
+    connection.reset();
     handshaked = false;
   }
 };
@@ -93,33 +72,21 @@ std::ostream& operator<<(std::ostream& o, const std::vector<Destination>& xs) {
   return o;
 }
 
-void sendFileContents(int connection, const openfd& sfd) {
-  struct stat sb;
-  fstat(sfd.fd(), &sb);
-
-  // let the remote side know how big this file is
-  size_t fsize = sb.st_size;
-  ssend(connection, (const uint8_t*)&fsize, sizeof(fsize));
-
+void sendFileContents(NetConnection& connection, const openfd& sfd) {
   // send the entire file contents
-  off_t offset = 0;
-  while (offset < sb.st_size) {
-    if (sendfile(connection, sfd.fd(), &offset, sb.st_size) == -1) {
-      if (errno != EAGAIN) {
-        throw std::runtime_error("error trying to send file: " + std::string(strerror(errno)));
-      }
-    }
+  if (! connection.sendFile(sfd.fd())) {
+    throw std::runtime_error(strerror(errno));
   }
 
   // make sure that we get an ack from the other side
   uint8_t ack = 0;
-  srecv(connection, &ack, sizeof(ack));
-  if (ack != 1) {
+  const bool recv = connection.receive(&ack, sizeof(ack));
+  if (!recv || ack != 1) {
     throw std::runtime_error("file transfer not acked on connection (" + str::from(ack) + ")");
   }
 }
 
-void sendSegmentFiles(int connection, const std::string& localdir) {
+void sendSegmentFiles(NetConnection& connection, const std::string& localdir) {
   // poll for segment files
   typedef std::map<time_t, std::set<std::string>> OrderedSegFiles;
   OrderedSegFiles segfiles;
@@ -131,7 +98,7 @@ void sendSegmentFiles(int connection, const std::string& localdir) {
       if (stat(g.gl_pathv[i], &st) == 0) {
         segfiles[st.st_ctime].insert(g.gl_pathv[i]);
       } else {
-        out << "couldn't stat '" << g.gl_pathv[i] << "' (" << strerror(errno) << ")" << std::endl;
+        out() << "couldn't stat '" << g.gl_pathv[i] << "' (" << strerror(errno) << ")" << std::endl;
       }
     }
     globfree(&g);
@@ -145,23 +112,23 @@ void sendSegmentFiles(int connection, const std::string& localdir) {
         sendFileContents(connection, f);
         unlink(sfn.c_str());
       } else {
-        out << "couldn't open '" << sfn << "' (" << strerror(errno) << ")" << std::endl;
+        out() << "couldn't open '" << sfn << "' (" << strerror(errno) << ")" << std::endl;
       }
     }
   }
 }
 
-void sendInitMessage(int connection, const std::string& groupName, const std::string& localdir) {
+void sendInitMessage(NetConnection& connection, const std::string& groupName, const std::string& localdir) {
   // let's assume that an init message will eventually appear in this directory
   // we can just poll for it
   while (true) {
     openfd sf(localdir + "/init.gz");
     if (sf) {
-      ssend(connection, groupName);
+      sendString(connection, groupName);
       sendFileContents(connection, sf);
       break;
     } else {
-      out << "waiting to send init message (" << strerror(errno) << ")" << std::endl;
+      out() << "waiting to send init message (" << strerror(errno) << ")" << std::endl;
       sleep(10);
     }
   }
@@ -169,12 +136,12 @@ void sendInitMessage(int connection, const std::string& groupName, const std::st
 
 void sendInitMessageToAll(const std::string& groupName, std::vector<Destination>& destinations) {
   for (auto & d : destinations) {
-    if (!d.handshaked && d.connection != -1) {
+    if (!d.handshaked && d.connection) {
       try {
-        sendInitMessage(d.connection, groupName, d.localdir);
+        sendInitMessage(*d.connection, groupName, d.localdir);
         d.handshaked = true;
       } catch (const std::exception& ex) {
-        out << "error while sending init message: " << ex.what() << std::endl;
+        out() << "error while sending init message: " << ex.what() << std::endl;
         d.markdown();
       }
     }
@@ -185,11 +152,11 @@ void sendSegmentFilesToAll(std::vector<Destination>& destinations) {
   bool yield = false;
   while (!yield) {
     for (auto & d : destinations) {
-      if (d.handshaked) {
+      if (d.handshaked && d.connection) {
         try {
-          sendSegmentFiles(d.connection, d.localdir);
+          sendSegmentFiles(*d.connection, d.localdir);
         } catch (const std::exception& ex) {
-          out << "error while sending segment file: " << ex.what() << std::endl;
+          out() << "error while sending segment file: " << ex.what() << std::endl;
           d.markdown();
           yield = true;
         }
@@ -214,28 +181,27 @@ void runConnectedSegmentSendingProcess(const std::string& groupName, std::vector
 
 void connect(std::vector<Destination>& destinations) {
   for (auto & d : destinations) {
-    if (d.connection == -1) {
+    if (!d.connection) {
       try {
-        d.connection = hobbes::connectSocket(d.hostport);
+        d.connection = createNetConnection(d.hostport);
       } catch (std::exception& ex) {
-        out << "error during establishing connection to " << d.hostport << ": " << ex.what() << std::endl;
-        d.markdown();
+        out() << "error during establishing connection to " << d.hostport << ": " << ex.what() << std::endl;
       }
     }
   }
 }
 
-void runSegmentSendingProcess(const std::string groupName, std::vector<Destination> destinations) {
+void runSegmentSendingProcess(const std::string groupName, std::vector<Destination>& destinations) {
   if (destinations.empty()) {
-    out << "no batchsend host specified, compressed segment files will accumulate locally" << std::endl;
+    out() << "no batchsend host specified, compressed segment files will accumulate locally" << std::endl;
   } else {
-    out << "running segment sending process publishing to " << destinations << std::endl;
+    out() << "running segment sending process publishing to " << destinations << std::endl;
     while (true) {
       try {
         connect(destinations);
         runConnectedSegmentSendingProcess(groupName, destinations);
       } catch (std::exception& ex) {
-        out << "error while trying to push data: " << ex.what() << std::endl;
+        out() << "error while trying to push data: " << ex.what() << std::endl;
       }
       sleep(10);
     }
@@ -272,7 +238,7 @@ struct BatchSendSession {
 
     allocFile();
 
-    this->sendingThread = std::thread(std::bind(&runSegmentSendingProcess, groupName, destinations));
+    this->sendingThread = std::thread(std::bind(&runSegmentSendingProcess, groupName, std::ref(destinations)));
   }
 
   void allocFile() {
