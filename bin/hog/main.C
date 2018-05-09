@@ -13,8 +13,8 @@
 #include "batchsend.H"
 #include "batchrecv.H"
 #include "session.H"
-#include "netio.H"
 #include "path.H"
+#include "out.H"
 
 #include <signal.h>
 
@@ -211,7 +211,7 @@ void evalGroupHostConnection(SessionGroup* sg, const std::string& groupName, con
     uint64_t pid=0,tid=0;
     hobbes::fdread(c, (char*)&pid, sizeof(pid));
     hobbes::fdread(c, (char*)&tid, sizeof(tid));
-    out << "queue registered for group '" << groupName << "' from " << pid << ":" << tid << ", cmd " << (int)cmd << std::endl;
+    out() << "queue registered for group '" << groupName << "' from " << pid << ":" << tid << ", cmd " << (int)cmd << std::endl;
   
     auto qc = hobbes::storage::consumeGroup(groupName, hobbes::storage::ProcThread(pid, tid));
   
@@ -227,7 +227,7 @@ void evalGroupHostConnection(SessionGroup* sg, const std::string& groupName, con
       break;
     }
   } catch (std::exception& ex) {
-    out << "error on connection for '" << groupName << "': " << ex.what() << std::endl;
+    out() << "error on connection for '" << groupName << "': " << ex.what() << std::endl;
     hobbes::unregisterEventHandler(c);
     close(c);
   }
@@ -239,7 +239,7 @@ void runGroupHost(const std::string& groupName, const RunMode& m, std::vector<st
   hobbes::registerEventHandler(
     hobbes::storage::makeGroupHost(groupName, m.groupServerDir),
     [sg,groupName,ts,&m](int s) {
-      out << "new connection for '" << groupName << "'" << std::endl;
+      out() << "new connection for '" << groupName << "'" << std::endl;
 
       int c = accept(s, 0, 0);
       if (c != -1) {
@@ -247,7 +247,7 @@ void runGroupHost(const std::string& groupName, const RunMode& m, std::vector<st
           uint32_t version = 0;
           hobbes::fdread(c, &version);
           if (version != HSTORE_VERSION) {
-            out << "disconnected client for '" << groupName << "' due to version mismatch (expected " << HSTORE_VERSION << " but got " << version << ")" << std::endl;
+            out() << "disconnected client for '" << groupName << "' due to version mismatch (expected " << HSTORE_VERSION << " but got " << version << ")" << std::endl;
             close(c);
           } else {
             hobbes::registerEventHandler(
@@ -258,7 +258,7 @@ void runGroupHost(const std::string& groupName, const RunMode& m, std::vector<st
             );
           }
         } catch (std::exception& ex) {
-          out << "error on connection for '" << groupName << "': " << ex.what() << std::endl;
+          out() << "error on connection for '" << groupName << "': " << ex.what() << std::endl;
           close(c);
         }
       }
@@ -267,7 +267,7 @@ void runGroupHost(const std::string& groupName, const RunMode& m, std::vector<st
 }
 
 void run(const RunMode& m) {
-  out << "hog running in mode : " << m << std::endl;
+  out() << "hog running in mode : " << m << std::endl;
   if (m.t == RunMode::batchrecv) {
     pullRemoteDataT(m.dir, m.localport, m.consolidate).join();
   } else if (m.groups.size() > 0) {
@@ -277,10 +277,10 @@ void run(const RunMode& m) {
 
     for (auto g : m.groups) {
       try {
-        out << "install a monitor for the '" << g << "' group" << std::endl;
+        out() << "install a monitor for the '" << g << "' group" << std::endl;
         runGroupHost(g, m, &tasks);
       } catch (std::exception& ex) {
-        out << "error while installing a monitor for '" << g << "': " << ex.what() << std::endl;
+        out() << "error while installing a monitor for '" << g << "': " << ex.what() << std::endl;
         throw;
       }
     }

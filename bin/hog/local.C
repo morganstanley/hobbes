@@ -9,7 +9,6 @@
 #include <mutex>
 
 #include "session.H"
-#include "netio.H"
 
 namespace hog {
 
