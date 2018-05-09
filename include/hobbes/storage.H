@@ -42,6 +42,12 @@ namespace hobbes { namespace storage { namespace internal {
 //  * available waiting strategy in shared memory
 //  * default waiting strategy
 #if defined(__APPLE__) && defined(__MACH__)
+
+// macOS doesn't support this flag to mmap so we can just 0 it out
+#ifndef MAP_POPULATE
+#define MAP_POPULATE 0
+#endif
+
 namespace spin {
 
 #if defined(CLOCK_REALTIME)
@@ -553,7 +559,7 @@ public:
       throw std::runtime_error("Failed to truncate shared memory for '" + shmname + "': " + strerror(errno));
     }
   
-    uint8_t* mem = (uint8_t*)mmap(0, memLen, PROT_READ | PROT_WRITE, MAP_SHARED, shfd, 0);
+    uint8_t* mem = (uint8_t*)mmap(0, memLen, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_POPULATE, shfd, 0);
     if (mem == MAP_FAILED) {
       throw std::runtime_error("Failed to map bytes out of shared memory for '" + shmname + "': " + strerror(errno));
     }
@@ -794,7 +800,7 @@ inline QueueConnection consumeQueue(const std::string& shmname) {
   }
 
   // map memory for this data, ensure it is in a good state
-  uint8_t* mem = (uint8_t*)mmap(0, msb.st_size, PROT_READ | PROT_WRITE, MAP_SHARED, shfd, 0);
+  uint8_t* mem = (uint8_t*)mmap(0, msb.st_size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_POPULATE, shfd, 0);
   if (mem == MAP_FAILED) {
     close(shfd);
     throw std::runtime_error("Failed to map bytes out of shared memory for '" + shmname + "': " + strerror(errno));
@@ -2190,7 +2196,7 @@ private:
       if (this->data) { ::munmap(this->data-sizeof(size_t), this->map_size); }
 
       this->map_size = align<size_t>(sz, /*10MB*/10485760);
-      this->data = (uint8_t*)mmap(0, this->map_size, PROT_READ | PROT_WRITE, MAP_SHARED, this->fd, 0);
+      this->data = (uint8_t*)mmap(0, this->map_size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_POPULATE, this->fd, 0);
       if (this->data == MAP_FAILED) {
         throw std::runtime_error("Failed to map transaction persistence file");
       }
