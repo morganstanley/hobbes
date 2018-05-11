@@ -139,12 +139,12 @@ public:
 
       // IO redirect
       int ofd  = dup(STDOUT_FILENO);
-      int nofd = open("/dev/null", O_WRONLY);
+      int nofd = open("stdout", O_WRONLY|O_APPEND|O_CREAT, 00644);
       dup2(nofd, STDOUT_FILENO);
       close(nofd);
 
       int efd  = dup(STDERR_FILENO);
-      int nefd = open("/dev/null", O_WRONLY);
+      int nefd = open("stderr", O_WRONLY|O_APPEND|O_CREAT, 00644);
       dup2(nefd, STDERR_FILENO);
 
       // exec
@@ -311,6 +311,7 @@ TEST(Hog, MultiDestination) {
     WITH_TIMEOUT(10, EXPECT_EQ_IN_SERIES(batchrecv[1].logpaths(), "coordinate", ".x", {"[0..199]"}));
   });
 
+  WITH_TIMEOUT(60, EXPECT_EQ(batchrecv[0].logpaths().size(), 2));
   WITH_TIMEOUT(30, EXPECT_EQ_IN_SERIES(batchrecv[0].logpaths(), "coordinate", ".x", ({"[0..99]", "[100..199]"})));
 
   batchrecv[0].restart([&batchrecv](){
@@ -319,6 +320,7 @@ TEST(Hog, MultiDestination) {
     });
   });
 
+  WITH_TIMEOUT(60, EXPECT_EQ(batchrecv[0].logpaths().size(), 3));
   WITH_TIMEOUT(30, EXPECT_EQ_IN_SERIES(batchrecv[0].logpaths(), "coordinate", ".x", ({"[0..99]", "[100..199]", "[200..299]"})));
   WITH_TIMEOUT(30, EXPECT_EQ_IN_SERIES(batchrecv[1].logpaths(), "coordinate", ".x", ({"[0..199]", "[200..299]"})));
 }
