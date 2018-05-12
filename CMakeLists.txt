@@ -2,6 +2,9 @@ cmake_minimum_required(VERSION 3.4.1)
 project(hobbes)
 set (CMAKE_CXX_STANDARD 11)
 
+find_package(ZLIB REQUIRED)
+include_directories(${ZLIB_INCLUDE_DIRS})
+
 find_package(LLVM REQUIRED CONFIG)
 include_directories(${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
@@ -20,9 +23,9 @@ set(lib_files ${lib_headers} ${lib_source})
 include_directories(include)
 
 add_library(hobbes STATIC ${lib_files})
-target_link_libraries(hobbes ${llvm_libs})
+target_link_libraries(hobbes ${llvm_libs} ${ZLIB_LIBRARIES})
 add_library(hobbes-pic STATIC ${lib_files})
-target_link_libraries(hobbes-pic ${llvm_libs})
+target_link_libraries(hobbes-pic ${llvm_libs} ${ZLIB_LIBRARIES})
 set_property(TARGET hobbes-pic PROPERTY POSITION_INDEPENDENT_CODE TRUE)
 
 file(GLOB test_files test/*.C)
