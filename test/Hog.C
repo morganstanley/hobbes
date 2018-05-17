@@ -18,6 +18,7 @@
 #include <unistd.h>
 #include <signal.h>
 #include <glob.h>
+#include <ftw.h>
 
 std::string hogBinaryPath() {
   static char path[PATH_MAX];
@@ -113,14 +114,17 @@ struct RunMode {
   }
 };
 
+void rmrfdir(const char* p) {
+}
+
 class HogApp {
 public:
   HogApp(const RunMode& mode)
   : mode(mode), pid(-1) {
-    strcpy(cwd, "/var/tmp/hobbes-test/hog/XXXXXX");
+    strcpy(cwd, "./.htest/hog/XXXXXX");
     hobbes::ensureDirExists(hobbes::str::rsplit(cwd, "/").first);
     if (mkdtemp(cwd) == NULL) {
-      throw std::runtime_error("error while mkdtemp: " + std::string(strerror(errno)));
+      throw std::runtime_error("error while mkdtemp('" + std::string(cwd) + "'): " + std::string(strerror(errno)));
     }
   }
 
@@ -406,6 +410,14 @@ TEST(Hog, RestartEngine) {
     c.define("f"+hobbes::str::from(i++), "inputFile::(LoadFile \""+log+"\" w)=>w");
   }
   EXPECT_TRUE(c.compileFn<bool()>("size(f0.seq[0:]) == 4 * 4")());
+}
+
+void rmrf(const char* p) {
+  nftw(p, [](const char* fp, const struct stat*, int tf, struct FTW*) -> int { remove(fp); return 0; }, 64, FTW_DEPTH | FTW_PHYS);
+}
+TEST(Hog, Cleanup) {
+  rmrf("./.htest");
+  rmrf("./Space");
 }
 
 #endif
