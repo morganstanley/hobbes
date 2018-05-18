@@ -610,6 +610,10 @@ void runEvery(timespanT dt, bool (*pf)()) {
   addTimer(pf, dt.value/1000);
 }
 
+// bindings for all std::vectors
+size_t vectorSize(const std::vector<uint8_t>& xs, size_t esize) { return xs.size()/esize; }
+char*  vectorData(const std::vector<uint8_t>& xs) { return (char*)(&xs[0]); }
+
 void initStdFuncDefs(cc& ctx) {
   ctx.bind("malloc",                &memalloc);
   ctx.bind("mallocz",               &memallocz);
@@ -704,6 +708,9 @@ void initStdFuncDefs(cc& ctx) {
   ctx.bind("decompress", &uncompressBytes);
 
   ctx.bind("runEvery", &runEvery);
+
+  ctx.bind("vectorSize", &vectorSize);
+  ctx.bind("vectorData", &vectorData);
 }
 
 }
