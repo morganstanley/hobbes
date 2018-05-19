@@ -393,10 +393,15 @@ MonoTypePtr cc::opaquePtrMonoType(const std::type_info& ti, unsigned int sz, boo
   if (t != this->typeAliases.end() && hasPointerRep(t->second)) {
     return requireMonotype(t->second);
   } else {
-    this->objs->add(ti); // not pretty
+    this->objs->add(ti);
 
     // OK, we don't know what this type looks like so we'll give it an opaque pointer type
-    return MonoTypePtr(OpaquePtr::make(str::demangle(ti.name()), sz, inStruct));
+    // but strip the pointer char from the name, we assume opaqueptr types are always pointers
+    std::string tn = str::demangle(ti.name());
+    while (tn.size()>0 && tn.back()=='*') {
+      tn=tn.substr(0,tn.size()-1);
+    }
+    return MonoTypePtr(OpaquePtr::make(tn, sz, inStruct));
   }
 }
 

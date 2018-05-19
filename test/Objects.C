@@ -167,3 +167,11 @@ TEST(Objects, Arrays) {
   EXPECT_EQ(c().compileFn<int()>("aoage((arrobjs(9))[0])")(), 42);
 }
 
+class Undef;
+size_t undefCount(const Undef*) { return 42; }
+
+TEST(Objects, FwdDecl) {
+  c().bind("undefCount", &undefCount);
+  EXPECT_EQ((c().compileFn<size_t(const Undef*)>("u", "undefCount(u)")((const Undef*)0)), 42);
+}
+

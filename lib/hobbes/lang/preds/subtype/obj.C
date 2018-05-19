@@ -51,6 +51,8 @@ bool Objs::add(const std::type_info* ti) {
   if (const class_type* cti = dynamic_cast<const class_type*>(ti)) {
     add(cti);
     return true;
+  } else if (const abi::__pointer_type_info* pti = dynamic_cast<const abi::__pointer_type_info*>(ti)) {
+    return add(pti->__pointee);
   } else {
     return false;
   }
