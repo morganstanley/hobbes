@@ -43,3 +43,9 @@ TEST(Arrays, Streams) {
   )));
 }
 
+TEST(Arrays, WithStdVector) {
+  std::vector<int> xs = {1, 2, 3, 4, 5};
+  EXPECT_EQ(makeStdString(c().compileFn<const array<char>*(std::vector<int>&)>("xs", "show(xs)")(xs)), "[1, 2, 3, 4, 5]");
+  EXPECT_EQ(((c().compileFn<int(std::vector<int>&)>("xs", "sum(xs[0:])")(xs))), 15);
+}
+

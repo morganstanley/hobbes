@@ -145,6 +145,19 @@ template <>
 template <bool InStruct>
   struct lift<std::string*, InStruct> { static MonoTypePtr type(typedb&) { return OpaquePtr::make("std::string", InStruct ? sizeof(std::string) : 0, InStruct); } };
 
+// lift std::vector to a parametric type
+template <typename T>
+  struct liftVector {
+    static MonoTypePtr type(typedb& tenv) {
+      return tapp(primty("vector", tabs(str::strings("t", "s", "c"), FixedArray::make(primty("byte"), tvar("c")))), list(lift<T, true>::type(tenv), tlong(sizeof(T)), tlong(sizeof(std::vector<T>))));
+    }
+  };
+
+template <typename T>
+  struct lift<std::vector<T>, true> : public liftVector<T> { };
+template <typename T>
+  struct lift<std::vector<T>*, false> : public liftVector<T> { };
+
 // we can lift a list of T as ^x.()+T*x, represented by a pointer whether top-level or inline
 template <typename T>
   struct liftSeq {

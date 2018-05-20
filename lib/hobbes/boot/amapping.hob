@@ -89,6 +89,12 @@ instance Array (long * <char>) char where
   element p i = cptrrefby(p.1, i)
   elements xs i e = defElementsWith(xs, \(_,p) i.cptrrefby(p,i), i, e)
 
+data vector t s n = [:byte|n:]
+instance Array (vector t s n) t where
+  size     v     = vectorSize(unsafeCast(v), salength(newPrim()::[:char|s:]))
+  element  v i   = element(unsafeCast(vectorData(unsafeCast(v)))::[:t|1:], i)
+  elements v i e = elements(unsafeCast(vectorData(unsafeCast(v)))::[:t|1:], i, e)
+
 reverse :: [a] -> [a]
 reverse xs = selectElementsInto(xs, element, 0L, size(xs), newArray(size(xs)), lsub(size(xs),1L), lneg(1L))
 
