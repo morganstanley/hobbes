@@ -487,6 +487,9 @@ extern PatVarCtorFn patVarCtorFn;
 %type <mtypes>       ltmtype l1mtargl l0mtargl l0mtarglt
 
 /* associativity to give expected operator precedence */
+%right "else"
+%right "in"
+%right "->"
 %left "!"
 %left "."
 %left "++" "+" "-"
@@ -495,8 +498,6 @@ extern PatVarCtorFn patVarCtorFn;
 %left "and" "or"
 %left "o"
 %right "@"
-%right "->"
-%right "in" "else"
 %right "::"
 
 %start s
@@ -625,32 +626,35 @@ l0expr: "\\" patterns "." l0expr { $$ = makePatternFn(*$2, ExprPtr($4), m(@1, @4
       | l0expr "and" l0expr      { $$ = TAPP2(var("and",m(@2)), $1, $3, m(@1,@3)); }
       | l0expr "or"  l0expr      { $$ = TAPP2(var("or",m(@2)),  $1, $3, m(@1,@3)); }
       | l0expr "o"   l0expr      { $$ = TAPP2(var("compose",m(@2)), $1, $3, m(@1,@3)); }
+      | l1expr "<-"  l1expr      { $$ = new Assign(ExprPtr($1), ExprPtr($3), m(@1, @3)); }
+      | l1expr "in"  l1expr      { $$ = TAPP2(var("in",m(@2)), $1, $3, m(@1,@3)); }
       | l1expr                   { $$ = $1; }
 
-l1expr: l1expr "~"   l1expr { $$ = TAPP2(var("~",m(@2)), $1, $3, m(@1,@3)); }
-      | l1expr "===" l1expr { $$ = TAPP2(var("===",m(@2)), $1, $3, m(@1,@3)); }
-      | l1expr "=="  l1expr { $$ = TAPP2(var("==",m(@2)), $1, $3, m(@1,@3)); }
-      | l1expr "!="  l1expr { $$ = TAPP1(var("not",m(@2)), TAPP2(var("==",m(@2)), $1, $3, m(@1,@3)), m(@1,@3)); }
-      | l1expr "<"   l1expr { $$ = TAPP2(var("<",m(@2)),  $1, $3, m(@1,@3)); }
-      | l1expr "<="  l1expr { $$ = TAPP2(var("<=",m(@2)), $1, $3, m(@1,@3)); }
-      | l1expr ">"   l1expr { $$ = TAPP2(var(">",m(@2)),  $1, $3, m(@1,@3)); }
-      | l1expr ">="  l1expr { $$ = TAPP2(var(">=",m(@2)), $1, $3, m(@1,@3)); }
-      | l1expr "in"  l1expr { $$ = TAPP2(var("in",m(@2)), $1, $3, m(@1,@3)); }
-      | l2expr              { $$ = $1; }
+l1expr: "if" l0expr "then" l0expr "else" l0expr { $$ = TAPP3(var("if",m(@1)), $2, $4, $6, m(@1, @6)); }
+      | l2expr                                  { $$ = $1; }
 
-l2expr: l2expr "+" l2expr  { $$ = TAPP2(var("+",m(@2)), $1, $3, m(@1,@3)); }
-      | l2expr "-" l2expr  { $$ = TAPP2(var("-",m(@2)), $1, $3, m(@1,@3)); }
-      | l2expr "++" l2expr { $$ = TAPP2(var("append",m(@2)), $1, $3, m(@1,@3)); }
-      | "-" l2expr         { $$ = TAPP1(var("neg",m(@1)), ExprPtr($2), m(@1,@2)); }
-      | l3expr             { $$ = $1; }
+l2expr: l2expr "~"   l2expr { $$ = TAPP2(var("~",m(@2)), $1, $3, m(@1,@3)); }
+      | l2expr "===" l2expr { $$ = TAPP2(var("===",m(@2)), $1, $3, m(@1,@3)); }
+      | l2expr "=="  l2expr { $$ = TAPP2(var("==",m(@2)), $1, $3, m(@1,@3)); }
+      | l2expr "!="  l2expr { $$ = TAPP1(var("not",m(@2)), TAPP2(var("==",m(@2)), $1, $3, m(@1,@3)), m(@1,@3)); }
+      | l2expr "<"   l2expr { $$ = TAPP2(var("<",m(@2)),  $1, $3, m(@1,@3)); }
+      | l2expr "<="  l2expr { $$ = TAPP2(var("<=",m(@2)), $1, $3, m(@1,@3)); }
+      | l2expr ">"   l2expr { $$ = TAPP2(var(">",m(@2)),  $1, $3, m(@1,@3)); }
+      | l2expr ">="  l2expr { $$ = TAPP2(var(">=",m(@2)), $1, $3, m(@1,@3)); }
+      | l3expr              { $$ = $1; }
 
-l3expr: l3expr "*" l3expr { $$ = TAPP2(var("*", m(@2)), $1, $3, m(@1, @3)); }
-      | l3expr "/" l3expr { $$ = TAPP2(var("/", m(@2)), $1, $3, m(@1, @3)); }
-      | l3expr "%" l3expr { $$ = TAPP2(var("%", m(@2)), $1, $3, m(@1, @3)); }
-      | l4expr            { $$ = $1; }
+l3expr: l3expr "+"  l3expr { $$ = TAPP2(var("+",m(@2)), $1, $3, m(@1,@3)); }
+      | l3expr "-"  l3expr { $$ = TAPP2(var("-",m(@2)), $1, $3, m(@1,@3)); }
+      | l3expr "++" l3expr { $$ = TAPP2(var("append",m(@2)), $1, $3, m(@1,@3)); }
+      | "-" l3expr         { $$ = TAPP1(var("neg",m(@1)), ExprPtr($2), m(@1,@2)); }
+      | l4expr             { $$ = $1; }
 
-l4expr: "if" l4expr "then" l4expr "else" l4expr { $$ = TAPP3(var("if",m(@1)), $2, $4, $6, m(@1, @6)); }
-      | l5expr                                  { $$ = $1; }
+l4expr: l4expr "*" l4expr { $$ = TAPP2(var("*", m(@2)), $1, $3, m(@1, @3)); }
+      | l4expr "/" l4expr { $$ = TAPP2(var("/", m(@2)), $1, $3, m(@1, @3)); }
+      | l4expr "%" l4expr { $$ = TAPP2(var("%", m(@2)), $1, $3, m(@1, @3)); }
+      | l5expr            { $$ = $1; }
+
+l5expr: l6expr { $$ = $1; }
 
       /* local variable introduction */
       | "let" letbindings "in" l0expr { $$ = compileNestedLetMatch(*$2, ExprPtr($4), m(@1,@4))->clone(); }
@@ -660,7 +664,7 @@ l4expr: "if" l4expr "then" l4expr "else" l4expr { $$ = TAPP3(var("if",m(@1)), $2
       | "match" l6exprs "with" patternexps { $$ = compileMatch(yyParseCC, *$2, normPatternRules(*$4, m(@1,@4)), m(@1,@4))->clone(); }
 
       /* match test */
-      | l5expr "matches" pattern { $$ = compileMatchTest(yyParseCC, ExprPtr($1), PatternPtr($3), m(@1,@3))->clone(); }
+      | l6expr "matches" pattern { $$ = compileMatchTest(yyParseCC, ExprPtr($1), PatternPtr($3), m(@1,@3))->clone(); }
 
       /* parser generation */
       | "parse" "{" prules "}" {
@@ -679,12 +683,12 @@ l4expr: "if" l4expr "then" l4expr "else" l4expr { $$ = TAPP3(var("if",m(@1)), $2
       | "do" "{" dobindings "return" l0expr "}" { $$ = compileNestedLetMatch(*$3, ExprPtr($5), m(@1,@6)); }
 
       /* forced type assignment */
-      | l5expr "::" qtype       { $$ = new Assump(ExprPtr($1), QualTypePtr($3), m(@1,@3)); }
+      | l6expr "::" qtype       { $$ = new Assump(ExprPtr($1), QualTypePtr($3), m(@1,@3)); }
 
 letbindings: letbindings ";" letbinding { $1->push_back(*$3); $$ = $1; }
            | letbinding                 { $$ = autorelease(new LetBindings()); $$->push_back(*$1); }
 
-letbinding: irrefutablep "=" l2expr { $$ = autorelease(new LetBinding(PatternPtr($1), ExprPtr($3))); }
+letbinding: irrefutablep "=" l1expr { $$ = autorelease(new LetBinding(PatternPtr($1), ExprPtr($3))); }
 
 dobindings: dobindings dobinding { $$ = $1; $$->push_back(*$2); }
           | dobinding            { $$ = autorelease(new LetBindings()); $$->push_back(*$1); }
@@ -693,9 +697,6 @@ dobinding: irrefutablep "=" l0expr ";" { $$ = autorelease(new LetBinding(Pattern
          | l0expr ";"                  { $$ = autorelease(new LetBinding(PatternPtr(new MatchAny("_",m(@1))), ExprPtr($1))); }
 
 /* assignment */
-l5expr: l6expr "<-" l6expr { $$ = new Assign(ExprPtr($1), ExprPtr($3), m(@1, @3)); }
-      | l6expr             { $$ = $1; }
-
 l6expr: l6expr "(" cargs ")"    { $$ = new App(ExprPtr($1), *$3, m(@1, @4)); }
       | id                      { $$ = varCtorFn(*$1, m(@1)); }
 

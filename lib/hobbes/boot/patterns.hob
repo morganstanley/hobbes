@@ -33,10 +33,9 @@ runLongDFA dfa s vs =
     st = dfa[s];
     v  = vs[st.reads];
     i  = bsearch(st.transitions, \td.td.0, v);
-    td = if (i == length(st.transitions)) then st.def else st.transitions[i].1
+    td = (if (i == length(st.transitions)) then st.def else st.transitions[i].1)
   in
-    case td of
-      |done:x=x, step:ns=runLongDFA(dfa, ns, vs)|
+    case td of |done:x=x, step:ns=runLongDFA(dfa, ns, vs)|
 
 // used by pattern matching to reduce states in the case of char arrays
 packCArrLong :: (Array a char) => (a, long) -> long

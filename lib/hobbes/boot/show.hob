@@ -7,8 +7,8 @@ class Show a where
 // control output precision of floats and doubles
 floatFormatConfig = do {
   c = (newPrim() :: {floatPrecision:int,doublePrecision:int});
-  c.floatPrecision  <- (-1);
-  c.doublePrecision <- (-1);
+  c.floatPrecision  <- -1;
+  c.doublePrecision <- -1;
   return c
 }
 
@@ -131,9 +131,10 @@ showSARange :: (a -> [char], [:a|n:], long, long, [[char]]) -> [[char]]
 showSARange showf xs i e r =
   if (i == e) then
     r
-  else
-    (let _ = r[i] <- showf(saelem(xs, i)) in
-    showSARange(showf, xs, i+1, e, r))
+  else do {
+    r[i] <- showf(saelem(xs, i));
+    return showSARange(showf, xs, i+1, e, r)
+  }
 
 instance ShowFixedArrOf byte n where
   showFA bs i e = "0x" ++ concat(showSARange(showByteV, bs, i, e, newArray(e)))
@@ -204,10 +205,10 @@ instance PrintR () where
   printrec _ _ = ()
 
 instance (r={a*rr}, Print a, PrintR rr) => PrintR r where
-  printrec first r = let _ = if first then () else putStr(", "); _ = putStr(recordHeadLabel(r)); _ = putStr("="); _ = print(recordHeadValue(r)) in printrec(false, recordTail(r))
+  printrec first r = do{if first then () else putStr(", "); putStr(recordHeadLabel(r)); putStr("="); print(recordHeadValue(r)); printrec(false, recordTail(r));}
 
 instance (PrintR r) => Print r where
-  print x = let _ = putStr("{"); _ = printrec(true, x) in putStr("}")
+  print x = do{putStr("{"); printrec(true, x); putStr("}");}
 
 // print tuples
 class PrintT a where
@@ -217,10 +218,10 @@ instance PrintT () where
   printtup _ _ = ()
 
 instance (p=(a*t), Print a, PrintT t) => PrintT p where
-  printtup first p = let _ = if first then () else putStr(", "); _ = print(p.0) in printtup(false, tupleTail(p))
+  printtup first p = do{if first then () else putStr(", "); print(p.0); printtup(false, tupleTail(p));}
 
 instance (PrintT p) => Print p where
-  print p = let _ = putStr("("); _ = printtup(true, p) in putStr(")")
+  print p = do{putStr("("); printtup(true, p); putStr(")");}
 
 // for 'maybe' types, we don't need to see the variant structure
 instance (Print a) => Print (()+a) where

@@ -9,24 +9,23 @@ bvInit bs i x =
   if (i == length(bs)) then
     ()
   else
-    (let _ = (bs[i] <- x) in bvInit(bs, i+1, x))
+    do{bs[i] <- x; bvInit(bs, i+1, x);}
 
 newBitvec :: long -> bitvec
-newBitvec n =
-  let
-    t  = n % 8;
-    r  = newArray(1 + ((n / 8) + (if (t > 0L) then 1 else 0)));
-    _  = (r[0] <- tl2b(t));
-    _  = bvInit(r, 1L, 0X00)
-  in
-    (convert(r) :: bitvec)
+newBitvec n = do {
+  t  = n % 8;
+  r  = newArray(1 + ((n / 8) + (if (t > 0L) then 1 else 0)));
+  r[0] <- tl2b(t);
+  bvInit(r, 1L, 0X00);
+  return (convert(r) :: bitvec)
+}
 
 bvLength :: bitvec -> long
 bvLength bv =
   let
     bs = convert(bv) :: [byte]
   in
-    (8 * (length(bs) - 1)) - if (bs[0] == 0X00) then 0 else (8 - bs[0])
+    (8 * (length(bs) - 1)) - (if (bs[0] == 0X00) then 0 else (8 - bs[0]))
 
 bvIsSet :: (bitvec, long) -> bool
 bvIsSet bv i =
@@ -82,7 +81,7 @@ whereBs bv i e ns j =
   if (i == e) then
     ns
   else if (bvIsSet(bv, i)) then
-    (let _ = ns[j] <- i in whereBs(bv, i+1, e, ns, j+1))
+    do{ns[j] <- i; return whereBs(bv, i+1, e, ns, j+1)}
   else
     whereBs(bv, i+1, e, ns, j)
 
@@ -95,7 +94,7 @@ selectStep xs idxs r i =
   if (i == length(idxs)) then
     ()
   else
-    (let _ = r[i] <- xs[idxs[i]] in selectStep(xs, idxs, r, i+1))
+    do{r[i] <- xs[idxs[i]]; selectStep(xs, idxs, r, i+1);}
 
 select :: ([a], [long]) -> [a]
 select xs idxs =
@@ -110,7 +109,7 @@ selectBStep xs idxs i e r j =
   if (i == e) then
     r
   else if (bvIsSet(idxs, i)) then
-    (let _ = r[j] <- element(xs,i) in selectBStep(xs, idxs, i+1, e, r, j+1))
+    do{r[j] <- element(xs,i); return selectBStep(xs, idxs, i+1, e, r, j+1)}
   else
     selectBStep(xs, idxs, i+1, e, r, j)
 
@@ -130,17 +129,16 @@ selectRStep xs r k i e =
   if (i == e) then
     ()
   else
-    (let _ = r[k] <- xs[i] in selectRStep(xs, r, k+1, i+1, e))
+    do{r[k] <- xs[i]; selectRStep(xs, r, k+1, i+1, e);}
 
 selectRange :: ([a], long, long) -> [a]
-selectRange xs lo hi =
-  let
-    nhi = min(length(xs), hi);
-    nlo = min(max(0L, lo), nhi);
-    r   = newArray(max(nhi - nlo, 0L));
-    _   = if (length(r) > 0L) then selectRStep(xs, r, 0L, nlo, nhi) else ()
-  in
-    r
+selectRange xs lo hi = do {
+  nhi = min(length(xs), hi);
+  nlo = min(max(0L, lo), nhi);
+  r   = newArray(max(nhi - nlo, 0L));
+  if (length(r) > 0L) then selectRStep(xs, r, 0L, nlo, nhi) else ();
+  return r
+}
 
 selectKeyStep :: (Ord k k) => ([k*v], long, [k], long, [k*v], long) -> long
 selectKeyStep kvs i ks j r w =
@@ -179,19 +177,18 @@ filterMapStep :: (a -> (()+b), [a], long, [()+b], long) -> long
 filterMapStep f xs i mys j =
   if (i == length(xs)) then
     j
-  else
-    (let
-      y = f(xs[i]);
-      _ = mys[i] <- y
-     in
-      filterMapStep(f, xs, i+1, mys, case y of |0:_=j,1:_=j+1|))
+  else do {
+    y = f(xs[i]);
+    mys[i] <- y;
+    return filterMapStep(f, xs, i+1, mys, case y of |0:_=j,1:_=j+1|)
+  }
 
 selectJust :: ([()+a], long, [a], long) -> [a]
 selectJust xs i ys j =
   if (i == length(xs)) then
     ys
   else
-    case xs[i] of |0:_=selectJust(xs, i+1, ys, j), 1:y=let _ = ys[j] <- y in selectJust(xs, i+1, ys, j+1)|
+    case xs[i] of |0:_=selectJust(xs, i+1, ys, j), 1:y=do{ys[j] <- y; return selectJust(xs, i+1, ys, j+1)}|
 
 filterMap :: (a -> (()+b), [a]) -> [b]
 filterMap f xs =
@@ -214,7 +211,7 @@ fmapArrStep f xs i rs =
   if (i == size(xs)) then
     rs
   else
-    (let _ = rs[i] <- apply(f, element(xs,i)) in fmapArrStep(f, xs, i+1, rs))
+    do{rs[i] <- apply(f, element(xs,i)); return fmapArrStep(f, xs, i+1, rs)}
 
 instance SeqDesc [a] "array" a
 
@@ -241,12 +238,11 @@ ffilterMMapStep :: (Function f c a (()+b), Array as a) => (f, as, long, [()+b], 
 ffilterMMapStep f xs i mys j =
   if (i == size(xs)) then
     j
-  else
-    (let
-      y = apply(f, element(xs,i));
-      _ = mys[i] <- y
-     in
-      ffilterMMapStep(f, xs, i+1, mys, case y of |0:_=j,1:_=j+1|))
+  else do {
+    y = apply(f, element(xs,i));
+    mys[i] <- y;
+    return ffilterMMapStep(f, xs, i+1, mys, case y of |0:_=j,1:_=j+1|)
+  }
 
 instance FilterMMap f c a r "array" [a] "array" [r] where
   ffilterMMap f xs = let mys = newArray(length(xs)); n = ffilterMMapStep(f, xs, 0L, mys, 0L) in selectJust(mys, 0L, newArray(n), 0L)

@@ -103,13 +103,13 @@ instance ConvertInto a () where
   convertInto s _ = ()
 
 instance (r={lbl:h*t}, s/lbl :: x, ConvertInto x h, ConvertInto s t) => ConvertInto s r where
-  convertInto s r = let _ = convertInto(fieldValue(s) :: (s/lbl :: x) => x, recordHeadValue(r)) in convertInto(s, recordTail(r))
+  convertInto s r = do{convertInto(fieldValue(s) :: (s/lbl :: x) => x, recordHeadValue(r)); convertInto(s, recordTail(r));}
 
 instance (r={lbl:h*t}, s/lbl :: x, Convert x h, ConvertInto s t) => ConvertInto s r where
-  convertInto s r = let _ = recordHeadValue(r) <- convert(fieldValue(s) :: (s/lbl :: x) => x) in convertInto(s, recordTail(r))
+  convertInto s r = do{recordHeadValue(r) <- convert(fieldValue(s) :: (s/lbl :: x) => x); convertInto(s, recordTail(r));}
 
 instance (ConvertInto a b, b != ()) => Convert a b where
-  convert s = let r = newPrim(); _ = convertInto(s, r) in r
+  convert s = do{r = newPrim(); convertInto(s, r); return r}
 
 // write a variable-length array into a fixed-length array (maybe we should convert while writing?)
 copyToSA :: ([:a|n:], [a], long) -> ()
@@ -134,11 +134,11 @@ instance SelectInto () to where
   selectInto src dst = ()
 
 instance (src={lbl:sh*tsrc}, dst/lbl :: dh, SelectInto sh dh, SelectInto tsrc dst) => SelectInto src dst where
-  selectInto src dst = let _ = selectInto(recordHeadValue(src), fieldValue(dst) :: (dst/lbl :: dh) => dh) in selectInto(recordTail(src), dst)
+  selectInto src dst = do{selectInto(recordHeadValue(src), fieldValue(dst) :: (dst/lbl :: dh) => dh); selectInto(recordTail(src), dst);}
 
 instance (src={lbl:sh*tsrc}, dst/lbl :: dh, Convert sh dh, SelectInto tsrc dst) => SelectInto src dst where
-  selectInto src dst = let _ = (fieldValue(dst) :: (dst/lbl :: dh) => dh) <- convert(recordHeadValue(src)) in selectInto(recordTail(src), dst)
+  selectInto src dst = do{(fieldValue(dst) :: (dst/lbl :: dh) => dh) <- convert(recordHeadValue(src)); selectInto(recordTail(src), dst);}
 
 instance (src={lbl:[char]*tsrc}, dst/lbl :: <std.string>, SelectInto tsrc dst) => SelectInto src dst where
-  selectInto src dst = let _ = stdstringAssign(fieldValue(dst) :: (dst/lbl :: <std.string>) => <std.string>, recordHeadValue(src)) in selectInto(recordTail(src), dst)
+  selectInto src dst = do{stdstringAssign(fieldValue(dst) :: (dst/lbl :: <std.string>) => <std.string>, recordHeadValue(src)); selectInto(recordTail(src), dst);}
 
