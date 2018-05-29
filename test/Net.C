@@ -141,7 +141,7 @@ DEFINE_NET_CLIENT(
   (nothing, V(),                            "\\_.|Nothing=()|"),
   (recover, Groups(int,int),                "\\i e.[{id=\"group_\"++show(k),kid=|Jim|,aa=convert(k),bb=convert(k)}|k<-[i..e]]"),
   (eidv,    CustomIDEnum(CustomIDEnum),     "id"),
-  (inverse, RGB(RGB),                       "\\x.let _=saelem(x.val,0L)<-(255-saelem(x.val,0L));_=saelem(x.val,1L)<-(255-saelem(x.val,1L));_=saelem(x.val,2L)<-(255-saelem(x.val,2L)); in x")
+  (inverse, RGB(RGB),                       "\\x.do{saelem(x.val,0L)<-255-saelem(x.val,0L);saelem(x.val,1L)<-255-saelem(x.val,1L);saelem(x.val,2L)<-255-saelem(x.val,2L); return x}")
 );
 
 TEST(Net, syncClientAPI) {
@@ -178,7 +178,7 @@ DEFINE_ASYNC_NET_CLIENT(
   (nothing, V(),                            "\\().|Nothing=()|"),
   (recover, Groups(int,int),                "\\i e.[{id=\"group_\"++show(k),kid=|Jim|,aa=convert(k),bb=convert(k)}|k<-[i..e]]"),
   (eidv,    CustomIDEnum(CustomIDEnum),     "id"),
-  (inverse, RGB(RGB),                       "\\x.do{saelem(x.val,0L)<-(255-saelem(x.val,0L));saelem(x.val,1L)<-(255-saelem(x.val,1L));saelem(x.val,2L)<-(255-saelem(x.val,2L)); return x}")
+  (inverse, RGB(RGB),                       "\\x.do{saelem(x.val,0L)<-255-saelem(x.val,0L);saelem(x.val,1L)<-255-saelem(x.val,1L);saelem(x.val,2L)<-255-saelem(x.val,2L); return x}")
 );
 void stepAsyncClient(int, void* p) { ((AsyncClient*)p)->step(); }
 

@@ -40,7 +40,7 @@ lappend :: (^x.(()+(a*x)),^x.(()+(a*x))) -> ^x.(()+(a*x))
 lappend x y = lfoldr(cons, y, x)
 
 toArrayStep :: ([a], long, ^x.(()+(a*x))) -> [a]
-toArrayStep axs i xs = case unroll(xs) of |0:_=axs, 1:p=let _ = axs[i] <- p.0 in toArrayStep(axs, i+1, p.1)|
+toArrayStep axs i xs = case unroll(xs) of |0:_=axs, 1:p=do{axs[i] <- p.0; return toArrayStep(axs, i+1, p.1)}|
 
 toArray :: (^x.(()+(a*x))) -> [a]
 toArray xs = toArrayStep(newArray(llength(xs)), 0L, xs)

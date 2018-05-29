@@ -67,8 +67,10 @@ amap f i ys xs =
   if (i == length(xs)) then
     ys
   else
-    let _ = ys[i] <- f(xs[i]) in
-      amap(f, i+1L, ys, xs)
+    do {
+      ys[i] <- f(xs[i]);
+      return amap(f, i+1L, ys, xs)
+    }
 
 // [doc] map(f, xs) is the list obtained by applying f to each element of xs
 //  [eg] map(f,[x1, x2, ..., xn] == [f(x1), f(x2), ..., f(xn)]
@@ -80,8 +82,10 @@ mapiC f i ys xs =
   if (i == length(xs)) then
     ys
   else
-    let _ = ys[i] <- apply(f, xs[i]) in
-      mapiC(f, i+1L, ys, xs)
+    do {
+      ys[i] <- apply(f, xs[i]);
+      return mapiC(f, i+1L, ys, xs)
+    }
 
 mapC :: (exists E.(((E,a)->b)*E), [a]) -> [b]
 mapC f xs = mapiC(f, 0L, newArray(length(xs)), xs)
@@ -91,7 +95,10 @@ mapIdxStep f xs i ys =
   if (i == length(xs)) then
     ys
   else
-    (let _ = ys[i] <- f(xs, i) in mapIdxStep(f, xs, i+1, ys))
+    do {
+      ys[i] <- f(xs, i);
+      return mapIdxStep(f, xs, i+1, ys)
+    }
 
 mapIdx :: (([a],long)->b, [a]) -> [b]
 mapIdx f xs = mapIdxStep(f, xs, 0L, newArray(length(xs)))
@@ -247,8 +254,10 @@ rangeInto lo hi r i =
   if (lo > hi) then
     r
   else
-    let _ = r[i] <- lo in
-      rangeInto(lo+1, hi, r, i+1)
+    do {
+      r[i] <- lo;
+      return rangeInto(lo+1, hi, r, i+1)
+    }
 
 range :: (Subtract a a a, Convert a long, Ord a a, Add a int a) => (a, a) -> [a]
 range lo hi =
@@ -264,8 +273,10 @@ arepeat x i r =
   if (i == length(r)) then
     r
   else
-    let _ = r[i] <- x in
-      arepeat(x, i+1L, r)
+    do {
+      r[i] <- x;
+      return arepeat(x, i+1L, r)
+    }
 
 // [doc] repeat(n, x) is an array of length n with every element being x
 //  [eg] repeat(42, 5) == [42,42,42,42,42]
@@ -292,8 +303,10 @@ amapRange f xs i e ys j =
   if (i == e) then
     ys
   else
-    let _ = ys[j] <- f(xs[i]) in
-      amapRange(f, xs, i+1L, e, ys, j+1L)
+    do {
+      ys[j] <- f(xs[i]);
+      return amapRange(f, xs, i+1L, e, ys, j+1L)
+    }
 
 mapRange :: (a -> b, long, long, [a]) -> [b]
 mapRange f i e xs =
@@ -321,7 +334,10 @@ copyRange dst i src srcI srcE =
   if(srcI >= srcE) then
     ()
   else
-    (let _ = dst[i] <- src[srcI] in copyRange(dst, i+1L, src, srcI+1L, srcE))
+    do {
+      dst[i] <- src[srcI];
+      copyRange(dst, i+1L, src, srcI+1L, srcE);
+    }
 
 // [doc] copyFrom(dst, dstStartIdx, src, srcStartIdx)
 copyFrom :: ([a], long, [a], long) -> ()
@@ -377,23 +393,21 @@ slice xs i j =
 // [doc] takes two arrays and returns an array of corresponding pairs
 //  [eg] zip([1,3,5], [2,4,6]) == [(1,2), (3,4), (5,6)]
 zip :: (Array xs x, Array ys y) => (xs, ys) -> [x*y]
-zip xs ys =
-  let
-    n = min(size(xs), size(ys));
-    r = newArray(n);
-    _ = eachRangeC(\i.let _ = r[i].0 <- element(xs, i); _ = r[i].1 <- element(ys, i) in (), 0L, n)
-  in
-    r
+zip xs ys = do {
+  n = min(size(xs), size(ys));
+  r = newArray(n);
+  eachRangeC(\i.do{r[i].0 <- element(xs, i); r[i].1 <- element(ys, i);}, 0L, n);
+  return r
+}
 
 // [doc] map a two-argument function over a pair of arrays
 zipWith :: (Array xs x, Array ys y) => ((x, y) -> z, xs, ys) -> [z]
-zipWith f xs ys =
-  let
-    n = min(size(xs), size(ys));
-    r = newArray(n);
-    _ = eachRangeC(\i.r[i] <- f(element(xs, i), element(ys, i)), 0L, n)
-  in
-    r
+zipWith f xs ys = do {
+  n = min(size(xs), size(ys));
+  r = newArray(n);
+  eachRangeC(\i.r[i] <- f(element(xs, i), element(ys, i)), 0L, n);
+  return r
+}
 
 // unzip an array of pairs
 unzipStep :: ([a*b], [a], [b], long, long) -> ()
@@ -401,21 +415,20 @@ unzipStep ps xs ys i e =
   if (i == e) then
     ()
   else
-    (let
-       _ = xs[i] <- ps[i].0;
-       _ = ys[i] <- ps[i].1
-     in
-       unzipStep(ps, xs, ys, i+1, e))
+    do {
+      xs[i] <- ps[i].0;
+      ys[i] <- ps[i].1;
+      return unzipStep(ps, xs, ys, i+1, e)
+    }
 
 // [doc] transforms an array of pairs into an array of first components and an array of second components
 //  [eg] unzip([(1,2), (3,4), (5,6)]) == ([1,3,5], [2,4,5])
 unzip :: [a*b] -> ([a]*[b])
-unzip ps =
-  let
-    n = length(ps);
-    xs = newArray(n);
-    ys = newArray(n);
-    _ = unzipStep(ps, xs, ys, 0L, n)
-  in
-    (xs, ys)
+unzip ps = do {
+  n = length(ps);
+  xs = newArray(n);
+  ys = newArray(n);
+  unzipStep(ps, xs, ys, 0L, n);
+  return (xs, ys)
+}
 

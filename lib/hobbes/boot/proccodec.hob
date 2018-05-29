@@ -57,7 +57,7 @@ readFromIntoArr fd xs i =
   if (i == length(xs)) then
     ()
   else
-    (let _ = xs[i] <- readFrom(fd) in readFromIntoArr(fd, xs, i+1))
+    do{xs[i] <- readFrom(fd); readFromIntoArr(fd, xs, i+1);}
 
 writeToArr :: (BlockCodec a) => (int, [a], long) -> ()
 writeToArr fd xs i =
@@ -76,7 +76,7 @@ readFromIntoSA fd xs i end =
   if (i == end) then
     ()
   else
-    (let _ = saelem(xs, i) <- readFrom(fd) in readFromIntoSA(fd, xs, i+1, end))
+    do{saelem(xs, i) <- readFrom(fd); readFromIntoSA(fd, xs, i+1, end);}
 
 writeToSA :: (BlockCodec a) => (int, [:a|n:], long, long) -> ()
 writeToSA fd xs i end =
@@ -97,24 +97,24 @@ instance BlockDecInto () where
   readFromInto fd _ = ()
 
 instance (p=(h*t), BlockDecInto h, BlockDecInto t) => BlockDecInto p where
-  readFromInto fd p = let _ = readFromInto(fd, p.0) in readFromInto(fd, tupleTail(p))
+  readFromInto fd p = do{readFromInto(fd, p.0); readFromInto(fd, tupleTail(p));}
 
 instance (p=(h*t), BlockCodec h, BlockDecInto t) => BlockDecInto p where
-  readFromInto fd p = let _ = p.0 <- (readFrom(fd) :: h) in readFromInto(fd, tupleTail(p))
+  readFromInto fd p = do{p.0 <- (readFrom(fd) :: h); readFromInto(fd, tupleTail(p));}
 
 instance (r={h*t}, BlockDecInto h, BlockDecInto t) => BlockDecInto r where
-  readFromInto fd z = let _ = readFromInto(fd, recordHeadValue(z)) in readFromInto(fd, recordTail(z))
+  readFromInto fd z = do{readFromInto(fd, recordHeadValue(z)); readFromInto(fd, recordTail(z));}
 
 instance (r={h*t}, BlockCodec h, BlockDecInto t) => BlockDecInto r where
-  readFromInto fd z = let _ = recordHeadValue(z) <- (readFrom(fd) :: h) in readFromInto(fd, recordTail(z))
+  readFromInto fd z = do{recordHeadValue(z) <- (readFrom(fd) :: h); readFromInto(fd, recordTail(z));}
 
 instance (p=(h*t), BlockCodec h, BlockCodec t) => BlockCodec p where
-  readFrom fd = let r = (newPrim() :: p); _ = readFromInto(fd, r) in r
-  writeTo fd p = let _ = writeTo(fd, p.0) in writeTo(fd, tupleTail(p))
+  readFrom fd = do{r = (newPrim() :: p); readFromInto(fd, r); return r}
+  writeTo fd p = do{writeTo(fd, p.0); writeTo(fd, tupleTail(p));}
 
 instance (r={h*t}, BlockCodec h, BlockCodec t) => BlockCodec r where
-  readFrom fd = let z = (newPrim() :: r); _ = readFromInto(fd, z) in z
-  writeTo fd z = let _ = writeTo(fd, recordHeadValue(z)) in writeTo(fd, recordTail(z))
+  readFrom fd = do{z = (newPrim() :: r); readFromInto(fd, z); return z}
+  writeTo fd z = do{writeTo(fd, recordHeadValue(z)); writeTo(fd, recordTail(z));}
 
 // enum-like variants
 class CanEnumBlockCodec v

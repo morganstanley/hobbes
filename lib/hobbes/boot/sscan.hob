@@ -7,12 +7,10 @@ pushDownFromTo :: ([a], long, long) -> ()
 pushDownFromTo xs i e =
   if (i == e) then
     ()
-  else
-   (let
-      _ = pushDownFromTo(xs, i+1, e);
-      _ = xs[i+1] <- xs[i]
-    in
-      ())
+  else do {
+    pushDownFromTo(xs, i+1, e);
+    xs[i+1] <- xs[i];
+  }
 
 // find the unique groups across a set of values
 foldGroupsInt :: (Ord k k) => (a -> k, (a,b) -> b, [a], long, b, [k*b], long) -> [k*b]

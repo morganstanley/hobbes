@@ -67,7 +67,7 @@ printTableWithTruncation x maxRows =
   let
     header = tableHeader(x, "tbl");
     trunc  = (tableRowCount(x) > maxRows);
-    cols   = if trunc then tableColumnsTrunc(x, maxRows) else tableColumns(x);
+    cols   = (if trunc then tableColumnsTrunc(x, maxRows) else tableColumns(x));
     fcvs   = formatTableColumns(header, cols)
   in
     if (length(fcvs) == 0L) then
@@ -159,7 +159,7 @@ showTableWithTruncation x maxRows =
   let
     header = tableHeader(x, "tbl");
     trunc  = (tableRowCount(x) > maxRows);
-    cols   = if trunc then tableColumnsTrunc(x, maxRows) else tableColumns(x);
+    cols   = (if trunc then tableColumnsTrunc(x, maxRows) else tableColumns(x));
     fcvs   = formatTableColumns(header, cols)
   in
     if (length(fcvs) == 0L) then
