@@ -1,5 +1,5 @@
 Hobbes
-------
+======
 
 Hobbes is a domain-targeting programming language and execution environment built and maintained at Morgan Stanley. By design , it fullfils four major design goals:
    * Dynamic, in-process rewriting of processing rules for domain objects (trades, orders, executions)
