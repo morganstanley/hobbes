@@ -1,5 +1,6 @@
 #include "test.H"
 #include "format.H"
+#include <argp.h>
 #include <hobbes/util/perf.H>
 #include <fstream>
 
@@ -22,8 +23,9 @@ std::set<std::string> TestCoord::testGroupNames() const {
   return r;
 }
 
-int TestCoord::runTestGroups(const std::set<std::string>& gs) {
+int TestCoord::runTestGroups(const Args& args) {
   std::vector<std::string> failures;
+  const auto & groups = args.tests;
 
   auto updateTerminal = [&failures](const std::string& name, const Result& result) {
     std::cout << "    " << name;
@@ -36,12 +38,12 @@ int TestCoord::runTestGroups(const std::set<std::string>& gs) {
     std::cout << "(" << hobbes::describeNanoTime(result.duration) << ")" << std::endl;
   };
 
-  std::cout << "Running " << gs.size() << " group" << (gs.size() == 1 ? "" : "s") << " of tests" << std::endl
+  std::cout << "Running " << groups.size() << " group" << (groups.size() == 1 ? "" : "s") << " of tests" << std::endl
             << "---------------------------------------------------------------------" << std::endl
             << std::endl;
 
   long tt0 = hobbes::tick();
-  for (const auto& gn : gs) {
+  for (const auto& gn : groups) {
     auto gi = this->tests.find(gn);
     if (gi == this->tests.end()) {
       std::cout << "ERROR: no test group named '" << gn << "' exists" << std::endl;
@@ -81,7 +83,7 @@ int TestCoord::runTestGroups(const std::set<std::string>& gs) {
     }
   }
 
-  if (auto path = getenv("JSON_REPORT")) {
+  if (auto path = args.report) {
     std::ofstream outfile(path, std::ios::out | std::ios::trunc);
     if (outfile) {
       outfile << toJSON();
@@ -100,15 +102,53 @@ std::string TestCoord::toJSON() {
   return os.str();
 }
 
-int main(int argc, char** argv) {
-  if (argc <= 1) {
-    return TestCoord::instance().runTestGroups(TestCoord::instance().testGroupNames());
-  } else {
-    std::set<std::string> gs;
-    for (size_t i = 1; i < argc; ++i) {
-      gs.insert(argv[i]);
-    }
-    return TestCoord::instance().runTestGroups(gs);
+enum ShortKey {
+  ListTests = 'l',
+  FilterTests = 't',
+  JsonReport = 'r',
+};
+
+static error_t parseArgs(int key, char* arg, struct argp_state* state) {
+  auto args = reinterpret_cast<Args*>(state->input);
+  switch (key) {
+    case ListTests:
+      for (const auto & test : TestCoord::instance().testGroupNames()) {
+        std::cout << test << std::endl;
+      }
+      exit(0);
+    case FilterTests:
+      args->tests.insert(arg);
+      break;
+    case JsonReport:
+      args->report = arg;
+      break;
+    case ARGP_KEY_ARG:
+      args->tests.insert(arg);
+      break;
+    case ARGP_KEY_END:
+      if (args->tests.empty()) {
+        args->tests = TestCoord::instance().testGroupNames();
+      }
+      break;
+    default:
+      return ARGP_ERR_UNKNOWN;
   }
+  return 0;
+}
+
+static const char* doc = "hobbes-test";
+static const char* argsdoc = "[--list_tests][--tests <name>+ [--json <path>]]";
+static struct argp_option options[] = {
+  {"list_tests", ListTests,   nullptr, OPTION_ARG_OPTIONAL, "List available tests and exit"},
+  {"tests",      FilterTests, "NAME",  0,                   "Run one or more specified test(s), --tests <name>+"},
+  {"json",       JsonReport,  "FILE",  0,                   "Generate test report in JSON, --json <file>"},
+  {0}
+};
+static struct argp argp = { options, parseArgs, argsdoc, doc };
+
+int main(int argc, char** argv) {
+  Args args;
+  argp_parse(&argp, argc, argv, 0, 0, &args);
+  return TestCoord::instance().runTestGroups(args);
 }
 

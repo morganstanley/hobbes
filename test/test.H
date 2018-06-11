@@ -13,6 +13,11 @@
 #include <sstream>
 #include <hobbes/util/str.H>
 
+struct Args final {
+  std::set<std::string> tests;
+  const char* report;
+};
+
 struct Result final {
   enum class Status {
     Pass,
@@ -40,7 +45,7 @@ public:
   static TestCoord& instance();
   bool installTest(const std::string& group, const std::string& test, PTEST pf);
   std::set<std::string> testGroupNames() const;
-  int runTestGroups(const std::set<std::string>&);
+  int runTestGroups(const Args&);
 
 private:
   std::string toJSON();
