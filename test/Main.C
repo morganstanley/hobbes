@@ -1,6 +1,6 @@
 #include "test.H"
 #include "format.H"
-#include <argp.h>
+#include <getopt.h>
 #include <hobbes/util/perf.H>
 #include <fstream>
 
@@ -102,53 +102,44 @@ std::string TestCoord::toJSON() {
   return os.str();
 }
 
-enum ShortKey {
-  ListTests = 'l',
-  FilterTests = 't',
-  JsonReport = 'r',
-};
-
-static error_t parseArgs(int key, char* arg, struct argp_state* state) {
-  auto args = reinterpret_cast<Args*>(state->input);
-  switch (key) {
-    case ListTests:
-      for (const auto & test : TestCoord::instance().testGroupNames()) {
-        std::cout << test << std::endl;
-      }
-      exit(0);
-    case FilterTests:
-      args->tests.insert(arg);
-      break;
-    case JsonReport:
-      args->report = arg;
-      break;
-    case ARGP_KEY_ARG:
-      args->tests.insert(arg);
-      break;
-    case ARGP_KEY_END:
-      if (args->tests.empty()) {
-        args->tests = TestCoord::instance().testGroupNames();
-      }
-      break;
-    default:
-      return ARGP_ERR_UNKNOWN;
+void listTest() {
+  for (auto & test : TestCoord::instance().testGroupNames()) {
+    std::cout << test << std::endl;
   }
-  return 0;
 }
 
-static const char* doc = "hobbes-test";
-static const char* argsdoc = "[--list_tests][--tests <name>+ [--json <path>]]";
-static struct argp_option options[] = {
-  {"list_tests", ListTests,   nullptr, OPTION_ARG_OPTIONAL, "List available tests and exit"},
-  {"tests",      FilterTests, "NAME",  0,                   "Run one or more specified test(s), --tests <name>+"},
-  {"json",       JsonReport,  "FILE",  0,                   "Generate test report in JSON, --json <file>"},
-  {0}
-};
-static struct argp argp = { options, parseArgs, argsdoc, doc };
+void usage() {
+  std::cout << "hobbes-test [--list_tests][--tests <name> [--tests <name>...][--json <path>]]" << std::endl;
+}
+
+Args parseArgs(int argc, char** argv) {
+  static const struct option options[] = {
+    {"help",       no_argument,       nullptr, 'h'},
+    {"list_tests", no_argument,       nullptr, 'l'},
+    {"tests",      required_argument, nullptr, 't'},
+    {"json",       required_argument, nullptr, 'r'},
+    {0}
+  };
+
+  Args args;
+  int key;
+  while ((key = getopt_long(argc, argv, "hlt:r:", options, nullptr)) != -1) {
+    switch (key) {
+      case 'l': listTest(); exit(EXIT_SUCCESS);
+      case 't': args.tests.insert(optarg); break;
+      case 'r': args.report = optarg; break;
+      case 'h':
+      case '?':
+      default: usage(); exit(EXIT_SUCCESS);
+    }
+  }
+  if (args.tests.empty()) {
+    args.tests = TestCoord::instance().testGroupNames();
+  }
+  return args;
+}
 
 int main(int argc, char** argv) {
-  Args args;
-  argp_parse(&argp, argc, argv, 0, 0, &args);
-  return TestCoord::instance().runTestGroups(args);
+  return TestCoord::instance().runTestGroups(parseArgs(argc, argv));
 }
 
