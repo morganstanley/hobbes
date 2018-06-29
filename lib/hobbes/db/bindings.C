@@ -65,6 +65,10 @@ struct injFileReferencesF : public switchTyFn {
   ExprPtr f;
   injFileReferencesF(const ExprPtr& f) : f(f) { }
 
+  MonoTypePtr with(const Prim* t) const {
+    return Prim::make(t->name(), t->representation() ? switchOf(t->representation(), *this) : t->representation());
+  }
+
   MonoTypePtr with(const TApp* v) const {
     MonoTypePtr tf    = switchOf(v->fn(), *this);
     MonoTypes   targs = switchOf(v->args(), *this);
@@ -78,7 +82,7 @@ struct injFileReferencesF : public switchTyFn {
       }
     }
 
-    return MonoTypePtr(TApp::make(tf, targs));
+    return TApp::make(tf, targs);
   }
 };
 

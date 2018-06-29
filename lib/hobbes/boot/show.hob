@@ -103,6 +103,8 @@ instance (v=|a+vt|, ShowVarValue a, Show vt) => Show v where
 // serialization for arrays
 instance (Array cs char) => Show cs where
   show cs = show(cs[0:])
+instance (Array bs byte) => Show bs where
+  show bs = show(bs[0:])
 instance (Show a) => Show [a] where
   show xs = "[" ++ cdelim(map(show,xs), ", ") ++ "]"
 instance (Array as a, Show a) => Show as where
@@ -181,7 +183,9 @@ instance (PrintableAsTable a) => Print a where
 instance Print [char] where
   print cs = do { putStr("\""); putStr(cs); putStr("\""); }
 instance (Array cs char) => Print cs where
-  print cs = do { putStr("\""); putStr(cs[0:]); putStr("\""); }
+  print cs = print(cs[0:])
+instance (Array bs byte) => Print bs where
+  print bs = print(bs[0:])
 
 printArray :: (Array as a, Print a) => (as, long) -> ()
 printArray xs i =

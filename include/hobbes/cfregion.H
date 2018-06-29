@@ -3,7 +3,7 @@
  *
  * the compression method implemented here is a very basic order-0 type-directed model, using arithmetic encoding to record entropy
  *
- * a compressed series is described with the type 'ae0seq T M' and will contain a series of T values encoded with the model type M
+ * a compressed series is described with the type 'ae0seq T M N' and will contain a series of T values encoded with the model type M
  * this series looks like ^x.(()+(W*x)) as a stored linked list, and W represents a batch of compressed data
  * the batch type W stores:
  *   * a reference to the initial model state used
@@ -494,7 +494,17 @@ template <uint8_t maxSymbol = 0xff>
       // get symbol frequencies in decreasing order
       std::vector<index_t> idxs(((index_t)maxSymbol)+1);
       std::iota(idxs.begin(), idxs.end(), 0);
-      std::stable_sort(idxs.begin(), idxs.end(), [&](index_t i0, index_t i1) { return pm.activeFreqs[i0] > pm.activeFreqs[i1]; });
+      std::sort(idxs.begin(), idxs.end(),
+        [&](index_t i0, index_t i1) {
+          if (pm.activeFreqs[i0] > pm.activeFreqs[i1]) {
+            return true;
+          } else if (pm.activeFreqs[i0] == pm.activeFreqs[i1]) {
+            return i0 > i1;
+          } else {
+            return false;
+          }
+        }
+      );
 
       // accumulate ordered symbol and cumulative frequency values
       size_t zerosAt = idxs.size();
