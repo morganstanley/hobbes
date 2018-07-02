@@ -197,6 +197,8 @@ public:
     return "localhost:" + mode.port;
   }
 
+  std::string basePath() const { return this->cwd; }
+
   std::vector<std::string> logpaths() const {
     std::string group;
     if (this->mode.groups.size() == 0) {
@@ -410,6 +412,44 @@ TEST(Hog, RestartEngine) {
     c.define("f"+hobbes::str::from(i++), "inputFile::(LoadFile \""+log+"\" w)=>w");
   }
   EXPECT_TRUE(c.compileFn<bool()>("size(f0.seq[0:]) == 4 * 4")());
+}
+
+DEFINE_STORAGE_GROUP(
+  TestRecTypes,
+  8,
+  hobbes::storage::Reliable,
+  hobbes::storage::ManualCommit
+);
+
+struct SectTest {
+  int x;
+  double y() const { return 3.14159; }
+  std::array<short, 10> z;
+  std::string w;
+  void* q;
+};
+DEFINE_HSTORE_STRUCT_VIEW(SectTest, x, y, z, w);
+
+TEST(Hog, SupportedTypes) {
+  HogApp local(RunMode{{"TestRecTypes"}, /* consolidate = */ true});
+  local.start();
+  sleep(5);
+
+  SectTest st;
+  st.x = 42;
+  for (size_t i = 0; i < 10; ++i) { st.z[i] = (short)i; }
+  st.w = "test";
+  HLOG(TestRecTypes, sectView, "test sect view", st);
+  TestRecTypes.commit();
+
+  sleep(5);
+
+  hobbes::cc c;
+  auto i = 0;
+  for (const auto& log : local.logpaths()) {
+    c.define("f"+hobbes::str::from(i++), "inputFile::(LoadFile \""+log+"\" w)=>w");
+  }
+  EXPECT_TRUE(c.compileFn<bool()>("all(\\x.x  matches {x=42,y=3.14159,z=[0S,1S,2S,3S,4S,5S,6S,7S,8S,9S],w=\"test\"},f0.sectView[0:])")());
 }
 
 void rmrf(const char* p) {
