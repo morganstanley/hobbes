@@ -37,11 +37,11 @@ public:
 
   // link symbols across modules :T
   uint64_t getSymbolAddress(const std::string& n) override {
-    if (uint64_t laddr = (uint64_t)this->jit->getSymbolAddress(n)) {
+    if (uint64_t laddr = reinterpret_cast<uint64_t>(this->jit->getSymbolAddress(n))) {
       return laddr;
     }
     if (n.size() > 0 && n[0] == '_') {
-      uint64_t sv = (uint64_t)this->jit->getSymbolAddress(n.substr(1));
+      uint64_t sv = reinterpret_cast<uint64_t>(this->jit->getSymbolAddress(n.substr(1)));
       if (sv) return sv;
     }
     if (uint64_t baddr = llvm::SectionMemoryManager::getSymbolAddress(n)) {
@@ -149,7 +149,7 @@ void* jitcc::getSymbolAddress(const std::string& vn) {
   // do we have a compiled function with this name?
   for (auto ee : this->eengines) {
     if (uint64_t faddr = ee->getFunctionAddress(vn)) {
-      return (void*)faddr;
+      return reinterpret_cast<void*>(faddr);
     }
   }
 #endif
@@ -180,7 +180,7 @@ void* jitcc::getMachineCode(llvm::Function* f, llvm::JITEventListener* listener)
 
   // make a new execution engine out of this module (finalizing the module)
   std::string err;
-  llvm::ExecutionEngine* ee = makeExecutionEngine(this->currentModule, (llvm::SectionMemoryManager*)(new jitmm(this)));
+  llvm::ExecutionEngine* ee = makeExecutionEngine(this->currentModule, reinterpret_cast<llvm::SectionMemoryManager*>(new jitmm(this)));
 
   if (listener) {
     ee->RegisterJITEventListener(listener);
@@ -265,7 +265,7 @@ public:
   size_t size() const { return this->sz; }
   void NotifyObjectEmitted(const llvm::object::ObjectFile& o, const llvm::RuntimeDyld::LoadedObjectInfo& dl) {
     for (auto s : o.symbols()) {
-      const llvm::object::ELFSymbolRef* esr = (llvm::object::ELFSymbolRef*)(&s);
+      const llvm::object::ELFSymbolRef* esr = reinterpret_cast<const llvm::object::ELFSymbolRef*>(&s);
 
       if (esr) {
         auto nr = esr->getName();
