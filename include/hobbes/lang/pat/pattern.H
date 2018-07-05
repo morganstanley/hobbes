@@ -8,6 +8,7 @@
 #include <hobbes/lang/expr.H>
 #include <hobbes/lang/pat/regex.H>
 #include <hobbes/util/str.H>
+#include <hobbes/util/ptr.H>
 #include <hobbes/util/hash.H>
 #include <hobbes/util/lannotation.H>
 
@@ -228,17 +229,17 @@ template <typename T>
   T switchOf(const PatternPtr& p, const switchPattern<T>& f) {
     switch (p->case_id()) {
     case MatchLiteral::type_case_id:
-      return f.with((const MatchLiteral*)p.get());
+      return f.with(rcast<const MatchLiteral*>(p.get()));
     case MatchAny::type_case_id:
-      return f.with((const MatchAny*)p.get());
+      return f.with(rcast<const MatchAny*>(p.get()));
     case MatchArray::type_case_id:
-      return f.with((const MatchArray*)p.get());
+      return f.with(rcast<const MatchArray*>(p.get()));
     case MatchRegex::type_case_id:
-      return f.with((const MatchRegex*)p.get());
+      return f.with(rcast<const MatchRegex*>(p.get()));
     case MatchRecord::type_case_id:
-      return f.with((const MatchRecord*)p.get());
+      return f.with(rcast<const MatchRecord*>(p.get()));
     case MatchVariant::type_case_id:
-      return f.with((const MatchVariant*)p.get());
+      return f.with(rcast<const MatchVariant*>(p.get()));
     default:
       throw annotated_error(*p, "Internal error, cannot switch on unknown high-level pattern: " + show(p));
     }
@@ -247,8 +248,8 @@ template <typename T>
 template <typename T>
   std::vector<T> switchOf(const Patterns& ps, const switchPattern<T>& f) {
     std::vector<T> r;
-    for (Patterns::const_iterator p = ps.begin(); p != ps.end(); ++p) {
-      r.push_back(switchOf(*p, f));
+    for (auto p : ps) {
+      r.push_back(switchOf(p, f));
     }
     return r;
   }
@@ -256,16 +257,16 @@ template <typename T>
 // construction utilities
 inline MatchArray* mkpatarray(const std::vector<unsigned char>& bs, const LexicalAnnotation& la) {
   Patterns ps;
-  for (std::vector<unsigned char>::const_iterator b = bs.begin(); b != bs.end(); ++b) {
-    ps.push_back(PatternPtr(new MatchLiteral(PrimitivePtr(new Byte(*b, la)), la)));
+  for (auto b : bs) {
+    ps.push_back(PatternPtr(new MatchLiteral(PrimitivePtr(new Byte(b, la)), la)));
   }
   return new MatchArray(ps, la);
 }
 
 inline MatchArray* mkpatarray(const std::string& cs, const LexicalAnnotation& la) {
   Patterns ps;
-  for (std::string::const_iterator c = cs.begin(); c != cs.end(); ++c) {
-    ps.push_back(PatternPtr(new MatchLiteral(PrimitivePtr(new Char(*c, la)), la)));
+  for (auto c : cs) {
+    ps.push_back(PatternPtr(new MatchLiteral(PrimitivePtr(new Char(c, la)), la)));
   }
   return new MatchArray(ps, la);
 }

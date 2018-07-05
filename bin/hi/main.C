@@ -125,9 +125,9 @@ void showShellHelp(const CmdDescs& cds) {
             << std::string(2 + llen + 2, '=')
             << std::endl;
 
-  double hw  = ((double)(llen - header.size())) / 2.0;
-  size_t lhw = (size_t)floor(hw);
-  size_t rhw = (size_t)ceil(hw);
+  double hw  = static_cast<double>(llen - header.size()) / 2.0;
+  size_t lhw = static_cast<size_t>(floor(hw));
+  size_t rhw = static_cast<size_t>(ceil(hw));
 
   std::cout << "| "
               << std::string(lhw, ' ')
@@ -183,7 +183,7 @@ evaluator* eval = 0;
 str::seq completionMatches;
 
 char* completionStep(const char* pfx, int state) {
-  if (state < completionMatches.size()) {
+  if (state >= 0 && size_t(state) < completionMatches.size()) {
     return strdup(completionMatches[state].c_str());
   } else {
     return 0;
@@ -193,7 +193,7 @@ char* completionStep(const char* pfx, int state) {
 char** completions(const char* pfx, int start, int end) {
   if (start == 0) {
     completionMatches = eval->completionsFor(pfx);
-    return rl_completion_matches((char*)pfx, &completionStep);
+    return rl_completion_matches(const_cast<char*>(pfx), &completionStep);
   } else {
 #ifdef BUILD_LINUX
     rl_bind_key('\t', rl_abort);
@@ -344,7 +344,7 @@ void runProcess(const std::string&, std::ostream&);
 
 unsigned int digitLen(unsigned int x) {
   static double log10 = log(10.0);
-  return (unsigned int)floor(log((double)x) / log10);
+  return static_cast<unsigned int>(floor(log(static_cast<double>(x)) / log10));
 }
 
 template <typename C>
@@ -468,7 +468,7 @@ std::string saveData(void* d, size_t sz) {
   if (!f.is_open()) {
     throw std::runtime_error("Failed to open '" + rn + "' for writing.");
   }
-  f.write((const char*)d, sz);
+  f.write(reinterpret_cast<const char*>(d), sz);
   f.close();
   return rn;
 }

@@ -290,14 +290,14 @@ public:
     llvm::Value* d1 = structOffset(c->builder(), a1, 1);
 
     llvm::Value* aclen = c->builder()->CreateAdd(c0, c1);
-    llvm::Value* mlen  = c->builder()->CreateAdd(cvalue((long)sizeof(long)), c->builder()->CreateMul(aclen, cvalue((long)sizeOf(aty->type()))));
+    llvm::Value* mlen  = c->builder()->CreateAdd(cvalue(static_cast<long>(sizeof(long))), c->builder()->CreateMul(aclen, cvalue(static_cast<long>(sizeOf(aty->type())))));
 
     llvm::Value* cmdata = c->compileAllocStmt(mlen, toLLVM(tys[0]));
     c->builder()->CreateStore(aclen, structOffset(c->builder(), cmdata, 0));
 
     if (!isUnit(aty->type())) {
       // hack to acknowledge the fact that opaque pointers are stored as pointers within arrays
-      long elemSize = is<OpaquePtr>(aty->type()) ? sizeof(void*) : ((long)sizeOf(aty->type()));
+      long elemSize = is<OpaquePtr>(aty->type()) ? sizeof(void*) : static_cast<long>(sizeOf(aty->type()));
 
       llvm::Value* od = structOffset(c->builder(), cmdata, 1);
       c->builder()->CreateMemCpy(offset(c->builder(), od, 0),  d0, c->builder()->CreateMul(c0, cvalue(elemSize)), 8);
@@ -389,7 +389,7 @@ class saacopy : public op {
     llvm::Value* vard = structOffset(c->builder(), varr, 1); // get the var-length array's 'data' pointer
 
     llvm::Value* len  = c->compile(es[2]);
-    llvm::Value* lenb = c->builder()->CreateMul(len, cvalue((long)sizeOf(aty->type())));
+    llvm::Value* lenb = c->builder()->CreateMul(len, cvalue(static_cast<long>(sizeOf(aty->type()))));
 
     c->builder()->CreateMemCpy(farr, vard, lenb, 8);
     return cvalue(true);
@@ -516,7 +516,7 @@ public:
     }
 
     llvm::Value* aclen  = c->compile(es[0]);
-    llvm::Value* mlen   = c->builder()->CreateAdd(cvalue((long)sizeof(long)), c->builder()->CreateMul(aclen, cvalue((long)sizeOf(aty->type()))));
+    llvm::Value* mlen   = c->builder()->CreateAdd(cvalue(static_cast<long>(sizeof(long))), c->builder()->CreateMul(aclen, cvalue(static_cast<long>(sizeOf(aty->type())))));
     llvm::Value* cmdata = c->compileAllocStmt(mlen, toLLVM(rty));
     c->builder()->CreateStore(aclen, structOffset(c->builder(), cmdata, 0));
 
@@ -782,7 +782,7 @@ public:
       llvm::Value* tag  = c->builder()->CreateLoad(ptag, false);
 
       // compare the tag data to the head tag id
-      llvm::Value* htagv  = cvalue((int)vheadm.id);
+      llvm::Value* htagv  = cvalue(static_cast<int>(vheadm.id));
       llvm::Value* ishtag = c->builder()->CreateICmpEQ(tag, htagv);
 
       // get an offset to the payload data

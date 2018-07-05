@@ -138,13 +138,13 @@ template <typename T>
   T switchOf(const MState& s, const switchMState<T>& f) {
     switch (s.case_id()) {
     case LoadVars::type_case_id:
-      return f.with((const LoadVars*)&s);
+      return f.with(reinterpret_cast<const LoadVars*>(&s));
     case SwitchVal::type_case_id:
-      return f.with((const SwitchVal*)&s);
+      return f.with(reinterpret_cast<const SwitchVal*>(&s));
     case SwitchVariant::type_case_id:
-      return f.with((const SwitchVariant*)&s);
+      return f.with(reinterpret_cast<const SwitchVariant*>(&s));
     case FinishExpr::type_case_id:
-      return f.with((const FinishExpr*)&s);
+      return f.with(reinterpret_cast<const FinishExpr*>(&s));
     default:
       throw std::runtime_error("Internal error, cannot switch on unknown match state");
     }

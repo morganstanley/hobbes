@@ -77,7 +77,7 @@ void registerEventHandler(int fd, const std::function<void(int)>& fn, bool) {
   memset(&evt, 0, sizeof(evt));
   evt.events   = EPOLLIN | EPOLLPRI | EPOLLERR;
   evt.data.fd  = fd;
-  evt.data.ptr = (void*)c;
+  evt.data.ptr = reinterpret_cast<void*>(c);
 
   if (epoll_ctl(epfd, EPOLL_CTL_ADD, fd, &evt) != 0) {
     delete c;
@@ -99,8 +99,8 @@ bool stepEventLoop() {
     int fds = epoll_wait(threadEPollFD(), evts, sizeof(evts)/sizeof(evts[0]), timeout);
     bool status = true;
     if (fds > 0) {
-      for (size_t fd = 0; fd < fds; ++fd) {
-        eventcbclosure* c = (eventcbclosure*)evts[fd].data.ptr;
+      for (int fd = 0; fd < fds; ++fd) {
+        eventcbclosure* c = reinterpret_cast<eventcbclosure*>(evts[fd].data.ptr);
         (c->fn)(c->fd);
         resetMemoryPool();
       }
@@ -150,7 +150,7 @@ void addTimer(timerfunc f, int millisecInterval) {
 
 void runEventLoop(int microsecondDuration) {
   long t  = hobbes::time();
-  long dt = ((long)microsecondDuration) * 1000L;
+  long dt = static_cast<long>(microsecondDuration) * 1000L;
   long tf = t + dt;
 
   do {
@@ -161,8 +161,8 @@ void runEventLoop(int microsecondDuration) {
     struct epoll_event evts[64];
     int fds = epoll_wait(threadEPollFD(), evts, sizeof(evts)/sizeof(evts[0]), timeout);
     if (fds > 0) {
-      for (size_t fd = 0; fd < fds; ++fd) {
-        eventcbclosure* c = (eventcbclosure*)evts[fd].data.ptr;
+      for (int fd = 0; fd < fds; ++fd) {
+        eventcbclosure* c = reinterpret_cast<eventcbclosure*>(evts[fd].data.ptr);
         (c->fn)(c->fd);
         resetMemoryPool();
       }

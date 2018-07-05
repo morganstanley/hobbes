@@ -104,7 +104,7 @@ inline llvm::PointerType* ptrType(llvm::Type* ty) {
 inline llvm::ArrayType* arrayType(llvm::Type* ty, size_t sz) {
   // we can be a little dishonest in describing the type of arrays of unit, since LLVM barfs on arrays of unit
   // and we should never need to look at the "data" in an array of unit values _anyway_!
-  return llvm::ArrayType::get(ty->isVoidTy() ? boolType() : ty, (uint64_t)sz);
+  return llvm::ArrayType::get(ty->isVoidTy() ? boolType() : ty, static_cast<uint64_t>(sz));
 }
 
 inline llvm::StructType* packedRecordType(const Types& tys) {
@@ -199,31 +199,31 @@ inline llvm::Constant* cvalue(double x) {
 
 // constant int utilities (different than constants to LLVM!)
 inline llvm::ConstantInt* civalue(bool x) {
-  return llvm::ConstantInt::get(llvm::IntegerType::get(context(), 1), (uint64_t)(x ? 1 : 0));
+  return llvm::ConstantInt::get(llvm::IntegerType::get(context(), 1), static_cast<uint64_t>(x ? 1 : 0));
 }
 
 inline llvm::ConstantInt* civalue(char x) {
-  return llvm::ConstantInt::get(llvm::IntegerType::get(context(), 8), (uint64_t)x);
+  return llvm::ConstantInt::get(llvm::IntegerType::get(context(), 8), static_cast<uint64_t>(x));
 }
 
 inline llvm::ConstantInt* civalue(unsigned char x) {
-  return llvm::ConstantInt::get(llvm::IntegerType::get(context(), 8), (uint64_t)x);
+  return llvm::ConstantInt::get(llvm::IntegerType::get(context(), 8), static_cast<uint64_t>(x));
 }
 
 inline llvm::ConstantInt* civalue(short x) {
-  return llvm::ConstantInt::get(llvm::IntegerType::get(context(), 16), (uint64_t)x);
+  return llvm::ConstantInt::get(llvm::IntegerType::get(context(), 16), static_cast<uint64_t>(x));
 }
 
 inline llvm::ConstantInt* civalue(int x) {
-  return llvm::ConstantInt::get(llvm::IntegerType::get(context(), 32), (uint64_t)x);
+  return llvm::ConstantInt::get(llvm::IntegerType::get(context(), 32), static_cast<uint64_t>(x));
 }
 
 inline llvm::ConstantInt* civalue(unsigned int x) {
-  return llvm::ConstantInt::get(llvm::IntegerType::get(context(), 32), (uint64_t)x);
+  return llvm::ConstantInt::get(llvm::IntegerType::get(context(), 32), static_cast<uint64_t>(x));
 }
 
 inline llvm::ConstantInt* civalue(long x) {
-  return llvm::ConstantInt::get(llvm::IntegerType::get(context(), 64), (uint64_t)x);
+  return llvm::ConstantInt::get(llvm::IntegerType::get(context(), 64), static_cast<uint64_t>(x));
 }
 
 // an intermediate representation for records
@@ -329,10 +329,10 @@ inline llvm::Value* tryMkConstVarArray(llvm::IRBuilder<>* b, llvm::Module* m, ll
   }
 }
 
-inline llvm::Constant* padding(unsigned int len) {
+inline llvm::Constant* padding(size_t len) {
   Constants pad;
-  for (unsigned int i = 0; i < len; ++i) {
-    pad.push_back(cvalue((unsigned char)0));
+  for (size_t i = 0; i < len; ++i) {
+    pad.push_back(cvalue(scast<uint8_t>(0)));
   }
   return llvm::ConstantArray::get(arrayType(byteType(), len), pad);
 }
@@ -346,7 +346,7 @@ inline Constants mergePadding(const Constants& cs, const Record::Members& ms) {
       size_t plen = 0;
       if (FixedArray* fa = is<FixedArray>(m->type)) {
         long asz = fa->requireLength();
-        plen = asz < 0 ? 0 : ((size_t)asz);
+        plen = asz < 0 ? 0 : static_cast<size_t>(asz);
       } else {
         throw std::runtime_error("Cannot derive padding for pad field with non-padding type (internal error)");
       }

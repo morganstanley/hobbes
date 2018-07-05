@@ -23,7 +23,7 @@ template < typename Char = char, typename Traits = std::char_traits<Char> >
 
     int_type overflow(int_type c) {
       if (c != Traits::eof()) {
-        d->push_back((uint8_t)Traits::to_char_type(c));
+        d->push_back(static_cast<uint8_t>(Traits::to_char_type(c)));
       }
       return Traits::not_eof(c);
     }
@@ -51,7 +51,8 @@ template < typename Char = char, typename Traits = std::char_traits<Char> >
       if (d.size() == 0) {
         BaseT::setg(0,0,0);
       } else {
-        BaseT::setg((Char*)&d[0], (Char*)&d[0], (Char*)(&d[0] + d.size()));
+        Char* b = const_cast<Char*>(reinterpret_cast<const Char*>(&d[0]));
+        BaseT::setg(b, b, const_cast<Char*>(reinterpret_cast<const Char*>(&d[0] + d.size())));
       }
     }
   };

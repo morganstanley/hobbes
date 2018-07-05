@@ -131,7 +131,7 @@ private:
 };
 
 void evaluatePartialHTTPRequest(int c, void* ud) {
-  PartialHTTPRequestState* s = (PartialHTTPRequestState*)ud;
+  PartialHTTPRequestState* s = reinterpret_cast<PartialHTTPRequestState*>(ud);
 
   char buf[1024];
   ssize_t m = 0;
@@ -159,9 +159,9 @@ int installHTTPD(int port, HTTPRequestHandler f, void* ud) {
     [](int s, void* d) {
       int c = accept(s, 0, 0);
       if (c != -1) {
-        ReqCB* rcb = (ReqCB*)d;
+        ReqCB* rcb = reinterpret_cast<ReqCB*>(d);
         fcntl(c, F_SETFL, fcntl(c, F_GETFL) | O_NONBLOCK);
-        registerEventHandler(c, &evaluatePartialHTTPRequest, (void*)(new PartialHTTPRequestState(c, rcb->first, rcb->second)));
+        registerEventHandler(c, &evaluatePartialHTTPRequest, reinterpret_cast<void*>(new PartialHTTPRequestState(c, rcb->first, rcb->second)));
       }
     },
     rcb

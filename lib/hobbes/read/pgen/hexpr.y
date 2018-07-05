@@ -99,7 +99,7 @@ Expr* pickNestedExp(Exprs* exprs, const LexicalAnnotation& la) {
     return (*exprs)[0]->clone();
   } else {
     MkRecord::FieldDefs fds;
-    for (int i = 0; i < exprs->size(); ++i) {
+    for (size_t i = 0; i < exprs->size(); ++i) {
       fds.push_back(MkRecord::FieldDef(".f" + str::from(i), (*exprs)[i]));
     }
     return new MkRecord(fds, la);
@@ -111,7 +111,7 @@ Pattern* pickNestedPat(Patterns* pats, const LexicalAnnotation& la) {
     return new MatchLiteral(PrimitivePtr(new Unit(la)), la);
   } else {
     MatchRecord::Fields fds;
-    for (int i = 0; i < pats->size(); ++i) {
+    for (size_t i = 0; i < pats->size(); ++i) {
       fds.push_back(MatchRecord::Field(".f" + str::from(i), (*pats)[i]));
     }
     return new MatchRecord(fds, la);

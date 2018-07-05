@@ -96,12 +96,12 @@ struct SystemWatch {
       fd,
       [](int fd, void* self) {
         char buf[sizeof(inotify_event) + NAME_MAX + 1];
-        inotify_event* event = (inotify_event*)buf;
+        inotify_event* event = reinterpret_cast<inotify_event*>(buf);
         read(fd, event, sizeof(inotify_event));
         if (event->len > 0 ) {
           read(fd, event->name, event->len);
         }
-        sweepFileWatch(((SystemWatch*)self)->fileWatches[event->wd]);
+        sweepFileWatch(reinterpret_cast<SystemWatch*>(self)->fileWatches[event->wd]);
       },
       this,
       false
@@ -122,7 +122,7 @@ struct SystemWatch {
       throw std::runtime_error("failed to watch file: " + path + " (" + strerror(errno) + ")");
     }
 
-    if (this->fileWatches.size() <= wf) {
+    if (this->fileWatches.size() <= static_cast<size_t>(wf)) {
       this->fileWatches.resize(wf + 1);
     }
 
@@ -209,7 +209,7 @@ const array<FileWatchData>* fileWatchData() {
       const ByteRangeWatch& brw = brwp.second;
 
       od->data[j].first         = brwp.first;
-      od->data[j].second.first  = (uint8_t)brw.offType;
+      od->data[j].second.first  = static_cast<uint8_t>(brw.offType);
       od->data[j].second.second = brw.oldValue;
 
       ++j;
@@ -221,15 +221,15 @@ const array<FileWatchData>* fileWatchData() {
 
 // add a byte-range signal for a file
 void addFileSignal(long file, long off, long sz, uint8_t offType, ChangeSignal f) {
-  FileWatch& fw = watcher()->fileWatch((reader*)file);
+  FileWatch& fw = watcher()->fileWatch(reinterpret_cast<reader*>(file));
 
   ByteRangeWatch& brw = fw.byteRangeWatches[off];
 
-  brw.offType = (BROffsetType)offType;
+  brw.offType = static_cast<BROffsetType>(offType);
   if (brw.offType == BROffsetType::DArray) {
-    brw.mappedm = (const volatile size_t*)((reader*)file)->unsafeLoadDArray(off-sizeof(size_t));
+    brw.mappedm = reinterpret_cast<const volatile size_t*>(reinterpret_cast<reader*>(file)->unsafeLoadDArray(off-sizeof(size_t)));
   } else {
-    brw.mappedm = (const volatile size_t*)((reader*)file)->unsafeLoad(off, sz);
+    brw.mappedm = reinterpret_cast<const volatile size_t*>(reinterpret_cast<reader*>(file)->unsafeLoad(off, sz));
   }
   brw.fs.insert(f);
   brw.oldValue = *brw.mappedm;
@@ -238,7 +238,7 @@ void addFileSignal(long file, long off, long sz, uint8_t offType, ChangeSignal f
 void addFileSOSignal(long file, unsigned int so, ChangeSignal f) {
   uint64_t offset;
   size_t   sz;
-  ((reader*)file)->storedOffsetDetails(so, &offset, &sz);
+  reinterpret_cast<reader*>(file)->storedOffsetDetails(so, &offset, &sz);
   addFileSignal(file, offset, sz, BROffsetType::Binding, f);
 }
 
@@ -261,12 +261,12 @@ struct addFileSignalF : public op {
 
     if (isDArr) {
       sz  = sizeof(long);
-      off = c->builder()->CreateAdd(off, cvalue((long)sizeof(long)));
+      off = c->builder()->CreateAdd(off, cvalue(static_cast<long>(sizeof(long))));
     } else {
       sz = storageSizeOf(refty);
     }
 
-    return fncall(c->builder(), f, list<llvm::Value*>(db, off, cvalue((long)sz), cvalue((uint8_t)(isDArr ? BROffsetType::DArray : BROffsetType::Value)), sfn));
+    return fncall(c->builder(), f, list<llvm::Value*>(db, off, cvalue(static_cast<long>(sz)), cvalue(static_cast<uint8_t>(isDArr ? BROffsetType::DArray : BROffsetType::Value)), sfn));
   }
 
   PolyTypePtr type(typedb&) const {
@@ -397,7 +397,7 @@ bool AddDBFieldSignal::satisfiable(const TEnvPtr& tenv, const HasField& hf, Defi
 
   if (dir != HasField::Write) return false;
 
-  if (const TString* fn = is<TString>(fname)) {
+  if (is<TString>(fname)) {
     if (hf.recordExpr) {
       return !isMonoSingular(fty) || satisfied(tenv, hf, ds);
     } else {

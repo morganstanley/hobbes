@@ -176,7 +176,7 @@ TEST(Matching, Monadic) {
 
 TEST(Matching, matchFromStringToBoolIsBool) {
   bool r = true;
-  EXPECT_EQ(1, *(uint8_t*)(&r));
+  EXPECT_EQ(1, *reinterpret_cast<uint8_t*>(&r));
 
   r = c().compileFn<bool()>(
     "match \"1\" \"2\" \"3\" \"4\" with\n"
@@ -186,7 +186,7 @@ TEST(Matching, matchFromStringToBoolIsBool) {
     "| \"1\" _ _ _             -> true\n"
     "| _ _ _ _                 -> false"
   )();
-  EXPECT_EQ(1, *(uint8_t*)(&r));
+  EXPECT_EQ(1, *reinterpret_cast<uint8_t*>(&r));
   EXPECT_TRUE(r);  
 }
 
@@ -199,7 +199,7 @@ TEST(Matching, matchFromIntToBoolIsBool) {
     "| 1 _ _ _ -> true\n"
     "| _ _ _ _ -> false"
   );
-  EXPECT_TRUE(1 == *(uint8_t*)(&r));
+  EXPECT_TRUE(1 == *reinterpret_cast<uint8_t*>(&r));
   EXPECT_TRUE(r);  
 }
 
@@ -212,7 +212,7 @@ TEST(Matching, matchFromStringToIntIsCorrect) {
     "| \"1\" _ _ _             -> 9\n"
     "| _ _ _ _                 -> 0"
   )();
-  EXPECT_EQ(86, *(uint32_t*)(&r));
+  EXPECT_EQ(uint32_t(86), *reinterpret_cast<uint32_t*>(&r));
   EXPECT_TRUE(r);  
 }
 
@@ -243,7 +243,7 @@ TEST(Matching, largeRegexDFAFinishesReasonablyQuickly) {
     "| _ -> ()\n"
   )();
 
-  EXPECT_TRUE(tick()-t0 < 1UL*60*60*1000*1000*1000);
+  EXPECT_TRUE(size_t(tick()-t0) < 1UL*60*60*1000*1000*1000);
 }
 
 TEST(Matching, noRaceInterpMatch) {
@@ -260,7 +260,7 @@ TEST(Matching, noRaceInterpMatch) {
   for (size_t p = 0; p < 10; ++p) {
     ps.push_back(new std::thread(([&]() {
       auto t0 = tick();
-      while (wrongMatches == 0 && tick()-t0 < 1UL*1000*1000*1000) {
+      while (wrongMatches == 0 && size_t(tick()-t0) < 1UL*1000*1000*1000) {
         if (f("foo") != 0) {
           ++wrongMatches;
         }
@@ -272,7 +272,7 @@ TEST(Matching, noRaceInterpMatch) {
     })));
   }
   for (auto p : ps) { p->join(); delete p; }
-  EXPECT_EQ(wrongMatches, 0);
+  EXPECT_EQ(wrongMatches, size_t(0));
   c().buildInterpretedMatches(false);
 }
 

@@ -19,7 +19,7 @@ TEST(Definitions, Basic) {
   EXPECT_TRUE(c().compileFn<bool()>("c000.abc == 123")());
 
   EXPECT_EQ(c().compileFn<int()>("defInt")(), 42);
-  EXPECT_EQ(c().compileFn<size_t()>("length(defStrArray)")(), 3);
+  EXPECT_EQ(c().compileFn<size_t()>("length(defStrArray)")(), size_t(3));
   EXPECT_EQ(c().compileFn<int()>("defArray[1]")(), 42);
   EXPECT_TRUE(c().compileFn<bool()>("defStrArray[1] == \"chicken\"")());
   EXPECT_TRUE(c().compileFn<bool()>("defRecord.z >= 41.9999 and defRecord.z <= 42.0001")());

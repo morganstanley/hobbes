@@ -11,8 +11,8 @@
 namespace hobbes {
 
 #define PRIM_CODEC(T) \
-  inline void encode(T x, std::ostream& out) { out.write((const char*)&x, sizeof(x)); } \
-  inline void decode(T* x, std::istream& in) { in.read((char*)x, sizeof(*x)); }
+  inline void encode(T x, std::ostream& out) { out.write(reinterpret_cast<const char*>(&x), sizeof(x)); } \
+  inline void decode(T* x, std::istream& in) { in.read(reinterpret_cast<char*>(x), sizeof(*x)); }
 
 PRIM_CODEC(bool);
 PRIM_CODEC(unsigned char);
@@ -25,7 +25,7 @@ PRIM_CODEC(float);
 PRIM_CODEC(double);
 
 inline void encode(const std::string& x, std::ostream& out) {
-  encode((size_t)x.size(), out);
+  encode(static_cast<size_t>(x.size()), out);
   out.write(x.c_str(), x.size());
 }
 
@@ -39,9 +39,9 @@ inline void decode(std::string* x, std::istream& in) {
 
 template <typename T>
   inline void encode(const std::vector<T>& xs, std::ostream& out) {
-    encode((size_t)xs.size(), out);
-    for (typename std::vector<T>::const_iterator x = xs.begin(); x != xs.end(); ++x) {
-      encode(*x, out);
+    encode(static_cast<size_t>(xs.size()), out);
+    for (auto x : xs) {
+      encode(x, out);
     }
   }
 
@@ -72,8 +72,8 @@ template <typename U, typename V>
 template <typename K, typename V>
   inline void encode(const std::map<K, V>& m, std::ostream& out) {
     encode(m.size(), out);
-    for (typename std::map<K, V>::const_iterator p = m.begin(); p != m.end(); ++p) {
-      encode(*p, out);
+    for (auto p : m) {
+      encode(p, out);
     }
   }
 
@@ -111,7 +111,7 @@ inline void fdread(int fd, char* x, size_t len) {
 }
 
 inline void fdread(int fd, unsigned char* x, size_t len) {
-  fdread(fd, (char*)x, len);
+  fdread(fd, reinterpret_cast<char*>(x), len);
 }
 
 inline void fdread(int fd, char* x) {
@@ -123,15 +123,15 @@ inline void fdread(int fd, uint8_t* x) {
 }
 
 inline void fdread(int fd, int* x) {
-  fdread(fd, (char*)x, sizeof(int));
+  fdread(fd, reinterpret_cast<char*>(x), sizeof(int));
 }
 
 inline void fdread(int fd, uint32_t* x) {
-  fdread(fd, (char*)x, sizeof(uint32_t));
+  fdread(fd, reinterpret_cast<char*>(x), sizeof(uint32_t));
 }
 
 inline void fdread(int fd, size_t* x) {
-  fdread(fd, (char*)x, sizeof(size_t));
+  fdread(fd, reinterpret_cast<char*>(x), sizeof(size_t));
 }
 
 inline void fdread(int fd, std::string* x) {
@@ -161,27 +161,27 @@ inline void fdwrite(int fd, const char* x, size_t len) {
 }
 
 inline void fdwrite(int fd, const unsigned char* x, size_t len) {
-  fdwrite(fd, (const char*)x, len);
+  fdwrite(fd, reinterpret_cast<const char*>(x), len);
 }
 
 inline void fdwrite(int fd, char x) {
-  fdwrite(fd, (char*)&x, sizeof(char));
+  fdwrite(fd, reinterpret_cast<char*>(&x), sizeof(char));
 }
 
 inline void fdwrite(int fd, uint8_t x) {
-  fdwrite(fd, (char*)&x, sizeof(uint8_t));
+  fdwrite(fd, reinterpret_cast<char*>(&x), sizeof(uint8_t));
 }
 
 inline void fdwrite(int fd, int x) {
-  fdwrite(fd, (char*)&x, sizeof(int));
+  fdwrite(fd, reinterpret_cast<char*>(&x), sizeof(int));
 }
 
 inline void fdwrite(int fd, uint32_t x) {
-  fdwrite(fd, (char*)&x, sizeof(uint32_t));
+  fdwrite(fd, reinterpret_cast<char*>(&x), sizeof(uint32_t));
 }
 
 inline void fdwrite(int fd, size_t x) {
-  fdwrite(fd, (char*)&x, sizeof(size_t));
+  fdwrite(fd, reinterpret_cast<char*>(&x), sizeof(size_t));
 }
 
 inline void fdwrite(int fd, const std::string& x) {

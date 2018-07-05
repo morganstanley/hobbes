@@ -82,8 +82,8 @@ template <typename K, typename V, typename KMap>
 
     template <typename KIter>
       V* lookup(KIter begin, KIter end) const {
-        node_t* n = (node_t*)findNode(begin, end);
-        return n ? get<V>(n->value) : 0;
+        const node_t* n = findNode(begin, end);
+        return n ? const_cast<V*>(get<V>(n->value)) : 0;
       }
 
     void insert(const std::vector<K>& k, const V& v) {
@@ -110,14 +110,14 @@ template <typename K, typename V, typename KMap>
     point_t rootPoint() const { return this->root; }
 
     point_t moveTo(const K& k, point_t base) const {
-      const node_t* n = (node_t*)base;
+      const node_t* n = reinterpret_cast<node_t*>(base);
       typename node_t::SubkeyMap::const_iterator c = n->children.find(k);
       return (c == n->children.end()) ? 0 : c->second;
     }
 
     typedef std::vector<K> KeySeq;
     void keysAt(KeySeq* ks, point_t base) const {
-      const node_t* n = (node_t*)base;
+      const node_t* n = reinterpret_cast<node_t*>(base);
 
       for (typename node_t::SubkeyMap::const_iterator c = n->children.begin(); c != n->children.end(); ++c) {
         ks->push_back(c->first);
@@ -133,7 +133,7 @@ template <typename K, typename V, typename KMap>
     typedef std::pair<K, point_t> KeyPoint;
     typedef std::vector<KeyPoint> KeyPointSeq;
     void keyPointsAt(KeyPointSeq* kps, point_t base) const {
-      const node_t* n = (node_t*)base;
+      const node_t* n = reinterpret_cast<node_t*>(base);
 
       for (typename node_t::SubkeyMap::const_iterator c = n->children.begin(); c != n->children.end(); ++c) {
         kps->push_back(KeyPoint(c->first, c->second));
@@ -141,7 +141,7 @@ template <typename K, typename V, typename KMap>
     }
 
     V* valueAt(point_t base) const {
-      return get<V>(((node_t*)base)->value);
+      return get<V>(reinterpret_cast<node_t*>(base)->value);
     }
   };
 

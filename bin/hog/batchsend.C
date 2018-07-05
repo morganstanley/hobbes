@@ -242,7 +242,7 @@ struct BatchSendSession {
   }
 
   void allocFile() {
-    this->buffer = (gzFile_s*)gzopen(this->tempfilename.c_str(), ("wb" + str::from(this->clevel)).c_str());
+    this->buffer = reinterpret_cast<gzFile_s*>(gzopen(this->tempfilename.c_str(), ("wb" + str::from(this->clevel)).c_str()));
     this->sz     = 0;
   }
 
@@ -276,25 +276,25 @@ void write(BatchSendSession* s, const uint8_t* d, size_t sz) {
 
 void write(BatchSendSession* s, const std::string& x) {
   size_t n = x.size();
-  write(s, (const uint8_t*)&n, sizeof(n));
-  write(s, (const uint8_t*)x.data(), n);
+  write(s, reinterpret_cast<const uint8_t*>(&n), sizeof(n));
+  write(s, reinterpret_cast<const uint8_t*>(x.data()), n);
 }
 
 void write(BatchSendSession* s, const std::vector<uint8_t>& x) {
   size_t n = x.size();
-  write(s, (const uint8_t*)&n, sizeof(n));
+  write(s, reinterpret_cast<const uint8_t*>(&n), sizeof(n));
   write(s, &x[0], n);
 }
 
 template <typename T>
   void write(BatchSendSession* s, T x) {
-    write(s, (const uint8_t*)&x, sizeof(x));
+    write(s, reinterpret_cast<const uint8_t*>(&x), sizeof(x));
   }
 
 static void initNetSession(BatchSendSession* s, const std::string& groupName, const std::string& dir, storage::PipeQOS qos, storage::CommitMethod cm, const storage::statements& stmts) {
   // write init message data to our current batch send file
-  write(s, (int)qos);
-  write(s, (int)cm);
+  write(s, static_cast<int>(qos));
+  write(s, static_cast<int>(cm));
 
   write(s, stmts.size());
   for (const auto& stmt : stmts) {

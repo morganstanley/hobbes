@@ -319,8 +319,8 @@ jitcc::bytes jitcc::machineCodeForExpr(const ExprPtr& e) {
   std::string     fname = ".asm" + freshName();
   LenWatch        lenwatch(fname);
   llvm::Function* af = compileFunction(fname, str::seq(), MonoTypes(), e);
-  void*           f  = getMachineCode(af, (llvm::JITEventListener*)&lenwatch);
-  bytes           r  = bytes((uint8_t*)f, ((uint8_t*)f) + lenwatch.size());
+  void*           f  = getMachineCode(af, reinterpret_cast<llvm::JITEventListener*>(&lenwatch));
+  bytes           r  = bytes(reinterpret_cast<uint8_t*>(f), reinterpret_cast<uint8_t*>(f) + lenwatch.size());
 
   releaseMachineCode(f);
   return r;
@@ -367,7 +367,7 @@ void jitcc::bindGlobal(const std::string& vn, const MonoTypePtr& ty, void* x) {
   if (is<Func>(ty)) {
     g.ref.fn =
       llvm::Function::Create(
-        (llvm::FunctionType*)toLLVM(ty),
+        reinterpret_cast<llvm::FunctionType*>(toLLVM(ty)),
         llvm::Function::ExternalLinkage,
         vn,
         this->module()
@@ -378,7 +378,7 @@ void jitcc::bindGlobal(const std::string& vn, const MonoTypePtr& ty, void* x) {
 #endif
   } else {
     if (hasPointerRep(ty) || isFileType(ty)) {
-      void** p = (void**)this->globalData.malloc(sizeof(void*));
+      void** p = reinterpret_cast<void**>(this->globalData.malloc(sizeof(void*)));
       *p = x;
       g.value = p;
     }
@@ -482,9 +482,9 @@ void jitcc::defineGlobal(const std::string& vn, const ExprPtr& ue) {
 
   if (isUnit(uety)) {
     // no storage necessary for units
-    Thunk f = (Thunk)reifyMachineCodeForFn(uety, list<std::string>(), list<MonoTypePtr>(), ue);
+    Thunk f = reinterpret_cast<Thunk>(reifyMachineCodeForFn(uety, list<std::string>(), list<MonoTypePtr>(), ue));
     f();
-    releaseMachineCode((void*)f);
+    releaseMachineCode(reinterpret_cast<void*>(f));
     resetMemoryPool();
   } else if (llvm::Constant* c = toLLVMConstant(this, vname, ue)) {
     // make a global constant ...
@@ -502,7 +502,7 @@ void jitcc::defineGlobal(const std::string& vn, const ExprPtr& ue) {
   } else {
     // make some space for this global data ...
     if (isLargeType(uety)) {
-      void** pdata = (void**)this->globalData.malloc(sizeof(void*));
+      void** pdata = reinterpret_cast<void**>(this->globalData.malloc(sizeof(void*)));
       *pdata = this->globalData.malloc(sizeOf(uety));
       bindGlobal(vname, uety, pdata);
     } else {
@@ -523,7 +523,7 @@ void jitcc::defineGlobal(const std::string& vn, const ExprPtr& ue) {
 
     // compile and run this function, it should then perform the global variable assignment
     // (make sure that any allocation happens in the global context iff we need it)
-    Thunk f = (Thunk)getMachineCode(initfn);
+    Thunk f = reinterpret_cast<Thunk>(getMachineCode(initfn));
 
     if (hasPointerRep(uety)) {
       size_t oldregion = pushGlobalRegion();
@@ -535,16 +535,16 @@ void jitcc::defineGlobal(const std::string& vn, const ExprPtr& ue) {
     }
 
     // clean up
-    releaseMachineCode((void*)f);
+    releaseMachineCode(reinterpret_cast<void*>(f));
     this->builder()->SetInsertPoint(ibb);
     initfn->eraseFromParent();
   }
 }
 
 size_t jitcc::pushGlobalRegion() {
-  std::string n = "global region @ " + str::from((void*)this);
+  std::string n = "global region @ " + str::from(reinterpret_cast<void*>(this));
   size_t grid = findThreadRegion(n);
-  if (grid == -1) {
+  if (grid == static_cast<size_t>(-1)) {
     grid = addThreadRegion(n, &this->globalData);
   }
   return setThreadRegion(grid);
@@ -763,7 +763,7 @@ llvm::Value* jitcc::compileAllocStmt(llvm::Value* sz, llvm::Type* mty, bool zero
 }
 
 llvm::Value* jitcc::compileAllocStmt(size_t sz, llvm::Type* mty, bool zeroMem) {
-  return compileAllocStmt(cvalue((long)sz), mty, zeroMem);
+  return compileAllocStmt(cvalue(static_cast<long>(sz)), mty, zeroMem);
 }
 
 void jitcc::releaseMachineCode(void*) {
@@ -804,7 +804,7 @@ Values compileArgs(jitcc* c, const Exprs& es) {
       }
     }
 
-    if (Array* a = is<Array>(et)) {
+    if (is<Array>(et)) {
       // variable-length arrays need to be cast to a single type to pass LLVM's check
       r.push_back(c->builder()->CreateBitCast(ev, toLLVM(et)));
     } else if (isUnit(et)) {

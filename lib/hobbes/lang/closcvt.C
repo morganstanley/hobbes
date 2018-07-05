@@ -7,7 +7,7 @@ namespace hobbes {
 
 ExprPtr makeTuple(const Exprs& exprs, const LexicalAnnotation& la) {
   MkRecord::FieldDefs fds;
-  for (int i = 0; i < exprs.size(); ++i) {
+  for (size_t i = 0; i < exprs.size(); ++i) {
     fds.push_back(MkRecord::FieldDef(".f" + str::from(i), exprs[i]));
   }
   return ExprPtr(new MkRecord(fds, la));

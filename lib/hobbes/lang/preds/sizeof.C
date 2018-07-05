@@ -47,7 +47,7 @@ struct SizeOfPUnqualify : public switchExprTyFn {
 
   ExprPtr with(const Var* vn) const {
     if (vn->value() == REF_SIZEOF) {
-      return constant((size_t)sizeOf(this->constraint->arguments()[0]), vn->la());
+      return constant(static_cast<size_t>(sizeOf(this->constraint->arguments()[0])), vn->la());
     } else {
       return wrapWithTy(vn->type(), new Var(vn->value(), vn->la()));
     }

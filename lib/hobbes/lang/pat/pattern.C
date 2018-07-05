@@ -282,7 +282,7 @@ bool operator==(const PatternRow& pr0, const PatternRow& pr1) {
 
 size_t hash(const PatternRow& pr) {
   size_t r = 0;
-  hashAppend(r, (void*)pr.result.get());
+  hashAppend(r, reinterpret_cast<void*>(pr.result.get()));
   hashAppend(r, pr.patterns.size());
   return r;
 }

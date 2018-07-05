@@ -81,7 +81,7 @@ static MonoTypePtr decodeBindingByVersion(uint16_t version, const binding& b) {
 
 // for storage, we need to make sure that size is computed slightly differently than for memory
 size_t storageSizeOf(const MonoTypePtr& mty) {
-  if (const Recursive* rty = is<Recursive>(mty)) {
+  if (is<Recursive>(mty)) {
     return sizeOf(unroll(mty));
   } else {
     return sizeOf(mty);
@@ -148,12 +148,12 @@ uint64_t reader::unsafeLookupOffset(const std::string& vn, const MonoTypePtr& ty
   }
 }
 
-uint64_t reader::unsafeOffsetOf(const MonoTypePtr& ty, void* p) const {
+uint64_t reader::unsafeOffsetOf(const MonoTypePtr& ty, const void* p) const {
   return unsafeOffsetOfVal(isDArray(ty), p);
 }
 
-uint64_t reader::unsafeOffsetOfVal(bool isDArr, void* p) const {
-  fallocs::const_iterator fa = gleb(this->fdata->allocs, (char*)p);
+uint64_t reader::unsafeOffsetOfVal(bool isDArr, const void* p) const {
+  fallocs::const_iterator fa = gleb(this->fdata->allocs, crcast<char*>(p));
   if (fa == this->fdata->allocs.end()) {
     throw std::runtime_error("No file offset can be determined for unmapped memory");
   } else {
@@ -162,7 +162,7 @@ uint64_t reader::unsafeOffsetOfVal(bool isDArr, void* p) const {
       throw std::runtime_error("Internal error, inconsistent file mapping state");
     }
 
-    return pageOffset(this->fdata, fm->second.base_page) + (((char*)p) - fm->second.base) - (isDArr ? sizeof(long) : 0);
+    return pageOffset(this->fdata, fm->second.base_page) + (reinterpret_cast<const char*>(p) - fm->second.base) - (isDArr ? sizeof(long) : 0);
   }
 }
 
@@ -199,22 +199,22 @@ void* reader::unsafeLoad(uint64_t pos, size_t datasz) const {
 }
 
 uint64_t reader::unsafeDArrayCapacity(uint64_t pos) const {
-  uint64_t* cap    = (uint64_t*)mapFileData(this->fdata, pos, sizeof(uint64_t));
+  uint64_t* cap    = reinterpret_cast<uint64_t*>(mapFileData(this->fdata, pos, sizeof(uint64_t)));
   uint64_t  result = *cap;
   unmapFileData(this->fdata, cap, sizeof(uint64_t));
   return result;
 }
 void* reader::unsafeLoadDArray(uint64_t pos) const {
   // if we're loading a darray, we actually have to read the data size first to know how much to map
-  uint64_t* cap    = (uint64_t*)mapFileData(this->fdata, pos, sizeof(uint64_t));
-  uint8_t*  result = ((uint8_t*)mapFileData(this->fdata, pos+sizeof(uint64_t), *cap));
+  uint64_t* cap    = reinterpret_cast<uint64_t*>(mapFileData(this->fdata, pos, sizeof(uint64_t)));
+  uint8_t*  result = reinterpret_cast<uint8_t*>(mapFileData(this->fdata, pos+sizeof(uint64_t), *cap));
   unmapFileData(this->fdata, cap, sizeof(uint64_t));
   return result;
 }
 
 void* reader::unsafeLoadArray(uint64_t pos, size_t sz) const {
-  uint64_t* len    = (uint64_t*)mapFileData(this->fdata, pos, sizeof(uint64_t));
-  uint8_t*  result = ((uint8_t*)mapFileData(this->fdata, pos, sizeof(uint64_t) + sz * *len));
+  uint64_t* len    = reinterpret_cast<uint64_t*>(mapFileData(this->fdata, pos, sizeof(uint64_t)));
+  uint8_t*  result = reinterpret_cast<uint8_t*>(mapFileData(this->fdata, pos, sizeof(uint64_t) + sz * *len));
   unmapFileData(this->fdata, len, sizeof(uint64_t));
   return result;
 }
@@ -244,12 +244,12 @@ void reader::unsafeUnload(void* p, size_t sz) {
 }
 
 void reader::unsafeUnloadDArray(void* p) {
-  unsigned char* pxd = (((unsigned char*)p) - sizeof(long));
-  unmapFileData(this->fdata, pxd, *((long*)pxd));
+  unsigned char* pxd = reinterpret_cast<unsigned char*>(p) - sizeof(long);
+  unmapFileData(this->fdata, pxd, *reinterpret_cast<long*>(pxd));
 }
 
 void reader::unsafeUnloadArray(void* p, size_t sz) {
-  unmapFileData(this->fdata, p, sizeof(uint64_t) + sz * *((uint64_t*)p));
+  unmapFileData(this->fdata, p, sizeof(uint64_t) + sz * *reinterpret_cast<uint64_t*>(p));
 }
 
 // change any file ref types to point to this reader because they must be out of this file (this is a bit of a hack)
@@ -266,7 +266,6 @@ void reader::showEnvironment(std::ostream& out) const {
   table.resize(3);
 
   for (const auto& b : this->sbindings) {
-    static const size_t maxTypeLen = 100;
     std::string tn = hobbes::show(b.second.type);
     if (tn.size() > 100) { tn = tn.substr(0, 100) + "..."; }
 
@@ -283,10 +282,10 @@ void reader::showMappings(std::ostream& out, size_t pageRows) const {
   static const size_t bytesToShow = std::min<size_t>(bytesPerRow * pageRows, this->fdata->page_size);
 
   for (const auto& m : this->fdata->mappings) {
-    out << "map from page " << m.first << " for " << m.second.pages << " page(s) at address " << (void*)m.second.base << std::endl;
+    out << "map from page " << m.first << " for " << m.second.pages << " page(s) at address " << reinterpret_cast<void*>(m.second.base) << std::endl;
 
     for (size_t i = 0; i < bytesToShow; ++i) {
-      out << str::hex(*((unsigned char*)m.second.base + i)) << " ";
+      out << str::hex(*(reinterpret_cast<unsigned char*>(m.second.base) + i)) << " ";
       if (((i+1) % bytesPerRow) == 0) {
         out << std::endl;
       }
@@ -356,15 +355,15 @@ void* writer::unsafeDefine(const std::string& vn, const MonoTypePtr& ty) {
 void* writer::unsafeDefineDArray(const std::string& vn, const MonoTypePtr& ty, size_t len) {
   // allocate an extra bit of space in this array data to store the actual allocated length
   size_t datasz = sizeof(long) + sizeof(long) + (len * storageSizeOf(ty));
-  unsigned char* result = (unsigned char*)allocNamed(vn, darrayty(ty), datasz);
-  *((uint64_t*)result) = datasz;
-  return (void*)(result + sizeof(long));
+  unsigned char* result = reinterpret_cast<unsigned char*>(allocNamed(vn, darrayty(ty), datasz));
+  *reinterpret_cast<uint64_t*>(result) = datasz;
+  return reinterpret_cast<void*>(result + sizeof(long));
 }
 
 void* writer::unsafeDefineArray(const std::string& vn, const MonoTypePtr& ty, size_t len) {
   size_t datasz = sizeof(long) + (len * storageSizeOf(ty));
-  unsigned char* result = (unsigned char*)allocNamed(vn, arrayty(ty), datasz);
-  *((uint64_t*)result) = len;
+  unsigned char* result = reinterpret_cast<unsigned char*>(allocNamed(vn, arrayty(ty), datasz));
+  *reinterpret_cast<uint64_t*>(result) = len;
   return result;
 }
 
@@ -400,9 +399,9 @@ uint64_t writer::unsafeStoreToOffset(size_t sz, size_t align) {
 
 void* writer::unsafeStoreDArray(size_t esize, size_t len) {
   size_t datasz = sizeof(long) + sizeof(long) + (len * esize);
-  unsigned char* result = (unsigned char*)allocAnon(datasz, sizeof(size_t));
-  *((long*)result) = datasz;
-  return (void*)(result + sizeof(long));
+  unsigned char* result = reinterpret_cast<unsigned char*>(allocAnon(datasz, sizeof(size_t)));
+  *reinterpret_cast<long*>(result) = datasz;
+  return reinterpret_cast<void*>(result + sizeof(long));
 }
 
 uint64_t writer::unsafeStoreDArrayToOffset(size_t esize, size_t len) {
@@ -415,8 +414,8 @@ uint64_t writer::unsafeStoreDArrayToOffset(size_t esize, size_t len) {
 
 void* writer::unsafeStoreArray(size_t esize, size_t len) {
   if (len > 0) {
-    unsigned char* result = (unsigned char*)allocAnon(sizeof(long) + (len * esize), sizeof(size_t));
-    *((long*)result) = len;
+    unsigned char* result = reinterpret_cast<unsigned char*>(allocAnon(sizeof(long) + (len * esize), sizeof(size_t)));
+    *reinterpret_cast<long*>(result) = len;
     return result;
   } else {
     return mapFileData(this->fdata, this->fdata->empty_array, sizeof(size_t));
@@ -434,7 +433,7 @@ uint64_t writer::unsafeStoreArrayToOffset(size_t esize, size_t len) {
 void writer::signalUpdate() {
   // write a (safe) dummy byte to the file header to trigger an update signal
   seekAbs(this->fdata, 0);
-  write(this->fdata, (uint8_t)0x0d);
+  write(this->fdata, static_cast<uint8_t>(0x0d));
 }
 
 void* writer::allocAnon(size_t datasz, size_t align) {

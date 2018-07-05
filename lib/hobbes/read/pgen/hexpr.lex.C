@@ -4,6 +4,14 @@
 /* Scanner skeleton version:
  * $Header: /home/daffy/u0/vern/flex/RCS/flex.skl,v 2.91 96/09/10 16:58:48 vern Exp $
  */
+#ifdef __clang__
+#pragma clang diagnostic ignored "-Wdeprecated-register"
+#else
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wold-style-cast"
+#pragma GCC diagnostic ignored "-Wunused-label"
+#pragma GCC diagnostic ignored "-Wunused-function"
+#endif
 
 #define FLEX_SCANNER
 #define YY_FLEX_MAJOR_VERSION 2
@@ -595,9 +603,6 @@ char *yytext;
 #line 1 "hexpr.l"
 #define INITIAL 0
 #line 2 "hexpr.l"
-#ifdef __clang__
-#pragma clang diagnostic ignored "-Wdeprecated-register"
-#endif
 
 int yycolumn = 1;
 
@@ -2348,3 +2353,7 @@ int main()
 #endif
 #line 187 "hexpr.l"
 
+#ifdef __clang__
+#else
+#pragma GCC diagnostic pop
+#endif

@@ -39,6 +39,12 @@
    There are some unavoidable exceptions within include files to
    define necessary library symbols; they are noted "INFRINGES ON
    USER NAME SPACE" below.  */
+#ifdef __clang__
+#pragma clang diagnostic ignored "-Wdeprecated-register"
+#else
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wold-style-cast"
+#endif
 
 /* Identify Bison output.  */
 #define YYBISON 1
@@ -163,7 +169,7 @@ Expr* pickNestedExp(Exprs* exprs, const LexicalAnnotation& la) {
     return (*exprs)[0]->clone();
   } else {
     MkRecord::FieldDefs fds;
-    for (int i = 0; i < exprs->size(); ++i) {
+    for (size_t i = 0; i < exprs->size(); ++i) {
       fds.push_back(MkRecord::FieldDef(".f" + str::from(i), (*exprs)[i]));
     }
     return new MkRecord(fds, la);
@@ -175,7 +181,7 @@ Pattern* pickNestedPat(Patterns* pats, const LexicalAnnotation& la) {
     return new MatchLiteral(PrimitivePtr(new Unit(la)), la);
   } else {
     MatchRecord::Fields fds;
-    for (int i = 0; i < pats->size(); ++i) {
+    for (size_t i = 0; i < pats->size(); ++i) {
       fds.push_back(MatchRecord::Field(".f" + str::from(i), (*pats)[i]));
     }
     return new MatchRecord(fds, la);
@@ -4921,4 +4927,8 @@ yyreturn:
 }
 #line 978 "hexpr.y" /* yacc.c:1906  */
 
+#ifdef __clang__
+#else
+#pragma GCC diagnostic pop
+#endif
 

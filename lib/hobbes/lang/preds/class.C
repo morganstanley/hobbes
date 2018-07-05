@@ -54,18 +54,18 @@ FunDeps inferFundeps(const TEnvPtr& tenv, const Constraints& cs) {
 }
 
 // type class definitions
-TClass::TClass(const Constraints& reqs, const std::string& tcname, int tvs, const Members& tcmembers, const FunDeps& fundeps, const LexicalAnnotation& la) :
+TClass::TClass(const Constraints& reqs, const std::string& tcname, size_t tvs, const Members& tcmembers, const FunDeps& fundeps, const LexicalAnnotation& la) :
   LexicallyAnnotated(la), tcname(tcname), tvs(tvs), reqs(reqs), tcmembers(tcmembers), fundeps(fundeps)
 {
 }
 
-TClass::TClass(const Constraints& reqs, const std::string& tcname, int tvs, const Members& tcmembers, const LexicalAnnotation& la) : TClass(reqs, tcname, tvs, tcmembers, FunDeps(), la) {
+TClass::TClass(const Constraints& reqs, const std::string& tcname, size_t tvs, const Members& tcmembers, const LexicalAnnotation& la) : TClass(reqs, tcname, tvs, tcmembers, FunDeps(), la) {
 }
 
-TClass::TClass(const std::string& tcname, int tvs, const Members& tcmembers, const FunDeps& fundeps, const LexicalAnnotation& la) : TClass(Constraints(), tcname, tvs, tcmembers, fundeps, la) {
+TClass::TClass(const std::string& tcname, size_t tvs, const Members& tcmembers, const FunDeps& fundeps, const LexicalAnnotation& la) : TClass(Constraints(), tcname, tvs, tcmembers, fundeps, la) {
 }
 
-TClass::TClass(const std::string& tcname, int tvs, const Members& tcmembers, const LexicalAnnotation& la) : TClass(Constraints(), tcname, tvs, tcmembers, FunDeps(), la) {
+TClass::TClass(const std::string& tcname, size_t tvs, const Members& tcmembers, const LexicalAnnotation& la) : TClass(Constraints(), tcname, tvs, tcmembers, FunDeps(), la) {
 }
 
 const std::string& TClass::name() const {
@@ -76,7 +76,7 @@ const Constraints& TClass::constraints() const {
   return this->reqs;
 }
 
-int TClass::typeVars() const {
+size_t TClass::typeVars() const {
   return this->tvs;
 }
 
