@@ -42,9 +42,11 @@
 #ifdef __clang__
 #pragma clang diagnostic ignored "-Wdeprecated-register"
 #else
+#endif
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wold-style-cast"
-#endif
+#pragma GCC diagnostic ignored "-Wunused-label"
+#pragma GCC diagnostic ignored "-Wunused-function"
 
 /* Identify Bison output.  */
 #define YYBISON 1
@@ -4927,8 +4929,5 @@ yyreturn:
 }
 #line 978 "hexpr.y" /* yacc.c:1906  */
 
-#ifdef __clang__
-#else
 #pragma GCC diagnostic pop
-#endif
 

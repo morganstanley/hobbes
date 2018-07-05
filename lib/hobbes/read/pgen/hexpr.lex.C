@@ -7,11 +7,11 @@
 #ifdef __clang__
 #pragma clang diagnostic ignored "-Wdeprecated-register"
 #else
+#endif
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wold-style-cast"
 #pragma GCC diagnostic ignored "-Wunused-label"
 #pragma GCC diagnostic ignored "-Wunused-function"
-#endif
 
 #define FLEX_SCANNER
 #define YY_FLEX_MAJOR_VERSION 2
@@ -2353,7 +2353,4 @@ int main()
 #endif
 #line 187 "hexpr.l"
 
-#ifdef __clang__
-#else
 #pragma GCC diagnostic pop
-#endif
