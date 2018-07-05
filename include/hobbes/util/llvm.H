@@ -4,6 +4,9 @@
 
 #include <hobbes/util/array.H>
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wold-style-cast"
+
 #include <llvm/Config/llvm-config.h>
 
 #if LLVM_VERSION_MAJOR != 3 && LLVM_VERSION_MAJOR != 4
@@ -44,6 +47,8 @@
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/Object/ELFObjectFile.h>
 #endif
+
+#pragma GCC diagnostic pop
 
 namespace hobbes {
 
