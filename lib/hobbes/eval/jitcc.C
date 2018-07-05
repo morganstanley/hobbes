@@ -3,6 +3,9 @@
 #include <hobbes/eval/jitcc.H>
 #include <hobbes/eval/cexpr.H>
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wold-style-cast"
+
 #if LLVM_VERSION_MINOR == 3 or LLVM_VERSION_MINOR == 5
 #include "llvm/ExecutionEngine/JIT.h"
 #else
@@ -19,6 +22,8 @@
 
 #include "llvm/Object/ELFObjectFile.h"
 #include "llvm/ExecutionEngine/JITEventListener.h"
+
+#pragma GCC diagnostic pop
 
 namespace hobbes {
 
