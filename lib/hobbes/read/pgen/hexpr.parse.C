@@ -41,6 +41,9 @@
    USER NAME SPACE" below.  */
 #ifdef __clang__
 #pragma clang diagnostic ignored "-Wdeprecated-register"
+#pragma clang diagnostic ignored "-Wold-style-cast"
+#pragma clang diagnostic ignored "-Wunused-label"
+#pragma clang diagnostic ignored "-Wunused-function"
 #else
 #endif
 #pragma GCC diagnostic push

@@ -6,7 +6,9 @@
  */
 #ifdef __clang__
 #pragma clang diagnostic ignored "-Wdeprecated-register"
-#else
+#pragma clang diagnostic ignored "-Wold-style-cast"
+#pragma clang diagnostic ignored "-Wunused-label"
+#pragma clang diagnostic ignored "-Wunused-function"
 #endif
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wold-style-cast"
