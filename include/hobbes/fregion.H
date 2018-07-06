@@ -1199,7 +1199,7 @@ template <typename T, size_t N>
     static void read (imagefile* f, const void* p, T (*x)[N]) {
       for (size_t i = 0; i < N; ++i) {
         store<T>::read(f, p, &(*x)[i]);
-        p = reinterpret_cast<uint8_t*>(p) + store<T>::size();
+        p = reinterpret_cast<const uint8_t*>(p) + store<T>::size();
       }
     }
   };
@@ -1265,7 +1265,7 @@ template <typename T>
       }
     }
     static void read(imagefile* f, const void* p, std::vector<T>* x) {
-      auto     dloc = *reinterpret_cast<size_t*>(p);
+      auto     dloc = *reinterpret_cast<const size_t*>(p);
       size_t*  c    = reinterpret_cast<size_t*>(mapFileData(f, dloc, sizeof(size_t)));
       uint8_t* d    = reinterpret_cast<uint8_t*>(mapFileData(f, dloc+sizeof(size_t), *c * sizeof(T)));
 
@@ -1339,7 +1339,7 @@ template <typename U, typename V>
     }
     static void read (imagefile* f, const void* p, std::pair<U,V>* x) {
       store<U>::read(f, p, &x->first);
-      store<V>::read(f, reinterpret_cast<uint8_t*>(p)+align<size_t>(store<U>::size(), store<V>::alignment()), &x->second);
+      store<V>::read(f, reinterpret_cast<const uint8_t*>(p)+align<size_t>(store<U>::size(), store<V>::alignment()), &x->second);
     }
   };
 

@@ -16,6 +16,7 @@
 #pragma GCC diagnostic ignored "-Wunused-label"
 #pragma GCC diagnostic ignored "-Wunused-function"
 #pragma GCC diagnostic ignored "-Wall"
+#pragma GCC system_header
 
 #define FLEX_SCANNER
 #define YY_FLEX_MAJOR_VERSION 2

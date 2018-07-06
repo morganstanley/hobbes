@@ -52,6 +52,7 @@
 #pragma GCC diagnostic ignored "-Wunused-label"
 #pragma GCC diagnostic ignored "-Wunused-function"
 #pragma GCC diagnostic ignored "-Wall"
+#pragma GCC system_header
 
 /* Identify Bison output.  */
 #define YYBISON 1

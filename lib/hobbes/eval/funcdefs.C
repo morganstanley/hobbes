@@ -454,12 +454,12 @@ void* runClosThread(void* clos) {
 long newThread(char* clos) {
   pthread_t th;
   pthread_create(&th, 0, &runClosThread, reinterpret_cast<void*>(clos));
-  return static_cast<long>(th);
+  return reinterpret_cast<long>(th);
 }
 
 void threadWait(long x) {
   void* d = 0;
-  pthread_join(static_cast<pthread_t>(x), &d);
+  pthread_join(reinterpret_cast<pthread_t>(x), &d);
 }
 
 void threadSleep(timespanT dt) {
