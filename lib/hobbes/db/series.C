@@ -113,15 +113,15 @@ StoredSeries::StoredSeries(cc* c, writer* outputFile, const std::string& fieldNa
   this->storageSize      = storageSizeOf(this->storedType);
   this->batchType        = carrayty(this->storedType, this->batchSize);
   this->batchStorageSize = storageSizeOf(this->batchType);
-  this->storeFn          = (StoreFn)storageFunction(c, ty, this->storedType, LexicalAnnotation::null());
+  this->storeFn          = reinterpret_cast<StoreFn>(storageFunction(c, ty, this->storedType, LexicalAnnotation::null()));
 
   if (this->outputFile->isDefined(fieldName)) {
     // load the existing stream state
-    this->headNodeRef = (uint64_t*)this->outputFile->unsafeLookup(fieldName, storedStreamOf(this->storedType, this->batchSize));
+    this->headNodeRef = reinterpret_cast<uint64_t*>(this->outputFile->unsafeLookup(fieldName, storedStreamOf(this->storedType, this->batchSize)));
     restartFromBatchNode();
   } else {
     // start a fresh batch -- we couldn't load anything
-    this->headNodeRef = (uint64_t*)this->outputFile->unsafeDefine(fieldName, storedStreamOf(this->storedType, this->batchSize));
+    this->headNodeRef = reinterpret_cast<uint64_t*>(this->outputFile->unsafeDefine(fieldName, storedStreamOf(this->storedType, this->batchSize)));
     consBatchNode(allocBatchNode(this->outputFile));
   }
 }
@@ -134,7 +134,7 @@ const MonoTypePtr& StoredSeries::storageType() const {
 }
 
 uint64_t StoredSeries::writePosition() const {
-  return this->batchDataRef + ((size_t)(((uint8_t*)this->batchHead) - ((uint8_t*)this->batchData)));
+  return this->batchDataRef + static_cast<size_t>(reinterpret_cast<uint8_t*>(this->batchHead) - reinterpret_cast<uint8_t*>(this->batchData));
 }
 
 void StoredSeries::clear(bool signal) {
@@ -153,7 +153,7 @@ void StoredSeries::record(const void* v, bool signal) {
   //  (allocate a new batch cell if necessary)
   this->batchHead += this->storageSize;
 
-  if (++(*((uint64_t*)this->batchData)) == this->batchSize) {
+  if (++(*reinterpret_cast<uint64_t*>(this->batchData)) == this->batchSize) {
     void* oldBatchData = this->batchData;
     consBatchNode(this->batchNode);
     this->outputFile->unsafeUnload(oldBatchData, this->batchStorageSize);
@@ -186,7 +186,7 @@ void StoredSeries::bindAs(cc* c, const std::string& vname) {
       vname,
       fn("x",
         let("_", assume(var("x", nla), this->recordType, nla),
-          fncall(var("unsafeWriteUnitToSeries", nla), list(constant((long)this, nla)), nla),
+          fncall(var("unsafeWriteUnitToSeries", nla), list(constant(reinterpret_cast<long>(this), nla)), nla),
           nla
         ),
         nla
@@ -198,7 +198,7 @@ void StoredSeries::bindAs(cc* c, const std::string& vname) {
       vname,
       fn("x",
         fncall(var("unsafeWriteToSeries", nla), list(
-          constant((long)this, nla),
+          constant(reinterpret_cast<long>(this), nla),
           fncall(var("unsafeCast", nla), list(
             assume(var("x", nla), this->recordType, nla)),
             nla
@@ -214,7 +214,7 @@ void StoredSeries::bindAs(cc* c, const std::string& vname) {
       vname,
       fn("x",
         fncall(var("unsafeWriteToSeries", nla), list(
-          constant((long)this, nla),
+          constant(reinterpret_cast<long>(this), nla),
           fncall(var("unsafeCast", nla), list(
             mktuple(assume(var("x", nla), this->recordType, nla), nla)),
             nla
@@ -230,7 +230,7 @@ void StoredSeries::bindAs(cc* c, const std::string& vname) {
 void StoredSeries::consBatchNode(uint64_t nextPtr) {
   this->batchDataRef = this->outputFile->unsafeStoreToOffset(this->batchStorageSize, sizeof(size_t));
   this->batchData    = this->outputFile->unsafeLoad(this->batchDataRef, this->batchStorageSize);
-  this->batchHead    = ((uint8_t*)this->batchData) + sizeof(long);
+  this->batchHead    = reinterpret_cast<uint8_t*>(this->batchData) + sizeof(long);
   this->batchNode    = allocBatchNode(this->outputFile, this->outputFile->unsafeOffsetOf(this->batchType, this->batchData), nextPtr);
 
   *this->headNodeRef = this->batchNode;
@@ -242,7 +242,7 @@ typedef dbseq<PBatchRef>     PBatchList;
 typedef fileref<PBatchList*> PBatchListRef;
 
 void StoredSeries::restartFromBatchNode() {
-  PBatchList* n = (PBatchList*)this->outputFile->unsafeLoad(*this->headNodeRef, sizeof(PBatchList));
+  PBatchList* n = reinterpret_cast<PBatchList*>(this->outputFile->unsafeLoad(*this->headNodeRef, sizeof(PBatchList)));
   
   // if we somehow get a root node representing the empty list, we're free to start a fresh list
   const PBatchList::cons_t* p = n->head();
@@ -253,7 +253,7 @@ void StoredSeries::restartFromBatchNode() {
 
   this->batchDataRef = p->first.index;
   this->batchData    = this->outputFile->unsafeLoad(this->batchDataRef, this->batchStorageSize);
-  this->batchHead    = ((uint8_t*)this->batchData) + sizeof(long) + ((*((size_t*)this->batchData))*this->storageSize);
+  this->batchHead    = reinterpret_cast<uint8_t*>(this->batchData) + sizeof(long) + ((*reinterpret_cast<size_t*>(this->batchData))*this->storageSize);
   this->batchNode    = *this->headNodeRef;
 }
 

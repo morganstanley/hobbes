@@ -56,7 +56,7 @@ int TestCoord::runTestGroups(const Args& args) {
               << "  ---------------------------------------------------------" << std::endl;
 
     long gt0 = hobbes::tick();
-    for (auto i = 0; i < g.size(); ++i) {
+    for (size_t i = 0; i < g.size(); ++i) {
       const auto & t = g[i];
       auto & result = r[i];
       long t0 = hobbes::tick();
@@ -93,7 +93,7 @@ int TestCoord::runTestGroups(const Args& args) {
     }
   }
 
-  return (int)failures.size();
+  return static_cast<int>(failures.size());
 }
 
 std::string TestCoord::toJSON() {
@@ -118,7 +118,7 @@ Args parseArgs(int argc, char** argv) {
     {"list_tests", no_argument,       nullptr, 'l'},
     {"tests",      required_argument, nullptr, 't'},
     {"json",       required_argument, nullptr, 'r'},
-    {0}
+    {0,            no_argument,       nullptr, ' '}
   };
 
   Args args;

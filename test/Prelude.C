@@ -19,9 +19,9 @@ TEST(Prelude, Arith) {
 }
 
 TEST(Prelude, Timespan) {
-  EXPECT_EQ(microseconds(c().compileFn<timespanT()>("20us")()), 20);
-  EXPECT_EQ(milliseconds(c().compileFn<timespanT()>("20ms")()), 20);
-  EXPECT_EQ(seconds(c().compileFn<timespanT()>("20s")()), 20);
+  EXPECT_EQ(microseconds(c().compileFn<timespanT()>("20us")()), size_t(20));
+  EXPECT_EQ(milliseconds(c().compileFn<timespanT()>("20ms")()), size_t(20));
+  EXPECT_EQ(seconds(c().compileFn<timespanT()>("20s")()), size_t(20));
 }
 
 TEST(Prelude, COrd) {

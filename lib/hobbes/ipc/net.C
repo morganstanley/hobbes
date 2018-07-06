@@ -41,7 +41,7 @@ int allocateServer(int port) {
 
   // make sure that we can quickly restart the server if necessary
   int ra = 1;
-  setsockopt(s, SOL_SOCKET, SO_REUSEADDR, (char*)&ra, sizeof(ra));
+  setsockopt(s, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<char*>(&ra), sizeof(ra));
 
   // bind the new socket to a local address
   sockaddr_in laddr;
@@ -51,7 +51,7 @@ int allocateServer(int port) {
   laddr.sin_port        = htons(port);
   laddr.sin_addr.s_addr = INADDR_ANY;
 
-  if (bind(s, (sockaddr*)&laddr, sizeof(laddr)) == -1) {
+  if (bind(s, reinterpret_cast<sockaddr*>(&laddr), sizeof(laddr)) == -1) {
     close(s);
     throw std::runtime_error("Unable to bind socket to local address: " + std::string(strerror(errno)));
   }
@@ -81,7 +81,7 @@ int allocateFileSocketServer(const std::string& filepath) {
   unlink(filepath.c_str());
   snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", filepath.c_str());
 
-  if (bind(s, (sockaddr*)&addr, sizeof(addr)) == -1) {
+  if (bind(s, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == -1) {
     close(s);
     throw std::runtime_error("Unable to bind socket to file: " + filepath + std::string(" : ") + std::string(strerror(errno)));
   }
@@ -129,10 +129,10 @@ int connectSocket(hostent* host, int port) {
   sockaddr_in addr;
   memset(&addr, 0, sizeof(addr));
   addr.sin_family = AF_INET;
-  addr.sin_addr   = *((in_addr*)(host->h_addr_list[0]));
+  addr.sin_addr   = *reinterpret_cast<in_addr*>(host->h_addr_list[0]);
   addr.sin_port   = htons(port);
 
-  return connectSocket(r, (sockaddr*)&addr, sizeof(addr));
+  return connectSocket(r, reinterpret_cast<sockaddr*>(&addr), sizeof(addr));
 }
 
 int connectFileSocket(const std::string& filepath) {
@@ -146,7 +146,7 @@ int connectFileSocket(const std::string& filepath) {
   addr.sun_family = AF_UNIX;
   snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", filepath.c_str());
 
-  return connectSocket(r, (sockaddr*)&addr, sizeof(addr));
+  return connectSocket(r, reinterpret_cast<sockaddr*>(&addr), sizeof(addr));
 }
 
 int connectSocket(const std::string& host, int port) {
@@ -169,11 +169,10 @@ int connectSocket(const std::string& hostport) {
 std::string remoteHostname(int c) {
   struct sockaddr_in sin;
   socklen_t len = sizeof(sin);
-  if (getpeername(c, (struct sockaddr*)&sin, &len) < 0) {
+  if (getpeername(c, reinterpret_cast<struct sockaddr*>(&sin), &len) < 0) {
     throw std::runtime_error("Couldn't get peer name for socket");
   } else {
-    struct hostent *host;
-    if (struct hostent* host = gethostbyaddr((char*)&sin.sin_addr, sizeof(sin.sin_addr), AF_INET)) {
+    if (struct hostent* host = gethostbyaddr(reinterpret_cast<char*>(&sin.sin_addr), sizeof(sin.sin_addr), AF_INET)) {
       return std::string(host->h_name);
     } else {
       throw std::runtime_error("Couldn't get host name for socket");
@@ -197,7 +196,7 @@ void prepareStrExpr(Server* s, int c, exprid eid, const std::string& expr, const
 }
 
 void evaluateNetREPLRequest(int c, void* d) {
-  Server* s = (Server*)d;
+  Server* s = reinterpret_cast<Server*>(d);
 
   try {
     uint8_t cmd = 0;
@@ -290,7 +289,7 @@ void registerNetREPL(int s, Server* svr) {
             close(c);
           }
 
-          ((Server*)d)->connect(c);
+          reinterpret_cast<Server*>(d)->connect(c);
           registerEventHandler(c, &evaluateNetREPLRequest, d);
         } catch (std::exception&) {
           close(c);
@@ -332,7 +331,7 @@ public:
       this->c->unsweetenExpression(
         fncall(
           expr,
-          list(assume(fncall(var("readFrom", la), list(constant((int)0, la)), la), inty, la)),
+          list(assume(fncall(var("readFrom", la), list(constant(static_cast<int>(0), la)), la), inty, la)),
           la
         )
       )->type()
@@ -385,7 +384,7 @@ int installNetREPL(const std::string& filepath, cc* c) {
 // connect to a running net REPL
 Client::Client(const std::string& hostport) : hostport(hostport), eid(0), rbno(0), reno(0) {
   this->c = connectSocket(hostport);
-  fdwrite(this->c, (uint32_t)0x00010000);
+  fdwrite(this->c, static_cast<uint32_t>(0x00010000));
 }
 
 Client::~Client() {
@@ -518,11 +517,11 @@ char* Client::readValue(size_t x) {
 }
 
 size_t Client::unsafeAppendReadFn(size_t p, ReadFn f) {
-  return ((Client*)p)->appendReadFn(f);
+  return reinterpret_cast<Client*>(p)->appendReadFn(f);
 }
 
 char* Client::unsafeRead(size_t p, size_t x) {
-  return ((Client*)p)->readValue(x);
+  return reinterpret_cast<Client*>(p)->readValue(x);
 }
 
 }

@@ -29,11 +29,11 @@ bool importObject(cc* e, const std::string& sopath) {
     if (!h) { throw std::runtime_error(std::string("Failed to load .so file: ") + dlerror()); }
 
     typedef void (*InitF)(cc*);
-    InitF initF = (InitF)dlsym(h, "initialize");
+    InitF initF = reinterpret_cast<InitF>(dlsym(h, "initialize"));
 
     if (!initF) { dlclose(h); throw std::runtime_error(std::string("Failed to load .so file init: ") + dlerror()); }
 
-    initF((cc*)e);
+    initF(e);
     return true;
   }
 }
@@ -42,7 +42,7 @@ bool importScript(cc* e, const std::string& fname) {
   if (!fileExists(fname)) {
     return false;
   } else {
-    compile(e, ((cc*)e)->readModuleFile(fname));
+    compile(e, e->readModuleFile(fname));
     return true;
   }
 }
@@ -82,7 +82,7 @@ typedef std::map<std::string, int> NameIndexing;
 
 NameIndexing nameIndexing(const str::seq& ns) {
   NameIndexing r;
-  for (int i = 0; i < ns.size(); ++i) {
+  for (size_t i = 0; i < ns.size(); ++i) {
     if (r.find(ns[i]) != r.end()) {
       throw std::runtime_error("Duplicate name '" + ns[i] + "'");
     } else {

@@ -170,7 +170,7 @@ std::string show(const CFunDepDefs& fundeps) {
   } else {
     std::ostringstream ss;
     ss << show(fundeps[0]);
-    for (int i = 1; i < fundeps.size(); ++i) {
+    for (size_t i = 1; i < fundeps.size(); ++i) {
       ss << ", ";
       ss << show(fundeps[i]);
     }

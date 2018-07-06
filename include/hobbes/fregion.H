@@ -138,10 +138,10 @@ struct filehead {
   uint16_t pagesize; // how large does this file assume that one memory page is?
   uint16_t version;  // a file format version number (incremented when incompatibilities are introduced)
 };
-#define HFREGION_CURRENT_FILE_FORMAT_VERSION ((uint16_t)2)
-#define HFREGION_FILE_PREFIX_BYTES           ((uint32_t)0x10a1db0d)
-#define HFREGION_MAX_PAGE_SIZE               ((size_t)((1<<14)-1))
-#define HFREGION_MIN_PAGE_SIZE               ((size_t)256)
+#define HFREGION_CURRENT_FILE_FORMAT_VERSION static_cast<uint16_t>(2)
+#define HFREGION_FILE_PREFIX_BYTES           static_cast<uint32_t>(0x10a1db0d)
+#define HFREGION_MAX_PAGE_SIZE               static_cast<size_t>((1<<14)-1)
+#define HFREGION_MIN_PAGE_SIZE               static_cast<size_t>(256)
 
 // a single system page record
 //   this will be stored as two bytes, the upper 2 bits used for storing a page type and the lower 14 used for free size in that page
@@ -153,8 +153,8 @@ struct pagetype {
     data        = 3  // a "data" page (raw data for bound variables)
   };
 
-  static uint8_t encode(code    x) { return (uint8_t)x; }
-  static code    decode(uint8_t x) { return (code)   x; }
+  static uint8_t encode(code    x) { return static_cast<uint8_t>(x); }
+  static code    decode(uint8_t x) { return static_cast<code>   (x); }
 };
 
 struct pagedata {
@@ -277,7 +277,7 @@ inline void seekAbs(const imagefile* f, size_t pos) {
 
 inline off_t filePosition(const imagefile* f) {
   off_t r = ::lseek(f->fd, 0, SEEK_CUR);
-  if (r == (off_t)-1) {
+  if (r == static_cast<off_t>(-1)) {
     raiseSysError("Can't query position in file", f->path);
   }
   return r;
@@ -314,11 +314,11 @@ inline void fdwrite(imagefile* f, const char* x, size_t len) {
 }
 template <typename T>
   inline void write(imagefile* f, const T& x) {
-    fdwrite(f, (const char*)&x, sizeof(T));
+    fdwrite(f, reinterpret_cast<const char*>(&x), sizeof(T));
   }
 template <typename TIter>
   inline void writes(imagefile* f, TIter begin, TIter end) {
-    fdwrite(f, (const char*)&(*begin), (end - begin) * sizeof(*begin));
+    fdwrite(f, reinterpret_cast<const char*>(&(*begin)), (end - begin) * sizeof(*begin));
   }
 inline void write(imagefile* f, const std::string& x) {
   write(f, x.size());
@@ -347,11 +347,11 @@ inline void fdread(const imagefile* f, char* x, size_t len) {
 }
 template <typename T>
   inline void read(const imagefile* f, T* x) {
-    fdread(f, (char*)x, sizeof(T));
+    fdread(f, reinterpret_cast<char*>(x), sizeof(T));
   }
 template <typename T>
   inline void reads(const imagefile* f, size_t sz, T* x) {
-    fdread(f, (char*)x, sz * sizeof(T));
+    fdread(f, reinterpret_cast<char*>(x), sz * sizeof(T));
   }
 inline void read(imagefile* f, std::string* x) {
   size_t sz = 0;
@@ -379,7 +379,7 @@ inline size_t pageOffset(const imagefile* f, file_pageindex_t page) { return f->
 inline file_pageindex_t pageIndex(const imagefile* f, uint64_t fpos) { return fpos / f->page_size; }
 
 // an absolute file position from a page and relative position
-inline size_t position(const imagefile* f, file_pageindex_t page, uint16_t offset) { return pageOffset(f, page) + ((uint64_t)offset); }
+inline size_t position(const imagefile* f, file_pageindex_t page, uint16_t offset) { return pageOffset(f, page) + static_cast<uint64_t>(offset); }
 
 // the file page for a given TOC page
 inline file_pageindex_t tocPageToFilePage(const imagefile* f, uint64_t tpage) {
@@ -656,7 +656,7 @@ inline fregion& createFileRegionMap(imagefile* f, file_pageindex_t page, size_t 
   pages = align<size_t>(pages, f->mmapPageMultiple);
 
   // map the specified file region into memory
-  char* d = (char*)mmap(0, pages * f->page_size, PROT_READ | (f->readonly ? 0 : PROT_WRITE), MAP_SHARED, f->fd, page * f->page_size);
+  char* d = reinterpret_cast<char*>(mmap(0, pages * f->page_size, PROT_READ | (f->readonly ? 0 : PROT_WRITE), MAP_SHARED, f->fd, page * f->page_size));
   if (d == MAP_FAILED) {
     raiseSysError
     (
@@ -743,8 +743,8 @@ inline char* mapFileData(imagefile* f, size_t fpos, size_t sz) {
 
 // deallocate memory mapped out of this file
 // (if this means that there are no outstanding references to the mapping, then the mapping itself is released)
-inline void unmapFileData(imagefile* f, void* p, size_t sz) {
-  fallocs::iterator fa = f->allocs.find((char*)p);
+inline void unmapFileData(imagefile* f, const void* p, size_t sz) {
+  fallocs::iterator fa = f->allocs.find(const_cast<char*>(reinterpret_cast<const char*>(p)));
   if (fa == f->allocs.end()) {
     return;
   }
@@ -780,7 +780,7 @@ inline uint16_t assertValidPageSize(const imagefile* f, size_t psize) {
     // should be a static assert :T
     throw std::runtime_error("No page size is valid, file format internally inconsistent");
   }
-  return (uint16_t)psize;
+  return static_cast<uint16_t>(psize);
 }
 
 // put a new file into a valid empty state
@@ -1079,8 +1079,8 @@ inline ty::desc storedSeqType(const ty::desc& t, size_t batchSize) {
 
 inline ty::desc maybeDerefFileRef(const ty::desc& t) {
   if (t && t->tid == PRIV_HPPF_TYCTOR_TAPP) {
-    const ty::App* ap = (const ty::App*)t.get();
-    if (ap->f->tid == PRIV_HPPF_TYCTOR_PRIM && ((const ty::Prim*)ap->f.get())->n == "fileref") {
+    const ty::App* ap = reinterpret_cast<const ty::App*>(t.get());
+    if (ap->f->tid == PRIV_HPPF_TYCTOR_PRIM && reinterpret_cast<const ty::Prim*>(ap->f.get())->n == "fileref") {
       if (ap->args.size() >= 1) {
         return ap->args[0];
       }
@@ -1091,14 +1091,14 @@ inline ty::desc maybeDerefFileRef(const ty::desc& t) {
 
 inline ty::desc maybeOpenRecursive(const ty::desc& t) {
   if (t && t->tid == PRIV_HPPF_TYCTOR_RECURSIVE) {
-    return ((const ty::Recursive*)t.get())->t;
+    return reinterpret_cast<const ty::Recursive*>(t.get())->t;
   }
   return ty::desc();
 }
 
 inline ty::desc maybeNthSum(const ty::desc& t, size_t n) {
   if (t && t->tid == PRIV_HPPF_TYCTOR_VARIANT) {
-    const ty::Variant::Ctors& cs = ((ty::Variant*)t.get())->ctors;
+    const ty::Variant::Ctors& cs = reinterpret_cast<ty::Variant*>(t.get())->ctors;
     if (n < cs.size() && cs[0].at<0>() == ".f0") {
       return cs[n].at<2>();
     }
@@ -1108,7 +1108,7 @@ inline ty::desc maybeNthSum(const ty::desc& t, size_t n) {
 
 inline ty::desc maybeNthProd(const ty::desc& t, size_t n) {
   if (t && t->tid == PRIV_HPPF_TYCTOR_STRUCT) {
-    const ty::Struct::Fields& fs = ((ty::Struct*)t.get())->fields;
+    const ty::Struct::Fields& fs = reinterpret_cast<ty::Struct*>(t.get())->fields;
     if (n < fs.size() && fs[0].at<0>() == ".f0") {
       return fs[n].at<2>();
     }
@@ -1121,11 +1121,11 @@ inline size_t inferBatchSize(const bytes& bs) {
 
   if (ty::desc t = maybeDerefFileRef(maybeNthProd(maybeNthSum(maybeOpenRecursive(maybeDerefFileRef(dty)), 1), 0))) {
     if (t->tid == PRIV_HPPF_TYCTOR_TAPP) {
-      const ty::App* buf = (const ty::App*)t.get();
+      const ty::App* buf = reinterpret_cast<const ty::App*>(t.get());
       if (buf->f->tid == PRIV_HPPF_TYCTOR_PRIM) {
-        if (((ty::Prim*)buf->f.get())->n == "carray") {
+        if (reinterpret_cast<ty::Prim*>(buf->f.get())->n == "carray") {
           if (buf->args.size() >= 2 && buf->args[1]->tid == PRIV_HPPF_TYCTOR_SIZE) {
-            return ((ty::Nat*)buf->args[1].get())->x;
+            return reinterpret_cast<ty::Nat*>(buf->args[1].get())->x;
           }
         }
       }
@@ -1152,8 +1152,8 @@ template <typename T, typename ... Ts>
       static const bool  can_memcpy = true; \
       static size_t      size()                                       { return sizeof(T); } \
       static size_t      alignment()                                  { return sizeof(T); } \
-      static void        write(imagefile*, void* p,       const T& x) { *((T*)p) = x; } \
-      static void        read (imagefile*, const void* p, T* x)       { *x = *((T*)p); } \
+      static void        write(imagefile*, void* p,       const T& x) { *(reinterpret_cast<T*>(p)) = x; } \
+      static void        read (imagefile*, const void* p, T* x)       { *x = *(reinterpret_cast<const T*>(p)); } \
     }
 
 PRIV_HFREGION_DEFINE_PRIMTYS(bool,     "bool");
@@ -1193,13 +1193,13 @@ template <typename T, size_t N>
     static void write(imagefile* f, void* p, const T (&x)[N]) {
       for (size_t i = 0; i < N; ++i) {
         store<T>::write(f, p, x[i]);
-        p = ((uint8_t*)p) + store<T>::size();
+        p = reinterpret_cast<uint8_t*>(p) + store<T>::size();
       }
     }
     static void read (imagefile* f, const void* p, T (*x)[N]) {
       for (size_t i = 0; i < N; ++i) {
         store<T>::read(f, p, &(*x)[i]);
-        p = ((uint8_t*)p) + store<T>::size();
+        p = reinterpret_cast<const uint8_t*>(p) + store<T>::size();
       }
     }
   };
@@ -1217,20 +1217,20 @@ template <>
         auto bc = sizeof(size_t) + x.size();
 
         size_t dloc = findSpace(f, pagetype::data, bc, sizeof(size_t));
-        uint8_t* d = (uint8_t*)mapFileData(f, dloc, bc);
-        *((size_t*)d) = x.size();
+        uint8_t* d = reinterpret_cast<uint8_t*>(mapFileData(f, dloc, bc));
+        *reinterpret_cast<size_t*>(d) = x.size();
         memcpy(d+sizeof(size_t), x.data(), x.size());
         unmapFileData(f, d, bc);
 
-        *((size_t*)p) = dloc;
+        *reinterpret_cast<size_t*>(p) = dloc;
       } else {
-        *((size_t*)p) = f->empty_array;
+        *reinterpret_cast<size_t*>(p) = f->empty_array;
       }
     }
     static void read (imagefile* f, const void* p, std::string* x) {
-      auto     dloc = *((size_t*)p);
-      size_t*  c    = (size_t*)mapFileData(f, dloc, sizeof(size_t));
-      char*    s    = (char*)mapFileData(f, dloc+sizeof(size_t), *c);
+      auto     dloc = *reinterpret_cast<const size_t*>(p);
+      size_t*  c    = reinterpret_cast<size_t*>(mapFileData(f, dloc, sizeof(size_t)));
+      char*    s    = reinterpret_cast<char*>(mapFileData(f, dloc+sizeof(size_t), *c));
 
       x->assign(s, s + *c);
 
@@ -1254,20 +1254,20 @@ template <typename T>
         auto bc = sizeof(size_t) + sizeof(T)*x.size();
 
         size_t dloc = findSpace(f, pagetype::data, bc, sizeof(size_t));
-        uint8_t* d = (uint8_t*)mapFileData(f, dloc, bc);
-        *((size_t*)d) = x.size();
+        uint8_t* d = reinterpret_cast<uint8_t*>(mapFileData(f, dloc, bc));
+        *reinterpret_cast<size_t*>(d) = x.size();
         memcpy(d+sizeof(size_t), &x[0], sizeof(T)*x.size());
         unmapFileData(f, d, bc);
 
-        *((size_t*)p) = dloc;
+        *reinterpret_cast<size_t*>(p) = dloc;
       } else {
-        *((size_t*)p) = f->empty_array;
+        *reinterpret_cast<size_t*>(p) = f->empty_array;
       }
     }
     static void read(imagefile* f, const void* p, std::vector<T>* x) {
-      auto     dloc = *((size_t*)p);
-      size_t*  c    = (size_t*)mapFileData(f, dloc, sizeof(size_t));
-      uint8_t* d    = (uint8_t*)mapFileData(f, dloc+sizeof(size_t), *c * sizeof(T));
+      auto     dloc = *reinterpret_cast<const size_t*>(p);
+      size_t*  c    = reinterpret_cast<size_t*>(mapFileData(f, dloc, sizeof(size_t)));
+      uint8_t* d    = reinterpret_cast<uint8_t*>(mapFileData(f, dloc+sizeof(size_t), *c * sizeof(T)));
 
       x->resize(*c);
       memcpy(&(*x)[0], d, *c * sizeof(T));
@@ -1284,8 +1284,8 @@ template <typename T>
       auto   bc  = sizeof(size_t) + tsz*x.size();
 
       size_t dloc = findSpace(f, pagetype::data, bc, sizeof(size_t));
-      uint8_t* d = (uint8_t*)mapFileData(f, dloc, bc);
-      *((size_t*)d) = x.size();
+      uint8_t* d = reinterpret_cast<uint8_t*>(mapFileData(f, dloc, bc));
+      *reinterpret_cast<size_t*>(d) = x.size();
 
       auto dc = d + sizeof(size_t);
       for (const auto& xv : x) {
@@ -1294,13 +1294,13 @@ template <typename T>
       }
       unmapFileData(f, d, bc);
 
-      *((size_t*)p) = dloc;
+      *reinterpret_cast<size_t*>(p) = dloc;
     }
     static void read(imagefile* f, const void* p, std::vector<T>* x) {
       size_t   tsz  = store<T>::size();
-      auto     dloc = *((size_t*)p);
-      size_t*  c    = (size_t*)mapFileData(f, dloc, sizeof(size_t));
-      uint8_t* d    = (uint8_t*)mapFileData(f, dloc+sizeof(size_t), *c * tsz);
+      auto     dloc = *reinterpret_cast<const size_t*>(p);
+      size_t*  c    = reinterpret_cast<size_t*>(mapFileData(f, dloc, sizeof(size_t)));
+      uint8_t* d    = reinterpret_cast<uint8_t*>(mapFileData(f, dloc+sizeof(size_t), *c * tsz));
       uint8_t* dc   = d;
 
       x->resize(*c);
@@ -1335,11 +1335,11 @@ template <typename U, typename V>
     static const bool can_memcpy = false;
     static void write(imagefile* f, void* p, const std::pair<U,V>& x) {
       store<U>::write(f, p, x.first);
-      store<V>::write(f, ((uint8_t*)p)+align<size_t>(store<U>::size(), store<V>::alignment()), x.second);
+      store<V>::write(f, reinterpret_cast<uint8_t*>(p)+align<size_t>(store<U>::size(), store<V>::alignment()), x.second);
     }
     static void read (imagefile* f, const void* p, std::pair<U,V>* x) {
       store<U>::read(f, p, &x->first);
-      store<V>::read(f, ((uint8_t*)p)+align<size_t>(store<U>::size(), store<V>::alignment()), &x->second);
+      store<V>::read(f, reinterpret_cast<const uint8_t*>(p)+align<size_t>(store<U>::size(), store<V>::alignment()), &x->second);
     }
   };
 
@@ -1352,7 +1352,7 @@ template <size_t i, size_t n, typename ... Ts>
     typedef storeTupleDef<i+1, n, Ts...> Recurse;
 
     static void fieldDefs(ty::Struct::Fields* fs) {
-      fs->push_back(ty::Struct::Field(".f" + str::from(i), (int)offsetAt<i, offs>::value, store<H>::storeType()));
+      fs->push_back(ty::Struct::Field(".f" + str::from(i), static_cast<int>(offsetAt<i, offs>::value), store<H>::storeType()));
       Recurse::fieldDefs(fs);
     }
     static ty::desc storeType() { ty::Struct::Fields fs; fieldDefs(&fs); return ty::record(fs); }
@@ -1469,7 +1469,7 @@ struct writeFieldF {
       size_t ooff = align<size_t>(this->ooffset, store<T>::alignment());
       size_t ioff = align<size_t>(this->ioffset, alignof(T));
 
-      store<T>::write(this->f, this->o + ooff, *((T*)(this->i + ioff)));
+      store<T>::write(this->f, this->o + ooff, *reinterpret_cast<const T*>(this->i + ioff));
 
       this->ooffset = ooff + store<T>::size();
       this->ioffset = ioff + sizeof(T);
@@ -1488,7 +1488,7 @@ struct readFieldF {
       size_t ioff = align<size_t>(this->ioffset, store<T>::alignment());
       size_t ooff = align<size_t>(this->ooffset, alignof(T));
 
-      store<T>::read(this->f, this->i + ioff, ((T*)(this->o + ooff)));
+      store<T>::read(this->f, this->i + ioff, reinterpret_cast<T*>(this->o + ooff));
 
       this->ioffset = ioff + store<T>::size();
       this->ooffset = ooff + sizeof(T);
@@ -1499,11 +1499,11 @@ template <typename T>
   struct store<T, typename tbool<T::is_hmeta_struct && !store<typename T::as_tuple_type>::can_memcpy>::type> : public storeStructDef<T> {
     static const bool can_memcpy = false;
     static void write(imagefile* f, void* p, const T& x) {
-      writeFieldF wfF(f, (uint8_t*)p, (const uint8_t*)&x);
+      writeFieldF wfF(f, reinterpret_cast<uint8_t*>(p), reinterpret_cast<const uint8_t*>(&x));
       T::meta(wfF);
     }
     static void read (imagefile* f, const void* p, T* x) {
-      readFieldF rfF(f, (const uint8_t*)p, (uint8_t*)x);
+      readFieldF rfF(f, reinterpret_cast<const uint8_t*>(p), reinterpret_cast<uint8_t*>(x));
       T::meta(rfF);
     }
   };
@@ -1532,7 +1532,7 @@ template <size_t i, size_t n, typename ... Ts>
     typedef storeVariantDef<i+1, n, Ts...> Recurse;
 
     static void ctorDefs(ty::Variant::Ctors* cs) {
-      cs->push_back(ty::Variant::Ctor(".f" + str::from(i), (int)i, store<H>::storeType()));
+      cs->push_back(ty::Variant::Ctor(".f" + str::from(i), static_cast<int>(i), store<H>::storeType()));
       Recurse::ctorDefs(cs);
     }
     static ty::desc storeType() { ty::Variant::Ctors cs; ctorDefs(&cs); return ty::variant(cs); }
@@ -1562,15 +1562,15 @@ template <typename ... Ts>
 template <size_t tag, typename T, typename M>
   struct variantGenWrite {
     static void fn(T* vd, imagefile* f, void* p, size_t tagOffset) {
-      *((uint32_t*)p) = tag;
-      store<T>::write(f, ((uint8_t*)p) + tagOffset, *vd);
+      *reinterpret_cast<uint32_t*>(p) = tag;
+      store<T>::write(f, reinterpret_cast<uint8_t*>(p) + tagOffset, *vd);
     }
   };
 template <size_t tag, typename T, typename M>
   struct variantGenRead {
     static void fn(T* vd, imagefile* f, const void* p, size_t tagOffset) {
       new (vd) T();
-      store<T>::read(f, ((const uint8_t*)p) + tagOffset, vd);
+      store<T>::read(f, reinterpret_cast<const uint8_t*>(p) + tagOffset, vd);
     }
   };
 template <typename ... Ts>
@@ -1582,7 +1582,7 @@ template <typename ... Ts>
       x.template apply<void, variantGenWrite, void, imagefile*, void*, size_t>(f, p, Reflect::tagOffset());
     }
     static void read (imagefile* f, const void* p, variant<Ts...>* x) {
-      x->unsafeTag() = *((const uint32_t*)p);
+      x->unsafeTag() = *reinterpret_cast<const uint32_t*>(p);
       variantApp<void, variantGenRead, void, tuple<Ts...>, imagefile*, const void*, size_t>::apply(x->unsafeTag(), x->unsafePayload(), f, p, Reflect::tagOffset());
     }
   };
@@ -1640,8 +1640,8 @@ template <typename T>
       return ty::variant(cs);
     }
 
-    static void write(imagefile* f, void* p,       const T& x) { store<VT>::write(f, p, *((const VT*)&x)); }
-    static void read (imagefile* f, const void* p, T*       x) { store<VT>::read (f, p, (VT*)x); }
+    static void write(imagefile* f, void* p,       const T& x) { store<VT>::write(f, p, *reinterpret_cast<const VT*>(&x)); }
+    static void read (imagefile* f, const void* p, T*       x) { store<VT>::read (f, p, reinterpret_cast<VT*>(x)); }
 
     static size_t size() { return store<VT>::size(); }
     static size_t alignment() { return store<VT>::alignment(); }
@@ -1691,7 +1691,7 @@ template <typename T>
       if (b == this->f->bindings.end()) {
         // this sequence is not yet defined, so define it and begin writing to it
         size_t dloc = findSpace(this->f, pagetype::data, sizeof(size_t), sizeof(size_t));
-        this->headNodeRef = (uint64_t*)mapFileData(this->f, dloc, sizeof(size_t));
+        this->headNodeRef = reinterpret_cast<uint64_t*>(mapFileData(this->f, dloc, sizeof(size_t)));
         consBatchNode(allocBatchNode());
         addBinding(this->f, this->seqname, ty::encoding(this->stdef), dloc);
       } else {
@@ -1699,7 +1699,7 @@ template <typename T>
         if (b->second.type != ty::encoding(this->stdef)) {
           throw std::runtime_error("File already defines series '" + this->seqname + "' with type inconsistent with " + ty::show(store<T>::storeType()));
         } else {
-          this->headNodeRef = (uint64_t*)mapFileData(this->f, b->second.offset, sizeof(size_t));
+          this->headNodeRef = reinterpret_cast<uint64_t*>(mapFileData(this->f, b->second.offset, sizeof(size_t)));
           restartFromBatchNode();
         }
       }
@@ -1713,9 +1713,9 @@ template <typename T>
 
     void operator()(const T& x) {
       store<T>::write(this->f, this->batchHead, x);
-      this->writeCB(this->batchDataRef+(this->batchHead-((uint8_t*)this->batchData)));
+      this->writeCB(this->batchDataRef+(this->batchHead-reinterpret_cast<uint8_t*>(this->batchData)));
       this->batchHead += store<T>::size();
-      if (++(*((size_t*)this->batchData)) == this->batchSize) {
+      if (++(*reinterpret_cast<size_t*>(this->batchData)) == this->batchSize) {
         void* oldBatchData = this->batchData;
         consBatchNode(this->batchNode);
         unmapFileData(this->f, oldBatchData, batchByteCount<T>(this->batchSize));
@@ -1743,14 +1743,14 @@ template <typename T>
 
       this->batchDataRef = findSpace(this->f, pagetype::data, bsz, sizeof(size_t));
       this->batchData    = mapFileData(this->f, this->batchDataRef, bsz);
-      this->batchHead    = ((uint8_t*)this->batchData) + sizeof(size_t);
+      this->batchHead    = reinterpret_cast<uint8_t*>(this->batchData) + sizeof(size_t);
       this->batchNode    = allocBatchNode(this->batchDataRef, nextPtr);
 
       *this->headNodeRef = this->batchNode;
     }
 
     void restartFromBatchNode() {
-      size_t* d = (size_t*)mapFileData(this->f, *this->headNodeRef, 3*sizeof(size_t));
+      size_t* d = reinterpret_cast<size_t*>(mapFileData(this->f, *this->headNodeRef, 3*sizeof(size_t)));
       
       // if we somehow get a root node representing the empty list, we're free to start a fresh list
       if (d[0] == 0) {
@@ -1760,7 +1760,7 @@ template <typename T>
 
       this->batchDataRef = d[1];
       this->batchData    = mapFileData(this->f, this->batchDataRef, batchByteCount<T>(this->batchSize));
-      this->batchHead    = ((uint8_t*)this->batchData) + sizeof(size_t) + ((*((size_t*)this->batchData))*store<T>::size());
+      this->batchHead    = reinterpret_cast<uint8_t*>(this->batchData) + sizeof(size_t) + ((*reinterpret_cast<size_t*>(this->batchData))*store<T>::size());
       this->batchNode    = *this->headNodeRef;
     }
 
@@ -1771,7 +1771,7 @@ template <typename T>
     uint64_t allocBatchNode(uint64_t batchOffset, uint64_t nextNodeOffset) {
       size_t  dsize = 3 * sizeof(size_t);
       size_t  dloc  = findSpace(this->f, pagetype::data, dsize, sizeof(size_t));
-      size_t* d     = (size_t*)mapFileData(this->f, dloc, dsize);
+      size_t* d     = reinterpret_cast<size_t*>(mapFileData(this->f, dloc, dsize));
 
       d[0] = 1;
       d[1] = batchOffset;
@@ -1836,7 +1836,7 @@ public:
       auto s = this->ss.find(n);
       if (s != this->ss.end()) {
         if (s->second->typeDef() == store<T>::storeType()) {
-          return *((wseries<T>*)s->second);
+          return *reinterpret_cast<wseries<T>*>(s->second);
         } else {
           throw std::runtime_error("Inconsistent usage of '" + n + "' as type " + ty::show(store<T>::storeType()) + " (but declared as type " + ty::show(s->second->typeDef()) + ")");
         }
@@ -1863,7 +1863,7 @@ public:
 
   void signal() { 
     seekAbs(this->f, 0);
-    write(this->f, (uint8_t)0x0d);
+    write(this->f, static_cast<uint8_t>(0x0d));
   }
 private:
   typedef std::map<std::string, seriesi*> wseriess;
@@ -1884,7 +1884,7 @@ template <typename T>
       }
 
       // load all nodes, prepare to walk in-order
-      auto* n = (uint64_t*)mapFileData(this->f, b.offset, sizeof(size_t));
+      auto* n = reinterpret_cast<uint64_t*>(mapFileData(this->f, b.offset, sizeof(size_t)));
       loadReadState(*n);
       unmapFileData(this->f, n, sizeof(size_t));
     }
@@ -1934,7 +1934,7 @@ template <typename T>
 
     void loadReadState(uint64_t root) {
       while (root != 0) {
-        uint64_t* d = (uint64_t*)mapFileData(this->f, root, 3*sizeof(uint64_t));
+        uint64_t* d = reinterpret_cast<uint64_t*>(mapFileData(this->f, root, 3*sizeof(uint64_t)));
         if (d[0] == 0) {
           root = 0;
         } else {
@@ -1962,8 +1962,8 @@ template <typename T>
         this->head    = 0;
         return false;
       } else {
-        this->headLen = (size_t*)mapFileData(this->f, this->batches.top(), bsz);
-        this->head    = ((uint8_t*)this->headLen) + sizeof(size_t);
+        this->headLen = reinterpret_cast<size_t*>(mapFileData(this->f, this->batches.top(), bsz));
+        this->head    = reinterpret_cast<uint8_t*>(this->headLen) + sizeof(size_t);
         this->batches.pop();
         return true;
       }
@@ -2032,7 +2032,7 @@ private:
     r.b     = &b->second;
 
     if (r.tdesc->tid == PRIV_HPPF_TYCTOR_VARIANT) {
-      for (const auto& ctor : ((ty::Variant*)r.tdesc.get())->ctors) {
+      for (const auto& ctor : reinterpret_cast<ty::Variant*>(r.tdesc.get())->ctors) {
         r.varDef[ctor.at<0>()] = std::pair<uint32_t, ty::desc>(ctor.at<1>(), ctor.at<2>());
       }
     }
@@ -2059,7 +2059,7 @@ public:
         ty::desc tdesc = store<T>::storeType();
 
         if (s->second->typeDef() == tdesc) {
-          return *((rseries<T>*)s->second);
+          return *reinterpret_cast<rseries<T>*>(s->second);
         } else {
           throw std::runtime_error("Inconsistent usage of '" + name + "' as type " + ty::show(tdesc) + " (but declared as type " + ty::show(s->second->typeDef()) + ")");
         }

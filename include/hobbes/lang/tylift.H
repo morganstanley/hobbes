@@ -82,8 +82,8 @@ template <typename T>
   struct array {
     typedef array<T>* ptr;
 
-    long size;
-    T    data[1]; // unknown length, bytes inline with this structure
+    size_t size;
+    T      data[1]; // unknown length, bytes inline with this structure
   };
 template <typename T> const T* begin(const array<T>* d) { return d->data; }
 template <typename T> const T* end  (const array<T>* d) { return d->data + d->size; }
@@ -414,7 +414,7 @@ template <typename T>
       Variant::Members vms;
 
       for (const auto& m : T::meta()) {
-        vms.push_back(Variant::Member(m.first, Prim::make("unit"), (unsigned int)(m.second)));
+        vms.push_back(Variant::Member(m.first, Prim::make("unit"), scast<uint32_t>(m.second)));
       }
 
       return Variant::make(vms);

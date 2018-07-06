@@ -109,17 +109,17 @@ template <>
     static const bool can_memcpy = true;
     static ty::desc type() {
       ty::Variant::Ctors cs;
-      cs.push_back(ty::Variant::Ctor("Red",   (uint32_t)(CustomIDEnum::Red),   ty::prim("unit")));
-      cs.push_back(ty::Variant::Ctor("Green", (uint32_t)(CustomIDEnum::Green), ty::prim("unit")));
-      cs.push_back(ty::Variant::Ctor("Blue",  (uint32_t)(CustomIDEnum::Blue),  ty::prim("unit")));
+      cs.push_back(ty::Variant::Ctor("Red",   static_cast<uint32_t>(CustomIDEnum::Red),   ty::prim("unit")));
+      cs.push_back(ty::Variant::Ctor("Green", static_cast<uint32_t>(CustomIDEnum::Green), ty::prim("unit")));
+      cs.push_back(ty::Variant::Ctor("Blue",  static_cast<uint32_t>(CustomIDEnum::Blue),  ty::prim("unit")));
       return ty::variant(cs);
     }
-    static void write(int s, const CustomIDEnum& x) { io<uint32_t>::write(s, (uint32_t)x); }
-    static void read(int s, CustomIDEnum* x)        { io<uint32_t>::read(s, (uint32_t*)x); }
+    static void write(int s, const CustomIDEnum& x) { io<uint32_t>::write(s, static_cast<uint32_t>(x)); }
+    static void read(int s, CustomIDEnum* x)        { io<uint32_t>::read(s, reinterpret_cast<uint32_t*>(x)); }
 
     typedef io<uint32_t>::async_read_state async_read_state;
     static void prepare(async_read_state* o) { io<uint32_t>::prepare(o); }
-    static bool accum(int s, async_read_state* o, CustomIDEnum* x) { return io<uint32_t>::accum(s, o, (uint32_t*)x); }
+    static bool accum(int s, async_read_state* o, CustomIDEnum* x) { return io<uint32_t>::accum(s, o, reinterpret_cast<uint32_t*>(x)); }
   };
 }}
 
@@ -180,7 +180,7 @@ DEFINE_ASYNC_NET_CLIENT(
   (eidv,    CustomIDEnum(CustomIDEnum),     "id"),
   (inverse, RGB(RGB),                       "\\x.do{saelem(x.val,0L)<-255-saelem(x.val,0L);saelem(x.val,1L)<-255-saelem(x.val,1L);saelem(x.val,2L)<-255-saelem(x.val,2L); return x}")
 );
-void stepAsyncClient(int, void* p) { ((AsyncClient*)p)->step(); }
+void stepAsyncClient(int, void* p) { reinterpret_cast<AsyncClient*>(p)->step(); }
 
 TEST(Net, asyncClientAPI) {
   AsyncClient c("127.0.0.1", "127.0.0.1", testServerPort());
@@ -206,6 +206,6 @@ TEST(Net, asyncClientAPI) {
   for (size_t s = 0; s < 30 && c.pendingRequests() > 0; ++s) {
     runEventLoop(1000*1000);
   }
-  EXPECT_EQ(c.pendingRequests(), 0);
+  EXPECT_EQ(c.pendingRequests(), size_t(0));
 }
 

@@ -237,7 +237,7 @@ template <typename X, typename Y, typename Fp, typename A, typename R>
       return r;
     }
 
-    static nat inf() { return (nat)-1; }
+    static nat inf() { return static_cast<nat>(-1); }
   };
 
 // the across/up sets of LALR(1) determination

@@ -53,10 +53,10 @@ public:
 };
 
 array<ArrObjV*>* arrobjs(int n) {
-  array<ArrObjV*>* r = (array<ArrObjV*>*)memalloc(sizeof(long) + sizeof(ArrObjV) * n);
+  array<ArrObjV*>* r = reinterpret_cast<array<ArrObjV*>*>(memalloc(sizeof(long) + sizeof(ArrObjV) * n));
   r->size = n;
   for (int i = 0; i < n; ++i) {
-    new ((ArrObjV*)(r->data + n)) ArrObjV();
+    new (r->data + n) ArrObjV();
   }
   return r;
 }
@@ -172,6 +172,6 @@ size_t undefCount(const Undef*) { return 42; }
 
 TEST(Objects, FwdDecl) {
   c().bind("undefCount", &undefCount);
-  EXPECT_EQ((c().compileFn<size_t(const Undef*)>("u", "undefCount(u)")((const Undef*)0)), 42);
+  EXPECT_EQ((c().compileFn<size_t(const Undef*)>("u", "undefCount(u)")(reinterpret_cast<const Undef*>(0))), size_t(42));
 }
 

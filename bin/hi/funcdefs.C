@@ -83,7 +83,7 @@ const PIO* pexec(const hobbes::array<char>* cmd) {
     }
     argv.push_back(0);
   
-    execv(args[0].c_str(), (char* const*)&argv[0]);
+    execv(args[0].c_str(), const_cast<char* const*>(&argv[0]));
     exit(0);
   } else {
     close(p2c[0]); p2c[0] = 0;

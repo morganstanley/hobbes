@@ -153,7 +153,7 @@ public:
 
       // exec
       auto argv = mode.argv();
-      execv(argv[0], (char* const*)argv.data());
+      execv(argv[0], const_cast<char* const*>(argv.data()));
 
       // if we get here, restore IO, show an error
       dup2(ofd, STDOUT_FILENO);
@@ -215,7 +215,7 @@ public:
 
     glob_t g;
     if (glob(pattern.c_str(), GLOB_NOSORT, nullptr, &g) == 0) {
-      for (auto i = 0; i < g.gl_pathc; ++i) {
+      for (size_t i = 0; i < g.gl_pathc; ++i) {
         paths.push_back(g.gl_pathv[i]);
       }
       globfree(&g);
@@ -262,7 +262,7 @@ void flushData(int first, int last) {
     hobbes::cc cc; \
     std::vector<const char*> d expect; \
     EXPECT_EQ(logs.size(), d.size()); \
-    for (auto i = 0; i < logs.size(); ++i) { \
+    for (size_t i = 0; i < logs.size(); ++i) { \
       std::ostringstream logname, loadexpr, evalexpr; \
       logname << "log" << i; \
       loadexpr << "inputFile :: (LoadFile \"" << logs[i] << "\" w) => w"; \
@@ -317,7 +317,7 @@ TEST(Hog, MultiDestination) {
     WITH_TIMEOUT(10, EXPECT_EQ_IN_SERIES(batchrecv[1].logpaths(), "coordinate", ".x", {"[0..199]"}));
   });
 
-  WITH_TIMEOUT(60, EXPECT_EQ(batchrecv[0].logpaths().size(), 2));
+  WITH_TIMEOUT(60, EXPECT_EQ(batchrecv[0].logpaths().size(), size_t(2)));
   WITH_TIMEOUT(30, EXPECT_EQ_IN_SERIES(batchrecv[0].logpaths(), "coordinate", ".x", ({"[0..99]", "[100..199]"})));
 
   batchrecv[0].restart([&batchrecv](){
@@ -326,7 +326,7 @@ TEST(Hog, MultiDestination) {
     });
   });
 
-  WITH_TIMEOUT(60, EXPECT_EQ(batchrecv[0].logpaths().size(), 3));
+  WITH_TIMEOUT(60, EXPECT_EQ(batchrecv[0].logpaths().size(), size_t(3)));
   WITH_TIMEOUT(30, EXPECT_EQ_IN_SERIES(batchrecv[0].logpaths(), "coordinate", ".x", ({"[0..99]", "[100..199]", "[200..299]"})));
   WITH_TIMEOUT(30, EXPECT_EQ_IN_SERIES(batchrecv[1].logpaths(), "coordinate", ".x", ({"[0..199]", "[200..299]"})));
 }
@@ -437,7 +437,7 @@ TEST(Hog, SupportedTypes) {
 
   SectTest st;
   st.x = 42;
-  for (size_t i = 0; i < 10; ++i) { st.z[i] = (short)i; }
+  for (size_t i = 0; i < 10; ++i) { st.z[i] = short(i); }
   st.w = "test";
   HLOG(TestRecTypes, sectView, "test sect view", st);
   TestRecTypes.commit();

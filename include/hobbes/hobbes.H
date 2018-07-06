@@ -10,6 +10,7 @@
 #include <hobbes/events/events.H>
 #include <hobbes/ipc/prepl.H>
 #include <hobbes/util/region.H>
+#include <hobbes/util/ptr.H>
 
 namespace hobbes {
 
@@ -47,14 +48,14 @@ inline std::ostream& operator<<(std::ostream& out, const array<char>* x) {
 // allocate an array at some type, with some length
 template <typename T>
   array<T>* makeArray(region& m, long n) {
-    array<T>* r = (array<T>*)m.malloc(sizeof(long) + (sizeof(T) * n));
+    array<T>* r = reinterpret_cast<array<T>*>(m.malloc(sizeof(long) + (sizeof(T) * n)));
     r->size = n;
     return r;
   }
 
 template <typename T>
   array<T>* makeArray(long n) {
-    array<T>* r = (array<T>*)memalloc(sizeof(long) + (sizeof(T) * n));
+    array<T>* r = reinterpret_cast<array<T>*>(memalloc(sizeof(long) + (sizeof(T) * n)));
     r->size = n;
     return r;
   }

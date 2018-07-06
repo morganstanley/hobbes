@@ -3,7 +3,6 @@
 #include "test.H"
 
 using namespace hobbes;
-static cc& c() { static __thread cc* x = 0; if (!x) { x = new cc(); } return *x; }
 
 TEST(TypeInf, Unification) {
   MonoTypeUnifier u(TEnvPtr(new TEnv()));

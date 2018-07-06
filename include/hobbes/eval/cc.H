@@ -101,7 +101,7 @@ public:
   template <typename RFn, typename ... NamesAndExpr>
     typename func<RFn>::type compileFn(NamesAndExpr ... args) {
       static_assert(func<RFn>::arity == sizeof...(NamesAndExpr)-1, "Formal parameter list and expected function type arity mismatch");
-      return reinterpret_cast<typename func<RFn>::type>(
+      return rcast<typename func<RFn>::type>(
         unsafeCompileFn(
           lift<RFn>::type(*this),
           PArgl<NamesAndExpr...>::names(args...),
@@ -180,18 +180,18 @@ public:
 
   template <typename T>
     void bind(const std::string& vn, T* x) {
-      bind(generalize(liftValue<T*>::type(*this, x)), vn, reinterpret_cast<void*>(x));
+      bind(generalize(liftValue<T*>::type(*this, x)), vn, rcast<void*>(x));
     }
 
   template <typename T, int N>
     void bindArr(const std::string& vn, T x[N]) {
-      bind(polytype(qualtype(arrayty(lift<T>::type(*this), N))), vn, reinterpret_cast<void*>(x));
+      bind(polytype(qualtype(arrayty(lift<T>::type(*this), N))), vn, rcast<void*>(x));
     }
 
   // simplify binding user functions
   template <typename R, typename ... Args>
     void bind(const std::string& fn, R (*pfn)(Args...)) {
-      bindExternFunction(fn, lift<R(Args...)>::type(*this), (void*)pfn);
+      bindExternFunction(fn, lift<R(Args...)>::type(*this), rcast<void*>(pfn));
     }
 private:
   typedef std::pair<str::seq, MonoTypePtr>        TTyDef;
@@ -288,7 +288,7 @@ template <typename R, typename ... Args>
   struct rccF<R(*)(Args...)> {
     typedef R (*cbF)(Args...);
     static cbF compile(cc* c, const str::seq& vns, const std::string& expr) {
-      return (cbF)c->unsafeCompileFn(lift<cbF>::type(*c), vns, expr);
+      return rcast<cbF>(c->unsafeCompileFn(lift<cbF>::type(*c), vns, expr));
     }
   };
 

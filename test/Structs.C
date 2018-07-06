@@ -84,7 +84,7 @@ TEST(Structs, Consts) {
 }
 
 TEST(Structs, Reflect) {
-  EXPECT_EQ(c().compileFn<DynStructTest*()>("{f=true, a=42L, b=100L}")()->a, 42);
+  EXPECT_EQ(c().compileFn<DynStructTest*()>("{f=true, a=42L, b=100L}")()->a, uint64_t(42));
 }
 
 TEST(Structs, Functions) {
@@ -198,7 +198,7 @@ TEST(Structs, Alignment) {
 
   Record::Members ms;
   ms.push_back(Record::Member("x", lift<int>::type(c()), 0));
-  ms.push_back(Record::Member("y", lift<long>::type(c()), (int)(size_t)&((PadTest*)0)->y));
+  ms.push_back(Record::Member("y", lift<long>::type(c()), static_cast<int>(reinterpret_cast<size_t>(&reinterpret_cast<PadTest*>(0)->y))));
   MonoTypePtr pty(Record::make(Record::withExplicitPadding(ms)));
 
   PadTest p;

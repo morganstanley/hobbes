@@ -123,7 +123,7 @@ RunMode config(int argc, const char** argv) {
     exit(0);
   }
 
-  for (size_t i = 1; i < argc; ++i) {
+  for (int i = 1; i < argc; ++i) {
     std::string arg = argv[i];
     
     if (arg == "-?" || arg == "--help") {
@@ -204,14 +204,14 @@ RunMode config(int argc, const char** argv) {
 void evalGroupHostConnection(SessionGroup* sg, const std::string& groupName, const RunMode& m, std::vector<std::thread>* ts, int c) {
   try {
     uint8_t cmd=0;
-    hobbes::fdread(c, (char*)&cmd, sizeof(cmd));
+    hobbes::fdread(c, reinterpret_cast<char*>(&cmd), sizeof(cmd));
 
     auto wp = static_cast<hobbes::storage::WaitPolicy>(0x1 & (cmd >> 1));
   
     uint64_t pid=0,tid=0;
-    hobbes::fdread(c, (char*)&pid, sizeof(pid));
-    hobbes::fdread(c, (char*)&tid, sizeof(tid));
-    out() << "queue registered for group '" << groupName << "' from " << pid << ":" << tid << ", cmd " << (int)cmd << std::endl;
+    hobbes::fdread(c, reinterpret_cast<char*>(&pid), sizeof(pid));
+    hobbes::fdread(c, reinterpret_cast<char*>(&tid), sizeof(tid));
+    out() << "queue registered for group '" << groupName << "' from " << pid << ":" << tid << ", cmd " << static_cast<int>(cmd) << std::endl;
   
     auto qc = hobbes::storage::consumeGroup(groupName, hobbes::storage::ProcThread(pid, tid));
   
