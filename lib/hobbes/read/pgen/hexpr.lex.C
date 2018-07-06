@@ -1467,7 +1467,12 @@ YY_RULE_SETUP
 case 112:
 YY_RULE_SETUP
 #line 185 "hexpr.l"
-{ yyVexpLexError = "Unknown character: " + std::string(yytext); yyterminate(); }
+{ yyVexpLexError = "Unknown character: " + std::string(yytext); yyterminate();
+  if (false) {
+    yy_flex_realloc(0, 0);
+    yyunput(0, 0);
+  }
+}
 	YY_BREAK
 case 113:
 YY_RULE_SETUP
