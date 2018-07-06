@@ -1335,7 +1335,7 @@ template <typename T, typename F>
 #define PRIV_HSTORE_DSV_T(f)     member<decltype(resolve(&SelfT::f))>::type
 #define PRIV_HSTORE_DSV_READ(f)  member<decltype(resolve(&SelfT::f))>::read(x, std::integral_constant<member<decltype(resolve(&SelfT::f))>::Acc, &SelfT::f>::value)
 #define PRIV_HSTORE_DSV_COUNT(_) +1
-#define PRIV_HSTORE_DSV_ENCF(f)  ws(#f, out); w((int)-1, out); store< PRIV_HSTORE_DSV_T(f) >::encode(out);
+#define PRIV_HSTORE_DSV_ENCF(f)  ws(#f, out); w(int(-1), out); store< PRIV_HSTORE_DSV_T(f) >::encode(out);
 #define PRIV_HSTORE_DSV_DESC(f)  ss << ", " << #f << ":" << store< PRIV_HSTORE_DSV_T(f) >::describe();
 #define PRIV_HSTORE_DSV_SIZE(f)  + store< PRIV_HSTORE_DSV_T(f) >::size(PRIV_HSTORE_DSV_READ(f))
 #define PRIV_HSTORE_DSV_WRITE(f) && store< PRIV_HSTORE_DSV_T(f) >::write(p, PRIV_HSTORE_DSV_READ(f))
@@ -1345,7 +1345,7 @@ template <typename T, typename F>
     template <> \
       struct store<T> { \
         typedef T SelfT; \
-        static void encode(bytes* out) { w(PRIV_HSTORE_TYCTOR_STRUCT, out); w((size_t)(0 PRIV_HSTORE_MAPL(PRIV_HSTORE_DSV_COUNT, FIELDS)), out); PRIV_HSTORE_MAPL(PRIV_HSTORE_DSV_ENCF, FIELDS); } \
+        static void encode(bytes* out) { w(PRIV_HSTORE_TYCTOR_STRUCT, out); w(size_t(0 PRIV_HSTORE_MAPL(PRIV_HSTORE_DSV_COUNT, FIELDS)), out); PRIV_HSTORE_MAPL(PRIV_HSTORE_DSV_ENCF, FIELDS); } \
         static std::string describe() { std::ostringstream ss; PRIV_HSTORE_MAPL(PRIV_HSTORE_DSV_DESC, FIELDS); return "{ " + ss.str().substr(2) + " }"; } \
         static size_t size(const T& x) { return 0 PRIV_HSTORE_MAPL(PRIV_HSTORE_DSV_SIZE, FIELDS); } \
         static bool write(wpipe& p, const T& x) { return true PRIV_HSTORE_MAPL(PRIV_HSTORE_DSV_WRITE, FIELDS); } \
@@ -1353,7 +1353,7 @@ template <typename T, typename F>
     template <> \
       struct store<T*> { \
         typedef T SelfT; \
-        static void encode(bytes* out) { w(PRIV_HSTORE_TYCTOR_STRUCT, out); w((size_t)(0 PRIV_HSTORE_MAPL(PRIV_HSTORE_DSV_COUNT, FIELDS)), out); PRIV_HSTORE_MAPL(PRIV_HSTORE_DSV_ENCF, FIELDS); } \
+        static void encode(bytes* out) { w(PRIV_HSTORE_TYCTOR_STRUCT, out); w(size_t(0 PRIV_HSTORE_MAPL(PRIV_HSTORE_DSV_COUNT, FIELDS)), out); PRIV_HSTORE_MAPL(PRIV_HSTORE_DSV_ENCF, FIELDS); } \
         static std::string describe() { std::ostringstream ss; PRIV_HSTORE_MAPL(PRIV_HSTORE_DSV_DESC, FIELDS); return "{ " + ss.str().substr(2) + " }"; } \
         static size_t size(const T* px) { const T& x = *px; return 0 PRIV_HSTORE_MAPL(PRIV_HSTORE_DSV_SIZE, FIELDS); } \
         static bool write(wpipe& p, const T* px) { const T& x = *px; return true PRIV_HSTORE_MAPL(PRIV_HSTORE_DSV_WRITE, FIELDS); } \
@@ -1361,7 +1361,7 @@ template <typename T, typename F>
     template <> \
       struct store<const T*> { \
         typedef T SelfT; \
-        static void encode(bytes* out) { w(PRIV_HSTORE_TYCTOR_STRUCT, out); w((size_t)(0 PRIV_HSTORE_MAPL(PRIV_HSTORE_DSV_COUNT, FIELDS)), out); PRIV_HSTORE_MAPL(PRIV_HSTORE_DSV_ENCF, FIELDS); } \
+        static void encode(bytes* out) { w(PRIV_HSTORE_TYCTOR_STRUCT, out); w(size_t(0 PRIV_HSTORE_MAPL(PRIV_HSTORE_DSV_COUNT, FIELDS)), out); PRIV_HSTORE_MAPL(PRIV_HSTORE_DSV_ENCF, FIELDS); } \
         static std::string describe() { std::ostringstream ss; PRIV_HSTORE_MAPL(PRIV_HSTORE_DSV_DESC, FIELDS); return "{ " + ss.str().substr(2) + " }"; } \
         static size_t size(const T* px) { const T& x = *px; return 0 PRIV_HSTORE_MAPL(PRIV_HSTORE_DSV_SIZE, FIELDS); } \
         static bool write(wpipe& p, const T* px) { const T& x = *px; return true PRIV_HSTORE_MAPL(PRIV_HSTORE_DSV_WRITE, FIELDS); } \
@@ -1719,7 +1719,7 @@ template <typename T, size_t N>
 template <typename T, size_t N>
   struct store<std::array<T, N>, typename store<T>::can_memcpy> : public fixedArrTyDesc<T, N> {
     static size_t size(const std::array<T, N>& x) { return sizeof(T)*N; }
-    static bool write(wpipe& p, const std::array<T, N>& x) { return p.write((const uint8_t*)&x, size(x)); }
+    static bool write(wpipe& p, const std::array<T, N>& x) { return p.write(reinterpret_cast<const uint8_t*>(&x), size(x)); }
   };
 template <typename T, size_t N>
   struct store<std::array<T, N>, typename cannot_memcpy<T>::type> : public fixedArrTyDesc<T, N> {
@@ -1774,7 +1774,7 @@ template <>
     static void encode(bytes* out) { w(PRIV_HSTORE_TYCTOR_ARR, out); store<char>::encode(out); }
     static std::string describe() { return "[char]"; }
     static size_t size(char* s) { return sizeof(size_t) + strlen(s); }
-    static bool write(wpipe& p, char* s) { size_t n = strlen(s); return store<size_t>::write(p, n) && p.write((const uint8_t*)s, n); }
+    static bool write(wpipe& p, char* s) { size_t n = strlen(s); return store<size_t>::write(p, n) && p.write(reinterpret_cast<const uint8_t*>(s), n); }
   };
 template <>
   struct store<std::string> {

@@ -437,7 +437,7 @@ TEST(Hog, SupportedTypes) {
 
   SectTest st;
   st.x = 42;
-  for (size_t i = 0; i < 10; ++i) { st.z[i] = (short)i; }
+  for (size_t i = 0; i < 10; ++i) { st.z[i] = short(i); }
   st.w = "test";
   HLOG(TestRecTypes, sectView, "test sect view", st);
   TestRecTypes.commit();

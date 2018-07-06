@@ -945,23 +945,6 @@ class packShortF : public op {
   }
 };
 
-class threadF : public op {
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) {
-    llvm::Function* f = c->lookupFunction(".thread");
-    if (!f) throw std::runtime_error("Expected thread allocation function as call.");
-
-    llvm::Value* cptr  = c->builder()->CreateBitCast(c->compile(es[0]), ptrType(charType()));
-    return fncall(c->builder(), f, list<llvm::Value*>(cptr));
-  }
-
-  PolyTypePtr type(typedb& db) const {
-    static MonoTypePtr tunit(Prim::make("unit"));
-    static MonoTypePtr tlong(Prim::make("long"));
-    static PolyTypePtr fnty(new PolyType(0, qualtype(functy(list(closty(list(tunit), tunit)), tlong))));
-    return fnty;
-  }
-};
-
 class cptrrefbyF : public op {
   llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) {
     return
@@ -1058,9 +1041,6 @@ void initDefOperators(cc* c) {
 
   // dereference through char pointers
   BINDF("cptrrefby", new cptrrefbyF());
-
-  // launch a thread
-  BINDF("thread", new threadF());
 }
 
 }

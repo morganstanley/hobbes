@@ -443,29 +443,6 @@ void dumpBytes(char* d, long len) {
   std::cout << std::endl;
 }
 
-void* runClosThread(void* clos) {
-  typedef void (*closfn)(void*);
-  closfn f = *reinterpret_cast<closfn*>(clos);
-  void*  d = reinterpret_cast<void*>(reinterpret_cast<unsigned char*>(clos) + sizeof(closfn));
-  f(d);
-  return 0;
-}
-
-long newThread(char* clos) {
-  pthread_t th;
-  pthread_create(&th, 0, &runClosThread, reinterpret_cast<void*>(clos));
-  return reinterpret_cast<long>(th);
-}
-
-void threadWait(long x) {
-  void* d = 0;
-  pthread_join(reinterpret_cast<pthread_t>(x), &d);
-}
-
-void threadSleep(timespanT dt) {
-  usleep(dt.value);
-}
-
 // support fd reading/writing
 //  (mark FDs as bad if there are errors rather than raising an exception and killing the process)
 std::set<int>& badFDs() {
@@ -676,11 +653,6 @@ void initStdFuncDefs(cc& ctx) {
 
   // dump some bytes
   ctx.bind(".dumpBytes", &dumpBytes);
-
-  // spawn a thread and wait for it (a very rough initial design)
-  ctx.bind(".thread", &newThread);
-  ctx.bind("wait",    &threadWait);
-  ctx.bind("sleep",   &threadSleep);
 
   // block codecs for primitives (maybe just emit reasonable code for these?)
   ctx.bind("fdReadBool",    &fdRead<bool>);
