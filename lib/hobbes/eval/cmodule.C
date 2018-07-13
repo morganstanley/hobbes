@@ -279,12 +279,16 @@ void compile(cc* e, const MTypeDef* mtd) {
 
 // compile regular variable definitions
 void compile(cc* e, const MVarDef* mvd) {
-  if (mvd->varWithArgs().size() == 1) {
-    e->define(mvd->varWithArgs()[0], mvd->varExpr());
-  } else {
-    Fn::VarNames vns(mvd->varWithArgs().begin() + 1, mvd->varWithArgs().end());
-    e->define(mvd->varWithArgs()[0], ExprPtr(new Fn(vns, mvd->varExpr(), mvd->la())));
+  ExprPtr vde = (mvd->varWithArgs().size() == 1) ? mvd->varExpr() : ExprPtr(new Fn(Fn::VarNames(mvd->varWithArgs().begin() + 1, mvd->varWithArgs().end()), mvd->varExpr(), mvd->la()));
+
+  // make sure that globals with inaccessible names (evaluated for side-effects) have monomorphic type
+  // (otherwise they'll quietly fail to run)
+  if (mvd->varWithArgs().size() >= 1 && mvd->varWithArgs()[0].size() > 0 && mvd->varWithArgs()[0][0] == '.') {
+    requireMonotype(e->typeEnv(), e->unsweetenExpression(mvd->varWithArgs()[0], vde));
   }
+
+  // ok we're fine, define this variable
+  e->define(mvd->varWithArgs()[0], vde);
 }
 
 // compile forward-declarations
