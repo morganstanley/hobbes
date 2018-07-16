@@ -232,6 +232,10 @@ public:
   bool alwaysLowerPrimMatchTables() const;
   void buildColumnwiseMatches(bool f);
   bool buildColumnwiseMatches() const;
+  void throwOnHugeRegexDFA(bool f);
+  bool throwOnHugeRegexDFA() const;
+  void regexDFAOverNFAMaxRatio(int f);
+  int  regexDFAOverNFAMaxRatio() const;
 
   // allow caller to gather a vector of unreachable rows arising from match compilation
   UnreachableMatchRowsPtr unreachableMatchRowsPtr;
@@ -255,10 +259,14 @@ private:
   bool lowerPrimMatchTables;
   bool columnwiseMatches;
 
+  // abort compilation of regexes which translate into huge dfa transition states
+  bool shouldThrowOnHugeRegexDFA = false;
+  int  dfaOverNfaMaxRatio        = 4;
+
   // the bound root type-def environment
   TEnvPtr          tenv;
   TypeAliasMap     typeAliases;
-  
+
   PolyTypePtr lookupVarType(const std::string& vname) const;
 
   // global variables
