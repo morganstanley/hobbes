@@ -714,7 +714,7 @@ typedef std::map<stateset, state> Nss2Ds;
 
 // create a DFA state from a set of NFA states
 // (or if it's already been made, just return the existing state)
-state dfaState(const NFA& nfa, const EpsClosure& ec, Nss2Ds* nss2ds, DFA* dfa, const stateset& ss, RStates* rstates) {
+state dfaState(const cc* c, const NFA& nfa, const EpsClosure& ec, Nss2Ds* nss2ds, DFA* dfa, const stateset& ss, RStates* rstates) {
   // did we already make this state?  if so, just return it
   auto didIt = nss2ds->find(ss);
   if (didIt != nss2ds->end()) {
@@ -724,12 +724,17 @@ state dfaState(const NFA& nfa, const EpsClosure& ec, Nss2Ds* nss2ds, DFA* dfa, c
   // we need to make this state -- allocate it and remember it
   state result = dfa->size();
   dfa->resize(dfa->size() + 1);
+
+  if (c->throwOnHugeRegexDFA() and c->regexDFAOverNFAMaxRatio() > 0 and c->regexDFAOverNFAMaxRatio() > (dfa->size() / nfa.size() > size_t(c->regexDFAOverNFAMaxRatio()))) {
+    throw std::runtime_error("regexes DFA over NFA Max ratio was breached");
+  }
+
   (*nss2ds)[ss] = result;
 
   // ok, how can we transition out of here?
   // for each case, we'll go to a set of NFA states (recursively)
   for (auto cr : usedCharRanges(nfa, ss)) {
-    auto ns = dfaState(nfa, ec, nss2ds, dfa, nfaTransition(nfa, ec, ss, cr), rstates);
+    auto ns = dfaState(c, nfa, ec, nss2ds, dfa, nfaTransition(nfa, ec, ss, cr), rstates);
     (*dfa)[result].chars.insert(cr, ns);
   }
 
@@ -759,7 +764,7 @@ state dfaState(const NFA& nfa, const EpsClosure& ec, Nss2Ds* nss2ds, DFA* dfa, c
   return result;
 }
 
-void disambiguate(const NFA& nfa, DFA* dfa, RStates* rstates) {
+void disambiguate(const cc* c, const NFA& nfa, DFA* dfa, RStates* rstates) {
   // determine eps* for this NFA
   EpsClosure ec;
   findEpsClosure(nfa, &ec);
@@ -767,7 +772,7 @@ void disambiguate(const NFA& nfa, DFA* dfa, RStates* rstates) {
   // starting from the eps* start state,
   // follow non-eps transitions to eps* successor states
   Nss2Ds nss2ds;
-  dfaState(nfa, ec, &nss2ds, dfa, epsState(ec, 0), rstates);
+  dfaState(c, nfa, ec, &nss2ds, dfa, epsState(ec, 0), rstates);
 }
 
 /*****************************
@@ -1270,7 +1275,7 @@ CRegexes makeRegexFn(cc* c, const Regexes& regexes, const LexicalAnnotation& roo
   // now map this NFA to a DFA
   DFA dfa;
   RStates fstates;
-  disambiguate(nfa, &dfa, &fstates);
+  disambiguate(c, nfa, &dfa, &fstates);
 
   // make all char ranges compact and minimize the results to avoid redundant work in the caller
   mergeCharRangesAndEqResults(&dfa, fstates, &result.rstates);
