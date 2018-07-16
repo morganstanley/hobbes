@@ -15,7 +15,10 @@ else()
   set(jit_lib mcjit)
 endif()
 # 'x86' module should have covered 'x86asmparser' and 'x86codegen' already, but using 'x86' alone didn't work
-llvm_map_components_to_libnames(llvm_libs x86asmparser x86codegen x86 ipo ${jit_lib})
+set(x86_libs x86asmparser x86codegen x86asmprinter x86desc x86disassembler x86info x86utils)
+llvm_map_components_to_libnames(llvm_libs core executionengine instcombine runtimedyld scalaropts transformutils ${x86_libs} support ipo ${jit_lib})
+
+# llvm_map_components_to_libnames(llvm_libs x86asmparser x86codegen x86 ipo ${jit_lib})
 
 file(GLOB_RECURSE lib_headers lib/*.H)
 file(GLOB_RECURSE lib_source lib/*.C)
@@ -42,7 +45,7 @@ if(APPLE)
 endif()
 if(LINUX)
   set(sys_libs pthread dl rt)
-  set(cxx_flags "-Werror=old-style-cast -Werror -Wall -Wextra -Winit-self -Wreturn-type -Wunused-variable -Wsign-compare -Warray-bounds -Wunknown-pragmas -Wuninitialized -Wstrict-aliasing -Wunused-value -Wunused-label -Wswitch -Wcast-align -Wno-ctor-dtor-privacy -Wno-missing-noreturn -Wno-unused-parameter -Werror=old-style-cast -Wreorder")
+  set(cxx_flags "-Werror=old-style-cast -Werror -Wall -Wextra -Winit-self -Wreturn-type -Wunused-variable -Wsign-compare -Warray-bounds -Wunknown-pragmas -Wuninitialized -Wstrict-aliasing -Wunused-value -Wunused-label -Wswitch -Wcast-align -Wno-ctor-dtor-privacy -Wno-missing-noreturn -Wno-unused-parameter -Wreorder")
 endif()
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${cxx_flags}")
