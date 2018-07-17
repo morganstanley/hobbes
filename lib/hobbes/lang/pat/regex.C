@@ -725,7 +725,7 @@ state dfaState(const cc* c, const NFA& nfa, const EpsClosure& ec, Nss2Ds* nss2ds
   state result = dfa->size();
   dfa->resize(dfa->size() + 1);
 
-  if (c->throwOnHugeRegexDFA() and c->regexDFAOverNFAMaxRatio() > 0 and c->regexDFAOverNFAMaxRatio() > (dfa->size() / nfa.size() > size_t(c->regexDFAOverNFAMaxRatio()))) {
+  if (c->throwOnHugeRegexDFA() and c->regexDFAOverNFAMaxRatio() > 0 and (dfa->size() / nfa.size() > size_t(c->regexDFAOverNFAMaxRatio()))) {
     throw std::runtime_error("regexes DFA over NFA Max ratio was breached");
   }
 
