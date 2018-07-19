@@ -580,19 +580,22 @@ template <typename ... Ts>
 
 
 // define opaque type aliases
-#define DEFINE_TYPE_ALIAS(PRIV_ATY, PRIV_REPTY) \
+#define DEFINE_TYPE_ALIAS_AS(PRIV_ATY, N, PRIV_REPTY) \
   struct PRIV_ATY { \
     static const bool is_hmeta_alias = true; \
+    typedef void is_hstore_alias; \
     typedef PRIV_REPTY type; \
-    static const char* name() { return #PRIV_ATY; } \
+    static const char* name() { return #N; } \
     inline operator PRIV_REPTY() { return this->value; } \
     PRIV_REPTY value; \
     PRIV_ATY() : value() { } \
     PRIV_ATY(const PRIV_REPTY& x) : value(x) { } \
-    PRIV_ATY(const PRIV_ATY& x) : value(x.value) { } \
-    PRIV_ATY& operator=(const PRIV_ATY& x) { this->value = x.value; return *this; } \
+    constexpr PRIV_ATY(const PRIV_ATY& x) = default; \
+    PRIV_ATY& operator=(const PRIV_ATY& x) = default; \
     bool operator==(const PRIV_ATY& x) const { return this->value == x.value; } \
   }
+
+#define DEFINE_TYPE_ALIAS(PRIV_ATY, PRIV_REPTY) DEFINE_TYPE_ALIAS_AS(PRIV_ATY, PRIV_ATY, PRIV_REPTY)
 
 /***************************************************
  *
