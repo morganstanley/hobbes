@@ -49,17 +49,25 @@ inline std::ostream& operator<<(std::ostream& out, const array<char>* x) {
 
 // allocate an array at some type, with some length
 template <typename T>
+  array<T>* defInitArray(array<T>* xs) {
+    if (xs->size > 0) {
+      new (xs->data) T[xs->size];
+    }
+    return xs;
+  }
+
+template <typename T>
   array<T>* makeArray(region& m, long n) {
     array<T>* r = reinterpret_cast<array<T>*>(m.malloc(sizeof(long) + (sizeof(T) * n)));
     r->size = n;
-    return r;
+    return defInitArray<T>(r);
   }
 
 template <typename T>
   array<T>* makeArray(long n) {
     array<T>* r = reinterpret_cast<array<T>*>(memalloc(sizeof(long) + (sizeof(T) * n)));
     r->size = n;
-    return r;
+    return defInitArray<T>(r);
   }
 
 // allocate ... something
