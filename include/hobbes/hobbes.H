@@ -50,8 +50,8 @@ inline std::ostream& operator<<(std::ostream& out, const array<char>* x) {
 // allocate an array at some type, with some length
 template <typename T>
   array<T>* defInitArray(array<T>* xs) {
-    for (size_t i = 0; i < xs->size; ++i) {
-      new (xs->data + i) T();
+    if (xs->size > 0) {
+      new (xs->data) T[xs->size];
     }
     return xs;
   }
