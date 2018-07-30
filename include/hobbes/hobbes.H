@@ -15,18 +15,20 @@
 namespace hobbes {
 
 // type aliases for common types
-extern const char timespanTNV[];
-typedef typeAlias<timespanTNV, int64_t> timespanT;
+DEFINE_TYPE_ALIAS_AS(timespanT, timespan, int64_t);
 
 inline uint64_t microseconds(const timespanT& ts) { return ts.value; }
 inline uint64_t milliseconds(const timespanT& ts) { return microseconds(ts) / 1000; }
 inline uint64_t seconds     (const timespanT& ts) { return milliseconds(ts) / 1000; }
 
-extern const char timeTNV[];
-typedef typeAlias<timeTNV, int64_t> timeT;
+DEFINE_TYPE_ALIAS_AS(timeT, time, int64_t);
+DEFINE_TYPE_ALIAS_AS(datetimeT, datetime, int64_t);
 
-extern const char datetimeTNV[];
-typedef typeAlias<datetimeTNV, int64_t> datetimeT;
+datetimeT now();
+datetimeT truncDate(datetimeT);
+timeT truncTime(datetimeT);
+datetimeT datetimeAt(datetimeT, timeT);
+timespanT gmtoffset(datetimeT);
 
 // allocate some memory in the calling thread's memory pool
 char* memalloc(size_t);

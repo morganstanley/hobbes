@@ -423,9 +423,11 @@ struct SectTest {
   double y() const { return 3.14159; }
   std::array<short, 10> z;
   std::string w;
+  hobbes::datetimeT dt;
+  hobbes::timespanT ts;
   void* q;
 };
-DEFINE_HSTORE_STRUCT_VIEW(SectTest, x, y, z, w);
+DEFINE_HSTORE_STRUCT_VIEW(SectTest, x, y, z, w, dt, ts);
 
 TEST(Hog, SupportedTypes) {
   HogApp local(RunMode{{"TestRecTypes"}, /* consolidate = */ true});
@@ -436,6 +438,8 @@ TEST(Hog, SupportedTypes) {
   st.x = 42;
   for (size_t i = 0; i < 10; ++i) { st.z[i] = short(i); }
   st.w = "test";
+  st.dt.value = hobbes::now();
+  st.ts.value = 60*1000*1000;
   HLOG(TestRecTypes, sectView, "test sect view", st);
   TestRecTypes.commit();
 

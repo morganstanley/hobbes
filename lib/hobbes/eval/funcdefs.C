@@ -304,19 +304,13 @@ const array<char>* showString(std::string* x) {
   return makeString("\"" + *x + "\"");
 }
 
-const char timespanTNV[] = "timespan";
-
 const array<char>* showTimespanV(timespanT x) {
   return makeString(showTimespan(x.value));
 }
 
-const char timeTNV[] = "time";
-
 const array<char>* showTimeV(timeT x) {
   return makeString(showTime(x.value));
 }
-
-const char datetimeTNV[] = "datetime";
 
 const array<char>* showDateTimeV(datetimeT x) {
   return makeString(showDateTime(x.value));

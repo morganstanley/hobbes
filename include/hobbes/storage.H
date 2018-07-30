@@ -1660,8 +1660,9 @@ template <>
     PRIV_REPTY value; \
     PRIV_ATY() : value() { } \
     PRIV_ATY(const PRIV_REPTY& x) : value(x) { } \
-    PRIV_ATY(const PRIV_ATY& x) : value(x.value) { } \
-    PRIV_ATY& operator=(const PRIV_ATY& x) { this->value = x.value; return *this; } \
+    constexpr PRIV_ATY(const PRIV_ATY& x) = default; \
+    PRIV_ATY& operator=(const PRIV_ATY& x) = default; \
+    bool operator==(const PRIV_ATY& x) const { return this->value == x.value; } \
   }
 
 template <typename T>
