@@ -114,9 +114,6 @@ struct RunMode {
   }
 };
 
-void rmrfdir(const char* p) {
-}
-
 class HogApp {
 public:
   HogApp(const RunMode& mode)

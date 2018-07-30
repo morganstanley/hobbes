@@ -465,7 +465,7 @@ template <typename T>
 template <typename ... Ts>
   struct toVariant<tuple<Ts...>> { typedef variant<Ts...> type; };
 
-// reflective variants with constructor names
+// reflective variants
 #define PRIV_HPPF_VARIANT_TYARGL(n, t)    , t
 #define PRIV_HPPF_VARIANT_CTOR(n, t)      static SelfT n(const t & x) { SelfT r; r.tag = Enum::tag_##n; new (&r.n##_data) t(x); return r; }
 #define PRIV_HPPF_VARIANT_PCOPY(n, t)     case Enum::tag_##n: new (&this->n##_data) t(rhs.n##_data); break;
@@ -574,6 +574,119 @@ template <typename ... Ts>
     union { \
       char data[1]; \
       PRIV_HPPF_MAP(PRIV_HPPF_VARIANT_CTOR_DATA, CTORS) \
+    }; \
+  }; \
+  inline std::ostream& operator<<(std::ostream& o, const T& v) { return v.show(o); }
+
+// reflective variants with explicit constructor names
+#define PRIV_HPPF_LBLVARIANT_TYARGL(n, lbl, t)     , t
+#define PRIV_HPPF_LBLVARIANT_CTOR(n, lbl, t)       static SelfT n(const t & x) { SelfT r; r.tag = Enum::tag_##n; new (&r.n##_data) t(x); return r; }
+#define PRIV_HPPF_LBLVARIANT_PCOPY(n, lbl, t)      case Enum::tag_##n: new (&this->n##_data) t(rhs.n##_data); break;
+#define PRIV_HPPF_LBLVARIANT_GINIT(n, lbl, t)      case Enum::tag_##n: new (&this->n##_data) t(); v.template init<t>(&this->n##_data); break;
+#define PRIV_HPPF_LBLVARIANT_PDESTROY(n, lbl, t)   case Enum::tag_##n: { typedef t PRIV_DT; reinterpret_cast<PRIV_DT*>(&this->n##_data)->~PRIV_DT(); } break;
+#define PRIV_HPPF_LBLVARIANT_CTOR_TAG(n, lbl, t)   tag_##n,
+#define PRIV_HPPF_LBLVARIANT_CTOR_DATA(n, lbl, t)  t n##_data;
+#define PRIV_HPPF_LBLVARIANT_CTOR_COUNT(n, lbl, t) +1
+#define PRIV_HPPF_LBLVARIANT_EQCASE(n, lbl, t)     case Enum::tag_##n: return (this->n##_data == rhs.n##_data);
+#define PRIV_HPPF_LBLVARIANT_META(n, lbl, t)       v.template ctor<t>(#lbl, static_cast<uint32_t>(Enum::tag_##n));
+#define PRIV_HPPF_LBLVARIANT_VDECL(n, lbl, t)      virtual R n(const t & x) const = 0;
+#define PRIV_HPPF_LBLVARIANT_VCASE(n, lbl, t)      case Enum::tag_##n: return v. n (this->n##_data);
+#define PRIV_HPPF_LBLVARIANT_GVCASE(n, lbl, t)     case Enum::tag_##n: return v.template visit<t>(#lbl, static_cast<uint32_t>(Enum::tag_##n), this->n##_data);
+#define PRIV_HPPF_LBLVARIANT_SHOW(n, lbl, t)       case Enum::tag_##n: o << "|" << #lbl << "=" << this->n##_data << "|"; break;
+
+#define DEFINE_VARIANT_WITH_LABELS(T, CTORS...) \
+  template <typename R> \
+    struct T##Visitor { \
+      PRIV_HPPF_MAP(PRIV_HPPF_LBLVARIANT_VDECL, CTORS) \
+    }; \
+  struct T { \
+    static const bool is_hmeta_variant = true; \
+    typedef T SelfT; \
+    static const uint32_t ctorCount = 0 PRIV_HPPF_MAP(PRIV_HPPF_LBLVARIANT_CTOR_COUNT, CTORS); \
+    typedef typename ::hobbes::variantTail<int PRIV_HPPF_MAP(PRIV_HPPF_LBLVARIANT_TYARGL, CTORS)>::type as_variant_type; \
+    T() : tag(Enum::COUNT) { } \
+    PRIV_HPPF_MAP(PRIV_HPPF_LBLVARIANT_CTOR, CTORS) \
+    T(const T& rhs) : tag(rhs.tag) { \
+      switch (this->tag) { \
+      PRIV_HPPF_MAP(PRIV_HPPF_LBLVARIANT_PCOPY, CTORS) \
+      default: break; \
+      } \
+    } \
+    ~T() { \
+      switch (this->tag) { \
+      PRIV_HPPF_MAP(PRIV_HPPF_LBLVARIANT_PDESTROY, CTORS) \
+      default: break; \
+      } \
+    } \
+    T& operator=(const T& rhs) { \
+      if (this == &rhs) return *this; \
+      switch (this->tag) { \
+      PRIV_HPPF_MAP(PRIV_HPPF_LBLVARIANT_PDESTROY, CTORS) \
+      default: break; \
+      } \
+      this->tag = rhs.tag; \
+      switch (this->tag) { \
+      PRIV_HPPF_MAP(PRIV_HPPF_LBLVARIANT_PCOPY, CTORS) \
+      default: break; \
+      } \
+      return *this; \
+    } \
+    template <typename V> \
+      static void meta(V& v) { \
+        PRIV_HPPF_MAP(PRIV_HPPF_LBLVARIANT_META, CTORS) \
+      } \
+    template <typename R> \
+      R visit(const T##Visitor<R>& v) const { \
+        switch (this->tag) { \
+        PRIV_HPPF_MAP(PRIV_HPPF_LBLVARIANT_VCASE, CTORS) \
+        default: throw std::runtime_error("while deconstructing the " #T " variant, cannot decide payload type because tag is invalid"); \
+        } \
+      } \
+    bool operator==(const T& rhs) const { \
+      if (this->tag != rhs.tag) { \
+        return false; \
+      } else { \
+        switch (this->tag) { \
+        PRIV_HPPF_MAP(PRIV_HPPF_LBLVARIANT_EQCASE, CTORS) \
+        default: return false; \
+        } \
+      } \
+    } \
+    template <typename V> \
+      void gvisit(V& v) const { \
+        switch (this->tag) { \
+        PRIV_HPPF_MAP(PRIV_HPPF_LBLVARIANT_GVCASE, CTORS) \
+        default: break; \
+        } \
+      } \
+    template <typename V> \
+      void ginit(uint32_t t, V& v) { \
+        switch (this->tag) { \
+        PRIV_HPPF_MAP(PRIV_HPPF_LBLVARIANT_PDESTROY, CTORS) \
+        default: break; \
+        } \
+        this->tag = static_cast<Enum>(t); \
+        switch (this->tag) { \
+        PRIV_HPPF_MAP(PRIV_HPPF_LBLVARIANT_GINIT, CTORS) \
+        default: break; \
+        } \
+      } \
+    std::ostream& show(std::ostream& o) const { \
+      switch (this->tag) { \
+      PRIV_HPPF_MAP(PRIV_HPPF_LBLVARIANT_SHOW, CTORS) \
+      default: o << "?"; break; \
+      } \
+      return o; \
+    } \
+  private: \
+    enum class Enum : uint32_t { \
+      PRIV_HPPF_MAP(PRIV_HPPF_LBLVARIANT_CTOR_TAG, CTORS) \
+      COUNT \
+    }; \
+    Enum tag; \
+    union { \
+      char data[1]; \
+      PRIV_HPPF_MAP(PRIV_HPPF_LBLVARIANT_CTOR_DATA, CTORS) \
     }; \
   }; \
   inline std::ostream& operator<<(std::ostream& o, const T& v) { return v.show(o); }
@@ -697,7 +810,7 @@ struct Struct : public D {
 
   Fields fields;
 };
-inline desc record(const Struct::Fields& fields) { return desc(new Struct(fields)); }
+inline desc record(const Struct::Fields& fields) { return fields.size() == 0 ? prim("unit") : desc(new Struct(fields)); }
 
 template <typename ... Tys>
   struct tupAcc { static void acc(Struct::Fields*) { } };
