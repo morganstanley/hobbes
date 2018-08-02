@@ -11,7 +11,7 @@
 
 namespace hobbes {
 
-stateidx_t nullState = (stateidx_t)-1;
+stateidx_t nullState = static_cast<stateidx_t>(-1);
 
 // match DFA state defs
 MState::MState(int cid) : refs(0), isPrimMatchRoot(false), cid(cid) { }
@@ -25,7 +25,7 @@ std::string LoadVars::stamp() {
   std::ostringstream ss;
   ss << "l";
   for (auto d : this->ds) {
-    ss << "." << d.first << "=" << ((void*)d.second.get()); // assumes that we deliberately share equivalent expressions
+    ss << "." << d.first << "=" << reinterpret_cast<void*>(d.second.get()); // assumes that we deliberately share equivalent expressions
   }
   ss << "." << this->next;
   return ss.str();
@@ -68,7 +68,7 @@ const ExprPtr& FinishExpr::expr() const { return this->exp; }
 
 std::string FinishExpr::stamp() {
   std::ostringstream ss;
-  ss << "e." << ((void*)this->exp.get());
+  ss << "e." << reinterpret_cast<void*>(this->exp.get());
   return ss.str();
 }
 
@@ -493,7 +493,7 @@ inline unsigned char spatChar(const MatchArray& ma, size_t i) {
     return 0;
   } else if (const MatchLiteral* ml = is<MatchLiteral>(ma.pattern(i))) {
     if (const Char* c = is<Char>(ml->equivConstant())) {
-      return (unsigned char)c->value();
+      return static_cast<unsigned char>(c->value());
     } else {
       throw annotated_error(*ml, "Internal error, can't unpack non-char as char");
     }
@@ -506,7 +506,7 @@ template <typename T>
   T translatep(const MatchArray& ma, size_t i) {
     T x = 0;
     for (size_t j = 0; j < sizeof(T); ++j) {
-      x |= ((T)spatChar(ma, i + (sizeof(T) - 1 - j))) << (8 * j);
+      x |= static_cast<T>(spatChar(ma, i + (sizeof(T) - 1 - j))) << (8 * j);
     }
     return x;
   }
@@ -705,9 +705,9 @@ MStatePtr makeRegexState(MDFA* dfa, const PatternRows& ps, size_t c) {
       var(regexFn.fname, dfa->rootLA), list(
         var(rcaptureVar, dfa->rootLA),
         var(oarrayVar, dfa->rootLA),
-        constant((long)0, dfa->rootLA),
+        constant(static_cast<long>(0), dfa->rootLA),
         fncall(var("size", dfa->rootLA), list(var(oarrayVar, dfa->rootLA)), dfa->rootLA),
-        constant((int)0, dfa->rootLA)),
+        constant(static_cast<int>(0), dfa->rootLA)),
       dfa->rootLA
     )
   ));
@@ -740,7 +740,7 @@ MStatePtr makeRegexState(MDFA* dfa, const PatternRows& ps, size_t c) {
 
     // in this case, follow this continuation and load variables for it
     sjmps.push_back(
-      SwitchVal::Jump(PrimitivePtr(new Int((int)rstate.first, dfa->rootLA)),
+      SwitchVal::Jump(PrimitivePtr(new Int(static_cast<int>(rstate.first), dfa->rootLA)),
         addState(dfa,
           MStatePtr(
             new LoadVars(
@@ -975,18 +975,18 @@ ExprPtr makeColRowsetCalcExpr(MDFA* dfa, const PatternRows& ps, size_t c, const 
 
   PatternRows cps;
   for (size_t r = 0; r < ps.size(); ++r) {
-    auto rcVar = fncall(var("saelem", dfa->rootLA), list(var(rcVarName, dfa->rootLA), constant((size_t)r, dfa->rootLA)), dfa->rootLA);
+    auto rcVar = fncall(var("saelem", dfa->rootLA), list(var(rcVarName, dfa->rootLA), constant(static_cast<size_t>(r), dfa->rootLA)), dfa->rootLA);
 
     if (!isFinal) {
       if (refutable(ps[r].patterns[c])) {
-        auto markRowExpr = assign(rcVar, fncall(var("badd", dfa->rootLA), list(rcVar, constant((uint8_t)1, dfa->rootLA)), dfa->rootLA), dfa->rootLA);
+        auto markRowExpr = assign(rcVar, fncall(var("badd", dfa->rootLA), list(rcVar, constant(static_cast<uint8_t>(1), dfa->rootLA)), dfa->rootLA), dfa->rootLA);
         cps.push_back(PatternRow(list(ps[r].patterns[c]), let("_", markRowExpr, constant(false, dfa->rootLA), dfa->rootLA), mktunit(dfa->rootLA)));
       } else {
         ++(*skipCounts)[r];
       }
     } else {
       if (r < ps.size()-1) {
-        auto checkCount = fncall(var("beq", dfa->rootLA), list(rcVar, constant((uint8_t)(ps[0].patterns.size()-(1+(*skipCounts)[r])), dfa->rootLA)), dfa->rootLA);
+        auto checkCount = fncall(var("beq", dfa->rootLA), list(rcVar, constant(static_cast<uint8_t>(ps[0].patterns.size()-(1+(*skipCounts)[r])), dfa->rootLA)), dfa->rootLA);
         cps.push_back(PatternRow(list(ps[r].patterns[c]), ps[r].guard ? fncall(var("and",dfa->rootLA), list(checkCount, ps[r].guard), dfa->rootLA) : checkCount, ps[r].result));
       } else {
         if (ps[r].guard != ExprPtr()) {
@@ -1371,6 +1371,9 @@ RowResults findRowResults(MDFA* dfa, stateidx_t s) {
   return result;
 }
 
+long asLongRep(long*  x) { return *x; }
+long asLongRep(double x) { return asLongRep(reinterpret_cast<long*>(&x)); }
+
 // derive a primitive search function from a DFA (or sub-DFA) that contains _only_ primitive tests
 typedef std::map<std::string, llvm::Value*>      Args;
 typedef std::map<stateidx_t,  llvm::BasicBlock*> StateBranches;
@@ -1405,8 +1408,7 @@ struct makePrimDFASF : public switchMState<UnitV> {
       llvm::SwitchInst* s = this->dfa->c->builder()->CreateSwitch(this->dfa->c->builder()->CreateBitCast(arg(x->switchVar()), longType()), blockForState(x->defaultState()), x->jumps().size());
       for (const auto& jmp : x->jumps()) {
         if (const Double* d = is<Double>(jmp.first)) {
-          double x = d->value();
-          s->addCase(civalue(*reinterpret_cast<long*>(&x)), blockForState(jmp.second));
+          s->addCase(civalue(asLongRep(d->value())), blockForState(jmp.second));
         }
       }
     } else {
@@ -1423,7 +1425,7 @@ struct makePrimDFASF : public switchMState<UnitV> {
     if (ei == this->dfa->exprIdxs.end()) {
       throw std::runtime_error("Internal error, primitive match DFA returns non-indexed expression");
     } else {
-      this->dfa->c->builder()->CreateRet(cvalue((int)ei->second));
+      this->dfa->c->builder()->CreateRet(cvalue(static_cast<int>(ei->second)));
     }
     return unitv;
   }
@@ -1623,7 +1625,7 @@ IDFATransitions* transitions(const ArgPos& argpos, MDFA* dfa, const SwitchVal::J
   }
 
   size_t msz = sizeof(long) + (ssvj.size() * sizeof(std::pair<long, IDFATransition>));
-  IDFATransitions* result = (IDFATransitions*)malloc(msz);
+  IDFATransitions* result = reinterpret_cast<IDFATransitions*>(malloc(msz));
   memset(result, 0, msz);
   result->size = ssvj.size();
   size_t i = 0;
@@ -1642,11 +1644,11 @@ IDFATransition transitionDef(const ArgPos& argpos, MDFA* dfa, stateidx_t s, cons
     if (ei == dfa->exprIdxs.end()) {
       throw std::runtime_error("Internal error, unexpected result expression");
     }
-    return IDFATransition((int)ei->second);
+    return IDFATransition(static_cast<int>(ei->second));
   } else {
     long nextState = localState(localstate, s);
     copyStateDef(argpos, dfa, s, localstate, dones, dfaStates);
-    return IDFATransition((long)nextState);
+    return IDFATransition(static_cast<long>(nextState));
   }
 }
 
@@ -1669,7 +1671,7 @@ void makeInterpretedPrimMatchFunction(const std::string& fname, MDFA* dfa, state
 
   // construct the DFA description in a consumable format
   size_t msz = sizeof(long) + (localstate.size() + sizeof(IDFAState));
-  array<IDFAState>* dfaStates = (array<IDFAState>*)malloc(msz);
+  array<IDFAState>* dfaStates = reinterpret_cast<array<IDFAState>*>(malloc(msz));
   memset(dfaStates, 0, msz);
   dfaStates->size = localstate.size();
 
@@ -1727,7 +1729,7 @@ ExprPtr liftPrimMatchExpr(MDFA* dfa, stateidx_t state) {
   // defer to the primitive match, switch on the determined row
   Switch::Bindings bs;
   for (const auto& r : findRowResults(dfa, state)) {
-    bs.push_back(Switch::Binding(PrimitivePtr(new Int((int)r.first, dfa->rootLA)), r.second));
+    bs.push_back(Switch::Binding(PrimitivePtr(new Int(static_cast<int>(r.first), dfa->rootLA)), r.second));
   }
   return ExprPtr(new Switch(fncall(var(fname, dfa->rootLA), findEndStateArgs, dfa->rootLA), bs, bs[0].exp, dfa->rootLA));
 }

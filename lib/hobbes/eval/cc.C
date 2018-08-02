@@ -632,5 +632,11 @@ bool cc::alwaysLowerPrimMatchTables() const { return this->lowerPrimMatchTables;
 void cc::buildColumnwiseMatches(bool f) { this->columnwiseMatches = f; }
 bool cc::buildColumnwiseMatches() const { return this->columnwiseMatches; }
 
+void cc::throwOnHugeRegexDFA(bool f) { this->shouldThrowOnHugeRegexDFA = f; }
+bool cc::throwOnHugeRegexDFA() const { return this-> shouldThrowOnHugeRegexDFA; }
+
+void cc::regexDFAOverNFAMaxRatio(int f) { this->dfaOverNfaMaxRatio = f; }
+int  cc::regexDFAOverNFAMaxRatio() const { return this->dfaOverNfaMaxRatio; }
+
 }
 

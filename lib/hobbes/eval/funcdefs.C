@@ -82,11 +82,11 @@ size_t makeMemRegion(const array<char>* n) {
 }
 
 char* memalloc(size_t n) {
-  return (char*)threadRegion().malloc(n);
+  return reinterpret_cast<char*>(threadRegion().malloc(n));
 }
 
 char* memallocz(size_t n) {
-  char* r = (char*)threadRegion().malloc(n);
+  char* r = reinterpret_cast<char*>(threadRegion().malloc(n));
   memset(r, 0, n);
   return r;
 }
@@ -115,9 +115,9 @@ array<RegionState>* getMemoryPool() {
       rs.used      = r->used();
       rs.wasted    = r->wasted();
     } else {
-      rs.allocated = (size_t)-1;
-      rs.used      = (size_t)-1;
-      rs.wasted    = (size_t)-1;
+      rs.allocated = static_cast<size_t>(-1);
+      rs.used      = static_cast<size_t>(-1);
+      rs.wasted    = static_cast<size_t>(-1);
     }
   }
   return rsa;
@@ -170,7 +170,7 @@ scoped_pool_reset::~scoped_pool_reset() {
 }
 
 const array<char>* makeString(region& m, const char* s, size_t len) {
-  array<char>* r = (array<char>*)m.malloc(sizeof(long) + len);
+  array<char>* r = reinterpret_cast<array<char>*>(m.malloc(sizeof(long) + len));
   r->size = len;
   memcpy(r->data, s, len);
   return r;
@@ -304,19 +304,13 @@ const array<char>* showString(std::string* x) {
   return makeString("\"" + *x + "\"");
 }
 
-const char timespanTNV[] = "timespan";
-
 const array<char>* showTimespanV(timespanT x) {
   return makeString(showTimespan(x.value));
 }
 
-const char timeTNV[] = "time";
-
 const array<char>* showTimeV(timeT x) {
   return makeString(showTime(x.value));
 }
-
-const char datetimeTNV[] = "datetime";
 
 const array<char>* showDateTimeV(datetimeT x) {
   return makeString(showDateTime(x.value));
@@ -338,7 +332,7 @@ const array<char>* formatTimeV(const array<char>* fmt, long tus) {
   int64_t us  = tus % (1000 * 1000);
   std::string sfmt = str::replace<char>(makeStdString(fmt), "%us", showUS(us));
   static char buf[256];
-  strftime(buf, sizeof(buf), sfmt.c_str(), localtime((time_t*)&s));
+  strftime(buf, sizeof(buf), sfmt.c_str(), localtime(reinterpret_cast<time_t*>(&s)));
   return makeString(buf);
 }
 
@@ -419,7 +413,7 @@ void stdstringAssign(std::string* lhs, array<char>* rhs) {
 }
 
 double random(double low, double high) {
-  return low + ((high - low) * (((double)rand()) / ((double)RAND_MAX)));
+  return low + ((high - low) * (static_cast<double>(rand()) / static_cast<double>(RAND_MAX)));
 }
 
 long lrand(long low, long high) { return low + (rand() % (high - low)); }
@@ -430,7 +424,7 @@ long truncd(double x) { return x; }
 void dbglog(const std::string&);
 void failvarmatch(const array<char>* file, size_t line, const array<char>* txt, char* addr) {
   std::ostringstream ss;
-  ss << "FATAL ERROR: Unexpected variant match failure on " << (void*)addr << " at " << makeStdString(file) << ":" << line << " ('" << makeStdString(txt) << "')";
+  ss << "FATAL ERROR: Unexpected variant match failure on " << reinterpret_cast<void*>(addr) << " at " << makeStdString(file) << ":" << line << " ('" << makeStdString(txt) << "')";
   dbglog(ss.str());
   std::cerr << ss.str() << std::endl;
   throw std::runtime_error(ss.str());
@@ -438,32 +432,9 @@ void failvarmatch(const array<char>* file, size_t line, const array<char>* txt, 
 
 void dumpBytes(char* d, long len) {
   for (long i = 0; i < len; ++i) {
-    std::cout << str::hex((unsigned char)d[i]) << " ";
+    std::cout << str::hex(static_cast<unsigned char>(d[i])) << " ";
   }
   std::cout << std::endl;
-}
-
-void* runClosThread(void* clos) {
-  typedef void (*closfn)(void*);
-  closfn f = *((closfn*)clos);
-  void*  d = (void*)(((unsigned char*)clos) + sizeof(closfn));
-  f(d);
-  return 0;
-}
-
-long newThread(char* clos) {
-  pthread_t th;
-  pthread_create(&th, 0, &runClosThread, (void*)clos);
-  return (long)th;
-}
-
-void threadWait(long x) {
-  void* d = 0;
-  pthread_join((pthread_t)x, &d);
-}
-
-void threadSleep(timespanT dt) {
-  usleep(dt.value);
 }
 
 // support fd reading/writing
@@ -503,7 +474,7 @@ void readOrMark(int fd, char* b, size_t sz) {
 template <typename T>
   T fdRead(int fd) {
     T x = T();
-    readOrMark(fd, (char*)&x, sizeof(T));
+    readOrMark(fd, reinterpret_cast<char*>(&x), sizeof(T));
     return x;
   }
 
@@ -517,7 +488,7 @@ void writeOrMark(int fd, const char* b, size_t sz) {
 
 template <typename T>
   void fdWrite(int fd, T x) {
-    writeOrMark(fd, (const char*)&x, sizeof(T));
+    writeOrMark(fd, reinterpret_cast<const char*>(&x), sizeof(T));
   }
 
 void fdWriteChars(int fd, const array<char>* cs) {
@@ -525,7 +496,7 @@ void fdWriteChars(int fd, const array<char>* cs) {
 }
 
 void fdWriteBytes(int fd, const array<unsigned char>* bs) {
-  writeOrMark(fd, (const char*)bs->data, bs->size);
+  writeOrMark(fd, reinterpret_cast<const char*>(bs->data), bs->size);
 }
 
 /***********
@@ -535,25 +506,25 @@ void fdWriteBytes(int fd, const array<unsigned char>* bs) {
 uint8_t compressLength(size_t len, uint8_t slen[9]) {
   // can we fit this length in one byte?
   if (len <= 0x3f) {
-    slen[0] = (uint8_t)(len << 2);
+    slen[0] = static_cast<uint8_t>(len << 2);
     return 1;
   }
 
   // can we fit this length in two bytes?
   if (len <= 0x3fff) {
-    *((uint16_t*)slen) = 1 | ((uint16_t)(len << 2));
+    *reinterpret_cast<uint16_t*>(slen) = 1 | static_cast<uint16_t>(len << 2);
     return 2;
   }
 
   // can we fit this length in four bytes?
   if (len <= 0x3fffffff) {
-    *((uint32_t*)slen) = 2 | ((uint32_t)(len << 2));
+    *reinterpret_cast<uint32_t*>(slen) = 2 | static_cast<uint32_t>(len << 2);
     return 4;
   }
 
   // too big, we'll fall back on expanding by a byte
   slen[0] = 3;
-  *((uint64_t*)&slen[1]) = len;
+  *reinterpret_cast<uint64_t*>(&slen[1]) = len;
   return 9;
 }
 
@@ -563,20 +534,20 @@ uint8_t uncompressLength(const uint8_t* data, size_t* len) {
     *len = *data >> 2;
     return 1;
   case 1:
-    *len = *((uint16_t*)data) >> 2;
+    *len = *reinterpret_cast<const uint16_t*>(data) >> 2;
     return 2;
   case 2:
-    *len = *((uint32_t*)data) >> 2;
+    *len = *reinterpret_cast<const uint32_t*>(data) >> 2;
     return 4;
   default:
-    *len = *((uint64_t*)(data+1));
+    *len = *reinterpret_cast<const uint64_t*>(data+1);
     return 9;
   }
 }
 
 size_t crossZLibCompressBound(size_t t) {
   // zlib's "compressBound" function isn't available in some versions
-  return (((size_t)ceil(((double)t) * 1.001)) + 12);
+  return static_cast<size_t>(ceil(static_cast<double>(t) * 1.001)) + 12;
 }
 
 const array<uint8_t>* compressBytes(const array<uint8_t>* bs) {
@@ -587,7 +558,7 @@ const array<uint8_t>* compressBytes(const array<uint8_t>* bs) {
   memcpy(r->data, slen, slensz);
 
   size_t rlen = r->size - slensz;
-  if (compress2(&r->data[slensz], (uLongf*)&rlen, bs->data, (uLongf)bs->size, Z_BEST_COMPRESSION) == Z_OK) {
+  if (compress2(&r->data[slensz], reinterpret_cast<uLongf*>(&rlen), bs->data, static_cast<uLongf>(bs->size), Z_BEST_COMPRESSION) == Z_OK) {
     r->size = slensz + rlen;
   } else {
     r->size = 0;
@@ -600,7 +571,7 @@ const array<uint8_t>* uncompressBytes(const array<uint8_t>* bs) {
   uint8_t ulensz = uncompressLength(bs->data, &ulen);
 
   array<uint8_t>* r = makeArray<uint8_t>(ulen);
-  if (uncompress(r->data, (uLongf*)&r->size, bs->data + ulensz, bs->size - ulensz) != Z_OK) {
+  if (uncompress(r->data, reinterpret_cast<uLongf*>(&r->size), bs->data + ulensz, bs->size - ulensz) != Z_OK) {
     r->size = 0;
   }
   return r;
@@ -611,8 +582,8 @@ void runEvery(timespanT dt, bool (*pf)()) {
 }
 
 // bindings for all std::vectors
-size_t vectorSize(const std::vector<uint8_t>& xs, size_t esize) { return xs.size()/esize; }
-char*  vectorData(const std::vector<uint8_t>& xs) { return (char*)(&xs[0]); }
+size_t      vectorSize(const std::vector<uint8_t>& xs, size_t esize) { return xs.size()/esize; }
+const char* vectorData(const std::vector<uint8_t>& xs) { return reinterpret_cast<const char*>(&xs[0]); }
 
 void initStdFuncDefs(cc& ctx) {
   ctx.bind("malloc",                &memalloc);
@@ -676,11 +647,6 @@ void initStdFuncDefs(cc& ctx) {
 
   // dump some bytes
   ctx.bind(".dumpBytes", &dumpBytes);
-
-  // spawn a thread and wait for it (a very rough initial design)
-  ctx.bind(".thread", &newThread);
-  ctx.bind("wait",    &threadWait);
-  ctx.bind("sleep",   &threadSleep);
 
   // block codecs for primitives (maybe just emit reasonable code for these?)
   ctx.bind("fdReadBool",    &fdRead<bool>);

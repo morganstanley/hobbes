@@ -35,10 +35,6 @@ static bool decFieldName(const MonoTypePtr& fieldName, std::string* fn) {
   }
 }
 
-static bool canDecFieldName(const MonoTypePtr& fieldName) {
-  return is<TString>(fieldName) || is<TLong>(fieldName);
-}
-
 static bool mightRewriteToLookup(const TEnvPtr& tenv, const MonoTypePtr& rty, const std::string& fieldName, const MonoTypePtr& fty, Definitions* ds) {
   try {
     MonoTypeUnifier s(tenv);
@@ -83,9 +79,8 @@ static ExprPtr rewriteLookup(const TEnvPtr& tenv, const ExprPtr& r, const std::s
 }
 
 bool HFLookupEliminator::satisfied(const TEnvPtr& tenv, const HasField& hf, Definitions* ds) const {
-  auto dir    = hf.direction;
-  auto rty    = hf.recordType;
-  auto fty    = hf.fieldType;
+  auto rty = hf.recordType;
+  auto fty = hf.fieldType;
 
   std::string fname;
   if (decFieldName(hf.fieldName, &fname)) {
@@ -97,9 +92,8 @@ bool HFLookupEliminator::satisfied(const TEnvPtr& tenv, const HasField& hf, Defi
 }
 
 bool HFLookupEliminator::satisfiable(const TEnvPtr& tenv, const HasField& hf, Definitions* ds) const {
-  auto dir    = hf.direction;
-  auto rty    = hf.recordType;
-  auto fty    = hf.fieldType;
+  auto rty = hf.recordType;
+  auto fty = hf.fieldType;
 
   std::string fname;
   if (decFieldName(hf.fieldName, &fname)) {
@@ -110,9 +104,8 @@ bool HFLookupEliminator::satisfiable(const TEnvPtr& tenv, const HasField& hf, De
 }
 
 bool HFLookupEliminator::refine(const TEnvPtr& tenv, const HasField& hf, MonoTypeUnifier* s, Definitions* ds) {
-  auto dir    = hf.direction;
-  auto rty    = hf.recordType;
-  auto fty    = hf.fieldType;
+  auto rty = hf.recordType;
+  auto fty = hf.fieldType;
 
   std::string fname;
   if (decFieldName(hf.fieldName, &fname)) {

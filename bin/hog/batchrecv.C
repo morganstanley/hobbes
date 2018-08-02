@@ -104,16 +104,16 @@ void read(gzbuffer* in, uint8_t* b, size_t n) {
 }
 
 #if defined(__APPLE__) && defined(__MACH__)
-void read(gzbuffer* in, size_t*   n) { read(in, (uint8_t*)n, sizeof(*n)); }
+void read(gzbuffer* in, size_t*   n) { read(in, reinterpret_cast<uint8_t*>(n), sizeof(*n)); }
 #endif
-void read(gzbuffer* in, uint32_t* n) { read(in, (uint8_t*)n, sizeof(*n)); }
-void read(gzbuffer* in, uint64_t* n) { read(in, (uint8_t*)n, sizeof(*n)); }
+void read(gzbuffer* in, uint32_t* n) { read(in, reinterpret_cast<uint8_t*>(n), sizeof(*n)); }
+void read(gzbuffer* in, uint64_t* n) { read(in, reinterpret_cast<uint8_t*>(n), sizeof(*n)); }
 
 void read(gzbuffer* in, std::string* x) {
   size_t n;
   read(in, &n);
   x->resize(n);
-  read(in, (uint8_t*)&(*x)[0], n);
+  read(in, reinterpret_cast<uint8_t*>(&(*x)[0]), n);
 }
 
 void read(gzbuffer* in, std::vector<uint8_t>* x) {
@@ -163,7 +163,7 @@ void runRecvConnection(SessionGroup* sg, NetConnection* pc, std::string dir) {
     storage::statements stmts;
     read(&zb, &stmts);
 
-    auto txnF = appendStorageSession(sg, instantiateDir(group, dir), (storage::PipeQOS)qos, (storage::CommitMethod)cm, stmts);
+    auto txnF = appendStorageSession(sg, instantiateDir(group, dir), static_cast<storage::PipeQOS>(qos), static_cast<storage::CommitMethod>(cm), stmts);
 
     connection->send(&ack, sizeof(ack));
 

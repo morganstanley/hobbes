@@ -13,6 +13,7 @@
 
 #include <map>
 #include <vector>
+#include <array>
 #include <string>
 #include <string.h>
 #include <tuple>
@@ -137,7 +138,7 @@ inline long poll_tickNS() {
 static inline void waitForUpdate(volatile uint32_t* p, int eqV) {
   while (true) {
     for (size_t c = 0; c < 4096; ++c) {
-      if (*p != eqV) {
+      if (*p != uint32_t(eqV)) {
         return;
       }
     }
@@ -153,13 +154,13 @@ static inline void waitForUpdate(volatile uint32_t* p, int eqV, size_t timeoutNS
 
   while (true) {
     for (size_t c = 0; c < 4096; ++c) {
-      if (*p != eqV) {
+      if (*p != uint32_t(eqV)) {
         return;
       }
     }
 
     long t1 = poll_tickNS();
-    if ((t1-t0) >= timeoutNS) {
+    if ((t1-t0) >= long(timeoutNS)) {
       timeoutF();
       t0 = t1;
     }
@@ -244,7 +245,7 @@ static inline WakeFn wakeFn(const WaitPolicy s) {
 
 namespace hobbes { namespace storage {
 
-#define HSTORE_VERSION ((uint32_t)0x00020000)
+#define HSTORE_VERSION static_cast<uint32_t>(0x00020000)
 
 typedef std::vector<uint8_t> bytes;
 
@@ -317,7 +318,7 @@ inline int mqconnect(const std::string& fileName) {
   addr.sun_family = AF_UNIX;
   snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", fileName.c_str());
  
-  sockaddr* saddr = (sockaddr*)&addr;
+  sockaddr* saddr = reinterpret_cast<sockaddr*>(&addr);
   size_t    len   = sizeof(addr);
   if (connect(r, saddr, len) == -1) {
     std::string emsg = "Unable to connect socket: " + std::string(strerror(errno));
@@ -335,7 +336,7 @@ inline int mqconnect(const std::string& fileName) {
   }
 
   uint32_t version = HSTORE_VERSION;
-  mqwrite(r, (const uint8_t*)&version, sizeof(version));
+  mqwrite(r, reinterpret_cast<const uint8_t*>(&version), sizeof(version));
   return r;
 }
 
@@ -351,7 +352,7 @@ inline int mqlisten(const std::string& fileName) {
   unlink(fileName.c_str());
   snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", fileName.c_str());
 
-  if (bind(s, (sockaddr*)&addr, sizeof(addr)) == -1) {
+  if (bind(s, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == -1) {
     std::string emsg = "Unable to bind socket to file: " + fileName + " (" + std::string(strerror(errno)) + ")";
     close(s);
     throw std::runtime_error(emsg);
@@ -413,11 +414,11 @@ typedef std::pair<uint64_t, uint64_t> ProcThread;
 
 inline ProcThread thisProcThread() {
   ProcThread r;
-  r.first = (uint64_t)getpid();
+  r.first = static_cast<uint64_t>(getpid());
 #if defined(__APPLE__) && defined(__MACH__)
   pthread_threadid_np(0, &r.second);
 #else
-  r.second = (uint64_t)syscall(SYS_gettid);
+  r.second = static_cast<uint64_t>(syscall(SYS_gettid));
 #endif
   return r;
 }
@@ -442,7 +443,7 @@ inline void registerSHMAlloc(int* mqserver, const char* groupName, const WaitPol
   uint8_t msg[1+sizeof(ProcThread)] = {0};
   uint8_t& cmd = msg[0];
   cmd |= reconnect ? 1 : 0;
-  cmd |= ((uint8_t)wp) << 1;
+  cmd |= static_cast<uint8_t>(wp) << 1;
   memcpy(msg+1, &pt, sizeof(ProcThread));
   mqwrite(*mqserver, msg, sizeof(msg));
 }
@@ -559,13 +560,13 @@ public:
       throw std::runtime_error("Failed to truncate shared memory for '" + shmname + "': " + strerror(errno));
     }
   
-    uint8_t* mem = (uint8_t*)mmap(0, memLen, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_POPULATE, shfd, 0);
+    uint8_t* mem = reinterpret_cast<uint8_t*>(mmap(0, memLen, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_POPULATE, shfd, 0));
     if (mem == MAP_FAILED) {
       throw std::runtime_error("Failed to map bytes out of shared memory for '" + shmname + "': " + strerror(errno));
     }
   
     // write meta data
-    ShQueueHeader* hdr = (ShQueueHeader*)mem;
+    ShQueueHeader* hdr = reinterpret_cast<ShQueueHeader*>(mem);
     hdr->valsz  = qvalsz;
     hdr->count  = count;
     hdr->metasz = meta.size();
@@ -575,7 +576,7 @@ public:
     uxchg(&hdr->ready, 1);
   
     // now make this pqueue config
-    ShQueueData* sqd = (ShQueueData*)(mem + metaLen);
+    ShQueueData* sqd = reinterpret_cast<ShQueueData*>(mem + metaLen);
   
     this->shmname = shmname;
     this->shmfd   = shfd;
@@ -648,10 +649,10 @@ public:
 //   2) page is a continuation of its transaction (intermediate in the total transaction)
 //   3) page successfully terminates the transaction (commit)
 //   4) page prematurely terminates the transaction (rollback)
-#define PRIV_HSTORE_PAGE_STATE_TENTATIVE ((uint8_t)0)
-#define PRIV_HSTORE_PAGE_STATE_CONT      ((uint8_t)1)
-#define PRIV_HSTORE_PAGE_STATE_COMMIT    ((uint8_t)2)
-#define PRIV_HSTORE_PAGE_STATE_ROLLBACK  ((uint8_t)3)
+#define PRIV_HSTORE_PAGE_STATE_TENTATIVE static_cast<uint8_t>(0)
+#define PRIV_HSTORE_PAGE_STATE_CONT      static_cast<uint8_t>(1)
+#define PRIV_HSTORE_PAGE_STATE_COMMIT    static_cast<uint8_t>(2)
+#define PRIV_HSTORE_PAGE_STATE_ROLLBACK  static_cast<uint8_t>(3)
 
 // writers may record data 'unreliably' (non-blocking) or 'reliably' (block iff waiting for consumer to catch up)
 enum PipeQOS {
@@ -671,7 +672,7 @@ private:
   std::function<void()> timeoutF;
 
   void markPage(uint8_t c) {
-    *((uint32_t*)(this->page + this->pagesz)) = (((uint32_t)c) << 24) | this->offset;
+    *reinterpret_cast<uint32_t*>(this->page + this->pagesz) = (static_cast<uint32_t>(c) << 24) | this->offset;
   }
 
   inline bool reliable() const {
@@ -800,13 +801,13 @@ inline QueueConnection consumeQueue(const std::string& shmname) {
   }
 
   // map memory for this data, ensure it is in a good state
-  uint8_t* mem = (uint8_t*)mmap(0, msb.st_size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_POPULATE, shfd, 0);
+  uint8_t* mem = reinterpret_cast<uint8_t*>(mmap(0, msb.st_size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_POPULATE, shfd, 0));
   if (mem == MAP_FAILED) {
     close(shfd);
     throw std::runtime_error("Failed to map bytes out of shared memory for '" + shmname + "': " + strerror(errno));
   }
 
-  if (!((ShQueueHeader*)mem)->ready) {
+  if (!reinterpret_cast<ShQueueHeader*>(mem)->ready) {
     munmap(mem, msb.st_size);
     close(shfd);
     throw std::runtime_error("Not ready to consume shared memory for '" + shmname + "'");
@@ -843,9 +844,9 @@ private:
 public:
   reader(const QueueConnection& qc, const WaitPolicy wp) : shfd(qc.shfd), waitFn(hobbes::storage::waitFn(wp)), wakeFn(hobbes::storage::wakeFn(wp)) {
     // prepare to read the queue description
-    ShQueueHeader* hdr     = (ShQueueHeader*)qc.data;
+    ShQueueHeader* hdr     = reinterpret_cast<ShQueueHeader*>(qc.data);
     size_t         metaLen = align<size_t>(sizeof(ShQueueHeader) + hdr->metasz, qc.pagesz);
-    ShQueueData*   sqd     = (ShQueueData*)(qc.data + metaLen);
+    ShQueueData*   sqd     = reinterpret_cast<ShQueueData*>(qc.data + metaLen);
 
     // now we should have enough to read out of this queue
     this->metad           = qc.data + sizeof(ShQueueHeader);
@@ -947,10 +948,10 @@ public:
   
     while (sz != 0 && this->page) {
       // how much can we copy out of the current page into the dest buffer?
-      volatile uint32_t* pend      = (uint32_t*)(this->page + this->pagesz);
-      size_t             rpagesz   = *pend & ~(0xFF << 24);
-      size_t             availPage = rpagesz - this->offset;
-      size_t             csz       = (sz < availPage) ? sz : availPage;
+      const volatile uint32_t* pend      = reinterpret_cast<const uint32_t*>(this->page + this->pagesz);
+      size_t                   rpagesz   = *pend & ~(0xFF << 24);
+      size_t                   availPage = rpagesz - this->offset;
+      size_t                   csz       = (sz < availPage) ? sz : availPage;
   
       // copy as much as we can
       memcpy(dst + doff, this->page + this->offset, csz);
@@ -986,7 +987,7 @@ template <size_t N>
   }
 template <size_t N>
   constexpr size_t at8S(size_t i, size_t k, const char (&s)[N]) {
-    return (k==8) ? 0 : ((((size_t)at(i+k,s))<<(8*k))|at8S(i,k+1,s));
+    return (k==8) ? 0 : ((static_cast<size_t>(at(i+k,s))<<(8*k))|at8S(i,k+1,s));
   }
 template <size_t N>
   constexpr size_t at8(size_t i, const char (&s)[N]) {
@@ -999,7 +1000,7 @@ template <size_t... pcs>
       static_assert(msg[(sizeof(msg)/sizeof(msg[0]))-1] == 0, "compile-time string larger than internal max limit (this limit can be bumped in storage.H)");
 
       static const size_t smsg[] = {pcs...};
-      return (const char*)smsg;
+      return reinterpret_cast<const char*>(smsg);
     }
   };
 #define PRIV_HSTORE_TSTR32(i,s)   ::hobbes::storage::at8(i+(8*0),s),::hobbes::storage::at8(i+(8*1),s),::hobbes::storage::at8(i+(8*2),s),::hobbes::storage::at8(i+(8*3),s)
@@ -1009,21 +1010,21 @@ template <size_t... pcs>
 #define PRIV_HSTORE_TSTR(s)       ::hobbes::storage::strpack<PRIV_HSTORE_TSTR1024(0,s)>
 
 // type/value serialization (guarded by compile-time predicates)
-#define PRIV_HSTORE_TYCTOR_PRIM      ((int)0)
-#define PRIV_HSTORE_TYCTOR_TVAR      ((int)2)
-#define PRIV_HSTORE_TYCTOR_FIXEDARR  ((int)4)
-#define PRIV_HSTORE_TYCTOR_ARR       ((int)5)
-#define PRIV_HSTORE_TYCTOR_VARIANT   ((int)6)
-#define PRIV_HSTORE_TYCTOR_STRUCT    ((int)7)
-#define PRIV_HSTORE_TYCTOR_SIZE      ((int)11)
-#define PRIV_HSTORE_TYCTOR_RECURSIVE ((int)13)
+#define PRIV_HSTORE_TYCTOR_PRIM      static_cast<int>(0)
+#define PRIV_HSTORE_TYCTOR_TVAR      static_cast<int>(2)
+#define PRIV_HSTORE_TYCTOR_FIXEDARR  static_cast<int>(4)
+#define PRIV_HSTORE_TYCTOR_ARR       static_cast<int>(5)
+#define PRIV_HSTORE_TYCTOR_VARIANT   static_cast<int>(6)
+#define PRIV_HSTORE_TYCTOR_STRUCT    static_cast<int>(7)
+#define PRIV_HSTORE_TYCTOR_SIZE      static_cast<int>(11)
+#define PRIV_HSTORE_TYCTOR_RECURSIVE static_cast<int>(13)
 
 template <typename T, typename P = void>
   struct store {
   };
 template <typename T>
   void w(const T& x, bytes* out) {
-    out->insert(out->end(), (uint8_t*)&x, ((uint8_t*)&x) + sizeof(x));
+    out->insert(out->end(), reinterpret_cast<const uint8_t*>(&x), reinterpret_cast<const uint8_t*>(&x) + sizeof(x));
   }
 inline void ws(const char* x, bytes* out) {
   size_t n = strlen(x);
@@ -1031,18 +1032,18 @@ inline void ws(const char* x, bytes* out) {
   out->insert(out->end(), x, x + n);
 }
 inline void ws(const std::string& x, bytes* out) {
-  w((size_t)x.size(), out);
+  w(static_cast<size_t>(x.size()), out);
   out->insert(out->end(), x.begin(), x.end());
 }
 inline void ws(const bytes& x, bytes* out) {
-  w((size_t)x.size(), out);
+  w(static_cast<size_t>(x.size()), out);
   out->insert(out->end(), x.begin(), x.end());
 }
 
 inline void encode_primty(const char* tn, bytes* out) {
   w(PRIV_HSTORE_TYCTOR_PRIM, out);
   ws(tn, out);
-  w((bool)false, out);
+  w(false, out);
 }
 #define PRIV_HSTORE_DEFINE_PRIMTYS(T, n) \
   template <> \
@@ -1051,7 +1052,7 @@ inline void encode_primty(const char* tn, bytes* out) {
       static void        encode(bytes* out)          { encode_primty(n, out); } \
       static std::string describe()                  { return n; } \
       static size_t      size(const T&)              { return sizeof(T); } \
-      static bool        write(wpipe& p, const T& x) { return p.write((const uint8_t*)&x, sizeof(x)); } \
+      static bool        write(wpipe& p, const T& x) { return p.write(reinterpret_cast<const uint8_t*>(&x), sizeof(x)); } \
     }
 
 PRIV_HSTORE_DEFINE_PRIMTYS(bool,     "bool");
@@ -1091,9 +1092,9 @@ template <typename T, typename ... Ts>
 
     static void encode(size_t f, bytes* out) {
       char fn[32];
-      snprintf(fn, sizeof(fn), ".f%lld", (unsigned long long)f);
+      snprintf(fn, sizeof(fn), ".f%lld", static_cast<unsigned long long>(f));
       ws(fn, out);
-      w((int)-1, out);
+      w(static_cast<int>(-1), out);
       store<T>::encode(out);
 
       store_tuple_types<Ts...>::encode(f+1, out);
@@ -1192,6 +1193,14 @@ template <typename ... Ts>
   )(                                  \
   )
 #define PRIV_HSTORE_SMAPP() PRIV_HSTORE_MAPP
+#define PRIV_HSTORE_MAPL(f, VS...) PRIV_HSTORE_EVAL(PRIV_HSTORE_MAPLP(f, VS))
+#define PRIV_HSTORE_MAPLP(f, H, T...)              \
+  f(H)                                             \
+  PRIV_HSTORE_IF_ELSE(PRIV_HSTORE_HAS_PARGS(T))(   \
+    PRIV_HSTORE_DEFER2(PRIV_HSTORE_SMAPLP)()(f, T) \
+  )(                                               \
+  )
+#define PRIV_HSTORE_SMAPLP() PRIV_HSTORE_MAPLP
 
 // support storing packed, reflective structs
 #define HSTORE_FIELDC_SUCC(t,n) +1
@@ -1204,7 +1213,7 @@ template <typename ... Ts>
 #define HSTORE_FIELD_WRITES(FIELDS...) (true PRIV_HSTORE_MAP(HSTORE_FIELDW_SUCC, FIELDS))
 
 #define HSTORE_STRUCT_FIELD(t, n) t n;
-#define HSTORE_STRUCT_FIELD_ENC(t, n) ::hobbes::storage::ws(#n, out); ::hobbes::storage::w((int)-1, out); ::hobbes::storage::store< t >::encode(out);
+#define HSTORE_STRUCT_FIELD_ENC(t, n) ::hobbes::storage::ws(#n, out); ::hobbes::storage::w(static_cast<int>(-1), out); ::hobbes::storage::store< t >::encode(out);
 #define HSTORE_STRUCT_FIELD_DESC(t, n) + (", " #n " : " + ::hobbes::storage::store< t >::describe())
 #define HSTORE_STRUCT_FIELD_EQ(t, n) && this->n == rhs.n
 
@@ -1236,7 +1245,7 @@ template <typename T>
     static void        encode(bytes* out)          { T::encode(out); }
     static std::string describe()                  { return T::describe(); }
     static size_t      size(const T&)              { return sizeof(T); }
-    static bool        write(wpipe& p, const T& x) { return p.write((const uint8_t*)&x, sizeof(x)); }
+    static bool        write(wpipe& p, const T& x) { return p.write(reinterpret_cast<const uint8_t*>(&x), sizeof(x)); }
   };
 
 // support storing standard, reflective structs
@@ -1281,14 +1290,14 @@ template <typename U, typename V>
   struct store<std::pair<U,V>> {
     static void encode(bytes* out) {
       w(PRIV_HSTORE_TYCTOR_STRUCT, out);
-      w((size_t)2, out);
+      w(static_cast<size_t>(2), out);
       
       ws(".f0", out);
-      w((int)-1, out);
+      w(static_cast<int>(-1), out);
       store<U>::encode(out);
 
       ws(".f1", out);
-      w((int)-1, out);
+      w(static_cast<int>(-1), out);
       store<V>::encode(out);
     }
     static std::string describe() {
@@ -1302,6 +1311,64 @@ template <typename U, typename V>
     }
   };
 
+// support storing "struct views" (select fields / const accessor functions) out of a type
+template <typename T, typename F>
+  static F T::* resolve(F T::*);
+template <typename T, typename R>
+  static auto resolve(R (T::*K)() const) -> decltype(K);
+
+template <typename T> struct member;
+
+template <typename T, typename F>
+  struct member<F T::*> {
+    typedef F type;
+    typedef F T::* Acc;
+    static const F& read(const T& x, Acc a) { return x.*a; }
+  };
+template <typename T, typename F>
+  struct member<F (T::*)() const> {
+    typedef F type;
+    typedef F (T::*Acc)() const;
+    static F read(const T& x, Acc a) { return (x.*a)(); }
+  };
+
+#define PRIV_HSTORE_DSV_T(f)     member<decltype(resolve(&SelfT::f))>::type
+#define PRIV_HSTORE_DSV_READ(f)  member<decltype(resolve(&SelfT::f))>::read(x, std::integral_constant<member<decltype(resolve(&SelfT::f))>::Acc, &SelfT::f>::value)
+#define PRIV_HSTORE_DSV_COUNT(_) +1
+#define PRIV_HSTORE_DSV_ENCF(f)  ws(#f, out); w(int(-1), out); store< PRIV_HSTORE_DSV_T(f) >::encode(out);
+#define PRIV_HSTORE_DSV_DESC(f)  ss << ", " << #f << ":" << store< PRIV_HSTORE_DSV_T(f) >::describe();
+#define PRIV_HSTORE_DSV_SIZE(f)  + store< PRIV_HSTORE_DSV_T(f) >::size(PRIV_HSTORE_DSV_READ(f))
+#define PRIV_HSTORE_DSV_WRITE(f) && store< PRIV_HSTORE_DSV_T(f) >::write(p, PRIV_HSTORE_DSV_READ(f))
+
+#define DEFINE_HSTORE_STRUCT_VIEW(T, FIELDS...) \
+  namespace hobbes { namespace storage { \
+    template <> \
+      struct store<T> { \
+        typedef T SelfT; \
+        static void encode(bytes* out) { w(PRIV_HSTORE_TYCTOR_STRUCT, out); w(size_t(0 PRIV_HSTORE_MAPL(PRIV_HSTORE_DSV_COUNT, FIELDS)), out); PRIV_HSTORE_MAPL(PRIV_HSTORE_DSV_ENCF, FIELDS); } \
+        static std::string describe() { std::ostringstream ss; PRIV_HSTORE_MAPL(PRIV_HSTORE_DSV_DESC, FIELDS); return "{ " + ss.str().substr(2) + " }"; } \
+        static size_t size(const T& x) { return 0 PRIV_HSTORE_MAPL(PRIV_HSTORE_DSV_SIZE, FIELDS); } \
+        static bool write(wpipe& p, const T& x) { return true PRIV_HSTORE_MAPL(PRIV_HSTORE_DSV_WRITE, FIELDS); } \
+      }; \
+    template <> \
+      struct store<T*> { \
+        typedef T SelfT; \
+        static void encode(bytes* out) { w(PRIV_HSTORE_TYCTOR_STRUCT, out); w(size_t(0 PRIV_HSTORE_MAPL(PRIV_HSTORE_DSV_COUNT, FIELDS)), out); PRIV_HSTORE_MAPL(PRIV_HSTORE_DSV_ENCF, FIELDS); } \
+        static std::string describe() { std::ostringstream ss; PRIV_HSTORE_MAPL(PRIV_HSTORE_DSV_DESC, FIELDS); return "{ " + ss.str().substr(2) + " }"; } \
+        static size_t size(const T* px) { const T& x = *px; return 0 PRIV_HSTORE_MAPL(PRIV_HSTORE_DSV_SIZE, FIELDS); } \
+        static bool write(wpipe& p, const T* px) { const T& x = *px; return true PRIV_HSTORE_MAPL(PRIV_HSTORE_DSV_WRITE, FIELDS); } \
+      }; \
+    template <> \
+      struct store<const T*> { \
+        typedef T SelfT; \
+        static void encode(bytes* out) { w(PRIV_HSTORE_TYCTOR_STRUCT, out); w(size_t(0 PRIV_HSTORE_MAPL(PRIV_HSTORE_DSV_COUNT, FIELDS)), out); PRIV_HSTORE_MAPL(PRIV_HSTORE_DSV_ENCF, FIELDS); } \
+        static std::string describe() { std::ostringstream ss; PRIV_HSTORE_MAPL(PRIV_HSTORE_DSV_DESC, FIELDS); return "{ " + ss.str().substr(2) + " }"; } \
+        static size_t size(const T* px) { const T& x = *px; return 0 PRIV_HSTORE_MAPL(PRIV_HSTORE_DSV_SIZE, FIELDS); } \
+        static bool write(wpipe& p, const T* px) { const T& x = *px; return true PRIV_HSTORE_MAPL(PRIV_HSTORE_DSV_WRITE, FIELDS); } \
+      }; \
+  }}
+#define HSTORE_MAKE_FRIEND template <typename _> friend class hobbes::storage::store;
+
 // support storing reflective enumerations
 #define HSTORE_ENUM_CTOR_DEF(n) n ,
 #define HSTORE_ENUM_CTOR_CTOR(n) static const SelfT n() { return SelfT(SelfT::Enum::n); }
@@ -1309,7 +1376,7 @@ template <typename U, typename V>
 #define HSTORE_ENUM_CTOR_STR(n) + "|" #n
 #define HSTORE_ENUM_CTOR_ENCODE(n) \
   ::hobbes::storage::ws(#n, out); \
-  ::hobbes::storage::w((uint32_t)(Enum :: n), out); \
+  ::hobbes::storage::w(static_cast<uint32_t>(Enum :: n), out); \
   ::hobbes::storage::encode_primty("unit", out);
 
 #define DEFINE_HSTORE_ENUM(T, CTORS...) \
@@ -1328,7 +1395,7 @@ template <typename U, typename V>
     PRIV_HSTORE_MAP(HSTORE_ENUM_CTOR_CTOR, CTORS) \
     static void encode(::hobbes::storage::bytes* out) { \
       ::hobbes::storage::w(PRIV_HSTORE_TYCTOR_VARIANT, out); \
-      ::hobbes::storage::w((size_t)(0 PRIV_HSTORE_MAP(HSTORE_ENUM_CTORC_SUCC, CTORS)), out); \
+      ::hobbes::storage::w(static_cast<size_t>(0 PRIV_HSTORE_MAP(HSTORE_ENUM_CTORC_SUCC, CTORS)), out); \
       PRIV_HSTORE_MAP(HSTORE_ENUM_CTOR_ENCODE, CTORS); \
     } \
     static std::string describe() { \
@@ -1343,7 +1410,7 @@ template <typename T>
     static void        encode(bytes* out)          { T::encode(out); }
     static std::string describe()                  { return T::describe(); }
     static size_t      size(const T&)              { return sizeof(T); }
-    static bool        write(wpipe& p, const T& x) { return p.write((const uint8_t*)&x, sizeof(x)); }
+    static bool        write(wpipe& p, const T& x) { return p.write(reinterpret_cast<const uint8_t*>(&x), sizeof(x)); }
   };
 
 // support storing variants (with and without explicit constructor names)
@@ -1536,7 +1603,7 @@ template <typename T>
       return "^x." + store<T>::describe();
     }
     static size_t recSize(const recursion& x) {
-      return size(*((recursive<T>*)x.value));
+      return size(*reinterpret_cast<const recursive<T>*>(x.value));
     }
     static size_t size(const recursive<T>& x) {
       typedef typename store<recursion>::RecSizeF RSF;
@@ -1548,7 +1615,7 @@ template <typename T>
     }
 
     static bool recWrite(wpipe& p, const recursion& x) {
-      return write(p, *((recursive<T>*)x.value));
+      return write(p, *reinterpret_cast<const recursive<T>*>(x.value));
     }
     static bool write(wpipe& p, const recursive<T>& x) {
       typedef typename store<recursion>::RecWriteF RWF;
@@ -1585,13 +1652,14 @@ template <>
     PRIV_REPTY value; \
     PRIV_ATY() : value() { } \
     PRIV_ATY(const PRIV_REPTY& x) : value(x) { } \
-    PRIV_ATY(const PRIV_ATY& x) : value(x.value) { } \
-    PRIV_ATY& operator=(const PRIV_ATY& x) { this->value = x.value; return *this; } \
+    constexpr PRIV_ATY(const PRIV_ATY& x) = default; \
+    PRIV_ATY& operator=(const PRIV_ATY& x) = default; \
+    bool operator==(const PRIV_ATY& x) const { return this->value == x.value; } \
   }
 
 template <typename T>
   struct store<T, typename T::is_hstore_alias> {
-    static void        encode(bytes* out)          { w(PRIV_HSTORE_TYCTOR_PRIM, out); ws(T::name(), out); w((bool)true, out); store<typename T::type>::encode(out); }
+    static void        encode(bytes* out)          { w(PRIV_HSTORE_TYCTOR_PRIM, out); ws(T::name(), out); w(true, out); store<typename T::type>::encode(out); }
     static std::string describe()                  { return T::name(); }
     static size_t      size(const T& x)            { return store<typename T::type>::size(x.value); }
     static bool        write(wpipe& p, const T& x) { return store<typename T::type>::write(p, x.value); }
@@ -1604,12 +1672,12 @@ template <typename T, size_t N>
       w(PRIV_HSTORE_TYCTOR_FIXEDARR, out);
       store<T>::encode(out);
       w(PRIV_HSTORE_TYCTOR_SIZE, out);
-      w((long)N, out);
+      w(static_cast<long>(N), out);
     }
 
     static std::string describe() {
       char nf[32];
-      snprintf(nf, sizeof(nf), "%lld", (unsigned long long)N);
+      snprintf(nf, sizeof(nf), "%lld", static_cast<unsigned long long>(N));
       return "[:" + store<T>::describe() + "|" + std::string(nf) + ":]";
     }
   };
@@ -1620,7 +1688,7 @@ template <typename T, size_t N>
       return sizeof(T)*N;
     }
     static bool write(wpipe& p, const T (&v)[N]) {
-      return p.write((const uint8_t*)v, sizeof(T)*N);
+      return p.write(reinterpret_cast<const uint8_t*>(v), sizeof(T)*N);
     }
   };
 
@@ -1649,13 +1717,24 @@ template <typename T, size_t N>
 template <typename T, size_t N>
   struct store<T[N], typename cannot_memcpy<T>::type> : public fixedArrTyDesc<T,N>, fixedArrIterWrite<T,N> { };
 
+template <typename T, size_t N>
+  struct store<std::array<T, N>, typename store<T>::can_memcpy> : public fixedArrTyDesc<T, N> {
+    static size_t size(const std::array<T, N>& x) { return sizeof(T)*N; }
+    static bool write(wpipe& p, const std::array<T, N>& x) { return p.write(reinterpret_cast<const uint8_t*>(&x), size(x)); }
+  };
+template <typename T, size_t N>
+  struct store<std::array<T, N>, typename cannot_memcpy<T>::type> : public fixedArrTyDesc<T, N> {
+    static size_t size(const std::array<T, N>& x) { size_t n = 0; for (size_t i = 0; i < N; ++i) { n += store<T>::size(x[i]); } return n; }
+    static bool write(wpipe& p, const std::array<T, N>& x) { for (size_t i = 0; i < N; ++i) { if (!store<T>::write(p, x[i])) return false; } return true; }
+  };
+
 // support storage of vectors
 template <typename T>
   struct store<std::vector<T>, typename store<T>::can_memcpy> {
     static void encode(bytes* out) { w(PRIV_HSTORE_TYCTOR_ARR, out); store<T>::encode(out); }
     static std::string describe() { return "[" + store<T>::describe() + "]"; }
     static size_t size(const std::vector<T>& xs) { return sizeof(size_t) + (xs.size() * sizeof(T)); }
-    static bool write(wpipe& p, const std::vector<T>& xs) { size_t n = xs.size(); return store<size_t>::write(p, n) && p.write((const uint8_t*)&xs[0], n * sizeof(T)); }
+    static bool write(wpipe& p, const std::vector<T>& xs) { size_t n = xs.size(); return store<size_t>::write(p, n) && p.write(reinterpret_cast<const uint8_t*>(&xs[0]), n * sizeof(T)); }
   };
 
 template <typename T>
@@ -1689,14 +1768,21 @@ template <>
     static void encode(bytes* out) { w(PRIV_HSTORE_TYCTOR_ARR, out); store<char>::encode(out); }
     static std::string describe() { return "[char]"; }
     static size_t size(const char* s) { return sizeof(size_t) + strlen(s); }
-    static bool write(wpipe& p, const char* s) { size_t n = strlen(s); return store<size_t>::write(p, n) && p.write((const uint8_t*)s, n); }
+    static bool write(wpipe& p, const char* s) { size_t n = strlen(s); return store<size_t>::write(p, n) && p.write(reinterpret_cast<const uint8_t*>(s), n); }
+  };
+template <>
+  struct store<char*> {
+    static void encode(bytes* out) { w(PRIV_HSTORE_TYCTOR_ARR, out); store<char>::encode(out); }
+    static std::string describe() { return "[char]"; }
+    static size_t size(char* s) { return sizeof(size_t) + strlen(s); }
+    static bool write(wpipe& p, char* s) { size_t n = strlen(s); return store<size_t>::write(p, n) && p.write(reinterpret_cast<const uint8_t*>(s), n); }
   };
 template <>
   struct store<std::string> {
     static void encode(bytes* out) { w(PRIV_HSTORE_TYCTOR_ARR, out); store<char>::encode(out); }
     static std::string describe() { return "[char]"; }
     static size_t size(const std::string& s) { return sizeof(size_t) + s.size(); }
-    static bool write(wpipe& p, const std::string& s) { size_t n = s.size(); return store<size_t>::write(p, n) && p.write((const uint8_t*)s.data(), n); }
+    static bool write(wpipe& p, const std::string& s) { size_t n = s.size(); return store<size_t>::write(p, n) && p.write(reinterpret_cast<const uint8_t*>(s.data()), n); }
   };
 
 // support values carrying field names (easier to record structs without making an explicit struct type)
@@ -1721,7 +1807,7 @@ template <typename T>
   struct hstore_argl_name {
     static const bool isTuple = true;
     static void nameDesc(const char* prefix, size_t idx, char* buffer, size_t buflen) {
-      snprintf(buffer, buflen, prefix, (unsigned long long)idx);
+      snprintf(buffer, buflen, prefix, static_cast<unsigned long long>(idx));
     }
   };
 template <typename F, typename T>
@@ -1749,7 +1835,7 @@ template <typename T, typename ... Ts>
       char fn[128];
       hstore_argl_name<T>::nameDesc(fmt, f, fn, sizeof(fn));
       ws(fn, out);
-      w((int)-1, out);
+      w(static_cast<int>(-1), out);
       store<T>::encode(out);
       hstore_payload_types<Ts...>::encode(fmt, f+1, out);
     }
@@ -1855,11 +1941,11 @@ struct StorageGroup {
     if (!this->statements) return; // if nothing to record, nothing to prepare
 
     w(HSTORE_VERSION, meta);
-    w((int)this->qos, meta);
-    w((int)cm, meta);
+    w(static_cast<int>(this->qos), meta);
+    w(static_cast<int>(cm), meta);
 
     // write the count of storage statements, then each statement's static data
-    w((uint32_t)this->statements->size(), meta);
+    w(static_cast<uint32_t>(this->statements->size()), meta);
     for (auto s : *this->statements) {
       ws(s.first,         meta);
       w (s.second.flags,  meta);
@@ -1962,7 +2048,7 @@ struct StorageGroup {
     d.fmtstr = fmtstr;
     d.file   = file;
     d.line   = line;
-    d.id     = (uint32_t)this->statements->size();
+    d.id     = static_cast<uint32_t>(this->statements->size());
 
     (*this->statements)[name] = d;
     return d.id;
@@ -2075,14 +2161,14 @@ inline size_t rs(const reader::MetaData& md, size_t o, size_t n, uint8_t* b) {
 
 template <typename T>
   size_t r(const reader::MetaData& md, size_t o, T* t) {
-    return rs(md, o, sizeof(T), (uint8_t*)t);
+    return rs(md, o, sizeof(T), reinterpret_cast<uint8_t*>(t));
   }
 
 inline size_t rs(const reader::MetaData& md, size_t o, std::string* s) {
   size_t n = 0;
   o = r(md, o, &n);
   s->resize(n);
-  return rs(md, o, n, (uint8_t*)s->data());
+  return rs(md, o, n, reinterpret_cast<uint8_t*>(&(*s)[0]));
 }
 
 inline size_t rs(const reader::MetaData& md, size_t o, bytes* s) {
@@ -2121,7 +2207,7 @@ public:
   }
 
   // a non-persistent transaction over constant data (just used by remote consumers)
-  Transaction(const uint8_t* d, size_t len) : fd(-1), file_size(len), map_size(len), data((uint8_t*)d), data_size(0), wi(0), ri(0) {
+  Transaction(const uint8_t* d, size_t len) : fd(-1), file_size(len), map_size(len), data(const_cast<uint8_t*>(d)), data_size(0), wi(0), ri(0) {
     this->data_size = &this->map_size;
   }
 
@@ -2139,7 +2225,7 @@ public:
 
   template <typename T>
     const T* read() {
-      auto p = (const T*)ptr();
+      auto p = reinterpret_cast<const T*>(ptr());
       skip(sizeof(T));
       return p;
     }
@@ -2196,11 +2282,11 @@ private:
       if (this->data) { ::munmap(this->data-sizeof(size_t), this->map_size); }
 
       this->map_size = align<size_t>(sz, /*10MB*/10485760);
-      this->data = (uint8_t*)mmap(0, this->map_size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_POPULATE, this->fd, 0);
+      this->data = reinterpret_cast<uint8_t*>(mmap(0, this->map_size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_POPULATE, this->fd, 0));
       if (this->data == MAP_FAILED) {
         throw std::runtime_error("Failed to map transaction persistence file");
       }
-      this->data_size = (size_t*)this->data;
+      this->data_size = reinterpret_cast<size_t*>(this->data);
       this->data      += sizeof(size_t);
     }
   }
@@ -2221,7 +2307,7 @@ inline void runReadProcessWithTimeout(const QueueConnection& qc, const WaitPolic
   }
 
   // read group flags/settings
-  int qos, cm;
+  int qos=0, cm=0;
   o = r(md, o, &qos);
   o = r(md, o, &cm);
 
@@ -2242,7 +2328,7 @@ inline void runReadProcessWithTimeout(const QueueConnection& qc, const WaitPolic
     ss.push_back(s);
   }
 
-  auto txnF = initF((PipeQOS)qos, (CommitMethod)cm, ss);
+  auto txnF = initF(static_cast<PipeQOS>(qos), static_cast<CommitMethod>(cm), ss);
 
   // read transactions and call back into user code
   while (true) {

@@ -160,19 +160,19 @@ const MonoTypePtr& darrType(const MonoTypePtr& arr) {
 }
 
 char* dbloado(long db, unsigned int o) {
-  return (char*)((reader*)(db))->unsafeLoadStoredOffset(o);
+  return reinterpret_cast<char*>(reinterpret_cast<reader*>(db)->unsafeLoadStoredOffset(o));
 }
 
 char* dbloadv(long db, long offset, long sz) {
-  return (char*)((reader*)(db))->unsafeLoad(offset, sz);
+  return reinterpret_cast<char*>(reinterpret_cast<reader*>(db)->unsafeLoad(offset, sz));
 }
 
 char* dbloaddarr(long db, long offset) {
-  return (char*)((reader*)(db))->unsafeLoadDArray(offset);
+  return reinterpret_cast<char*>(reinterpret_cast<reader*>(db)->unsafeLoadDArray(offset));
 }
 
 char* dbloadarr(long db, long offset, long esz) {
-  return (char*)((reader*)(db))->unsafeLoadArray(offset, esz);
+  return reinterpret_cast<char*>(reinterpret_cast<reader*>(db)->unsafeLoadArray(offset, esz));
 }
 
 // load/store root values in storage files
@@ -270,12 +270,12 @@ struct dbloadF : public op {
       llvm::Function* f = c->lookupFunction(".dbloadarr");
       if (!f) { throw std::runtime_error("Expected 'dbloadarr' function as call"); }
 
-      return c->builder()->CreateBitCast(fncall(c->builder(), f, list<llvm::Value*>(db, off, cvalue((long)storageSizeOf(t->type())))), toLLVM(rty, true));
+      return c->builder()->CreateBitCast(fncall(c->builder(), f, list<llvm::Value*>(db, off, cvalue(static_cast<long>(storageSizeOf(t->type()))))), toLLVM(rty, true));
     } else {
       llvm::Function* f = c->lookupFunction(".dbloadv");
       if (!f) { throw std::runtime_error("Expected 'dbloadv' function as call"); }
 
-      llvm::Value* allocv = fncall(c->builder(), f, list<llvm::Value*>(db, off, cvalue((long)storageSizeOf(rty))));
+      llvm::Value* allocv = fncall(c->builder(), f, list<llvm::Value*>(db, off, cvalue(static_cast<long>(storageSizeOf(rty)))));
 
       if (hasPointerRep(rty)) {
         return c->builder()->CreateBitCast(allocv, toLLVM(rty, true));
@@ -313,12 +313,12 @@ struct dbloadPF : public op {
       llvm::Function* f = c->lookupFunction(".dbloadarr");
       if (!f) { throw std::runtime_error("Expected 'dbloadarr' function as call"); }
 
-      return c->builder()->CreateBitCast(fncall(c->builder(), f, list<llvm::Value*>(db, off, cvalue((long)storageSizeOf(a->type())))), toLLVM(rty, true));
+      return c->builder()->CreateBitCast(fncall(c->builder(), f, list<llvm::Value*>(db, off, cvalue(static_cast<long>(storageSizeOf(a->type()))))), toLLVM(rty, true));
     } else {
       llvm::Function* f = c->lookupFunction(".dbloadv");
       if (!f) { throw std::runtime_error("Expected 'dbloadv' function as call"); }
 
-      llvm::Value* allocv = fncall(c->builder(), f, list<llvm::Value*>(db, off, cvalue((long)storageSizeOf(rty))));
+      llvm::Value* allocv = fncall(c->builder(), f, list<llvm::Value*>(db, off, cvalue(static_cast<long>(storageSizeOf(rty)))));
 
       if (hasPointerRep(rty)) {
         return c->builder()->CreateBitCast(allocv, toLLVM(rty, true));
@@ -362,15 +362,15 @@ struct dbRefFileF : public op {
 
 // unload values loaded from storage files
 void dbunloadv(long db, long ptr, long sz) {
-  ((reader*)(db))->unsafeUnload((void*)ptr, sz);
+  reinterpret_cast<reader*>(db)->unsafeUnload(reinterpret_cast<void*>(ptr), sz);
 }
 
 void dbunloaddarr(long db, long ptr) {
-  ((reader*)(db))->unsafeUnloadDArray((void*)ptr);
+  reinterpret_cast<reader*>(db)->unsafeUnloadDArray(reinterpret_cast<void*>(ptr));
 }
 
 void dbunloadarr(long db, long ptr, long sz) {
-  ((reader*)(db))->unsafeUnloadArray((void*)ptr, sz);
+  reinterpret_cast<reader*>(db)->unsafeUnloadArray(reinterpret_cast<void*>(ptr), sz);
 }
 
 struct dbunloadF : public op {
@@ -393,14 +393,14 @@ struct dbunloadF : public op {
       llvm::Function* f = c->lookupFunction(".dbunloadarr");
       if (!f) { throw std::runtime_error("Expected 'dbunloadarr' function as call"); }
 
-      return fncall(c->builder(), f, list<llvm::Value*>(db, val, cvalue((long)storageSizeOf(a->type()))));
+      return fncall(c->builder(), f, list<llvm::Value*>(db, val, cvalue(static_cast<long>(storageSizeOf(a->type())))));
     } else if (!hasPointerRep(tys[1])) {
       return cvalue(true);
     } else {
       llvm::Function* f = c->lookupFunction(".dbunloadv");
       if (!f) { throw std::runtime_error("Expected 'dbunloadv' function as call"); }
 
-      return fncall(c->builder(), f, list<llvm::Value*>(db, val, cvalue((long)storageSizeOf(tys[1]))));
+      return fncall(c->builder(), f, list<llvm::Value*>(db, val, cvalue(static_cast<long>(storageSizeOf(tys[1])))));
     }
   }
 
@@ -415,7 +415,7 @@ struct dbunloadF : public op {
 
 // allocate an unnamed value out of a storage file
 long dballoc(long db, long datasz, size_t align) {
-  return ((writer*)db)->unsafeStoreToOffset(datasz, align);
+  return reinterpret_cast<writer*>(db)->unsafeStoreToOffset(datasz, align);
 }
 
 struct dballocF : public op {
@@ -428,7 +428,7 @@ struct dballocF : public op {
     if (!f) { throw std::runtime_error("Expected 'dballoc' function as call"); }
 
     size_t sz = storageSizeOf(frefType(rty));
-    return fncall(c->builder(), f, list<llvm::Value*>(db, cvalue((long)sz), cvalue((long)alignment(frefType(rty)))));
+    return fncall(c->builder(), f, list<llvm::Value*>(db, cvalue(static_cast<long>(sz)), cvalue(static_cast<long>(alignment(frefType(rty))))));
   }
 
   PolyTypePtr type(typedb&) const {
@@ -444,7 +444,7 @@ struct dbstoreF : public op {
     llvm::Value* db  = c->compileAtGlobalScope(frt.second);
     llvm::Value* v   = c->compile(es[0]);
 
-    if (const Array* tarr = is<Array>(tys[0])) {
+    if (is<Array>(tys[0])) {
       throw annotated_error(*es[0], "store array nyi");
     } else {
       llvm::Function* f = c->lookupFunction(".dballoc");
@@ -454,10 +454,10 @@ struct dbstoreF : public op {
       if (!dblf) { throw std::runtime_error("Expected 'dbloadv' function as call"); }
 
       size_t sz = storageSizeOf(frefType(rty));
-      llvm::Value* id = fncall(c->builder(), f, list<llvm::Value*>(db, cvalue((long)sz), cvalue((long)alignment(frefType(rty)))));
+      llvm::Value* id = fncall(c->builder(), f, list<llvm::Value*>(db, cvalue(static_cast<long>(sz)), cvalue(static_cast<long>(alignment(frefType(rty))))));
 
       if (!isUnit(tys[0])) {
-        llvm::Value* p = fncall(c->builder(), dblf, list<llvm::Value*>(db, id, cvalue((long)sz)));
+        llvm::Value* p = fncall(c->builder(), dblf, list<llvm::Value*>(db, id, cvalue(static_cast<long>(sz))));
         c->builder()->CreateMemCpy(p, c->builder()->CreateBitCast(v, ptrType(charType())), sz, 8);
       }
 
@@ -478,7 +478,7 @@ struct dbstorePF : public op {
     llvm::Value* db  = c->compile(es[0]);
     llvm::Value* v   = c->compile(es[1]);
 
-    if (const Array* tarr = is<Array>(tys[1])) {
+    if (is<Array>(tys[1])) {
       throw annotated_error(*es[1], "store array nyi");
     } else {
       llvm::Function* f = c->lookupFunction(".dballoc");
@@ -488,10 +488,10 @@ struct dbstorePF : public op {
       if (!dblf) { throw std::runtime_error("Expected 'dbloadv' function as call"); }
 
       size_t sz = storageSizeOf(frefType(rty));
-      llvm::Value* id = fncall(c->builder(), f, list<llvm::Value*>(db, cvalue((long)sz), cvalue((long)alignment(frefType(rty)))));
+      llvm::Value* id = fncall(c->builder(), f, list<llvm::Value*>(db, cvalue(static_cast<long>(sz)), cvalue(static_cast<long>(alignment(frefType(rty))))));
 
       if (!isUnit(tys[1])) {
-        llvm::Value* p = fncall(c->builder(), dblf, list<llvm::Value*>(db, id, cvalue((long)sz)));
+        llvm::Value* p = fncall(c->builder(), dblf, list<llvm::Value*>(db, id, cvalue(static_cast<long>(sz))));
         c->builder()->CreateMemCpy(p, c->builder()->CreateBitCast(v, ptrType(charType())), sz, 8);
       }
 
@@ -509,7 +509,7 @@ struct dbstorePF : public op {
 
 // allocate an unnamed value array out of a storage file
 long dballocarr(long db, long elemsz, long len) {
-  return ((writer*)db)->unsafeStoreArrayToOffset(elemsz, len);
+  return reinterpret_cast<writer*>(db)->unsafeStoreArrayToOffset(elemsz, len);
 }
 
 struct dballocArrF : public op {
@@ -523,7 +523,7 @@ struct dballocArrF : public op {
     if (!f) { throw std::runtime_error("Expected 'dballocarr' function as call"); }
 
     size_t elemsz = storageSizeOf(arrType(frt.first));
-    return fncall(c->builder(), f, list<llvm::Value*>(db, cvalue((long)elemsz), len));
+    return fncall(c->builder(), f, list<llvm::Value*>(db, cvalue(static_cast<long>(elemsz)), len));
   }
 
   PolyTypePtr type(typedb&) const {
@@ -543,7 +543,7 @@ struct dballocArrPF : public op {
     if (!f) { throw std::runtime_error("Expected 'dballocarr' function as call"); }
 
     size_t elemsz = storageSizeOf(arrType(frefType(rty)));
-    return fncall(c->builder(), f, list<llvm::Value*>(db, cvalue((long)elemsz), len));
+    return fncall(c->builder(), f, list<llvm::Value*>(db, cvalue(static_cast<long>(elemsz)), len));
   }
 
   PolyTypePtr type(typedb&) const {
@@ -556,7 +556,7 @@ struct dballocArrPF : public op {
 
 // get the allocated capacity of a stored array
 long dbdarrcapacity(long db, long elemsz, long arrref) {
-  return (((reader*)db)->unsafeDArrayCapacity(arrref) - 16) / elemsz;
+  return (reinterpret_cast<reader*>(db)->unsafeDArrayCapacity(arrref) - 16) / elemsz;
 }
 
 struct dbarrCapacityF : public op {
@@ -570,7 +570,7 @@ struct dbarrCapacityF : public op {
     if (!f) { throw std::runtime_error("Expected 'dbdarrcapacity' function as call"); }
 
     size_t elemsz = storageSizeOf(darrType(frt.first));
-    return fncall(c->builder(), f, list<llvm::Value*>(db, cvalue((long)elemsz), off));
+    return fncall(c->builder(), f, list<llvm::Value*>(db, cvalue(static_cast<long>(elemsz)), off));
   }
 
   PolyTypePtr type(typedb&) const {
@@ -590,7 +590,7 @@ struct dbarrCapacityPF : public op {
     if (!f) { throw std::runtime_error("Expected 'dbdarrcapacity' function as call"); }
 
     size_t elemsz = storageSizeOf(darrType(frefType(tys[1])));
-    return fncall(c->builder(), f, list<llvm::Value*>(db, cvalue((long)elemsz), off));
+    return fncall(c->builder(), f, list<llvm::Value*>(db, cvalue(static_cast<long>(elemsz)), off));
   }
 
   PolyTypePtr type(typedb&) const {
@@ -606,7 +606,7 @@ struct dbarrCapacityPF : public op {
 long writeFileRT(const array<char>* fname, long tydef) {
   writer*       result = new writer(makeStdString(fname));
   MonoTypeSubst fdefs  = result->signature();
-  const Record* rty    = (const Record*)tydef;
+  const Record* rty    = reinterpret_cast<const Record*>(tydef);
 
   for (const auto& m : rty->members()) {
     auto fdef = fdefs.find(m.field);
@@ -620,12 +620,12 @@ long writeFileRT(const array<char>* fname, long tydef) {
     result->pushOffset(result->unsafeLookupOffset(m.field, m.type), m.type);
   }
 
-  return (long)result;
+  return reinterpret_cast<long>(result);
 }
 
 // signal an update in a file
 void dbsignalupdate(long db) {
-  ((writer*)db)->signalUpdate();
+  reinterpret_cast<writer*>(db)->signalUpdate();
 }
 
 struct signalUpdateF : public op {
@@ -647,7 +647,7 @@ struct signalUpdateF : public op {
 long readFileRT(const array<char>* fname, long tydef) {
   reader*       result = new reader(makeStdString(fname));
   MonoTypeSubst fdefs  = result->signature();
-  const Record* rty    = (const Record*)tydef;
+  const Record* rty    = reinterpret_cast<const Record*>(tydef);
 
   for (const auto& m : rty->members()) {
     auto fdef = fdefs.find(m.field);
@@ -664,7 +664,7 @@ long readFileRT(const array<char>* fname, long tydef) {
     result->pushOffset(result->unsafeLookupOffset(m.field, m.type), m.type);
   }
 
-  return (long)result;
+  return reinterpret_cast<long>(result);
 }
 
 // infer the type of a file by actually inspecting it
@@ -693,11 +693,11 @@ struct openFileF : public op {
     std::string rts = show(rty);
     auto it = this->internTypes.find(rts);
     if (it != this->internTypes.end()) {
-      return (long)it->second.get();
+      return reinterpret_cast<long>(it->second.get());
     } else {
       MonoTypePtr r(clone(rty));
       this->internTypes[rts] = r;
-      return (long)r.get();
+      return reinterpret_cast<long>(r.get());
     }
   }
 
@@ -722,7 +722,7 @@ struct openFileF : public op {
 
 // show a summary view of a file
 void printFileUF(long x) {
-  ((reader*)x)->show(std::cout);
+  reinterpret_cast<reader*>(x)->show(std::cout);
 }
 
 struct printFileF : public op {
@@ -753,7 +753,6 @@ public:
 };
 
 bool DBFieldLookup::refine(const TEnvPtr& tenv, const HasField& hf, MonoTypeUnifier* u, Definitions* ds) {
-  auto dir   = hf.direction;
   auto rty   = hf.recordType;
   auto fname = hf.fieldName;
   auto fty   = hf.fieldType;
@@ -778,7 +777,6 @@ bool DBFieldLookup::refine(const TEnvPtr& tenv, const HasField& hf, MonoTypeUnif
 }
 
 bool DBFieldLookup::satisfied(const TEnvPtr& tenv, const HasField& hf, Definitions* ds) const {
-  auto dir   = hf.direction;
   auto rty   = hf.recordType;
   auto fname = hf.fieldName;
   auto fty   = hf.fieldType;
@@ -906,7 +904,7 @@ struct HFDBFLUnqualify : public switchExprTyFn {
     if (this->udir == HasField::Read && hasConstraint(this->constraint, v->type()) && v->field() == this->fname && expectedObjType(v->record()->type()->monoType())) {
       ExprPtr dbfile = switchOf(v->record(), *this);
 
-      ExprPtr result = fncall(var(".DBVLoad", functy(list(dbfile->type()->monoType(), primty("int")), v->type()->monoType()), v->la()), list(dbfile, constant((int)storedOffset(dbfile, v->field()), v->la())), v->la());
+      ExprPtr result = fncall(var(".DBVLoad", functy(list(dbfile->type()->monoType(), primty("int")), v->type()->monoType()), v->la()), list(dbfile, constant(static_cast<int>(storedOffset(dbfile, v->field())), v->la())), v->la());
       return assume(result, result->type(), result->la());
     } else {
       return wrapWithTy(v->type(), new Proj(switchOf(v->record(), *this), v->field(), v->la()));
@@ -922,7 +920,7 @@ struct HFDBFLUnqualify : public switchExprTyFn {
       if (const Proj* mref = is<Proj>(stripAssumpHead(lhs))) {
         if (mref->field() == this->fname && expectedObjType(mref->record()->type()->monoType())) {
           MonoTypePtr sfnty = functy(list(mref->record()->type()->monoType(), primty("int"), rhs->type()->monoType()), primty("unit"));
-          return fncall(var(".DBVStore", sfnty, v->la()), list(mref->record(), constant((int)storedOffset(mref->record(), mref->field()), v->la()), rhs), v->la());
+          return fncall(var(".DBVStore", sfnty, v->la()), list(mref->record(), constant(static_cast<int>(storedOffset(mref->record(), mref->field())), v->la()), rhs), v->la());
         }
       }
     }
@@ -1050,7 +1048,7 @@ public:
     ExprPtr with(const Var* v) const {
       if (hasConstraint(this->constraint, v->type())) {
         if (v->value() == READ_FILE_SYM || v->value() == WRITE_FILE_SYM) {
-          return constant((long)this->f, v->la());
+          return constant(this->f, v->la());
         }
       }
       return wrapWithTy(v->type(), new Var(v->value(), v->la()));
@@ -1058,7 +1056,7 @@ public:
   };
 
   ExprPtr unqualify(const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPtr& e, Definitions* ds) const {
-    return switchOf(e, insertLoadedFileF(cst, (long)loadedFile(cst).file));
+    return switchOf(e, insertLoadedFileF(cst, reinterpret_cast<long>(loadedFile(cst).file)));
   }
 
   PolyTypePtr lookup(const std::string& vn) const {

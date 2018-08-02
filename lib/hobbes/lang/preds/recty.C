@@ -31,7 +31,7 @@ bool FixIsoRecur::refine(const TEnvPtr& tenv, const ConstraintPtr& cst, MonoType
   size_t uc = u->size();
   IsoRecur ir;
   if (dec(cst, &ir)) {
-    if (const Recursive* r = is<Recursive>(ir.rolled)) {
+    if (is<Recursive>(ir.rolled)) {
       mgu(unroll(ir.rolled), ir.unrolled, u);
     }
   }
@@ -41,7 +41,7 @@ bool FixIsoRecur::refine(const TEnvPtr& tenv, const ConstraintPtr& cst, MonoType
 bool FixIsoRecur::satisfied(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions*) const {
   IsoRecur ir;
   if (dec(cst, &ir)) {
-    if (const Recursive* r = is<Recursive>(ir.rolled)) {
+    if (is<Recursive>(ir.rolled)) {
       // make sure that the recursive type unrolls to the unrolled type
       return (*unroll(ir.rolled) == *ir.unrolled);
     }
@@ -54,7 +54,7 @@ bool FixIsoRecur::satisfiable(const TEnvPtr& tenv, const ConstraintPtr& cst, Def
   if (dec(cst, &ir)) {
     if (is<TVar>(ir.rolled)) {
       return true;
-    } else if (const Recursive* r = is<Recursive>(ir.rolled)) {
+    } else if (is<Recursive>(ir.rolled)) {
       if (is<TVar>(ir.unrolled)) {
         return true;
       } else {

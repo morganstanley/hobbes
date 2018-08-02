@@ -18,6 +18,7 @@
 #include <iostream>
 #include <sstream>
 #include <assert.h>
+#include <stdexcept>
 
 namespace hobbes {
 
@@ -101,15 +102,15 @@ template <size_t index, size_t base, typename Field, typename ... Fields>
       tail::initFrom(b, fs...);
     }
     static void copyFrom(uint8_t* lhs, const uint8_t* rhs) {
-      new (lhs+offset) Field(*((const Field*)(rhs+offset)));
+      new (lhs+offset) Field(*reinterpret_cast<const Field*>(rhs+offset));
       tail::copyFrom(lhs, rhs);
     }
     static void destroy(uint8_t* b) {
-      ((Field*)(b+offset))->~Field();
+      reinterpret_cast<Field*>(b+offset)->~Field();
       tail::destroy(b);
     }
     static bool eq(const uint8_t* lhs, const uint8_t* rhs) {
-      return (*((const Field*)(lhs+offset)) == *((const Field*)(rhs+offset))) ? tail::eq(lhs,rhs) : false;
+      return (*reinterpret_cast<const Field*>(lhs+offset) == *reinterpret_cast<const Field*>(rhs+offset)) ? tail::eq(lhs,rhs) : false;
     }
   };
 
@@ -157,13 +158,17 @@ template <typename ... Fields>
     }
 
     template <size_t k>
-      typename nth<k, Fields...>::type& at() {
-        return *((typename nth<k, Fields...>::type*)(this->buffer + offsetAt<k, offs>::value));
+      typename nth<k, Fields...>::type* atP() {
+        return reinterpret_cast<typename nth<k, Fields...>::type*>(this->buffer + offsetAt<k, offs>::value);
       }
     template <size_t k>
-      const typename nth<k, Fields...>::type& at() const {
-        return *((typename nth<k, Fields...>::type*)(this->buffer + offsetAt<k, offs>::value));
+      typename nth<k, Fields...>::type& at() { return *atP<k>(); }
+    template <size_t k>
+      const typename nth<k, Fields...>::type* atP() const {
+        return reinterpret_cast<const typename nth<k, Fields...>::type*>(this->buffer + offsetAt<k, offs>::value);
       }
+    template <size_t k>
+      const typename nth<k, Fields...>::type& at() const { return *atP<k>(); }
   };
 template <>
   struct tuple<> {
@@ -246,7 +251,7 @@ template <typename T, typename ... Ts> struct tupleTail<T, Ts...> { typedef tupl
 // reflective enumerations
 #define PRIV_HPPF_ENUM_CTOR_DEF(n) n ,
 #define PRIV_HPPF_ENUM_CTOR_CTOR(n) static const SelfT n() { return SelfT(SelfT::Enum::n); }
-#define PRIV_HPPF_ENUM_META(n) m.push_back(std::pair<std::string,int>(#n, (int)SelfT::Enum::n));
+#define PRIV_HPPF_ENUM_META(n) m.push_back(std::pair<std::string,uint32_t>(#n, static_cast<uint32_t>(SelfT::Enum::n)));
 #define PRIV_HPPF_ENUM_SHOW(n) case SelfT::Enum::n : return "|" #n "|";
 #define PRIV_HPPF_ENUM_CTOR_COUNT(n) +1
 
@@ -265,7 +270,7 @@ template <typename T, typename ... Ts> struct tupleTail<T, Ts...> { typedef tupl
     operator Enum() const { return this->value; } \
     typedef T SelfT; \
     PRIV_HPPF_MAP(PRIV_HPPF_ENUM_CTOR_CTOR, CTORS) \
-    typedef std::vector<std::pair<std::string,int>> MetaSeq; \
+    typedef std::vector<std::pair<std::string,uint32_t>> MetaSeq; \
     static MetaSeq meta() { \
       MetaSeq m; \
       PRIV_HPPF_MAP(PRIV_HPPF_ENUM_META, CTORS); \
@@ -315,7 +320,7 @@ template <size_t i, typename R, template <size_t,class,class> class F, typename 
     static bool init(PF* pfs) {
       typedef R (*TPF)(Ctor*, Args...);
       TPF tpf = &F<i, Ctor, U>::fn;
-      pfs[i] = (PF)tpf;
+      pfs[i] = reinterpret_cast<PF>(tpf);
       return variantAppInit<i+1, R, F, U, tuple<Args...>, Ctors...>::init(pfs);
     }
   };
@@ -330,6 +335,7 @@ template <template <size_t,class,class> class F, typename U, typename ... Ctors,
       static PF fvec[sizeof...(Ctors)];
       static bool init = variantAppInit<0, void, F, U, tuple<Args...>, Ctors...>::init(fvec);
       return fvec;
+      if (init) return fvec; // <-- pointless, but prevents an unused variable error
     }
 
     static void apply(uint32_t id, void* payload, Args... args) {
@@ -344,6 +350,7 @@ template <typename R, template <size_t,class,class> class F, typename U, typenam
       static PF fvec[sizeof...(Ctors)];
       static bool init = variantAppInit<0, R, F, U, tuple<Args...>, Ctors...>::init(fvec);
       return fvec;
+      if (init) return fvec; // <-- pointless, but prevents an unused variable error
     }
 
     static R apply(uint32_t id, void* payload, Args... args) {
@@ -354,7 +361,7 @@ template <typename R, template <size_t,class,class> class F, typename U, typenam
 template <size_t, typename T, typename U>
   struct variantPayloadCtor {
     static void fn(T* p, const void* rhsp) {
-      new (p) T(*((const T*)rhsp));
+      new (p) T(*reinterpret_cast<const T*>(rhsp));
     }
   };
 
@@ -368,7 +375,7 @@ template <size_t, typename T, typename U>
 template <size_t, typename T, typename U>
   struct variantPayloadEq {
     static bool fn(T* lhs, const void* rhs) {
-      return *lhs == *((const T*)rhs);
+      return *lhs == *reinterpret_cast<const T*>(rhs);
     }
   };
 
@@ -403,7 +410,7 @@ template <typename ... Ctors>
       return *this;
     }
     bool operator==(const variant<Ctors...>& rhs) const {
-      return this->tag == rhs.tag && variantApp<bool, variantPayloadEq, void, tuple<Ctors...>, const void*>::apply(this->tag, (void*)this->storage, (const void*)rhs.storage);
+      return this->tag == rhs.tag && variantApp<bool, variantPayloadEq, void, tuple<Ctors...>, const void*>::apply(this->tag, const_cast<void*>(reinterpret_cast<const void*>(this->storage)), reinterpret_cast<const void*>(rhs.storage));
     }
 
     template <typename T>
@@ -417,7 +424,7 @@ template <typename ... Ctors>
       }
     template <typename R, template <size_t,class,class> class F, typename U, typename ... Args>
       R apply(Args... args) const {
-        return variantApp<R, F, U, tuple<Ctors...>, Args...>::apply(this->tag, (void*)this->storage, args...);
+        return variantApp<R, F, U, tuple<Ctors...>, Args...>::apply(this->tag, const_cast<void*>(reinterpret_cast<const void*>(this->storage)), args...);
       }
   public:
     const uint32_t& unsafeTag() const { return this->tag; }
@@ -435,7 +442,7 @@ template <typename ... Ctors>
         static_assert(CtorIndexOf<T, Ctors...>::value < sizeof...(Ctors), "Constructor type isn't part of variant");
 
         if (this->tag == CtorIndexOf<T, Ctors...>::value) {
-          return (T*)(this->storage);
+          return const_cast<T*>(reinterpret_cast<const T*>(this->storage));
         } else {
           return 0;
         }
@@ -463,15 +470,15 @@ template <typename ... Ts>
 #define PRIV_HPPF_VARIANT_CTOR(n, t)      static SelfT n(const t & x) { SelfT r; r.tag = Enum::tag_##n; new (&r.n##_data) t(x); return r; }
 #define PRIV_HPPF_VARIANT_PCOPY(n, t)     case Enum::tag_##n: new (&this->n##_data) t(rhs.n##_data); break;
 #define PRIV_HPPF_VARIANT_GINIT(n, t)     case Enum::tag_##n: new (&this->n##_data) t(); v.template init<t>(&this->n##_data); break;
-#define PRIV_HPPF_VARIANT_PDESTROY(n, t)  case Enum::tag_##n: { typedef t PRIV_DT; ((PRIV_DT*)&this->n##_data)->~PRIV_DT(); } break;
+#define PRIV_HPPF_VARIANT_PDESTROY(n, t)  case Enum::tag_##n: { typedef t PRIV_DT; reinterpret_cast<PRIV_DT*>(&this->n##_data)->~PRIV_DT(); } break;
 #define PRIV_HPPF_VARIANT_CTOR_TAG(n, t)  tag_##n,
 #define PRIV_HPPF_VARIANT_CTOR_DATA(n, t) t n##_data;
 #define PRIV_HPPF_VARIANT_CTOR_COUNT(n,t) +1
 #define PRIV_HPPF_VARIANT_EQCASE(n, t)    case Enum::tag_##n: return (this->n##_data == rhs.n##_data);
-#define PRIV_HPPF_VARIANT_META(n, t)      v.template ctor<t>(#n, (int)Enum::tag_##n);
+#define PRIV_HPPF_VARIANT_META(n, t)      v.template ctor<t>(#n, static_cast<uint32_t>(Enum::tag_##n));
 #define PRIV_HPPF_VARIANT_VDECL(n, t)     virtual R n(const t & x) const = 0;
 #define PRIV_HPPF_VARIANT_VCASE(n, t)     case Enum::tag_##n: return v. n (this->n##_data);
-#define PRIV_HPPF_VARIANT_GVCASE(n, t)    case Enum::tag_##n: return v.template visit<t>(#n, (int)Enum::tag_##n, this->n##_data);
+#define PRIV_HPPF_VARIANT_GVCASE(n, t)    case Enum::tag_##n: return v.template visit<t>(#n, static_cast<uint32_t>(Enum::tag_##n), this->n##_data);
 #define PRIV_HPPF_VARIANT_SHOW(n, t)      case Enum::tag_##n: o << "|" << #n << "=" << this->n##_data << "|"; break;
 
 #define DEFINE_VARIANT(T, CTORS...) \
@@ -545,7 +552,7 @@ template <typename ... Ts>
         PRIV_HPPF_MAP(PRIV_HPPF_VARIANT_PDESTROY, CTORS) \
         default: break; \
         } \
-        this->tag = (Enum)t; \
+        this->tag = static_cast<Enum>(t); \
         switch (this->tag) { \
         PRIV_HPPF_MAP(PRIV_HPPF_VARIANT_GINIT, CTORS) \
         default: break; \
@@ -573,19 +580,22 @@ template <typename ... Ts>
 
 
 // define opaque type aliases
-#define DEFINE_TYPE_ALIAS(PRIV_ATY, PRIV_REPTY) \
+#define DEFINE_TYPE_ALIAS_AS(PRIV_ATY, N, PRIV_REPTY) \
   struct PRIV_ATY { \
     static const bool is_hmeta_alias = true; \
+    typedef void is_hstore_alias; \
     typedef PRIV_REPTY type; \
-    static const char* name() { return #PRIV_ATY; } \
+    static const char* name() { return #N; } \
     inline operator PRIV_REPTY() { return this->value; } \
     PRIV_REPTY value; \
     PRIV_ATY() : value() { } \
     PRIV_ATY(const PRIV_REPTY& x) : value(x) { } \
-    PRIV_ATY(const PRIV_ATY& x) : value(x.value) { } \
-    PRIV_ATY& operator=(const PRIV_ATY& x) { this->value = x.value; return *this; } \
+    constexpr PRIV_ATY(const PRIV_ATY& x) = default; \
+    PRIV_ATY& operator=(const PRIV_ATY& x) = default; \
     bool operator==(const PRIV_ATY& x) const { return this->value == x.value; } \
   }
+
+#define DEFINE_TYPE_ALIAS(PRIV_ATY, PRIV_REPTY) DEFINE_TYPE_ALIAS_AS(PRIV_ATY, PRIV_ATY, PRIV_REPTY)
 
 /***************************************************
  *
@@ -598,16 +608,16 @@ namespace ty {
 typedef std::vector<uint8_t> bytes;
 
 // type encoding logic
-#define PRIV_HPPF_TYCTOR_PRIM      ((int)0)
-#define PRIV_HPPF_TYCTOR_TVAR      ((int)2)
-#define PRIV_HPPF_TYCTOR_FIXEDARR  ((int)4)
-#define PRIV_HPPF_TYCTOR_ARR       ((int)5)
-#define PRIV_HPPF_TYCTOR_VARIANT   ((int)6)
-#define PRIV_HPPF_TYCTOR_STRUCT    ((int)7)
-#define PRIV_HPPF_TYCTOR_SIZE      ((int)11)
-#define PRIV_HPPF_TYCTOR_TAPP      ((int)12)
-#define PRIV_HPPF_TYCTOR_RECURSIVE ((int)13)
-#define PRIV_HPPF_TYCTOR_TABS      ((int)15)
+#define PRIV_HPPF_TYCTOR_PRIM      (static_cast<uint32_t>(0))
+#define PRIV_HPPF_TYCTOR_TVAR      (static_cast<uint32_t>(2))
+#define PRIV_HPPF_TYCTOR_FIXEDARR  (static_cast<uint32_t>(4))
+#define PRIV_HPPF_TYCTOR_ARR       (static_cast<uint32_t>(5))
+#define PRIV_HPPF_TYCTOR_VARIANT   (static_cast<uint32_t>(6))
+#define PRIV_HPPF_TYCTOR_STRUCT    (static_cast<uint32_t>(7))
+#define PRIV_HPPF_TYCTOR_SIZE      (static_cast<uint32_t>(11))
+#define PRIV_HPPF_TYCTOR_TAPP      (static_cast<uint32_t>(12))
+#define PRIV_HPPF_TYCTOR_RECURSIVE (static_cast<uint32_t>(13))
+#define PRIV_HPPF_TYCTOR_TABS      (static_cast<uint32_t>(15))
 
 struct D { uint32_t tid; D(uint32_t tid) : tid(tid) { } };
 typedef std::shared_ptr<D> desc;
@@ -647,7 +657,7 @@ struct Arr : public D {
 inline desc array(const desc& t) { return desc(new Arr(t)); }
 
 struct Variant : public D {
-  typedef tuple<std::string, int, desc> Ctor;
+  typedef tuple<std::string, uint32_t, desc> Ctor;
   typedef std::vector<Ctor> Ctors;
 
   Variant(const Ctors& ctors) : D(PRIV_HPPF_TYCTOR_VARIANT), ctors(ctors) { }
@@ -655,7 +665,7 @@ struct Variant : public D {
   Ctors ctors;
 };
 inline desc variant(const Variant::Ctors& ctors) { return desc(new Variant(ctors)); }
-inline desc enumdef(const std::vector<std::pair<std::string, int>>& eds) {
+inline desc enumdef(const std::vector<std::pair<std::string, uint32_t>>& eds) {
   Variant::Ctors ctors;
   for (const auto& ed : eds) {
     ctors.push_back(Variant::Ctor(ed.first, ed.second, prim("unit")));
@@ -677,7 +687,7 @@ template <typename ... Tys>
     for (size_t i = 0; i < ts.size(); ++i) {
       std::ostringstream n;
       n << ".f" << i;
-      cs.push_back(Variant::Ctor(n.str(), (int)i, ts[i]));
+      cs.push_back(Variant::Ctor(n.str(), static_cast<uint32_t>(i), ts[i]));
     }
     return variant(cs);
   }
@@ -779,25 +789,25 @@ inline desc fileRef(const desc& t) {
 // encode a type description as a byte array (for storage/transmission)
 template <typename T>
   void w(const T& x, bytes* out) {
-    out->insert(out->end(), (uint8_t*)&x, ((uint8_t*)&x) + sizeof(x));
+    out->insert(out->end(), reinterpret_cast<const uint8_t*>(&x), reinterpret_cast<const uint8_t*>(&x) + sizeof(x));
   }
 inline void ws(const std::string& x, bytes* out) {
-  w((size_t)x.size(), out);
+  w(static_cast<size_t>(x.size()), out);
   out->insert(out->end(), x.begin(), x.end());
 }
 
 inline void encode(const desc& t, bytes* o) {
   const D*         pd   = t.get();
-  const Prim*      pt   = (const Prim*)pd;
-  const Var*       pvn  = (const Var*)pd;
-  const FArr*      pfa  = (const FArr*)pd;
-  const Arr*       pa   = (const Arr*)pd;
-  const Variant*   pv   = (const Variant*)pd;
-  const Struct*    ps   = (const Struct*)pd;
-  const Recursive* pr   = (const Recursive*)pd;
-  const Fn*        pfn  = (const Fn*)pd;
-  const App*       papp = (const App*)pd;
-  const Nat*       pn   = (const Nat*)pd;
+  const Prim*      pt   = reinterpret_cast<const Prim*>(pd);
+  const Var*       pvn  = reinterpret_cast<const Var*>(pd);
+  const FArr*      pfa  = reinterpret_cast<const FArr*>(pd);
+  const Arr*       pa   = reinterpret_cast<const Arr*>(pd);
+  const Variant*   pv   = reinterpret_cast<const Variant*>(pd);
+  const Struct*    ps   = reinterpret_cast<const Struct*>(pd);
+  const Recursive* pr   = reinterpret_cast<const Recursive*>(pd);
+  const Fn*        pfn  = reinterpret_cast<const Fn*>(pd);
+  const App*       papp = reinterpret_cast<const App*>(pd);
+  const Nat*       pn   = reinterpret_cast<const Nat*>(pd);
 
   w(t->tid, o);
   switch (t->tid) {
@@ -821,18 +831,18 @@ inline void encode(const desc& t, bytes* o) {
     encode(pa->t, o);
     break;
   case PRIV_HPPF_TYCTOR_VARIANT:
-    w((size_t)pv->ctors.size(), o);
+    w(static_cast<size_t>(pv->ctors.size()), o);
     for (const auto& ctor : pv->ctors) {
       ws(ctor.at<0>(), o);
-      w((int)ctor.at<1>(), o);
+      w(static_cast<uint32_t>(ctor.at<1>()), o);
       encode(ctor.at<2>(), o);
     }
     break;
   case PRIV_HPPF_TYCTOR_STRUCT:
-    w((size_t)ps->fields.size(), o);
+    w(static_cast<size_t>(ps->fields.size()), o);
     for (const auto& field : ps->fields) {
       ws(field.at<0>(), o);
-      w((int)field.at<1>(), o);
+      w(static_cast<uint32_t>(field.at<1>()), o);
       encode(field.at<2>(), o);
     }
     break;
@@ -841,7 +851,7 @@ inline void encode(const desc& t, bytes* o) {
     break;
   case PRIV_HPPF_TYCTOR_TAPP:
     encode(papp->f, o);
-    w((size_t)papp->args.size(), o);
+    w(static_cast<size_t>(papp->args.size()), o);
     for (const auto& arg : papp->args) {
       encode(arg, o);
     }
@@ -851,7 +861,7 @@ inline void encode(const desc& t, bytes* o) {
     encode(pr->t, o);
     break;
   case PRIV_HPPF_TYCTOR_TABS:
-    w((size_t)pfn->args.size(), o);
+    w(static_cast<size_t>(pfn->args.size()), o);
     for (const auto& arg : pfn->args) {
       ws(arg, o);
     }
@@ -877,14 +887,14 @@ inline bool operator==(const desc& t0, const desc& t1) {
 template <typename T>
   T r(const bytes& bs, size_t* i) {
     assert((bs.size() >= (*i + sizeof(T))) && "Invalid type encoding, expected data not available");
-    T result = *((const T*)&bs[*i]);
+    T result = *reinterpret_cast<const T*>(&bs[*i]);
     *i += sizeof(T);
     return result;
   }
 inline std::string rs(const bytes& bs, size_t* i) {
   auto sz = r<size_t>(bs, i);
   assert((bs.size() >= (*i + sz)) && "Invalid type encoding, expected string data not available");
-  const char* s = (const char*)&bs[*i];
+  const char* s = reinterpret_cast<const char*>(&bs[*i]);
   std::string result(s, s + sz);
   *i += sz;
   return result;
@@ -978,7 +988,7 @@ inline desc decodeFrom(const bytes& bs, size_t* i) {
 
   default:
     assert(false && "Invalid type description, internal error");
-    break;
+    throw std::runtime_error("Invalid type description");
   }
 }
 
@@ -990,16 +1000,16 @@ inline desc decode(const bytes& bs) {
 // describe a type description for human consumption
 inline void describe(const desc& t, std::ostream& o) {
   const D*         pd   = t.get();
-  const Prim*      pt   = (const Prim*)pd;
-  const Var*       pvn  = (const Var*)pd;
-  const FArr*      pfa  = (const FArr*)pd;
-  const Arr*       pa   = (const Arr*)pd;
-  const Variant*   pv   = (const Variant*)pd;
-  const Struct*    ps   = (const Struct*)pd;
-  const Recursive* pr   = (const Recursive*)pd;
-  const Fn*        pfn  = (const Fn*)pd;
-  const App*       papp = (const App*)pd;
-  const Nat*       pn   = (const Nat*)pd;
+  const Prim*      pt   = reinterpret_cast<const Prim*>(pd);
+  const Var*       pvn  = reinterpret_cast<const Var*>(pd);
+  const FArr*      pfa  = reinterpret_cast<const FArr*>(pd);
+  const Arr*       pa   = reinterpret_cast<const Arr*>(pd);
+  const Variant*   pv   = reinterpret_cast<const Variant*>(pd);
+  const Struct*    ps   = reinterpret_cast<const Struct*>(pd);
+  const Recursive* pr   = reinterpret_cast<const Recursive*>(pd);
+  const Fn*        pfn  = reinterpret_cast<const Fn*>(pd);
+  const App*       papp = reinterpret_cast<const App*>(pd);
+  const Nat*       pn   = reinterpret_cast<const Nat*>(pd);
 
   switch (t->tid) {
   case PRIV_HPPF_TYCTOR_PRIM:
@@ -1076,7 +1086,7 @@ inline void describe(const desc& t, std::ostream& o) {
     o << pn->x;
     break;
   case PRIV_HPPF_TYCTOR_TAPP:
-    if (papp->args.size() > 0 && papp->f->tid == PRIV_HPPF_TYCTOR_PRIM && ((const ty::Prim*)papp->f.get())->n == "fileref") {
+    if (papp->args.size() > 0 && papp->f->tid == PRIV_HPPF_TYCTOR_PRIM && reinterpret_cast<const ty::Prim*>(papp->f.get())->n == "fileref") {
       describe(papp->args[0], o);
       o << "@?";
     } else {

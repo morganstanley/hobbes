@@ -121,7 +121,7 @@ inline std::string showTime(long x) {
   int64_t us = x % (1000 * 1000);
 
   static char buf[256];
-  strftime(buf, sizeof(buf), "%H:%M:%S", localtime((time_t*)&s));
+  strftime(buf, sizeof(buf), "%H:%M:%S", localtime(reinterpret_cast<time_t*>(&s)));
 
   std::ostringstream uss;
   uss << us;
@@ -158,7 +158,7 @@ inline long mkDateTime(int y, int mon, int d, int h, int min, int s, int u) {
 inline long timeFromDateTime(long x) {
   int64_t s  = x / (1000L * 1000L);
   int64_t us = x % (1000L * 1000L);
-  tm*     t  = localtime((time_t*)&s);
+  tm*     t  = localtime(reinterpret_cast<time_t*>(&s));
 
   if (t) {
     return mkTime(t->tm_hour, t->tm_min, t->tm_sec, us);
@@ -170,7 +170,7 @@ inline long timeFromDateTime(long x) {
 inline long dateFromDateTime(long x) {
   int64_t s  = x / (1000L * 1000L);
   tm t;
-  localtime_r((time_t*)&s, &t);
+  localtime_r(reinterpret_cast<time_t*>(&s), &t);
   
   t.tm_sec  = 0;
   t.tm_min  = 0;
@@ -204,7 +204,7 @@ inline std::string showDateTime(long x) {
   int64_t us = x % (1000L * 1000L);
 
   static char buf[256];
-  strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S", localtime((time_t*)&s));
+  strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S", localtime(reinterpret_cast<time_t*>(&s)));
 
   std::ostringstream uss;
   uss << us;

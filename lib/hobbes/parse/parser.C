@@ -188,7 +188,7 @@ ExprPtr makeOutputParserState(const ParserEvalInfo& pei, size_t i) {
           var(".s" + str::from(i) + "o", pei.la),
           append(
             vars(append(str::strings(".arr", ".sd"), varNames(parseDepth(pei, i))), pei.la),
-            list(fncall(var(".s" + str::from(j) + "i", pei.la), append(vars(str::strings(".arr", ".i"), pei.la), append(list(fncall(var("iadd", pei.la), list(var(".sd", pei.la), constant((int)1, pei.la)), pei.la)), vars(shiftVarNames(pei, i, j), pei.la))), pei.la))
+            list(fncall(var(".s" + str::from(j) + "i", pei.la), append(vars(str::strings(".arr", ".i"), pei.la), append(list(fncall(var("iadd", pei.la), list(var(".sd", pei.la), constant(static_cast<int>(1), pei.la)), pei.la)), vars(shiftVarNames(pei, i, j), pei.la))), pei.la))
           ),
           pei.la
         )
@@ -214,7 +214,7 @@ ExprPtr makeReduction(const ParserEvalInfo& pei, size_t i, terminal* sym, size_t
           ExprPtr(new MkRecord(
             list(
               MkRecord::FieldDef(".f0", var(".i", pei.la)),
-              MkRecord::FieldDef(".f1", fncall(var("isub", pei.la), list(var(".sd", pei.la), constant((int)parseDepth(pei, i), pei.la)), pei.la)),
+              MkRecord::FieldDef(".f1", fncall(var("isub", pei.la), list(var(".sd", pei.la), constant(static_cast<int>(parseDepth(pei, i)), pei.la)), pei.la)),
               MkRecord::FieldDef(".f2", evalExpr(pei, sym, rule))
             ),
             pei.la
@@ -236,8 +236,8 @@ ExprPtr doAction(const ParserEvalInfo& pei, size_t i, const action& act) {
     // in
     //   sIo(arr, sd, v0..vN, sSi(arr, j, sd', v0..vN))
     ExprPtr shiftExpr =
-      let(".j", fncall(var("ladd", pei.la), list(var(".i", pei.la), constant((size_t)1, pei.la)), pei.la),
-        let(".sdp", fncall(var("iadd", pei.la), list(var(".sd", pei.la), constant((int)1, pei.la)), pei.la),
+      let(".j", fncall(var("ladd", pei.la), list(var(".i", pei.la), constant(static_cast<size_t>(1), pei.la)), pei.la),
+        let(".sdp", fncall(var("iadd", pei.la), list(var(".sd", pei.la), constant(static_cast<int>(1), pei.la)), pei.la),
           fncall(var(".s" + str::from(act.shiftState()) + "i", pei.la), vars(append(str::strings(".arr", ".j", ".sdp"), shiftVarNames(pei, i, act.shiftState())), pei.la), pei.la),
           pei.la
         ),
@@ -314,7 +314,7 @@ ExprPtr makeParser(cc* c, const Parser& p, terminal* root, const precedence& pre
     new LetRec(sbs,
       compileMatch(
         pei.c,
-        list(fncall(var(".s0o", la), list(var(".arr", la), constant((int)0, la), fncall(var(".s0i", la), list(assume(var(".arr", la), pei.arrty, la), constant((size_t)0, la), constant((int)0, la)), la)), la)),
+        list(fncall(var(".s0o", la), list(var(".arr", la), constant(static_cast<int>(0), la), fncall(var(".s0i", la), list(assume(var(".arr", la), pei.arrty, la), constant(static_cast<size_t>(0), la), constant(static_cast<int>(0), la)), la)), la)),
         list(
           PatternRow(list(PatternPtr(new MatchVariant(".success", PatternPtr(new MatchAny("r", la)), la))), assume(ExprPtr(new MkVariant(".f1", ExprPtr(new Var("r", la)), la)), parseResultType(pei), la)),
           PatternRow(list(PatternPtr(new MatchAny("_", la))), assume(ExprPtr(new MkVariant(".f0", ExprPtr(new Unit(la)), la)), parseResultType(pei), la))

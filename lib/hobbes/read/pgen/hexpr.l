@@ -182,6 +182,6 @@ std::string* identifier(const char* b, const char* e) {
 [0-9]{4}\-[0-9]{2}\-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3} { SAVE_STR; return TDATETIME; }
 [0-9]{4}\-[0-9]{2}\-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{6} { SAVE_STR; return TDATETIME; }
 
-. { yyVexpLexError = "Unknown character: " + std::string(yytext); yyterminate(); }
+. { yyVexpLexError = "Unknown character: " + std::string(yytext); yyterminate(); if (false) { yy_flex_realloc(0, 0); yyunput(0, 0); } }
 
 %%

@@ -94,6 +94,10 @@ template <typename ... UniqueRefcMaps>
     }
   };
 
+template <typename V, typename U> V scast (U x)        { return static_cast<V>(x); }
+template <typename V, typename U> V rcast (U x)        { return reinterpret_cast<V>(x); }
+template <typename V, typename U> V crcast(const U* x) { return reinterpret_cast<V>(const_cast<U*>(x)); }
+
 template <typename T>
   T align(T x, T m) {
     if (m == 0 || (x % m) == 0) {
@@ -106,7 +110,7 @@ template <typename T>
 template <typename T, typename S>
   const T* is(const S* s) {
     if (s && s->case_id() == T::type_case_id) {
-      return (const T*)s;
+      return rcast<const T*>(s);
     } else {
       return 0;
     }
@@ -115,7 +119,7 @@ template <typename T, typename S>
 template <typename T, typename S>
   T* isM(S* s) {
     if (s && s->case_id() == T::type_case_id) {
-      return (T*)s;
+      return rcast<T*>(s);
     } else {
       return 0;
     }

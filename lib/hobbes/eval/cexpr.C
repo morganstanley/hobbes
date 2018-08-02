@@ -159,7 +159,7 @@ public:
         builder()->CreateStore(rhs, lhs);
       }
 
-      return with((const Unit*)0);
+      return with(rcast<const Unit*>(0));
     } else {
       return compile(v->right());
     }
@@ -189,7 +189,7 @@ public:
       if (!isUnit(aty->type())) {
         llvm::Value* adatap = structOffset(builder(), p, 1);
   
-        for (int i = 0; i < vs.size(); ++i) {
+        for (size_t i = 0; i < vs.size(); ++i) {
           llvm::Value* ev = vs[i];
           llvm::Value* ap = offset(builder(), adatap, 0, i);
 
@@ -273,7 +273,7 @@ public:
     llvm::Value* ar   = compile(v->array());
     llvm::Value* ir   = compile(v->index());
     if (isUnit(aity)) {
-      return with((const Unit*)0);
+      return with(rcast<const Unit*>(0));
     }
 
     llvm::Value* ard = structOffset(builder(), ar, 1); // get the array's data pointer
@@ -356,7 +356,7 @@ public:
         throw;
       }
 
-      s->addCase(llvm::ConstantInt::get(llvm::IntegerType::get(context(), 32), (uint64_t)caseID), caseBlock);
+      s->addCase(llvm::ConstantInt::get(llvm::IntegerType::get(context(), 32), scast<uint64_t>(caseID)), caseBlock);
     }
 
     // fill in the default (failure) target for variant matching
@@ -369,7 +369,7 @@ public:
     builder()->SetInsertPoint(failBlock);
     fncall(builder(), f, list(
       this->c->internConstString(v->la().filename()),
-      cvalue((long)v->la().p0.first),
+      cvalue(scast<long>(v->la().p0.first)),
       this->c->internConstString(ltxt),
       builder()->CreateBitCast(var, ptrType(charType()))
     ));

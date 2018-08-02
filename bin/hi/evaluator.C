@@ -16,7 +16,7 @@ namespace hi {
 
 // allocate a string in global memory
 hobbes::array<char>* allocGlobalStr(const char* x, size_t len) {
-  hobbes::array<char>* r = (hobbes::array<char>*)malloc(sizeof(long) + len * sizeof(char));
+  hobbes::array<char>* r = reinterpret_cast<hobbes::array<char>*>(malloc(sizeof(long) + len * sizeof(char)));
   memcpy(r->data, x, len * sizeof(char));
   r->size = len;
   return r;
@@ -48,7 +48,7 @@ void bindArguments(hobbes::cc& ctx, const Args::NameVals& args) {
   typedef std::pair<array<char>*, array<char>*> StrPair;
   typedef array<StrPair> StrPairs;
 
-  StrPairs* arguments = (StrPairs*)malloc(sizeof(long) + args.size() * sizeof(StrPair));
+  StrPairs* arguments = reinterpret_cast<StrPairs*>(malloc(sizeof(long) + args.size() * sizeof(StrPair)));
   arguments->size = 0;
   for (auto arg : args) {
     arguments->data[arguments->size].first  = allocGlobalStr(arg.first);
@@ -204,7 +204,7 @@ void evaluator::printLLVMModule() {
 
 void evaluator::printAssembly(const std::string& expr, void (*f)(void*,size_t)) {
   hobbes::cc::bytes d = this->ctx.machineCodeForExpr(expr);
-  f((void*)&(*(d.begin())), d.size());
+  f(reinterpret_cast<void*>(&(*(d.begin()))), d.size());
 }
 
 void evaluator::perfTestExpr(const std::string& expr) {
@@ -214,7 +214,7 @@ void evaluator::perfTestExpr(const std::string& expr) {
 
   const size_t numRuns = 1000;
   unsigned long nsCSum = 0;
-  unsigned long nsCMin = (unsigned long)-1;
+  unsigned long nsCMin = static_cast<unsigned long>(-1);
   unsigned long nsCMax = 0;
 
   for (size_t i = 0; i < numRuns; ++i) {
@@ -227,7 +227,7 @@ void evaluator::perfTestExpr(const std::string& expr) {
     nsCMax  = std::max<unsigned long long>(nsCMax, nsC);
   }
 
-  std::cout << "average over " << numRuns << " runs: " << hobbes::describeNanoTime(((double)nsCSum)/((double)numRuns)) << std::endl
+  std::cout << "average over " << numRuns << " runs: " << hobbes::describeNanoTime(static_cast<double>(nsCSum)/static_cast<double>(numRuns)) << std::endl
             << "minimum runtime: " << hobbes::describeNanoTime(nsCMin) << std::endl
             << "maximum runtime: " << hobbes::describeNanoTime(nsCMax) << std::endl;
 }

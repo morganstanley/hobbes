@@ -10,22 +10,25 @@
 #include <hobbes/events/events.H>
 #include <hobbes/ipc/prepl.H>
 #include <hobbes/util/region.H>
+#include <hobbes/util/ptr.H>
 
 namespace hobbes {
 
 // type aliases for common types
-extern const char timespanTNV[];
-typedef typeAlias<timespanTNV, int64_t> timespanT;
+DEFINE_TYPE_ALIAS_AS(timespanT, timespan, int64_t);
 
 inline uint64_t microseconds(const timespanT& ts) { return ts.value; }
 inline uint64_t milliseconds(const timespanT& ts) { return microseconds(ts) / 1000; }
 inline uint64_t seconds     (const timespanT& ts) { return milliseconds(ts) / 1000; }
 
-extern const char timeTNV[];
-typedef typeAlias<timeTNV, int64_t> timeT;
+DEFINE_TYPE_ALIAS_AS(timeT, time, int64_t);
+DEFINE_TYPE_ALIAS_AS(datetimeT, datetime, int64_t);
 
-extern const char datetimeTNV[];
-typedef typeAlias<datetimeTNV, int64_t> datetimeT;
+datetimeT now();
+datetimeT truncDate(datetimeT);
+timeT truncTime(datetimeT);
+datetimeT datetimeAt(datetimeT, timeT);
+timespanT gmtoffset(datetimeT);
 
 // allocate some memory in the calling thread's memory pool
 char* memalloc(size_t);
@@ -46,17 +49,25 @@ inline std::ostream& operator<<(std::ostream& out, const array<char>* x) {
 
 // allocate an array at some type, with some length
 template <typename T>
+  array<T>* defInitArray(array<T>* xs) {
+    if (xs->size > 0) {
+      new (xs->data) T[xs->size];
+    }
+    return xs;
+  }
+
+template <typename T>
   array<T>* makeArray(region& m, long n) {
-    array<T>* r = (array<T>*)m.malloc(sizeof(long) + (sizeof(T) * n));
+    array<T>* r = reinterpret_cast<array<T>*>(m.malloc(sizeof(long) + (sizeof(T) * n)));
     r->size = n;
-    return r;
+    return defInitArray<T>(r);
   }
 
 template <typename T>
   array<T>* makeArray(long n) {
-    array<T>* r = (array<T>*)memalloc(sizeof(long) + (sizeof(T) * n));
+    array<T>* r = reinterpret_cast<array<T>*>(memalloc(sizeof(long) + (sizeof(T) * n)));
     r->size = n;
-    return r;
+    return defInitArray<T>(r);
   }
 
 // allocate ... something

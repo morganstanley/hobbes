@@ -144,7 +144,7 @@ std::string show(const PtrAdjustmentPath& p) {
   } else {
     std::string r = "[";
     r += p[0].show();
-    for (int i = 1; i < p.size(); ++i) {
+    for (size_t i = 1; i < p.size(); ++i) {
       r += ", ";
       r += p[i].show();
     }

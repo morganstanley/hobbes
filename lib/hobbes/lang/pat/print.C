@@ -26,7 +26,7 @@ void printMatchExp(std::ostream& out, const ExprPtr& e) {
 void printMatchResult(const std::string& indent, std::ostream& out, const ExprPtr& e) {
   if (const Let* le = is<Let>(e)) {
     out << indent << "let " << le->var() << " = ";
-    if (const Fn* f = is<Fn>(le->varExpr())) {
+    if (is<Fn>(le->varExpr())) {
       out << "\n";
       printMatchResult(indent + "  ", out, le->varExpr());
       out << indent;

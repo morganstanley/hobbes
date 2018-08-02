@@ -114,9 +114,6 @@ struct RunMode {
   }
 };
 
-void rmrfdir(const char* p) {
-}
-
 class HogApp {
 public:
   HogApp(const RunMode& mode)
@@ -153,7 +150,7 @@ public:
 
       // exec
       auto argv = mode.argv();
-      execv(argv[0], (char* const*)argv.data());
+      execv(argv[0], const_cast<char* const*>(argv.data()));
 
       // if we get here, restore IO, show an error
       dup2(ofd, STDOUT_FILENO);
@@ -197,6 +194,8 @@ public:
     return "localhost:" + mode.port;
   }
 
+  std::string basePath() const { return this->cwd; }
+
   std::vector<std::string> logpaths() const {
     std::string group;
     if (this->mode.groups.size() == 0) {
@@ -213,7 +212,7 @@ public:
 
     glob_t g;
     if (glob(pattern.c_str(), GLOB_NOSORT, nullptr, &g) == 0) {
-      for (auto i = 0; i < g.gl_pathc; ++i) {
+      for (size_t i = 0; i < g.gl_pathc; ++i) {
         paths.push_back(g.gl_pathv[i]);
       }
       globfree(&g);
@@ -260,7 +259,7 @@ void flushData(int first, int last) {
     hobbes::cc cc; \
     std::vector<const char*> d expect; \
     EXPECT_EQ(logs.size(), d.size()); \
-    for (auto i = 0; i < logs.size(); ++i) { \
+    for (size_t i = 0; i < logs.size(); ++i) { \
       std::ostringstream logname, loadexpr, evalexpr; \
       logname << "log" << i; \
       loadexpr << "inputFile :: (LoadFile \"" << logs[i] << "\" w) => w"; \
@@ -315,7 +314,7 @@ TEST(Hog, MultiDestination) {
     WITH_TIMEOUT(10, EXPECT_EQ_IN_SERIES(batchrecv[1].logpaths(), "coordinate", ".x", {"[0..199]"}));
   });
 
-  WITH_TIMEOUT(60, EXPECT_EQ(batchrecv[0].logpaths().size(), 2));
+  WITH_TIMEOUT(60, EXPECT_EQ(batchrecv[0].logpaths().size(), size_t(2)));
   WITH_TIMEOUT(30, EXPECT_EQ_IN_SERIES(batchrecv[0].logpaths(), "coordinate", ".x", ({"[0..99]", "[100..199]"})));
 
   batchrecv[0].restart([&batchrecv](){
@@ -324,7 +323,7 @@ TEST(Hog, MultiDestination) {
     });
   });
 
-  WITH_TIMEOUT(60, EXPECT_EQ(batchrecv[0].logpaths().size(), 3));
+  WITH_TIMEOUT(60, EXPECT_EQ(batchrecv[0].logpaths().size(), size_t(3)));
   WITH_TIMEOUT(30, EXPECT_EQ_IN_SERIES(batchrecv[0].logpaths(), "coordinate", ".x", ({"[0..99]", "[100..199]", "[200..299]"})));
   WITH_TIMEOUT(30, EXPECT_EQ_IN_SERIES(batchrecv[1].logpaths(), "coordinate", ".x", ({"[0..199]", "[200..299]"})));
 }
@@ -410,6 +409,48 @@ TEST(Hog, RestartEngine) {
     c.define("f"+hobbes::str::from(i++), "inputFile::(LoadFile \""+log+"\" w)=>w");
   }
   EXPECT_TRUE(c.compileFn<bool()>("size(f0.seq[0:]) == 4 * 4")());
+}
+
+DEFINE_STORAGE_GROUP(
+  TestRecTypes,
+  8,
+  hobbes::storage::Reliable,
+  hobbes::storage::ManualCommit
+);
+
+struct SectTest {
+  int x;
+  double y() const { return 3.14159; }
+  std::array<short, 10> z;
+  std::string w;
+  hobbes::datetimeT dt;
+  hobbes::timespanT ts;
+  void* q;
+};
+DEFINE_HSTORE_STRUCT_VIEW(SectTest, x, y, z, w, dt, ts);
+
+TEST(Hog, SupportedTypes) {
+  HogApp local(RunMode{{"TestRecTypes"}, /* consolidate = */ true});
+  local.start();
+  sleep(5);
+
+  SectTest st;
+  st.x = 42;
+  for (size_t i = 0; i < 10; ++i) { st.z[i] = short(i); }
+  st.w = "test";
+  st.dt.value = hobbes::now();
+  st.ts.value = 60*1000*1000;
+  HLOG(TestRecTypes, sectView, "test sect view", st);
+  TestRecTypes.commit();
+
+  sleep(5);
+
+  hobbes::cc c;
+  auto i = 0;
+  for (const auto& log : local.logpaths()) {
+    c.define("f"+hobbes::str::from(i++), "inputFile::(LoadFile \""+log+"\" w)=>w");
+  }
+  EXPECT_TRUE(c.compileFn<bool()>("all(\\x.x  matches {x=42,y=3.14159,z=[0S,1S,2S,3S,4S,5S,6S,7S,8S,9S],w=\"test\"},f0.sectView[0:])")());
 }
 
 void rmrf(const char* p) {

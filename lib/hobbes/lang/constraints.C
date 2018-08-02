@@ -24,8 +24,8 @@ MaybePathPoints focusOnFundep(const VarIDs& vs, const MonoTypes& mts) {
   // we have to fudge the input IDs with a +1 offset for constraint names
   MaybePathPoints result;
   result.push_back(mts[0]);
-  for (int i = 1; i < mts.size(); ++i) {
-    if (in(i-1, vs)) {
+  for (size_t i = 1; i < mts.size(); ++i) {
+    if (in(int(i-1), vs)) {
       result.push_back(mts[i]);
     } else {
       result.push_back(MaybePathPoint());

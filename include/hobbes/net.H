@@ -35,9 +35,9 @@
 
 namespace hobbes { namespace net {
 
-#define HNET_VERSION     ((uint32_t)0x00010000)
-#define HNET_CMD_DEFEXPR ((uint8_t)0)
-#define HNET_CMD_INVOKE  ((uint8_t)2)
+#define HNET_VERSION     static_cast<uint32_t>(0x00010000)
+#define HNET_CMD_DEFEXPR static_cast<uint8_t>(0)
+#define HNET_CMD_INVOKE  static_cast<uint8_t>(2)
 #define HNET_RESULT_FAIL 0
 
 typedef std::vector<uint8_t> bytes;
@@ -56,18 +56,17 @@ inline void sendData(int socket, const uint8_t* d, size_t sz) {
 
 inline void sendString(int socket, const std::string& s) {
   size_t n = s.size();
-  sendData(socket, (const uint8_t*)&n, sizeof(n));
-  sendData(socket, (const uint8_t*)s.data(), n);
+  sendData(socket, reinterpret_cast<const uint8_t*>(&n), sizeof(n));
+  sendData(socket, reinterpret_cast<const uint8_t*>(s.data()), n);
 }
 
 inline void sendBytes(int socket, const bytes& x) {
   size_t n = x.size();
-  sendData(socket, (const uint8_t*)&n, sizeof(n));
+  sendData(socket, reinterpret_cast<const uint8_t*>(&n), sizeof(n));
   if (n > 0) {
     sendData(socket, &x[0], n);
   }
 }
-
 
 inline void recvData(int socket, uint8_t* d, size_t sz) {
   size_t i = 0;
@@ -88,10 +87,10 @@ inline void recvData(int socket, uint8_t* d, size_t sz) {
 
 inline void recvString(int socket, std::string* x) {
   size_t n = 0;
-  recvData(socket, (uint8_t*)&n, sizeof(n));
+  recvData(socket, reinterpret_cast<uint8_t*>(&n), sizeof(n));
 
   x->resize(n);
-  recvData(socket, (uint8_t*)&((*x)[0]), n);
+  recvData(socket, reinterpret_cast<uint8_t*>(&(*x)[0]), n);
 }
 
 inline void setBlockingBit(int socket, bool block) {
@@ -112,7 +111,7 @@ inline size_t recvDataPartial(int socket, uint8_t* d, size_t sz) {
       throw std::runtime_error("Couldn't read socket: " + std::string(strerror(errno)));
     }
   }
-  return (size_t)di;
+  return static_cast<size_t>(di);
 }
 
 // socket connection and session initiation
@@ -132,12 +131,12 @@ typedef std::vector<RPCDef> RPCDefs;
 // initiate a session on a connected socket by sending all of the RPC defs
 inline int initSession(int s, const RPCDefs& rpcds) {
   uint32_t version = HNET_VERSION;
-  sendData(s, (const uint8_t*)&version, sizeof(version));
+  sendData(s, reinterpret_cast<const uint8_t*>(&version), sizeof(version));
 
   for (const auto& rpcd : rpcds) {
     uint8_t defCmd = HNET_CMD_DEFEXPR;
     sendData(s, &defCmd, sizeof(defCmd));
-    sendData(s, (const uint8_t*)&rpcd.id, sizeof(rpcd.id));
+    sendData(s, reinterpret_cast<const uint8_t*>(&rpcd.id), sizeof(rpcd.id));
     sendString(s, rpcd.expr);
     sendBytes(s, rpcd.willPut);
     sendBytes(s, rpcd.willGet);
@@ -245,12 +244,12 @@ template <typename T, typename P = void>
     struct io<T> { \
       static const bool can_memcpy = true; \
       static ty::desc    type()                   { return ty::prim(n); } \
-      static void        write(int s, const T& x) { sendData(s, (const uint8_t*)&x, sizeof(x)); } \
-      static void        read(int s, T* x)        { recvData(s, (uint8_t*)x, sizeof(T)); } \
+      static void        write(int s, const T& x) { sendData(s, reinterpret_cast<const uint8_t*>(&x), sizeof(x)); } \
+      static void        read(int s, T* x)        { recvData(s, reinterpret_cast<uint8_t*>(x), sizeof(T)); } \
       \
       typedef uint8_t async_read_state; \
       static void prepare(uint8_t* o) { *o = 0; } \
-      static bool accum(int s, uint8_t* o, T* x) { *o += recvDataPartial(s, ((uint8_t*)x) + *o, sizeof(T) - *o); return *o == sizeof(T); } \
+      static bool accum(int s, uint8_t* o, T* x) { *o += recvDataPartial(s, reinterpret_cast<uint8_t*>(x) + *o, sizeof(T) - *o); return *o == sizeof(T); } \
     }
 PRIV_HNET_DEFINE_PRIMTYS(bool,     "bool");
 PRIV_HNET_DEFINE_PRIMTYS(uint8_t,  "byte");
@@ -287,12 +286,12 @@ template <typename T>
     static const bool can_memcpy = true;
 
     static ty::desc type()                   { return ty::enumdef(T::meta()); }
-    static void     write(int s, const T& x) { io<uint32_t>::write(s, (uint32_t)x.value); }
-    static void     read(int s, T* x)        { io<uint32_t>::read(s, (uint32_t*)&x->value); }
+    static void     write(int s, const T& x) { io<uint32_t>::write(s, static_cast<uint32_t>(x.value)); }
+    static void     read(int s, T* x)        { io<uint32_t>::read(s, reinterpret_cast<uint32_t*>(&x->value)); }
 
     typedef uint8_t async_read_state;
     static void prepare(uint8_t* o) { *o = 0; }
-    static bool accum(int s, uint8_t* o, T* x) { *o += recvDataPartial(s, ((uint8_t*)x) + *o, sizeof(uint32_t) - *o); return *o == sizeof(uint32_t); }
+    static bool accum(int s, uint8_t* o, T* x) { *o += recvDataPartial(s, reinterpret_cast<uint8_t*>(x) + *o, sizeof(uint32_t) - *o); return *o == sizeof(uint32_t); }
   };
 
 // support variants
@@ -304,7 +303,7 @@ template <size_t i, size_t n, typename ... Ts>
     static void ctorDefs(ty::Variant::Ctors* cs) {
       std::ostringstream fn;
       fn << ".f" << i;
-      cs->push_back(ty::Variant::Ctor(fn.str(), (int)i, io<H>::type()));
+      cs->push_back(ty::Variant::Ctor(fn.str(), static_cast<int>(i), io<H>::type()));
     }
     static ty::desc type() {
       ty::Variant::Ctors cs;
@@ -341,14 +340,14 @@ template <size_t tag, typename T, typename M>
 
       typedef typename io<T>::async_read_state RSType;
       new (rs) RSType();
-      io<T>::prepare((RSType*)rs);
+      io<T>::prepare(reinterpret_cast<RSType*>(rs));
     }
   };
 template <size_t tag, typename T, typename M>
   struct variantAsyncAccum {
     static bool fn(T* p, int s, void* rs) {
       typedef typename io<T>::async_read_state RSType;
-      return io<T>::accum(s, (RSType*)rs, p);
+      return io<T>::accum(s, reinterpret_cast<RSType*>(rs), p);
     }
   };
 template <typename ... Ctors>
@@ -415,12 +414,12 @@ template <typename T>
       return ty::variant(cs);
     }
 
-    static void write(int s, const T& x) { io<VT>::write(s, *((const VT*)&x)); }
-    static void read (int s, T* x)       { io<VT>::read(s, (VT*)x); }
+    static void write(int s, const T& x) { io<VT>::write(s, *reinterpret_cast<const VT*>(&x)); }
+    static void read (int s, T* x)       { io<VT>::read(s, reinterpret_cast<VT*>(x)); }
 
     typedef typename io<VT>::async_read_state async_read_state;
     static void prepare(async_read_state* o)            { io<VT>::prepare(o); }
-    static bool accum(int s, async_read_state* o, T* x) { return io<VT>::accum(s, o, (VT*)x); }
+    static bool accum(int s, async_read_state* o, T* x) { return io<VT>::accum(s, o, reinterpret_cast<VT*>(x)); }
   };
 
 // support pairs
@@ -479,8 +478,8 @@ template <typename T, size_t N>
   struct FixedArrMemcpyReadWrite {
     static const bool can_memcpy = false;
 
-    static void read(int s, T (*x)[N]) { recvData(s, (uint8_t*)x, sizeof(T) * N); }
-    static void write(int s, const T (&x)[N]) { sendData(s, (const uint8_t*)x, sizeof(T) * N); }
+    static void read(int s, T (*x)[N]) { recvData(s, reinterpret_cast<uint8_t*>(x), sizeof(T) * N); }
+    static void write(int s, const T (&x)[N]) { sendData(s, reinterpret_cast<const uint8_t*>(x), sizeof(T) * N); }
 
     struct async_read_state {
       size_t bytesRead;
@@ -492,7 +491,7 @@ template <typename T, size_t N>
 
     static bool accum(int s, async_read_state* o, T (*x)[N]) {
       const auto len = sizeof(T) * N;
-      uint8_t* buf = (uint8_t*)&((*x)[0]);
+      uint8_t* buf = reinterpret_cast<uint8_t*>(&((*x)[0]));
       o->bytesRead += recvDataPartial(s, buf + o->bytesRead, len - o->bytesRead);
       return o->bytesRead == len;
     }
@@ -546,8 +545,8 @@ template <typename T>
   struct io<std::vector<T>, typename tbool<io<T>::can_memcpy>::type> {
     static const bool can_memcpy = false;
     static ty::desc type() { return ty::array(io<T>::type()); }
-    static void write(int s, const std::vector<T>& x) { size_t n = x.size(); io<size_t>::write(s, n); if (n > 0) sendData(s, (const uint8_t*)&x[0], sizeof(T) * n); }
-    static void read(int s, std::vector<T>* x) { size_t n = 0; io<size_t>::read(s, &n); x->resize(n); if (n > 0) recvData(s, (uint8_t*)&(*x)[0], n); }
+    static void write(int s, const std::vector<T>& x) { size_t n = x.size(); io<size_t>::write(s, n); if (n > 0) sendData(s, reinterpret_cast<const uint8_t*>(&x[0]), sizeof(T) * n); }
+    static void read(int s, std::vector<T>* x) { size_t n = 0; io<size_t>::read(s, &n); x->resize(n); if (n > 0) recvData(s, reinterpret_cast<uint8_t*>(&(*x)[0]), n); }
 
     // async reading of mem-copyable vectors
     struct async_read_state {
@@ -573,7 +572,7 @@ template <typename T>
           o->readLen   = false;
         }
       } else {
-        uint8_t* buf = (uint8_t*)&((*x)[0]);
+        uint8_t* buf = reinterpret_cast<uint8_t*>(&(*x)[0]);
         o->bytesRead += recvDataPartial(s, buf + o->bytesRead, o->byteLen - o->bytesRead);
       }
       return !o->readLen && o->bytesRead == o->byteLen;
@@ -709,14 +708,14 @@ template <>
   struct io<const char*> {
     static const bool can_memcpy = false;
     static ty::desc type() { return ty::array(io<char>::type()); }
-    static void write(int s, const char* x) { size_t n = strlen(x); io<size_t>::write(s, n); sendData(s, (const uint8_t*)x, n); }
+    static void write(int s, const char* x) { size_t n = strlen(x); io<size_t>::write(s, n); sendData(s, reinterpret_cast<const uint8_t*>(x), n); }
   };
 template <>
   struct io<std::string> {
     static const bool can_memcpy = false;
     static ty::desc type() { return ty::array(io<char>::type()); }
-    static void write(int s, const std::string& x) { io<size_t>::write(s, x.size()); sendData(s, (const uint8_t*)&x[0], x.size()); }
-    static void read(int s, std::string* x) { size_t n = 0; io<size_t>::read(s, &n); x->resize(n); recvData(s, (uint8_t*)&(*x)[0], n); }
+    static void write(int s, const std::string& x) { io<size_t>::write(s, x.size()); sendData(s, reinterpret_cast<const uint8_t*>(&x[0]), x.size()); }
+    static void read(int s, std::string* x) { size_t n = 0; io<size_t>::read(s, &n); x->resize(n); recvData(s, reinterpret_cast<uint8_t*>(&(*x)[0]), n); }
 
     // async reading of strings
     struct async_read_state {
@@ -741,7 +740,7 @@ template <>
           o->readLen = false;
         }
       } else {
-        uint8_t* buf = (uint8_t*)&(*x)[0];
+        uint8_t* buf = reinterpret_cast<uint8_t*>(&(*x)[0]);
         o->bytesRead += recvDataPartial(s, buf + o->bytesRead, o->byteLen - o->bytesRead);
       }
       return !o->readLen && o->bytesRead == o->byteLen;
@@ -780,7 +779,7 @@ template <size_t tag, typename T, typename M>
     static void fn(T*, void* rs) {
       typedef typename io<T>::async_read_state RSType;
       new (rs) RSType();
-      io<T>::prepare((RSType*)rs);
+      io<T>::prepare(reinterpret_cast<RSType*>(rs));
     }
   };
 template <size_t tag, typename S, typename Tup>
@@ -835,12 +834,12 @@ template <typename T>
     static ty::desc type() { ty::Struct::Fields fs; defStructF df(&fs); T::meta(df); return ty::record(fs); }
 
     typedef typename T::as_tuple_type TT;
-    static void write(int s, const T& x) { io<TT>::write(s, *((const TT*)&x)); }
-    static void read (int s, T* x)       { io<TT>::read (s, (TT*)x); }
+    static void write(int s, const T& x) { io<TT>::write(s, *reinterpret_cast<const TT*>(&x)); }
+    static void read (int s, T* x)       { io<TT>::read (s, reinterpret_cast<TT*>(x)); }
 
     typedef typename io<TT>::async_read_state async_read_state;
     static void prepare(async_read_state* o) { io<TT>::prepare(o); }
-    static bool accum(int s, async_read_state* o, T* x) { return io<TT>::accum(s, o, (TT*)x); }
+    static bool accum(int s, async_read_state* o, T* x) { return io<TT>::accum(s, o, reinterpret_cast<TT*>(x)); }
   };
 
 // sequence serialization
@@ -935,8 +934,8 @@ template <typename ... Args>
   };
 
 #define PRIV_HNET_CLIENT_MAKE_EXPRID(n, _, __) , exprID_##n
-#define PRIV_HNET_CLIENT_MAKE_RPCDEF(n, t, e) result.push_back(::hobbes::net::RPCDef((uint32_t)exprID_##n, e, ::hobbes::net::RPCTyDef<t>::inputType(), ::hobbes::net::RPCTyDef<t>::outputType()));
-#define PRIV_HNET_CLIENT_INIT_RPCFUNC(n, t, _) , n(&this->s, (uint32_t)exprID_##n)
+#define PRIV_HNET_CLIENT_MAKE_RPCDEF(n, t, e) result.push_back(::hobbes::net::RPCDef(static_cast<uint32_t>(exprID_##n), e, ::hobbes::net::RPCTyDef<t>::inputType(), ::hobbes::net::RPCTyDef<t>::outputType()));
+#define PRIV_HNET_CLIENT_INIT_RPCFUNC(n, t, _) , n(&this->s, static_cast<uint32_t>(exprID_##n))
 #define PRIV_HNET_CLIENT_MAKE_RPCFUNC(n, t, _) ::hobbes::net::RPCFunc<t> n;
 
 #define DEFINE_NET_CLIENT(T, C...) \
@@ -1051,7 +1050,7 @@ template <typename ... Args>
     uint32_t exprid;
   };
 
-#define PRIV_HNET_CLIENT_INIT_ASYNC_RPCFUNC(n, t, _) , n(this, &this->s, (uint32_t)exprID_##n)
+#define PRIV_HNET_CLIENT_INIT_ASYNC_RPCFUNC(n, t, _) , n(this, &this->s, static_cast<uint32_t>(exprID_##n))
 #define PRIV_HNET_CLIENT_MAKE_ASYNC_RPCFUNC(n, t, _) ::hobbes::net::AsyncRPCFunc<t> n;
 
 #define DEFINE_ASYNC_NET_CLIENT(T, C...) \
