@@ -68,25 +68,6 @@ LexicalAnnotation m(const YYLTYPE& p0, const YYLTYPE& p1) {
   return LexicallyAnnotated::make(Pos(p0.first_line, p0.first_column), Pos(p1.last_line, p1.last_column));
 }
 
-MonoTypePtr forceMonotype(const QualTypePtr& qt, const LexicalAnnotation& la) {
-  MonoTypeUnifier u(yyParseCC->typeEnv());
-  Definitions ds;
-  while (refine(yyParseCC->typeEnv(), qt->constraints(), &u, &ds)) {
-    yyParseCC->drainUnqualifyDefs(ds);
-    ds.clear();
-  }
-  yyParseCC->drainUnqualifyDefs(ds);
-  ds.clear();
-
-  // make sure that the output type exists and is realizable
-  if (hobbes::satisfied(yyParseCC->typeEnv(), qt->constraints(), &ds)) {
-    yyParseCC->drainUnqualifyDefs(ds);
-    return u.substitute(qt->monoType());
-  } else {
-    throw annotated_error(la, "Cannot resolve qualifications in type");
-  }
-}
-
 #define TAPP0(fn,la)          new App(fn, list<ExprPtr>(), la)
 #define TAPP1(fn,x0,la)       new App(fn, list(ExprPtr(x0)), la)
 #define TAPP2(fn,x0,x1,la)    new App(fn, list(ExprPtr(x0),ExprPtr(x1)), la)
@@ -543,8 +524,8 @@ def: importdef { $$ = $1; }
 importdef: "import" cppid { $$ = new MImport(yyModulePath, *$2, m(@1, @2)); }
 
 /* abbreviate type names */
-tydef: "type" nameseq "=" qtype { MTypeDef* td = new MTypeDef(MTypeDef::Transparent, hobbes::select(*$2, 0), hobbes::select(*$2, 1, (int)$2->size()), forceMonotype(QualTypePtr($4), m(@4)), m(@1, @4)); yyParseCC->defineTypeAlias(td->name(), td->arguments(), td->type()); $$ = td; }
-     | "data" nameseq "=" qtype { MTypeDef* td = new MTypeDef(MTypeDef::Opaque, hobbes::select(*$2, 0), hobbes::select(*$2, 1, (int)$2->size()), forceMonotype(QualTypePtr($4), m(@4)), m(@1, @4)); yyParseCC->defineNamedType(td->name(), td->arguments(), td->type()); $$ = td; }
+tydef: "type" nameseq "=" qtype { $$ = new MTypeDef(MTypeDef::Transparent, hobbes::select(*$2, 0), hobbes::select(*$2, 1, (int)$2->size()), QualTypePtr($4), m(@1, @4)); }
+     | "data" nameseq "=" qtype { $$ = new MTypeDef(MTypeDef::Opaque, hobbes::select(*$2, 0), hobbes::select(*$2, 1, (int)$2->size()), QualTypePtr($4), m(@1, @4)); }
 
 /* variable bindings by type and expression */
 vartybind: name "::" qtype { $$ = new MVarTypeDef(*$1, QualTypePtr($3), m(@1, @3)); }
