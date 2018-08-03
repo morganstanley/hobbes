@@ -23,10 +23,10 @@ template <typename T>
     return ss.str();
   }
 
-std::string show(const PolyType& e)      { return showT(*simplifyVarNames(e)); }
-std::string show(const QualType& e)      { return showT(*simplifyVarNames(e)); }
-std::string show(const Constraint& e)    { return showT(*simplifyVarNames(e)); }
-std::string show(const MonoType& e)      { return showT(*simplifyVarNames(e)); }
+std::string show(const PolyType& e)   { return showT(*simplifyVarNames(e)); }
+std::string show(const QualType& e)   { return showT(*simplifyVarNames(e)); }
+std::string show(const Constraint& e) { return showT(*simplifyVarNames(e)); }
+std::string show(const MonoType& e)   { return showT(*simplifyVarNames(e)); }
 
 std::string show(const PolyType* e)      { return show(*e); }
 std::string show(const PolyTypePtr& e)   { return show(*e); }

@@ -77,6 +77,72 @@ void import(cc* e, const std::string& mname) {
   throw std::runtime_error("No such module to load: " + mname);
 }
 
+// replace type variable references with expanded aliases or opaque definitions as necessary
+struct appTyDefnF : public switchTyFn {
+  cc* e;
+  appTyDefnF(cc* e) : e(e) { }
+  MonoTypePtr with(const TVar* v) const {
+    const auto& tn = v->name();
+
+    if (isPrimName(tn) || e->isTypeAliasName(tn)) {
+      return Prim::make(tn);
+    } else if (e->isTypeName(tn)) {
+      return Prim::make(tn, e->namedTypeRepresentation(tn));
+    } else {
+      return TVar::make(tn);
+    }
+  }
+};
+MonoTypePtr applyTypeDefns(cc* e, const MonoTypePtr& t) {
+  return e->replaceTypeAliases(switchOf(t, appTyDefnF(e)));
+}
+
+MonoTypes applyTypeDefns(cc* e, const MonoTypes& ts) {
+  MonoTypes r;
+  for (const auto& t : ts) {
+    r.push_back(applyTypeDefns(e, t));
+  }
+  return r;
+}
+
+QualTypePtr applyTypeDefns(cc* e, const QualTypePtr& t) {
+  Constraints cs;
+  for (const auto& c : t->constraints()) {
+    cs.push_back(ConstraintPtr(new Constraint(c->name(), applyTypeDefns(e, c->arguments()))));
+  }
+  return QualTypePtr(new QualType(cs, applyTypeDefns(e, t->monoType())));
+}
+
+struct appTyDefnEF : public switchExprTyFn {
+  cc* e;
+  appTyDefnEF(cc* e) : e(e) { }
+  QualTypePtr withTy(const QualTypePtr& t) const { if (t) return applyTypeDefns(this->e, t); else return t; }
+};
+ExprPtr applyTypeDefns(cc* e, const ExprPtr& x) {
+  return switchOf(x, appTyDefnEF(e));
+}
+
+struct appTyDefnMF : public switchMDefTyFn {
+  cc* e;
+  appTyDefnMF(cc* e) : e(e) { }
+  QualTypePtr withTy(const QualTypePtr& t) const { if (t) return applyTypeDefns(this->e, t); else return t; }
+};
+ModuleDefPtr applyTypeDefns(cc* e, const ModuleDefPtr& md) {
+  return switchOf(md, appTyDefnMF(e));
+}
+
+ModuleDefs applyTypeDefns(cc* e, const ModuleDefs& mds) {
+  ModuleDefs r;
+  for (const auto& md : mds) {
+    r.push_back(applyTypeDefns(e, md));
+  }
+  return r;
+}
+
+ModulePtr applyTypeDefns(cc* e, const ModulePtr& m) {
+  return ModulePtr(new Module(m->name(), applyTypeDefns(e, m->definitions())));
+}
+
 // index type variables and sanity check names to ensure no duplicates
 typedef std::map<std::string, int> NameIndexing;
 
@@ -265,16 +331,36 @@ void compile(cc* e, const MImport* mimp) {
 }
 
 // compile type definitions
-void compile(cc* e, const MTypeDef* mtd) {
-  // TODO: evaluate these type definitions along with regular module compilation
-  //       (currently these are only handled at parse-time)
-  /*
-  if (e->isTypeAliasName(mtd->name())) {
-    throw std::runtime_error("The type '" + mtd->name() + "' is already defined, can't introduce new definition: " + show(mtd));
-  } else {
-    e->defineTypeAlias(mtd->name(), mtd->arguments(), mtd->type());
+MonoTypePtr forceMonotype(cc* e, const QualTypePtr& qt, const LexicalAnnotation& la) {
+  MonoTypeUnifier u(e->typeEnv());
+  Definitions ds;
+  while (refine(e->typeEnv(), qt->constraints(), &u, &ds)) {
+    e->drainUnqualifyDefs(ds);
+    ds.clear();
   }
-  */
+  e->drainUnqualifyDefs(ds);
+  ds.clear();
+
+  // make sure that the output type exists and is realizable
+  if (hobbes::satisfied(e->typeEnv(), qt->constraints(), &ds)) {
+    e->drainUnqualifyDefs(ds);
+    return u.substitute(qt->monoType());
+  } else {
+    throw annotated_error(la, "Cannot resolve qualifications in type");
+  }
+}
+
+void compile(cc* e, const MTypeDef* mtd) {
+  switch (mtd->visibility()) {
+  case MTypeDef::Transparent:
+    e->defineTypeAlias(mtd->name(), mtd->arguments(), forceMonotype(e, mtd->type(), mtd->la()));
+    break;
+  case MTypeDef::Opaque:
+    e->defineNamedType(mtd->name(), mtd->arguments(), forceMonotype(e, mtd->type(), mtd->la()));
+    break;
+  default:
+    break;
+  }
 }
 
 // compile regular variable definitions
@@ -303,21 +389,23 @@ void compile(cc* e, const MVarTypeDef* vtd) {
 // for now, just treat each definition independently and stick it in the input environment
 //   (this disallows things like mutual recursion)
 void compile(cc* e, const ModulePtr& m) {
-  for (ModuleDefs::const_iterator md = m->definitions().begin(); md != m->definitions().end(); ++md) {
-    if (const MImport* imp = is<MImport>(*md)) {
+  for (auto tmd : m->definitions()) {
+    auto md = applyTypeDefns(e, tmd);
+
+    if (const MImport* imp = is<MImport>(md)) {
       compile(e, imp);
-    } else if (const ClassDef* cd = is<ClassDef>(*md)) {
+    } else if (const ClassDef* cd = is<ClassDef>(md)) {
       compile(e, cd);
-    } else if (const InstanceDef* id = is<InstanceDef>(*md)) {
+    } else if (const InstanceDef* id = is<InstanceDef>(md)) {
       compile(e, id);
-    } else if (const MTypeDef* td = is<MTypeDef>(*md)) {
+    } else if (const MTypeDef* td = is<MTypeDef>(md)) {
       compile(e, td);
-    } else if (const MVarDef* vd = is<MVarDef>(*md)) {
+    } else if (const MVarDef* vd = is<MVarDef>(md)) {
       compile(e, vd);
-    } else if (const MVarTypeDef* vtd = is<MVarTypeDef>(*md)) {
+    } else if (const MVarTypeDef* vtd = is<MVarTypeDef>(md)) {
       compile(e, vtd);
     } else {
-      throw std::runtime_error("Cannot compile module definition: " + show(*md));
+      throw std::runtime_error("Cannot compile module definition: " + show(md));
     }
   }
 }
