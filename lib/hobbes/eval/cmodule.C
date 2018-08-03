@@ -85,16 +85,20 @@ struct appTyDefnF : public switchTyFn {
     const auto& tn = v->name();
 
     if (isPrimName(tn) || e->isTypeAliasName(tn)) {
-      return Prim::make(tn);
+      return e->replaceTypeAliases(Prim::make(tn));
     } else if (e->isTypeName(tn)) {
       return Prim::make(tn, e->namedTypeRepresentation(tn));
     } else {
       return TVar::make(tn);
     }
   }
+
+  MonoTypePtr with(const TApp* ap) const {
+    return e->replaceTypeAliases(TApp::make(switchOf(ap->fn(), *this), switchOf(ap->args(), *this)));
+  }
 };
 MonoTypePtr applyTypeDefns(cc* e, const MonoTypePtr& t) {
-  return e->replaceTypeAliases(switchOf(t, appTyDefnF(e)));
+  return switchOf(t, appTyDefnF(e));
 }
 
 MonoTypes applyTypeDefns(cc* e, const MonoTypes& ts) {

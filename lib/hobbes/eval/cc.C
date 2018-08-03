@@ -333,7 +333,7 @@ struct repTypeAliasesF : public switchTyFn {
         }
       }
     }
-    return c(v);
+    return Prim::make(v->name(), v->representation());
   }
 
   MonoTypePtr with(const TApp* v) const {
@@ -354,23 +354,6 @@ struct repTypeAliasesF : public switchTyFn {
 
     return MonoTypePtr(TApp::make(switchOf(v->fn(), *this), switchOf(v->args(), *this)));
   }
-
-  MonoTypePtr with(const OpaquePtr*  v) const { return c(v); }
-  MonoTypePtr with(const TVar*       v) const { return c(v); }
-  MonoTypePtr with(const TGen*       v) const { return c(v); }
-
-  MonoTypePtr with(const FixedArray* v) const { return MonoTypePtr(FixedArray::make(switchOf(v->type(), *this), switchOf(v->length(), *this))); }
-  MonoTypePtr with(const Array*      v) const { return MonoTypePtr(Array::make(switchOf(v->type(), *this))); }
-  MonoTypePtr with(const Variant*    v) const { return MonoTypePtr(Variant::make(switchOf(v->members(), *this))); }
-  MonoTypePtr with(const Record*     v) const { return MonoTypePtr(Record::make(switchOf(v->members(), *this))); }
-  MonoTypePtr with(const Func*       v) const { return MonoTypePtr(Func::make(switchOf(v->argument(), *this), switchOf(v->result(), *this))); }
-  MonoTypePtr with(const Exists*     v) const { return MonoTypePtr(Exists::make(v->absTypeName(), switchOf(v->absType(), *this))); }
-  MonoTypePtr with(const Recursive*  v) const { return MonoTypePtr(Recursive::make(v->recTypeName(), switchOf(v->recType(), *this))); }
-
-  MonoTypePtr with(const TString* v) const { return c(v); }
-  MonoTypePtr with(const TLong*   v) const { return c(v); }
- 
-  static MonoTypePtr c(const MonoType* v) { return MonoTypePtr(clone(v)); }
 };
 
 MonoTypePtr cc::replaceTypeAliases(const MonoTypePtr& ty) const {
