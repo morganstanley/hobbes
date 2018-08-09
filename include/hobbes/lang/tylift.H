@@ -344,6 +344,7 @@ template <const char* TN, typename T>
   struct label {
     typedef T type;
     T value;
+    label() : value() { }
     label(const T& x) : value(x) { }
     static std::string name() { return TN; }
   };
