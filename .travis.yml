@@ -28,6 +28,16 @@ matrix:
       env:
         - DIST=xenial
         - ARGS=-V
+    - os: linux
+      compiler: g++
+      root: required
+      dist: trusty
+      group: deprecated-2017Q4
+      services:
+        - docker
+      env:
+        - DIST=xllvm4
+        - ARGS=-V
 
 install:
   - if [ $TRAVIS_OS_NAME = osx   ]; then brew update && brew install ${DEPS}; fi
