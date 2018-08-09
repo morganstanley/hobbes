@@ -456,7 +456,7 @@ inline llvm::Value* structOffset(llvm::IRBuilder<>* b, llvm::Value* p, unsigned 
   // don't pass nullptr? (http://reviews.llvm.org/rL233938)
   return b->CreateStructGEP(nullptr, p, fieldOffset);
 #elif LLVM_VERSION_MINOR >= 8 || LLVM_VERSION_MAJOR == 4
-  return b->CreateStructGEP(((llvm::PointerType*)p->getType())->getElementType(), p, fieldOffset);
+  return b->CreateStructGEP(reinterpret_cast<llvm::PointerType*>(p->getType())->getElementType(), p, fieldOffset);
 #else
   return b->CreateStructGEP(p, fieldOffset);
 #endif
