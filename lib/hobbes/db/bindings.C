@@ -1,5 +1,6 @@
 
 #include <hobbes/db/bindings.H>
+#include <hobbes/db/cbindings.H>
 #include <hobbes/db/file.H>
 #include <hobbes/db/signals.H>
 #include <hobbes/eval/cc.H>
@@ -1154,6 +1155,9 @@ void initStorageFileDefs(FieldVerifier* fv, cc& c) {
 
   // import signalling functions on files as well
   initSignalsDefs(fv, c);
+
+  // import compressed storage functions
+  initCStorageFileDefs(fv, c);
 }
 
 }
