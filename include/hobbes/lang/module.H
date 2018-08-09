@@ -53,12 +53,12 @@ private:
 class MTypeDef : public ModuleDefCase<MTypeDef> {
 public:
   enum Visibility { Opaque, Transparent };
-  MTypeDef(Visibility, const std::string& tname, const str::seq& targs, const MonoTypePtr& t, const LexicalAnnotation&);
+  MTypeDef(Visibility, const std::string& tname, const str::seq& targs, const QualTypePtr& t, const LexicalAnnotation&);
 
   Visibility visibility() const;
   const std::string& name() const;
   const str::seq&    arguments() const;
-  const MonoTypePtr& type() const;
+  const QualTypePtr& type() const;
 
   void show(std::ostream&) const;
 
@@ -67,7 +67,7 @@ private:
   Visibility  v;
   std::string tname;
   str::seq    targs;
-  MonoTypePtr t;
+  QualTypePtr t;
 };
 
 class MVarTypeDef : public ModuleDefCase<MVarTypeDef> {
@@ -154,6 +154,53 @@ typedef std::vector<InstanceDefPtr>  InstanceDefs;
 template <typename Case>
   ModuleDefCase<Case>::ModuleDefCase(const LexicalAnnotation& la) : ModuleDef(Case::type_case_id, la) {
   }
+
+template <typename T>
+  struct switchMDef {
+    virtual ~switchMDef() = default;
+    virtual T with(const MImport*)     const = 0;
+    virtual T with(const MTypeDef*)    const = 0;
+    virtual T with(const MVarTypeDef*) const = 0;
+    virtual T with(const MVarDef*)     const = 0;
+    virtual T with(const ClassDef*)    const = 0;
+    virtual T with(const InstanceDef*) const = 0;
+  };
+
+template <typename T>
+  T switchOf(const ModuleDefPtr& p, const switchMDef<T>& f) {
+    switch (p->case_id()) {
+    case MImport::type_case_id:
+      return f.with(reinterpret_cast<const MImport*>(p.get()));
+    case MTypeDef::type_case_id:
+      return f.with(reinterpret_cast<const MTypeDef*>(p.get()));
+    case MVarTypeDef::type_case_id:
+      return f.with(reinterpret_cast<const MVarTypeDef*>(p.get()));
+    case MVarDef::type_case_id:
+      return f.with(reinterpret_cast<const MVarDef*>(p.get()));
+    case ClassDef::type_case_id:
+      return f.with(reinterpret_cast<const ClassDef*>(p.get()));
+    case InstanceDef::type_case_id:
+      return f.with(reinterpret_cast<const InstanceDef*>(p.get()));
+    default:
+      {
+        std::ostringstream ss;
+        ss << "Internal error, cannot switch on unknown module def: ";
+        p->show(ss);
+        throw annotated_error(*p, ss.str());
+      }
+    }
+  }
+
+struct switchMDefTyFn : switchMDef<ModuleDefPtr> {
+  virtual QualTypePtr withTy(const QualTypePtr&) const = 0;
+
+  ModuleDefPtr with(const MImport*)     const;
+  ModuleDefPtr with(const MTypeDef*)    const;
+  ModuleDefPtr with(const MVarTypeDef*) const;
+  ModuleDefPtr with(const MVarDef*)     const;
+  ModuleDefPtr with(const ClassDef*)    const;
+  ModuleDefPtr with(const InstanceDef*) const;
+};
 
 // a module is a collection of module definitions
 class Module {

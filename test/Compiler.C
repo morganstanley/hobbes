@@ -66,3 +66,16 @@ TEST(Compiler, Parsing) {
   EXPECT_TRUE((c().compileFn<bool(const std::pair<char,char>&)>("p", "p==('\\\\','\\\\')")(std::make_pair('\\','\\'))));
 }
 
+TEST(Compiler, ParseTyDefStaging) {
+  compile(
+    &c(),
+    c().readModule(
+      "bob = 42\n"
+      "type BT = (TypeOf `bob` x) => x\n"
+      "frank :: BT\n"
+      "frank = 3\n"
+    )
+  );
+  EXPECT_EQ(c().compileFn<int()>("frank")(), 3);
+}
+

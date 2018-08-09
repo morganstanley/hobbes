@@ -607,6 +607,9 @@ char *yytext;
 #line 1 "hexpr.l"
 #define INITIAL 0
 #line 2 "hexpr.l"
+#ifdef __clang__
+#pragma clang diagnostic ignored "-Wdeprecated-register"
+#endif
 
 int yycolumn = 1;
 
@@ -1467,12 +1470,7 @@ YY_RULE_SETUP
 case 112:
 YY_RULE_SETUP
 #line 185 "hexpr.l"
-{ yyVexpLexError = "Unknown character: " + std::string(yytext); yyterminate();
-  if (false) {
-    yy_flex_realloc(0, 0);
-    yyunput(0, 0);
-  }
-}
+{ yyVexpLexError = "Unknown character: " + std::string(yytext); yyterminate(); if (false) { yy_flex_realloc(0, 0); yyunput(0, 0); } }
 	YY_BREAK
 case 113:
 YY_RULE_SETUP
