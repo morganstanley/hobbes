@@ -19,6 +19,7 @@
 #include <sstream>
 #include <assert.h>
 #include <stdexcept>
+#include <type_traits>
 
 namespace hobbes {
 
@@ -153,10 +154,6 @@ template <typename ... Fields>
       return *this;
     }
 
-    bool operator==(const tuple<Fields...>& rhs) const {
-      return offs::eq(this->buffer, rhs.buffer);
-    }
-
     template <size_t k>
       typename nth<k, Fields...>::type* atP() {
         return reinterpret_cast<typename nth<k, Fields...>::type*>(this->buffer + offsetAt<k, offs>::value);
@@ -180,8 +177,12 @@ template <>
     ~tuple() { }
 
     tuple<>& operator=(const tuple<>&) { return *this; }
-    bool operator==(const tuple<>&) const { return true; }
   };
+
+template <typename ... Fields>
+  inline bool operator==(const tuple<Fields...>& lhs, const tuple<Fields...>& rhs) {
+    return offsetInfo<0, 0, Fields...>::eq(lhs.buffer, rhs.buffer);
+  }
 
 template <size_t i, typename T>
   struct tupType { };
@@ -242,10 +243,11 @@ template <typename T, typename ... Ts> struct tupleTail<T, Ts...> { typedef tupl
     template <typename V> \
       static void meta(V& v) { \
         PRIV_HPPF_MAP(PRIV_HPPF_STRUCT_FIELD_VISIT, FIELDS) \
-      }\
-    bool operator==(const T& rhs) const { \
-      return true PRIV_HPPF_MAP(PRIV_HPPF_STRUCT_FIELD_EQ, FIELDS); \
-    } \
+      } \
+    template <typename X> \
+      inline typename std::enable_if<std::is_base_of<X, T>::value, bool>::type operator==(const X& rhs) const { \
+        return true PRIV_HPPF_MAP(PRIV_HPPF_STRUCT_FIELD_EQ, FIELDS); \
+      } \
   }
 
 // reflective enumerations
@@ -409,9 +411,6 @@ template <typename ... Ctors>
       }
       return *this;
     }
-    bool operator==(const variant<Ctors...>& rhs) const {
-      return this->tag == rhs.tag && variantApp<bool, variantPayloadEq, void, tuple<Ctors...>, const void*>::apply(this->tag, const_cast<void*>(reinterpret_cast<const void*>(this->storage)), reinterpret_cast<const void*>(rhs.storage));
-    }
 
     template <typename T>
       T* get() { return findByCtor<T>(); }
@@ -448,6 +447,11 @@ template <typename ... Ctors>
         }
       }
   };
+template <typename ... Ctors>
+  inline bool operator==(const variant<Ctors...>& lhs, const variant<Ctors...>& rhs) {
+    return lhs.unsafeTag() == rhs.unsafeTag() &&
+           variantApp<bool, variantPayloadEq, void, tuple<Ctors...>, const void*>::apply(lhs.unsafeTag(), const_cast<void*>(reinterpret_cast<const void*>(lhs.unsafePayload())), reinterpret_cast<const void*>(rhs.unsafePayload()));
+  }
 template <typename T, typename ... Ctors>
   T* get(variant<Ctors...>& v) {
     return v.template get<T>();
@@ -529,16 +533,6 @@ template <typename ... Ts>
         default: throw std::runtime_error("while deconstructing the " #T " variant, cannot decide payload type because tag is invalid"); \
         } \
       } \
-    bool operator==(const T& rhs) const { \
-      if (this->tag != rhs.tag) { \
-        return false; \
-      } else { \
-        switch (this->tag) { \
-        PRIV_HPPF_MAP(PRIV_HPPF_VARIANT_EQCASE, CTORS) \
-        default: return false; \
-        } \
-      } \
-    } \
     template <typename V> \
       void gvisit(V& v) const { \
         switch (this->tag) { \
@@ -565,6 +559,17 @@ template <typename ... Ts>
       } \
       return o; \
     } \
+    template <typename X> \
+      inline typename std::enable_if<std::is_base_of<X, T>::value, bool>::type operator==(const X& rhs) const { \
+        if (this->tag != rhs.tag) { \
+          return false; \
+        } else { \
+          switch (this->tag) { \
+          PRIV_HPPF_MAP(PRIV_HPPF_VARIANT_EQCASE, CTORS) \
+          default: return false; \
+          } \
+        } \
+      } \
   private: \
     enum class Enum : uint32_t { \
       PRIV_HPPF_MAP(PRIV_HPPF_VARIANT_CTOR_TAG, CTORS) \
@@ -642,16 +647,6 @@ template <typename ... Ts>
         default: throw std::runtime_error("while deconstructing the " #T " variant, cannot decide payload type because tag is invalid"); \
         } \
       } \
-    bool operator==(const T& rhs) const { \
-      if (this->tag != rhs.tag) { \
-        return false; \
-      } else { \
-        switch (this->tag) { \
-        PRIV_HPPF_MAP(PRIV_HPPF_LBLVARIANT_EQCASE, CTORS) \
-        default: return false; \
-        } \
-      } \
-    } \
     template <typename V> \
       void gvisit(V& v) const { \
         switch (this->tag) { \
@@ -678,6 +673,17 @@ template <typename ... Ts>
       } \
       return o; \
     } \
+    template <typename X> \
+      inline typename std::enable_if<std::is_base_of<X, T>::value, bool>::type operator==(const X& rhs) const { \
+        if (this->tag != rhs.tag) { \
+          return false; \
+        } else { \
+          switch (this->tag) { \
+          PRIV_HPPF_MAP(PRIV_HPPF_VARIANT_EQCASE, CTORS) \
+          default: return false; \
+          } \
+        } \
+      } \
   private: \
     enum class Enum : uint32_t { \
       PRIV_HPPF_MAP(PRIV_HPPF_LBLVARIANT_CTOR_TAG, CTORS) \
@@ -705,8 +711,11 @@ template <typename ... Ts>
     PRIV_ATY(const PRIV_REPTY& x) : value(x) { } \
     constexpr PRIV_ATY(const PRIV_ATY& x) = default; \
     PRIV_ATY& operator=(const PRIV_ATY& x) = default; \
-    bool operator==(const PRIV_ATY& x) const { return this->value == x.value; } \
-  }
+  }; \
+  template <typename T> \
+    inline typename std::enable_if<std::is_base_of<T, PRIV_ATY>::value, bool>::type operator==(const T& a, const T& b) { \
+      return a.value == b.value; \
+    }
 
 #define DEFINE_TYPE_ALIAS(PRIV_ATY, PRIV_REPTY) DEFINE_TYPE_ALIAS_AS(PRIV_ATY, PRIV_ATY, PRIV_REPTY)
 
