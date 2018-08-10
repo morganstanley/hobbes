@@ -72,7 +72,8 @@ TEST(Compiler, ParseTyDefStaging) {
     c().readModule(
       "bob = 42\n"
       "type BT = (TypeOf `bob` x) => x\n"
-      "frank :: BT\n"
+      "type BTI = (TypeOf `newPrim()::BT` x) => x\n"
+      "frank :: BTI\n"
       "frank = 3\n"
     )
   );
