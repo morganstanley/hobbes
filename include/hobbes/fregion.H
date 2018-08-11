@@ -1327,8 +1327,8 @@ template <typename U, typename V>
 template <typename U, typename V>
   struct store<std::pair<U,V>, typename tbool<all_memcpyable<U, V>::value>::type> : public storePairDef<U,V> {
     static const bool can_memcpy = true;
-    static void write(imagefile*, void* p,       const std::pair<U,V>& x) { memcpy(p, &x, sizeof(x)); }
-    static void read (imagefile*, const void* p, std::pair<U,V>* x)       { memcpy(x, p, sizeof(*x)); }
+    static void write(imagefile*, void* p,       const std::pair<U,V>& x) { memcpy(reinterpret_cast<char*>(p), &x, sizeof(x)); }
+    static void read (imagefile*, const void* p, std::pair<U,V>* x)       { memcpy(reinterpret_cast<char*>(x), p, sizeof(*x)); }
   };
 template <typename U, typename V>
   struct store<std::pair<U,V>, typename tbool<!all_memcpyable<U, V>::value>::type> : public storePairDef<U,V> {

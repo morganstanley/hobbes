@@ -71,6 +71,7 @@ private:
     case Document:
       if (c != ' ') {
         this->r0.put(c);
+        __attribute__ ((fallthrough));
       } else {
         this->req.document = this->r0.str();
         this->r0.str("");

@@ -1033,7 +1033,7 @@ template <typename T>
         // allocate/initialize the model for this bitstream segment (from the terminal state of the scratch model for the previous segment)
         uint64_t newScratchModelRef = findSpace(this->f, pagetype::data, sizeof(PModel), sizeof(size_t));
         PModel*  newScratchModel    = reinterpret_cast<PModel*>(mapFileData(this->f, newScratchModelRef, sizeof(PModel)));
-        memcpy(newScratchModel, this->scratchModel, sizeof(PModel));
+        memcpy(reinterpret_cast<char*>(newScratchModel), this->scratchModel, sizeof(PModel));
         unmapFileData(this->f, this->scratchModel, sizeof(PModel));
 
         this->scratchModel = newScratchModel;
@@ -1191,7 +1191,7 @@ template <typename T>
 
         // initialize the model for this batch
         const uint8_t* modelState = reinterpret_cast<const uint8_t*>(mapFileData(this->f, this->readState.buffer->initModel, sizeof(PModel)));
-        memcpy(&this->scratchModel, modelState, sizeof(PModel));
+        memcpy(reinterpret_cast<char*>(&this->scratchModel), modelState, sizeof(PModel));
         unmapFileData(this->f, reinterpret_cast<const void*>(modelState), sizeof(PModel));
         compress<T>::init(this->scratchModel, &this->scratchModelState);
 
