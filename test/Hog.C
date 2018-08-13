@@ -290,6 +290,8 @@ void flushData(int first, int last) {
   } while (0)
 
 #if !defined(BUILD_OSX)
+
+#if 0
 TEST(Hog, MultiDestination) {
   std::vector<HogApp> batchrecv {
     HogApp(RunMode(availablePort(10000, 10100))),
@@ -328,6 +330,7 @@ TEST(Hog, MultiDestination) {
   WITH_TIMEOUT(30, EXPECT_EQ_IN_SERIES(batchrecv[0].logpaths(), "coordinate", ".x", ({"[0..99]", "[100..199]", "[200..299]"})));
   WITH_TIMEOUT(30, EXPECT_EQ_IN_SERIES(batchrecv[1].logpaths(), "coordinate", ".x", ({"[0..199]", "[200..299]"})));
 }
+#endif
 
 DEFINE_STORAGE_GROUP(
   KillAndResume,
