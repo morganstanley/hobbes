@@ -78,6 +78,8 @@ void import(cc* e, const std::string& mname) {
 }
 
 // replace type variable references with expanded aliases or opaque definitions as necessary
+ExprPtr applyTypeDefns(cc*, const ExprPtr&);
+
 struct appTyDefnF : public switchTyFn {
   cc* e;
   appTyDefnF(cc* e) : e(e) { }
@@ -95,6 +97,10 @@ struct appTyDefnF : public switchTyFn {
 
   MonoTypePtr with(const TApp* ap) const {
     return e->replaceTypeAliases(TApp::make(switchOf(ap->fn(), *this), switchOf(ap->args(), *this)));
+  }
+
+  MonoTypePtr with(const TExpr* x) const {
+    return TExpr::make(applyTypeDefns(this->e, x->expr()));
   }
 };
 MonoTypePtr applyTypeDefns(cc* e, const MonoTypePtr& t) {
