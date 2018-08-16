@@ -671,6 +671,7 @@ private:
   PipeQOS               qos;
   size_t                timeoutNS;
   std::function<void()> timeoutF;
+  size_t                unrtimeNS;
 
   void markPage(uint8_t c) {
     *reinterpret_cast<uint32_t*>(this->page + this->pagesz) = (static_cast<uint32_t>(c) << 24) | this->offset;
@@ -700,7 +701,7 @@ private:
     }
   }
 public:
-  wpipe(writer* wq, PipeQOS qos = Reliable, size_t timeoutNS = 0, const std::function<void()>& timeoutF = [](){}) : wq(wq), pagesz(wq->config().valuesz - sizeof(uint32_t)), offset(0), qos(qos), timeoutNS(timeoutNS), timeoutF(timeoutF) {
+  wpipe(writer* wq, PipeQOS qos = Reliable, size_t timeoutNS = 0, const std::function<void()>& timeoutF = [](){}) : wq(wq), pagesz(wq->config().valuesz - sizeof(uint32_t)), offset(0), qos(qos), timeoutNS(timeoutNS), timeoutF(timeoutF), unrtimeNS(0) {
     if (wq->config().valuesz <= sizeof(uint32_t)) {
       throw std::runtime_error("queue page size too small for use as shared memory pipe");
     }
@@ -708,11 +709,27 @@ public:
   }
 
   void commit() {
-    if (PRIV_HSTORE_LIKELY(this->page != 0)) {
+    if (reliable()) {
       markPage(PRIV_HSTORE_PAGE_STATE_COMMIT);
       this->wq->push();
+      this->page = this->wq->next(this->timeoutNS, this->timeoutF);
+    } else {
+      if (PRIV_HSTORE_LIKELY(this->page != 0)) {
+        markPage(PRIV_HSTORE_PAGE_STATE_COMMIT);
+        this->wq->push();
+      }
+      this->page = this->wq->pollNext();
+
+      // allow unreliable producers to process timeout events
+      if (PRIV_HSTORE_UNLIKELY(this->page == 0)) {
+        if (this->unrtimeNS == 0) {
+          this->unrtimeNS = internal::spin::poll_tickNS();
+        } else if (internal::spin::poll_tickNS() - this->unrtimeNS >= this->timeoutNS) {
+          this->timeoutF();
+          this->unrtimeNS = 0;
+        }
+      }
     }
-    this->page   = reliable() ? this->wq->next(this->timeoutNS, this->timeoutF) : this->wq->pollNext();
     this->offset = 0;
   }
 
@@ -2006,7 +2023,14 @@ struct StorageGroup {
     size_t pagec  = 1 + (meta.size() / pagesz) + std::max<size_t>(this->mempages, 10);
 
     this->pipe = new wpipe(new writer(meta, sharedMemName(Name::str()), pagesz, pagec, wp), this->qos, /*if blocked 1ms*/ 1000000L, /*reconnect if needed*/ [&](){ reconnectSHM(&this->mqserver, Name::str(), wp); });
-    registerSHMAlloc(&this->mqserver, Name::str(), wp);
+    try {
+      registerSHMAlloc(&this->mqserver, Name::str(), wp);
+    } catch (...) {
+      // unreliable mode can accept connection failures
+      if (this->qos != Unreliable) {
+        throw;
+      }
+    }
     return *this->pipe;
   }
 
