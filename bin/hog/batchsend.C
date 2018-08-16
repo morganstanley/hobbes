@@ -247,17 +247,19 @@ struct BatchSendSession {
   }
 
   void stepFile() {
-    gzclose(this->buffer);
+    if (this->sz > 0) {
+      gzclose(this->buffer);
 
-    for (const auto & destination : destinations) {
-      // we should save the init message to a special file, else pick a generic segment file name
-      std::string pubfilename = destination.localdir + "/" + ((this->c == 0) ? "init.gz" : segmentFileName(this->c));
-      link(this->tempfilename.c_str(), pubfilename.c_str());
+      for (const auto & destination : destinations) {
+        // we should save the init message to a special file, else pick a generic segment file name
+        std::string pubfilename = destination.localdir + "/" + ((this->c == 0) ? "init.gz" : segmentFileName(this->c));
+        link(this->tempfilename.c_str(), pubfilename.c_str());
+      }
+      unlink(this->tempfilename.c_str());
+      ++this->c;
+
+      allocFile();
     }
-    unlink(this->tempfilename.c_str());
-    ++this->c;
-
-    allocFile();
   }
 
   void write(const uint8_t* d, size_t sz) {

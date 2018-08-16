@@ -457,6 +457,34 @@ TEST(Hog, SupportedTypes) {
   EXPECT_TRUE(c.compileFn<bool()>("all(\\x.x  matches {x=42,y=3.14159,z=[0S,1S,2S,3S,4S,5S,6S,7S,8S,9S],w=\"test\"},f0.sectView[0:])")());
 }
 
+DEFINE_STORAGE_GROUP(
+  TestUnrReconnect,
+  8,
+  hobbes::storage::Unreliable,
+  hobbes::storage::AutoCommit
+);
+
+TEST(Hog, UnreliableReconnect) {
+  // no consumer running, produce until we fail
+  while (HLOG(TestUnrReconnect, seq, "unreliable seq"));
+
+  // now that we've failed to log once, start a hog process
+  HogApp local(RunMode{{"TestUnrReconnect"}, /* consolidate = */ true});
+  local.start();
+  sleep(10);
+
+  // at some point we should succeed in logging when we transparently reconnect
+  auto t0 = hobbes::storage::internal::spin::poll_tickNS();
+  bool s = false;
+  while (((hobbes::storage::internal::spin::poll_tickNS() - t0)/(1000L*1000L*1000L)) < 120) {
+    if (HLOG(TestUnrReconnect, seq, "unreliable seq")) {
+      s = true;
+      break;
+    }
+  }
+  EXPECT_TRUE(s && "reconnection failed");
+}
+
 void rmrf(const char* p) {
   nftw(p, [](const char* fp, const struct stat*, int tf, struct FTW*) -> int { remove(fp); return 0; }, 64, FTW_DEPTH | FTW_PHYS);
 }
