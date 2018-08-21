@@ -90,7 +90,7 @@ DEFINE_STRUCT(
   (csegm::BitSeg, bits),
 
   // a link to the next segment (or 0 if terminal)
-  (uint64_t, nextRef) 
+  (uint64_t, nextRef)
 );
 
 // an interface for user code to record batches of compressed data
@@ -208,7 +208,7 @@ struct cwbitstream {
 
   inline void putzeroes(uint32_t bitc) {
     this->buffer->bitIndex += bitc;
-    
+
     if (this->buffer->bitIndex >= csegm::maxBits) {
       uint32_t nextIndex = this->buffer->bitIndex - csegm::maxBits;
       stepSegment();
@@ -264,7 +264,7 @@ struct cwbitstream {
   // arithmetic encoding
   inline void write(arithn::code clow, arithn::code chigh, arithn::code cinterval) {
     arithn::code r = this->buffer->high - this->buffer->low + 1;
-  
+
     this->buffer->high = this->buffer->low + (r * chigh / cinterval) - 1;
     this->buffer->low  = this->buffer->low + (r * clow  / cinterval);
 
@@ -313,7 +313,7 @@ struct cwbitstream {
       }
     }
   }
-  
+
   inline void flush() {
     if (this->buffer->low < arithn::cfourth) {
       this->put0roll(this->buffer->roll+1);
@@ -409,7 +409,7 @@ struct crbitstream {
 /*******************************************************
  *
  * value modeling : represent and update the probability distribution of a set of values (up to 256)
- * 
+ *
  *   cumFreqState<S> represents this distribution by cumulative sums of frequencies (greatest to least)
  *   and it can answer queries about what range a symbol falls in, what symbol a point corresponds to,
  *   and these answers will drive the arithmetic encoder/decoder
@@ -457,7 +457,7 @@ template <uint8_t maxSymbol>
       }
       return false;
     }
-  
+
     static void find(const CModel* cm, arithn::code k, symbol* c, arithn::code* low, arithn::code* high) {
       for (index_t i = 0; i < cm->count; ++i) {
         if (k < cm->cfreqs[i+1]) {
@@ -703,7 +703,7 @@ template <> struct compress<double> : public compressFloat<double, uint16_t, uin
 template <typename T> struct PModelOf { typedef typename compress<T>::PModel type; };
 template <typename T> struct CModelOf { typedef typename compress<T>::CModel type; };
 
-template <size_t i, size_t n, typename PModel, typename CModel, typename ... Ts> 
+template <size_t i, size_t n, typename PModel, typename CModel, typename ... Ts>
   struct compressTuple {
     typedef typename nth<i, Ts...>::type H;
     typedef compressTuple<i+1, n, PModel, CModel, Ts...> Recurse;
@@ -721,7 +721,7 @@ template <size_t i, size_t n, typename PModel, typename CModel, typename ... Ts>
       Recurse::read(bits, pm, cm, x);
     }
   };
-template <size_t n, typename PModel, typename CModel, typename ... Ts> 
+template <size_t n, typename PModel, typename CModel, typename ... Ts>
   struct compressTuple<n, n, PModel, CModel, Ts...> {
     static void init(const PModel&, CModel*) { }
     static void write(cwbitstream*, PModel*, CModel*, const tuple<Ts...>&) { }
@@ -1099,7 +1099,7 @@ public:
       }
     }
 
-  void signal() { 
+  void signal() {
     seekAbs(this->f, 0);
     write(this->f, static_cast<uint8_t>(0x0d));
   }
