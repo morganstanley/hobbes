@@ -411,6 +411,7 @@ extern PatVarCtorFn patVarCtorFn;
 %token TCOMMA     ","
 %token TSEMICOLON ";"
 %token TFN        "\\"
+%token TFNL       "fn"
 %token TCOMPOSE   "o"
 %token TUPTO      ".."
 %token TCARET     "^"
@@ -603,6 +604,7 @@ types: l0mtype       { $$ = autorelease(new MonoTypes()); $$->push_back(*$1); }
 
 /* expressions */
 l0expr: "\\" patterns "." l0expr { $$ = makePatternFn(*$2, ExprPtr($4), m(@1, @4)); }
+      | "fn" patterns "." l0expr { $$ = makePatternFn(*$2, ExprPtr($4), m(@1, @4)); }
       | "!" l1expr               { $$ = TAPP1(var("not",m(@1)), $2, m(@1,@2)); }
       | l0expr "and" l0expr      { $$ = TAPP2(var("and",m(@2)), $1, $3, m(@1,@3)); }
       | l0expr "or"  l0expr      { $$ = TAPP2(var("or",m(@2)),  $1, $3, m(@1,@3)); }
@@ -847,6 +849,7 @@ recfieldname: id         { $$ = $1; }
             | "parse"    { $$ = autorelease(new std::string("parse")); }
             | "do"       { $$ = autorelease(new std::string("do")); }
             | "return"   { $$ = autorelease(new std::string("return")); }
+            | "fn"       { $$ = autorelease(new std::string("fn")); }
             | "intV"     { $$ = autorelease(new std::string(".f" + str::from($1))); }
 
 recfieldpath: recfieldpath "." recfieldname { $$ = $1; $$->push_back(*$3); }
