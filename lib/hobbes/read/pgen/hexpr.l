@@ -139,6 +139,7 @@ std::string* identifier(const char* b, const char* e) {
 "/"                    { return TDIVIDE; }
 "%"                    { return TREM; }
 "\\"                   { return TFN; }
+"fn"                   { return TFNL; }
 " . "                  { return TCOMPOSE; }
 "."                    { return TDOT; }
 ".."                   { return TUPTO; }
