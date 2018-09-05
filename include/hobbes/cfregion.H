@@ -1061,7 +1061,7 @@ template <typename T>
         throw std::runtime_error("Can't write to sequence " + seqname + " as type '" + ty::show(this->stdef) + "', already defined as type '" + ty::show(ty::decode(b->second.type)) + "'");
       } else {
         // load the head batch and initialize from it
-        size_t* headNode      = reinterpret_cast<uint64_t*>(mapFileData(this->f, b->second.offset, sizeof(size_t)));
+        size_t* headNode      = reinterpret_cast<size_t*>(mapFileData(this->f, b->second.offset, sizeof(size_t)));
         this->scratchModelRef = this->out.initFromRoot(*headNode, sizeof(PModel));
         this->scratchModel    = reinterpret_cast<PModel*>(mapFileData(this->f, this->scratchModelRef, sizeof(PModel)));
 
