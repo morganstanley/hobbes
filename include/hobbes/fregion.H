@@ -1171,6 +1171,17 @@ PRIV_HFREGION_DEFINE_PRIMTYS(size_t, "long");
 PRIV_HFREGION_DEFINE_PRIMTYS(float,    "float");
 PRIV_HFREGION_DEFINE_PRIMTYS(double,   "double");
 
+// store unit
+template <>
+  struct store<unit> {
+    static ty::desc storeType() { return ty::prim("unit"); }
+    static const bool can_memcpy = false;
+    static size_t size() { return 0; }
+    static size_t alignment() { return 1; }
+    static void write(imagefile*, void*, const unit&) { }
+    static void read(imagefile*, const void*, unit*) { }
+  };
+
 // store fixed-length arrays
 template <typename T, size_t N>
   struct storeFixedArrayDef {

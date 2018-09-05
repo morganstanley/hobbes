@@ -18,6 +18,7 @@
 #define HOBBES_HCFREGION_H_INCLUDED
 
 #include <hobbes/fregion.H>
+#include <queue>
 #include <algorithm>
 #include <numeric>
 
@@ -102,28 +103,52 @@ struct cwbitstream {
   cbatch*    buffer;
   cbatchseg* seg;
 
-  // book-keeping for batch nodes, bit buffers
-  uint64_t batchNodeRoot;
+  // batch nodes (a '()+([batch]@f*^x.|...|)' value)
+  size_t* batchNode;
 
   // allocate an initial batch and prepare to write bits
-  cwbitstream(imagefile* file) : file(file), buffer(0), seg(0), batchNodeRoot(0) {
+  cwbitstream(imagefile* file) : file(file), buffer(0), seg(0), batchNode(0) {
   }
 
   // initialize a root node from a pair of model states (init and final)
-  void initFresh(uint64_t initModel, uint64_t scratchModel) {
-    this->batchNodeRoot = findSpace(this->file, pagetype::data, 3*sizeof(size_t), sizeof(size_t));
-    stepBuffer(initModel, scratchModel);
+  uint64_t initFresh(uint64_t initModel, uint64_t scratchModel) {
+    size_t nullNode = findSpace(this->file, pagetype::data, 3*sizeof(size_t), sizeof(size_t));
+    size_t blankInitState[3] = {0,0,nullNode};
+    this->batchNode = blankInitState;
+    return stepBuffer(initModel, scratchModel);
   }
 
   // initialize from an already stored root node, return the final model reference found there
-  uint64_t initFromRoot(uint64_t rootNode) {
-    this->batchNodeRoot = rootNode;
+  uint64_t initFromRoot(uint64_t rootNode, size_t modelSize) {
+    this->batchNode = reinterpret_cast<size_t*>(mapFileData(this->file, rootNode, 3*sizeof(size_t)));
 
-    // the latest buffer is directly accessible in the initial node
-    static constexpr size_t dsize = 3*sizeof(size_t);
-    size_t* d = reinterpret_cast<size_t*>(mapFileData(this->file, rootNode, dsize));
-    this->buffer = reinterpret_cast<cbatch*>(mapFileData(this->file, d[1], sizeof(cbatch)));
-    unmapFileData(this->file, d, dsize);
+    // seek to the last buffer (where the next pointer goes to the null batch node)
+    if (this->batchNode[0] == 1) {
+      size_t* nextNode = reinterpret_cast<size_t*>(mapFileData(this->file, this->batchNode[2], 3*sizeof(size_t)));
+      while (nextNode[0] == 1) {
+        unmapFileData(this->file, this->batchNode, 3*sizeof(size_t));
+        this->batchNode = nextNode;
+        nextNode = reinterpret_cast<size_t*>(mapFileData(this->file, this->batchNode[2], 3*sizeof(size_t)));
+      }
+      unmapFileData(this->file, nextNode, 3*sizeof(size_t));
+
+      this->buffer = reinterpret_cast<cbatch*>(mapFileData(this->file, this->batchNode[1], sizeof(cbatch)));
+    } else {
+      this->batchNode[0] = 1;
+      this->batchNode[1] = findSpace(this->file, pagetype::data, sizeof(cbatch), sizeof(size_t));
+      this->batchNode[2] = findSpace(this->file, pagetype::data, 3*sizeof(size_t), sizeof(size_t));
+
+      this->buffer = reinterpret_cast<cbatch*>(mapFileData(this->file, this->batchNode[1], sizeof(cbatch)));
+      this->buffer->initModel     = findSpace(this->file, pagetype::data, modelSize, sizeof(size_t));
+      this->buffer->scratchModel  = findSpace(this->file, pagetype::data, modelSize, sizeof(size_t));
+      this->buffer->low           = 0;
+      this->buffer->high          = arithn::cmax;
+      this->buffer->roll          = 0;
+      this->buffer->bitIndex      = 0;
+      this->buffer->count         = 0;
+      this->buffer->headBitBuffer = findSpace(this->file, pagetype::data, sizeof(cbatchseg), sizeof(size_t));
+      this->seg                   = reinterpret_cast<cbatchseg*>(mapFileData(this->file, this->buffer->headBitBuffer, sizeof(cbatchseg)));
+    }
 
     // seek to the end of the bitstream
     this->seg = reinterpret_cast<cbatchseg*>(mapFileData(this->file, this->buffer->headBitBuffer, sizeof(cbatchseg)));
@@ -147,7 +172,7 @@ struct cwbitstream {
   }
 
   // start a new buffer with a given initial model
-  void stepBuffer(uint64_t initModel, uint64_t scratchModel) {
+  uint64_t stepBuffer(uint64_t initModel, uint64_t scratchModel) {
     // release the old batch
     if (this->buffer) {
       unmapFileData(this->file, this->buffer, sizeof(cbatch));
@@ -168,16 +193,18 @@ struct cwbitstream {
     this->seg                   = reinterpret_cast<cbatchseg*>(mapFileData(this->file, this->buffer->headBitBuffer, sizeof(cbatchseg)));
 
     // allocate a new node to hold this new batch
-    size_t  dsize = 3 * sizeof(size_t);
-    size_t  dloc  = findSpace(this->file, pagetype::data, dsize, sizeof(size_t));
-    size_t* d     = reinterpret_cast<size_t*>(mapFileData(this->file, dloc, dsize));
+    size_t  nodeSize = 3 * sizeof(size_t);
+    size_t  nodeLoc  = findSpace(this->file, pagetype::data, nodeSize, sizeof(size_t));
+    size_t* newNode  = reinterpret_cast<size_t*>(mapFileData(this->file, nodeLoc, nodeSize));
 
-    d[0] = 1;
-    d[1] = batchRef;
-    d[2] = this->batchNodeRoot;
-    unmapFileData(this->file, d, dsize);
+    newNode[0] = 1;
+    newNode[1] = batchRef;
+    newNode[2] = this->batchNode[2];
+    this->batchNode[2] = nodeLoc;
 
-    this->batchNodeRoot = dloc;
+    unmapFileData(this->file, this->batchNode, nodeSize);
+    this->batchNode = newNode;
+    return nodeLoc;
   }
 
   // put some bits into the current bit buffer (allocating new buffers as needed)
@@ -566,6 +593,17 @@ template <typename T, typename P = void>
   struct compress {
   };
 
+// nothing compresses to nothing (that's a positive statement)
+template <>
+  struct compress<unit> {
+    typedef int PModel;
+    typedef int CModel;
+
+    static void init(const PModel&, CModel*) { }
+    static void write(cwbitstream*, PModel*, CModel*, unit) { }
+    static void read(crbitstream*, PModel*, CModel*, unit*) { }
+  };
+
 // compressed a fixed set of values, cast to a (possibly larger) type
 template <uint8_t maxSym, typename AsSym>
   struct compressFixedSet {
@@ -696,8 +734,15 @@ template <typename T, typename Exp, typename Val, Val ExpWidth, Val ValWidth>
     }
   };
 
+// it looks like compression of floats with structure is actually very slow to reduce size (and initially increases size)
+// for now, we will just compress them as fixed-length byte sequences
+#if 0
 template <> struct compress<float>  : public compressFloat< float,  uint8_t, uint32_t,  8, 23> { };
 template <> struct compress<double> : public compressFloat<double, uint16_t, uint64_t, 11, 52> { };
+#else
+template <> struct compress<float>  : public compressByteSeq<float> { };
+template <> struct compress<double> : public compressByteSeq<double> { };
+#endif
 
 // compress tuples, pairs and structures
 template <typename T> struct PModelOf { typedef typename compress<T>::PModel type; };
@@ -992,7 +1037,7 @@ template <typename T>
     typedef typename compress<T>::PModel PModel;
     typedef typename compress<T>::CModel CModel;
 
-    cwseries(imagefile* f, const std::string& seqname, size_t maxBatchSize) : tdef(store<T>::storeType()), f(f), seqname(seqname), batchSize(maxBatchSize), out(f) {
+    cwseries(imagefile* f, const std::string& seqname, size_t maxBatchSize) : tdef(ty::elimFileRefs(store<T>::storeType())), f(f), seqname(seqname), batchSize(maxBatchSize), out(f) {
       // determine sequence types
       this->stdef = storedCompressedSeqTypeDef(this->tdef, store<PModel>::storeType(), this->batchSize);
 
@@ -1006,22 +1051,22 @@ template <typename T>
 
         compress<T>::init(*this->scratchModel, &this->scratchModelState);
 
-        this->out.initFresh(initModelRef, this->scratchModelRef);
-
         // define the sequence and prepare to write to it
-        size_t dloc = findSpace(this->f, pagetype::data, sizeof(size_t), sizeof(size_t));
-        this->headNodeRef = reinterpret_cast<uint64_t*>(mapFileData(this->f, dloc, sizeof(size_t)));
-        *this->headNodeRef = this->out.batchNodeRoot;
-        addBinding(this->f, this->seqname, ty::encoding(this->stdef), dloc);
+        size_t  headNodeRef = findSpace(this->f, pagetype::data, sizeof(size_t), sizeof(size_t));
+        size_t* headNode    = reinterpret_cast<size_t*>(mapFileData(this->f, headNodeRef, sizeof(size_t)));
+        *headNode = this->out.initFresh(initModelRef, this->scratchModelRef);
+        addBinding(this->f, this->seqname, ty::encoding(this->stdef), headNodeRef);
+        unmapFileData(this->f, headNode, sizeof(size_t));
       } else if (b->second.type != ty::encoding(this->stdef)) {
         throw std::runtime_error("Can't write to sequence " + seqname + " as type '" + ty::show(this->stdef) + "', already defined as type '" + ty::show(ty::decode(b->second.type)) + "'");
       } else {
         // load the head batch and initialize from it
-        this->headNodeRef     = reinterpret_cast<uint64_t*>(mapFileData(this->f, b->second.offset, sizeof(size_t)));
-        this->scratchModelRef = this->out.initFromRoot(*this->headNodeRef);
+        size_t* headNode      = reinterpret_cast<uint64_t*>(mapFileData(this->f, b->second.offset, sizeof(size_t)));
+        this->scratchModelRef = this->out.initFromRoot(*headNode, sizeof(PModel));
         this->scratchModel    = reinterpret_cast<PModel*>(mapFileData(this->f, this->scratchModelRef, sizeof(PModel)));
 
         compress<T>::init(*this->scratchModel, &this->scratchModelState);
+        unmapFileData(this->f, headNode, sizeof(size_t));
       }
     }
     ~cwseries() {
@@ -1052,7 +1097,6 @@ template <typename T>
         // start a fresh batch whose init model is the final state of the previous batch
         this->out.stepBuffer(this->scratchModelRef, newScratchModelRef);
         this->scratchModelRef = newScratchModelRef;
-        *this->headNodeRef    = this->out.batchNodeRoot;
       }
     }
   private:
@@ -1068,7 +1112,6 @@ template <typename T>
     CModel   scratchModelState;
 
     cwbitstream out;
-    uint64_t* headNodeRef;
   };
 class cwriter {
 public:
@@ -1085,7 +1128,7 @@ public:
     cwseries<T>& series(const std::string& n, size_t batchSize = 100000) {
       auto s = this->ss.find(n);
       if (s != this->ss.end()) {
-        ty::desc tdesc = store<T>::storeType();
+        ty::desc tdesc = ty::elimFileRefs(store<T>::storeType());
 
         if (s->second->typeDef() == tdesc) {
           return *reinterpret_cast<cwseries<T>*>(s->second);
@@ -1116,12 +1159,12 @@ template <typename T>
     typedef typename compress<T>::PModel PModel;
     typedef typename compress<T>::CModel CModel;
 
-    crseries(imagefile* f, const std::string& seqname, const binding& b) : tdef(store<T>::storeType()), f(f), batchSize(inferCompressedBatchSize(b.type)), readState(f) {
+    crseries(imagefile* f, const std::string& seqname, const binding& b) : tdef(ty::elimFileRefs(store<T>::storeType())), f(f), batchSize(inferCompressedBatchSize(b.type)), readState(f) {
       // determine value and sequence types
       this->stdef = storedCompressedSeqTypeDef(this->tdef, store<PModel>::storeType(), this->batchSize);
 
-      if (b.type != ty::encoding(this->stdef)) {
-        throw std::runtime_error("File defines series '" + seqname + "' with type inconsistent with " + ty::show(this->tdef));
+      if (!ty::equivModOffset(this->stdef, ty::decode(b.type))) {
+        throw std::runtime_error("File defines series '" + seqname + "' with unexpected type\n  expected: " + ty::show(this->stdef) + "\n  actual:   " + ty::show(ty::decode(b.type)));
       }
 
       // load all nodes, prepare to walk in-order
@@ -1159,7 +1202,7 @@ template <typename T>
     imagefile* f;
     size_t     batchSize;
 
-    std::stack<uint64_t> batches;
+    std::queue<uint64_t> batches;
     crbitstream          readState;
     PModel               scratchModel;
     CModel               scratchModelState;
@@ -1197,7 +1240,7 @@ template <typename T>
         return false;
       } else {
         // load this compressed data segment
-        this->readState.reset(reinterpret_cast<const cbatch*>(mapFileData(this->f, this->batches.top(), sizeof(cbatch))));
+        this->readState.reset(reinterpret_cast<const cbatch*>(mapFileData(this->f, this->batches.front(), sizeof(cbatch))));
 
         // initialize the model for this batch
         const uint8_t* modelState = reinterpret_cast<const uint8_t*>(mapFileData(this->f, this->readState.buffer->initModel, sizeof(PModel)));
@@ -1225,7 +1268,7 @@ public:
     crseries<T>& series(const std::string& name) {
       auto s = this->ss.find(name);
       if (s != this->ss.end()) {
-        ty::desc tdesc = store<T>::storeType();
+        ty::desc tdesc = ty::elimFileRefs(store<T>::storeType());
 
         if (s->second->typeDef() == tdesc) {
           return *reinterpret_cast<crseries<T>*>(s->second);

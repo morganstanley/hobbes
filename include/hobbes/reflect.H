@@ -679,7 +679,7 @@ template <typename ... Ts>
           return false; \
         } else { \
           switch (this->tag) { \
-          PRIV_HPPF_MAP(PRIV_HPPF_VARIANT_EQCASE, CTORS) \
+          PRIV_HPPF_MAP(PRIV_HPPF_LBLVARIANT_EQCASE, CTORS) \
           default: return false; \
           } \
         } \
@@ -906,6 +906,65 @@ template <typename ... Tys>
 
 inline desc fileRef(const desc& t) {
   return app(prim("fileref", fn("x", prim("long"))), t);
+}
+
+// remove file ref types (recursively)
+// (this reverses the storage view of all types)
+inline desc elimFileRefs(const desc& t) {
+  const D*         pd   = t.get();
+  const FArr*      pfa  = reinterpret_cast<const FArr*>(pd);
+  const Arr*       pa   = reinterpret_cast<const Arr*>(pd);
+  const Variant*   pv   = reinterpret_cast<const Variant*>(pd);
+  const Struct*    ps   = reinterpret_cast<const Struct*>(pd);
+  const Recursive* pr   = reinterpret_cast<const Recursive*>(pd);
+  const Fn*        pfn  = reinterpret_cast<const Fn*>(pd);
+  const App*       papp = reinterpret_cast<const App*>(pd);
+
+  switch (t->tid) {
+  default:
+    return t;
+  case PRIV_HPPF_TYCTOR_FIXEDARR:
+    return array(elimFileRefs(pfa->t), elimFileRefs(pfa->len));
+  case PRIV_HPPF_TYCTOR_ARR:
+    return array(elimFileRefs(pa->t));
+  case PRIV_HPPF_TYCTOR_VARIANT:
+    {
+      Variant::Ctors ctors;
+      for (const auto& ctor : pv->ctors) {
+        ctors.push_back(Variant::Ctor(ctor.at<0>(), ctor.at<1>(), elimFileRefs(ctor.at<2>())));
+      }
+      return variant(ctors);
+    }
+  case PRIV_HPPF_TYCTOR_STRUCT:
+    {
+      Struct::Fields fs;
+      for (const auto& field : ps->fields) {
+        fs.push_back(Struct::Field(field.at<0>(), -1, elimFileRefs(field.at<2>())));
+      }
+      return record(fs);
+    }
+  case PRIV_HPPF_TYCTOR_TAPP:
+    {
+      if (papp->f->tid == PRIV_HPPF_TYCTOR_PRIM) {
+        if (reinterpret_cast<const Prim*>(papp->f.get())->n == "fileref") {
+          if (papp->args.size() > 0) {
+            return elimFileRefs(papp->args[0]);
+          }
+        }
+      }
+
+      // default translation
+      App::Args args;
+      for (const auto& arg : papp->args) {
+        args.push_back(elimFileRefs(arg));
+      }
+      return appc(elimFileRefs(papp->f), args);
+    }
+  case PRIV_HPPF_TYCTOR_RECURSIVE:
+    return recursive(pr->x, elimFileRefs(pr->t));
+  case PRIV_HPPF_TYCTOR_TABS:
+    return fnc(pfn->args, elimFileRefs(pfn->t));
+  }
 }
 
 // encode a type description as a byte array (for storage/transmission)
@@ -1184,7 +1243,7 @@ inline void describe(const desc& t, std::ostream& o) {
     if (ps->fields.size() == 0) {
       o << "()";
     } else {
-      // show as sum or variant
+      // show as product or record
       if (ps->fields[0].at<0>().substr(0,1) == ".") {
         o << "(";
         describe(ps->fields[0].at<2>(), o);
@@ -1251,8 +1310,91 @@ inline std::string show(const desc& t) {
   return ss.str();
 }
 
+// type description equivalence modulo offset in record types (allows undefined offsets)
+inline bool equivModOffset(const desc& t0, const desc& t1) {
+  if (t0->tid != t1->tid) {
+    return false;
+  }
+
+  const D* pd0 = t0.get();
+  const D* pd1 = t1.get();
+
+  switch (t0->tid) {
+  case PRIV_HPPF_TYCTOR_PRIM:
+    return reinterpret_cast<const Prim*>(pd0)->n == reinterpret_cast<const Prim*>(pd1)->n;
+  case PRIV_HPPF_TYCTOR_TVAR:
+    return reinterpret_cast<const Var*>(pd0)->n == reinterpret_cast<const Var*>(pd1)->n;
+  case PRIV_HPPF_TYCTOR_FIXEDARR:
+    return equivModOffset(reinterpret_cast<const FArr*>(pd0)->t, reinterpret_cast<const FArr*>(pd1)->t) &&
+           equivModOffset(reinterpret_cast<const FArr*>(pd0)->len, reinterpret_cast<const FArr*>(pd1)->len);
+  case PRIV_HPPF_TYCTOR_ARR:
+    return equivModOffset(reinterpret_cast<const Arr*>(pd0)->t, reinterpret_cast<const Arr*>(pd1)->t);
+  case PRIV_HPPF_TYCTOR_VARIANT: {
+      const Variant* pv0 = reinterpret_cast<const Variant*>(pd0);
+      const Variant* pv1 = reinterpret_cast<const Variant*>(pd1);
+
+      if (pv0->ctors.size() != pv1->ctors.size()) {
+        return false;
+      } else {
+        for (size_t i = 0; i < pv0->ctors.size(); ++i) {
+          if (pv0->ctors[i].at<0>() != pv1->ctors[i].at<0>() ||
+              pv0->ctors[i].at<1>() != pv1->ctors[i].at<1>() ||
+              !equivModOffset(pv0->ctors[i].at<2>(), pv1->ctors[i].at<2>())) {
+            return false;
+          }
+        }
+        return true;
+      }
+    }
+  case PRIV_HPPF_TYCTOR_STRUCT: {
+      const Struct* pr0 = reinterpret_cast<const Struct*>(pd0);
+      const Struct* pr1 = reinterpret_cast<const Struct*>(pd1);
+
+      if (pr0->fields.size() != pr1->fields.size()) {
+        return false;
+      } else {
+        for (size_t i = 0; i < pr0->fields.size(); ++i) {
+          if (pr0->fields[i].at<0>() != pr1->fields[i].at<0>() ||
+              !equivModOffset(pr0->fields[i].at<2>(), pr1->fields[i].at<2>())) {
+            return false;
+          }
+        }
+        return true;
+      }
+    }
+  case PRIV_HPPF_TYCTOR_SIZE:
+    return reinterpret_cast<const Nat*>(pd0)->x == reinterpret_cast<const Nat*>(pd1)->x;
+  case PRIV_HPPF_TYCTOR_TAPP: {
+      const App* papp0 = reinterpret_cast<const App*>(pd0);
+      const App* papp1 = reinterpret_cast<const App*>(pd1);
+
+      if (!equivModOffset(papp0->f, papp1->f)) {
+        return false;
+      } else if (papp0->args.size() != papp1->args.size()) {
+        return false;
+      } else {
+        for (size_t i = 0; i < papp0->args.size(); ++i) {
+          if (!equivModOffset(papp0->args[i], papp1->args[i])) {
+            return false;
+          }
+        }
+        return true;
+      }
+    }
+  case PRIV_HPPF_TYCTOR_RECURSIVE:
+    return equivModOffset(reinterpret_cast<const Recursive*>(pd0)->t, reinterpret_cast<const Recursive*>(pd1)->t);
+  case PRIV_HPPF_TYCTOR_TABS: {
+      const Fn* fn0 = reinterpret_cast<const Fn*>(pd0);
+      const Fn* fn1 = reinterpret_cast<const Fn*>(pd1);
+      return fn0->args.size() == fn1->args.size() && equivModOffset(fn0->t, fn1->t);
+    }
+  default:
+    assert(false && "Invalid type description, internal error");
+    return false;
+  }
 }
 
+}
 }
 
 #endif
