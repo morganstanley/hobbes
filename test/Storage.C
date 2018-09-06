@@ -50,6 +50,10 @@ static bool fileExists(const char* fileName) {
   }
 }
 
+static std::string mkFName() {
+  return uniqueFilename("/tmp/hdb-unittest", ".db");
+}
+
 TEST(Storage, uniqueFilenames) {
   // Create file1
   std::string file1 = uniqueFilename("/tmp/hfiles-unittest", ".log.staging");
@@ -82,10 +86,6 @@ TEST(Storage, uniqueFilenames) {
   // Clean up the files
   unlink(file3.c_str());
   unlink(file1.c_str());
-}
-
-static std::string mkFName() {
-  return uniqueFilename("/tmp/hdb-unittest", ".db");
 }
 
 TEST(Storage, Create) {

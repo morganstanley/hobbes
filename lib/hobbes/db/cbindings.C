@@ -24,7 +24,11 @@ struct DynCumFreqState {
   symbol  esc()         const { return static_cast<symbol>(symbolCount()); }
 
   struct CModel {
-    CModel() : symbols(0), indexes(0), cfreqs(0) {
+    CModel(uint8_t maxSym) : symbols(0), indexes(0), cfreqs(0) {
+      size_t n = static_cast<size_t>(maxSym) + 2; // one extra for the escape symbol
+      this->symbols = new symbol[n];
+      this->indexes = new index_t[n];
+      this->cfreqs  = new arithn::freq[n];
     }
     ~CModel() {
       delete[] this->symbols;
@@ -36,16 +40,6 @@ struct DynCumFreqState {
     symbol*       symbols;
     index_t*      indexes;
     arithn::freq* cfreqs;
-
-    void init(size_t symCount) {
-      delete[] this->symbols;
-      delete[] this->indexes;
-      delete[] this->cfreqs;
-
-      this->symbols = new symbol[symCount];
-      this->indexes = new index_t[symCount];
-      this->cfreqs  = new arithn::freq[symCount];
-    }
 
     arithn::code interval() const {
       return this->cfreqs[this->count];
@@ -82,9 +76,7 @@ struct DynCumFreqState {
 
 struct DynDModel0 : DynCumFreqState {
 public:
-  DynDModel0(imagefile* f, uint8_t maxSymbol) : DynCumFreqState(maxSymbol), f(f) {
-    this->cm.init(symbolCount());
-    this->pm.init(symbolCount());
+  DynDModel0(imagefile* f, uint8_t maxSymbol) : DynCumFreqState(maxSymbol), f(f), pm(maxSymbol), cm(maxSymbol) {
   }
   ~DynDModel0() {
   }
@@ -95,7 +87,10 @@ public:
   typedef typename CFS::CModel  CModel;
 
   struct PModel {
-    PModel() : freqs(0), activeFreqs(0), c(0) {
+    PModel(uint8_t maxSymbol) : freqs(0), activeFreqs(0), c(0) {
+      size_t n = static_cast<size_t>(maxSymbol) + 1;
+      this->freqs       = new arithn::freq[n];
+      this->activeFreqs = new arithn::freq[n];
     }
     ~PModel() {
       delete[] freqs;
@@ -105,15 +100,6 @@ public:
     arithn::freq* freqs;        // freq[symbolCount()]
     arithn::freq* activeFreqs;  // freq[symbolCount()]
     arithn::freq  c;
-
-    void init(size_t symCount) {
-      delete[] freqs;
-      delete[] activeFreqs;
-
-      this->freqs       = new arithn::freq[symCount];
-      this->activeFreqs = new arithn::freq[symCount];
-      this->c           = 0;
-    }
   };
 
   imagefile* f;
@@ -183,10 +169,11 @@ public:
 
   void add(symbol s) {
     if (PRIV_HCFREGION_UNLIKELY(this->pm.c == arithn::fmax)) {
-      memcpy(this->pm.activeFreqs, this->pm.freqs, sizeof(this->pm.freqs[0])*symbolCount());
+      size_t fsz = sizeof(this->pm.freqs[0]) * symbolCount();
+      memcpy(this->pm.activeFreqs, this->pm.freqs, fsz);
       initWithState();
+      memset(this->pm.freqs, 0, fsz);
       this->pm.c = 0;
-      memset(this->pm.freqs, 0, sizeof(this->pm.freqs[0])*symbolCount());
     }
     ++this->pm.freqs[s];
     ++this->pm.c;
