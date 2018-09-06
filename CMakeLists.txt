@@ -60,4 +60,3 @@ target_link_libraries(hog hobbes ncurses ${sys_libs})
 install(TARGETS hobbes hobbes-pic DESTINATION "lib")
 install(TARGETS hi hog DESTINATION "bin")
 install(DIRECTORY "include/hobbes" DESTINATION "include")
-
