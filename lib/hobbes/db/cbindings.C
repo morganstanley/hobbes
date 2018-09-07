@@ -218,6 +218,8 @@ public:
 
   bool step() {
     if (this->readState.buffer) {
+      ++this->readState.count;
+
       bool f = false;
       while (this->readState.count >= this->readState.buffer->count) {
         if (!loadNextNode()) {
@@ -225,11 +227,14 @@ public:
         }
         f = true;
       }
-      ++this->readState.count;
       return f;
     } else {
       return false;
     }
+  }
+
+  bool skipPage() {
+    return loadNextNode();
   }
 
   size_t fileRef() const {
@@ -371,13 +376,14 @@ void initCStorageFileDefs(FieldVerifier* fv, cc& c) {
   c.bind("ddmInit",    memberfn(&DynDModel0::init));
   c.bind("ddmDestroy", &destroyDynDModel0);
 
-  c.bind("ucReaderMake",    &makeUCReader);
-  c.bind("ucReaderStep",    memberfn(&UCReader::step));
-  c.bind("ucReaderEOF",     memberfn(&UCReader::eof));
-  c.bind("ucReaderFileRef", memberfn(&UCReader::fileRef));
-  c.bind("ucReaderModel",   memberfn(&UCReader::currentInitModel));
-  c.bind("ucReaderRead",    memberfn(&UCReader::read));
-  c.bind("ucReaderDestroy", &destroyUCReader);
+  c.bind("ucReaderMake",     &makeUCReader);
+  c.bind("ucReaderStep",     memberfn(&UCReader::step));
+  c.bind("ucReaderSkipPage", memberfn(&UCReader::skipPage));
+  c.bind("ucReaderEOF",      memberfn(&UCReader::eof));
+  c.bind("ucReaderFileRef",  memberfn(&UCReader::fileRef));
+  c.bind("ucReaderModel",    memberfn(&UCReader::currentInitModel));
+  c.bind("ucReaderRead",     memberfn(&UCReader::read));
+  c.bind("ucReaderDestroy",  &destroyUCReader);
 
   c.bind("ucWriterMake",      &makeUCWriter);
   c.bind("ucWriterStep",      memberfn(&UCWriter::step));

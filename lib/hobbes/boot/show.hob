@@ -187,15 +187,15 @@ instance (Array cs char) => Print cs where
 instance (Array bs byte) => Print bs where
   print bs = print(bs[0:])
 
-printArray :: (Array as a, Print a) => (as, long) -> ()
+printArray :: (Print a) => ([a], long) -> ()
 printArray xs i =
-  if (i == size(xs)) then
+  if (i == length(xs)) then
     ()
   else
-    do { putStr(", "); print(element(xs, i)); printArray(xs, i+1); }
+    do { putStr(", "); print(xs[i]); printArray(xs, i+1L); }
 
 instance (Array as a, Print a) => Print as where
-  print xs = if (size(xs)==0) then putStr("[]") else do { putStr("["); print(element(xs, 0L)); printArray(xs, 1L); putStr("]"); }
+  print xs = let n=size(xs) in if (n==0) then putStr("[]") else do { putStr("["); axs=elements(xs, 0L, n); print(axs[0]); printArray(axs, 1L); putStr("]"); }
 
 // print lists of things
 instance (Print a) => Print (^x.(()+(a*x))) where

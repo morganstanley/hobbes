@@ -286,7 +286,20 @@ ucRootTakeNStep r dm n x i =
     }
 
 ucRootTakeN :: (UCRead t sm dm) => (<hobbes.UCReader>, dm, long) -> [t]
-ucRootTakeN r dm n = ucRootTakeNStep(r, dm, n, newArray(n), 0L)
+ucRootTakeN r dm n = if (n==0) then [] else ucRootTakeNStep(r, dm, n, newArray(n), 0L)
+
+ucRootDropN :: (UCRead t sm dm) => (<hobbes.UCReader>, dm, long) -> [t]
+ucRootDropN r dm n =
+  if (ucReaderEOF(r) or n <= 0) then
+    ([]::[t])
+  else do {
+    ucRead(r,dm)::t;
+    if (ucReaderStep(r)) then
+      (ucPrepModelTop::(UCModelTop t sm dm)=>(_,dm)->())(r, dm)
+    else
+      ();
+    return ucRootDropN(r, dm, n-1L)
+  }
 
 cseqTakeN :: (UCRead t sm dm) => ((file () ()), (cseq t sm n), long) -> [t]
 cseqTakeN f s k = do {
@@ -300,13 +313,42 @@ cseqTakeN f s k = do {
   return x
 }
 
+ucReaderSeek r n =
+  if (n <= 0) then
+    true
+  else
+    (ucReaderSkipPage(r) and ucReaderSeek(r, n-1))
+
+cseqReadFromTo :: (UCRead t sm dm) => ((file () ()), (cseq t sm n), long, long) -> [t]
+cseqReadFromTo f s i e = do {
+  n  = cseqBatchSize(s);
+  r  = ucReaderMake(unsafeCast(f), unsafeCast(s), n);
+  dm = (ucAllocModel::(UCModel t sm dm)=>_)(unsafeCast(f));
+
+  x =
+    if (not(ucReaderSeek(r, i/n))) then
+      []
+    else do {
+      (ucPrepModelTop::(UCModelTop t sm dm)=>(_,dm)->())(r, dm);
+      ucRootDropN(r, dm, i%n)::[t];
+      return ucRootTakeN(r, dm, e-i)
+    };
+
+  (ucDeallocModel::(UCModel t sm dm)=>_)(dm);
+  ucReaderDestroy(r);
+
+  return (x::[t])
+}
+
 class CSeqLength t where
   cseqLength :: t -> long
 instance CSeqLength (cseq t sm n) where
   cseqLength s = sum(toArray(flMap(\n.load(n).count, s.t)))
 
-instance (UCRead t sm _) => ArrayView (cseq t sm _) [t] where
-  openArrayView s = cseqTakeN(unsafeCast(file(s.t)), s, cseqLength(s))
+instance (UCRead t sm dm) => Array (cseq t sm n) t where
+  size     s     = cseqLength(s)
+  element  s i   = cseqReadFromTo(unsafeCast(file(s.t)), s, i, i+1L)[0]
+  elements s i e = cseqReadFromTo(unsafeCast(file(s.t)), s, i, e)
 
 // put a sequence of values
 ucRootPutN :: (UCWrite t sm dm) => (<hobbes.UCWriter>, dm, [t], long) -> ()
@@ -332,9 +374,9 @@ initCSeq f = unsafeCast(pstore(f, nothing::(()+(long*long))))
 instance SeqDesc (cseq t _ _) "cseq" t
 
 instance Map f c a r "cseq" (cseq a _ _) "array" [r] where
-  fmap f xs = fmap(f, openArrayView(xs))
+  fmap f xs = fmap(f, xs[0:])
 instance FilterMap p pc f c a r "cseq" (cseq a _ _) "array" [r] where
-  ffilterMap p f xs = ffilterMap(p, f, openArrayView(xs))
+  ffilterMap p f xs = ffilterMap(p, f, xs[0:])
 instance FilterMMap f c a r "cseq" (cseq a _ _) "array" [r] where
-  ffilterMMap f xs = ffilterMMap(f, openArrayView(xs))
+  ffilterMMap f xs = ffilterMMap(f, xs[0:])
 
