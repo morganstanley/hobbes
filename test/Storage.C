@@ -115,7 +115,7 @@ DEFINE_STRUCT(SeriesTest,
   (const array<char>*, z)
 );
 
-TEST(Storage, SeriesAPI) {
+TEST(Storage, RawSeriesAPI) {
   std::string fname = mkFName();
   try {
     // make sure that we can write struct data through the series API correctly
@@ -142,6 +142,32 @@ TEST(Storage, SeriesAPI) {
       ss(st);
     }
     EXPECT_TRUE(c().compileFn<bool()>("[x|{x=x}<-f.series_test][:0] == [0..4]")());
+
+    unlink(fname.c_str());
+  } catch (...) {
+    unlink(fname.c_str());
+    throw;
+  }
+}
+
+TEST(Storage, CSeriesAPI) {
+  std::string fname = mkFName();
+  try {
+    // make sure that we can write struct data through the series API correctly
+    writer f(fname);
+    series<SeriesTest> ss(&c(), &f, "series_test", 100, StoredSeries::Compressed);
+
+    for (size_t i = 0; i < 10; ++i) {
+      SeriesTest st;
+      st.x = i;
+      st.y = 3.14159 * static_cast<double>(i);
+      st.z = makeString("string_" + str::from(i));
+      ss(st);
+    }
+
+    hobbes::cc c;
+    c.define("cf", "inputFile :: (LoadFile \"" + fname + "\" w) => w");
+    EXPECT_TRUE(c.compileFn<bool()>("[x|{x=x}<-cf.series_test] == [0..9]")());
 
     unlink(fname.c_str());
   } catch (...) {

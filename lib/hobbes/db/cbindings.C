@@ -1,7 +1,6 @@
 
 #include <hobbes/db/cbindings.H>
 #include <hobbes/db/file.H>
-#include <hobbes/cfregion.H>
 
 using namespace hobbes::fregion;
 
@@ -295,76 +294,60 @@ void destroyUCReader(UCReader* r) {
 }
 
 // write a compressed series of values
-class UCWriter {
-public:
-  UCWriter(size_t fileRefVal, size_t root, size_t batchSize, size_t modelSize) : fileRefVal(fileRefVal), batchSize(batchSize), modelSize(modelSize), out(reinterpret_cast<writer*>(fileRefVal)->fileData()) {
-    // load the head batch and initialize from it
-    this->scratchModelRef = this->out.initFromRoot(root, modelSize);
-    this->scratchModel    = reinterpret_cast<uint8_t*>(mapFileData(this->out.file, this->scratchModelRef, this->modelSize));
-  }
+UCWriter::UCWriter(writer* f, size_t root, size_t batchSize, size_t modelSize) : batchSize(batchSize), modelSize(modelSize), out(f->fileData()) {
+  // load the head batch and initialize from it
+  this->scratchModelRef = this->out.initFromRoot(root, modelSize);
+  this->scratchModel    = reinterpret_cast<uint8_t*>(mapFileData(this->out.file, this->scratchModelRef, this->modelSize));
+}
 
-  void write(DynDModel0* dm, uint8_t c) {
-    arithn::code clow, chigh;
-    if (dm->cm.find(c, &clow, &chigh)) {
+void UCWriter::write(DynDModel0* dm, uint8_t c) {
+  arithn::code clow, chigh;
+  if (dm->cm.find(c, &clow, &chigh)) {
+    this->out.write(clow, chigh, dm->cm.interval());
+  } else {
+    if (dm->cm.find(dm->esc(), &clow, &chigh)) {
       this->out.write(clow, chigh, dm->cm.interval());
-    } else {
-      if (dm->cm.find(dm->esc(), &clow, &chigh)) {
-        this->out.write(clow, chigh, dm->cm.interval());
-      }
-      auto escRange = dm->symbolCount();
-      this->out.write(static_cast<arithn::code>(c), static_cast<arithn::code>(c)+1, escRange);
     }
-    dm->add(c);
+    auto escRange = dm->symbolCount();
+    this->out.write(static_cast<arithn::code>(c), static_cast<arithn::code>(c)+1, escRange);
   }
+  dm->add(c);
+}
 
-  bool step() {
-    ++this->out.buffer->count;
+bool UCWriter::step() {
+  ++this->out.buffer->count;
 
-    if (this->out.buffer->count < this->batchSize) {
-      return false;
-    } else {
-      this->out.flush();
+  if (this->out.buffer->count < this->batchSize) {
+    return false;
+  } else {
+    this->out.flush();
 
-      // allocate/initialize the model for this bitstream segment (from the terminal state of the scratch model for the previous segment)
-      uint64_t newScratchModelRef = findSpace(this->out.file, pagetype::data, this->modelSize, sizeof(size_t));
-      uint8_t* newScratchModel    = reinterpret_cast<uint8_t*>(mapFileData(this->out.file, newScratchModelRef, this->modelSize));
-      memcpy(newScratchModel, this->scratchModel, this->modelSize);
-      unmapFileData(this->out.file, this->scratchModel, this->modelSize);
+    // allocate/initialize the model for this bitstream segment (from the terminal state of the scratch model for the previous segment)
+    uint64_t newScratchModelRef = findSpace(this->out.file, pagetype::data, this->modelSize, sizeof(size_t));
+    uint8_t* newScratchModel    = reinterpret_cast<uint8_t*>(mapFileData(this->out.file, newScratchModelRef, this->modelSize));
+    memcpy(newScratchModel, this->scratchModel, this->modelSize);
+    unmapFileData(this->out.file, this->scratchModel, this->modelSize);
 
-      this->scratchModel = newScratchModel;
+    this->scratchModel = newScratchModel;
 
-      // start a fresh batch whose init model is the final state of the previous batch
-      this->out.stepBuffer(this->scratchModelRef, newScratchModelRef);
-      this->scratchModelRef = newScratchModelRef;
+    // start a fresh batch whose init model is the final state of the previous batch
+    this->out.stepBuffer(this->scratchModelRef, newScratchModelRef);
+    this->scratchModelRef = newScratchModelRef;
 
-      return true;
-    }
+    return true;
   }
+}
 
-  size_t currentInitModel() const {
-    return this->out.buffer->initModel;
-  }
+size_t UCWriter::currentInitModel() const {
+  return this->out.buffer->initModel;
+}
 
-  uint8_t* currentInitModelData() const {
-    return this->scratchModel;
-  }
-
-  size_t fileRef() const {
-    return this->fileRefVal;
-  }
-private:
-  size_t   fileRefVal;
-  size_t   batchSize;
-  size_t   modelSize;
-
-  uint64_t scratchModelRef;
-  uint8_t* scratchModel;
-
-  cwbitstream out;
-};
+uint8_t* UCWriter::currentInitModelData() const {
+  return this->scratchModel;
+}
 
 UCWriter* makeUCWriter(size_t fileRef, size_t node, size_t batchSize, size_t modelSize) {
-  return new UCWriter(fileRef, node, batchSize, modelSize);
+  return new UCWriter(reinterpret_cast<writer*>(fileRef), node, batchSize, modelSize);
 }
 void destroyUCWriter(UCWriter* w) {
   delete w;
@@ -387,7 +370,6 @@ void initCStorageFileDefs(FieldVerifier* fv, cc& c) {
 
   c.bind("ucWriterMake",      &makeUCWriter);
   c.bind("ucWriterStep",      memberfn(&UCWriter::step));
-  c.bind("ucWriterFileRef",   memberfn(&UCWriter::fileRef));
   c.bind("ucWriterModel",     memberfn(&UCWriter::currentInitModel));
   c.bind("ucWriterModelData", memberfn(&UCWriter::currentInitModelData));
   c.bind("ucWriterWrite",     memberfn(&UCWriter::write));
