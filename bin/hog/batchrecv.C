@@ -190,8 +190,8 @@ void runRecvConnection(SessionGroup* sg, NetConnection* pc, std::string dir) {
   }
 }
 
-void runRecvServer(std::unique_ptr<NetServer> server, std::string dir, bool consolidate) {
-  SessionGroup* sg = makeSessionGroup(consolidate);
+void runRecvServer(std::unique_ptr<NetServer> server, std::string dir, bool consolidate, hobbes::StoredSeries::StorageMode sm) {
+  SessionGroup* sg = makeSessionGroup(consolidate, sm);
   std::vector<std::thread> cthreads;
 
   while (true) {
@@ -205,15 +205,15 @@ void runRecvServer(std::unique_ptr<NetServer> server, std::string dir, bool cons
   }
 }
 
-std::thread pullRemoteDataT(const std::string& dir, const std::string& listenport, bool consolidate) {
+std::thread pullRemoteDataT(const std::string& dir, const std::string& listenport, bool consolidate, hobbes::StoredSeries::StorageMode sm) {
   return std::thread([=](){
-    runRecvServer(createNetServer(listenport), dir, consolidate);
+    runRecvServer(createNetServer(listenport), dir, consolidate, sm);
   });
 }
 
-bool pullRemoteData(const std::string& dir, const std::string& listenport, bool consolidate) {
+bool pullRemoteData(const std::string& dir, const std::string& listenport, bool consolidate, hobbes::StoredSeries::StorageMode sm) {
   try {
-    auto recvThread = pullRemoteDataT(dir, listenport, consolidate);
+    auto recvThread = pullRemoteDataT(dir, listenport, consolidate, sm);
     return true;
   } catch (std::exception& ex) {
     out() << "failed to run receive server @ " << listenport << ": " << ex.what() << std::endl;
