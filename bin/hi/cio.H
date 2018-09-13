@@ -36,27 +36,29 @@ bool extConsoleCmdsEnabled();
 
 extern ConsoleColors colors;
 
+inline char cchar(uint8_t x) { return static_cast<char>(x); }
+
 inline void sendCmd(std::ostream& out, char c) {
   if (extConsoleCmdsEnabled()) {
-    out << (char)0x1B << '[' << c << std::flush;
+    out << cchar(0x1B) << '[' << c << std::flush;
   }
 }
 
 inline void sendCmd(std::ostream& out, int n0, char c) {
   if (extConsoleCmdsEnabled()) {
-    out << (char)0x1B << '[' << n0 << c << std::flush;
+    out << cchar(0x1B) << '[' << n0 << c << std::flush;
   }
 }
 
 inline void sendCmd(std::ostream& out, int n0, int n1, char c) {
   if (extConsoleCmdsEnabled()) {
-    out << (char)0x1B << '[' << n0 << ';' << n1 << c << std::flush;
+    out << cchar(0x1B) << '[' << n0 << ';' << n1 << c << std::flush;
   }
 }
 
 inline void sendCmd(std::ostream& out, int n0, int n1, int n2, char c) {
   if (extConsoleCmdsEnabled()) {
-    out << (char)0x1B << '[' << n0 << ';' << n1 << ';' << n2 << c << std::flush;
+    out << cchar(0x1B) << '[' << n0 << ';' << n1 << ';' << n2 << c << std::flush;
   }
 }
 
@@ -87,7 +89,7 @@ struct setfgc {
 };
 
 inline std::ostream& operator<<(std::ostream& lhs, const setfgc& c) {
-  sendCmd(lhs, 38, 5, (int)c.x, 'm');
+  sendCmd(lhs, 38, 5, static_cast<int>(c.x), 'm');
   return lhs;
 }
 
@@ -97,7 +99,7 @@ struct setbgc {
 };
 
 inline std::ostream& operator<<(std::ostream& lhs, const setbgc& c) {
-  sendCmd(lhs, 48, 5, (int)c.x, 'm');
+  sendCmd(lhs, 48, 5, static_cast<int>(c.x), 'm');
   return lhs;
 }
 

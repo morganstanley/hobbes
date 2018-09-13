@@ -97,7 +97,7 @@ struct DBFLUnqualify : public switchExprTyFn {
       if (const TApp* ap = is<TApp>(fref.ref)) {
         if (const Prim* f = is<Prim>(ap->fn())) {
           if (f->name() == "fileref" && ap->args().size() == 2) {
-            if (const TLong* idr = is<TLong>(ap->args()[0])) {
+            if (is<TLong>(ap->args()[0])) {
               valid = true;
             }
           }

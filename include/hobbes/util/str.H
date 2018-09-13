@@ -120,7 +120,7 @@ template <typename Char>
     size_t end   = 0;
 
     for (size_t i = 0; i < s.size(); ++i) {
-      int c = (int)s[i];
+      int c = static_cast<int>(s[i]);
       if (!std::isspace(c) && c != 0) {
         begin = i;
         break;
@@ -129,7 +129,7 @@ template <typename Char>
 
     // finally, find the last non-whitespace character
     for (size_t i = s.size(); i > 0; --i) {
-      int c = (int)s[i-1];
+      int c = static_cast<int>(s[i-1]);
       if (!std::isspace(c) && c != 0) {
         end = i;
         break;
@@ -158,7 +158,7 @@ template <typename Char>
   }
 
 template <typename Char>
-  std::basic_string<Char> trimq(const std::basic_string<Char>& s, Char q = (Char)'"') {
+  std::basic_string<Char> trimq(const std::basic_string<Char>& s, Char q = static_cast<Char>('"')) {
     if (s.size() == 0) {
       return s;
     } else if (s.size() == 1) {

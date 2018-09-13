@@ -253,7 +253,7 @@ const cstr* formatJSTime(long x) {
   int64_t us = x % (1000 * 1000);
 
   char b[100];
-  strftime(b, sizeof(b), "%Y-%m-%d %H:%M:%S.", localtime((time_t*)&s));
+  strftime(b, sizeof(b), "%Y-%m-%d %H:%M:%S.", localtime(reinterpret_cast<time_t*>(&s)));
 
   return hobbes::makeString(b + hobbes::str::from(us));
 }
@@ -464,7 +464,7 @@ void WWWServer::evalHTTPRequest(const hobbes::HTTPRequest& req, int fd, void* ud
   fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) & ~O_NONBLOCK);
 
   // evaluate it
-  ((WWWServer*)ud)->eval(req, fd);
+  reinterpret_cast<WWWServer*>(ud)->eval(req, fd);
 }
 
 std::string WWWServer::mimeType(const std::string& fpath) {

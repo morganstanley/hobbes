@@ -33,14 +33,14 @@ class TClass : public Unqualifier, public LexicallyAnnotated {
 public:
   typedef std::map<std::string, MonoTypePtr> Members;
 
-  TClass(const Constraints& reqs, const std::string& tcname, int tvs, const Members& tcmembers, const LexicalAnnotation&);
-  TClass(const Constraints& reqs, const std::string& tcname, int tvs, const Members& tcmembers, const FunDeps& fundeps, const LexicalAnnotation&);
-  TClass(const std::string& tcname, int tvs, const Members& tcmembers, const LexicalAnnotation&);
-  TClass(const std::string& tcname, int tvs, const Members& tcmembers, const FunDeps& fundeps, const LexicalAnnotation&);
+  TClass(const Constraints& reqs, const std::string& tcname, size_t tvs, const Members& tcmembers, const LexicalAnnotation&);
+  TClass(const Constraints& reqs, const std::string& tcname, size_t tvs, const Members& tcmembers, const FunDeps& fundeps, const LexicalAnnotation&);
+  TClass(const std::string& tcname, size_t tvs, const Members& tcmembers, const LexicalAnnotation&);
+  TClass(const std::string& tcname, size_t tvs, const Members& tcmembers, const FunDeps& fundeps, const LexicalAnnotation&);
 
   const std::string& name() const;
   const Constraints& constraints() const;
-  int typeVars() const;
+  size_t typeVars() const;
   const Members& members() const;
   const FunDeps& deps() const;
 
@@ -79,7 +79,7 @@ private:
   typedef type_map<TCInstanceFns> TCInstFnDB;
 
   std::string   tcname;
-  int           tvs;
+  size_t        tvs;
   Constraints   reqs;
   Members       tcmembers;
   FunDeps       fundeps;

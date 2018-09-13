@@ -27,7 +27,7 @@ region::~region() {
 void* region::malloc(size_t sz) {
   size_t nr = this->usedp->read + sz;
   if (nr <= this->usedp->size) {
-    void* result = ((unsigned char*)this->usedp->base) + this->usedp->read;
+    void* result = reinterpret_cast<unsigned char*>(this->usedp->base) + this->usedp->read;
     this->usedp->read = nr;
     return result;
   } else {
@@ -113,7 +113,7 @@ size_t region::wasted() const {
 }
 
 std::string showPage(mempage* p) {
-  return "{sz=" + str::showDataSize(p->size) + ",read=" + str::showDataSize(p->read) + ",base=" + str::from((void*)p->base) + "}";
+  return "{sz=" + str::showDataSize(p->size) + ",read=" + str::showDataSize(p->read) + ",base=" + str::from(reinterpret_cast<void*>(p->base)) + "}";
 }
 
 std::string showPages(mempage* ps) {

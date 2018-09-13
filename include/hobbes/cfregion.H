@@ -121,14 +121,14 @@ struct cwbitstream {
 
     // the latest buffer is directly accessible in the initial node
     static constexpr size_t dsize = 3*sizeof(size_t);
-    size_t* d = (size_t*)mapFileData(this->file, rootNode, dsize);
-    this->buffer = (cbatch*)mapFileData(this->file, d[1], sizeof(cbatch));
+    size_t* d = reinterpret_cast<size_t*>(mapFileData(this->file, rootNode, dsize));
+    this->buffer = reinterpret_cast<cbatch*>(mapFileData(this->file, d[1], sizeof(cbatch)));
     unmapFileData(this->file, d, dsize);
 
     // seek to the end of the bitstream
-    this->seg = (cbatchseg*)mapFileData(this->file, this->buffer->headBitBuffer, sizeof(cbatchseg));
+    this->seg = reinterpret_cast<cbatchseg*>(mapFileData(this->file, this->buffer->headBitBuffer, sizeof(cbatchseg)));
     while (this->seg->nextRef != 0) {
-      auto* nextSeg = (cbatchseg*)mapFileData(this->file, this->seg->nextRef, sizeof(cbatchseg));
+      auto* nextSeg = reinterpret_cast<cbatchseg*>(mapFileData(this->file, this->seg->nextRef, sizeof(cbatchseg)));
       unmapFileData(this->file, this->seg, sizeof(cbatchseg));
       this->seg = nextSeg;
     }
@@ -140,7 +140,7 @@ struct cwbitstream {
   // start a new segment within the current batch
   void stepSegment() {
     this->seg->nextRef = findSpace(this->file, pagetype::data, sizeof(cbatchseg), sizeof(size_t));
-    cbatchseg* newseg = (cbatchseg*)mapFileData(this->file, this->seg->nextRef, sizeof(cbatchseg));
+    cbatchseg* newseg = reinterpret_cast<cbatchseg*>(mapFileData(this->file, this->seg->nextRef, sizeof(cbatchseg)));
     unmapFileData(this->file, this->seg, sizeof(cbatchseg));
     this->seg = newseg;
     this->buffer->bitIndex = 0;
@@ -156,7 +156,7 @@ struct cwbitstream {
     // allocate and initialize a new buffer
     auto batchRef = findSpace(this->file, pagetype::data, sizeof(cbatch), sizeof(size_t));
 
-    this->buffer                = (cbatch*)mapFileData(this->file, batchRef, sizeof(cbatch));
+    this->buffer                = reinterpret_cast<cbatch*>(mapFileData(this->file, batchRef, sizeof(cbatch)));
     this->buffer->initModel     = initModel;
     this->buffer->scratchModel  = scratchModel;
     this->buffer->low           = 0;
@@ -165,12 +165,12 @@ struct cwbitstream {
     this->buffer->bitIndex      = 0;
     this->buffer->count         = 0;
     this->buffer->headBitBuffer = findSpace(this->file, pagetype::data, sizeof(cbatchseg), sizeof(size_t));
-    this->seg                   = (cbatchseg*)mapFileData(this->file, this->buffer->headBitBuffer, sizeof(cbatchseg));
+    this->seg                   = reinterpret_cast<cbatchseg*>(mapFileData(this->file, this->buffer->headBitBuffer, sizeof(cbatchseg)));
 
     // allocate a new node to hold this new batch
     size_t  dsize = 3 * sizeof(size_t);
     size_t  dloc  = findSpace(this->file, pagetype::data, dsize, sizeof(size_t));
-    size_t* d     = (size_t*)mapFileData(this->file, dloc, dsize);
+    size_t* d     = reinterpret_cast<size_t*>(mapFileData(this->file, dloc, dsize));
 
     d[0] = 1;
     d[1] = batchRef;
@@ -329,7 +329,7 @@ struct crbitstream {
   // the file to read out of
   imagefile* file;
 
-  crbitstream(imagefile* file) : file(file) {
+  crbitstream(imagefile* file) : file(file), low(0), high(arithn::cmax) {
   }
 
   // the current batch and segment we're compressing out of
@@ -350,7 +350,7 @@ struct crbitstream {
   // read bits
   bool getbit() {
     if (this->bitIndex == csegm::maxBits) {
-      this->seg      = (cbatchseg*)mapFileData(this->file, this->seg->nextRef, sizeof(cbatchseg));
+      this->seg      = reinterpret_cast<cbatchseg*>(mapFileData(this->file, this->seg->nextRef, sizeof(cbatchseg)));
       this->bitIndex = 0;
     }
     bool bit = this->seg->bits[this->bitIndex>>3]&(1<<((this->bitIndex)%8));
@@ -365,7 +365,7 @@ struct crbitstream {
     this->count    = 0;
     this->bitIndex = 0;
     this->buffer   = b;
-    this->seg      = (cbatchseg*)mapFileData(this->file, b->headBitBuffer, sizeof(cbatchseg));
+    this->seg      = reinterpret_cast<cbatchseg*>(mapFileData(this->file, b->headBitBuffer, sizeof(cbatchseg)));
 
     for (arithn::code k = 0; k < arithn::cbits; ++k) {
       this->value <<= 1;
@@ -425,8 +425,8 @@ template <uint8_t maxSymbol>
     typedef uint16_t index_t;
     typedef uint16_t symbol;
 
-    static constexpr index_t symbolCount = ((index_t)maxSymbol)+1;
-    static constexpr symbol  esc         = ((symbol)symbolCount);
+    static constexpr index_t symbolCount = static_cast<index_t>(maxSymbol)+1;
+    static constexpr symbol  esc         = static_cast<symbol>(symbolCount);
 
     typedef symbol       symbols[symbolCount+1];
     typedef index_t      indexes[symbolCount+1];
@@ -492,7 +492,7 @@ template <uint8_t maxSymbol = 0xff>
 
     static void init(const PModel& pm, CModel* cm) {
       // get symbol frequencies in decreasing order
-      std::vector<index_t> idxs(((index_t)maxSymbol)+1);
+      std::vector<index_t> idxs(static_cast<index_t>(maxSymbol)+1);
       std::iota(idxs.begin(), idxs.end(), 0);
       std::stable_sort(idxs.begin(), idxs.end(), [&](index_t i0, index_t i1) { return pm.activeFreqs[i0] > pm.activeFreqs[i1]; });
 
@@ -503,9 +503,9 @@ template <uint8_t maxSymbol = 0xff>
       for (size_t k = 0; k < idxs.size(); ++k) {
         index_t i = idxs[k];
         if (pm.activeFreqs[i] > 0) {
-          cm->symbols[cm->count]   = (symbol)i;
-          cm->indexes[(symbol)i]   = cm->count;
-          cm->cfreqs [cm->count+1] = cm->cfreqs[cm->count] + pm.activeFreqs[i];
+          cm->symbols[cm->count]                = static_cast<symbol>(i);
+          cm->indexes[static_cast<symbol>(i)]   = cm->count;
+          cm->cfreqs [cm->count+1]              = cm->cfreqs[cm->count] + pm.activeFreqs[i];
           ++cm->count;
         } else {
           // 0 symbol count means that we don't expect this symbol (or any symbols after)
@@ -529,7 +529,7 @@ template <uint8_t maxSymbol = 0xff>
       // map all 0-freq symbols to invalid indexes
       for (size_t k = zerosAt; k < idxs.size(); ++k) {
         index_t i = idxs[k];
-        cm->indexes[(symbol)i] = cm->count;
+        cm->indexes[static_cast<symbol>(i)] = cm->count;
       }
     }
 
@@ -564,14 +564,14 @@ template <uint8_t maxSym, typename AsSym>
     typedef typename M::CModel CModel;
     typedef typename M::symbol symbol;
 
-    static const arithn::code escRange = ((arithn::code)maxSym)+1;
+    static const arithn::code escRange = static_cast<arithn::code>(maxSym)+1;
 
     static void init(const PModel& pm, CModel* cm) {
       M::init(pm, cm);
     }
 
     static void write(cwbitstream* bits, PModel* pm, CModel* cm, AsSym s) {
-      uint8_t c = (uint8_t)s;
+      uint8_t c = static_cast<uint8_t>(s);
       arithn::code clow, chigh;
       if (M::find(cm, c, &clow, &chigh)) {
         bits->write(clow, chigh, M::interval(cm));
@@ -579,25 +579,25 @@ template <uint8_t maxSym, typename AsSym>
         if (M::find(cm, M::esc, &clow, &chigh)) {
           bits->write(clow, chigh, M::interval(cm));
         }
-        bits->write((arithn::code)c, ((arithn::code)c)+1, escRange);
+        bits->write(static_cast<arithn::code>(c), static_cast<arithn::code>(c)+1, escRange);
       }
       M::add(pm, cm, c);
     }
 
     static void read(crbitstream* rbits, PModel* pm, CModel* cm, AsSym* c) {
-      symbol s;
-      arithn::code clow, chigh;
+      symbol s=0;
+      arithn::code clow=0, chigh=0;
       M::find(cm, rbits->svalue(M::interval(cm)), &s, &clow, &chigh);
       rbits->shift(clow, chigh, M::interval(cm));
 
       if (s == M::esc) {
-        symbol nc = (symbol)rbits->svalue(escRange);
+        symbol nc = static_cast<symbol>(rbits->svalue(escRange));
         rbits->shift(nc, nc+1, escRange);
         M::add(pm, cm, nc);
-        *c = (AsSym)((uint8_t)nc);
+        *c = static_cast<AsSym>(static_cast<uint8_t>(nc));
       } else {
         M::add(pm, cm, s);
-        *c = (AsSym)((uint8_t)s);
+        *c = static_cast<AsSym>(static_cast<uint8_t>(s));
       }
     }
   };
@@ -625,14 +625,14 @@ template <typename T>
 
     static void write(cwbitstream* bits, PModel* pm, CModel* cm, T x) {
       for (size_t i = 0; i < sizeof(T); ++i) {
-        compress<uint8_t>::write(bits, &pm->pmodels[i], &cm->cmodels[i], ((const uint8_t*)&x)[i]);
+        compress<uint8_t>::write(bits, &pm->pmodels[i], &cm->cmodels[i], reinterpret_cast<const uint8_t*>(&x)[i]);
       }
     }
 
     static void read(crbitstream* rbits, PModel* pm, CModel* cm, T* x) {
       *x = 0;
       for (size_t i = 0; i < sizeof(T); ++i) {
-        compress<uint8_t>::read(rbits, &pm->pmodels[i], &cm->cmodels[i], ((uint8_t*)x)+i);
+        compress<uint8_t>::read(rbits, &pm->pmodels[i], &cm->cmodels[i], reinterpret_cast<uint8_t*>(x)+i);
       }
     }
   };
@@ -665,11 +665,11 @@ template <typename T, typename Exp, typename Val, Val ExpWidth, Val ValWidth>
     }
 
     static void write(cwbitstream* bits, PModel* pm, CModel* cm, T x) {
-      Val hx = *((Val*)&x);
+      Val hx = *(reinterpret_cast<Val*>(&x));
 
       CSign::write(bits, &pm->template at<0>(), &cm->template at<0>(), hx>>(ExpWidth+ValWidth));
-      CExp ::write(bits, &pm->template at<1>(), &cm->template at<1>(), ((((Val)1)<<ExpWidth)-((Val)1))&(hx>>ValWidth));
-      CVal ::write(bits, &pm->template at<2>(), &cm->template at<2>(), hx&((((Val)1)<<ValWidth)-((Val)1)));
+      CExp ::write(bits, &pm->template at<1>(), &cm->template at<1>(), ((static_cast<Val>(1)<<ExpWidth)-static_cast<Val>(1))&(hx>>ValWidth));
+      CVal ::write(bits, &pm->template at<2>(), &cm->template at<2>(), hx&((static_cast<Val>(1)<<ValWidth)-static_cast<Val>(1)));
     }
 
     static void read(crbitstream* rbits, PModel* pm, CModel* cm, T* x) {
@@ -681,8 +681,8 @@ template <typename T, typename Exp, typename Val, Val ExpWidth, Val ValWidth>
       CExp ::read(rbits, &pm->template at<1>(), &cm->template at<1>(), &exp);
       CVal ::read(rbits, &pm->template at<2>(), &cm->template at<2>(), &val);
 
-      val |= (((Val)(sig?1:0))<<(ExpWidth+ValWidth))|(((Val)exp)<<ValWidth);
-      *x = *((T*)&val);
+      val |= (static_cast<Val>(sig?1:0)<<(ExpWidth+ValWidth))|(static_cast<Val>(exp)<<ValWidth);
+      *x = *(reinterpret_cast<T*>(&val));
     }
   };
 
@@ -737,8 +737,8 @@ template <typename U, typename V>
     typedef typename compress<TT>::CModel CModel;
 
     static void init(const PModel& pm, CModel* cm)                            { compress<TT>::init(pm, cm); }
-    static void write(cwbitstream* bits,  PModel* pm, CModel* cm, const T& t) { compress<TT>::write(bits, pm, cm, *((const TT*)&t)); }
-    static void read (crbitstream* rbits, PModel* pm, CModel* cm, T* t)       { compress<TT>::read(rbits, pm, cm, *((TT*)&t));       }
+    static void write(cwbitstream* bits,  PModel* pm, CModel* cm, const T& t) { compress<TT>::write(bits, pm, cm, *reinterpret_cast<const TT*>(&t)); }
+    static void read (crbitstream* rbits, PModel* pm, CModel* cm, T* t)       { compress<TT>::read(rbits, pm, cm,  reinterpret_cast<TT*>(&t));       }
   };
 
 template <typename T>
@@ -748,8 +748,8 @@ template <typename T>
     typedef typename compress<TT>::CModel CModel;
 
     static void init(const PModel& pm, CModel* cm)                            { compress<TT>::init(pm, cm); }
-    static void write(cwbitstream* bits,  PModel* pm, CModel* cm, const T& t) { compress<TT>::write(bits, pm, cm, *((const TT*)&t)); }
-    static void read (crbitstream* rbits, PModel* pm, CModel* cm, T* t)       { compress<TT>::read(rbits, pm, cm,        ((TT*) t)); }
+    static void write(cwbitstream* bits,  PModel* pm, CModel* cm, const T& t) { compress<TT>::write(bits, pm, cm, *reinterpret_cast<const TT*>(&t)); }
+    static void read (crbitstream* rbits, PModel* pm, CModel* cm, T* t)       { compress<TT>::read(rbits, pm, cm,  reinterpret_cast<TT*>(t)); }
   };
 
 // compress strings and arrays
@@ -793,7 +793,7 @@ template <size_t C, typename P = void>
   struct compressEnum {
   };
 template <size_t C>
-  struct compressEnum<C, typename tbool<(C < 256)>::type> : public compressFixedSet<((uint8_t)C)-1, uint8_t> {
+  struct compressEnum<C, typename tbool<(C < 256)>::type> : public compressFixedSet<static_cast<uint8_t>(C)-1, uint8_t> {
     typedef uint8_t element;
   };
 
@@ -808,12 +808,12 @@ template <typename T>
       R::init(pm, cm);
     }
     static void write(cwbitstream* bits, PModel* pm, CModel* cm, T c) {
-      R::write(bits, pm, cm, (element)c.value);
+      R::write(bits, pm, cm, static_cast<element>(c.value));
     }
     static void read(crbitstream* rbits, PModel* pm, CModel* cm, T* c) {
       element ce = 0;
       R::read(rbits, pm, cm, &ce);
-      c->value = (typename T::Enum)((uint32_t)ce);
+      c->value = static_cast<typename T::Enum>(static_cast<uint32_t>(ce));
     }
   };
 
@@ -858,7 +858,7 @@ template <typename ... Ctors>
       PayloadReflect::init(pm.second, &cm->second);
     }
     static void write(cwbitstream* bits, PModel* pm, CModel* cm, const variant<Ctors...>& t) {
-      TagC::write(bits, &pm->first, &cm->first, (TagElement)t.unsafeTag());
+      TagC::write(bits, &pm->first, &cm->first, static_cast<TagElement>(t.unsafeTag()));
       t.template apply<void, variantCompressor, PayloadModels, cwbitstream*, PayloadPModel*, PayloadCModel*>(bits, &pm->second, &cm->second);
     }
     static void read(crbitstream* rbits, PModel* pm, CModel* cm, variant<Ctors...>* t) {
@@ -876,8 +876,8 @@ template <typename T>
     typedef typename compress<VT>::CModel CModel;
 
     static void init(const PModel& pm, CModel* cm)                            { compress<VT>::init(pm, cm); }
-    static void write(cwbitstream* bits,  PModel* pm, CModel* cm, const T& t) { compress<VT>::write(bits, pm, cm, *((const VT*)&t)); }
-    static void read (crbitstream* rbits, PModel* pm, CModel* cm, T* t)       { compress<VT>::read(rbits, pm, cm,        ((VT*) t)); }
+    static void write(cwbitstream* bits,  PModel* pm, CModel* cm, const T& t) { compress<VT>::write(bits, pm, cm, *reinterpret_cast<const VT*>(&t)); }
+    static void read (crbitstream* rbits, PModel* pm, CModel* cm, T* t)       { compress<VT>::read(rbits, pm, cm,  reinterpret_cast<VT*>(t)); }
   };
 
 /*******************************************************
@@ -893,7 +893,7 @@ inline ty::desc storedBitSeqType() {
   ty::desc bt = store<cbatchseg>::storeType();
 
   if (bt->tid == PRIV_HPPF_TYCTOR_STRUCT) {
-    ty::Struct* s = (ty::Struct*)bt.get();
+    ty::Struct* s = reinterpret_cast<ty::Struct*>(bt.get());
     size_t pc = 0;
 
     for (auto& f : s->fields) {
@@ -916,7 +916,7 @@ inline ty::desc storedCompressedSeqTypeDef(const ty::desc& t, const ty::desc& mo
   ty::desc bt = store<cbatch>::storeType();
 
   if (bt->tid == PRIV_HPPF_TYCTOR_STRUCT) {
-    ty::Struct* s = (ty::Struct*)bt.get();
+    ty::Struct* s = reinterpret_cast<ty::Struct*>(bt.get());
     size_t pc = 0;
 
     for (auto& f : s->fields) {
@@ -955,12 +955,12 @@ inline size_t inferCompressedBatchSize(const bytes& bs) {
   ty::desc t = ty::decode(bs);
 
   if (t->tid == PRIV_HPPF_TYCTOR_TAPP) {
-    auto ap = (const ty::App*)t.get();
+    auto ap = reinterpret_cast<const ty::App*>(t.get());
 
     if (ap->f->tid == PRIV_HPPF_TYCTOR_PRIM && ap->args.size() == 3) {
-      if (((const ty::Prim*)ap->f.get())->n == "cseq") {
+      if (reinterpret_cast<const ty::Prim*>(ap->f.get())->n == "cseq") {
         if (ap->args[2]->tid == PRIV_HPPF_TYCTOR_SIZE) {
-          return ((const ty::Nat*)ap->args[2].get())->x;
+          return reinterpret_cast<const ty::Nat*>(ap->args[2].get())->x;
         }
       }
     }
@@ -992,7 +992,7 @@ template <typename T>
         // start with a blank initial model
         uint64_t initModelRef = findSpace(this->f, pagetype::data, sizeof(PModel), sizeof(size_t));
         this->scratchModelRef = findSpace(this->f, pagetype::data, sizeof(PModel), sizeof(size_t));
-        this->scratchModel    = (PModel*)mapFileData(this->f, this->scratchModelRef, sizeof(PModel));
+        this->scratchModel    = reinterpret_cast<PModel*>(mapFileData(this->f, this->scratchModelRef, sizeof(PModel)));
 
         compress<T>::init(*this->scratchModel, &this->scratchModelState);
 
@@ -1000,16 +1000,16 @@ template <typename T>
 
         // define the sequence and prepare to write to it
         size_t dloc = findSpace(this->f, pagetype::data, sizeof(size_t), sizeof(size_t));
-        this->headNodeRef = (uint64_t*)mapFileData(this->f, dloc, sizeof(size_t));
+        this->headNodeRef = reinterpret_cast<uint64_t*>(mapFileData(this->f, dloc, sizeof(size_t)));
         *this->headNodeRef = this->out.batchNodeRoot;
         addBinding(this->f, this->seqname, ty::encoding(this->stdef), dloc);
       } else if (b->second.type != ty::encoding(this->stdef)) {
         throw std::runtime_error("Can't write to sequence " + seqname + " as type '" + ty::show(this->stdef) + "', already defined as type '" + ty::show(ty::decode(b->second.type)) + "'");
       } else {
         // load the head batch and initialize from it
-        this->headNodeRef     = (uint64_t*)mapFileData(this->f, b->second.offset, sizeof(size_t));
+        this->headNodeRef     = reinterpret_cast<uint64_t*>(mapFileData(this->f, b->second.offset, sizeof(size_t)));
         this->scratchModelRef = this->out.initFromRoot(*this->headNodeRef);
-        this->scratchModel    = (PModel*)mapFileData(this->f, this->scratchModelRef, sizeof(PModel));
+        this->scratchModel    = reinterpret_cast<PModel*>(mapFileData(this->f, this->scratchModelRef, sizeof(PModel)));
 
         compress<T>::init(*this->scratchModel, &this->scratchModelState);
       }
@@ -1032,7 +1032,7 @@ template <typename T>
 
         // allocate/initialize the model for this bitstream segment (from the terminal state of the scratch model for the previous segment)
         uint64_t newScratchModelRef = findSpace(this->f, pagetype::data, sizeof(PModel), sizeof(size_t));
-        PModel*  newScratchModel    = (PModel*)mapFileData(this->f, newScratchModelRef, sizeof(PModel));
+        PModel*  newScratchModel    = reinterpret_cast<PModel*>(mapFileData(this->f, newScratchModelRef, sizeof(PModel)));
         memcpy(newScratchModel, this->scratchModel, sizeof(PModel));
         unmapFileData(this->f, this->scratchModel, sizeof(PModel));
 
@@ -1078,7 +1078,7 @@ public:
         ty::desc tdesc = store<T>::storeType();
 
         if (s->second->typeDef() == tdesc) {
-          return *((cwseries<T>*)s->second);
+          return *reinterpret_cast<cwseries<T>*>(s->second);
         } else {
           throw std::runtime_error("Inconsistent usage of '" + n + "' as type " + ty::show(tdesc) + " (but declared as type " + ty::show(s->second->typeDef()) + ")");
         }
@@ -1091,7 +1091,7 @@ public:
 
   void signal() { 
     seekAbs(this->f, 0);
-    write(this->f, (uint8_t)0x0d);
+    write(this->f, static_cast<uint8_t>(0x0d));
   }
 private:
   typedef std::map<std::string, seriesi*> wseriess;
@@ -1115,7 +1115,7 @@ template <typename T>
       }
 
       // load all nodes, prepare to walk in-order
-      auto* n = (uint64_t*)mapFileData(this->f, b.offset, sizeof(size_t));
+      auto* n = reinterpret_cast<uint64_t*>(mapFileData(this->f, b.offset, sizeof(size_t)));
       loadReadState(*n);
       unmapFileData(this->f, n, sizeof(size_t));
     }
@@ -1164,7 +1164,7 @@ template <typename T>
 
     void loadReadState(uint64_t root) {
       while (root != 0) {
-        uint64_t* d = (uint64_t*)mapFileData(this->f, root, 3*sizeof(uint64_t));
+        uint64_t* d = reinterpret_cast<uint64_t*>(mapFileData(this->f, root, 3*sizeof(uint64_t)));
         if (d[0] == 0) {
           root = 0;
         } else {
@@ -1179,7 +1179,7 @@ template <typename T>
 
     bool loadNextNode() {
       if (this->readState.buffer) {
-        unmapFileData(this->f, (void*)this->readState.buffer, sizeof(cbatch));
+        unmapFileData(this->f, reinterpret_cast<const void*>(this->readState.buffer), sizeof(cbatch));
       }
 
       if (this->batches.size() == 0) {
@@ -1187,12 +1187,12 @@ template <typename T>
         return false;
       } else {
         // load this compressed data segment
-        this->readState.reset((const cbatch*)mapFileData(this->f, this->batches.top(), sizeof(cbatch)));
+        this->readState.reset(reinterpret_cast<const cbatch*>(mapFileData(this->f, this->batches.top(), sizeof(cbatch))));
 
         // initialize the model for this batch
-        const uint8_t* modelState = (const uint8_t*)mapFileData(this->f, this->readState.buffer->initModel, sizeof(PModel));
+        const uint8_t* modelState = reinterpret_cast<const uint8_t*>(mapFileData(this->f, this->readState.buffer->initModel, sizeof(PModel)));
         memcpy(&this->scratchModel, modelState, sizeof(PModel));
-        unmapFileData(this->f, (void*)modelState, sizeof(PModel));
+        unmapFileData(this->f, reinterpret_cast<const void*>(modelState), sizeof(PModel));
         compress<T>::init(this->scratchModel, &this->scratchModelState);
 
         this->batches.pop();
@@ -1218,7 +1218,7 @@ public:
         ty::desc tdesc = store<T>::storeType();
 
         if (s->second->typeDef() == tdesc) {
-          return *((crseries<T>*)s->second);
+          return *reinterpret_cast<crseries<T>*>(s->second);
         } else {
           throw std::runtime_error("Inconsistent usage of '" + name + "' as type " + ty::show(tdesc) + " (but declared as type " + ty::show(s->second->typeDef()) + ")");
         }

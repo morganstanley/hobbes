@@ -58,15 +58,6 @@ extern nulltypedb nulltdb;
  * C++ representations for common hobbes types
  *************/
 
-// allow opaque type aliases to reuse basic types
-template <const char* TN, typename T>
-  struct typeAlias {
-    typeAlias(const T& v) : value(v) { }
-    typeAlias() { }
-    T value;
-    inline bool operator==(const typeAlias<TN, T>& rhs) const { return this->value == rhs.value; }
-  };
-
 // allow the generic definition of simple recursive types
 template <typename T>
   struct recursive {
@@ -82,8 +73,8 @@ template <typename T>
   struct array {
     typedef array<T>* ptr;
 
-    long size;
-    T    data[1]; // unknown length, bytes inline with this structure
+    size_t size;
+    T      data[1]; // unknown length, bytes inline with this structure
   };
 template <typename T> const T* begin(const array<T>* d) { return d->data; }
 template <typename T> const T* end  (const array<T>* d) { return d->data + d->size; }
@@ -246,17 +237,17 @@ template <typename T>
   inline MonoTypePtr prim() { return lift<T, false>::type(nulltdb); }
 
 // introduce opaque (named) alias types
-template <const char* TN, typename T, bool InStruct>
-  struct lift< typeAlias<TN, T>, InStruct > {
+template <typename T, bool InStruct>
+  struct lift<T, InStruct, typename tbool<T::is_hmeta_alias>::type> {
     static MonoTypePtr type(typedb& tenv) {
-      return tenv.defineNamedType(TN, str::seq(), lift<T, InStruct>::type(tenv));
+      return tenv.defineNamedType(T::name(), str::seq(), lift<typename T::type, InStruct>::type(tenv));
     }
   };
 
-template <const char* TN, typename T, bool InStruct>
-  struct lift< typeAlias<TN, T>*, InStruct > {
+template <typename T, bool InStruct>
+  struct lift<T*, InStruct, typename tbool<T::is_hmeta_alias>::type> {
     static MonoTypePtr type(typedb& tenv) {
-      return tenv.defineNamedType(TN, str::seq(), lift<T*, InStruct>::type(tenv));
+      return tenv.defineNamedType(T::name(), str::seq(), lift<typename T::type*, InStruct>::type(tenv));
     }
   };
 
@@ -353,6 +344,7 @@ template <const char* TN, typename T>
   struct label {
     typedef T type;
     T value;
+    label() : value() { }
     label(const T& x) : value(x) { }
     static std::string name() { return TN; }
   };
@@ -414,7 +406,7 @@ template <typename T>
       Variant::Members vms;
 
       for (const auto& m : T::meta()) {
-        vms.push_back(Variant::Member(m.first, Prim::make("unit"), (unsigned int)(m.second)));
+        vms.push_back(Variant::Member(m.first, Prim::make("unit"), scast<uint32_t>(m.second)));
       }
 
       return Variant::make(vms);

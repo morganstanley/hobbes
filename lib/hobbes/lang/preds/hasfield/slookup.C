@@ -71,7 +71,6 @@ ExprPtr rewriteSLookup(const TEnvPtr& tenv, const ExprPtr& r, const std::string&
 }
 
 bool HFSLookupEliminator::satisfied(const TEnvPtr& tenv, const HasField& hf, Definitions* ds) const {
-  auto dir    = hf.direction;
   auto rty    = hf.recordType;
   auto fnamet = hf.fieldName;
   auto fty    = hf.fieldType;
@@ -85,7 +84,6 @@ bool HFSLookupEliminator::satisfied(const TEnvPtr& tenv, const HasField& hf, Def
 }
 
 bool HFSLookupEliminator::satisfiable(const TEnvPtr& tenv, const HasField& hf, Definitions* ds) const {
-  auto dir    = hf.direction;
   auto rty    = hf.recordType;
   auto fnamet = hf.fieldName;
   auto fty    = hf.fieldType;
@@ -94,7 +92,6 @@ bool HFSLookupEliminator::satisfiable(const TEnvPtr& tenv, const HasField& hf, D
 }
 
 bool HFSLookupEliminator::refine(const TEnvPtr& tenv, const HasField& hf, MonoTypeUnifier* s, Definitions* ds) {
-  auto dir    = hf.direction;
   auto rty    = hf.recordType;
   auto fnamet = hf.fieldName;
   auto fty    = hf.fieldType;

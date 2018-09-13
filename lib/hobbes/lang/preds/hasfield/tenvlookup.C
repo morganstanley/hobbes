@@ -60,7 +60,6 @@ QualTypePtr underlyingFnType(const TEnvPtr& tenv, const ConstraintPtr& c) {
 }
 
 bool HFTEnvLookupEliminator::satisfied(const TEnvPtr& tenv, const HasField& hf, Definitions* ds) const {
-  auto        dir    = hf.direction;
   const auto& rty    = hf.recordType;
   const auto& fnamet = hf.fieldName;
   const auto& fty    = hf.fieldType;
@@ -76,7 +75,6 @@ bool HFTEnvLookupEliminator::satisfied(const TEnvPtr& tenv, const HasField& hf, 
 }
 
 bool HFTEnvLookupEliminator::satisfiable(const TEnvPtr& tenv, const HasField& hf, Definitions* ds) const {
-  auto dir    = hf.direction;
   auto rty    = hf.recordType;
   auto fnamet = hf.fieldName;
   auto fty    = hf.fieldType;
@@ -96,7 +94,6 @@ bool HFTEnvLookupEliminator::satisfiable(const TEnvPtr& tenv, const HasField& hf
 }
 
 bool HFTEnvLookupEliminator::refine(const TEnvPtr& tenv, const HasField& hf, MonoTypeUnifier* s, Definitions* ds) {
-  auto dir    = hf.direction;
   auto rty    = hf.recordType;
   auto fnamet = hf.fieldName;
   auto fty    = hf.fieldType;

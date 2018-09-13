@@ -30,12 +30,12 @@ const std::string& MImport::name() const { return this->n; }
 void MImport::show(std::ostream& out) const { out << "import " << this->n; }
 
 // type definitions
-MTypeDef::MTypeDef(Visibility v, const std::string& tname, const str::seq& targs, const MonoTypePtr& t, const LexicalAnnotation& la) : Base(la), v(v), tname(tname), targs(targs), t(t) { }
+MTypeDef::MTypeDef(Visibility v, const std::string& tname, const str::seq& targs, const QualTypePtr& t, const LexicalAnnotation& la) : Base(la), v(v), tname(tname), targs(targs), t(t) { }
 
 MTypeDef::Visibility MTypeDef::visibility() const { return this->v; }
 const std::string&   MTypeDef::name()       const { return this->tname; }
 const str::seq&      MTypeDef::arguments()  const { return this->targs; }
-const MonoTypePtr&   MTypeDef::type()       const { return this->t;     }
+const QualTypePtr&   MTypeDef::type()       const { return this->t;     }
 
 void MTypeDef::show(std::ostream& out) const {
   if (this->v == Transparent) {
@@ -170,7 +170,7 @@ std::string show(const CFunDepDefs& fundeps) {
   } else {
     std::ostringstream ss;
     ss << show(fundeps[0]);
-    for (int i = 1; i < fundeps.size(); ++i) {
+    for (size_t i = 1; i < fundeps.size(); ++i) {
       ss << ", ";
       ss << show(fundeps[i]);
     }
@@ -184,6 +184,56 @@ MVarDefs substitute(const MonoTypeSubst& s, const MVarDefs& vds) {
     result.push_back(MVarDefPtr(new MVarDef((*vd)->varWithArgs(), substitute(s, (*vd)->varExpr()), (*vd)->la())));
   }
   return result;
+}
+
+// switchMDefTyFn
+ModuleDefPtr switchMDefTyFn::with(const MImport*     x) const { return ModuleDefPtr(new MImport(x->path(), x->name(), x->la())); }
+ModuleDefPtr switchMDefTyFn::with(const MTypeDef*    x) const { return ModuleDefPtr(new MTypeDef(x->visibility(), x->name(), x->arguments(), withTy(x->type()), x->la())); }
+ModuleDefPtr switchMDefTyFn::with(const MVarTypeDef* x) const { return ModuleDefPtr(new MVarTypeDef(x->varName(), withTy(x->varType()), x->la())); }
+
+struct appMTySwitchF : public switchExprTyFn {
+  const switchMDefTyFn* f;
+  appMTySwitchF(const switchMDefTyFn* f) : f(f) { }
+  QualTypePtr withTy(const QualTypePtr& t) const { if (t) return this->f->withTy(t); else return t; }
+};
+ModuleDefPtr switchMDefTyFn::with(const MVarDef* x) const {
+  return ModuleDefPtr(new MVarDef(x->varWithArgs(), switchOf(x->varExpr(), appMTySwitchF(this)), x->la()));
+}
+
+MonoTypes appMTyTys(const switchMDefTyFn* f, const MonoTypes& ts) {
+  MonoTypes r;
+  for (const auto& t : ts) {
+    r.push_back(f->withTy(qualtype(t))->monoType());
+  }
+  return r;
+}
+Constraints appMTyCS(const switchMDefTyFn* f, const Constraints& cs) {
+  Constraints r;
+  for (const auto& c : cs) {
+    r.push_back(ConstraintPtr(new Constraint(c->name(), appMTyTys(f, c->arguments()))));
+  }
+  return r;
+}
+MVarTypeDefs appMTyMVTDs(const switchMDefTyFn* f, const MVarTypeDefs& tds) {
+  MVarTypeDefs r;
+  for (const auto& td : tds) {
+    r.push_back(MVarTypeDefPtr(new MVarTypeDef(td->varName(), f->withTy(td->varType()), td->la())));
+  }
+  return r;
+}
+ModuleDefPtr switchMDefTyFn::with(const ClassDef* x) const {
+  return ModuleDefPtr(new ClassDef(appMTyCS(this, x->constraints()), x->name(), x->vars(), x->fundeps(), appMTyMVTDs(this, x->members()), x->la()));
+}
+
+MVarDefs appMTyMVDs(const switchMDefTyFn* f, const MVarDefs& vds) {
+  MVarDefs r;
+  for (const auto& vd : vds) {
+    r.push_back(MVarDefPtr(new MVarDef(vd->varWithArgs(), switchOf(vd->varExpr(), appMTySwitchF(f)), vd->la())));
+  }
+  return r;
+}
+ModuleDefPtr switchMDefTyFn::with(const InstanceDef* x) const {
+  return ModuleDefPtr(new InstanceDef(appMTyCS(this, x->constraints()), x->className(), appMTyTys(this, x->args()), appMTyMVDs(this, x->members()), x->la()));
 }
 
 }

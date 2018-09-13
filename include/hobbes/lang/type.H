@@ -164,10 +164,10 @@ bool satisfiable(const TEnvPtr& tenv, const Constraints& cs, std::vector<std::pa
 // a polytype (or type scheme) can describe many types
 class PolyType {
 public:
-  PolyType(int vs, const QualTypePtr& qt);
+  PolyType(size_t vs, const QualTypePtr& qt);
   PolyType(const QualTypePtr& qt);
 
-  int typeVariables() const;
+  size_t typeVariables() const;
   QualTypePtr instantiate() const;
 
   void show(std::ostream&) const;
@@ -176,7 +176,7 @@ public:
   // this should only be used if you don't mind capturing bound type variables
   const QualTypePtr& qualtype() const;
 private:
-  int         vs;
+  size_t      vs;
   QualTypePtr qt;
 };
 
@@ -736,37 +736,37 @@ template <typename T, typename Ptr, typename PtrC, typename F>
 
     switch (ty->case_id()) {
     case Prim::type_case_id:
-      return f.with((PrimT)ty);
+      return f.with(rcast<PrimT>(ty));
     case OpaquePtr::type_case_id:
-      return f.with((OpaquePtrT)ty);
+      return f.with(rcast<OpaquePtrT>(ty));
     case TVar::type_case_id:
-      return f.with((TVarT)ty);
+      return f.with(rcast<TVarT>(ty));
     case TGen::type_case_id:
-      return f.with((TGenT)ty);
+      return f.with(rcast<TGenT>(ty));
     case TAbs::type_case_id:
-      return f.with((TAbsT)ty);
+      return f.with(rcast<TAbsT>(ty));
     case TApp::type_case_id:
-      return f.with((TAppT)ty);
+      return f.with(rcast<TAppT>(ty));
     case FixedArray::type_case_id:
-      return f.with((FixedArrayT)ty);
+      return f.with(rcast<FixedArrayT>(ty));
     case Array::type_case_id:
-      return f.with((ArrayT)ty);
+      return f.with(rcast<ArrayT>(ty));
     case Variant::type_case_id:
-      return f.with((VariantT)ty);
+      return f.with(rcast<VariantT>(ty));
     case Record::type_case_id:
-      return f.with((RecordT)ty);
+      return f.with(rcast<RecordT>(ty));
     case Func::type_case_id:
-      return f.with((FuncT)ty);
+      return f.with(rcast<FuncT>(ty));
     case Exists::type_case_id:
-      return f.with((ExistsT)ty);
+      return f.with(rcast<ExistsT>(ty));
     case Recursive::type_case_id:
-      return f.with((RecursiveT)ty);
+      return f.with(rcast<RecursiveT>(ty));
     case TString::type_case_id:
-      return f.with((TStringT)ty);
+      return f.with(rcast<TStringT>(ty));
     case TLong::type_case_id:
-      return f.with((TLongT)ty);
+      return f.with(rcast<TLongT>(ty));
     case TExpr::type_case_id:
-      return f.with((TExprT)ty);
+      return f.with(rcast<TExprT>(ty));
     default:
       throw std::runtime_error("Internal error, cannot switch on unknown type: " + show(ty));
     }
@@ -1270,7 +1270,7 @@ template <>
   struct genHash<MonoTypePtr> {
     inline size_t operator()(const MonoTypePtr& x) const {
       static std::hash<void*> h;
-      return h((void*)x.get());
+      return h(rcast<void*>(x.get()));
     }
   };
 

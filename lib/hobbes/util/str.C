@@ -529,13 +529,13 @@ std::string showDataSize(size_t bytes) {
   size_t teras = kilos * gigas;
 
   if ((bytes / teras) > 0) {
-    return from(((double)bytes) / ((double)teras)) + "TB";
+    return from(static_cast<double>(bytes) / static_cast<double>(teras)) + "TB";
   } else if ((bytes / gigas) > 0) {
-    return from(((double)bytes) / ((double)gigas)) + "GB";
+    return from(static_cast<double>(bytes) / static_cast<double>(gigas)) + "GB";
   } else if ((bytes / megas) > 0) {
-    return from(((double)bytes) / ((double)megas)) + "MB";
+    return from(static_cast<double>(bytes) / static_cast<double>(megas)) + "MB";
   } else if ((bytes / kilos) > 0) {
-    return from(((double)bytes) / ((double)kilos)) + "KB";
+    return from(static_cast<double>(bytes) / static_cast<double>(kilos)) + "KB";
   } else {
     return from(bytes) + "B";
   }

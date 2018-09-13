@@ -68,25 +68,6 @@ LexicalAnnotation m(const YYLTYPE& p0, const YYLTYPE& p1) {
   return LexicallyAnnotated::make(Pos(p0.first_line, p0.first_column), Pos(p1.last_line, p1.last_column));
 }
 
-MonoTypePtr forceMonotype(const QualTypePtr& qt, const LexicalAnnotation& la) {
-  MonoTypeUnifier u(yyParseCC->typeEnv());
-  Definitions ds;
-  while (refine(yyParseCC->typeEnv(), qt->constraints(), &u, &ds)) {
-    yyParseCC->drainUnqualifyDefs(ds);
-    ds.clear();
-  }
-  yyParseCC->drainUnqualifyDefs(ds);
-  ds.clear();
-
-  // make sure that the output type exists and is realizable
-  if (hobbes::satisfied(yyParseCC->typeEnv(), qt->constraints(), &ds)) {
-    yyParseCC->drainUnqualifyDefs(ds);
-    return u.substitute(qt->monoType());
-  } else {
-    throw annotated_error(la, "Cannot resolve qualifications in type");
-  }
-}
-
 #define TAPP0(fn,la)          new App(fn, list<ExprPtr>(), la)
 #define TAPP1(fn,x0,la)       new App(fn, list(ExprPtr(x0)), la)
 #define TAPP2(fn,x0,x1,la)    new App(fn, list(ExprPtr(x0),ExprPtr(x1)), la)
@@ -99,7 +80,7 @@ Expr* pickNestedExp(Exprs* exprs, const LexicalAnnotation& la) {
     return (*exprs)[0]->clone();
   } else {
     MkRecord::FieldDefs fds;
-    for (int i = 0; i < exprs->size(); ++i) {
+    for (size_t i = 0; i < exprs->size(); ++i) {
       fds.push_back(MkRecord::FieldDef(".f" + str::from(i), (*exprs)[i]));
     }
     return new MkRecord(fds, la);
@@ -111,7 +92,7 @@ Pattern* pickNestedPat(Patterns* pats, const LexicalAnnotation& la) {
     return new MatchLiteral(PrimitivePtr(new Unit(la)), la);
   } else {
     MatchRecord::Fields fds;
-    for (int i = 0; i < pats->size(); ++i) {
+    for (size_t i = 0; i < pats->size(); ++i) {
       fds.push_back(MatchRecord::Field(".f" + str::from(i), (*pats)[i]));
     }
     return new MatchRecord(fds, la);
@@ -430,6 +411,7 @@ extern PatVarCtorFn patVarCtorFn;
 %token TCOMMA     ","
 %token TSEMICOLON ";"
 %token TFN        "\\"
+%token TFNL       "fn"
 %token TCOMPOSE   "o"
 %token TUPTO      ".."
 %token TCARET     "^"
@@ -543,8 +525,8 @@ def: importdef { $$ = $1; }
 importdef: "import" cppid { $$ = new MImport(yyModulePath, *$2, m(@1, @2)); }
 
 /* abbreviate type names */
-tydef: "type" nameseq "=" qtype { MTypeDef* td = new MTypeDef(MTypeDef::Transparent, hobbes::select(*$2, 0), hobbes::select(*$2, 1, (int)$2->size()), forceMonotype(QualTypePtr($4), m(@4)), m(@1, @4)); yyParseCC->defineTypeAlias(td->name(), td->arguments(), td->type()); $$ = td; }
-     | "data" nameseq "=" qtype { MTypeDef* td = new MTypeDef(MTypeDef::Opaque, hobbes::select(*$2, 0), hobbes::select(*$2, 1, (int)$2->size()), forceMonotype(QualTypePtr($4), m(@4)), m(@1, @4)); yyParseCC->defineNamedType(td->name(), td->arguments(), td->type()); $$ = td; }
+tydef: "type" nameseq "=" qtype { $$ = new MTypeDef(MTypeDef::Transparent, hobbes::select(*$2, 0), hobbes::select(*$2, 1, (int)$2->size()), QualTypePtr($4), m(@1, @4)); }
+     | "data" nameseq "=" qtype { $$ = new MTypeDef(MTypeDef::Opaque, hobbes::select(*$2, 0), hobbes::select(*$2, 1, (int)$2->size()), QualTypePtr($4), m(@1, @4)); }
 
 /* variable bindings by type and expression */
 vartybind: name "::" qtype { $$ = new MVarTypeDef(*$1, QualTypePtr($3), m(@1, @3)); }
@@ -622,6 +604,7 @@ types: l0mtype       { $$ = autorelease(new MonoTypes()); $$->push_back(*$1); }
 
 /* expressions */
 l0expr: "\\" patterns "." l0expr { $$ = makePatternFn(*$2, ExprPtr($4), m(@1, @4)); }
+      | "fn" patterns "." l0expr { $$ = makePatternFn(*$2, ExprPtr($4), m(@1, @4)); }
       | "!" l1expr               { $$ = TAPP1(var("not",m(@1)), $2, m(@1,@2)); }
       | l0expr "and" l0expr      { $$ = TAPP2(var("and",m(@2)), $1, $3, m(@1,@3)); }
       | l0expr "or"  l0expr      { $$ = TAPP2(var("or",m(@2)),  $1, $3, m(@1,@3)); }
@@ -866,6 +849,7 @@ recfieldname: id         { $$ = $1; }
             | "parse"    { $$ = autorelease(new std::string("parse")); }
             | "do"       { $$ = autorelease(new std::string("do")); }
             | "return"   { $$ = autorelease(new std::string("return")); }
+            | "fn"       { $$ = autorelease(new std::string("fn")); }
             | "intV"     { $$ = autorelease(new std::string(".f" + str::from($1))); }
 
 recfieldpath: recfieldpath "." recfieldname { $$ = $1; $$->push_back(*$3); }

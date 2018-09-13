@@ -208,8 +208,8 @@ RegexPtr unescapePatChar(rchar_t x) {
 typedef std::pair<size_t, std::set<rchar_t>> DCharset;
 
 void charRange(rchar_t i, rchar_t e, std::set<rchar_t>* out) {
-  for (uint32_t x = (uint32_t)i; x <= (uint32_t)e; ++x) {
-    out->insert((rchar_t)x);
+  for (size_t x = static_cast<size_t>(i); x <= static_cast<size_t>(e); ++x) {
+    out->insert(static_cast<rchar_t>(x));
   }
 }
 
@@ -377,10 +377,10 @@ str::seq bindingNames(const RegexPtr& rgx) {
  ******************************/
 typedef uint32_t state;
 typedef std::set<state> stateset;
-static const state nullState = (state)-1;
+static const state nullState = static_cast<state>(-1);
 
 typedef uint32_t result;
-static const result nullResult = (result)-1;
+static const result nullResult = static_cast<result>(-1);
 
 struct char_range_ord {
   static bool lt(rchar_t lhs, rchar_t rhs) {
@@ -714,7 +714,7 @@ typedef std::map<stateset, state> Nss2Ds;
 
 // create a DFA state from a set of NFA states
 // (or if it's already been made, just return the existing state)
-state dfaState(const NFA& nfa, const EpsClosure& ec, Nss2Ds* nss2ds, DFA* dfa, const stateset& ss, RStates* rstates) {
+state dfaState(const cc* c, const NFA& nfa, const EpsClosure& ec, Nss2Ds* nss2ds, DFA* dfa, const stateset& ss, RStates* rstates) {
   // did we already make this state?  if so, just return it
   auto didIt = nss2ds->find(ss);
   if (didIt != nss2ds->end()) {
@@ -724,12 +724,17 @@ state dfaState(const NFA& nfa, const EpsClosure& ec, Nss2Ds* nss2ds, DFA* dfa, c
   // we need to make this state -- allocate it and remember it
   state result = dfa->size();
   dfa->resize(dfa->size() + 1);
+
+  if (c->throwOnHugeRegexDFA() and c->regexDFAOverNFAMaxRatio() > 0 and (dfa->size() / nfa.size() > size_t(c->regexDFAOverNFAMaxRatio()))) {
+    throw std::runtime_error("regexes DFA over NFA Max ratio was breached");
+  }
+
   (*nss2ds)[ss] = result;
 
   // ok, how can we transition out of here?
   // for each case, we'll go to a set of NFA states (recursively)
   for (auto cr : usedCharRanges(nfa, ss)) {
-    auto ns = dfaState(nfa, ec, nss2ds, dfa, nfaTransition(nfa, ec, ss, cr), rstates);
+    auto ns = dfaState(c, nfa, ec, nss2ds, dfa, nfaTransition(nfa, ec, ss, cr), rstates);
     (*dfa)[result].chars.insert(cr, ns);
   }
 
@@ -759,7 +764,7 @@ state dfaState(const NFA& nfa, const EpsClosure& ec, Nss2Ds* nss2ds, DFA* dfa, c
   return result;
 }
 
-void disambiguate(const NFA& nfa, DFA* dfa, RStates* rstates) {
+void disambiguate(const cc* c, const NFA& nfa, DFA* dfa, RStates* rstates) {
   // determine eps* for this NFA
   EpsClosure ec;
   findEpsClosure(nfa, &ec);
@@ -767,7 +772,7 @@ void disambiguate(const NFA& nfa, DFA* dfa, RStates* rstates) {
   // starting from the eps* start state,
   // follow non-eps transitions to eps* successor states
   Nss2Ds nss2ds;
-  dfaState(nfa, ec, &nss2ds, dfa, epsState(ec, 0), rstates);
+  dfaState(c, nfa, ec, &nss2ds, dfa, epsState(ec, 0), rstates);
 }
 
 /*****************************
@@ -877,16 +882,16 @@ static ExprPtr charInRange(const ExprPtr& c, const std::pair<rchar_t, rchar_t>& 
   if (crange.first == 0 && crange.second == 255) {
     return constant(true, rootLA);
   } else if (crange.first == 0) {
-    return fncall(var("blte", rootLA), list(c, constant((uint8_t)crange.second, rootLA)), rootLA);
+    return fncall(var("blte", rootLA), list(c, constant(static_cast<uint8_t>(crange.second), rootLA)), rootLA);
   } else if (crange.first == crange.second) {
-    return fncall(var("beq", rootLA), list(c, constant((uint8_t)crange.first, rootLA)), rootLA);
+    return fncall(var("beq", rootLA), list(c, constant(static_cast<uint8_t>(crange.first), rootLA)), rootLA);
   } else {
     return
       fncall(
         var("and", rootLA),
         list(
-          fncall(var("blte", rootLA), list(constant((uint8_t)crange.first, rootLA), c), rootLA),
-          fncall(var("blte", rootLA), list(c, constant((uint8_t)crange.second, rootLA)), rootLA)
+          fncall(var("blte", rootLA), list(constant(static_cast<uint8_t>(crange.first), rootLA), c), rootLA),
+          fncall(var("blte", rootLA), list(c, constant(static_cast<uint8_t>(crange.second), rootLA)), rootLA)
         ),
         rootLA
       );
@@ -938,7 +943,7 @@ static ExprPtr transitionMapping(const std::string& fname, const DFAState& s, co
   for (const auto& rtn : rtns) {
     sd += 1 + rtn.first.second - rtn.first.first;
   }
-  double avgs = sd / ((double)rtns.size());
+  double avgs = sd / static_cast<double>(rtns.size());
 
   if (avgs <= 2.0) {
     return transitionAsCharSwitch(fname, s, charExpr, defaultResult, rootLA);
@@ -978,7 +983,7 @@ void makeExprDFAFunc(cc* c, const std::string& fname, const MonoTypePtr& capture
         fname,
         dfa[s],
         fncall(var("elem", rootLA), list(var("cs", rootLA), var("i", rootLA)), rootLA),
-        constant((int)-1, rootLA),
+        constant(static_cast<int>(-1), rootLA),
         rootLA
       );
 
@@ -988,7 +993,7 @@ void makeExprDFAFunc(cc* c, const std::string& fname, const MonoTypePtr& capture
         var("if", rootLA),
         list(
           fncall(var("leq", rootLA), list(var("i", rootLA), var("e", rootLA)), rootLA),
-          constant((int)(dfa[s].acc), rootLA),
+          constant(static_cast<int>(dfa[s].acc), rootLA),
           dispatchExpr
         ),
         rootLA
@@ -1020,17 +1025,17 @@ void makeExprDFAFunc(cc* c, const std::string& fname, const MonoTypePtr& capture
     }
 
     // do all of this when in this state
-    bs.push_back(Switch::Binding(PrimitivePtr(new Int((int)s, rootLA)), evalChar));
+    bs.push_back(Switch::Binding(PrimitivePtr(new Int(static_cast<int>(s), rootLA)), evalChar));
   }
 
   ExprPtr fndef =
     fn(str::strings("cap", "cs", "i", "e", "s"),
-      let("n", fncall(var("ladd", rootLA), list(var("i", rootLA), constant((long)1, rootLA)), rootLA),
+      let("n", fncall(var("ladd", rootLA), list(var("i", rootLA), constant(static_cast<long>(1), rootLA)), rootLA),
       let("elem", assume(var("element", rootLA), qarrElemTy, rootLA),
         switchE(
           var("s", rootLA),
           bs,
-          constant((int)-1, rootLA),
+          constant(static_cast<int>(-1), rootLA),
           rootLA
         ),
       rootLA),rootLA),
@@ -1051,11 +1056,11 @@ DEFINE_STRUCT(
 );
 
 array<DFAStateRep>* makeDFARep(cc* c, const DFA& dfa) {
-  auto result = (array<DFAStateRep>*)c->memalloc(sizeof(size_t) + dfa.size() * sizeof(DFAStateRep));
+  auto result = reinterpret_cast<array<DFAStateRep>*>(c->memalloc(sizeof(size_t) + dfa.size() * sizeof(DFAStateRep)));
   for (size_t i = 0; i < dfa.size(); ++i) {
     DFAStateRep& s = result->data[i];
     auto ctnm = dfa[i].chars.mapping();
-    s.transitions = (CTransitions*)c->memalloc(sizeof(size_t) + ctnm.size() * sizeof(CTransition));
+    s.transitions = reinterpret_cast<CTransitions*>(c->memalloc(sizeof(size_t) + ctnm.size() * sizeof(CTransition)));
     for (size_t j = 0; j < ctnm.size(); ++j) {
       s.transitions->data[j] = ctnm[j];
     }
@@ -1270,7 +1275,7 @@ CRegexes makeRegexFn(cc* c, const Regexes& regexes, const LexicalAnnotation& roo
   // now map this NFA to a DFA
   DFA dfa;
   RStates fstates;
-  disambiguate(nfa, &dfa, &fstates);
+  disambiguate(c, nfa, &dfa, &fstates);
 
   // make all char ranges compact and minimize the results to avoid redundant work in the caller
   mergeCharRangesAndEqResults(&dfa, fstates, &result.rstates);

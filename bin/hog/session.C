@@ -31,7 +31,7 @@ const uint8_t* hstoreUnsafeReadFixedArray(storage::Transaction& txn, size_t byte
 
   memcpy(result->data, txn.ptr(), bytes);
   txn.skip(bytes);
-  return (const uint8_t*)result;
+  return reinterpret_cast<const uint8_t*>(result);
 }
 
 cc* loggerCompiler() {

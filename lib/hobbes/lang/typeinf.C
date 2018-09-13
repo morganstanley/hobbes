@@ -991,7 +991,7 @@ void mgu(const MonoTypePtr& t0, const MonoTypePtr& t1, MonoTypeUnifier* u) {
 
 void mgu(const MonoTypes& t0s, const MonoTypes& t1s, MonoTypeUnifier* u) {
   if (t0s.size() == t1s.size()) {
-    for (int i = 0; i < t0s.size(); ++i) {
+    for (size_t i = 0; i < t0s.size(); ++i) {
       mgu(t0s[i], t1s[i], u);
     }
   } else {

@@ -49,3 +49,10 @@ TEST(Arrays, WithStdVector) {
   EXPECT_EQ(((c().compileFn<int(std::vector<int>&)>("xs", "sum(xs[0:])")(xs))), 15);
 }
 
+TEST(Arrays, CppRAIIConsistency) {
+  array<std::string>* xs = makeArray<std::string>(300);
+  for (size_t i = 0; i < xs->size; ++i) {
+    EXPECT_EQ(xs->data[i], "");
+  }
+}
+

@@ -125,7 +125,7 @@ TEST(Storage, SeriesAPI) {
     for (size_t i = 0; i < 10; ++i) {
       SeriesTest st;
       st.x = i;
-      st.y = 3.14159 * ((double)i);
+      st.y = 3.14159 * static_cast<double>(i);
       st.z = makeString("string_" + str::from(i));
       ss(st);
     }
@@ -137,7 +137,7 @@ TEST(Storage, SeriesAPI) {
     for (size_t i = 0; i < 5; ++i) {
       SeriesTest st;
       st.x = i;
-      st.y = 3.14159 * ((double)i);
+      st.y = 3.14159 * static_cast<double>(i);
       st.z = makeString("string_" + str::from(i));
       ss(st);
     }
@@ -213,11 +213,11 @@ TEST(Storage, Alignment) {
     array<int>*   a = f.define<int>("a", 100);
     fileref<int>* r = f.define<fileref<int>>("r");
 
-    EXPECT_EQ(((size_t)s)%sizeof(short),  0);
-    EXPECT_EQ(((size_t)i)%sizeof(int),    0);
-    EXPECT_EQ(((size_t)d)%sizeof(double), 0);
-    EXPECT_EQ(((size_t)a)%sizeof(size_t), 0);
-    EXPECT_EQ(((size_t)r)%sizeof(size_t), 0);
+    EXPECT_EQ(reinterpret_cast<size_t>(s)%sizeof(short),  size_t(0));
+    EXPECT_EQ(reinterpret_cast<size_t>(i)%sizeof(int),    size_t(0));
+    EXPECT_EQ(reinterpret_cast<size_t>(d)%sizeof(double), size_t(0));
+    EXPECT_EQ(reinterpret_cast<size_t>(a)%sizeof(size_t), size_t(0));
+    EXPECT_EQ(reinterpret_cast<size_t>(r)%sizeof(size_t), size_t(0));
     unlink(fname.c_str());
   } catch (...) {
     unlink(fname.c_str());
@@ -356,7 +356,7 @@ TEST(Storage, Lift) {
     auto* xs = w.define< std::pair<int, double> >("xs", 100);
     for (size_t i = 0; i < 100; ++i) {
       xs->data[i].first  = i+1;
-      xs->data[i].second = (double)i;
+      xs->data[i].second = static_cast<double>(i);
     }
     xs->size = 100;
 
@@ -400,8 +400,8 @@ TEST(Storage, FRegionCompatibility) {
     auto& s = f.series<FRTest>("frtest");
     for (size_t i = 0; i < 1000; ++i) {
       FRTest t;
-      t.x = (int)i;
-      t.y = 3.14159*((double)i);
+      t.x = static_cast<int>(i);
+      t.y = 3.14159*static_cast<double>(i);
       t.z.push_back("a");
       t.z.push_back("b");
       t.z.push_back("c");
@@ -414,14 +414,14 @@ TEST(Storage, FRegionCompatibility) {
 
     cc rc;
     rc.define("f", "inputFile :: (LoadFile \"" + fname + "\" w) => w");
-    EXPECT_EQ(rc.compileFn<size_t()>("size([() | x <- f.frtest, x.z == [\"a\", \"b\", \"c\"] and x.u === |HotDog| and x.v matches |just=\"chicken\"|])")(), 1000);
+    EXPECT_EQ(rc.compileFn<size_t()>("size([() | x <- f.frtest, x.z == [\"a\", \"b\", \"c\"] and x.u === |HotDog| and x.v matches |just=\"chicken\"|])")(), size_t(1000));
 
     fregion::reader rf(fname);
     auto rs = rf.series<FRTest>("frtest");
     FRTest t;
     size_t j = 0;
     while (rs.next(&t)) {
-      EXPECT_EQ(t.x, (int)j);
+      EXPECT_EQ(t.x, static_cast<int>(j));
       ++j;
     }
     unlink(fname.c_str());
@@ -478,9 +478,9 @@ TEST(Storage, CFRegionIO) {
         MyStruct s;
         s.x = i;
         s.y = i;
-        s.c = (MyColor::Enum)(i%4);
+        s.c = static_cast<MyColor::Enum>(i%4);
         if (i%2 == 0) {
-          s.v = MyVariant::jimmy((int)42.0*sin(i));
+          s.v = MyVariant::jimmy(static_cast<int>(42.0*sin(i)));
         } else {
           s.v = MyVariant::bob("bob #" + str::from(i));
         }
@@ -499,11 +499,11 @@ TEST(Storage, CFRegionIO) {
       size_t i = 0;
       MyStruct s;
       while (xs.next(&s)) {
-        EXPECT_EQ(s.x, i);
-        EXPECT_EQ(s.y, ((uint8_t)i));
-        EXPECT_EQ(s.c, MyColor((MyColor::Enum)(i%4)));
+        EXPECT_EQ(size_t(s.x), i);
+        EXPECT_EQ(s.y, uint8_t(i));
+        EXPECT_EQ(s.c, MyColor(static_cast<MyColor::Enum>(i%4)));
         if (i%2 == 0) {
-          EXPECT_EQ(s.v, MyVariant::jimmy((int)42.0*sin(i)));
+          EXPECT_EQ(s.v, MyVariant::jimmy(static_cast<int>(42.0*sin(i))));
         } else {
           EXPECT_EQ(s.v, MyVariant::bob("bob #" + str::from(i)));
         }

@@ -15,12 +15,12 @@ int intCastVariant(const variant<leftCtor, rightCtor>* bv) {
   if (const leftCtor* lv = bv->get<leftCtor>()) {
     return lv->value;
   } else {
-    return (int)(bv->get<rightCtor>()->value);
+    return static_cast<int>(bv->get<rightCtor>()->value);
   }
 }
 
 int sumCtorID(const variant<char, unsigned char>* bv) {
-  if (const char* iv = bv->get<char>()) {
+  if (bv->get<char>()) {
     return 0;
   } else {
     return 1;
