@@ -29,7 +29,7 @@ The Hobbes Type System is functional in spirit. There are primitive types, array
 Primitive Types
 ===============
 
-The Hobbes primitive types are arranged in memory in a manner which allows for free marshalling when Hobbes is executing in a c++ process. Each of the primitive types has a simple literal syntax allowing for the easy initialisation of a value:
+The Hobbes primitive types are arranged in memory in a manner which allows for free marshalling when Hobbes is executing in a C++ process. Each of the primitive types has a simple literal syntax allowing for the easy initialisation of a value:
 
 Unit
   A simple null-type with only one value
