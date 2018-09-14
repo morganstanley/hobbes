@@ -1116,6 +1116,24 @@ inline ty::desc maybeNthProd(const ty::desc& t, size_t n) {
   return ty::desc();
 }
 
+inline ty::desc maybeStoredBatchType(const bytes& bs) {
+  ty::desc dty = ty::decode(bs);
+
+  if (ty::desc t = maybeDerefFileRef(maybeNthProd(maybeNthSum(maybeOpenRecursive(maybeDerefFileRef(dty)), 1), 0))) {
+    if (t->tid == PRIV_HPPF_TYCTOR_TAPP) {
+      const ty::App* buf = reinterpret_cast<const ty::App*>(t.get());
+      if (buf->f->tid == PRIV_HPPF_TYCTOR_PRIM) {
+        if (reinterpret_cast<ty::Prim*>(buf->f.get())->n == "carray") {
+          if (buf->args.size() >= 2) {
+            return buf->args[0];
+          }
+        }
+      }
+    }
+  }
+  return ty::desc();
+}
+
 inline size_t inferBatchSize(const bytes& bs) {
   ty::desc dty = ty::decode(bs);
 
