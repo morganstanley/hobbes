@@ -40,7 +40,7 @@ matrix:
         - ARGS=-V
 
 install:
-  - if [ $TRAVIS_OS_NAME = osx   ]; then brew update && brew install ${DEPS}; fi
+  - if [ $TRAVIS_OS_NAME = osx   ]; then brew update && brew install -v ${DEPS}; fi
   - if [ $TRAVIS_OS_NAME = linux ]; then cd docker/build &&  docker build . -f ./${DIST}.Dockerfile -t hobbes:build; cd -; fi
 
 script:
