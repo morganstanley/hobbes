@@ -53,7 +53,7 @@ instance CSeqBatchSize (cseq t m n) where
   cseqBatchSize _ = lowerLong::(LowerLong n)=>long
 
 class UCModel t sm dm | t -> sm, t -> dm where
-  ucAllocModel   :: ((file () ())) -> dm
+  ucAllocModel   :: ((file () ()), bool) -> dm
   ucPrepModel    :: (sm, dm) -> ()
   ucDeallocModel :: dm -> ()
 class (UCModel t sm dm) => UCModelTop t sm dm where
@@ -74,7 +74,7 @@ class (UCModel t sm dm) => UCWrite t sm dm where
 
 // unit has an empty 'int' model because we can't make a 'void' value in C++
 instance UCModel () int () where
-  ucAllocModel   _   = ()
+  ucAllocModel   _ _ = ()
   ucPrepModel    _ _ = ()
   ucDeallocModel _   = ()
 instance UCRead () int () where
@@ -86,7 +86,7 @@ instance UCWrite () int () where
 type csmodel k = {freqs:[:int|k:], activeFreqs:[:int|k:], c:int}
 
 instance UCModel byte (csmodel 256) <hobbes.DynDModel0> where
-  ucAllocModel f = ddmMake(unsafeCast(f), 0Xff)
+  ucAllocModel f input = ddmMake(unsafeCast(f), input, 0Xff)
   ucPrepModel sm dm = ddmInit(dm, unsafeCast(sm))
   ucDeallocModel = ddmDestroy
 
@@ -94,9 +94,6 @@ instance UCRead byte (csmodel 256) <hobbes.DynDModel0> where
   ucRead = ucReaderRead
 instance UCWrite byte (csmodel 256) <hobbes.DynDModel0> where
   ucWrite = ucWriterWrite
-
-type pcsmodel n = { pmodels:[:(csmodel 256)|n:] }
-type pdmodel  n = [:<hobbes.DynDModel0>|n:]
 
 class UCMSized t n | t -> n
 instance UCMSized char   1
@@ -106,10 +103,29 @@ instance UCMSized long   8
 instance UCMSized float  4
 instance UCMSized double 8
 
+type pcsmodel n = { pmodels:[:(csmodel 256)|n:] }
+type pdmodel  n = [:<hobbes.DynDModel0>|n:]
+
+ucPrepModelSA sm dm i e =
+  if (i == e) then
+    ()
+  else do {
+    ddmInit(saelem(dm,i), unsafeCast(saelem(sm.pmodels,i)));
+    ucPrepModelSA(sm, dm, i+1L, e);
+  }
+
+ucDeallocModelSA dm i e =
+  if (i == e) then
+    ()
+  else do {
+    ddmDestroy(saelem(dm,i));
+    ucDeallocModelSA(dm, i+1L, e);
+  }
+
 instance (UCMSized t n) => UCModel t (pcsmodel n) (pdmodel n) where
-  ucAllocModel   f     = [ddmMake(unsafeCast(f), 0Xff) | _ <- newPrim()::[:int|n:]]
-  ucPrepModel    sm dm = eachRangeC(\i.ddmInit(saelem(dm,i), unsafeCast(saelem(sm.pmodels,i))), 0L, lowerLong::(LowerLong n)=>long)
-  ucDeallocModel dm    = eachRangeC(\i.ddmDestroy(saelem(dm,i)), 0L, lowerLong::(LowerLong n)=>long)
+  ucAllocModel   f input = [ddmMake(unsafeCast(f), input, 0Xff) | _ <- newPrim()::[:int|n:]]
+  ucPrepModel    sm dm   = ucPrepModelSA(sm, dm, 0L, lowerLong::(LowerLong n)=>long)
+  ucDeallocModel dm      = ucDeallocModelSA(dm, 0L, lowerLong::(LowerLong n)=>long)
 
 instance (UCMSized t n) => UCRead t (pcsmodel n) (pdmodel n) where
   ucRead r dm = (unsafeCast([(ucRead::(UCRead byte _ _)=>_)(r,saelem(dm,i)) | i <- (fixedRange::(FixedRange n)=>[:long|n:])])::{x:t}).x
@@ -123,23 +139,23 @@ instance UCMTuple () () ()
 instance (t=(l*r), UCModel l lsm ldm, UCMTuple r rsm rdm, (lsm*rsm)=tsm, (ldm*rdm)=tdm) => UCMTuple t tsm tdm
 
 class UCMTupModel t tsm tdm where
-  ucTupAllocModel   :: ((file () ()), tdm) -> ()
+  ucTupAllocModel   :: ((file () ()), bool, tdm) -> ()
   ucTupPrepModel    :: (tsm, tdm) -> ()
   ucTupDeallocModel :: tdm -> ()
 
 instance UCMTupModel () () () where
-  ucTupAllocModel   _ _ = ()
-  ucTupPrepModel    _ _ = ()
-  ucTupDeallocModel _   = ()
+  ucTupAllocModel   _ _ _ = ()
+  ucTupPrepModel    _ _   = ()
+  ucTupDeallocModel _     = ()
 instance (t=(l*r), tsm=(lsm*rsm), tdm=(ldm*rdm), UCModel l lsm ldm, UCMTupModel r rsm rdm) => UCMTupModel t tsm tdm where
-  ucTupAllocModel   f  dm = do { dm.0 <- (ucAllocModel::(UCModel l lsm ldm)=>_->ldm)(f); (ucTupAllocModel::(UCMTupModel r _ _)=>(_,_)->())(f, tupleTail(dm)); }
-  ucTupPrepModel    sm dm = do { (ucPrepModel::(UCModel l lsm ldm)=>(lsm,ldm)->())(sm.0, dm.0); (ucTupPrepModel::(UCMTupModel r _ _)=>(_,_)->())(tupleTail(sm), tupleTail(dm)); }
-  ucTupDeallocModel dm    = do { (ucDeallocModel::(UCModel l lsm ldm)=>ldm->())(dm.0); (ucTupDeallocModel::(UCMTupModel r _ _)=>_->())(tupleTail(dm)); }
+  ucTupAllocModel   f inp dm = do { dm.0 <- (ucAllocModel::(UCModel l lsm ldm)=>_)(f, inp); (ucTupAllocModel::(UCMTupModel r _ _)=>_)(f, inp, tupleTail(dm)); }
+  ucTupPrepModel       sm dm = do { (ucPrepModel::(UCModel l lsm ldm)=>(lsm,ldm)->())(sm.0, dm.0); (ucTupPrepModel::(UCMTupModel r _ _)=>(_,_)->())(tupleTail(sm), tupleTail(dm)); }
+  ucTupDeallocModel       dm = do { (ucDeallocModel::(UCModel l lsm ldm)=>ldm->())(dm.0); (ucTupDeallocModel::(UCMTupModel r _ _)=>_->())(tupleTail(dm)); }
 
 instance (UCMTuple t tsm tdm, UCMTupModel t tsm tdm) => UCModel t tsm tdm where
-  ucAllocModel   f     = do { r = newPrim(); (ucTupAllocModel::(UCMTupModel t tsm tdm)=>(_,tdm)->())(f,r); return r }
-  ucPrepModel    sm dm = (ucTupPrepModel::(UCMTupModel t tsm tdm)=>(tsm,tdm)->())(sm,dm)
-  ucDeallocModel dm    = (ucTupDeallocModel::(UCMTupModel t tsm tdm)=>tdm->())(dm)
+  ucAllocModel   f input = do { r = newPrim(); (ucTupAllocModel::(UCMTupModel t tsm tdm)=>_)(f,input,r); return r }
+  ucPrepModel    sm dm   = (ucTupPrepModel::(UCMTupModel t tsm tdm)=>(tsm,tdm)->())(sm,dm)
+  ucDeallocModel dm      = (ucTupDeallocModel::(UCMTupModel t tsm tdm)=>tdm->())(dm)
 
 class (UCMTupModel t tsm tdm) => UCTupRead t tsm tdm where
   ucTupRead :: (<hobbes.UCReader>, tdm, t) -> ()
@@ -165,9 +181,9 @@ instance UCMRecTuple () ()
 instance (r={h*rt}, UCMRecTuple rt tt, (h*tt)=t) => UCMRecTuple r t
 
 instance (UCMRecTuple r t, UCModel t tsm tdm) => UCModel r tsm tdm where
-  ucAllocModel   = ucAllocModel  ::(UCModel t tsm tdm)=>_->_
-  ucPrepModel    = ucPrepModel   ::(UCModel t tsm tdm)=>(_,_)->_
-  ucDeallocModel = ucDeallocModel::(UCModel t tsm tdm)=>_->_
+  ucAllocModel   = ucAllocModel  ::(UCModel t tsm tdm)=>_
+  ucPrepModel    = ucPrepModel   ::(UCModel t tsm tdm)=>_
+  ucDeallocModel = ucDeallocModel::(UCModel t tsm tdm)=>_
 
 instance (UCMRecTuple r t, UCRead t tsm tdm) => UCRead r tsm tdm where
   ucRead r dm = unsafeCast((ucRead::(UCRead t tsm tdm)=>(_,_)->_)(r,dm))::r
@@ -176,9 +192,9 @@ instance (UCMRecTuple r t, UCWrite t tsm tdm) => UCWrite r tsm tdm where
 
 // compression models for arrays (as if a dependent pair of a long and a single array element)
 instance (UCModel t tsm tdm) => UCModel [t] ((pcsmodel 8) * tsm) ((pdmodel 8) * tdm) where
-  ucAllocModel   f     = ((ucAllocModel::(UCModel long _ _)=>_->_)(f), (ucAllocModel::(UCModel t _ _)=>_->_)(f))
-  ucPrepModel    sm dm = do { (ucPrepModel::(UCModel long _ _)=>(_,_)->_)(sm.0, dm.0); (ucPrepModel::(UCModel t _ _)=>(_,_)->_)(sm.1, dm.1); }
-  ucDeallocModel dm    = do { (ucDeallocModel::(UCModel long _ _)=>_->_)(dm.0); (ucDeallocModel::(UCModel t _ _)=>_->_)(dm.1); }
+  ucAllocModel   f input = ((ucAllocModel::(UCModel long _ _)=>_)(f,input), (ucAllocModel::(UCModel t _ _)=>_)(f,input))
+  ucPrepModel    sm dm   = do { (ucPrepModel::(UCModel long _ _)=>(_,_)->_)(sm.0, dm.0); (ucPrepModel::(UCModel t _ _)=>(_,_)->_)(sm.1, dm.1); }
+  ucDeallocModel dm      = do { (ucDeallocModel::(UCModel long _ _)=>_->_)(dm.0); (ucDeallocModel::(UCModel t _ _)=>_->_)(dm.1); }
 
 ucTakeNStep :: (UCRead t sm dm) => (<hobbes.UCReader>, dm, long, [t], long) -> [t]
 ucTakeNStep r dm n x i =
@@ -217,9 +233,9 @@ class UCMEnumLen t n | t -> n
 instance (UCMEnumCount t b, SizeOf b n) => UCMEnumLen t n
 
 instance (UCMEnumLen t n) => UCModel t (csmodel n) <hobbes.DynDModel0> where
-  ucAllocModel   f     = ddmMake(unsafeCast(f), ti2b(tl2i(lowerLong::(LowerLong n)=>long)-1))
-  ucPrepModel    sm dm = ddmInit(dm, unsafeCast(sm))
-  ucDeallocModel       = ddmDestroy
+  ucAllocModel   f input = ddmMake(unsafeCast(f), input, ti2b(tl2i(lowerLong::(LowerLong n)=>long)-1))
+  ucPrepModel    sm dm   = ddmInit(dm, unsafeCast(sm))
+  ucDeallocModel         = ddmDestroy
 
 instance (UCMEnumLen t n) => UCRead t (csmodel n) <hobbes.DynDModel0> where
   ucRead r dm = unsafeCast({t=b2i(ucReaderRead(r, dm))})
@@ -233,9 +249,9 @@ instance UCDivideVariant void void ()
 instance (t=|c:h+s|, UCDivideVariant s se sp, |c:()+se|=e, (h*sp)=p) => UCDivideVariant t e p
 
 instance (UCDivideVariant t e p, UCModel e esm edm, UCModel p psm pdm) => UCModel t (esm*psm) (edm*pdm) where
-  ucAllocModel   f     = ((ucAllocModel::(UCModel e _ _)=>_->_)(f), (ucAllocModel::(UCModel p _ _)=>_->_)(f))
-  ucPrepModel    sm dm = do { (ucPrepModel::(UCModel e _ _)=>(_,_)->_)(sm.0,dm.0); (ucPrepModel::(UCModel p _ _)=>(_,_)->_)(sm.1,dm.1); }
-  ucDeallocModel dm    = do { (ucDeallocModel::(UCModel e _ _)=>_->_)(dm.0); (ucDeallocModel::(UCModel p _ _)=>_->_)(dm.1); }
+  ucAllocModel   f input = ((ucAllocModel::(UCModel e _ _)=>_)(f,input), (ucAllocModel::(UCModel p _ _)=>_)(f,input))
+  ucPrepModel    sm dm   = do { (ucPrepModel::(UCModel e _ _)=>(_,_)->_)(sm.0,dm.0); (ucPrepModel::(UCModel p _ _)=>(_,_)->_)(sm.1,dm.1); }
+  ucDeallocModel dm      = do { (ucDeallocModel::(UCModel e _ _)=>_->_)(dm.0); (ucDeallocModel::(UCModel p _ _)=>_->_)(dm.1); }
 
 class UCPadVar v p | v -> p where
   ucPadVar :: p
@@ -304,7 +320,7 @@ ucRootDropN r dm n =
 cseqTakeN :: (UCRead t sm dm) => ((file () ()), (cseq t sm n), long) -> [t]
 cseqTakeN f s k = do {
   r  = ucReaderMake(unsafeCast(f), unsafeCast(s), cseqBatchSize(s));
-  dm = (ucAllocModel::(UCModel t sm dm)=>_->dm)(unsafeCast(f));
+  dm = (ucAllocModel::(UCModel t sm dm)=>_)(unsafeCast(f),true);
   (ucPrepModelTop::(UCModelTop t sm dm)=>(_,dm)->())(r, dm);
   x  = (ucRootTakeN::(UCRead t sm dm)=>(_,dm,_)->[t])(r, dm, k);
   (ucDeallocModel::(UCModel t sm dm)=>dm->())(dm);
@@ -323,7 +339,7 @@ cseqReadFromTo :: (UCRead t sm dm) => ((file () ()), (cseq t sm n), long, long) 
 cseqReadFromTo f s i e = do {
   n  = cseqBatchSize(s);
   r  = ucReaderMake(unsafeCast(f), unsafeCast(s), n);
-  dm = (ucAllocModel::(UCModel t sm dm)=>_)(unsafeCast(f));
+  dm = (ucAllocModel::(UCModel t sm dm)=>_)(unsafeCast(f),true);
 
   x =
     if (not(ucReaderSeek(r, i/n))) then
@@ -364,7 +380,7 @@ ucRootPutN w dm xs i =
 class CSeqPut s t | s -> t where
   cseqPut :: (s, [t]) -> ()
 instance (UCWrite t sm dm) => CSeqPut (cseq t sm n) t where
-  cseqPut s xs = do { w=ucWriterMake(unsafeCast(file(s.t)), unsafeCast(s), cseqBatchSize(s), sizeOf::(SizeOf sm _)=>_); dm=(ucAllocModel::(UCModel t sm dm)=>_)(unsafeCast(file(s.t))); (ucPrepModel::(UCModel t sm dm)=>_)(unsafeCast(ucWriterModelData(w))::sm, dm); ucRootPutN(w, dm, xs, 0L); (ucDeallocModel::(UCModel t sm dm)=>_)(dm); ucWriterDestroy(w); }
+  cseqPut s xs = do { w=ucWriterMake(unsafeCast(file(s.t)), unsafeCast(s), cseqBatchSize(s), sizeOf::(SizeOf sm _)=>_); dm=(ucAllocModel::(UCModel t sm dm)=>_)(unsafeCast(file(s.t)),false); (ucPrepModel::(UCModel t sm dm)=>_)(unsafeCast(ucWriterModelData(w))::sm, dm); ucRootPutN(w, dm, xs, 0L); (ucDeallocModel::(UCModel t sm dm)=>_)(dm); ucWriterDestroy(w); }
 
 // initialize a stored compressed sequence of some type in a file
 initCSeq :: ((file 1 _)) -> (cseq t m n)

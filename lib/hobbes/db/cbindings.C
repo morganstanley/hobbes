@@ -75,7 +75,7 @@ struct DynCumFreqState {
 
 struct DynDModel0 : DynCumFreqState {
 public:
-  DynDModel0(imagefile* f, uint8_t maxSymbol) : DynCumFreqState(maxSymbol), f(f), pm(maxSymbol), cm(maxSymbol) {
+  DynDModel0(imagefile* f, bool input, uint8_t maxSymbol) : DynCumFreqState(maxSymbol), f(f), pm(input, maxSymbol), cm(maxSymbol) {
   }
   ~DynDModel0() {
   }
@@ -86,19 +86,28 @@ public:
   typedef typename CFS::CModel  CModel;
 
   struct PModel {
-    PModel(uint8_t maxSymbol) : freqs(0), activeFreqs(0), c(0) {
-      size_t n = static_cast<size_t>(maxSymbol) + 1;
-      this->freqs       = new arithn::freq[n];
-      this->activeFreqs = new arithn::freq[n];
+    PModel(bool input, uint8_t maxSymbol) : freqs(0), activeFreqs(0), pc(0), input(input), lc(0) {
+      if (this->input) {
+        size_t n = static_cast<size_t>(maxSymbol) + 1;
+        this->freqs       = new arithn::freq[n];
+        this->activeFreqs = new arithn::freq[n];
+        this->pc          = &this->lc;
+      }
     }
     ~PModel() {
-      delete[] freqs;
-      delete[] activeFreqs;
+      if (this->input) {
+        delete[] freqs;
+        delete[] activeFreqs;
+      }
     }
 
     arithn::freq* freqs;        // freq[symbolCount()]
     arithn::freq* activeFreqs;  // freq[symbolCount()]
-    arithn::freq  c;
+    arithn::freq* pc;
+    bool          input;
+    arithn::freq  lc;
+
+    arithn::freq& c() { return *this->pc; }
   };
 
   imagefile* f;
@@ -106,9 +115,15 @@ public:
   CModel     cm;
 
   void init(arithn::freq* modelData) {
-    memcpy(this->pm.freqs,       modelData, sizeof(arithn::freq)*symbolCount());
-    memcpy(this->pm.activeFreqs, modelData + symbolCount(), sizeof(arithn::freq)*symbolCount());
-    this->pm.c = *(modelData + 2*symbolCount());
+    if (this->pm.input) {
+      memcpy(this->pm.freqs,       modelData, sizeof(arithn::freq)*symbolCount());
+      memcpy(this->pm.activeFreqs, modelData + symbolCount(), sizeof(arithn::freq)*symbolCount());
+      this->pm.lc = *(modelData + 2*symbolCount());
+    } else {
+      this->pm.freqs = modelData;
+      this->pm.activeFreqs = modelData + symbolCount();
+      this->pm.pc = (modelData + 2*symbolCount());
+    }
 
     initWithState();
   }
@@ -167,20 +182,20 @@ public:
   }
 
   void add(symbol s) {
-    if (PRIV_HCFREGION_UNLIKELY(this->pm.c == arithn::fmax)) {
+    if (PRIV_HCFREGION_UNLIKELY(this->pm.c() == arithn::fmax)) {
       size_t fsz = sizeof(this->pm.freqs[0]) * symbolCount();
       memcpy(this->pm.activeFreqs, this->pm.freqs, fsz);
       initWithState();
       memset(this->pm.freqs, 0, fsz);
-      this->pm.c = 0;
+      this->pm.c() = 0;
     }
     ++this->pm.freqs[s];
-    ++this->pm.c;
+    ++this->pm.c();
   }
 };
 
-static DynDModel0* makeDynDModel0(long file, uint8_t maxSymbol) {
-  return new DynDModel0(reinterpret_cast<reader*>(file)->fileData(), maxSymbol);
+static DynDModel0* makeDynDModel0(long file, bool input, uint8_t maxSymbol) {
+  return new DynDModel0(reinterpret_cast<reader*>(file)->fileData(), input, maxSymbol);
 }
 static void destroyDynDModel0(DynDModel0* m) {
   delete m;

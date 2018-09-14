@@ -498,7 +498,7 @@ static CompressedStoredSeries::CAllocM compressedMAllocFn(cc* c, const MonoTypeP
         mt.second,
         str::strings("f"),
         list(tapp(primty("file"), list(primty("unit"), primty("unit")))),
-        fncall(assume(var("ucAllocModel", la), qualtype(list(ConstraintPtr(new Constraint("UCModel", list(t, freshTypeVar(), freshTypeVar())))), freshTypeVar()), la), list(var("f", la)), la)
+        fncall(assume(var("ucAllocModel", la), qualtype(list(ConstraintPtr(new Constraint("UCModel", list(t, freshTypeVar(), freshTypeVar())))), freshTypeVar()), la), list(var("f", la), constant(false, la)), la)
       )
     );
   } else {
@@ -560,12 +560,11 @@ CompressedStoredSeries::CompressedStoredSeries(cc* c, writer* file, const std::s
   prepMFn(compressedMPrepFn(c, t)),
   deallocMFn(compressedMDeallocFn(c, t))
 {
-  auto rid = addThreadRegion("cseq-region-" + freshName(), &this->dynModelMem);
-  auto oid = setThreadRegion(rid);
+  this->regionID = addThreadRegion("cseq-region-" + freshName(), &this->dynModelMem);
+  auto oid = setThreadRegion(this->regionID);
   this->dynModel = this->allocMFn(file);
   this->prepMFn(&this->w, this->dynModel);
   setThreadRegion(oid);
-  removeThreadRegion(rid);
 }
 
 CompressedStoredSeries::~CompressedStoredSeries() {
@@ -581,8 +580,11 @@ const MonoTypePtr& CompressedStoredSeries::storageType() const {
 // (assumes that all such values are passed by reference)
 void CompressedStoredSeries::record(const void* x, bool signal) {
   this->writeFn(&this->w, this->dynModel, x);
-  this->w.step();
-
+  if (this->w.step()) {
+    auto oid = setThreadRegion(this->regionID);
+    this->prepMFn(&this->w, this->dynModel);
+    setThreadRegion(oid);
+  }
   if (signal) {
     this->outputFile->signalUpdate();
   }
