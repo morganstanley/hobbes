@@ -21,6 +21,7 @@
 #include <iostream>
 #include <sstream>
 #include <atomic>
+#include <mutex>
 #include <stdexcept>
 #include <stdlib.h>
 #include <stdint.h>
@@ -435,12 +436,11 @@ inline std::string sharedMemName(const std::string& groupName) {
 }
 
 // register the allocation of a shared memory region with this group name in this thread/process
-inline void registerSHMAlloc(int* mqserver, const char* groupName, const WaitPolicy wp, bool reconnect = false) {
+inline void registerSHMAlloc(int* mqserver, const char* groupName, const WaitPolicy wp, bool reconnect = false, ProcThread pt = thisProcThread()) {
   if (*mqserver < 0) {
     *mqserver = connectGroupHost(groupName);
   }
 
-  ProcThread pt = thisProcThread();
   uint8_t msg[1+sizeof(ProcThread)] = {0};
   uint8_t& cmd = msg[0];
   cmd |= reconnect ? 1 : 0;
@@ -449,7 +449,7 @@ inline void registerSHMAlloc(int* mqserver, const char* groupName, const WaitPol
   mqwrite(*mqserver, msg, sizeof(msg));
 }
 
-inline void reconnectSHM(int* mqserver, const char* groupName, const WaitPolicy wp) {
+inline void reconnectSHM(int* mqserver, const char* groupName, const WaitPolicy wp, const std::vector<ProcThread>& pts) {
   // has the other side disconnected?
   if (*mqserver >= 0) {
     fd_set rd;
@@ -470,10 +470,12 @@ inline void reconnectSHM(int* mqserver, const char* groupName, const WaitPolicy 
     }
   }
 
-  // if we're in a disconnected state, try once to reconnect
+  // if we're in a disconnected state, try to reconnect and re-register all buffers
   if (*mqserver < 0) {
     try {
-      registerSHMAlloc(mqserver, groupName, wp, true);
+      for (const auto& pt : pts) {
+        registerSHMAlloc(mqserver, groupName, wp, true, pt);
+      }
     } catch (std::exception& ex) {
     }
   }
@@ -671,6 +673,7 @@ private:
   PipeQOS               qos;
   size_t                timeoutNS;
   std::function<void()> timeoutF;
+  size_t                unrtimeNS;
 
   void markPage(uint8_t c) {
     *reinterpret_cast<uint32_t*>(this->page + this->pagesz) = (static_cast<uint32_t>(c) << 24) | this->offset;
@@ -700,7 +703,7 @@ private:
     }
   }
 public:
-  wpipe(writer* wq, PipeQOS qos = Reliable, size_t timeoutNS = 0, const std::function<void()>& timeoutF = [](){}) : wq(wq), pagesz(wq->config().valuesz - sizeof(uint32_t)), offset(0), qos(qos), timeoutNS(timeoutNS), timeoutF(timeoutF) {
+  wpipe(writer* wq, PipeQOS qos = Reliable, size_t timeoutNS = 0, const std::function<void()>& timeoutF = [](){}) : wq(wq), pagesz(wq->config().valuesz - sizeof(uint32_t)), offset(0), qos(qos), timeoutNS(timeoutNS), timeoutF(timeoutF), unrtimeNS(0) {
     if (wq->config().valuesz <= sizeof(uint32_t)) {
       throw std::runtime_error("queue page size too small for use as shared memory pipe");
     }
@@ -708,11 +711,27 @@ public:
   }
 
   void commit() {
-    if (PRIV_HSTORE_LIKELY(this->page != 0)) {
+    if (reliable()) {
       markPage(PRIV_HSTORE_PAGE_STATE_COMMIT);
       this->wq->push();
+      this->page = this->wq->next(this->timeoutNS, this->timeoutF);
+    } else {
+      if (PRIV_HSTORE_LIKELY(this->page != 0)) {
+        markPage(PRIV_HSTORE_PAGE_STATE_COMMIT);
+        this->wq->push();
+      }
+      this->page = this->wq->pollNext();
+
+      // allow unreliable producers to process timeout events
+      if (PRIV_HSTORE_UNLIKELY(this->page == 0)) {
+        if (this->unrtimeNS == 0) {
+          this->unrtimeNS = internal::spin::poll_tickNS();
+        } else if (internal::spin::poll_tickNS() - this->unrtimeNS >= this->timeoutNS) {
+          this->timeoutF();
+          this->unrtimeNS = 0;
+        }
+      }
     }
-    this->page   = reliable() ? this->wq->next(this->timeoutNS, this->timeoutF) : this->wq->pollNext();
     this->offset = 0;
   }
 
@@ -1955,15 +1974,17 @@ struct StorageGroup {
   StorageStatements* statements;
   PipeQOS            qos;
   size_t             mempages;
-  int                mqserver;
   WaitPolicy         wp;
   bool               enabled;
 
+  std::mutex                 mqmtx;
+  int                        mqserver;
+  std::vector<ProcThread>    pts;
   static thread_local wpipe* pipe;
 
   constexpr StorageGroup(size_t pagec, const PipeQOS qos) : StorageGroup(pagec, qos, Platform) {}
   constexpr StorageGroup(size_t pagec, const PipeQOS qos, const WaitPolicy wp)
-    : statements(nullptr), qos(qos), mempages(pagec), mqserver(-1), wp(wp), enabled(true) {}
+    : statements(nullptr), qos(qos), mempages(pagec), wp(wp), enabled(true), mqserver(-1) {}
 
   ~StorageGroup() {
     delete this->statements;
@@ -1996,18 +2017,39 @@ struct StorageGroup {
   wpipe& out() {
     if (PRIV_HSTORE_LIKELY(this->pipe != 0)) {
       return *this->pipe;
+    } else {
+      std::lock_guard<std::mutex> mqguard(this->mqmtx);
+      this->pts.push_back(thisProcThread());
+
+      // allocate a shared memory queue for this group, register it with the group server
+      bytes meta;
+      prepareMeta(&meta);
+      
+      size_t pagesz = sysconf(_SC_PAGESIZE);
+      size_t pagec  = 1 + (meta.size() / pagesz) + std::max<size_t>(this->mempages, 10);
+
+      this->pipe =
+        new wpipe(
+          new writer(meta, sharedMemName(Name::str()), pagesz, pagec, wp),
+          this->qos,
+          /*if blocked 10ms*/ 10000000L,
+          /*reconnect if needed*/
+          [&](){
+            std::lock_guard<std::mutex> mqguard(this->mqmtx);
+            reconnectSHM(&this->mqserver, Name::str(), wp, this->pts);
+          }
+        );
+
+      try {
+        registerSHMAlloc(&this->mqserver, Name::str(), wp);
+      } catch (...) {
+        // unreliable mode can accept connection failures
+        if (this->qos != Unreliable) {
+          throw;
+        }
+      }
+      return *this->pipe;
     }
-
-    // allocate a shared memory queue for this group, register it with the group server
-    bytes meta;
-    prepareMeta(&meta);
-    
-    size_t pagesz = sysconf(_SC_PAGESIZE);
-    size_t pagec  = 1 + (meta.size() / pagesz) + std::max<size_t>(this->mempages, 10);
-
-    this->pipe = new wpipe(new writer(meta, sharedMemName(Name::str()), pagesz, pagec, wp), this->qos, /*if blocked 1ms*/ 1000000L, /*reconnect if needed*/ [&](){ reconnectSHM(&this->mqserver, Name::str(), wp); });
-    registerSHMAlloc(&this->mqserver, Name::str(), wp);
-    return *this->pipe;
   }
 
   inline void init() {
@@ -2028,6 +2070,11 @@ struct StorageGroup {
 
   inline void disable() {
     this->enabled = false;
+  }
+
+  inline void reconnect() {
+    std::lock_guard<std::mutex> mqguard(this->mqmtx);
+    reconnectSHM(&this->mqserver, Name::str(), this->wp, this->pts);
   }
 
   // use the log statement name provided by the user (if applicable)

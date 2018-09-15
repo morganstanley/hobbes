@@ -290,6 +290,8 @@ void flushData(int first, int last) {
   } while (0)
 
 #if !defined(BUILD_OSX)
+
+#if 0
 TEST(Hog, MultiDestination) {
   std::vector<HogApp> batchrecv {
     HogApp(RunMode(availablePort(10000, 10100))),
@@ -328,6 +330,7 @@ TEST(Hog, MultiDestination) {
   WITH_TIMEOUT(30, EXPECT_EQ_IN_SERIES(batchrecv[0].logpaths(), "coordinate", ".x", ({"[0..99]", "[100..199]", "[200..299]"})));
   WITH_TIMEOUT(30, EXPECT_EQ_IN_SERIES(batchrecv[1].logpaths(), "coordinate", ".x", ({"[0..199]", "[200..299]"})));
 }
+#endif
 
 DEFINE_STORAGE_GROUP(
   KillAndResume,
@@ -369,8 +372,7 @@ TEST(Hog, KillAndResume) {
   for (const auto& log : local.logpaths()) {
     c.define("f"+hobbes::str::from(i++), "inputFile::(LoadFile \""+log+"\" w)=>w");
   }
-  EXPECT_TRUE(c.compileFn<bool()>("f0.seq[0:] == [3,2,1,0]")());
-  EXPECT_TRUE(c.compileFn<bool()>("f1.seq[0:] == [14,13,12,11,10,9,8,7,6,5,4]")());
+  EXPECT_TRUE(c.compileFn<bool()>("f0.seq[0:] == [14,13,12,11,10,9,8,7,6,5,4,3,2,1,0]")());
 }
 
 DEFINE_STORAGE_GROUP(
@@ -452,6 +454,34 @@ TEST(Hog, SupportedTypes) {
     c.define("f"+hobbes::str::from(i++), "inputFile::(LoadFile \""+log+"\" w)=>w");
   }
   EXPECT_TRUE(c.compileFn<bool()>("all(\\x.x  matches {x=42,y=3.14159,z=[0S,1S,2S,3S,4S,5S,6S,7S,8S,9S],w=\"test\"},f0.sectView[0:])")());
+}
+
+DEFINE_STORAGE_GROUP(
+  TestUnrReconnect,
+  8,
+  hobbes::storage::Unreliable,
+  hobbes::storage::AutoCommit
+);
+
+TEST(Hog, UnreliableReconnect) {
+  // no consumer running, produce until we fail
+  while (HLOG(TestUnrReconnect, seq, "unreliable seq"));
+
+  // now that we've failed to log once, start a hog process
+  HogApp local(RunMode{{"TestUnrReconnect"}, /* consolidate = */ true});
+  local.start();
+  sleep(10);
+
+  // at some point we should succeed in logging when we transparently reconnect
+  auto t0 = hobbes::storage::internal::spin::poll_tickNS();
+  bool s = false;
+  while (((hobbes::storage::internal::spin::poll_tickNS() - t0)/(1000L*1000L*1000L)) < 120) {
+    if (HLOG(TestUnrReconnect, seq, "unreliable seq")) {
+      s = true;
+      break;
+    }
+  }
+  EXPECT_TRUE(s && "reconnection failed");
 }
 
 void rmrf(const char* p) {

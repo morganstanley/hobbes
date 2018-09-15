@@ -124,14 +124,15 @@ extern int yydebug;
     TCOMMA = 334,
     TSEMICOLON = 335,
     TFN = 336,
-    TCOMPOSE = 337,
-    TUPTO = 338,
-    TCARET = 339,
-    TAT = 340,
-    TDOLLAR = 341,
-    TQUESTION = 342,
-    TSQUOTE = 343,
-    TEQUOTE = 344
+    TFNL = 337,
+    TCOMPOSE = 338,
+    TUPTO = 339,
+    TCARET = 340,
+    TAT = 341,
+    TDOLLAR = 342,
+    TQUESTION = 343,
+    TSQUOTE = 344,
+    TEQUOTE = 345
   };
 #endif
 
@@ -140,7 +141,7 @@ extern int yydebug;
 typedef union YYSTYPE YYSTYPE;
 union YYSTYPE
 {
-#line 293 "hexpr.y" /* yacc.c:1909  */
+#line 274 "hexpr.y" /* yacc.c:1909  */
 
   hobbes::Module*              module;
   hobbes::ModuleDefs*          mdefs;
@@ -197,7 +198,7 @@ union YYSTYPE
   hobbes::BoundGrammarValue*   pbelem;
   hobbes::GrammarValue*        pvalue;
 
-#line 201 "hexpr.parse.H" /* yacc.c:1909  */
+#line 202 "hexpr.parse.H" /* yacc.c:1909  */
 };
 # define YYSTYPE_IS_TRIVIAL 1
 # define YYSTYPE_IS_DECLARED 1
