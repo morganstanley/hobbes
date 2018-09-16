@@ -50,6 +50,10 @@ static bool fileExists(const char* fileName) {
   }
 }
 
+static std::string mkFName() {
+  return uniqueFilename("/tmp/hdb-unittest", ".db");
+}
+
 TEST(Storage, uniqueFilenames) {
   // Create file1
   std::string file1 = uniqueFilename("/tmp/hfiles-unittest", ".log.staging");
@@ -84,10 +88,6 @@ TEST(Storage, uniqueFilenames) {
   unlink(file1.c_str());
 }
 
-static std::string mkFName() {
-  return uniqueFilename("/tmp/hdb-unittest", ".db");
-}
-
 TEST(Storage, Create) {
   std::string fname = mkFName();
   try {
@@ -115,7 +115,7 @@ DEFINE_STRUCT(SeriesTest,
   (const array<char>*, z)
 );
 
-TEST(Storage, SeriesAPI) {
+TEST(Storage, RawSeriesAPI) {
   std::string fname = mkFName();
   try {
     // make sure that we can write struct data through the series API correctly
@@ -142,6 +142,32 @@ TEST(Storage, SeriesAPI) {
       ss(st);
     }
     EXPECT_TRUE(c().compileFn<bool()>("[x|{x=x}<-f.series_test][:0] == [0..4]")());
+
+    unlink(fname.c_str());
+  } catch (...) {
+    unlink(fname.c_str());
+    throw;
+  }
+}
+
+TEST(Storage, CSeriesAPI) {
+  std::string fname = mkFName();
+  try {
+    // make sure that we can write struct data through the series API correctly
+    writer f(fname);
+    series<SeriesTest> ss(&c(), &f, "series_test", 100, StoredSeries::Compressed);
+
+    for (size_t i = 0; i < 10; ++i) {
+      SeriesTest st;
+      st.x = i;
+      st.y = 3.14159 * static_cast<double>(i);
+      st.z = makeString("string_" + str::from(i));
+      ss(st);
+    }
+
+    hobbes::cc c;
+    c.define("cf", "inputFile :: (LoadFile \"" + fname + "\" w) => w");
+    EXPECT_TRUE(c.compileFn<bool()>("[x|{x=x}<-cf.series_test] == [0..9]")());
 
     unlink(fname.c_str());
   } catch (...) {
@@ -467,7 +493,7 @@ DEFINE_STRUCT(
   (strs,      f)
 );
 
-TEST(Storage, CFRegionIO) {
+TEST(Storage, CFRegion_C2C) {
   std::string fname = mkFName();
   try {
     // write some compressed data
@@ -491,6 +517,88 @@ TEST(Storage, CFRegionIO) {
         xs(s);
       }
     }
+
+    // verify that it reads back in-order correctly
+    {
+      hobbes::fregion::creader r(fname);
+      auto& xs = r.series<MyStruct>("xs");
+      size_t i = 0;
+      MyStruct s;
+      while (xs.next(&s)) {
+        EXPECT_EQ(size_t(s.x), i);
+        EXPECT_EQ(s.y, uint8_t(i));
+        EXPECT_EQ(s.c, MyColor(static_cast<MyColor::Enum>(i%4)));
+        if (i%2 == 0) {
+          EXPECT_EQ(s.v, MyVariant::jimmy(static_cast<int>(42.0*sin(i))));
+        } else {
+          EXPECT_EQ(s.v, MyVariant::bob("bob #" + str::from(i)));
+        }
+        EXPECT_EQ(s.f.size(), i%10);
+        for (size_t k = 0; k < s.f.size(); ++k) {
+          EXPECT_EQ(s.f[k], str::from(k) + " Yellowstone bears");
+        }
+        ++i;
+      }
+    }
+
+    unlink(fname.c_str());
+  } catch (...) {
+    unlink(fname.c_str());
+    throw;
+  }
+}
+
+TEST(Storage, CFRegion_C2H) {
+  std::string fname = mkFName();
+  try {
+    // write some compressed data
+    {
+      hobbes::fregion::cwriter w(fname);
+      auto& xs = w.series<MyStruct>("xs");
+      for (size_t i = 0; i < 100; ++i) {
+        MyStruct s;
+        s.x = i;
+        s.y = i;
+        s.c = static_cast<MyColor::Enum>(i%4);
+        if (i%2 == 0) {
+          s.v = MyVariant::jimmy(static_cast<int>(42.0*sin(i)));
+        } else {
+          s.v = MyVariant::bob("bob #" + str::from(i));
+        }
+        s.f.resize(i%10);
+        for (size_t k = 0; k < s.f.size(); ++k) {
+          s.f[k] = str::from(k) + " Yellowstone bears";
+        }
+        xs(s);
+      }
+    }
+
+    // verify that it reads back correctly
+    hobbes::cc c;
+    c.define("cdb", "inputFile::(LoadFile \"" + fname + "\" w)=>w");
+    EXPECT_TRUE((c.compileFn<bool()>("let rs = [s==\"bob #\"++show(i)|{x=i,v=|bob=s|,f=fs}<-cdb.xs, size(fs)>0] in size(rs)>0 and all(id,rs)")()));
+
+    unlink(fname.c_str());
+  } catch (...) {
+    unlink(fname.c_str());
+    throw;
+  }
+}
+
+double isine(int x) { return sin(x); }
+
+TEST(Storage, CFRegion_H2C) {
+  std::string fname = mkFName();
+  try {
+    // write some compressed data
+    hobbes::cc c;
+    c.bind("sine", &isine);
+    hobbes::ty::bytes tdef;
+    hobbes::ty::encode(hobbes::ty::elimFileRefs(hobbes::fregion::store<MyStruct>::storeType()), &tdef);
+    c.defineTypeAlias("MyStruct", hobbes::str::seq(), hobbes::decode(tdef));
+    c.define("cdb", "writeFile(\"" + fname + "\")::(UCModel MyStruct sm _)=>(file _ {xs:(cseq MyStruct sm 100000)})");
+    c.compileFn<void()>("cdb.xs <- initCSeq(cdb)")();
+    c.compileFn<void()>("cseqPut(cdb.xs, [{x=i, y=ti2b(i), c=unsafeCast({t=i%4}), v=if (i%2==0) then |jimmy=tl2i(truncd(42.0*sine(i)))| else |bob=\"bob #\"++show(i)|, f=[show(k)++\" Yellowstone bears\"|k<-[0..(i%10)-1]]} |i<-[0..99]])")();
 
     // verify that it reads back in-order correctly
     {

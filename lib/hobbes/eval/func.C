@@ -359,6 +359,12 @@ class saelem : public op {
     const FixedArray* aty = is<FixedArray>(tys[0]);
     if (!aty) { throw annotated_error(*es[0], "Cannot index element, not a fixed-length array: " + show(tys[0])); }
 
+    if (isUnit(rty)) {
+      c->compile(es[0]);
+      c->compile(es[1]);
+      return cvalue(true);
+    }
+
     llvm::Value* p = offset(c->builder(), c->compile(es[0]), 0, c->compile(es[1]));
 
     if (isLargeType(rty)) {

@@ -162,7 +162,11 @@ private:
 };
 
 llvm::Type* toLLVM(const MonoTypePtr& ty, bool asArg) {
-  return switchOf(ty, translateTypeF(asArg));
+  if (isUnit(ty)) {
+    return voidType();
+  } else {
+    return switchOf(ty, translateTypeF(asArg));
+  }
 }
 
 Types toLLVM(const MonoTypes& tys, bool asArg) {

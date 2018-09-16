@@ -8,6 +8,7 @@
 #include <string>
 #include <functional>
 #include <hobbes/storage.H>
+#include <hobbes/db/series.H>
 #include "session.H"
 
 namespace hog {
