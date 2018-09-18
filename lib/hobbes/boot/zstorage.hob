@@ -286,6 +286,33 @@ instance (p=(h*pt), f=(_*ft), m=(hm*mt), UCInitVarAppWF v pt ft mt) => UCInitVar
 instance (UCDivideVariant v e p, UCModel e esm edm, UCModel p psm pdm) => UCWrite v (esm*psm) (edm*pdm) where
   ucWrite w dm v = do { ucWrite(w, dm.0, (unsafeCast(v)::{x:e}).x); f=newPrim(); (ucInitVarAppWF::(UCInitVarAppWF v p _ _)=>_)(w, f, dm.1); return variantApp(v, f) }
 
+// compression models for aliased types
+instance (UCModel long s d) => UCModel t@? s d where
+  ucAllocModel = ucAllocModel :: (UCModel long _ _)=>_
+  ucPrepModel = ucPrepModel :: (UCModel long _ _)=>_
+  ucDeallocModel = ucDeallocModel :: (UCModel long _ _)=>_
+instance (UCModel long s d) => UCModel t@f s d where
+  ucAllocModel = ucAllocModel :: (UCModel long _ _)=>_
+  ucPrepModel = ucPrepModel :: (UCModel long _ _)=>_
+  ucDeallocModel = ucDeallocModel :: (UCModel long _ _)=>_
+instance (UCRead long s d) => UCRead t@? s d where
+  ucRead r d = unsafeCast((ucRead::(UCRead long _ _)=>_)(r,d))
+instance (UCRead long s d) => UCRead t@f s d where
+  ucRead r d = unsafeCast((ucRead::(UCRead long _ _)=>_)(r,d))
+instance (UCWrite long s d) => UCWrite t@? s d where
+  ucWrite w dm x = (ucWrite::(UCWrite long _ _)=>_)(w, dm, unsafeCast(x)::long)
+instance (UCWrite long s d) => UCWrite t@f s d where
+  ucWrite w dm x = (ucWrite::(UCWrite long _ _)=>_)(w, dm, unsafeCast(x)::long)
+
+instance (Data d t, UCModel t sm dm) => UCModel d sm dm where
+  ucAllocModel = ucAllocModel :: (UCModel t _ _)=>_
+  ucPrepModel = ucPrepModel :: (UCModel t _ _)=>_
+  ucDeallocModel = ucDeallocModel :: (UCModel t _ _)=>_
+instance (Data d t, UCRead t sm dm) => UCRead d sm dm where
+  ucRead r d = unsafeCast((ucRead::(UCRead t _ _)=>_)(r,d))
+instance (Data d t, UCWrite t sm dm) => UCWrite d sm dm where
+  ucWrite w dm x = (ucWrite::(UCWrite t _ _)=>_)(w, dm, unsafeCast(x)::t)
+
 // an array view for stored sequences
 ucRootTakeNStep :: (UCRead t sm dm) => (<hobbes.UCReader>, dm, long, [t], long) -> [t]
 ucRootTakeNStep r dm n x i =
