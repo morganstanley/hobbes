@@ -1979,8 +1979,8 @@ struct StorageGroup {
 
   std::mutex                 mqmtx;
   int                        mqserver;
-  std::vector<ProcThread>    pts;
   static thread_local wpipe* pipe;
+  static std::vector<ProcThread> pts;
 
   constexpr StorageGroup(size_t pagec, const PipeQOS qos) : StorageGroup(pagec, qos, Platform) {}
   constexpr StorageGroup(size_t pagec, const PipeQOS qos, const WaitPolicy wp)
@@ -2019,7 +2019,7 @@ struct StorageGroup {
       return *this->pipe;
     } else {
       std::lock_guard<std::mutex> mqguard(this->mqmtx);
-      this->pts.push_back(thisProcThread());
+      pts.push_back(thisProcThread());
 
       // allocate a shared memory queue for this group, register it with the group server
       bytes meta;
@@ -2036,7 +2036,7 @@ struct StorageGroup {
           /*reconnect if needed*/
           [&](){
             std::lock_guard<std::mutex> mqguard(this->mqmtx);
-            reconnectSHM(&this->mqserver, Name::str(), wp, this->pts);
+            reconnectSHM(&this->mqserver, Name::str(), wp, pts);
           }
         );
 
@@ -2074,7 +2074,7 @@ struct StorageGroup {
 
   inline void reconnect() {
     std::lock_guard<std::mutex> mqguard(this->mqmtx);
-    reconnectSHM(&this->mqserver, Name::str(), this->wp, this->pts);
+    reconnectSHM(&this->mqserver, Name::str(), this->wp, pts);
   }
 
   // use the log statement name provided by the user (if applicable)
@@ -2211,6 +2211,8 @@ struct StorageGroup {
 };
 template <typename Name, CommitMethod cm>
   thread_local wpipe* StorageGroup<Name, cm>::pipe = 0;
+template <typename Name, CommitMethod cm>
+  std::vector<ProcThread> StorageGroup<Name, cm>::pts;
 
 // write a storage statement with payload into a pipe
 template <typename ... Ts>
