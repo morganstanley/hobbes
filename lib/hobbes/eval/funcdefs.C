@@ -669,6 +669,8 @@ void initStdFuncDefs(cc& ctx) {
   ctx.bind("fdWriteInt",    &fdWrite<int>);
   ctx.bind("fdReadLong",    &fdRead<long>);
   ctx.bind("fdWriteLong",   &fdWrite<long>);
+  ctx.bind("fdReadInt128",  &fdRead<int128_t>);
+  ctx.bind("fdWriteInt128", &fdWrite<int128_t>);
   ctx.bind("fdReadFloat",   &fdRead<float>);
   ctx.bind("fdWriteFloat",  &fdWrite<float>);
   ctx.bind("fdReadDouble",  &fdRead<double>);

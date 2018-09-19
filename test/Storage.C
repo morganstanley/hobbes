@@ -488,6 +488,7 @@ DEFINE_STRUCT(
   MyStruct,
   (int,       x),
   (uint8_t,   y),
+  (int128_t,  z),
   (MyColor,   c),
   (MyVariant, v),
   (strs,      f)
@@ -504,6 +505,7 @@ TEST(Storage, CFRegion_C2C) {
         MyStruct s;
         s.x = i;
         s.y = i;
+        s.z = i;
         s.c = static_cast<MyColor::Enum>(i%4);
         if (i%2 == 0) {
           s.v = MyVariant::jimmy(static_cast<int>(42.0*sin(i)));
@@ -527,6 +529,7 @@ TEST(Storage, CFRegion_C2C) {
       while (xs.next(&s)) {
         EXPECT_EQ(size_t(s.x), i);
         EXPECT_EQ(s.y, uint8_t(i));
+        EXPECT_EQ(s.z, int128_t(i));
         EXPECT_EQ(s.c, MyColor(static_cast<MyColor::Enum>(i%4)));
         if (i%2 == 0) {
           EXPECT_EQ(s.v, MyVariant::jimmy(static_cast<int>(42.0*sin(i))));
@@ -559,6 +562,7 @@ TEST(Storage, CFRegion_C2H) {
         MyStruct s;
         s.x = i;
         s.y = i;
+        s.z = i;
         s.c = static_cast<MyColor::Enum>(i%4);
         if (i%2 == 0) {
           s.v = MyVariant::jimmy(static_cast<int>(42.0*sin(i)));
@@ -598,7 +602,7 @@ TEST(Storage, CFRegion_H2C) {
     c.defineTypeAlias("MyStruct", hobbes::str::seq(), hobbes::decode(tdef));
     c.define("cdb", "writeFile(\"" + fname + "\")::(UCModel MyStruct sm _)=>(file _ {xs:(cseq MyStruct sm 100000)})");
     c.compileFn<void()>("cdb.xs <- initCSeq(cdb)")();
-    c.compileFn<void()>("cseqPut(cdb.xs, [{x=i, y=ti2b(i), c=unsafeCast({t=i%4}), v=if (i%2==0) then |jimmy=tl2i(truncd(42.0*sine(i)))| else |bob=\"bob #\"++show(i)|, f=[show(k)++\" Yellowstone bears\"|k<-[0..(i%10)-1]]} |i<-[0..99]])")();
+    c.compileFn<void()>("cseqPut(cdb.xs, [{x=i, y=ti2b(i), z=convert(i)::int128, c=unsafeCast({t=i%4}), v=if (i%2==0) then |jimmy=tl2i(truncd(42.0*sine(i)))| else |bob=\"bob #\"++show(i)|, f=[show(k)++\" Yellowstone bears\"|k<-[0..(i%10)-1]]} |i<-[0..99]])")();
 
     // verify that it reads back in-order correctly
     {
@@ -609,6 +613,7 @@ TEST(Storage, CFRegion_H2C) {
       while (xs.next(&s)) {
         EXPECT_EQ(size_t(s.x), i);
         EXPECT_EQ(s.y, uint8_t(i));
+        EXPECT_EQ(s.z, int128_t(i));
         EXPECT_EQ(s.c, MyColor(static_cast<MyColor::Enum>(i%4)));
         if (i%2 == 0) {
           EXPECT_EQ(s.v, MyVariant::jimmy(static_cast<int>(42.0*sin(i))));

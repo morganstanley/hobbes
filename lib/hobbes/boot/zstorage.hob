@@ -100,6 +100,7 @@ instance UCMSized char   1
 instance UCMSized short  2
 instance UCMSized int    4
 instance UCMSized long   8
+instance UCMSized int128 16
 instance UCMSized float  4
 instance UCMSized double 8
 
