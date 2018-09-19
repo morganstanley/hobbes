@@ -23,6 +23,8 @@
 
 namespace hobbes {
 
+typedef __int128 int128_t;
+
 // very basic macro metaprogramming
 #define PRIV_HPPF_FIRST(a, ...) a
 #define PRIV_HPPF_SECOND(a, b, ...) b

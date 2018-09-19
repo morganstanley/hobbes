@@ -230,6 +230,7 @@ HOBBES_LIFT_PRIMITIVE(long,               long);
 HOBBES_LIFT_PRIMITIVE(unsigned long,      long);
 HOBBES_LIFT_PRIMITIVE(long long,          long);
 HOBBES_LIFT_PRIMITIVE(unsigned long long, long);
+HOBBES_LIFT_PRIMITIVE(int128_t,           int128);
 HOBBES_LIFT_PRIMITIVE(float,              float);
 HOBBES_LIFT_PRIMITIVE(double,             double);
 

@@ -6,6 +6,7 @@
 #include <hobbes/util/perf.H>
 #include <hobbes/util/time.H>
 #include <hobbes/util/codec.H>
+#include <hobbes/util/stream.H>
 
 #include <stack>
 #include <iostream>
@@ -265,6 +266,12 @@ const maybe<int>::ty* readInt(const array<char>* x) {
 
 const array<char>* showLong(long x) {
   return makeString(str::from(x));
+}
+
+const array<char>* showInt128(int128_t x) {
+  std::ostringstream ss;
+  printInt128(ss, x);
+  return makeString(ss.str());
 }
 
 const maybe<long>::ty* readLong(const array<char>* x) {
@@ -601,6 +608,7 @@ void initStdFuncDefs(cc& ctx) {
   ctx.bind("showShort",    &showShort);
   ctx.bind("showInt",      &showInt);
   ctx.bind("showLong",     &showLong);
+  ctx.bind("showInt128",   &showInt128);
   ctx.bind("showFloat",    &showFloat);
   ctx.bind("showDouble",   &showDouble);
   ctx.bind("showString",   &showString);
