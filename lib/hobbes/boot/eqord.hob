@@ -43,6 +43,12 @@ instance Ord long long where
   (>)  = lgt
   (>=) = lgte
 
+instance Ord int128 int128 where
+  (<)  = i16lt
+  (<=) = i16lte
+  (>)  = i16gt
+  (>=) = i16gte
+
 instance Ord float float where
   (<)  = flt
   (<=) = flte

@@ -2179,6 +2179,8 @@ private:
       return sizeof(int);
     } else if (pn == "long") {
       return sizeof(long);
+    } else if (pn == "int128") {
+      return sizeof(int128_t);
     } else if (pn == "float") {
       return sizeof(float);
     } else if (pn == "double") {
@@ -2222,7 +2224,7 @@ unsigned int sizeOf(const MonoTypePtr& mt) {
 bool isPrimName(const std::string& tn) {
   static const char* prims[] = {
     /* ::: Set */
-    "unit", "void", "bool", "char", "byte", "short", "int", "long", "float", "double",
+    "unit", "void", "bool", "char", "byte", "short", "int", "long", "int128", "float", "double",
 
     /* ::: Set -> Set */
     "[]", "list", "lseq", "process", "quote", "promise", "connection", "wpipe", "rpipe",

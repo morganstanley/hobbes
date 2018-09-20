@@ -692,6 +692,7 @@ template <> struct compress<uint32_t> : public compressByteSeq<uint32_t> { };
 template <> struct compress<int>      : public compressByteSeq<int>      { };
 template <> struct compress<uint64_t> : public compressByteSeq<uint64_t> { };
 template <> struct compress<long>     : public compressByteSeq<long>     { };
+template <> struct compress<__int128> : public compressByteSeq<__int128> { };
 
 #if defined(__APPLE__) && defined(__MACH__)
 template <> struct compress<size_t> : public compressByteSeq<size_t> { };

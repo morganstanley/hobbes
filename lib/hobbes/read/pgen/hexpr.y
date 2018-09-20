@@ -316,6 +316,7 @@ extern PatVarCtorFn patVarCtorFn;
   short                                   shortv;
   int                                     intv;
   long                                    longv;
+  __int128                                int128v;
   float                                   floatv;
   double                                  doublev;
 
@@ -348,6 +349,7 @@ extern PatVarCtorFn patVarCtorFn;
 %token <shortv>  TSHORT        "shortV"
 %token <intv>    TINT          "intV"
 %token <longv>   TLONG         "longV"
+%token <int128v> TINT128       "int128V"
 %token <floatv>  TFLOAT        "floatV"
 %token <doublev> TDOUBLE       "doubleV"
 %token <string>  TIDENT        "id"
@@ -721,6 +723,7 @@ l6expr: l6expr "(" cargs ")"    { $$ = new App(ExprPtr($1), *$3, m(@1, @4)); }
       | "shortV"    { $$ = new Short($1, m(@1)); }
       | "intV"      { $$ = new Int($1, m(@1)); }
       | "longV"     { $$ = new Long($1, m(@1)); }
+      | "int128V"   { $$ = new Int128($1, m(@1)); }
       | "floatV"    { $$ = new Float($1, m(@1)); }
       | "doubleV"   { $$ = new Double($1, m(@1)); }
       | "stringV"   { $$ = mkarray(str::unescape(str::trimq(*$1)), m(@1)); }
@@ -796,6 +799,7 @@ refutablep: "boolV"                    { $$ = new MatchLiteral(PrimitivePtr(new 
           | "shortV"                   { $$ = new MatchLiteral(PrimitivePtr(new Short($1, m(@1))), m(@1)); }
           | "intV"                     { $$ = new MatchLiteral(PrimitivePtr(new Int($1, m(@1))), m(@1)); }
           | "longV"                    { $$ = new MatchLiteral(PrimitivePtr(new Long($1, m(@1))), m(@1)); }
+          | "int128V"                  { $$ = new MatchLiteral(PrimitivePtr(new Int128($1, m(@1))), m(@1)); }
           | "doubleV"                  { $$ = new MatchLiteral(PrimitivePtr(new Double($1, m(@1))), m(@1)); }
           | "bytesV"                   { $$ = mkpatarray(str::dehexs(*$1), m(@1)); }
           | "stringV"                  { $$ = mkpatarray(str::unescape(str::trimq(*$1)), m(@1)); }

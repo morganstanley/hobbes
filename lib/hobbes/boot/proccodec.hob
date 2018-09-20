@@ -38,6 +38,10 @@ instance BlockCodec long where
   readFrom = fdReadLong
   writeTo  = fdWriteLong
 
+instance BlockCodec int128 where
+  readFrom = fdReadInt128
+  writeTo  = fdWriteInt128
+
 instance BlockCodec float where
   readFrom = fdReadFloat
   writeTo  = fdWriteFloat

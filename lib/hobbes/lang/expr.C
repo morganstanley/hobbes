@@ -112,6 +112,16 @@ bool Long::equiv(const Long& rhs)           const { return this->x == rhs.x; }
 bool Long::lt(const Long& rhs)              const { return this->x < rhs.x; }
 MonoTypePtr Long::primType() const { return MonoTypePtr(Prim::make("long")); }
 
+Int128::Int128(int128_t x, const LexicalAnnotation& la) : Base(la), x(x) { }
+int128_t Int128::value() const { return this->x; }
+void Int128::value(int128_t nx) { this->x = nx; }
+Expr* Int128::clone() const { return new Int128(this->x,la()); }
+void Int128::show(std::ostream& out)          const { printInt128(out, this->x); out << "H"; }
+void Int128::showAnnotated(std::ostream& out) const { show(out); showTy(out, type()); }
+bool Int128::equiv(const Int128& rhs)         const { return this->x == rhs.x; }
+bool Int128::lt(const Int128& rhs)            const { return this->x < rhs.x; }
+MonoTypePtr Int128::primType() const { return MonoTypePtr(Prim::make("int128")); }
+
 Float::Float(float x, const LexicalAnnotation& la) : Base(la), x(x) { }
 float Float::value() const { return this->x; }
 void Float::value(float nx) { this->x = nx; }
@@ -1107,6 +1117,7 @@ UnitV switchExprTyFnM::with(Byte* v) { return updateTy(v); }
 UnitV switchExprTyFnM::with(Short* v) { return updateTy(v); }
 UnitV switchExprTyFnM::with(Int* v) { return updateTy(v); }
 UnitV switchExprTyFnM::with(Long* v) { return updateTy(v); }
+UnitV switchExprTyFnM::with(Int128* v) { return updateTy(v); }
 UnitV switchExprTyFnM::with(Float* v) { return updateTy(v); }
 UnitV switchExprTyFnM::with(Double* v) { return updateTy(v); }
 UnitV switchExprTyFnM::with(Var* v) { return updateTy(v); }
@@ -1537,6 +1548,12 @@ struct encodeExprF : public switchExpr<UnitV> {
     return unitv;
   }
 
+  UnitV with(const Int128* v) const {
+    encode(Int128::type_case_id, this->out);
+    encode(v->value(), this->out);
+    return unitv;
+  }
+
   UnitV with(const Float* v) const {
     encode(Float::type_case_id, this->out);
     encode(v->value(), this->out);
@@ -1740,6 +1757,12 @@ void decode(ExprPtr* out, std::istream& in) {
     long x = 0;
     decode(&x, in);
     result = ExprPtr(new Long(x, LexicalAnnotation::null()));
+    break;
+  }
+  case Int128::type_case_id: {
+    int128_t x = 0;
+    decode(&x, in);
+    result = ExprPtr(new Int128(x, LexicalAnnotation::null()));
     break;
   }
   case Double::type_case_id: {

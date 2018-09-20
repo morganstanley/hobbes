@@ -39,6 +39,9 @@ instance Eq int where
 instance Eq long where
   (===) = leq
 
+instance Eq int128 where
+  (===) = i16eq
+
 instance Eq float where
   (===) = feq
 

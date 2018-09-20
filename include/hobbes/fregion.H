@@ -1186,6 +1186,7 @@ PRIV_HFREGION_DEFINE_PRIMTYS(uint64_t, "long");
 #if defined(__APPLE__) && defined(__MACH__)
 PRIV_HFREGION_DEFINE_PRIMTYS(size_t, "long");
 #endif
+PRIV_HFREGION_DEFINE_PRIMTYS(__int128, "int128");
 PRIV_HFREGION_DEFINE_PRIMTYS(float,    "float");
 PRIV_HFREGION_DEFINE_PRIMTYS(double,   "double");
 

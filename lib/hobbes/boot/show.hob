@@ -34,6 +34,9 @@ instance Show int where
 instance Show long where
   show = showLong
 
+instance Show int128 where
+  show = showInt128
+
 instance Show float where
   show x = showFloat(x, floatFormatConfig.floatPrecision)
 
