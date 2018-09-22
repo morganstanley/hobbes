@@ -157,7 +157,7 @@ TEST(Storage, CSeriesAPI) {
     writer f(fname);
     series<SeriesTest> ss(&c(), &f, "series_test", 100, StoredSeries::Compressed);
 
-    for (size_t i = 0; i < 10; ++i) {
+    for (size_t i = 0; i < 1000; ++i) {
       SeriesTest st;
       st.x = i;
       st.y = 3.14159 * static_cast<double>(i);
@@ -167,7 +167,7 @@ TEST(Storage, CSeriesAPI) {
 
     hobbes::cc c;
     c.define("cf", "inputFile :: (LoadFile \"" + fname + "\" w) => w");
-    EXPECT_TRUE(c.compileFn<bool()>("[x|{x=x}<-cf.series_test] == [0..9]")());
+    EXPECT_TRUE(c.compileFn<bool()>("[x|{x=x}<-cf.series_test] == [0..999]")());
 
     unlink(fname.c_str());
   } catch (...) {

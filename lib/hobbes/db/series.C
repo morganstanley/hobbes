@@ -560,11 +560,12 @@ CompressedStoredSeries::CompressedStoredSeries(cc* c, writer* file, const std::s
   prepMFn(compressedMPrepFn(c, t)),
   deallocMFn(compressedMDeallocFn(c, t))
 {
-  this->regionID = addThreadRegion("cseq-region-" + freshName(), &this->dynModelMem);
-  auto oid = setThreadRegion(this->regionID);
+  auto rid = addThreadRegion("cseq-region-" + freshName(), &this->dynModelMem);
+  auto oid = setThreadRegion(rid);
   this->dynModel = this->allocMFn(file);
   this->prepMFn(&this->w, this->dynModel);
   setThreadRegion(oid);
+  removeThreadRegion(rid);
 }
 
 CompressedStoredSeries::~CompressedStoredSeries() {
@@ -581,9 +582,7 @@ const MonoTypePtr& CompressedStoredSeries::storageType() const {
 void CompressedStoredSeries::record(const void* x, bool signal) {
   this->writeFn(&this->w, this->dynModel, x);
   if (this->w.step()) {
-    auto oid = setThreadRegion(this->regionID);
     this->prepMFn(&this->w, this->dynModel);
-    setThreadRegion(oid);
   }
   if (signal) {
     this->outputFile->signalUpdate();
