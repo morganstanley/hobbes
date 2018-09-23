@@ -3,77 +3,14 @@ Hobbes Components
 
 Hobbes is comprised of two main components:
 
-   1. A haskell-like programming language with a rich type system. Hobbes code can be embedded in a C++ program and data marshalled between the two:
+   1. A haskell-like programming language with a rich type system. Hobbes code can be embedded in a C++ program and data marshalled between the two. This means you can write C++ code which binds against a Hobbes environment and calls into Hobbes functions to execute functionality.
 
-   .. code-block:: cpp
+    Over the day and as business requirements change, you can update the bound Hobbes code to give it different behaviour. The new code is compiled to highly efficient x86 instructions for later execution.
 
-     #include <iostream>
-     #include <stdexcept>
-     #include <hobbes/hobbes.H>
+    Similarly, you can make C++ functions available to the embedded Hobbes code. Ultimately, this gives you the power to choose the most efficient and effective format for different parts of your codebase: Highly structured and well-defined parts of your application can be built using C++, whilst the dynamic business logic can be written in Hobbes. 
 
-     int main() {
-       hobbes::cc c;
-
-       while (std::cin) {
-         std::cout << "> " << std::flush;
-
-         std::string line;
-         std::getline(std::cin, line);
-         if (line == ":q") break;
-
-         try {
-           c.compileFn<void()>("print(" + line + ")")();
-         } catch (std::exception& ex) {
-           std::cout << "*** " << ex.what();
-         }
-
-         std::cout << std::endl;
-         hobbes::resetMemoryPool();
-       }
-
-       return 0;
-     }
-   See :ref:`examples <hobbes_hosting>`.
+    For more details about hosting Hobbes in a C++ application, see :ref:`"Embedding Hobbes" <hobbes_hosting>`.
      
-   2. A data storage and expression format for out-of-band data processing
+   2. A data storage and expression format for out-of-band data processing. Hobbes comes with a typesafe, memory-efficient persistence format for realtime storage and retrieval of application data. This can be used for inter-process communication over TCP, quering and filtering of daily application logs, or fast post-hoc analysis of application behaviour based on Hobbes' internal decision tree structure.
 
-   .. code-block:: cpp
-
-     #include <hobbes/storage.H>
-     #include <stdlib.h>
-
-     DEFINE_STORAGE_GROUP(
-       WeatherMonitor,              /* an arbitrary name for our data set */
-       3000,                        /* our maximum expected throughput in system pages (if we record up to this limit, we either drop or block) */
-       hobbes::storage::Unreliable, /* we'd rather drop than block */
-       hobbes::storage::AutoCommit  /* we don't need to correlate multiple records in a batch (non-transactional) */
-     );
-
-     // a set of sensor readings
-     DEFINE_HSTORE_STRUCT(
-       Sensor,
-       (double, temp),
-       (double, humidity)
-     );
-
-     int main() {
-       while (true) {
-         // record a random sensor reading from somewhere
-         const char* locations[] = { "AZ", "CO", "HI" };
-         const char* location    = locations[rand() % 3];
-
-         Sensor s;
-         s.temp     = 1.0 + 50.0 * ((double)(rand() % 100)) / 100.0;
-         s.humidity = ((double)(rand() % 100)) / 100.0;
-
-         HSTORE(WeatherMonitor, sensor, location, s);
-
-         // sometimes record a passing car
-         if (rand() % 100 == 0) {
-           HSTORE(WeatherMonitor, carPassed, location);
-         }
-       }
-       return 0;
-     }
-
-   See :ref:`examples <hobbes_data_binding>`.
+     For more details about Hobbes' persistence format, see :ref:`"Logging" <hobbes_logging>`.

@@ -1,7 +1,9 @@
+.. _typesystem:
+
 The Hobbes Type System
 **********************
 
-The Hobbes Type System is functional in spirit. There are primitive types, arrays, record types, tuples, and variants.
+Like many functional-style programming languages, the power of Hobbes lies in its rich type system. There are primitive types, arrays, record types, tuples, and variants.
 
 .. hint:: 
 
@@ -127,7 +129,7 @@ Just like in C++, Hobbes arrays are contiguous values in memory, with special sy
 Records
 =======
 
-Records are a common way to keep closely-associated pieces of data together in functional progamming, and they're often referred to as an "AND" type: a hostport is a host AND a port - and that's it. No behaviour, and its identity is simple the two elements.
+Records are a common way to keep closely-associated pieces of data together in functional progamming, and they're often referred to as an "AND" type: a hostport is a host AND a port - and that's it. No behaviour, and its identity is simply the two elements.
 
 Record types are similar to structs, with ad-hoc initialisation and type inference:
 
@@ -158,6 +160,7 @@ Records are examples of structural types, meaning that in Hobbes, even though th
     class Equiv where
       == :: (#0 * #1) -> bool
 
+  For more information about typeclasses in Hobbes, see :ref:`Type Classes <typeclasses>`.
 
 Tuples
 ======

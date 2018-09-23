@@ -1,7 +1,9 @@
 Control Flow
 ************
 
-Control flow rules for Hobbes are similar to Haskell.
+The Hobbes language itself is quite small. We've already seen the definition of a function type using the function-literal, or *lambda* syntax, in :ref:`here <polymorphism>`.
+
+Further function definitions, as well as types, type classes, and their instances, must be written in a Hobbes file in order to be defined.
 
 .. note:: Hi can read files
   
@@ -25,6 +27,8 @@ Control flow rules for Hobbes are similar to Haskell.
 
   This makes it much easier to write more complex, multi-line expressions of the kind we'll see in this section. Some of these examples are therefore shown without the hi prompt.
 
+The control flow rules for Hobbes are similar to Haskell:
+
 If/else
 =======
 
@@ -45,6 +49,10 @@ If/else
 Pattern matching
 ================
 
+.. note:: **Comments**
+
+  Single-line comments in Hobbes begin with "//"
+
 Hobbes has rich support for pattern matching - in some sense, this is where it shines.
 
 ::
@@ -54,7 +62,7 @@ Hobbes has rich support for pattern matching - in some sense, this is where it s
     | 2 -> "hobbes"  
     | _ -> "oops!"
 
-
+    todo: match on aggregate types. unapply/deconstruct syntax?
 
 Comprehensions
 ==============
@@ -70,6 +78,29 @@ Similar to comprehensions in Python, these allow us to describe the algorithm us
 This can be read as "for each x in 0 to 20, where x is divisible by 3, show x".
 
 The comprehension is split into a mapping function, a generator expression, and a filter. The mapping function is applied to the results of the generator function where the filter holds true.
+
+The comprehension syntax is an expression, and can therefore be used anywhere a range of elements is expected. For example, the Hobbes standard library contains the following code:
+
+::
+
+  productWith :: ((a, b) -> c, [a], [b]) -> [c]
+  productWith f xs ys = concat([[f(x,y) | y <- ys] | x <- xs])
+
+This describes a function ``productWith``, which combines the cross product of elements from two lists with a function:
+
+::
+
+  > productWith((\x y.x+y),[1,2,3],[4,5,6])
+  [5, 6, 7, 6, 7, 8, 7, 8, 9]
+
+If we were to write out this ``productWith`` function in a less functional style, it might look like this:
+
+::
+
+  for(x in 1, 2, 3)
+    for(y in 4, 5, 6)
+      yield (x, y)
+
 
 Local variables
 ===============
@@ -100,8 +131,3 @@ Indeed, let expressions are very powerful. In the following example we're first 
   40
 
 Notice how we're even able to reuse the name ``x`` across both the function declaration and the resultant tuple deconstruction. ``Let`` expressions are evaluated in declaration order, before the execution primary expression.
-
-Do
-==
-
-todo: do.

@@ -1,2 +1,4 @@
+.. _typeclasses:
+
 Type Classes
 ************

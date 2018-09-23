@@ -1,3 +1,5 @@
+.. _hobbes_hosting:
+
 The Hobbes Embedded Compiler
 ****************************
 

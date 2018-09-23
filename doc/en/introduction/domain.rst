@@ -1,3 +1,5 @@
+.. _domain:
+
 Digging into the domain
 ***********************
 
