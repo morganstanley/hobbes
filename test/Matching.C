@@ -79,6 +79,9 @@ TEST(Matching, Variant) {
   EXPECT_EQ(c().compileFn<int()>("match |foo=(\"abc\", 3)| with | |foo=(_, 2)| -> 1 | |foo=(\"abc\", _)| -> 2 | |foo=(_, 3)| -> 3 | |foo=_| -> 4")(), 2);
   EXPECT_EQ(c().compileFn<int()>("match |foo=(\"abd\", 3)| with | |foo=(_, 2)| -> 1 | |foo=(\"abc\", _)| -> 2 | |foo=(_, 3)| -> 3 | |foo=_| -> 4")(), 3);
   EXPECT_EQ(c().compileFn<int()>("match |foo=(\"abd\", 4)| with | |foo=(_, 2)| -> 1 | |foo=(\"abc\", _)| -> 2 | |foo=(_, 3)| -> 3 | |foo=_| -> 4")(), 4);
+
+  // ensure match preserves variant constructor order
+  EXPECT_EQ(c().compileFn<int()>("((\\v.match v with | |S=_|->0 | |F=x|->x)::|S:(),F:int|->int)(|F=42|)")(), 42);
 }
 
 TEST(Matching, Efficiency) {
