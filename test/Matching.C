@@ -141,6 +141,12 @@ TEST(Matching, Regex) {
 
   // verify misc expressions
   EXPECT_EQ(c().compileFn<int()>("match \"Roba\" with | 'Ka|Roba|Raa' -> 1 | _ -> 0")(), 1);
+
+  // verify regex-as-fn translation
+  EXPECT_TRUE(c().compileFn<bool()>("'fo*bar'(\"foobar\")")());
+  EXPECT_TRUE(!c().compileFn<bool()>("'fo*bar'(\"foobaz\")")());
+  EXPECT_EQ(makeStdString(c().compileFn<const array<char>*()>("either('f(?<os>o*)bar'(\"foobar\"),\"\",.os)")()), "oo");
+  EXPECT_EQ(makeStdString(c().compileFn<const array<char>*()>("either('f(?<os>o*)bar'(\"foobaz\"),\"\",.os)")()), "");
 }
 
 TEST(Matching, Support) {

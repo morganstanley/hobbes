@@ -711,6 +711,9 @@ l6expr: l6expr "(" cargs ")"    { $$ = new App(ExprPtr($1), *$3, m(@1, @4)); }
       /* record sections */
       | recfieldpath { $$ = new Fn(str::strings("x"), proj(var("x", m(@1)), *$1, m(@1)), m(@1)); }
 
+      /* regex functions */
+      | "regexV" { $$ = compileRegexFn(yyParseCC, std::string($1->begin() + 1, $1->end() - 1), m(@1))->clone(); }
+
       /* existential construction / elimination */
       | "pack" l6expr                      { $$ = new Pack(ExprPtr($2), m(@1, @2)); }
       | "unpack" id "=" l6expr "in" l6expr { $$ = new Unpack(*$2, ExprPtr($4), ExprPtr($6), m(@1, @6)); }
