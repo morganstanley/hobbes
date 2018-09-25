@@ -1,3 +1,5 @@
+.. _polymorphism:
+
 The Hobbes Standard Library
 ***************************
 
