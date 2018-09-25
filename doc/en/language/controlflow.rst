@@ -49,20 +49,190 @@ If/else
 Pattern matching
 ================
 
-.. note:: **Comments**
+Match expressions are perhaps the most powerful element of Hobbes syntax, because they let you perform actions based on the value or even type of other expressions.
 
-  Single-line comments in Hobbes begin with "//"
-
-Hobbes has rich support for pattern matching - in some sense, this is where it shines.
+In the simplest form, they’re a bit like a switch statement:
 
 ::
 
   match 3 with 
-    | 1 -> "hello" 
-    | 2 -> "hobbes"  
-    | _ -> "oops!"
+  | 1 -> show("hello")
+  | 2 -> show("hobbes")
+  | _ -> show("oops!")
 
-    todo: match on aggregate types. unapply/deconstruct syntax?
+.. note::
+  In Hobbes match expressions, the underscore serves two purposes.
+  
+  Firstly, it's a wildcard. In the above code the underscore is the default case that will be executed if all the above cases have failed to match.
+
+  Secondly, it's an instruction not to bind a name to the matched element. We'll see more about binding below!
+
+When used with more than one value they can be used to match against any element in the set. However, the Hobbes compiler is smart, and will complain if you haven't provided a case for all the potential options. In the next example, we'll be caught red-handed with a so-called "inexhaustive match":
+
+::
+
+  match 1 2 with
+  | 1 _ -> show("first!")
+  | 1 2 -> show("second!")
+
+.. warning::
+  Inexhaustive patterns in match expression
+
+  We can always resolve this by adding a default case, or by providing cases for all the possible options - although this might mean writing a lot of code!
+
+  ::
+
+    match 1 2 with
+    | 1 _ -> show("first!")
+    | 1 2 -> show("second!")
+    | _ _ -> show("default!")
+
+In the above example, it's important to note that the matching works top-down, meaning that the first valid case will be evaluated:
+
+::
+
+  match 1 2 with
+  | _ 2 -> show("matched!")
+  | 1 2 -> show("didn't match!")
+  | _ _ -> show("didn't even get here!")
+
+The way to read the first case is "*any value* followed by the integer ``2``". Even though the second match is more specific (i.e., both elements match the values), it's the first case that's matched.
+
+Also, note that because we're matching against two values, we have to use two underscores in the final case. If we fail to do that, Hobbes will tellus "row #3 has 1 columns, but should have 2".
+
+.. note::
+
+  Just as ``if`` expressions can be written on one line, we can save space (and be more idiomatic) in our Hobbes code in the same way. The above match can be re-written as
+
+  ::
+
+    match 1 2 with | _ 2 -> show("matched!") | 1 2 -> show("didn't match!") | _ _ -> show("didn't even get here!")
+
+  The Hobbes standard library is full of code like this, and Hobbes developers quickly get used to writing code this terse. You can decide what works best for you!
+
+Matching and binding
+--------------------
+
+As well as matching on values, we can also bind values to names within a match case. In the following example, we're matching on the first element of the tuple and binding to the second:
+
+::
+
+  match 'a' 123 with
+  | 'a' fst -> show(fst)
+  | 'b' snd -> show(snd)
+  | _ _ -> show("default")
+
+In each case, we're simply matching on the (char) value of the first element. If that matches, we bind the second element to a value. In the first case (which ultimately is matched), the name we give the value is ``fst``, but there's nothing special about that; we could have called it anything. The name ``fst`` is then lexically scoped to the match expression following the arrow - it's not available in other cases, or outside the match. 
+
+.. note::
+  To some programmers, this “match and bind” behaviour seems strange, and it’s another good example of the terse vs powerful dynamic often found in functional programming.
+
+Tuples
+------
+
+Hobbes also lets us match against the values of tuple elements, leading to another common idiom. The ease with which we can match and bind using the match syntax with tuples means that ad-hoc tuples are often created simply to limit pollution of the global namespace with values which could be scoped more appropriately. Consider the below case:
+
+::
+
+  match env getHostPort(env) with
+  | "dev" (host, port) -> connect(host, port)
+  | "qa" (host, port) -> connectqa(host, port, qadb)
+  | "prod" (host, _) -> connectkrb(host)
+  | _ _ -> ...
+
+In this case we're creating a tuple simply for the purposes of immediately mathching against its values and unpacking it.
+
+Here again the underscore is used as a wildcard - in this case you can read it to mean "there is a value here but I don't care what it is, and I don't want to use it".
+
+This matching-and-binding logic can be generalised to arrays, too:
+
+::
+
+  match [("sam", 2013), ("james", 2012), ("stephen", 2010)] with
+  | [_ (n, 2012), _] -> show(n)
+  | _ -> show("none")
+
+And, because of the way character arrays are matched, even to regular expressions:
+
+::
+
+  match hostname with
+  | '.*qa$' -> show("qa")
+  | _ -> show("prod")
+
+Guard matching
+--------------
+
+We can also match based on ranges of values, using a so-called "guard":
+
+::
+
+  match 1 with
+  | x where x < 10 -> show("small!")
+  | _ -> show("large!")
+
+.. note::
+
+  The rules for match expressions are simple: every case in the expression must be reachable (i.e., no previous row can have matched against all the possible values for this row) and the match table must be exhaustive (i.e. all possible cases must be matched against).
+
+  These rules combined explain why you so commonly see wildcard matches at the end of a match expression - the wildcard catches any cases that haven't previously been matched; and putting it at the end it prevents further cases from being unreachable.
+
+  Remember, the rule is *first possible match*, not *most specific match*!
+
+Just like with tuples we can match on - and unpack - sum and variant types:
+
+**TODO**
+
+Match expressions
+-----------------
+
+In the previous examples, we've been calling the unit ``show`` function in our match cases. But in Hobbes, just like with ``if``, ``match`` is an expression - that means it’s results can be assigned directly to a name:
+
+::
+
+  hostport = match env with | "prod" -> "lnprd" | "qa" -> "euqa" | _ -> "ln123dev"
+
+And just like with ``if``, the types of the expressions in each branch must also match. Failing to ensure the cases are of the same type will result in an error:
+
+::
+
+  > match 1 with | 0 -> "hello" | _ -> 1
+  Cannot unify types: [char] != int
+
+Sugar
+-----
+
+The Hobbes compiler uses match expressions "under the covers" in a number of different situations. For example, the ``matches`` keyword can be used to perform all the unpacking and pattern-matching that a single-case match statement can:
+
+::
+
+  (1, 2) matches (1, 2)
+
+is re-written by the Hobbes compiler to
+
+::
+  
+  match (1, 2) with
+  | (1, 2) -> true
+  | _ -> false
+
+Similarly, these two are equivalent in Hobbes:
+
+::
+
+  "sam" matches '..m'
+  match "sam" with
+  | '..m' -> true
+  | _ -> false
+
+This process of conversion to another program structure is commonly called "desugaring", because the nicer, lighter-weight style is known as "syntactic sugar". Sweet!
+
+Match performance
+-----------------
+
+Because matching on values is such a fundemental and commonly-used part of Hobbes, much work has been done to ensure that the evaluation of match expressions is highly performant.
+
+  todo: more on performance?
 
 Comprehensions
 ==============
@@ -131,3 +301,29 @@ Indeed, let expressions are very powerful. In the following example we're first 
   40
 
 Notice how we're even able to reuse the name ``x`` across both the function declaration and the resultant tuple deconstruction. ``Let`` expressions are evaluated in declaration order, before the execution primary expression.
+
+Let allows us to unpack tuple values in a convenient format:
+
+::
+
+  > hostport = ("lndev1", 234)
+  > let (h, p) = hostport in show(p)
+  234
+
+.. note::
+
+  This form of ``let`` is actually converted into a simple ``match`` for us by the Hobbes compiler:
+  
+  ::
+
+    match hostport with
+    | (h, p) -> show(p)
+
+  Note that this "de-sugaring" will only take place if the compiler can determine that the match can never fail.
+
+Finally, let's wrap all that up with a match and a for comprehension:
+
+::
+
+  > let start=1; end=4 in match [i | i <- [start..end], i % 2 == 0] with | [2, 4] -> "evens" | _ -> "odds"
+  evens
