@@ -1,3 +1,5 @@
+.. _repl_example:
+
 A Simple Hobbes REPL
 ********************
 

@@ -7,4 +7,4 @@ This chapter contains fully annotated code examples that we've used throughout t
    :maxdepth: 2
 
    simplerepl
-   
+   hlog

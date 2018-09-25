@@ -58,7 +58,7 @@ The ``HLOG`` macro logs a formatted message to a given LogGroup with an event na
 
 Using the ``HLOG`` macro provides compile-time safety for the format string, and gcc will throw an error if you refer to a positional parameter that doesn't exist.
 
-``HSTORE`` allows for richer structured logging of data types that we declare. In the following example we're simply logging an ``int``, but Hobbes has support for all the Hobbes primitive types as well as aggregate types we declare ourselves with ``DEFINE_HSTORE_STRUCT``:
+``HSTORE`` allows for richer structured logging of data types that we declare. In the following example we're simply logging an ``int``, but Hobbes has support for all the Hobbes primitive types, as well as ``std::string``, ``char *``, and arrays, vectors and tuples of its supported types.
 
 .. code-block:: c++
 
@@ -67,6 +67,8 @@ Using the ``HLOG`` macro provides compile-time safety for the format string, and
     EventName,
     12
   );
+
+Hobbes is also able to persist aggregate types we declare ourselves with ``DEFINE_HSTORE_STRUCT``, as well as custom types by specialising the ``hobbes::storage::store<YourType>`` class. Information about ``hobbes::storage:store`` can be found in the Hobbes GitHub repository.
 
 Declaring structured types for HSTORE logging
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -81,3 +83,7 @@ We can create our own structured types for HSTORE logging with the ``DEFINE_HSTO
     (int, val2)
   );
 
+Example
+=======
+
+An annotated example of a log producer in C++ can be found in the :ref:`examples <hobbes_logging_example>`
