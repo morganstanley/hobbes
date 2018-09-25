@@ -6,4 +6,4 @@ The Hobbes Language
 
    types
    controlflow
-   typeclasses
+   polymorphism

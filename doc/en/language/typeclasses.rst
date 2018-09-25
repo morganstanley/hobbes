@@ -1,4 +1,0 @@
-.. _typeclasses:
-
-Type Classes
-************
