@@ -1,7 +1,7 @@
 Control Flow
 ************
 
-The Hobbes language itself is quite small. We've already seen the definition of a function type using the function-literal, or *lambda* syntax, in :ref:`here <polymorphism>`.
+The Hobbes language itself is quite small. We've already seen the definition of a function type using the function-literal, or *lambda* syntax, in :ref:`Types <polymorphism>`.
 
 Further function definitions, as well as types, type classes, and their instances, must be written in a Hobbes file in order to be defined.
 
@@ -28,6 +28,16 @@ Further function definitions, as well as types, type classes, and their instance
   This makes it much easier to write more complex, multi-line expressions of the kind we'll see in this section. Some of these examples are therefore shown without the hi prompt.
 
 The control flow rules for Hobbes are similar to Haskell:
+
+Functions
+=========
+
+We've seen the lambda syntax for in-line function definition, but in Hobbes functions are first declared by their type, and then implemented for specific values.
+
+::
+  
+  addOne :: int -> int
+  addOne s = s + 1
 
 If/else
 =======
@@ -179,9 +189,33 @@ We can also match based on ranges of values, using a so-called "guard":
 
   Remember, the rule is *first possible match*, not *most specific match*!
 
-Just like with tuples we can match on - and unpack - sum and variant types:
+Matching on Variants
+--------------------
 
-**TODO**
+Just like with tuples we can match on - and unpack - sum and variant types. Recall our status type from earlier:
+
+::
+  
+  type status = | Succeess, Failure: int|
+
+We can write a matching function which classifies values of this type and acts accordingly:
+
+::
+  
+  classify :: status -> [char]
+  classify s = match s with
+  | |Success| -> "finished"
+  | |Failure=x| -> "failed with error" ++ show(x)
+
+Similarly to the complex match expressions above, we can match on values as well, to provide special functionality for specific cases:
+
+::
+
+  classify :: status -> [char]
+  classify s = match s with
+  | |Success| -> "Succeeded"
+  | |Failure=404| -> "Not Found"
+  | |Failure=err| -> "Error: " ++ show(err)
 
 Match expressions
 -----------------
