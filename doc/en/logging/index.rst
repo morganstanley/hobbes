@@ -1,3 +1,5 @@
+.. _hobbes_logging:
+
 Structured Logging
 ******************
 

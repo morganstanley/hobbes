@@ -207,18 +207,19 @@ This allows us to model enum-like structures with associated data. In the follow
   > status = |Succeeded| :: status
   |Succeeded|
 
-  ..note :: ** Type Annotations
+.. note:: **Type Annotations**
     
-    Sometimes Hobbes requires us to specify the type of a value. In the case above, we want to be careful about the instantiation of the ``|Succeeded|`` type: we need to be clear that we're instantiating a subtype of ``status``, rather than a naked record type with just one subtype which happens to be called 'Succeeded'. Conside the following code:
+  Sometimes Hobbes requires us to specify the type of a value. In the case above, we want to be careful about the instantiation of the ``|Succeeded|`` type: we need to be clear that we're instantiating a subtype of ``status``, rather than a naked record type with just one subtype which happens to be called 'Succeeded'. Conside the following code:
 
-    ::
+  ::
 
-      > :t |Succeeded|
-      |Succeeded=()|::a=>a
-      > :t |Succeeded| :: status
-      |Succeeded, Failed:int|
+    > :t |Succeeded|
+    |Succeeded=()|::a=>a
+      
+    > :t |Succeeded| :: status
+    |Succeeded, Failed:int|
 
-    The ``::`` allows us to specify the type of the variable using what's called a *type annotation*. More information about types and type annotations is available in :ref:`Polymorphism in Hobbes <polymorphism>`.
+  The ``::`` allows us to specify the type of the variable using what's called a *type annotation*. More information about types and type annotations is available in :ref:`Polymorphism in Hobbes <polymorphism>`.
 
 As we'll see :ref:`later <hobbes_pattern_matching>`, Hobbes has rich language support for building logic based on variant types.
 
