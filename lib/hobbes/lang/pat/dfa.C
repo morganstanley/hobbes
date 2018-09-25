@@ -72,16 +72,23 @@ std::string FinishExpr::stamp() {
   return ss.str();
 }
 
+// make a trivial state that performs a single action and continues
+MStatePtr actAndThen(const ExprPtr& e, stateidx_t s) {
+  LoadVars::Defs ds;
+  ds.push_back(LoadVars::Def(freshName(), e));
+  return MStatePtr(new LoadVars(ds, s));
+}
+
 // make a primitive value switch, validating exhaustiveness
 MStatePtr makeSwitch(const MDFA* dfa, const std::string& switchVar, const SwitchVal::Jumps& jmps, stateidx_t defState) {
   if (defState != nullState) {
     // if we've only got a default switch and no cases, just use the default case
-    // otherwise if this would be a 'switch' on unit, don't bother
+    // otherwise if this would be a 'switch' on unit, don't bother (just pass the type equality through)
     //  -- only the first option can match for unit (or default if there's only a default)
     if (jmps.size() == 0) {
       return dfa->states[defState];
     } else if (isUnit(jmps[0].first->primType())) {
-      return dfa->states[jmps[0].second];
+      return actAndThen(assume(var(switchVar, dfa->rootLA), primty("unit"), dfa->rootLA), jmps[0].second);
     } else {
       return MStatePtr(new SwitchVal(switchVar, jmps, defState));
     }
@@ -95,7 +102,7 @@ MStatePtr makeSwitch(const MDFA* dfa, const std::string& switchVar, const Switch
         } else if ((pty->name() == "char" || pty->name() == "byte") && jmps.size() == 256) {
           return MStatePtr(new SwitchVal(switchVar, SwitchVal::Jumps(jmps.begin(), jmps.end() - 1), jmps[jmps.size() - 1].second));
         } else if (pty->name() == "unit") {
-          return dfa->states[jmps[0].second];
+          return actAndThen(assume(var(switchVar, dfa->rootLA), primty("unit"), dfa->rootLA), jmps[0].second);
         }
       }
     }
