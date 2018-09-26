@@ -45,7 +45,6 @@ If we take our log message driver application from the :ref:`previous section <h
   [2018-01-01T09:00:00.867536]: install a monitor for the SimpleLogger group
   [2018-01-01T09:00:01.637614]: new connection for 'SimpleLogger'
   [2018-01-01T09:00:01.733374]: queue registered for group 'SimpleLogger' from 3817:3817, cmd 0
-  [2018-01-01T09:00:01.848340]: error on connection for 'SimpleLogger': Process read error (closed pipe)
   [2018-01-01T09:00:01.912325]:  ==> FirstEvent :: () (#0)
   [2018-01-01T09:00:01.969274]:  ==> SecondEvent :: [:char|10L:] (#1)
   [2018-01-01T09:00:02.009241]:  ==> log :: <any of the above>
@@ -56,8 +55,6 @@ This output tells us a couple of things:
   #. Firstly, Hog is running in local mode, meaning that it's going to consume messages from the Hobbes ringbuffer in memory and write them out to disk.
   #. When the driver application starts we get some state information about the LogGroup, and the message types
   #. Hog has been able to determine the message names and, crucially, their types.
-
-The fifth line isn't really a problem, it's just telling us that the logging application has shut down - which it has! Replacing ``return 0;`` with ``while(true);`` in the driver will keep it running until you kill it with ``ctrl-c``. You can make this change if you like, but for our purposes it doesn't really matter.
 
 Reading logs from remote processes with hog
 -------------------------------------------

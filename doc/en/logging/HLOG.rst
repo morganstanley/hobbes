@@ -106,10 +106,10 @@ A simple example of a log producer is shown below. We initialise a small unrelia
 
   int main() {
 
-    HLOG(SimpleLogger, FirstEvent, "First log message");
-    HLOG(SimpleLogger, SecondEvent, "Second log message: $0", "some data");
-
-    return 0;
+    while(true){
+      HSTORE(SimpleLogger, FirstEvent, "First", 0, 1, 2);
+      HSTORE(SimpleLogger, SecondEvent, "Second", "data", 3.4);
+    }
   }
 
 A worked example of a log producer in C++ can be found in the :ref:`examples <hobbes_logging_example>`
