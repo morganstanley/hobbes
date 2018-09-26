@@ -1,2 +1,2 @@
-Building Applications with Hobbes
+Building Applications
 *********************************

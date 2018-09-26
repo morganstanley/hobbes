@@ -1,6 +1,6 @@
 .. _hobbes_hosting:
 
-The Hobbes Embedded Compiler
+The Embedded Compiler
 ****************************
 
 Hobbes is a simple language with a rich type system, whose driving aim is to allow efficient reimplementation of functional logic at runtime.

@@ -1,7 +1,7 @@
 .. _polymorphism:
 
-Polymorphism in Hobbes
-**********************
+Polymorphism
+************
 
 .. _typeclasses:
 

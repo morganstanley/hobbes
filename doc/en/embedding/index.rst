@@ -1,5 +1,5 @@
-Embedding Hobbes
-****************
+Embedding
+**********
 
 .. toctree::
    :maxdepth: 2

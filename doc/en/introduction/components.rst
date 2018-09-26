@@ -1,5 +1,5 @@
-Hobbes Components
-*****************
+Components
+**********
 
 Hobbes is comprised of two main components:
 

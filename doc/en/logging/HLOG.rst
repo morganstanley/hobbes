@@ -1,7 +1,7 @@
 .. _hobbes_logging:
 
-HLOG: The Hobbes Logger
-***********************
+HLOG: The Logger
+****************
 
 As well as a programming language, Hobbes also comes packaged with a whole array of functionality to allow highly efficient structured logging from within C++ applications. 
 

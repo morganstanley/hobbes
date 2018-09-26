@@ -1,7 +1,7 @@
 .. _typesystem:
 
-The Hobbes Type System
-**********************
+The Type System
+***************
 
 Like many functional-style programming languages, the power of Hobbes lies in its rich type system. There are primitive types, arrays, record types, tuples, and variants.
 

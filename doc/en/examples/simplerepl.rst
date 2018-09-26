@@ -1,7 +1,7 @@
 .. _repl_example:
 
-A Simple Hobbes REPL
-********************
+A Simple REPL
+*************
 
 In the Embedding Hobbes chapter we built a simple Hobbes interpreter with two-way function bindings.
 

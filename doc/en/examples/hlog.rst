@@ -1,7 +1,7 @@
 .. _hobbes_logging_example:
 
-A Simple Hobbes Logger
-**********************
+A Simple Logger
+***************
 
 .. code-block:: c++
 
