@@ -5,6 +5,6 @@ Structured Logging
    :maxdepth: 2
 
    HLOG
-   hi
    hog
+   hi
    datatypes

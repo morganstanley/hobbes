@@ -82,8 +82,32 @@ We can create our own structured types for HSTORE logging with the ``DEFINE_HSTO
     (double, val1),
     (int, val2)
   );
-
+.. _hobbes_simple_logging_example:
 Example
 =======
 
-An annotated example of a log producer in C++ can be found in the :ref:`examples <hobbes_logging_example>`
+A simple example of a log producer is shown below. We initialise a small unreliable logger(!) then drop a few log messages with HLOG:
+
+.. code-block:: c++
+
+  #include <hobbes/storage.H>
+  #include <stdlib.h>
+
+  using namespace hobbes::storage;
+
+  DEFINE_STORAGE_GROUP(
+    SimpleLogger,
+    1,
+    Unreliable,
+    AutoCommit
+  );
+
+  int main() {
+
+    HLOG(SimpleLogger, FirstEvent, "First log message");
+    HLOG(SimpleLogger, SecondEvent, "Second log message: $0", "some data");
+
+    return 0;
+  }
+
+An worked example of a log producer in C++ can be found in the :ref:`examples <hobbes_logging_example>`
