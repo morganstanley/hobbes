@@ -565,6 +565,7 @@ struct expTypeInfF : public switchExprM<UnitV> {
   UnitV with(Short* v)  { return mkprim(v, "short"); }
   UnitV with(Int* v)    { return mkprim(v, "int"); }
   UnitV with(Long* v)   { return mkprim(v, "long"); }
+  UnitV with(Int128* v) { return mkprim(v, "int128"); }
   UnitV with(Float* v)  { return mkprim(v, "float"); }
   UnitV with(Double* v) { return mkprim(v, "double"); }
 

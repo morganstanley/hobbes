@@ -1116,6 +1116,24 @@ inline ty::desc maybeNthProd(const ty::desc& t, size_t n) {
   return ty::desc();
 }
 
+inline ty::desc maybeStoredBatchType(const bytes& bs) {
+  ty::desc dty = ty::decode(bs);
+
+  if (ty::desc t = maybeDerefFileRef(maybeNthProd(maybeNthSum(maybeOpenRecursive(maybeDerefFileRef(dty)), 1), 0))) {
+    if (t->tid == PRIV_HPPF_TYCTOR_TAPP) {
+      const ty::App* buf = reinterpret_cast<const ty::App*>(t.get());
+      if (buf->f->tid == PRIV_HPPF_TYCTOR_PRIM) {
+        if (reinterpret_cast<ty::Prim*>(buf->f.get())->n == "carray") {
+          if (buf->args.size() >= 2) {
+            return buf->args[0];
+          }
+        }
+      }
+    }
+  }
+  return ty::desc();
+}
+
 inline size_t inferBatchSize(const bytes& bs) {
   ty::desc dty = ty::decode(bs);
 
@@ -1168,8 +1186,20 @@ PRIV_HFREGION_DEFINE_PRIMTYS(uint64_t, "long");
 #if defined(__APPLE__) && defined(__MACH__)
 PRIV_HFREGION_DEFINE_PRIMTYS(size_t, "long");
 #endif
+PRIV_HFREGION_DEFINE_PRIMTYS(__int128, "int128");
 PRIV_HFREGION_DEFINE_PRIMTYS(float,    "float");
 PRIV_HFREGION_DEFINE_PRIMTYS(double,   "double");
+
+// store unit
+template <>
+  struct store<unit> {
+    static ty::desc storeType() { return ty::prim("unit"); }
+    static const bool can_memcpy = false;
+    static size_t size() { return 0; }
+    static size_t alignment() { return 1; }
+    static void write(imagefile*, void*, const unit&) { }
+    static void read(imagefile*, const void*, unit*) { }
+  };
 
 // store fixed-length arrays
 template <typename T, size_t N>

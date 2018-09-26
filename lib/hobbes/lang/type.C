@@ -2062,7 +2062,7 @@ MonoTypes simplifyVarNames(const MonoTypes& mts) {
   return substitute(canonicalNameSubst(tvarNames(mts)), mts);
 }
 
-// reduce types to their primitive representation
+// reduce types to their ultimate primitive representation
 MonoTypePtr repType(const MonoTypePtr& t) {
   if (const Prim* pt = is<Prim>(t)) {
     if (pt->representation()) {
@@ -2071,6 +2071,20 @@ MonoTypePtr repType(const MonoTypePtr& t) {
   } else if (const TApp* a = is<TApp>(t)) {
     if (const TAbs* tf = is<TAbs>(repType(a->fn()))) {
       return repType(substitute(substitution(tf->args(), a->args()), tf->body()));
+    }
+  }
+  return t;
+}
+
+// one step of unrolling the representation type
+MonoTypePtr repTypeStep(const MonoTypePtr& t) {
+  if (const Prim* pt = is<Prim>(t)) {
+    if (pt->representation()) {
+      return pt->representation();
+    }
+  } else if (const TApp* a = is<TApp>(t)) {
+    if (const TAbs* tf = is<TAbs>(repType(a->fn()))) {
+      return substitute(substitution(tf->args(), a->args()), tf->body());
     }
   }
   return t;
@@ -2165,6 +2179,8 @@ private:
       return sizeof(int);
     } else if (pn == "long") {
       return sizeof(long);
+    } else if (pn == "int128") {
+      return sizeof(int128_t);
     } else if (pn == "float") {
       return sizeof(float);
     } else if (pn == "double") {
@@ -2208,7 +2224,7 @@ unsigned int sizeOf(const MonoTypePtr& mt) {
 bool isPrimName(const std::string& tn) {
   static const char* prims[] = {
     /* ::: Set */
-    "unit", "void", "bool", "char", "byte", "short", "int", "long", "float", "double",
+    "unit", "void", "bool", "char", "byte", "short", "int", "long", "int128", "float", "double",
 
     /* ::: Set -> Set */
     "[]", "list", "lseq", "process", "quote", "promise", "connection", "wpipe", "rpipe",

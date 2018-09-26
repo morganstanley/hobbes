@@ -7,11 +7,17 @@ instance Convert byte int where
 instance Convert byte long where
   convert = b2l
 
+instance Convert byte int128 where
+  convert x = l2i16(b2l(x))
+
 instance Convert short int where
   convert = s2i
 
 instance Convert short long where
   convert x = i2l(s2i(x))
+
+instance Convert short int128 where
+  convert x = l2i16(i2l(s2i(x)))
 
 instance Convert short double where
   convert x = i2d(s2i(x))
@@ -19,11 +25,17 @@ instance Convert short double where
 instance Convert int long where
   convert = i2l
 
+instance Convert int int128 where
+  convert x = l2i16(i2l(x))
+
 instance Convert int double where
   convert = i2d
 
 instance Convert int float where
   convert = i2f
+
+instance Convert long int128 where
+  convert = l2i16
 
 instance Convert long double where
   convert = l2d

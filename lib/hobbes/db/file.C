@@ -111,6 +111,10 @@ reader::~reader() {
   closeFile(this->fdata);
 }
 
+imagefile* reader::fileData() const {
+  return this->fdata;
+}
+
 const std::string& reader::file() const {
   return this->fdata->path;
 }

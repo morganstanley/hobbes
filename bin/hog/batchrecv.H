@@ -8,11 +8,12 @@
 #include <string>
 #include <functional>
 #include <thread>
+#include <hobbes/db/series.H>
 
 namespace hog {
 
-std::thread pullRemoteDataT(const std::string& dir, const std::string& listenport, bool consolidate = false);
-bool pullRemoteData(const std::string& dir, const std::string& listenport, bool consolidate = false);
+std::thread pullRemoteDataT(const std::string& dir, const std::string& listenport, bool consolidate, hobbes::StoredSeries::StorageMode sm);
+bool pullRemoteData(const std::string& dir, const std::string& listenport, bool consolidate, hobbes::StoredSeries::StorageMode sm);
 
 }
 
