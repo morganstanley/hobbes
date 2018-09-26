@@ -1,6 +1,6 @@
 .. _hog:
 
-Consuming logs with HOG
+Consuming logs with hog
 ***********************
 
 When our producer code runs and starts logging, it initialises a shared memory region of the appropriate size and with a name which is visible to Hobbes logging consumers.
@@ -9,7 +9,7 @@ Over time, as the application logs, the ringbuffer which backs onto the shared m
 
 To prevent this from happening, a performant consumer must service the queue and provide further processing for log messages. One such consumer which is pre-written with some solid default behaviour is ``hog``.
 
-HOG
+hog
 ---
 
 ::
@@ -33,7 +33,7 @@ Hog is reponsible for consuming messages from a particular LogGroup and coordina
 
 Finally, Hog is also able to receive log messages from a remote process with ``-s``.
 
-Logging to disk with HOG
+Logging to disk with hog
 ------------------------
 
 If we take our log message driver application from the :ref:`previous section <_hobbes_simple_logging_example>`, start a Hog listener on the same LogGroup and then start the driver, we'll see something like the following:
@@ -50,7 +50,6 @@ If we take our log message driver application from the :ref:`previous section <_
   [2018-01-01T09:00:01.969274]:  ==> SecondEvent :: [:char|10L:] (#1)
   [2018-01-01T09:00:02.009241]:  ==> log :: <any of the above>
   [2018-01-01T09:00:02.129401]: finished preparing statements, writing data to './SimpleLogger/2018.01.01/data.log'
-  
 
 This output tells us a couple of things:
 
@@ -60,4 +59,56 @@ This output tells us a couple of things:
 
 The fifth line isn't really a problem, it's just telling us that the logging application has shut down - which it has! Replacing ``return 0;`` with ``while(true);`` in the driver will keep it running until you kill it with ``ctrl-c``. You can make this change if you like, but for our purposes it doesn't really matter.
 
+Reading logs from remote processes with hog
+-------------------------------------------
 
+You can use two instances of hog to send Hobbes log messages from one host to another. The setup is simple:
+
+On the logging host
+~~~~~~~~~~~~~~~~~~~
+
+On the host where the application is logging, invoke ``hog`` with the ``-p`` parameter as follows:
+
+::
+
+  $ hog -g SimpleLogger -p $a $b $h:$p
+
+Where:
+
+  #. $t is the time in seconds between sent messages
+  #. $s is the buffer size in *uncompressed* bytes before which a message is sent
+
+..note ::
+
+  Messages are sent to the receiving host *at least* as often as $t. If $s bytes are ready to be sent, this will happen regardless of the time since the last message.
+
+  #. $h:$p is the host and port on which the receiving instance of hog is running.
+
+For example:
+
+::
+
+  myhost $ hog -g SimpleLogger -p 1 100 anotherhost:10101
+
+
+On the receiving host
+~~~~~~~~~~~~~~~~~~~~~
+
+On the receiving host, the setup is very similar to the first case, "Logging to disk". The only difference is that rather than reading messages from the in-memory ring buffer, messages are instead received on a local port.
+
+The setup is simple:
+
+::
+
+  $ hog -g SimpleLogger -s $p
+
+Where:
+
+  #. $p is the port on which messages are to be received.
+
+For example:
+
+::
+
+  anotherhost $ hog -g SimpleLogger -s 10101
+  
