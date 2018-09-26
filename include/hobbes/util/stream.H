@@ -72,5 +72,57 @@ template < typename Char = char, typename Traits = std::char_traits<Char> >
 
 }}
 
+// show int128 values (should be disabled when/if compiler support for these types is standardized)
+inline void printInt128(std::ostream& out, const __int128& sx) {
+  if (sx == 0) {
+    out << "0";
+  } else {
+    __int128 x = (sx < 0) ? -sx : sx;
+    
+    char buf[128];
+    memset(buf, 0, sizeof(buf));
+    char* d = buf;
+
+    while (x != 0) {
+      *d++ = "0123456789"[x % 10];
+      x /= 10;
+    }
+
+    if (sx < 0) {
+      out << '-';
+    }
+    while (d != buf) {
+      --d;
+      out << *d;
+    }
+  }
+}
+inline std::ostream& operator<<(std::ostream& out, const __int128& sx) {
+  printInt128(out, sx);
+  return out;
+}
+
+inline bool readInt128(const std::string& s, __int128* x) {
+  if (s.empty()) return false;
+
+  bool neg = s[0] == '-';
+  std::string n = neg ? s.substr(1) : s;
+
+  *x = 0;
+  __int128 a = 1;
+  for (size_t i = n.size(); i > 0; --i) {
+    char d = n[i-1];
+
+    if (d >= '0' && d <= '9') {
+      *x += a * (d-'0');
+      a  *= 10;
+    } else {
+      return false;
+    }
+  }
+  if (neg) *x *= -1;
+  return true;
+}
+
 #endif
 

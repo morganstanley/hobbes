@@ -66,6 +66,9 @@ public:
 
   // improves performance of unhiding opaque type aliases
   mutable ptr unaliasedType;
+
+  // improves performance of resolving type applications just after parse-time
+  mutable ptr unappTyDefns;
 };
 
 typedef MonoType::ptr MonoTypePtr;
@@ -1004,7 +1007,10 @@ MonoTypePtr   simplifyVarNames(const MonoType&);
 MonoTypePtr   simplifyVarNames(const MonoTypePtr&);
 MonoTypes     simplifyVarNames(const MonoTypes& mts);
 
-// forget fancy type aliases, determine a reduced representation type
+// determine a single step of type alias removal (or the identity function at types that are already representation-determined)
+MonoTypePtr repTypeStep(const MonoTypePtr&);
+
+// forget type aliases, determine a final reduced representation type (the fixed point of repTypeStep)
 MonoTypePtr repType(const MonoTypePtr&);
 
 // simplify working with type structures lifting of C++ types

@@ -136,6 +136,7 @@ public:
   reader(const std::string&);
   virtual ~reader();
 
+  imagefile* fileData() const;
   const std::string& file() const;
   size_t size() const;
 

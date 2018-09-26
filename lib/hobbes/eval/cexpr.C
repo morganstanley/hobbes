@@ -53,6 +53,7 @@ public:
   llvm::ConstantInt* with(const Short*  v) const { return civalue(v->value()); }
   llvm::ConstantInt* with(const Int*    v) const { return civalue(v->value()); }
   llvm::ConstantInt* with(const Long*   v) const { return civalue(v->value()); }
+  llvm::ConstantInt* with(const Int128* v) const { return civalue(v->value()); }
   llvm::ConstantInt* with(const Float*  v) const { return fail(*v); }
   llvm::ConstantInt* with(const Double* v) const { return fail(*v); }
 private:
@@ -78,6 +79,7 @@ public:
   llvm::Value* with(const Short*  v) const { return cvalue(v->value()); }
   llvm::Value* with(const Int*    v) const { return cvalue(v->value()); }
   llvm::Value* with(const Long*   v) const { return cvalue(v->value()); }
+  llvm::Value* with(const Int128* v) const { return cvalue(v->value()); }
   llvm::Value* with(const Float*  v) const { return cvalue(v->value()); }
   llvm::Value* with(const Double* v) const { return cvalue(v->value()); }
 
@@ -635,6 +637,7 @@ public:
   llvm::Constant* with(const Short*  v) const { return cvalue(v->value()); }
   llvm::Constant* with(const Int*    v) const { return cvalue(v->value()); }
   llvm::Constant* with(const Long*   v) const { return cvalue(v->value()); }
+  llvm::Constant* with(const Int128* v) const { return cvalue(v->value()); }
   llvm::Constant* with(const Float*  v) const { return cvalue(v->value()); }
   llvm::Constant* with(const Double* v) const { return cvalue(v->value()); }
 

@@ -372,8 +372,7 @@ TEST(Hog, KillAndResume) {
   for (const auto& log : local.logpaths()) {
     c.define("f"+hobbes::str::from(i++), "inputFile::(LoadFile \""+log+"\" w)=>w");
   }
-  EXPECT_TRUE(c.compileFn<bool()>("f0.seq[0:] == [3,2,1,0]")());
-  EXPECT_TRUE(c.compileFn<bool()>("f1.seq[0:] == [14,13,12,11,10,9,8,7,6,5,4]")());
+  EXPECT_TRUE(c.compileFn<bool()>("f0.seq[0:] == [14,13,12,11,10,9,8,7,6,5,4,3,2,1,0]")());
 }
 
 DEFINE_STORAGE_GROUP(

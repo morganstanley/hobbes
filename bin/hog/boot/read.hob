@@ -19,6 +19,8 @@ instance FixedWidth int where
   fixedWidth = 4L
 instance FixedWidth long where
   fixedWidth = 8L
+instance FixedWidth int128 where
+  fixedWidth = 16L
 instance FixedWidth float where
   fixedWidth = 4L
 instance FixedWidth double where

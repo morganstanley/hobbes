@@ -640,6 +640,21 @@ ExprPtr compileMatchTest(cc* c, const ExprPtr& e, const PatternPtr& p, const Lex
   }
 }
 
+ExprPtr compileRegexFn(cc* c, const std::string& regex, const LexicalAnnotation& rootLA) {
+  PatternPtr p(new MatchRegex(regex, rootLA));
+
+  auto ns = accessibleBindingNames(p);
+  if (ns.size() == 0) {
+    return fn("x", compileMatchTest(c, var("x", rootLA), p, rootLA), rootLA);
+  } else {
+    MkRecord::FieldDefs fs;
+    for (auto n : ns) {
+      fs.push_back(MkRecord::FieldDef(n, var(n, rootLA)));
+    }
+    return fn("x", compileMatch(c, list(var("x", rootLA)), list(PatternRow(list(p), fncall(var("just", rootLA), mkrecord(fs, rootLA), rootLA)), PatternRow(list(PatternPtr(new MatchAny("_", rootLA))), var("nothing", rootLA))), rootLA), rootLA);
+  }
+}
+
 // a simple test to determine whether or not a pattern can possibly be refuted
 struct refutableP : public switchPattern<bool> {
   bool with(const MatchLiteral* v) const { return sizeOf(v->equivConstant()->primType()) > 0; } // the only irrefutable literal is unit
