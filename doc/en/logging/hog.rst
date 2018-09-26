@@ -36,7 +36,7 @@ Finally, Hog is also able to receive log messages from a remote process with ``-
 Logging to disk with hog
 ------------------------
 
-If we take our log message driver application from the :ref:`previous section <_hobbes_simple_logging_example>`, start a Hog listener on the same LogGroup and then start the driver, we'll see something like the following:
+If we take our log message driver application from the :ref:`previous section <hobbes_simple_logging_example>`, start a Hog listener on the same LogGroup and then start the driver, we'll see something like the following:
 
 ::
   
@@ -55,7 +55,7 @@ This output tells us a couple of things:
 
   #. Firstly, Hog is running in local mode, meaning that it's going to consume messages from the Hobbes ringbuffer in memory and write them out to disk.
   #. When the driver application starts we get some state information about the LogGroup, and the message types
-  3. Hog has been able to determine the message names and, crucially, their types.
+  #. Hog has been able to determine the message names and, crucially, their types.
 
 The fifth line isn't really a problem, it's just telling us that the logging application has shut down - which it has! Replacing ``return 0;`` with ``while(true);`` in the driver will keep it running until you kill it with ``ctrl-c``. You can make this change if you like, but for our purposes it doesn't really matter.
 
@@ -75,14 +75,14 @@ On the host where the application is logging, invoke ``hog`` with the ``-p`` par
 
 Where:
 
-  #. $t is the time in seconds between sent messages
-  #. $s is the buffer size in *uncompressed* bytes before which a message is sent
+  - ``$t`` is the time in seconds between sent messages
+  - ``$s`` is the buffer size in *uncompressed* bytes before which a message is sent
+  - ``$h:$p`` is the host and port on which the receiving instance of hog is running.
 
-..note ::
+.. note::
 
-  Messages are sent to the receiving host *at least* as often as $t. If $s bytes are ready to be sent, this will happen regardless of the time since the last message.
+  Messages are sent to the receiving host *at least* as often as ``$t``. If ``$s`` bytes are ready to be sent, this will happen regardless of the time since the last message.
 
-  #. $h:$p is the host and port on which the receiving instance of hog is running.
 
 For example:
 
@@ -104,7 +104,7 @@ The setup is simple:
 
 Where:
 
-  #. $p is the port on which messages are to be received.
+  - ``$p`` is the port on which messages are to be received.
 
 For example:
 

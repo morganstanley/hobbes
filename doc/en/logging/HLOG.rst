@@ -62,7 +62,7 @@ Using the ``HLOG`` macro provides compile-time safety for the format string, and
 
 .. code-block:: c++
 
-  HLOG(
+  HSTORE(
     MyGroupName,
     EventName,
     12
@@ -82,7 +82,9 @@ We can create our own structured types for HSTORE logging with the ``DEFINE_HSTO
     (double, val1),
     (int, val2)
   );
+
 .. _hobbes_simple_logging_example:
+
 Example
 =======
 
@@ -110,4 +112,4 @@ A simple example of a log producer is shown below. We initialise a small unrelia
     return 0;
   }
 
-An worked example of a log producer in C++ can be found in the :ref:`examples <hobbes_logging_example>`
+A worked example of a log producer in C++ can be found in the :ref:`examples <hobbes_logging_example>`
