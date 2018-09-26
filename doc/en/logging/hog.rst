@@ -28,10 +28,10 @@ hog
 
 Hog is reponsible for consuming messages from a particular LogGroup and coordinating their onward flow. Options are:
 
-  #. To local disk. The default logfile directory is ``./$groupname``, and this can be overridden with ``-d``.
-  #. To a remote process on a server described with ``-p``
+  #. Write messages to local disk. The default logfile directory is ``./$groupname``, and this can be overridden with ``-d``.
+  #. Write messages to a remote hog process, running on a server described with ``-p``
 
-Finally, Hog is also able to receive log messages from a remote process with ``-s``.
+Conversely, Hog is also able to receive log messages from a remote process with ``-s``.
 
 Logging to disk with hog
 ------------------------
@@ -89,7 +89,8 @@ For example:
 ::
 
   myhost $ hog -g SimpleLogger -p 1 100 anotherhost:10101
-
+  [2018-09-26T15:03:12.126732]: hog running in mode : |batchsend={ dir="./$GROUP/$DATE/data", serverDir="/var/folders/pp/g8vs2j610l5fsy8lqlbh_8tm0000gn/T/", clevel=6, batchsendsize=100B, sendto=["anotherhost:10101"], groups={"SimpleLogger"} }|
+  [2018-09-26T15:03:12.128300]: install a monitor for the 'SimpleLogger' group
 
 On the receiving host
 ~~~~~~~~~~~~~~~~~~~~~
@@ -111,4 +112,9 @@ For example:
 ::
 
   anotherhost $ hog -g SimpleLogger -s 10101
-  
+  [2018-09-26T15:03:52.277627]: hog running in mode : |batchrecv={ dir="./$GROUP/$DATE/data", localport=10101 }|
+
+Execute the logging driver
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Finally, on the logging host, execute your log driver application. You'll see both of the hog processes spring to life, and the receiving host will print the type information of the two messages we sent.
