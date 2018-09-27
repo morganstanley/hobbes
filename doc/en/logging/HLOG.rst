@@ -93,8 +93,11 @@ A simple example of a log producer is shown below. We initialise a small unrelia
 .. code-block:: c++
 
   #include <hobbes/storage.H>
-  #include <stdlib.h>
+  #include <chrono>
+  #include <thread>
 
+  using namespace std;
+  using namespace std::chrono;
   using namespace hobbes::storage;
 
   DEFINE_STORAGE_GROUP(
@@ -109,6 +112,8 @@ A simple example of a log producer is shown below. We initialise a small unrelia
     while(true){
       HSTORE(SimpleLogger, FirstEvent, "First", 0, 1, 2);
       HSTORE(SimpleLogger, SecondEvent, "Second", "data", 3.4);
+
+      this_thread::sleep_for(milliseconds(500));
     }
   }
 
