@@ -5,3 +5,4 @@ Appendix
    :maxdepth: 2
 
    stdlib
+   match

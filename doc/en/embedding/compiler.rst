@@ -5,7 +5,7 @@ The Embedded Compiler
 
 Hobbes is a simple language with a rich type system, whose driving aim is to allow efficient reimplementation of functional logic at runtime.
 
-As such, it comes packaged with a highly efficient compiler, a type marshalling system, and a set of tools that allow the inspection of generated code.
+As such, it comes packaged with a highly efficient compiler and type marshalling system.
 
 Example: Hi, the Hobbes REPL
 ============================

@@ -1,11 +1,13 @@
 Control Flow
 ************
 
-The Hobbes language itself is quite small. We've already seen the definition of a function type using the function-literal, or *lambda* syntax, in :ref:`Types <polymorphism>`.
+The Hobbes language itself is quite small. We've already seen the definition of a function type using the function-literal, or *lambda* syntax, in :ref:`type classes <type_classes>`.
 
 Further function definitions, as well as types, type classes, and their instances, must be written in a Hobbes file in order to be defined.
 
-.. note:: Hi can read files
+.. _hi_load_files:
+
+.. note:: **Hi can read files**
   
   If you pass the name of a text file to the Hobbes interpreter hi, it'll evaluate the code in the file and make symbol names available to you in the hi session:
 
@@ -25,7 +27,7 @@ Further function definitions, as well as types, type classes, and their instance
     > foo
     "oops"
 
-  This makes it much easier to write more complex, multi-line expressions of the kind we'll see in this section. Some of these examples are therefore shown without the hi prompt.
+  This makes it much easier to write more complex, multi-line expressions of the kind we'll see in this section. Some of these examples are therefore **shown without the hi prompt**.
 
 The control flow rules for Hobbes are similar to Haskell:
 
@@ -38,6 +40,8 @@ We've seen the lambda syntax for in-line function definition, but in Hobbes func
   
   addOne :: int -> int
   addOne s = s + 1
+
+If we didn't first specify the type of the function, Hobbes would attempt to create a polymorphic function with parameter types restrcited simply by the way in which values of that type are used. For more about this behaviour, see :ref:`polymorphism <polymorphism>`.
 
 If/else
 =======
@@ -70,7 +74,7 @@ In the simplest form, they’re a bit like a switch statement:
   | 2 -> show("hobbes")
   | _ -> show("oops!")
 
-.. note::
+.. note:: **underscores**
   In Hobbes match expressions, the underscore serves two purposes.
   
   Firstly, it's a wildcard. In the above code the underscore is the default case that will be executed if all the above cases have failed to match.
@@ -82,7 +86,7 @@ When used with more than one value they can be used to match against any element
 ::
 
   match 1 2 with
-  | 1 _ -> show("first!")
+  | 2 _ -> show("first!")
   | 1 2 -> show("second!")
 
 .. warning::
@@ -93,7 +97,7 @@ When used with more than one value they can be used to match against any element
   ::
 
     match 1 2 with
-    | 1 _ -> show("first!")
+    | 2 _ -> show("first!")
     | 1 2 -> show("second!")
     | _ _ -> show("default!")
 
@@ -106,9 +110,9 @@ In the above example, it's important to note that the matching works top-down, m
   | 1 2 -> show("didn't match!")
   | _ _ -> show("didn't even get here!")
 
-The way to read the first case is "*any value* followed by the integer ``2``". Even though the second match is more specific (i.e., both elements match the values), it's the first case that's matched.
+The way to read the first case is "*any value* followed by the integer ``2``". Even though the second match is more specific (*i.e.*, both elements match the values), it's the first case that's matched.
 
-Also, note that because we're matching against two values, we have to use two underscores in the final case. If we fail to do that, Hobbes will tellus "row #3 has 1 columns, but should have 2".
+Also, note that because we're matching against two values, we have to use two underscores in the final case. If we fail to do that, Hobbes will tell us "row #3 has 1 columns, but should have 2".
 
 .. note::
 
@@ -135,7 +139,8 @@ As well as matching on values, we can also bind values to names within a match c
 In each case, we're simply matching on the (char) value of the first element. If that matches, we bind the second element to a value. In the first case (which ultimately is matched), the name we give the value is ``fst``, but there's nothing special about that; we could have called it anything. The name ``fst`` is then lexically scoped to the match expression following the arrow - it's not available in other cases, or outside the match. 
 
 .. note::
-  To some programmers, this “match and bind” behaviour seems strange, and it’s another good example of the terse vs powerful dynamic often found in functional programming.
+
+  To some programmers, this “match and bind” behaviour seems strange, and it’s another good example of the "terse vs powerful" battle often found in the minds of new functional programmers!
 
 Tuples
 ------
@@ -150,9 +155,9 @@ Hobbes also lets us match against the values of tuple elements, leading to anoth
   | "prod" (host, _) -> connectkrb(host)
   | _ _ -> ...
 
-In this case we're creating a tuple simply for the purposes of immediately mathching against its values and unpacking it.
+In this case we're creating a tuple simply for the purposes of immediately matching against its values and unpacking it.
 
-Here again the underscore is used as a wildcard - in this case you can read it to mean "there is a value here but I don't care what it is, and I don't want to use it".
+Here again the underscore is used as a wildcard - in this case you can read it to mean "there *is* a value here but I don't care what it is, and I don't want to use it so don't even give it a name".
 
 This matching-and-binding logic can be generalised to arrays, too:
 
@@ -183,7 +188,7 @@ We can also match based on ranges of values, using a so-called "guard":
 
 .. note::
 
-  The rules for match expressions are simple: every case in the expression must be reachable (i.e., no previous row can have matched against all the possible values for this row) and the match table must be exhaustive (i.e. all possible cases must be matched against).
+  The rules for match expressions are simple: every case in the expression must be **reachable** (i.e., no previous row can have matched against all the possible values for this row) and the match table must be **exhaustive** (i.e. all possible cases must be matched against).
 
   These rules combined explain why you so commonly see wildcard matches at the end of a match expression - the wildcard catches any cases that haven't previously been matched; and putting it at the end it prevents further cases from being unreachable.
 
@@ -226,12 +231,14 @@ In the previous examples, we've been calling the unit ``show`` function in our m
 
   hostport = match env with | "prod" -> "lnprd" | "qa" -> "euqa" | _ -> "ln123dev"
 
-And just like with ``if``, the types of the expressions in each branch must also match. Failing to ensure the cases are of the same type will result in an error:
+And just like with ``if``, the *types* of the expressions in each branch must also match. Failing to ensure the cases are of the same type will result in an error:
 
 ::
 
   > match 1 with | 0 -> "hello" | _ -> 1
   Cannot unify types: [char] != int
+
+.. _sugar:
 
 Sugar
 -----
@@ -255,25 +262,41 @@ Similarly, these two are equivalent in Hobbes:
 ::
 
   "sam" matches '..m'
+
   match "sam" with
   | '..m' -> true
   | _ -> false
 
-This process of conversion to another program structure is commonly called "desugaring", because the nicer, lighter-weight style is known as "syntactic sugar". Sweet!
+This process of conversion to another program structure is commonly called "desugaring", because the nicer, lighter-weight style is known as "syntactic sugar". There are many examples of sugaring in the Hobbes language, and we'll try to point them out as we go. Sweet!
 
-Match performance
+Match Performance
 -----------------
 
-Because matching on values is such a fundemental and commonly-used part of Hobbes, much work has been done to ensure that the evaluation of match expressions is highly performant.
+Because matching is such a fundamentally important part of the language, much time and energy has been spent on ekeing out every last drop of performance from their execution. For lots more information, head over to :ref:`the appendix <match_performance>`.
 
-  todo: more on performance?
+Tuple Decomposition
+===================
+
+A tuple can be decomposed into its individual parts very simply:
+
+::
+  
+  > (host, port) = getHostPort("dev")
+  > host
+  "lndev01"
+  > :t port
+  int
+
+.. note::
+
+  This is another example of Hobbes sugaring over match expressions, as discussed  :ref:`earlier<sugar>`.
 
 Comprehensions
 ==============
 
 Similar to comprehensions in Python, these allow us to describe the algorithm used to create a sequence of data.
 
-.. warning:: Remember, Hobbes code is executed eagerly, meaning the comprehension will be evaluated in full when it is declared. Stay away from infinite sequences!
+.. warning:: Remember, Hobbes code is executed eagerly, meaning the comprehension will usually be evaluated in full when it is declared.
 
 ::
 
@@ -283,7 +306,21 @@ This can be read as "for each x in 0 to 20, where x is divisible by 3, show x".
 
 The comprehension is split into a mapping function, a generator expression, and a filter. The mapping function is applied to the results of the generator function where the filter holds true.
 
-The comprehension syntax is an expression, and can therefore be used anywhere a range of elements is expected. For example, the Hobbes standard library contains the following code:
+.. note:: **sequence expressions**
+
+  Look closely and you'll see the *:ref:`sequence expression <sequence_expressions>`* syntax described in the types chapter. You could also use an inline array declaration here:
+
+  ::
+
+  > [show(x) | x <- [11, 12, 13], x % 3 == 0]
+
+  Or alternatively the name of an array declared elsewhere:
+
+  > nums = [98, 99, 100]
+  > [show(x) | x <- nums, x % 3 == 0]
+
+
+The comprehension syntax is an expression, and can therefore be used anywhere a range of elements is expected. For an example, the Hobbes standard library contains the following code:
 
 ::
 
@@ -301,10 +338,11 @@ If we were to write out this ``productWith`` function in a less functional style
 
 ::
 
-  for(x in 1, 2, 3)
-    for(y in 4, 5, 6)
+  for(x in [1, 2, 3])
+    for(y in [4, 5, 6])
       yield (x, y)
 
+.. _let_expressions:
 
 Local variables
 ===============

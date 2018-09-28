@@ -3,7 +3,7 @@
 The Type System
 ***************
 
-Like many functional-style programming languages, the power of Hobbes lies in its rich type system. There are primitive types, arrays, record types, tuples, and variants.
+Like many functional-style programming languages, the power of Hobbes lies in its rich type system, so that's where we'll start. There are primitive types, arrays, record types, tuples, and variants.
 
 .. hint:: 
 
@@ -41,7 +41,7 @@ Unit
     > ()
 
 Bool
-  Either true or false
+  Either ``true`` or ``false``
 
   ::
 
@@ -57,7 +57,7 @@ Char
     s
 
 Byte
-  A single byte (0-255)
+  A single byte (``0``-``255``)
 
   ::
 
@@ -109,7 +109,7 @@ Double
 Arrays
 ======
 
-Just like in C++, Hobbes arrays are contiguous values in memory, with special syntax for char and byte arrays. Hobbes supports bounds-checking to prevent a common class of bug by maintaining the array length alongside the data in memory.
+Just like in C++, Hobbes arrays are contiguous values in memory, with special syntax for ``char`` and ``byte`` arrays. Hobbes supports bounds-checking to prevent a common class of bug by maintaining the array length alongside the data in memory.
 
 ::
 
@@ -122,22 +122,51 @@ Just like in C++, Hobbes arrays are contiguous values in memory, with special sy
   > 0xdeadbeef
   0xdeadbeef
 
-.. warning:: 0x versus 0X
+.. note:: **Strings**
 
-  It's important the note the subtle difference between the literal syntax for bytes and for byte *arrays* - the case of the 'X' is very important!
+  In Hobbes, a String is simply an array of ``char``. 
+
+.. warning:: **0x versus 0X**
+
+  It's important the note the subtle difference between the literal syntax for ``byte`` and for ``byte`` *arrays* - the case of the 'X' is very important!
+
+  Uppercase for ``byte``, lowercase for ``byte`` array.
+
+Array sequences
+---------------
+
+A *sequence expression* can be used to initialise an array for many of the primitive types. The syntax is simple:
+
+::
+  
+  > [1..4]
+  [1, 2, 3, 4]
+  > ['a', 'd']
+  "abcd"
+  > :t [1..4]
+  [int]
+
+We can take this further and generate *iinfinite* sequences by leaving the upper bound open:
+
+::
+
+  > [0..]
+  [0, 1, 2, ...]
+
+Infinite sequences are useful structures for performing work many times over without mutating a loop variable. Special care has been taken to ensure their evaluation isn't eager, however - as your program might never stop! For more information about the *type* of an infinite sequence, take a look at the infinite squences section in :ref:`polymorphism <polymorphism>`
 
 Records
 =======
 
-Records are a common way to keep closely-associated pieces of data together in functional progamming, and they're often referred to as an "AND" type: a hostport is a host AND a port - and that's it. No behaviour, and its identity is simply the two elements.
+Records are a common way to keep closely-associated pieces of data together in functional progamming, and they're often referred to as an *and* type: a hostport is a host *and* a port - and that's it. No behaviour, and its identity is simply the two elements.
 
-Record types are similar to structs, with ad-hoc initialisation and type inference:
+Record types are similar in spirit to C++ structs, with ad-hoc declaration and initialisation, plus type inference:
 
 ::
 
   > {name="Sam", age=23, job="writer"}
 
-Records are examples of structural types, meaning that in Hobbes, even though they are both examples of different anonymous ad-hoc types, the two are equivalent:
+Records are examples of structural types, meaning that in Hobbes, even though they are both examples of different anonymous ad-hoc types, the two are *equivalent*:
 
 ::
 
@@ -145,14 +174,16 @@ Records are examples of structural types, meaning that in Hobbes, even though th
   true
 
 .. note:: **Equivalence vs Equality**
-  Although it's true to say that, in Hobbes, the two record instances above are *equivalent*, they're not *equal*, and so the following test would fail to compile:
+  Although it's true to say that, in Hobbes, the two record instances above are *equivalent*, they're not *equal*, and so the following equality test would fail to compile:
   
   ::
   
     > {name="Sam", job="Writer"} === {job="Writer", name="Sam"}
     stdin:1,28-30: Cannot unify types: { name:[char], job:[char] } != { job:[char], name:[char] }
 
-  This is because the equivalence relationship is determined not by any special logic in the Hobbes compiler, but by the equivalency type class ``Equiv``. This class contains the implementation of `==` and thus decides how to unpack the record instances and compare them. In the Hi REPL, I can unpack the ``Equiv`` typeclass with ``:c``:
+  This is because the equivalence relationship is determined not by any special logic in the Hobbes compiler, but by the equivalency type class ``Equiv``. This class contains the implementation of ``==`` and thus decides how to unpack the record instances and compare them.
+  
+  A type class is a way of describing expected behaviour on a type. In the Hi REPL, I can unpack the ``Equiv`` typeclass with ``:c``:
 
   ::
 
@@ -160,7 +191,7 @@ Records are examples of structural types, meaning that in Hobbes, even though th
     class Equiv where
       == :: (#0 * #1) -> bool
 
-  For more information about typeclasses in Hobbes, see :ref:`Type Classes <typeclasses>`.
+  For more information about typeclasses in Hobbes, see :ref:`Type Classes <type_classes>`.
 
 Tuples
 ======
@@ -173,9 +204,13 @@ Like records but with no field names, tuples are used to keep commonly-associate
   > endpoint
   ("lndev1", 3923)
 
+.. note:: **Assignment**
+  
+  Notice here that we've assigned the tuple to the name *endpoint*. This name now exists in the global context. For local scoping, see of values, see :ref:`Local scoping <let_expressions>`
+
 .. note:: **Pretty-printing**
   
-  Hobbes has good support for printing the primitive and scalar types: char arrays are printed as strings, the literal syntax is displayed when printing to STDOUT, etc.
+  Hobbes has good support for printing the primitive and scalar types: char arrays are printed as strings, the literal syntax is displayed when printing to *standard out*, etc.
 
   When we deal with arrays of records or tuples, Hobbes gives us a convenient table notation:
 
@@ -193,23 +228,27 @@ Like records but with no field names, tuples are used to keep commonly-associate
 Variants
 ========
 
-The variant is the richest way to declare a type in the Hobbes type system, because it gives us the opportunity to declare a value which can be one of a number of named cases. If the Record type is an AND, the Variant is an OR.
+The variant is the richest way to declare a type in the Hobbes type system, because it gives us the opportunity to declare a value which can be one of a number of named cases. If the Record type is an *and*, the Variant is an *or*.
 
 This allows us to model enum-like structures with associated data. In the following example, we're declaring a type called ``status`` which can model the success or failure of a service call. In the case of a failure, we'll be given an error code which we'll want to react to. However, in the successful case, there's nothing more to do:
 
 ::
 
   type status = |
-    Succeeded: (),
+    Succeeded,
     Failed: int
   |
 
   > status = |Succeeded| :: status
   |Succeeded|
 
+.. warning:: **type declarations in hi**
+  
+  Hi doesn't currently support some Hobbes expressions, including type declarations. You can write your types in a file and have them loaded into a hi session by following the instructions in :ref:`Hi can load files <hi_load_files>`.
+
 .. note:: **Type Annotations**
     
-  Sometimes Hobbes requires us to specify the type of a value. In the case above, we want to be careful about the instantiation of the ``|Succeeded|`` type: we need to be clear that we're instantiating a subtype of ``status``, rather than a naked record type with just one subtype which happens to be called 'Succeeded'. Conside the following code:
+  Sometimes Hobbes requires us to specify the type of a value. In the case above, we want to be careful about the instantiation of the ``|Succeeded|`` type: we need to be clear that we're instantiating a subtype of ``status``, rather than a naked record type with just one subtype which happens to be called 'Succeeded'. Hi can show us the inferred type of a value with ``:t``:
 
   ::
 
@@ -221,7 +260,7 @@ This allows us to model enum-like structures with associated data. In the follow
 
   The ``::`` allows us to specify the type of the variable using what's called a *type annotation*. More information about types and type annotations is available in :ref:`Polymorphism in Hobbes <polymorphism>`.
 
-As we'll see :ref:`later <hobbes_pattern_matching>`, Hobbes has rich language support for building logic based on variant types.
+As we'll see in :ref:`pattern matching <hobbes_pattern_matching>`, Hobbes has rich language support for building logic based on variant types.
 
 Sum types
 =========
@@ -237,8 +276,8 @@ Just as the tuple type can be thought of as simply a record using numbered place
 
 In this case we're using the index (0 or 1) to specify the actual variant type we're using - int or char array. An instance of the first type must hold an int, and an instance of the second type must hold a char array - in this case, a String.
 
-Recursive structures
---------------------
+Recursive type definitions
+==========================
 
 With a small adjustment, the sum type can be used to model both cases in our list:
 
@@ -257,3 +296,4 @@ We can easily construct one using Hobbes's constructor syntax:
 
 Whilst this construction syntax might look unwieldy, the generation of such structures is commonly algorhithmic, and (as discussed earlier), the payoff is in Hobbes's rich matching syntax.
 
+Many structures in Hobbes can be defined recursively because, as we'll see, recursion is a deeply powerful element of functional programming.
