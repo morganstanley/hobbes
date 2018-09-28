@@ -144,7 +144,7 @@ A *sequence expression* can be used to initialise an array of ints. The syntax i
   > :t [1..4]
   [int]
 
-We can take this further and generate *iinfinite* sequences by leaving the upper bound open:
+We can take this further and generate *infinite* sequences by leaving the upper bound open:
 
 ::
 
