@@ -1,6 +1,6 @@
 .. _standard_library:
 
-The Hobbes Standard Library
+The Standard Library
 ***************************
 
 As well as the compiler infrastructure, Hobbes comes packed with a rich Standard Library of functions and types that make it easy to get started.

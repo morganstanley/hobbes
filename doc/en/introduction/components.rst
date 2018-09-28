@@ -1,12 +1,12 @@
-Hobbes Components
-*****************
+Components
+**********
 
 Hobbes is comprised of two main components:
 
-The language
-------------
+1: A programming language
+-------------------------
 
-A haskell-like programming language with a rich type system. Hobbes code can be embedded in a C++ program and data marshalled between the two. This means you can write C++ code which binds against a Hobbes environment and calls into Hobbes functions to execute functionality.
+Hobbes is a haskell-like programming language with a rich type system. Hobbes code can be embedded in a C++ program and data marshalled between the two. This means you can write C++ code which binds against a Hobbes environment and calls into Hobbes functions to execute functionality.
 
 Over the day and as business requirements change, you can update the bound Hobbes code to give it different behaviour. The new code is compiled to highly efficient x86 instructions for later execution.
 
@@ -15,14 +15,16 @@ Similarly, you can make C++ functions available to the embedded Hobbes code. Ult
 For more details about hosting Hobbes in a C++ application, see :ref:`Embedding Hobbes <hobbes_hosting>`.
      
 
-The persistence format
-----------------------
+2: A persistence format
+-----------------------
     
-A data storage and expression format for out-of-band data processing. Hobbes comes with a typesafe, memory-efficient persistence format for realtime storage and retrieval of application data. This can be used for inter-process communication over TCP, quering and filtering of daily application logs, or fast post-hoc analysis of application behaviour based on Hobbes' internal decision tree structure.
+A data storage and expression format for out-of-band data processing. Hobbes comes with a typesafe, space-efficient persistence format for realtime storage and retrieval of application data.
+
+This can be used for inter-process communication over TCP, quering and filtering of daily application logs, or fast post-hoc analysis of application behaviour based on Hobbes' internal decision tree structure.
 
 For more details about Hobbes' persistence format, see :ref:`Structured logging in Hobbes <hobbes_logging>`.
   
 Rationale
-=========
+---------
 
 Why create a custom programming language and persistence format? For a deeper look into the minds of its developers, you'll want to read :ref:`Digging into the domain <domain>`

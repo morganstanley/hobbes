@@ -6,7 +6,7 @@ Hobbes is a domain-targeting programming language and execution environment buil
 By design, it fulfills three major goals:
 
    * Dynamic, in-process rewriting of processing rules for domain objects (trades, orders, executions)
-   * Out-of-band processing of structured logs for order managers and surrounding processes
+   * Persistence and out-of-band processing of structured logs for order managers and surrounding processes
    * Rock solid, ultra-low latency execution
 
 Hobbes was developed to manage the runtime of low-latency processes such as equities trading engines, which generally cannot be restarted during the working day.

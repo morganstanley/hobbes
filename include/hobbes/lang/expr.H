@@ -1100,7 +1100,7 @@ template <typename T>
 //   (if the expression type is extended but functions on expressions aren't extended, it will be a compile-error)
 template <typename T>
   struct switchExpr {
-    virtual ~switchExpr() = default;
+    //virtual ~switchExpr() = default;
     virtual T with(const Unit* v)      const = 0;
     virtual T with(const Bool* v)      const = 0;
     virtual T with(const Char* v)      const = 0;

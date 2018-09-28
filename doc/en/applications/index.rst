@@ -1,5 +1,5 @@
-Building Hobbes Applications
-****************************
+Building Applications
+*********************
 
 .. toctree::
    :maxdepth: 2

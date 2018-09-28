@@ -1,9 +1,9 @@
 .. _polymorphism:
 
-Polymorphism in Hobbes
-**********************
+Polymorphism
+************
 
-.. _typeclasses:
+.. _type_classes:
 
 Type Classes
 ============
@@ -18,7 +18,7 @@ For example, all the numeric types support addition, and so I can declare a func
 
 This can be read as "a function which takes arguments u, v, x, y, and z, and adds them all together". The backslash starts the function (or "lambda", because if you squint your eyes it looks a bit like the lowercase Greek letter "λ"), and the period separates the argument list from the function definition. 
 
-The types of the variables are left out, yet Hobbes will quite happily figure out types from the context in which they're used. In this case, we can say that the type of those variables is "something which supports addition". Therefore, if we call 'add' with instances of numeric types, we'll get the answer we're looking for:
+The types of the variables are left out, yet Hobbes will quite happily figure out types from the context in which they're used. In this case, we can say that the type of those values is "something which supports addition". Therefore, if we call 'add' with instances of numeric types, we'll get the answer we're looking for:
 
 ::
 
@@ -34,25 +34,27 @@ The types of the variables are left out, yet Hobbes will quite happily figure ou
     :t (\y z.y+z)
     Add a b c => (a * b) -> c
 
-  Hi has inferred the type for our three variables (two parameters and one return value) to be the Type Class 'Add', and is showing the type of the function is one that takes a and b ("a * b") and returns c.
+  Hi has inferred the type for our three values (two parameters and one return value) to be the Type Class 'Add', and is showing the type of the function is one that takes a and b ("a * b") and returns c.
 
-  There are two parts, separated by the ``=>``. It's easiest to take them backwards: The second part is the actual type of the variable, which is ``(a * b) -> c``. This can be read as "a function that takes two instances of the ``Add`` type class and returns another one.
+  There are two parts, separated by the ``=>``. It's easiest to take them backwards: The second part is the actual type of the value, which is ``(a * b) -> c``. This can be read as "a function that takes an instance of ``a``, and an instance of ``b``, and returns an instance of ``c``.
   
-  The first part is for type *restrictions*: things the compiler knows about ``a``, ``b`` and ``c`` that limit what data variable of those types can represent. In this case, Hobbes is simply telling us that they must implements the ``Add`` type class (i.e. it overloads the `+` operator). 
+  The *first* part is for type *restrictions*: things the compiler knows about ``a``, ``b`` and ``c`` that limit what data instances of those types can represent. In this case, Hobbes is simply telling us that they must implement the ``Add`` type class (i.e. they overload the `+` operator).
 
-Many other type classes are available in the :ref:`Hobbes standard library <standard_library>`. We've already seen an implementation of the equivalence typeclass ``equiv``. Others include Multiply (applied to types which have a ``*``) and Print (for types which can be printed).
+  Hobbes has simply inferred this about those types from the context in which they're used. This is in stark contrast to languates where types are restricted on what interfaces they implement. 
+
+Many other type classes are available in the :ref:`Hobbes standard library <standard_library>`. We've already seen an implementation of the equivalence typeclass ``equiv``. Others include ``multiply`` (applied to types which have a ``*``) and ``print`` (for types whose values can be printed).
 
 Type annotations
 ================
 
-We've seen that ``hi`` is able to infer the type of a variable:
+We've seen that ``hi`` is able to infer the type of a value:
 
 ::
 
   > :t 3.2
   double
 
-We can also declare a polymorphic function and shown that Hobbes can infer the type of its parameters. This is powerful for two reasons:
+We can also declare a polymorphic function and shown that Hobbes can find restrictions on the type of its parameters. This is powerful for two reasons:
 
   #. We don't have to write as much code
   #. We can share behaviour across data types as long as they share the ability to perform certain actions. That is, our algorithms become more generic.
@@ -62,9 +64,9 @@ We can also declare a polymorphic function and shown that Hobbes can infer the t
   > :t (\y.y+1)
   Add a int b => (a) -> b
   
-It's important to note that at runtime, all Hobbes functions are *monomorphic* - all the type parameters are resolved to the actual runtime type of the variable and a specific function is output for evaluation. 
+It's important to note that at runtime, all Hobbes functions are *monomorphic* - all the type parameters are resolved to the actual runtime type of the value and a specific function is output for evaluation. 
 
-Of course, in some situations we might want to declare a function with a specific type. In that case, we can use a *type annotation* to declare a variable's type. This can give us extra type safety in cases where we don't want generic behaviour:
+Of course, in some situations we might want to declare a function or value with a specific type. In that case, we can use a *type annotation* to declare a value's type. This can give us extra type safety in cases where we don't want generic behaviour:
 
 ::
 
@@ -73,7 +75,7 @@ Of course, in some situations we might want to declare a function with a specifi
   stdin:1,5-7: Cannot unify types: double != int
   1 j = 3.2 :: int 
 
-We've specified that ``j`` is an int and the compiler has prevented us from assigning a double value to j.
+We've specified that ``j`` is an int and the compiler has prevented us from assigning a double value to ``j``.
 
 Similarly, there's no silent upcasting:
 
@@ -83,7 +85,7 @@ Similarly, there's no silent upcasting:
   stdin:1,5-5: Cannot unify types: int != float
   1 k = 3:: float  
 
-Type annotations allow us to specify types for functions which would otherwise be generic, using the Hobbes type notations for functions that we saw before. In this case we don't need to specify type restrictions, we can just declare the value to be a function type from concrete type to concrete type:
+Type annotations allow us to specify types for functions which would otherwise be generic, using the type notations for functions that we saw before. In this case we don't need to specify type restrictions, we can just declare the value to be a function type from concrete type to concrete type:
 
 ::
 
@@ -112,11 +114,8 @@ We can take this one step further:
 ::
 
   > :t \x.x.Name
-
-Remember that, in our lambda syntax, this can be read as "A function which takes x and returns x.Name" - i.e. the only thing we know about the type of x is that it has a member called Name. Hi will then give names to those two as-yet unnamed types: it calls them 'a' and 'b':
-
-::
-
   a.Name::b => (a) -> b
 
-Here, the double colon is a *type annotation*, meaning that the type of "a.Name" is b. Once those types are resolved, we're left with a function from type a to type b ("(a) -> b").
+Remember that, in our lambda syntax, this can be read as "A function which takes x and returns x.Name" - i.e. the only thing we know about the type of x is that it has a member called Name. Hi will then give names to those two as-yet unnamed types: it calls them 'a' and 'b'.
+
+Note that Hobbes has inferred the type restriction on b: It's whatever type the value of "a.Name" is. This function will work for *any* type that has a member called ``Name``, which can be of any type!

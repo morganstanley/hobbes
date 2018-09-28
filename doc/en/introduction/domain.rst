@@ -5,11 +5,13 @@ Digging into the domain
 
 Taking a deeper look into our domain might help clear things up.
 
-An order manager takes instructions in the form "Buy 100 stocks of *Example co* if the price is below 144.2 USD". This is called a *limit order*, because the action is contingent on some property of the stock (in this case, its price).
+Hobbes has been designed from the ground up to help devops staff manage the in-process configuration of extremely low latency order managers.
 
-The Order Manager ("OM") will hold this order and watch the price at which *Example co* is being sold at different exchanges, and once the price drops below 144.2 it'll go ahead and issue an instruction to buy the stock. Some time later the exchange will respond with the result.
+An Order Manager ("OM") takes instructions in the form "Buy 100 stocks of *Example co* if the price is below 144.2 USD". This is called a *limit order*, because the action is contingent on some property of the stock (in this case, its price).
 
-The alternative is a *market order*, where the stock is bought regardless of the price.
+The Order Manager will hold this order and watch the price at which *Example co* is being sold at different exchanges, and once the price drops below 144.2 it'll go ahead and issue an instruction to buy the stock. Some time later the exchange will respond with the result: either the purchase succeeded and the order filled, or else the details of the failure.
+
+The alternative to a *limit order* is a *market order*, where the stock is bought regardless of the current price.
 
 Complex Business
 ================
@@ -25,9 +27,9 @@ However, the go-to tools which developers use to manage complex decision trees f
 Two things are important:
 
    * The ability to construct and compile a decision tree for a given stock
-   * The ability to quickly recompile it when given new constraints
+   * The ability to quickly change the behaviour when given new constraints
 
-Both the dynamic portion (operands to function calls and control flow statements; e.g. the stock's price) *and* the static portion (the operations themselves) must be changeable.
+Both the dynamic portion (the operands to function calls and control flow statements; e.g. the stock's price) *and* the static portion (the operations themselves) must be changeable.
 
 In particular: in-process, compiled logic allows the processor to maximise efficiency by filling an instruction and data pipeline, thus enjoying the benefits of mechanical sympathy. The output of the Hobbes compiler lives in a critical trading path where it sees a very large proportion of daily US equities trades.
 

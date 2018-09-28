@@ -1,5 +1,5 @@
-The Hobbes Language
-*******************
+Language
+********
 
 .. toctree::
    :maxdepth: 3
