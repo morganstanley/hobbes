@@ -135,14 +135,12 @@ Just like in C++, Hobbes arrays are contiguous values in memory, with special sy
 Array sequences
 ---------------
 
-A *sequence expression* can be used to initialise an array for many of the primitive types. The syntax is simple:
+A *sequence expression* can be used to initialise an array of ints. The syntax is simple:
 
 ::
   
   > [1..4]
   [1, 2, 3, 4]
-  > ['a', 'd']
-  "abcd"
   > :t [1..4]
   [int]
 
@@ -151,7 +149,7 @@ We can take this further and generate *iinfinite* sequences by leaving the upper
 ::
 
   > [0..]
-  [0, 1, 2, ...]
+  [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]...
 
 Infinite sequences are useful structures for performing work many times over without mutating a loop variable. Special care has been taken to ensure their evaluation isn't eager, however - as your program might never stop! For more information about the *type* of an infinite sequence, take a look at the infinite squences section in :ref:`polymorphism <polymorphism>`
 
