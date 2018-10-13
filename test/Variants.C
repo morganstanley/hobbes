@@ -78,6 +78,8 @@ DEFINE_ENUM(Color,
   (Blue)
 );
 
+DEFINE_PACKED_ENUM(PColor, uint8_t, (Red), (Green), (Blue));
+
 TEST(Variants, Enums) {
   Color red   = Color::Red();
   Color green = Color::Green();
@@ -86,6 +88,8 @@ TEST(Variants, Enums) {
   EXPECT_EQ((c().compileFn<int(const Color*)>("x", "case x of |Red=0,Green=1,Blue=2|")(&red)),   0);
   EXPECT_EQ((c().compileFn<int(const Color*)>("x", "case x of |Red=0,Green=1,Blue=2|")(&green)), 1);
   EXPECT_EQ((c().compileFn<int(const Color*)>("x", "case x of |Red=0,Green=1,Blue=2|")(&blue)),  2);
+
+  EXPECT_EQ((makeStdString(c().compileFn<const array<char>*(PColor pc)>("x", "show(x)")(PColor::Red()))), "|Red|");
 }
 
 TEST(Variants, WithFunctions) {

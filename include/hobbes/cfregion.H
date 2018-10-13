@@ -869,7 +869,7 @@ template <typename T>
     static void read(crbitstream* rbits, PModel* pm, CModel* cm, T* c) {
       element ce = 0;
       R::read(rbits, pm, cm, &ce);
-      c->value = static_cast<typename T::Enum>(static_cast<uint32_t>(ce));
+      c->value = static_cast<typename T::Enum>(static_cast<typename T::rep_t>(ce));
     }
   };
 

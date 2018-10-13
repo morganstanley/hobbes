@@ -100,7 +100,7 @@ void showUsage() {
   <<
     "hog : record structured data locally or to a remote process\n"
     "\n"
-    "  usage: hog [-d <dir>] [-g group+] [-p t s host:port+] [-s port] [-c] [-m <dir>]\n"
+    "  usage: hog [-d <dir>] [-g group+] [-p t s host:port+] [-s port] [-c] [-m <dir>] [-spin] [-z]\n"
     "where\n"
     "  -d <dir>          : decides where structured data (or temporary data) is stored\n"
     "  -g group+         : decides which data to record from memory on this machine\n"

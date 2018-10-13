@@ -103,6 +103,15 @@ instance Show 0 where
 instance (v=|a+vt|, ShowVarValue a, Show vt) => Show v where
   show x = variantSplit(x, \xv."|"++variantHeadLabel(x)++showVarValue(xv)++"|", toClosure(show))
 
+data penum t v = t
+class UnpackEnum t v | t -> v where
+  unpackEnum :: t -> v
+instance (Convert t int) => UnpackEnum (penum t v) v where
+  unpackEnum x = unsafeCast({x=convert(unsafeCast(x)::t)::int})
+
+instance (UnpackEnum t v, Show v) => Show t where
+  show e = show(unpackEnum(e))
+
 // serialization for arrays
 instance (Array cs char) => Show cs where
   show cs = show(cs[0:])
