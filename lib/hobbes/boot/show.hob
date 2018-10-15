@@ -109,6 +109,13 @@ class UnpackEnum t v | t -> v where
 instance (Convert t int) => UnpackEnum (penum t v) v where
   unpackEnum x = unsafeCast({x=convert(unsafeCast(x)::t)::int})
 
+instance Eq (penum _ _) where
+  x === y = x.t === y.t
+instance (Ord t t) => Ord (penum t v) (penum t v) where
+  x <  y = x.t <  y.t
+  x <= y = x.t <= y.t
+  x >  y = x.t >  y.t
+  x >= y = x.t >= y.t
 instance (UnpackEnum t v, Show v) => Show t where
   show e = show(unpackEnum(e))
 
