@@ -100,7 +100,7 @@ void showUsage() {
   <<
     "hog : record structured data locally or to a remote process\n"
     "\n"
-    "  usage: hog [-d <dir>] [-g group+] [-p t s host:port+] [-s port] [-c] [-m <dir>]\n"
+    "  usage: hog [-d <dir>] [-g group+] [-p t s host:port+] [-s port] [-c] [-m <dir>] [-z]\n"
     "where\n"
     "  -d <dir>          : decides where structured data (or temporary data) is stored\n"
     "  -g group+         : decides which data to record from memory on this machine\n"
@@ -108,7 +108,6 @@ void showUsage() {
     "  -s port           : decides to receive data on the given port\n"
     "  -c                : decides to store equally-typed data across processes in a single file\n"
     "  -m <dir>          : decides where to place the domain socket for producer registration (default: " << hobbes::storage::defaultStoreDir() << ")\n"
-    "  -spin             : instruct producer and consumer to spin when either side cannot make progress\n"
     "  -z                : store data compressed\n"
   << std::endl;
 }

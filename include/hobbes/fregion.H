@@ -1544,14 +1544,14 @@ template <typename T>
     static const bool can_memcpy = true;
     
     static ty::desc storeType() {
-      return ty::enumdef(T::meta());
+      return ty::enumdef(store<typename T::rep_t>::storeType(), T::meta());
     }
 
-    static size_t size() { return sizeof(uint32_t); }
-    static size_t alignment() { return sizeof(uint32_t); }
+    static size_t size()      { return sizeof(typename T::rep_t); }
+    static size_t alignment() { return sizeof(typename T::rep_t); }
 
-    static void write(imagefile*, void* p,       const T& x) { memcpy(p, &x, sizeof(uint32_t)); }
-    static void read (imagefile*, const void* p, T*       x) { memcpy(x,  p, sizeof(uint32_t)); }
+    static void write(imagefile*, void* p,       const T& x) { memcpy(p, &x, sizeof(typename T::rep_t)); }
+    static void read (imagefile*, const void* p, T*       x) { memcpy(x,  p, sizeof(typename T::rep_t)); }
   };
 
 // store variants
