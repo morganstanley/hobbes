@@ -285,13 +285,13 @@ template <typename T>
   struct io<T, typename tbool<T::is_hmeta_enum>::type> {
     static const bool can_memcpy = true;
 
-    static ty::desc type()                   { return ty::enumdef(T::meta()); }
-    static void     write(int s, const T& x) { io<uint32_t>::write(s, static_cast<uint32_t>(x.value)); }
-    static void     read(int s, T* x)        { io<uint32_t>::read(s, reinterpret_cast<uint32_t*>(&x->value)); }
+    static ty::desc type()                   { return ty::enumdef(io<typename T::rep_t>::type(), T::meta()); }
+    static void     write(int s, const T& x) { io<typename T::rep_t>::write(s, static_cast<typename T::rep_t>(x.value)); }
+    static void     read(int s, T* x)        { io<typename T::rep_t>::read(s, reinterpret_cast<typename T::rep_t*>(&x->value)); }
 
     typedef uint8_t async_read_state;
     static void prepare(uint8_t* o) { *o = 0; }
-    static bool accum(int s, uint8_t* o, T* x) { *o += recvDataPartial(s, reinterpret_cast<uint8_t*>(x) + *o, sizeof(uint32_t) - *o); return *o == sizeof(uint32_t); }
+    static bool accum(int s, uint8_t* o, T* x) { *o += recvDataPartial(s, reinterpret_cast<uint8_t*>(x) + *o, sizeof(typename T::rep_t) - *o); return *o == sizeof(typename T::rep_t); }
   };
 
 // support variants

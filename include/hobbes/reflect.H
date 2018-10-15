@@ -259,11 +259,12 @@ template <typename T, typename ... Ts> struct tupleTail<T, Ts...> { typedef tupl
 #define PRIV_HPPF_ENUM_SHOW(n) case SelfT::Enum::n : return "|" #n "|";
 #define PRIV_HPPF_ENUM_CTOR_COUNT(n) +1
 
-#define DEFINE_ENUM(T, CTORS...) \
+#define DEFINE_PACKED_ENUM(T, R, CTORS...) \
   struct T { \
     static const bool is_hmeta_enum = true; \
     static const uint32_t ctorCount = 0 PRIV_HPPF_MAP(PRIV_HPPF_ENUM_CTOR_COUNT, CTORS); \
-    enum class Enum : uint32_t { \
+    typedef R rep_t; \
+    enum class Enum : R { \
       PRIV_HPPF_MAP(PRIV_HPPF_ENUM_CTOR_DEF, CTORS) \
       COUNT \
     }; \
@@ -274,7 +275,7 @@ template <typename T, typename ... Ts> struct tupleTail<T, Ts...> { typedef tupl
     operator Enum() const { return this->value; } \
     typedef T SelfT; \
     PRIV_HPPF_MAP(PRIV_HPPF_ENUM_CTOR_CTOR, CTORS) \
-    typedef std::vector<std::pair<std::string,uint32_t>> MetaSeq; \
+    typedef std::vector<std::pair<std::string,R>> MetaSeq; \
     static MetaSeq meta() { \
       MetaSeq m; \
       PRIV_HPPF_MAP(PRIV_HPPF_ENUM_META, CTORS); \
@@ -284,6 +285,8 @@ template <typename T, typename ... Ts> struct tupleTail<T, Ts...> { typedef tupl
     std::string show() const { switch (this->value) { PRIV_HPPF_MAP(PRIV_HPPF_ENUM_SHOW, CTORS); default: return "?"; } } \
   }; \
   inline std::ostream& operator<<(std::ostream& o, const T& v) { o << v.show(); return o; }
+
+#define DEFINE_ENUM(T, CTORS...) DEFINE_PACKED_ENUM(T, uint32_t, CTORS)
 
 // standard layout sum type with efficient dispatch
 template <bool f, typename T, typename F>
@@ -789,13 +792,6 @@ struct Variant : public D {
   Ctors ctors;
 };
 inline desc variant(const Variant::Ctors& ctors) { return desc(new Variant(ctors)); }
-inline desc enumdef(const std::vector<std::pair<std::string, uint32_t>>& eds) {
-  Variant::Ctors ctors;
-  for (const auto& ed : eds) {
-    ctors.push_back(Variant::Ctor(ed.first, ed.second, prim("unit")));
-  }
-  return variant(ctors);
-}
 
 template <typename ... Tys>
   struct sumAcc { static void acc(std::vector<desc>*, const Tys& ...) { } };
@@ -905,6 +901,19 @@ template <typename ... Tys>
     appAcc<Tys...>::acc(&ds, tt...);
     return appc(f, ds);
   }
+
+template <typename R>
+inline desc enumdef(const desc& rep, const std::vector<std::pair<std::string, R>>& eds) {
+  Variant::Ctors ctors;
+  for (const auto& ed : eds) {
+    ctors.push_back(Variant::Ctor(ed.first, ed.second, prim("unit")));
+  }
+  if (sizeof(R) == sizeof(uint32_t)) {
+    return variant(ctors);
+  } else {
+    return app(prim("penum", fn("r", "v", var("r"))), rep, variant(ctors));
+  }
+}
 
 inline desc fileRef(const desc& t) {
   return app(prim("fileref", fn("x", prim("long"))), t);
