@@ -46,6 +46,11 @@ template <>
     static ExprPtr expr(const ExprParser& p, const std::string& e) { return p(e); }
   };
 template <>
+  struct PArgl<char*> {
+    static str::seq names(char*) { return str::seq(); }
+    static ExprPtr expr(const ExprParser& p, char* e) { return p(std::string(e)); }
+  };
+template <>
   struct PArgl<const char*> {
     static str::seq names(const char*) { return str::seq(); }
     static ExprPtr expr(const ExprParser& p, const char* e) { return p(std::string(e)); }

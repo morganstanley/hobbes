@@ -36,6 +36,12 @@ TEST(Compiler, compileToSupportsMoreThanSixArgs) {
   EXPECT_TRUE(NULL != funPtr);
 }
 
+TEST(Compiler, charArrExpr) {
+  char buffer[256];
+  strncpy(buffer, "\"hello world\"\0", sizeof(buffer));
+  EXPECT_TRUE(c().compileFn<const array<char>*()>(buffer) != 0);
+}
+
 class BV { };
 namespace hobbes {
   template <>
