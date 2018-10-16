@@ -30,7 +30,7 @@ void Objs::add(const class_type* ct) {
   
   ClassDefs::const_iterator cd = this->classDefs.find(cn);
   if (cd != this->classDefs.end()) {
-    if (cd->second != ct) {
+    if (*cd->second != *ct) {
       throw std::runtime_error("While recording class type information, inconsistent definitions for the '" + cn + "' class.");
     }
   } else {
