@@ -43,6 +43,7 @@ TEST(Prelude, FArray) {
   EXPTEST("map(\\x.x+9, [1..10]) == [10, 11, 12, 13, 14, 15, 16, 17, 18, 19]");
   EXPTEST("sum([1..10]) == 55");
   EXPTEST("sum([1L..10L]) == 55L");
+  EXPTEST("sum(0x000102) == 3");
 }
 
 TEST(Prelude, List) {

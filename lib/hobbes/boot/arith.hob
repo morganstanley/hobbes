@@ -6,6 +6,9 @@
 class HasZero a where
   zero :: a
 
+instance HasZero byte where
+  zero = 0X00
+
 instance HasZero short where
   zero = 0S
 
@@ -29,6 +32,9 @@ instance HasZero timespan where
 
 class HasOne a where
   one :: a
+
+instance HasOne byte where
+  one = 0X01
 
 instance HasOne short where
   one = 1S
