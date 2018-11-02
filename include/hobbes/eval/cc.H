@@ -26,8 +26,19 @@
 
 namespace hobbes {
 
-typedef std::map<std::string, PolyTypePtr> TypeAliasMap;
-typedef std::map<std::string, MonoTypePtr> MonoTypeAliasMap;
+// protect access to hobbes/llvm resources between threads
+class hlock {
+public:
+  hlock(); ~hlock();
+};
+class phlock {
+public:
+  phlock();
+  void release();
+  ~phlock();
+private:
+  bool f;
+};
 
 // parameter parsing for the 'compileFn' family of functions
 typedef std::function<ExprPtr(const std::string&)> ExprParser;
@@ -97,6 +108,10 @@ public:
   SearchEntries search(const std::string&, const MonoTypePtr&);
   SearchEntries search(const std::string&, const std::string&);
 private:
+  // init protected access to compiler resources
+  phlock initLock;
+
+  // parser functions
   readModuleFileFn readModuleFileF;
   readModuleFn     readModuleF;
   readExprDefnFn   readExprDefnF;
@@ -166,12 +181,14 @@ public:
   // keep track of C++ classes so that we can perform upcasts where necessary
   template <typename T>
     void addObj() {
+      hlock _;
       this->objs->add<T>();
     }
 
   // convenience method for lifting C++ types
   template <typename T>
     PolyTypePtr liftType() {
+      hlock _;
       return generalize(lift<T>::type(*this));
     }
 
@@ -185,17 +202,20 @@ public:
 
   template <typename T>
     void bind(const std::string& vn, T* x) {
+      hlock _;
       bind(generalize(liftValue<T*>::type(*this, x)), vn, rcast<void*>(x));
     }
 
   template <typename T, int N>
     void bindArr(const std::string& vn, T x[N]) {
+      hlock _;
       bind(polytype(qualtype(arrayty(lift<T>::type(*this), N))), vn, rcast<void*>(x));
     }
 
   // simplify binding user functions
   template <typename R, typename ... Args>
     void bind(const std::string& fn, R (*pfn)(Args...)) {
+      hlock _;
       bindExternFunction(fn, lift<R(Args...)>::type(*this), rcast<void*>(pfn));
     }
 private:
@@ -269,8 +289,10 @@ private:
   int  dfaOverNfaMaxRatio        = 4;
 
   // the bound root type-def environment
-  TEnvPtr          tenv;
-  TypeAliasMap     typeAliases;
+  typedef std::map<std::string, PolyTypePtr> TypeAliasMap;
+
+  TEnvPtr      tenv;
+  TypeAliasMap typeAliases;
 
   PolyTypePtr lookupVarType(const std::string& vname) const;
 
