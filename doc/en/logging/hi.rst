@@ -55,15 +55,33 @@ Therefore the annotation becomes, at compile time, a *type-safe* indication of t
 One-off data processing
 -----------------------
 
+We can query data inside a logfile using the comprehensions syntax we saw :ref:`previously<comprehensions>`.
+
+Remember that our logger contains the following line:
+
+::
+
+  HSTORE(SimpleLogger, FirstEvent, "First", 0, 1, 2);
+
+Hobbes exposes this persisted element as a tuple, and so we can unpack it using the numbered indexing syntax for Hobbes tuples:
+
+::
+
+  > [show(x.1) | x <- messages.FirstEvent]
+  ["12", "12", "12", "12", "12", "12", 
+  ...
+
 Realtime processing
 -------------------
 
-We can perform realtime analysis of persisted data with the ``signals`` API.
+Once we have a reference to a Hobbes file, we can perform realtime analysis of the data it contains with the ``signals`` API. If new data is written to the file, this event handler will be called:
 
 ::
   
-  > signals(messages).FirstMessage <- (\_.do { putStrLine("message received!"); return true })
+  > signals(messages).FirstEvent <- (\_.do { putStrLn("message received!"); return true })
   > message received!
   message received!
   message received!
   [...]
+
+This allows us to do reactive programming across Hobbes processes.

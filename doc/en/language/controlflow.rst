@@ -289,7 +289,9 @@ A tuple can be decomposed into its individual parts very simply:
 
 .. note::
 
-  This is another example of Hobbes sugaring over match expressions, as discussed  :ref:`earlier<sugar>`.
+  This is another example of Hobbes sugaring over match expressions, as discussed :ref:`earlier<sugar>`.
+
+.. _comprehensions:
 
 Comprehensions
 ==============
