@@ -67,9 +67,17 @@ Hobbes exposes this persisted element as a tuple, and so we can unpack it using 
 
 ::
 
-  > [show(x.1) | x <- messages.FirstEvent]
+  > [ x.1 | x <- messages.FirstEvent]
   ["12", "12", "12", "12", "12", "12", 
   ...
+
+  > [ messages.SecondEvent[0:3]]
+  [First 0 1 2 
+  First 0 1 2 
+  First 0 1 2 
+  ]
+
+  
 
 Realtime processing
 -------------------

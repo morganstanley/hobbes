@@ -68,7 +68,7 @@ Using the ``HLOG`` macro provides compile-time safety for the format string, and
     12
   );
 
-Hobbes is also able to persist aggregate types we declare ourselves with ``DEFINE_HSTORE_STRUCT``, as well as custom types by specialising the ``hobbes::storage::store<YourType>`` class. Information about ``hobbes::storage:store`` can be found in the Hobbes GitHub repository.
+Information about the types Hobbes is able to persist can be found in :ref:`hobbes persistable types <hobbes_persistable_types>`
 
 Declaring structured types for HSTORE logging
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
