@@ -44,6 +44,8 @@ The types of the variables are left out, yet Hobbes will quite happily figure ou
 
 Many other type classes are available in the :ref:`Hobbes standard library <standard_library>`. We've already seen an implementation of the equivalence typeclass ``equiv``. Others include ``multiply`` (applied to types which have a ``*``) and ``print`` (for types whose values can be printed).
 
+.. _type_annotations:
+
 Type annotations
 ================
 
