@@ -8,18 +8,15 @@ In this chapter, we'll look at how we can read those persisted logs and process 
 Reading the file
 ----------------
 
-
-
 ::
 
   $ hi
-  [...]
   > messages = inputFile :: (LoadFile "./SimpleLogger/2018.09.26/data.log" w) => w
 
 
 That's how we open the file in hi. It looks a bit cryptic, so let's try to unpack it a little bit.
 
-Firstly, this is simply an assignment of something called ``inputFile`` to the name ``messages``. The interesting bit is in the type annotation, which you might remember from :ref:`this previous section <type_annotations>`. This one is a little more long-winded than what we've seen before - but that's essentially what it is: a tighter specification for the _type_ of what ``messages`` is.
+Firstly, this is simply an assignment of something called ``inputFile`` to the name ``messages``. The interesting bit is in the type annotation, which you might remember from :ref:`this previous section <type_annotations>`. This one is a little more long-winded than what we've seen before - but that's essentially what it is: a tighter specification for the *type* of what ``messages`` is.
 
 And that's interesting, because it's a gentle hint at the fact that ``messages`` is a *type-safe* collection of all the structured data inside the file we've specified there, ``data.log``!
 
@@ -49,9 +46,11 @@ Therefore the annotation becomes, at compile time, a *type-safe* indication of t
 
   If all this is a bit too hairy - don't worry! You can always just type the code and it'll work. Simply replace the name of the file with that of your persistence file and you're good to go.
 
-  If you'd like a gentle push, you can think of the ``LoadFile`` *unqualifier* as a kind of backwards ORM. An Object/Relational Mapping tool can create a database schema for you based on a set of classes defined in code. You write your code and construct objects, and based on the ORM rules, these objects can be trivially persisted in a database table according to the schema.
+  If you'd like a gentle push, you can think of ``LoadFile`` as a kind of backwards ORM. An Object-Relational Mapping tool can create a database schema for you based on a set of classes defined in code. You write your code and construct objects, and based on the ORM rules, these objects can be trivially persisted in a database table according to the schema.
 
-  Well, what if that worked backwards? A reverse ORM tool could look at a database table and read the schema, and construct classes that you can code against. That's exactly what *LoadFile* is doing - except it all happens automatically, as part of the compilation process. 
+  Well, what if that worked backwards? A reverse ORM tool could look at a database table and read the schema, and construct classes that you can code against. That's exactly what *LoadFile* is doing - except it all happens automatically, as part of the compilation process.
+
+  Incidentally, the *same* process is happening when we use *hog* to send structured data over the network for persistence: the header is sent when the target hog process starts up, and the type information contained into the header is passed through to the persisted file before data starts to stream.
 
 One-off data processing
 -----------------------
