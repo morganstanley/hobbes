@@ -71,13 +71,12 @@ Hobbes exposes this persisted element as a tuple, and so we can unpack it using 
   ["12", "12", "12", "12", "12", "12", 
   ...
 
-  > [ messages.SecondEvent[0:3]]
-  [First 0 1 2 
-  First 0 1 2 
-  First 0 1 2 
-  ]
+And although they type of ``messages.SecondEvent`` isn't quite an array, you can use the "slice" notation to work with a subset of logged messages:
 
-  
+  > messages.SecondEvent[0:3]
+  First 0 1 2 
+  First 0 1 2 
+  First 0 1 2 
 
 Realtime processing
 -------------------

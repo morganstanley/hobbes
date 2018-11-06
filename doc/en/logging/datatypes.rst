@@ -24,7 +24,7 @@ Aggregate types
 
 If a type ``T`` can be persisted, then its array type ``T[]`` and its vector ``std::vector<T>`` can be persisted.
 
-If types ``T0, T1, ..., Tn`` can be persisted, then a tuple ``std::tuple<T0, T1, ..., Tn> can also be persisted.
+If types ``T0, T1, ..., Tn`` can be persisted, then a tuple ``std::tuple<T0, T1, ..., Tn>`` can also be persisted.
 
 Custom types
 ============
