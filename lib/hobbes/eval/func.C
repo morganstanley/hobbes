@@ -307,7 +307,7 @@ public:
     llvm::Value* aclen = c->builder()->CreateAdd(c0, c1);
     llvm::Value* mlen  = c->builder()->CreateAdd(cvalue(static_cast<long>(sizeof(long))), c->builder()->CreateMul(aclen, cvalue(static_cast<long>(sizeOf(aty->type())))));
 
-    llvm::Value* cmdata = c->compileAllocStmt(mlen, toLLVM(tys[0]));
+    llvm::Value* cmdata = c->compileAllocStmt(mlen, cvalue(std::max<long>(sizeof(long), alignment(aty->type()))), toLLVM(tys[0]));
     c->builder()->CreateStore(aclen, structOffset(c->builder(), cmdata, 0));
 
     if (!isUnit(aty->type())) {
@@ -513,9 +513,9 @@ public:
     if (isUnit(rty)) {
       return cvalue(true);
     } else if (!hasPointerRep(rty)) {
-      return c->builder()->CreateLoad(c->compileAllocStmt(sizeOf(rty), ptrType(toLLVM(rty, true)), this->zeroMem));
+      return c->builder()->CreateLoad(c->compileAllocStmt(sizeOf(rty), alignment(rty), ptrType(toLLVM(rty, true)), this->zeroMem));
     } else {
-      return c->compileAllocStmt(sizeOf(rty), toLLVM(rty, true), this->zeroMem);
+      return c->compileAllocStmt(sizeOf(rty), alignment(rty), toLLVM(rty, true), this->zeroMem);
     }
   }
 
@@ -538,7 +538,7 @@ public:
 
     llvm::Value* aclen  = c->compile(es[0]);
     llvm::Value* mlen   = c->builder()->CreateAdd(cvalue(static_cast<long>(sizeof(long))), c->builder()->CreateMul(aclen, cvalue(static_cast<long>(sizeOf(aty->type())))));
-    llvm::Value* cmdata = c->compileAllocStmt(mlen, toLLVM(rty));
+    llvm::Value* cmdata = c->compileAllocStmt(mlen, cvalue(std::max<long>(sizeof(long), alignment(aty->type()))), toLLVM(rty));
     c->builder()->CreateStore(aclen, structOffset(c->builder(), cmdata, 0));
 
     return cmdata;

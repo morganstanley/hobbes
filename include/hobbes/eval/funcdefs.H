@@ -9,7 +9,7 @@ namespace hobbes {
 void initStdFuncDefs(cc& ctx);
 
 // pooled memory allocation
-char* memalloc(size_t);
+char* memalloc(size_t, size_t);
 
 // dynamic string construction utilities
 const array<char>* makeString(const std::string& x);

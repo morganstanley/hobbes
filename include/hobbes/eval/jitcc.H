@@ -68,8 +68,8 @@ public:
   void            compileFunctions(const LetRec::Bindings&);
 
   // compile an allocation statement (to dynamically allocate some data)
-  llvm::Value* compileAllocStmt(size_t sz, llvm::Type* mty, bool zeroMem = false);
-  llvm::Value* compileAllocStmt(llvm::Value* sz, llvm::Type* mty, bool zeroMem = false);
+  llvm::Value* compileAllocStmt(size_t sz, size_t asz, llvm::Type* mty, bool zeroMem = false);
+  llvm::Value* compileAllocStmt(llvm::Value* sz, llvm::Value* asz, llvm::Type* mty, bool zeroMem = false);
 
   // begin a function with the given name, argument type list, return type
   llvm::Function* allocFunction(const std::string& fname, const MonoTypes& argl, const MonoTypePtr& rty);
@@ -110,7 +110,7 @@ public:
   ExprPtr inlineGlobals(const ExprPtr&);
 
   // allocate some global data attached to this JIT
-  void* memalloc(size_t);
+  void* memalloc(size_t, size_t);
 private:
   TEnvPtr tenv;
 

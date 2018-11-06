@@ -53,12 +53,7 @@ public:
 };
 
 array<ArrObjV*>* arrobjs(int n) {
-  array<ArrObjV*>* r = reinterpret_cast<array<ArrObjV*>*>(memalloc(sizeof(long) + sizeof(ArrObjV) * n));
-  r->size = n;
-  for (int i = 0; i < n; ++i) {
-    new (r->data + n) ArrObjV();
-  }
-  return r;
+  return makeArray<ArrObjV*>(n);
 }
 
 // verify compilation of simple single-inheritance

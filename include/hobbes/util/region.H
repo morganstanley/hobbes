@@ -18,8 +18,8 @@ public:
   region(size_t minPageSize, size_t initialFreePages = 1, size_t maxPageSize = /*1GB*/ 1*1024*1024*1024);
   ~region();
 
-  // allocate 'sz' bytes of memory
-  void* malloc(size_t sz);
+  // allocate 'sz' bytes of memory aligned to 'asz'
+  void* malloc(size_t sz, size_t asz = sizeof(size_t));
 
   // deallocate all pages (make sure you're not holding any references after this)
   void clear();
