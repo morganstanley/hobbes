@@ -43,7 +43,6 @@ License information `here <https://github.com/Morgan-Stanley/hobbes/blob/master/
    language/index
    embedding/index
    logging/index
-   applications/index
    appendix/index
    examples/index
    about
