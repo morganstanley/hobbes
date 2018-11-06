@@ -10,6 +10,8 @@ Structured logging from within C++
 
 Hobbes persistence is backed by a shared memory region which is initialised when the logging application starts up. In order to define some of the parameters for writing to this region, we'll use the ``DEFINE_STORAGE_GROUP`` macro.
 
+.. _hobbes_define_storage_group:
+
 DEFINE_STORAGE_GROUP
 --------------------
 

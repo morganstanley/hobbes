@@ -9,3 +9,7 @@ A Simple Logger
   #include <hobbes/storage.H>
 
   DEFINE_STORAGE_GROUP(
+    RaindropLogger,
+    1,
+    Unreliable,
+    AutoCommit,

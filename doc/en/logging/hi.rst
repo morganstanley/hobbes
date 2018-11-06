@@ -1,17 +1,25 @@
 Processing logs with hi
-=======================
+***********************
 
 We've already seen how to write C++ processes which log with the Hobbes logging API, and how we can use hog to pick up those log messages from shared memory and either store them locally or forward them on to another hog process running on a remote host.
 
-In this chapter, we'll look at how we can read those persisted logs and process them in the Hobbes environment. For simplicity, we'll use hi, the Hobbes REPL.
+In this chapter, we'll look at how we can read those persisted logs and process them in the Hobbes environment. 
+
+You can read a logfile as it's being written to, or one that's been written to in the past. The name of the logfile is mentioned in the first few lines of the output from Hog. You'll see something like 
+
+::
+
+  finished preparing statements, writing data to './SimpleLogger/2018.09.26.data-0.log'
+
+For simplicity, we'll use hi, the Hobbes REPL.
 
 Reading the file
-----------------
+================
 
 ::
 
   $ hi
-  > messages = inputFile :: (LoadFile "./SimpleLogger/2018.09.26/data.log" w) => w
+  > messages = inputFile :: (LoadFile "./SimpleLogger/2018.09.26/data-0.log" w) => w
 
 
 That's how we open the file in hi. It looks a bit cryptic, so let's try to unpack it a little bit.
@@ -53,9 +61,9 @@ Therefore the annotation becomes, at compile time, a *type-safe* indication of t
   Incidentally, the *same* process is happening when we use *hog* to send structured data over the network for persistence: the header is sent when the target hog process starts up, and the type information contained into the header is passed through to the persisted file before data starts to stream.
 
 One-off data processing
------------------------
+=======================
 
-We can query data inside a logfile using the comprehensions syntax we saw :ref:`previously<comprehensions>`.
+We can query data inside a logfile using the comprehensions syntax we saw :ref:`previously<comprehensions>`. It's even possible to see updates to the file as it's being written - changes will be visible in hobbes code whilst elements are being added to the file. This allows for reactive programming but it also means that calculation results may change between invocations - so be careful!
 
 Remember that our logger contains the following line:
 
@@ -63,7 +71,10 @@ Remember that our logger contains the following line:
 
   HSTORE(SimpleLogger, FirstEvent, "First", 0, 1, 2);
 
-Hobbes exposes this persisted element as a tuple, and so we can unpack it using the numbered indexing syntax for Hobbes tuples:
+As a comprehension
+------------------
+
+Although the type of the data isn't quite an array, we can use comprehension syntax to collect data. In fact, this is a very common usecase for Hobbes in production. It allows us to filter and map across large amounts of data in a neat consistent manner:
 
 ::
 
@@ -71,15 +82,41 @@ Hobbes exposes this persisted element as a tuple, and so we can unpack it using 
   ["12", "12", "12", "12", "12", "12", 
   ...
 
-And although they type of ``messages.SecondEvent`` isn't quite an array, you can use the "slice" notation to work with a subset of logged messages:
+
+.. note:: **tuples?**
+  
+  Hobbes exposes this persisted element (the *line* of logged data, really) as a tuple, so you can unpack it using the numbered indexing syntax.
+
+As an array
+-----------
+
+Similarly, we can use the "slice" notation to work with a subset of logged messages:
 
   > messages.SecondEvent[0:3]
   First 0 1 2 
   First 0 1 2 
   First 0 1 2 
 
-Realtime processing
--------------------
+.. note:: **ordering**
+  
+  The internal structure of Due to the internal structue of the persisted file, while elements may *look* ordered, this ordering We can force a 'most recent first' ordering of logged elements using the open-slice notation:
+
+.. note:: **where's my data?!**
+  
+  If you have a process which is logging and you're not seeing any updates, it might be that you're writes from the sending process are being batched and haven't yet been flushed.
+
+  This can be the case if you're not logging much data, and using auto-commit persistence in your :ref:`storage group definition <hobbes_define_storage_group>`.
+
+  If that's the case, you can force a flush by calling the group's ``.commit()`` member in your logging code.
+
+  e.g. for a storage group called *SimpleLogger* (like ours has been), you'd call
+
+  ::
+    
+    SimpleLogger.commit();
+
+Reactive processing
+===================
 
 Once we have a reference to a Hobbes file, we can perform realtime analysis of the data it contains with the ``signals`` API. If new data is written to the file, this event handler will be called:
 
