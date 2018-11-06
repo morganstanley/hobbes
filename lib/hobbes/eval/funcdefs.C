@@ -82,12 +82,12 @@ size_t makeMemRegion(const array<char>* n) {
   return addThreadRegion(makeStdString(n), new region(32768));
 }
 
-char* memalloc(size_t n) {
-  return reinterpret_cast<char*>(threadRegion().malloc(n));
+char* memalloc(size_t n, size_t asz) {
+  return reinterpret_cast<char*>(threadRegion().malloc(n, asz));
 }
 
-char* memallocz(size_t n) {
-  char* r = reinterpret_cast<char*>(threadRegion().malloc(n));
+char* memallocz(size_t n, size_t asz) {
+  char* r = reinterpret_cast<char*>(threadRegion().malloc(n, asz));
   memset(r, 0, n);
   return r;
 }
@@ -202,11 +202,11 @@ template <typename T>
     typedef variant<unit, T> ty;
 
     static const maybe<T>::ty* nothing() {
-      return new (memalloc(sizeof(ty))) ty(unit());
+      return new (memalloc(sizeof(ty), alignof(ty))) ty(unit());
     }
 
     static const maybe<T>::ty* just(const T& x) {
-      return new (memalloc(sizeof(ty))) ty(x);
+      return new (memalloc(sizeof(ty), alignof(ty))) ty(x);
     }
   };
 
