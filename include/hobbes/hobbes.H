@@ -31,7 +31,7 @@ datetimeT datetimeAt(datetimeT, timeT);
 timespanT gmtoffset(datetimeT);
 
 // allocate some memory in the calling thread's memory pool
-char* memalloc(size_t);
+char* memalloc(size_t, size_t);
 
 // string representations, I/O
 const array<char>* makeString(const std::string& x);
@@ -58,14 +58,14 @@ template <typename T>
 
 template <typename T>
   array<T>* makeArray(region& m, long n) {
-    array<T>* r = reinterpret_cast<array<T>*>(m.malloc(sizeof(long) + (sizeof(T) * n)));
+    array<T>* r = reinterpret_cast<array<T>*>(m.malloc(sizeof(long) + (sizeof(T) * n), std::max<size_t>(sizeof(long), alignof(T))));
     r->size = n;
     return defInitArray<T>(r);
   }
 
 template <typename T>
   array<T>* makeArray(long n) {
-    array<T>* r = reinterpret_cast<array<T>*>(memalloc(sizeof(long) + (sizeof(T) * n)));
+    array<T>* r = reinterpret_cast<array<T>*>(memalloc(sizeof(long) + (sizeof(T) * n), std::max<size_t>(sizeof(long), alignof(T))));
     r->size = n;
     return defInitArray<T>(r);
   }
@@ -73,7 +73,7 @@ template <typename T>
 // allocate ... something
 template <typename T, typename ... Args>
   T* make(const Args& ... args) {
-    return new (memalloc(sizeof(T))) T(args...);
+    return new (memalloc(sizeof(T), alignof(T))) T(args...);
   }
 
 // resets the thread-local memory pool for expressions

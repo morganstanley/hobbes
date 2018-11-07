@@ -272,7 +272,17 @@ public:
   void bindExternFunction(const std::string& fname, const MonoTypePtr& fty, void* fn);
 
   // allocate global data
-  void* memalloc(size_t);
+  void* memalloc(size_t, size_t);
+
+  template <typename T>
+    array<T>* makeArray(size_t n) {
+      auto* r = reinterpret_cast<array<T>*>(this->memalloc(sizeof(long) + (sizeof(T) * n), std::max<size_t>(sizeof(long), alignof(T))));
+      r->size = n;
+      if (r->size > 0) {
+        new (r->data) T[r->size];
+      }
+      return r;
+    }
 private:
   // cache for expression search results
   SearchCache searchCache;
