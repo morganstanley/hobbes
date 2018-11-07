@@ -1,3 +1,5 @@
+.. _hobbes_log_processing_hi:
+
 Processing logs with hi
 ***********************
 

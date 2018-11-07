@@ -39,7 +39,11 @@ The third parameter to ``DEFINE_STORAGE_GROUP`` is the behaviour to exhibit if w
 Manual vs Automatic commit
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The final parameter to ``DEFINE_STORAGE_GROUP`` allows us to specify the commit behaviour. ``hobbes::storage::ManualCommit`` means that all log statements up to the ``commit`` call will be grouped together in a transaction, which we can inspect later. Alternatively, specifying ``hobbes::storage::AutoCommit`` gives us uncorrelated log messages on the consumer side, but we don't need to call ``commit`` ourselves.
+The final parameter to ``DEFINE_STORAGE_GROUP`` allows us to specify the commit behaviour. ``hobbes::storage::ManualCommit`` means that all log statements up to the ``commit`` call will be grouped together in a transaction, which we can inspect later.
+
+Alternatively, specifying ``hobbes::storage::AutoCommit`` gives us uncorrelated log messages on the consumer side, but we don't need to call ``commit`` ourselves.
+
+Transactions which are manually committed will have a timestamp logged alongside them which can be used in out-of-band analysis and reporting, whereas autocommitted transactions have no timestamp. You can always call ``commit`` on an autocommit LogGroup, which will immediately persist the current transaction.
 
 Once the LogGroup has been set up, we can start to log data. For that, we'll want to look at the ``HLOG`` and ``HSTORE`` macros.
 
