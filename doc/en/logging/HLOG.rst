@@ -76,6 +76,12 @@ Using the ``HLOG`` macro provides compile-time safety for the format string, and
 
 Information about the types Hobbes is able to persist can be found in :ref:`hobbes persistable types <hobbes_persistable_types>`
 
+.. warning:: **File size**
+
+  Practically speaking, what we're discussing here is data *persistence* rather than logging. For that reason there's no model for output file rotation. That means that your persisted data files might very large grow in size, and you'll need to find a way to externally manage that.
+  
+  At Morgan Stanley, Hobbes persistence is used in production applications which might be bounced daily or even weekly, resulting in persisted files of many dozens of gigabytes.
+
 Declaring structured types for HSTORE logging
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
