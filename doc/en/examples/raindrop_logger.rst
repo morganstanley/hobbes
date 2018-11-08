@@ -66,5 +66,37 @@ You'll see the *hog* output change to include the name of the written logfile. F
 
 
 Queries
--------
+=======
 
+Let's jump into *hi* again and play with our data. We can use the ``size`` function to see how many raindrops fell in a given bucket:
+
+::
+  
+  $ hi
+  > raindrops = inputFile :: (LoadFile "log_file_name" w) => w
+  > size(raindrops.FirstBucket)
+  51
+
+Get the total amount of water that fell in the third bucket:
+
+::
+
+  > sum(raindrops.ThirdBucket[:0]
+  614
+
+.. note:: **Slice?**
+  
+  Why do we have to use the slice notation in the above example?
+
+  Great question! If you use ``:t`` to inspect the type of *FirstBucket* you'll see that whatever it is, it's *not* an array!
+
+  For performance reasons in order to allow the size of the group to grow over time whilst it's being monitored in memory, the type of a log group is a *stack of arrays*, meaning special functions need to be used to work with persisted messages.
+  
+  That's why the slice notation works but array indexing doesn't. It also explains why we're using the slice notation here: it's to force the log data into an array:
+
+  ::
+    
+    > :t raindrops.ThirdBucket[1:2]
+    [int]
+
+  The ``sum`` function is overloaded for arrays, but not for the Hobbes internal *stack of arrays* type!
