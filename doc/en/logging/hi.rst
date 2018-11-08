@@ -81,7 +81,7 @@ Although the type of the data isn't quite an array, we can use comprehension syn
 ::
 
   > [ x.1 | x <- messages.FirstEvent]
-  ["12", "12", "12", "12", "12", "12", 
+  [0, 0, 0, 0, 0, 0, 0, 
   ...
 
 
@@ -89,8 +89,21 @@ Although the type of the data isn't quite an array, we can use comprehension syn
   
   Hobbes exposes this persisted element (the *line* of logged data, really) as a tuple, so you can unpack it using the numbered indexing syntax.
 
-As an array
------------
+We can take this further and unpack the tuple in the extraction portion of the comprehension:
+
+::
+
+  > [ (x, y) | (x, y, z, a) <- messages.FirstEvent ]
+  "First" 0
+  "First" 0
+  "First" 0
+  "First" 0
+  "First" 0
+  "First" 0
+  "First" 0
+
+Take a slice
+------------
 
 Similarly, we can use the "slice" notation to work with a subset of logged messages:
 
