@@ -410,13 +410,16 @@ DEFINE_VARIANT(
   (just,    std::string)
 );
 
+typedef std::array<std::string,2> FRStrArr;
+
 DEFINE_STRUCT(
   FRTest,
   (int,                      x),
   (double,                   y),
   (std::vector<std::string>, z),
   (FRTestFood,               u),
-  (MStr,                     v)
+  (MStr,                     v),
+  (FRStrArr,                 w)
 );
 
 TEST(Storage, FRegionCompatibility) {
@@ -433,6 +436,8 @@ TEST(Storage, FRegionCompatibility) {
       t.z.push_back("c");
       t.u = FRTestFood::HotDog();
       t.v = MStr::just("chicken");
+      t.w[0] = "a";
+      t.w[1] = "b";
       s(t);
     }
 
@@ -440,7 +445,7 @@ TEST(Storage, FRegionCompatibility) {
 
     cc rc;
     rc.define("f", "inputFile :: (LoadFile \"" + fname + "\" w) => w");
-    EXPECT_EQ(rc.compileFn<size_t()>("size([() | x <- f.frtest, x.z == [\"a\", \"b\", \"c\"] and x.u === |HotDog| and x.v matches |just=\"chicken\"|])")(), size_t(1000));
+    EXPECT_EQ(rc.compileFn<size_t()>("size([() | x <- f.frtest, x.z == [\"a\", \"b\", \"c\"] and x.u === |HotDog| and x.v matches |just=\"chicken\"| and x.w == [\"a\", \"b\"]])")(), size_t(1000));
 
     fregion::reader rf(fname);
     auto rs = rf.series<FRTest>("frtest");
