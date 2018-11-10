@@ -1254,7 +1254,7 @@ template <typename T, size_t N>
     }
     static void read(imagefile* f, const void* p, std::array<T, N>* x) {
       for (size_t i = 0; i < N; ++i) {
-        store<T>::write(f, p, x[i]);
+        store<T>::read(f, p, &(*x)[i]);
         p = reinterpret_cast<const uint8_t*>(p) + store<T>::size();
       }
     }
