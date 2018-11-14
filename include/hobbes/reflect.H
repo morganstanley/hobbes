@@ -702,6 +702,27 @@ template <typename ... Ts>
   }; \
   inline std::ostream& operator<<(std::ostream& o, const T& v) { return v.show(o); }
 
+// arrays with dynamically-determined length
+template <typename T>
+  struct array {
+    typedef array<T>* ptr;
+
+    size_t size;
+    T      data[1]; // unknown length, bytes inline with this structure
+
+    const T& operator[](size_t i) const { return this->data[i]; }
+          T& operator[](size_t i)       { return this->data[i]; }
+  };
+template <typename T> const T* begin(const array<T>* d) { return d->data; }
+template <typename T> const T* end  (const array<T>* d) { return d->data + d->size; }
+template <typename T>       T* begin(      array<T>* d) { return d->data; }
+template <typename T>       T* end  (      array<T>* d) { return d->data + d->size; }
+
+template <typename T> const T* begin(const array<T>& d) { return d.data; }
+template <typename T> const T* end  (const array<T>& d) { return d.data + d.size; }
+template <typename T>       T* begin(      array<T>& d) { return d.data; }
+template <typename T>       T* end  (      array<T>& d) { return d.data + d.size; }
+
 
 // define opaque type aliases
 #define DEFINE_TYPE_ALIAS_AS(PRIV_ATY, N, PRIV_REPTY) \

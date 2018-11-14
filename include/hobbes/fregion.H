@@ -1930,12 +1930,78 @@ public:
         // binding already defined, just make sure that the types match
         if (b->second.type != ty::encoding(store<T>::storeType())) {
           throw std::runtime_error(
-            "File already defines '" + n + "' but with an inconsistent type.:\n" +
+            "File already defines '" + n + "' but with an inconsistent type.\n" +
             "  Expected: " + ty::show(store<T>::storeType()) + "\n"
             "  Actual:   " + ty::show(ty::decode(b->second.type))
           );
         }
         return reinterpret_cast<T*>(mapFileData(this->f, b->second.offset, sizeof(T)));
+      }
+    }
+
+  template <typename T>
+    void define(const std::string& n, const T& x) {
+      // is this binding defined already?
+      auto b = this->f->bindings.find(n);
+      if (b == this->f->bindings.end()) {
+        // binding not defined, now is the time to do it
+        size_t dloc = findSpace(this->f, pagetype::data, store<T>::size(), store<T>::alignment());
+        addBinding(this->f, n, ty::encoding(store<T>::storeType()), dloc);
+        auto* p = reinterpret_cast<uint8_t*>(mapFileData(this->f, dloc, store<T>::size()));
+        store<T>::write(this->f, p, x);
+        unmapFileData(this->f, p, store<T>::size());
+      } else {
+        // binding already defined, just make sure that the types match
+        if (b->second.type != ty::encoding(store<T>::storeType())) {
+          throw std::runtime_error(
+            "File already defines '" + n + "' but with an inconsistent type.\n" +
+            "  Expected: " + ty::show(store<T>::storeType()) + "\n"
+            "  Actual:   " + ty::show(ty::decode(b->second.type))
+          );
+        }
+        auto* p = reinterpret_cast<uint8_t*>(mapFileData(this->f, b->second.offset, store<T>::size()));
+        store<T>::write(this->f, p, x);
+        unmapFileData(this->f, p, store<T>::size());
+      }
+    }
+
+  template <typename T, typename P = typename std::enable_if<store<T>::can_memcpy>::type>
+    array<T>* defineArray(const std::string& n, size_t len) {
+      // is this binding defined already?
+      auto b = this->f->bindings.find(n);
+      if (b == this->f->bindings.end()) {
+        // binding not defined, now is the time to do it
+        size_t dloc = findSpace(this->f, pagetype::data, sizeof(size_t)+len*sizeof(T), std::max<size_t>(sizeof(size_t), alignof(T)));
+        addBinding(this->f, n, ty::encoding(ty::array(store<T>::storeType())), dloc);
+        
+        array<T>* result = reinterpret_cast<array<T>*>(mapFileData(this->f, dloc, sizeof(size_t)+len*sizeof(T)));
+        result->size = len;
+        return result;
+      } else {
+        // binding already defined, make sure that the types match
+        if (b->second.type != ty::encoding(ty::array(store<T>::storeType()))) {
+          throw std::runtime_error(
+            "File already defines '" + n + "' but with an inconsistent type.\n" +
+            "  Expected: " + ty::show(ty::array(store<T>::storeType())) + "\n"
+            "  Actual:   " + ty::show(ty::decode(b->second.type))
+          );
+        }
+
+        // optimistically map as much as needed for the requested array length
+        // but make sure that the array is stored with the expected length
+        array<T>* result = reinterpret_cast<array<T>*>(mapFileData(this->f, b->second.offset, sizeof(size_t)+len*sizeof(T)));
+
+        if (result->size != len) {
+          unmapFileData(this->f, result, sizeof(size_t)+len*sizeof(T));
+
+          throw std::runtime_error(
+            "File defines '" + n + "' with type " + ty::show(ty::array(store<T>::storeType())) +
+            " but with length=" + str::from(result->size) +
+            " though expected length=" + str::from(len)
+          );
+        }
+
+        return result;
       }
     }
 
@@ -2171,6 +2237,30 @@ public:
           );
         }
         return reinterpret_cast<const T*>(mapFileData(this->f, b->second.offset, sizeof(T)));
+      }
+    }
+
+  template <typename T>
+    void definition(const std::string& n, T* x) {
+      // is this binding defined?
+      auto b = this->f->bindings.find(n);
+      if (b == this->f->bindings.end()) {
+        // binding not defined
+        throw std::runtime_error(
+          "Expected definition of '" + n + "' in file, but none was found"
+        );
+      } else {
+        // binding defined, just make sure that the types match
+        if (b->second.type != ty::encoding(store<T>::storeType())) {
+          throw std::runtime_error(
+            "File defines '" + n + "' but with an inconsistent type.:\n" +
+            "  Expected: " + ty::show(store<T>::storeType()) + "\n"
+            "  Actual:   " + ty::show(ty::decode(b->second.type))
+          );
+        }
+        const auto* p = reinterpret_cast<const uint8_t*>(mapFileData(this->f, b->second.offset, store<T>::size()));
+        store<T>::read(this->f, p, x);
+        unmapFileData(f, p, store<T>::size());
       }
     }
 private:
