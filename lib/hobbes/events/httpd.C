@@ -76,8 +76,8 @@ private:
         this->r0.str("");
 
         this->state = FindHeaderBegin;
-        break;
       }
+      break;
     case FindHeaderBegin:
       if (c == '\n') {
         this->state = HeaderNameOrEnd;
