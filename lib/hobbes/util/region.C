@@ -1,6 +1,7 @@
 
 #include <hobbes/util/region.H>
 #include <hobbes/util/str.H>
+#include <hobbes/util/ptr.H>
 #include <stdlib.h>
 #include <algorithm>
 
@@ -24,16 +25,24 @@ region::~region() {
   freepage(this->usedp);
 }
 
-void* region::malloc(size_t sz) {
-  size_t nr = this->usedp->read + sz;
-  if (nr <= this->usedp->size) {
-    void* result = reinterpret_cast<unsigned char*>(this->usedp->base) + this->usedp->read;
-    this->usedp->read = nr;
+void* region::malloc(size_t sz, size_t asz) {
+  size_t nu = this->usedp->read + sz;
+  if (nu + asz <= this->usedp->size) {
+    uint8_t* uresult = reinterpret_cast<uint8_t*>(this->usedp->base) + this->usedp->read;
+    size_t   afixup  = align(reinterpret_cast<size_t>(uresult), asz) - reinterpret_cast<size_t>(uresult);
+    uint8_t* result  = uresult + afixup;
+
+    this->usedp->read = nu + afixup;
     return result;
   } else {
-    allocpage(sz);
-    this->usedp->read = sz;
-    return this->usedp->base;
+    allocpage(sz + asz);
+
+    uint8_t* uresult = reinterpret_cast<uint8_t*>(this->usedp->base);
+    size_t   afixup  = align(reinterpret_cast<size_t>(uresult), asz) - reinterpret_cast<size_t>(uresult);
+    uint8_t* result  = uresult + afixup;
+
+    this->usedp->read = sz + afixup;
+    return result;
   }
 }
 

@@ -1,5 +1,6 @@
 
 #include <hobbes/db/bindings.H>
+#include <hobbes/db/cbindings.H>
 #include <hobbes/db/file.H>
 #include <hobbes/db/signals.H>
 #include <hobbes/eval/cc.H>
@@ -65,6 +66,10 @@ struct injFileReferencesF : public switchTyFn {
   ExprPtr f;
   injFileReferencesF(const ExprPtr& f) : f(f) { }
 
+  MonoTypePtr with(const Prim* t) const {
+    return Prim::make(t->name(), t->representation() ? switchOf(t->representation(), *this) : t->representation());
+  }
+
   MonoTypePtr with(const TApp* v) const {
     MonoTypePtr tf    = switchOf(v->fn(), *this);
     MonoTypes   targs = switchOf(v->args(), *this);
@@ -78,7 +83,7 @@ struct injFileReferencesF : public switchTyFn {
       }
     }
 
-    return MonoTypePtr(TApp::make(tf, targs));
+    return TApp::make(tf, targs);
   }
 };
 
@@ -1079,9 +1084,22 @@ public:
   }
 };
 
-reader::PageEntries* pageEntries(reader* r) {
-  return r->pageEntries();
+reader::PageEntries* pageEntries(long f) {
+  return reinterpret_cast<reader*>(f)->pageEntries();
 }
+struct pageEntriesF : public op {
+  std::string f;
+
+  pageEntriesF(const std::string& f) : f(f) {
+  }
+  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) {
+    ExprPtr wfrtfn = var(this->f, functy(list(primty("long")), lift<reader::PageEntries*>::type(nulltdb)), es[0]->la());
+    return c->compile(fncall(wfrtfn, list(es[0]), es[0]->la()));
+  }
+  PolyTypePtr type(typedb& tenv) const {
+    return polytype(2, qualtype(functy(list(tapp(primty("file"), list(tgen(0), tgen(1)))), lift<reader::PageEntries*>::type(nulltdb))));
+  }
+};
 
 // load definitions for working with storage files into a compiler context
 void initStorageFileDefs(FieldVerifier* fv, cc& c) {
@@ -1146,10 +1164,14 @@ void initStorageFileDefs(FieldVerifier* fv, cc& c) {
   c.bind(".printFile", &printFileUF);
   c.bindLLFunc("printFile", new printFileF(".printFile"));
 
-  c.bind("pageEntries", &pageEntries);
+  c.bind(".pageEntries", &pageEntries);
+  c.bindLLFunc("pageEntries", new pageEntriesF(".pageEntries"));
 
   // import signalling functions on files as well
   initSignalsDefs(fv, c);
+
+  // import compressed storage functions
+  initCStorageFileDefs(fv, c);
 }
 
 }

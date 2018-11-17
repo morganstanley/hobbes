@@ -14,7 +14,7 @@ namespace hog {
 // make a storage file (via appendStorageSession) and produce a function to write transactions into it
 // support optionally merging log session data where type structures are identical
 class SessionGroup;
-SessionGroup* makeSessionGroup(bool consolidate = false);
+SessionGroup* makeSessionGroup(bool consolidate = false, hobbes::StoredSeries::StorageMode sm = hobbes::StoredSeries::Raw);
 
 typedef std::function<void(hobbes::storage::Transaction&)> ProcessTxnF;
 ProcessTxnF appendStorageSession(SessionGroup*, const std::string& dirPfx, hobbes::storage::PipeQOS qos, hobbes::storage::CommitMethod cm, const hobbes::storage::statements& stmts);

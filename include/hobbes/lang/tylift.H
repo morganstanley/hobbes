@@ -230,6 +230,7 @@ HOBBES_LIFT_PRIMITIVE(long,               long);
 HOBBES_LIFT_PRIMITIVE(unsigned long,      long);
 HOBBES_LIFT_PRIMITIVE(long long,          long);
 HOBBES_LIFT_PRIMITIVE(unsigned long long, long);
+HOBBES_LIFT_PRIMITIVE(int128_t,           int128);
 HOBBES_LIFT_PRIMITIVE(float,              float);
 HOBBES_LIFT_PRIMITIVE(double,             double);
 
@@ -400,23 +401,29 @@ template <typename ... CTys>
   struct lift< variant<CTys...>*, false > : public liftVariant< variant<CTys...> > { };
 
 // lift reflective enumerations
-template <typename T>
+template <typename T, typename R = uint32_t>
   struct liftEnum {
-    static MonoTypePtr type(typedb&) {
+    static MonoTypePtr type(typedb& tenv) {
       Variant::Members vms;
 
       for (const auto& m : T::meta()) {
         vms.push_back(Variant::Member(m.first, Prim::make("unit"), scast<uint32_t>(m.second)));
       }
 
-      return Variant::make(vms);
+      if (sizeof(R) == sizeof(uint32_t)) {
+        return Variant::make(vms);
+      } else {
+        return tapp(primty("penum", tabs(str::strings("r", "v"), tvar("r"))), list(lift<R>::type(tenv), Variant::make(vms)));
+      }
     }
   };
 
 template <typename T>
-  struct lift<T, true, typename tbool<T::is_hmeta_enum>::type> : public liftEnum<T> { };
+  struct lift<T, true, typename tbool<T::is_hmeta_enum>::type> : public liftEnum<T, typename T::rep_t> { };
 template <typename T>
-  struct lift<T*, false, typename tbool<T::is_hmeta_enum>::type> : public liftEnum<T> { };
+  struct lift<T*, false, typename tbool<T::is_hmeta_enum && sizeof(typename T::rep_t)==sizeof(uint32_t)>::type> : public liftEnum<T, typename T::rep_t> { };
+template <typename T>
+  struct lift<T, false, typename tbool<T::is_hmeta_enum && sizeof(typename T::rep_t)!=sizeof(uint32_t)>::type> : public liftEnum<T, typename T::rep_t> { };
 
 // lift plain tuples
 template <typename ... Fields>

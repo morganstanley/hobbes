@@ -23,11 +23,12 @@ namespace hog {
 // we can run in one of three modes
 struct RunMode {
   enum type { local, batchsend, batchrecv };
-  type                  t;
-  std::string           dir;
-  std::string           groupServerDir;
-  std::set<std::string> groups;
-  bool                  consolidate;
+  type                              t;
+  std::string                       dir;
+  std::string                       groupServerDir;
+  std::set<std::string>             groups;
+  bool                              consolidate;
+  hobbes::StoredSeries::StorageMode storageMode;
 
   // batchsend
   size_t                   clevel;
@@ -99,7 +100,7 @@ void showUsage() {
   <<
     "hog : record structured data locally or to a remote process\n"
     "\n"
-    "  usage: hog [-d <dir>] [-g group+] [-p t s host:port+] [-s port] [-c] [-m <dir>]\n"
+    "  usage: hog [-d <dir>] [-g group+] [-p t s host:port+] [-s port] [-c] [-m <dir>] [-z]\n"
     "where\n"
     "  -d <dir>          : decides where structured data (or temporary data) is stored\n"
     "  -g group+         : decides which data to record from memory on this machine\n"
@@ -107,7 +108,7 @@ void showUsage() {
     "  -s port           : decides to receive data on the given port\n"
     "  -c                : decides to store equally-typed data across processes in a single file\n"
     "  -m <dir>          : decides where to place the domain socket for producer registration (default: " << hobbes::storage::defaultStoreDir() << ")\n"
-    "  -spin             : instruct producer and consumer to spin when either side cannot make progress\n"
+    "  -z                : store data compressed\n"
   << std::endl;
 }
 
@@ -117,6 +118,7 @@ RunMode config(int argc, const char** argv) {
   r.dir            = "./$GROUP/$DATE/data";
   r.groupServerDir = hobbes::storage::defaultStoreDir();
   r.consolidate    = false;
+  r.storageMode    = hobbes::StoredSeries::Raw;
 
   if (argc == 1) {
     showUsage();
@@ -185,6 +187,8 @@ RunMode config(int argc, const char** argv) {
       } else {
         throw std::runtime_error("need domain socket directory for producer registration");
       }
+    } else if (arg == "-z") {
+      r.storageMode = hobbes::StoredSeries::Compressed;
     } else {
       throw std::runtime_error("invalid argument: " + arg);
     }
@@ -234,7 +238,7 @@ void evalGroupHostConnection(SessionGroup* sg, const std::string& groupName, con
 }
 
 void runGroupHost(const std::string& groupName, const RunMode& m, std::vector<std::thread>* ts) {
-  SessionGroup* sg = makeSessionGroup(m.consolidate);
+  SessionGroup* sg = makeSessionGroup(m.consolidate, m.storageMode);
 
   hobbes::registerEventHandler(
     hobbes::storage::makeGroupHost(groupName, m.groupServerDir),
@@ -269,7 +273,7 @@ void runGroupHost(const std::string& groupName, const RunMode& m, std::vector<st
 void run(const RunMode& m) {
   out() << "hog running in mode : " << m << std::endl;
   if (m.t == RunMode::batchrecv) {
-    pullRemoteDataT(m.dir, m.localport, m.consolidate).join();
+    pullRemoteDataT(m.dir, m.localport, m.consolidate, m.storageMode).join();
   } else if (m.groups.size() > 0) {
     std::vector<std::thread> tasks;
 

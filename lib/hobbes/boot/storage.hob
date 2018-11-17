@@ -12,6 +12,7 @@ instance StorePrim char
 instance StorePrim short
 instance StorePrim int
 instance StorePrim long
+instance StorePrim int128
 instance StorePrim float
 instance StorePrim double
 instance StorePrim time

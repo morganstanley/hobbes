@@ -245,7 +245,7 @@ private:
 
 // initialize a storage session with a caller-defined file allocation method
 template <typename FileAllocMethod>
-ProcessTxnF initStorageSession(Session* s, const std::string& dirPfx, storage::PipeQOS qos, storage::CommitMethod cm, const storage::statements& stmts) {
+ProcessTxnF initStorageSession(Session* s, const std::string& dirPfx, storage::PipeQOS qos, storage::CommitMethod cm, const storage::statements& stmts, hobbes::StoredSeries::StorageMode sm) {
   static std::mutex initMtx; // make sure that only one thread initializes at a time
   std::lock_guard<std::mutex> lk(initMtx);
 
@@ -265,7 +265,7 @@ ProcessTxnF initStorageSession(Session* s, const std::string& dirPfx, storage::P
       s->writeFns.resize(stmt.id + 1);
     }
 
-    auto ss = new StoredSeries(c, s->db, stmt.name, pty, 10000);
+    auto ss = new StoredSeries(c, s->db, stmt.name, pty, 10000, sm);
     std::string writefn = "write_" + str::from(hobbes::time()) + "_" + stmt.name;
     ss->bindAs(c, writefn);
 
@@ -275,17 +275,19 @@ ProcessTxnF initStorageSession(Session* s, const std::string& dirPfx, storage::P
     txnEntries.push_back(Variant::Member(stmt.name, filerefty(ss->storageType()), stmt.id));
   }
 
-  if (cm == storage::AutoCommit) {
-    out << " ==> log :: <any of the above>" << std::endl;
+  if (sm != hobbes::StoredSeries::Compressed) {
+    if (cm == storage::AutoCommit) {
+      out << " ==> log :: <any of the above>" << std::endl;
 
-    s->streams.push_back(new StoredSeries(c, s->db, "log", Variant::make(txnEntries), 10000));
-  } else {
-    out << " ==> transactions :: <any of the above>" << std::endl;
+      s->streams.push_back(new StoredSeries(c, s->db, "log", Variant::make(txnEntries), 10000));
+    } else {
+      out << " ==> transactions :: <any of the above>" << std::endl;
 
-    Record::Members txnRecord;
-    txnRecord.push_back(Record::Member("time",    lift<datetimeT>::type(*c)));
-    txnRecord.push_back(Record::Member("entries", arrayty(Variant::make(txnEntries))));
-    s->streams.push_back(new StoredSeries(c, s->db, "transactions", Record::make(txnRecord), 10000));
+      Record::Members txnRecord;
+      txnRecord.push_back(Record::Member("time",    lift<datetimeT>::type(*c)));
+      txnRecord.push_back(Record::Member("entries", arrayty(Variant::make(txnEntries))));
+      s->streams.push_back(new StoredSeries(c, s->db, "transactions", Record::make(txnRecord), 10000));
+    }
   }
 
   // store extra statement 'metadata'
@@ -310,7 +312,21 @@ ProcessTxnF initStorageSession(Session* s, const std::string& dirPfx, storage::P
   // and now we can write transactions to this prepared state
   // if auto-commit is used, we don't need to correlate statements in a transaction
   // else we should also track the statements that are logged and store data to correlate them per transaction
-  if (cm == storage::AutoCommit) {
+  if (sm == hobbes::StoredSeries::Compressed) {
+    return
+      [s](storage::Transaction& txn) {
+        while (txn.canRead(sizeof(uint32_t))) {
+          uint32_t id = *txn.read<uint32_t>();
+          if (id < s->writeFns.size()) {
+            s->writeFns[id](&txn);
+          } else {
+            out << "got bad log id #" << id << std::endl;
+          }
+        }
+        resetMemoryPool();
+        s->db->signalUpdate();
+      };
+  } else if (cm == storage::AutoCommit) {
     return
       [s](storage::Transaction& txn) {
         while (txn.canRead(sizeof(uint32_t))) {
@@ -365,6 +381,9 @@ public:
 
 class ConsolidateGroup : public SessionGroup {
 public:
+  ConsolidateGroup(hobbes::StoredSeries::StorageMode sm) : sm(sm) {
+  }
+
   ProcessTxnF appendStorageSession(const std::string& dirPfx, hobbes::storage::PipeQOS qos, hobbes::storage::CommitMethod cm, const hobbes::storage::statements& stmts) {
     std::lock_guard<std::mutex> slock(this->m);
     for (auto* cs : this->sessions) {
@@ -378,7 +397,7 @@ public:
     cs->qos    = qos;
     cs->cm     = cm;
     cs->stmts  = stmts;
-    cs->sproc  = initStorageSession<AppendFirstMatchingFile>(&cs->s, dirPfx, qos, cm, stmts);
+    cs->sproc  = initStorageSession<AppendFirstMatchingFile>(&cs->s, dirPfx, qos, cm, stmts, this->sm);
     this->sessions.push_back(cs);
     return csfn(cs);
   }
@@ -394,6 +413,7 @@ private:
   };
   std::vector<CSession*> sessions;
   std::mutex m;
+  hobbes::StoredSeries::StorageMode sm;
 
   static ProcessTxnF csfn(CSession* cs) {
     return 
@@ -406,17 +426,22 @@ private:
 
 class SimpleGroup : public SessionGroup {
 public:
+  SimpleGroup(hobbes::StoredSeries::StorageMode sm) : sm(sm) {
+  }
+
   ProcessTxnF appendStorageSession(const std::string& dirPfx, hobbes::storage::PipeQOS qos, hobbes::storage::CommitMethod cm, const hobbes::storage::statements& stmts) {
     Session* s = new Session;
-    return initStorageSession<AllocFreshFile>(s, dirPfx, qos, cm, stmts);
+    return initStorageSession<AllocFreshFile>(s, dirPfx, qos, cm, stmts, this->sm);
   }
+private:
+  hobbes::StoredSeries::StorageMode sm;
 };
 
-SessionGroup* makeSessionGroup(bool consolidate) {
+SessionGroup* makeSessionGroup(bool consolidate, hobbes::StoredSeries::StorageMode sm) {
   if (consolidate) {
-    return new ConsolidateGroup();
+    return new ConsolidateGroup(sm);
   } else {
-    return new SimpleGroup();
+    return new SimpleGroup(sm);
   }
 }
 

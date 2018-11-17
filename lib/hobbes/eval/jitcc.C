@@ -559,9 +559,9 @@ void jitcc::popGlobalRegion(size_t x) {
   setThreadRegion(x);
 }
 
-void* jitcc::memalloc(size_t sz) {
+void* jitcc::memalloc(size_t sz, size_t asz) {
   size_t r = pushGlobalRegion();
-  void* result = ::hobbes::memalloc(sz);
+  void* result = ::hobbes::memalloc(sz, asz);
   popGlobalRegion(r);
   return result;
 }
@@ -761,14 +761,14 @@ void jitcc::unsafeCompileFunctions(UCFS* ufs) {
   }
 }
 
-llvm::Value* jitcc::compileAllocStmt(llvm::Value* sz, llvm::Type* mty, bool zeroMem) {
+llvm::Value* jitcc::compileAllocStmt(llvm::Value* sz, llvm::Value* asz, llvm::Type* mty, bool zeroMem) {
   llvm::Function* f = lookupFunction(zeroMem ? "mallocz" : "malloc");
   if (!f) throw std::runtime_error("Expected heap allocation function as call.");
-  return builder()->CreateBitCast(fncall(builder(), f, sz), mty);
+  return builder()->CreateBitCast(fncall(builder(), f, list(sz, asz)), mty);
 }
 
-llvm::Value* jitcc::compileAllocStmt(size_t sz, llvm::Type* mty, bool zeroMem) {
-  return compileAllocStmt(cvalue(static_cast<long>(sz)), mty, zeroMem);
+llvm::Value* jitcc::compileAllocStmt(size_t sz, size_t asz, llvm::Type* mty, bool zeroMem) {
+  return compileAllocStmt(cvalue(static_cast<long>(sz)), cvalue(static_cast<long>(asz)), mty, zeroMem);
 }
 
 void jitcc::releaseMachineCode(void*) {

@@ -6,6 +6,7 @@
 #include <hobbes/util/perf.H>
 #include <hobbes/util/time.H>
 #include <hobbes/util/codec.H>
+#include <hobbes/util/stream.H>
 
 #include <stack>
 #include <iostream>
@@ -81,12 +82,12 @@ size_t makeMemRegion(const array<char>* n) {
   return addThreadRegion(makeStdString(n), new region(32768));
 }
 
-char* memalloc(size_t n) {
-  return reinterpret_cast<char*>(threadRegion().malloc(n));
+char* memalloc(size_t n, size_t asz) {
+  return reinterpret_cast<char*>(threadRegion().malloc(n, asz));
 }
 
-char* memallocz(size_t n) {
-  char* r = reinterpret_cast<char*>(threadRegion().malloc(n));
+char* memallocz(size_t n, size_t asz) {
+  char* r = reinterpret_cast<char*>(threadRegion().malloc(n, asz));
   memset(r, 0, n);
   return r;
 }
@@ -201,11 +202,11 @@ template <typename T>
     typedef variant<unit, T> ty;
 
     static const maybe<T>::ty* nothing() {
-      return new (memalloc(sizeof(ty))) ty(unit());
+      return new (memalloc(sizeof(ty), alignof(ty))) ty(unit());
     }
 
     static const maybe<T>::ty* just(const T& x) {
-      return new (memalloc(sizeof(ty))) ty(x);
+      return new (memalloc(sizeof(ty), alignof(ty))) ty(x);
     }
   };
 
@@ -265,6 +266,12 @@ const maybe<int>::ty* readInt(const array<char>* x) {
 
 const array<char>* showLong(long x) {
   return makeString(str::from(x));
+}
+
+const array<char>* showInt128(int128_t x) {
+  std::ostringstream ss;
+  printInt128(ss, x);
+  return makeString(ss.str());
 }
 
 const maybe<long>::ty* readLong(const array<char>* x) {
@@ -601,6 +608,7 @@ void initStdFuncDefs(cc& ctx) {
   ctx.bind("showShort",    &showShort);
   ctx.bind("showInt",      &showInt);
   ctx.bind("showLong",     &showLong);
+  ctx.bind("showInt128",   &showInt128);
   ctx.bind("showFloat",    &showFloat);
   ctx.bind("showDouble",   &showDouble);
   ctx.bind("showString",   &showString);
@@ -661,6 +669,8 @@ void initStdFuncDefs(cc& ctx) {
   ctx.bind("fdWriteInt",    &fdWrite<int>);
   ctx.bind("fdReadLong",    &fdRead<long>);
   ctx.bind("fdWriteLong",   &fdWrite<long>);
+  ctx.bind("fdReadInt128",  &fdRead<int128_t>);
+  ctx.bind("fdWriteInt128", &fdWrite<int128_t>);
   ctx.bind("fdReadFloat",   &fdRead<float>);
   ctx.bind("fdWriteFloat",  &fdWrite<float>);
   ctx.bind("fdReadDouble",  &fdRead<double>);

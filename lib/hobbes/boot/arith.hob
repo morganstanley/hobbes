@@ -6,6 +6,9 @@
 class HasZero a where
   zero :: a
 
+instance HasZero byte where
+  zero = 0X00
+
 instance HasZero short where
   zero = 0S
 
@@ -14,6 +17,9 @@ instance HasZero int where
 
 instance HasZero long where
   zero = 0L
+
+instance HasZero int128 where
+  zero = 0H
 
 instance HasZero float where
   zero = 0.0f
@@ -27,6 +33,9 @@ instance HasZero timespan where
 class HasOne a where
   one :: a
 
+instance HasOne byte where
+  one = 0X01
+
 instance HasOne short where
   one = 1S
 
@@ -35,6 +44,9 @@ instance HasOne int where
 
 instance HasOne long where
   one = 1L
+
+instance HasOne int128 where
+  one = 1H
 
 instance HasOne float where
   one = 1.0f
@@ -54,6 +66,9 @@ instance Negate int where
 
 instance Negate long where
   neg = lneg
+
+instance Negate int128 where
+  neg = i16neg
 
 instance Negate float where
   neg = fneg
@@ -82,6 +97,9 @@ instance Add int int int where
 
 instance Add long long long where
   (+) = ladd
+
+instance Add int128 int128 int128 where
+  (+) = i16add
 
 instance Add float float float where
   (+) = fadd
@@ -129,6 +147,9 @@ instance Subtract int int int where
 instance Subtract long long long where
   (-) = lsub
 
+instance Subtract int128 int128 int128 where
+  (-) = i16sub
+
 instance Subtract float float float where
   (-) = fsub
 
@@ -172,6 +193,9 @@ instance Multiply int int int where
 instance Multiply long long long where
   (*) = lmul
 
+instance Multiply int128 int128 int128 where
+  (*) = i16mul
+
 instance Multiply float float float where
   (*) = fmul
 
@@ -208,6 +232,9 @@ instance Divide int int int where
 
 instance Divide long long long where
   (/) = ldiv
+
+instance Divide int128 int128 int128 where
+  (/) = i16div
 
 instance Divide float float float where
   (/) = fdiv
@@ -246,6 +273,9 @@ instance Mod int int int where
 
 instance Mod long long long where
   (%) = lrem
+
+instance Mod int128 int128 int128 where
+  (%) = i16rem
 
 instance Mod double double double where
   x % y = x - (y * l2d(truncd(x / y)))

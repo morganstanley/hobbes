@@ -47,6 +47,8 @@
 #include <stack>
 #include <stdexcept>
 #include <sstream>
+#include <array>
+#include <type_traits>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -1186,8 +1188,20 @@ PRIV_HFREGION_DEFINE_PRIMTYS(uint64_t, "long");
 #if defined(__APPLE__) && defined(__MACH__)
 PRIV_HFREGION_DEFINE_PRIMTYS(size_t, "long");
 #endif
+PRIV_HFREGION_DEFINE_PRIMTYS(__int128, "int128");
 PRIV_HFREGION_DEFINE_PRIMTYS(float,    "float");
 PRIV_HFREGION_DEFINE_PRIMTYS(double,   "double");
+
+// store unit
+template <>
+  struct store<unit> {
+    static ty::desc storeType() { return ty::prim("unit"); }
+    static const bool can_memcpy = false;
+    static size_t size() { return 0; }
+    static size_t alignment() { return 1; }
+    static void write(imagefile*, void*, const unit&) { }
+    static void read(imagefile*, const void*, unit*) { }
+  };
 
 // store fixed-length arrays
 template <typename T, size_t N>
@@ -1215,6 +1229,30 @@ template <typename T, size_t N>
       }
     }
     static void read (imagefile* f, const void* p, T (*x)[N]) {
+      for (size_t i = 0; i < N; ++i) {
+        store<T>::read(f, p, &(*x)[i]);
+        p = reinterpret_cast<const uint8_t*>(p) + store<T>::size();
+      }
+    }
+  };
+
+template <typename T, size_t N>
+  struct store<std::array<T, N>, typename tbool<store<T>::can_memcpy>::type> : public storeFixedArrayDef<T,N> {
+    static const bool can_memcpy = true;
+    static void write(imagefile*, void* p,       const std::array<T, N>& x) { memcpy(p, &x, N*sizeof(T)); }
+    static void read (imagefile*, const void* p, std::array<T, N>*       x) { memcpy(x,  p, N*sizeof(T)); }
+  };
+
+template <typename T, size_t N>
+  struct store<std::array<T, N>, typename tbool<!store<T>::can_memcpy>::type> : public storeFixedArrayDef<T,N> {
+    static const bool can_memcpy = false;
+    static void write(imagefile* f, void* p, const std::array<T, N>& x) {
+      for (size_t i = 0; i < N; ++i) {
+        store<T>::write(f, p, x[i]);
+        p = reinterpret_cast<uint8_t*>(p) + store<T>::size();
+      }
+    }
+    static void read(imagefile* f, const void* p, std::array<T, N>* x) {
       for (size_t i = 0; i < N; ++i) {
         store<T>::read(f, p, &(*x)[i]);
         p = reinterpret_cast<const uint8_t*>(p) + store<T>::size();
@@ -1532,14 +1570,14 @@ template <typename T>
     static const bool can_memcpy = true;
     
     static ty::desc storeType() {
-      return ty::enumdef(T::meta());
+      return ty::enumdef(store<typename T::rep_t>::storeType(), T::meta());
     }
 
-    static size_t size() { return sizeof(uint32_t); }
-    static size_t alignment() { return sizeof(uint32_t); }
+    static size_t size()      { return sizeof(typename T::rep_t); }
+    static size_t alignment() { return sizeof(typename T::rep_t); }
 
-    static void write(imagefile*, void* p,       const T& x) { memcpy(p, &x, sizeof(uint32_t)); }
-    static void read (imagefile*, const void* p, T*       x) { memcpy(x,  p, sizeof(uint32_t)); }
+    static void write(imagefile*, void* p,       const T& x) { memcpy(p, &x, sizeof(typename T::rep_t)); }
+    static void read (imagefile*, const void* p, T*       x) { memcpy(x,  p, sizeof(typename T::rep_t)); }
   };
 
 // store variants
@@ -1879,6 +1917,28 @@ public:
       }
     }
 
+  template <typename T, typename P = typename std::enable_if<store<T>::can_memcpy>::type>
+    T* define(const std::string& n) {
+      // is this binding defined already?
+      auto b = this->f->bindings.find(n);
+      if (b == this->f->bindings.end()) {
+        // binding not defined, now is the time to do it
+        size_t dloc = findSpace(this->f, pagetype::data, sizeof(T), alignof(T));
+        addBinding(this->f, n, ty::encoding(store<T>::storeType()), dloc);
+        return reinterpret_cast<T*>(mapFileData(this->f, dloc, sizeof(T)));
+      } else {
+        // binding already defined, just make sure that the types match
+        if (b->second.type != ty::encoding(store<T>::storeType())) {
+          throw std::runtime_error(
+            "File already defines '" + n + "' but with an inconsistent type.:\n" +
+            "  Expected: " + ty::show(store<T>::storeType()) + "\n"
+            "  Actual:   " + ty::show(ty::decode(b->second.type))
+          );
+        }
+        return reinterpret_cast<T*>(mapFileData(this->f, b->second.offset, sizeof(T)));
+      }
+    }
+
   void signal() { 
     seekAbs(this->f, 0);
     write(this->f, static_cast<uint8_t>(0x0d));
@@ -2090,6 +2150,28 @@ public:
 
     rordering ordering(const std::string& name) {
       return rordering(this->f, name);
+    }
+
+  template <typename T, typename P = typename std::enable_if<store<T>::can_memcpy>::type>
+    const T* definition(const std::string& n) {
+      // is this binding defined?
+      auto b = this->f->bindings.find(n);
+      if (b == this->f->bindings.end()) {
+        // binding not defined
+        throw std::runtime_error(
+          "Expected definition of '" + n + "' in file, but none was found"
+        );
+      } else {
+        // binding defined, just make sure that the types match
+        if (b->second.type != ty::encoding(store<T>::storeType())) {
+          throw std::runtime_error(
+            "File defines '" + n + "' but with an inconsistent type.:\n" +
+            "  Expected: " + ty::show(store<T>::storeType()) + "\n"
+            "  Actual:   " + ty::show(ty::decode(b->second.type))
+          );
+        }
+        return reinterpret_cast<const T*>(mapFileData(this->f, b->second.offset, sizeof(T)));
+      }
     }
 private:
   typedef std::map<std::string, seriesi*> rseriess;

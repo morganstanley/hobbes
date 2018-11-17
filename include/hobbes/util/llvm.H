@@ -52,6 +52,8 @@
 
 namespace hobbes {
 
+typedef __int128 int128_t;
+
 // keep one context per thread to avoid global locking
 // NOTE: temporarily reverting to one global context
 //       this is because we have some cases where we partially compile in one thread and then resume compiling in another thread
@@ -92,6 +94,10 @@ inline llvm::Type* intType() {
 
 inline llvm::Type* longType() {
   return llvm::Type::getInt64Ty(context());
+}
+
+inline llvm::Type* int128Type() {
+  return llvm::Type::getIntNTy(context(), 128);
 }
 
 inline llvm::Type* floatType() {
@@ -194,6 +200,10 @@ inline llvm::Constant* cvalue(long x) {
   return llvm::Constant::getIntegerValue(longType(), llvm::APInt(64, x, true));
 }
 
+inline llvm::Constant* cvalue(int128_t x) {
+  return llvm::Constant::getIntegerValue(int128Type(), llvm::APInt(128, x, true));
+}
+
 inline llvm::Constant* cvalue(float x) {
   return llvm::ConstantFP::get(context(), llvm::APFloat(x));
 }
@@ -229,6 +239,10 @@ inline llvm::ConstantInt* civalue(unsigned int x) {
 
 inline llvm::ConstantInt* civalue(long x) {
   return llvm::ConstantInt::get(llvm::IntegerType::get(context(), 64), static_cast<uint64_t>(x));
+}
+
+inline llvm::ConstantInt* civalue(int128_t x) {
+  return llvm::ConstantInt::get(llvm::IntegerType::get(context(), 128), x); //static_cast<uint64_t>(x));
 }
 
 // an intermediate representation for records

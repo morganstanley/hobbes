@@ -74,26 +74,28 @@ namespace hobbes {
 IOP(not,  CreateNot, bool,          bool);
 IOP(bnot, CreateNot, unsigned char, unsigned char);
 
-CASTOP(b2i, llvm::Instruction::ZExt,   unsigned char, int);
-CASTOP(b2l, llvm::Instruction::ZExt,   unsigned char, long);
-CASTOP(i2d, llvm::Instruction::SIToFP, int,           double);
-CASTOP(i2f, llvm::Instruction::SIToFP, int,           float);
-CASTOP(i2l, llvm::Instruction::SExt,   int,           long);
-CASTOP(l2d, llvm::Instruction::SIToFP, long,          double);
-CASTOP(l2f, llvm::Instruction::SIToFP, long,          float);
-CASTOP(s2i, llvm::Instruction::SExt,   short,         int);
-CASTOP(f2d, llvm::Instruction::FPExt,  float,         double);
+CASTOP(b2i,   llvm::Instruction::ZExt,   unsigned char, int);
+CASTOP(b2l,   llvm::Instruction::ZExt,   unsigned char, long);
+CASTOP(i2d,   llvm::Instruction::SIToFP, int,           double);
+CASTOP(i2f,   llvm::Instruction::SIToFP, int,           float);
+CASTOP(i2l,   llvm::Instruction::SExt,   int,           long);
+CASTOP(l2i16, llvm::Instruction::SExt,   long,          int128_t);
+CASTOP(l2d,   llvm::Instruction::SIToFP, long,          double);
+CASTOP(l2f,   llvm::Instruction::SIToFP, long,          float);
+CASTOP(s2i,   llvm::Instruction::SExt,   short,         int);
+CASTOP(f2d,   llvm::Instruction::FPExt,  float,         double);
 
 CASTOP(tl2i, llvm::Instruction::Trunc, long, int);
 CASTOP(ti2s, llvm::Instruction::Trunc, int,  short);
 CASTOP(ti2b, llvm::Instruction::Trunc, int,  unsigned char);
 CASTOP(tl2b, llvm::Instruction::Trunc, long, unsigned char);
 
-IOP(sneg, CreateNeg,  short,  short);
-IOP(ineg, CreateNeg,  int,    int);
-IOP(lneg, CreateNeg,  long,   long);
-IOP(fneg, CreateFNeg, float,  float);
-IOP(dneg, CreateFNeg, double, double);
+IOP(sneg,   CreateNeg,  short,    short);
+IOP(ineg,   CreateNeg,  int,      int);
+IOP(lneg,   CreateNeg,  long,     long);
+IOP(i16neg, CreateNeg,  int128_t, int128_t);
+IOP(fneg,   CreateFNeg, float,    float);
+IOP(dneg,   CreateFNeg, double,   double);
 
 BOP(ceq,  CreateICmpEQ,  char, char, bool);
 BOP(cneq, CreateICmpNE,  char, char, bool);
@@ -180,6 +182,19 @@ BOP(llt,  CreateICmpSLT, long, long, bool);
 BOP(llte, CreateICmpSLE, long, long, bool);
 BOP(lgt,  CreateICmpSGT, long, long, bool);
 BOP(lgte, CreateICmpSGE, long, long, bool);
+
+BOP(i16add, CreateAdd,  int128_t, int128_t, int128_t);
+BOP(i16sub, CreateSub,  int128_t, int128_t, int128_t);
+BOP(i16mul, CreateMul,  int128_t, int128_t, int128_t);
+BOP(i16div, CreateSDiv, int128_t, int128_t, int128_t);
+BOP(i16rem, CreateSRem, int128_t, int128_t, int128_t);
+
+BOP(i16eq,  CreateICmpEQ,  int128_t, int128_t, bool);
+BOP(i16neq, CreateICmpNE,  int128_t, int128_t, bool);
+BOP(i16lt,  CreateICmpSLT, int128_t, int128_t, bool);
+BOP(i16lte, CreateICmpSLE, int128_t, int128_t, bool);
+BOP(i16gt,  CreateICmpSGT, int128_t, int128_t, bool);
+BOP(i16gte, CreateICmpSGE, int128_t, int128_t, bool);
 
 BOP(fadd, CreateFAdd, float, float, float);
 BOP(fsub, CreateFSub, float, float, float);
@@ -292,7 +307,7 @@ public:
     llvm::Value* aclen = c->builder()->CreateAdd(c0, c1);
     llvm::Value* mlen  = c->builder()->CreateAdd(cvalue(static_cast<long>(sizeof(long))), c->builder()->CreateMul(aclen, cvalue(static_cast<long>(sizeOf(aty->type())))));
 
-    llvm::Value* cmdata = c->compileAllocStmt(mlen, toLLVM(tys[0]));
+    llvm::Value* cmdata = c->compileAllocStmt(mlen, cvalue(std::max<long>(sizeof(long), alignment(aty->type()))), toLLVM(tys[0]));
     c->builder()->CreateStore(aclen, structOffset(c->builder(), cmdata, 0));
 
     if (!isUnit(aty->type())) {
@@ -358,6 +373,12 @@ class saelem : public op {
   llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) {
     const FixedArray* aty = is<FixedArray>(tys[0]);
     if (!aty) { throw annotated_error(*es[0], "Cannot index element, not a fixed-length array: " + show(tys[0])); }
+
+    if (isUnit(rty)) {
+      c->compile(es[0]);
+      c->compile(es[1]);
+      return cvalue(true);
+    }
 
     llvm::Value* p = offset(c->builder(), c->compile(es[0]), 0, c->compile(es[1]));
 
@@ -492,9 +513,9 @@ public:
     if (isUnit(rty)) {
       return cvalue(true);
     } else if (!hasPointerRep(rty)) {
-      return c->builder()->CreateLoad(c->compileAllocStmt(sizeOf(rty), ptrType(toLLVM(rty, true)), this->zeroMem));
+      return c->builder()->CreateLoad(c->compileAllocStmt(sizeOf(rty), alignment(rty), ptrType(toLLVM(rty, true)), this->zeroMem));
     } else {
-      return c->compileAllocStmt(sizeOf(rty), toLLVM(rty, true), this->zeroMem);
+      return c->compileAllocStmt(sizeOf(rty), alignment(rty), toLLVM(rty, true), this->zeroMem);
     }
   }
 
@@ -517,7 +538,7 @@ public:
 
     llvm::Value* aclen  = c->compile(es[0]);
     llvm::Value* mlen   = c->builder()->CreateAdd(cvalue(static_cast<long>(sizeof(long))), c->builder()->CreateMul(aclen, cvalue(static_cast<long>(sizeOf(aty->type())))));
-    llvm::Value* cmdata = c->compileAllocStmt(mlen, toLLVM(rty));
+    llvm::Value* cmdata = c->compileAllocStmt(mlen, cvalue(std::max<long>(sizeof(long), alignment(aty->type()))), toLLVM(rty));
     c->builder()->CreateStore(aclen, structOffset(c->builder(), cmdata, 0));
 
     return cmdata;
@@ -965,33 +986,35 @@ void initDefOperators(cc* c) {
 
   DEC(not); DEC(bnot);
 
-  DEC(b2i); DEC(b2l); DEC(i2d); DEC(i2l);  DEC(l2d); DEC(l2f);
+  DEC(b2i); DEC(b2l); DEC(i2d); DEC(i2l); DEC(l2d); DEC(l2i16); DEC(l2f);
   DEC(s2i); DEC(i2f); DEC(f2d);
   
   DEC(tl2i); DEC(ti2s); DEC(ti2b); DEC(tl2b);
 
-  DEC(sneg); DEC(ineg); DEC(lneg); DEC(fneg); DEC(dneg);
+  DEC(sneg); DEC(ineg); DEC(lneg); DEC(i16neg); DEC(fneg); DEC(dneg);
 
-  DEC(ceq); DEC(cneq); DEC(clt); DEC(clte); DEC(cgt); DEC(cgte);
-  DEC(beq); DEC(bneq); DEC(blt); DEC(blte); DEC(bgt); DEC(bgte);
-  DEC(seq); DEC(sneq); DEC(slt); DEC(slte); DEC(sgt); DEC(sgte);
-  DEC(ieq); DEC(ineq); DEC(ilt); DEC(ilte); DEC(igt); DEC(igte);
-  DEC(leq); DEC(lneq); DEC(llt); DEC(llte); DEC(lgt); DEC(lgte);
-  DEC(feq); DEC(fneq); DEC(flt); DEC(flte); DEC(fgt); DEC(fgte);
-  DEC(deq); DEC(dneq); DEC(dlt); DEC(dlte); DEC(dgt); DEC(dgte);
+  DEC(ceq);   DEC(cneq);   DEC(clt);   DEC(clte);   DEC(cgt);   DEC(cgte);
+  DEC(beq);   DEC(bneq);   DEC(blt);   DEC(blte);   DEC(bgt);   DEC(bgte);
+  DEC(seq);   DEC(sneq);   DEC(slt);   DEC(slte);   DEC(sgt);   DEC(sgte);
+  DEC(ieq);   DEC(ineq);   DEC(ilt);   DEC(ilte);   DEC(igt);   DEC(igte);
+  DEC(leq);   DEC(lneq);   DEC(llt);   DEC(llte);   DEC(lgt);   DEC(lgte);
+  DEC(i16eq); DEC(i16neq); DEC(i16lt); DEC(i16lte); DEC(i16gt); DEC(i16gte);
+  DEC(feq);   DEC(fneq);   DEC(flt);   DEC(flte);   DEC(fgt);   DEC(fgte);
+  DEC(deq);   DEC(dneq);   DEC(dlt);   DEC(dlte);   DEC(dgt);   DEC(dgte);
 
   DEC(bshl); DEC(blshr); DEC(bashr); DEC(band); DEC(bor); DEC(bxor);
 
   DEC(ishl); DEC(ilshr); DEC(iashr); DEC(iand); DEC(ior); DEC(ixor);
   DEC(lshl); DEC(llshr); DEC(lashr); DEC(land); DEC(lor); DEC(lxor);
 
-  DEC(cadd); DEC(csub); DEC(cmul); DEC(cdiv); DEC(crem);
-  DEC(badd); DEC(bsub); DEC(bmul); DEC(bdiv); DEC(brem);
-  DEC(sadd); DEC(ssub); DEC(smul); DEC(sdiv); DEC(srem);
-  DEC(iadd); DEC(isub); DEC(imul); DEC(idiv); DEC(irem);
-  DEC(ladd); DEC(lsub); DEC(lmul); DEC(ldiv); DEC(lrem);
-  DEC(fadd); DEC(fsub); DEC(fmul); DEC(fdiv);
-  DEC(dadd); DEC(dsub); DEC(dmul); DEC(ddiv);
+  DEC(cadd);   DEC(csub);   DEC(cmul);   DEC(cdiv);   DEC(crem);
+  DEC(badd);   DEC(bsub);   DEC(bmul);   DEC(bdiv);   DEC(brem);
+  DEC(sadd);   DEC(ssub);   DEC(smul);   DEC(sdiv);   DEC(srem);
+  DEC(iadd);   DEC(isub);   DEC(imul);   DEC(idiv);   DEC(irem);
+  DEC(ladd);   DEC(lsub);   DEC(lmul);   DEC(ldiv);   DEC(lrem);
+  DEC(i16add); DEC(i16sub); DEC(i16mul); DEC(i16div); DEC(i16rem);
+  DEC(fadd);   DEC(fsub);   DEC(fmul);   DEC(fdiv);
+  DEC(dadd);   DEC(dsub);   DEC(dmul);   DEC(ddiv);
 
   BINDF("if",         new ifexp());
   BINDF("id",         new idexp());

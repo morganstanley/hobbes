@@ -43,6 +43,7 @@ TEST(Prelude, FArray) {
   EXPTEST("map(\\x.x+9, [1..10]) == [10, 11, 12, 13, 14, 15, 16, 17, 18, 19]");
   EXPTEST("sum([1..10]) == 55");
   EXPTEST("sum([1L..10L]) == 55L");
+  EXPTEST("sum(0x000102) == 3");
 }
 
 TEST(Prelude, List) {
@@ -72,5 +73,11 @@ TEST(Prelude, Sort) {
 
 TEST(Prelude, SScan) {
   EXPTEST("unique([1..10]) == [1..10]");
+}
+
+TEST(Prelude, Int128) {
+  EXPECT_EQ(c().compileFn<int128_t()>("40H + 2S")(), 42);
+  EXPECT_TRUE((c().compileFn<bool(int128_t)>("x", "x==42")(42)));
+  EXPECT_EQ(hobbes::makeStdString(c().compileFn<const hobbes::array<char>*()>("show(42H)")()), "42");
 }
 

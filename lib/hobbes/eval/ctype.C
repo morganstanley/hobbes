@@ -24,6 +24,8 @@ llvm::Type* llvmPrim(const std::string& name, bool asArg) {
     return intType();
   } else if (name == "long") {
     return longType();
+  } else if (name == "int128") {
+    return int128Type();
   } else if (name == "float") {
     return floatType();
   } else if (name == "double") {
@@ -162,7 +164,11 @@ private:
 };
 
 llvm::Type* toLLVM(const MonoTypePtr& ty, bool asArg) {
-  return switchOf(ty, translateTypeF(asArg));
+  if (isUnit(ty)) {
+    return voidType();
+  } else {
+    return switchOf(ty, translateTypeF(asArg));
+  }
 }
 
 Types toLLVM(const MonoTypes& tys, bool asArg) {

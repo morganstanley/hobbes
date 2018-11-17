@@ -1,5 +1,6 @@
 #include <hobbes/hobbes.H>
 #include <hobbes/lang/tylift.H>
+#include <thread>
 #include "test.H"
 
 using namespace hobbes;
@@ -34,6 +35,12 @@ TEST(Compiler, compileToSupportsMoreThanSixArgs) {
     expression);
   
   EXPECT_TRUE(NULL != funPtr);
+}
+
+TEST(Compiler, charArrExpr) {
+  char buffer[256];
+  strncpy(buffer, "\"hello world\"\0", sizeof(buffer));
+  EXPECT_TRUE(c().compileFn<const array<char>*()>(buffer) != 0);
 }
 
 class BV { };
@@ -78,5 +85,18 @@ TEST(Compiler, ParseTyDefStaging) {
     )
   );
   EXPECT_EQ(c().compileFn<int()>("frank")(), 3);
+}
+
+TEST(Compiler, ccInManyThreads) {
+  std::vector<std::thread*> ps;
+  size_t badChecks = 0;
+  for (size_t p = 0; p < 10; ++p) {
+    ps.push_back(new std::thread(([&]() {
+      hobbes::cc c;
+      badChecks += c.compileFn<int()>("sum([1..100])-100*101/2")(); // just 0, but complex enough to hit many areas of the compiler
+    })));
+  }
+  for (auto p : ps) { p->join(); delete p; }
+  EXPECT_EQ(badChecks, size_t(0));
 }
 
