@@ -162,12 +162,12 @@ struct pagetype {
 struct pagedata {
   uint16_t ptfd;
 
-  pagedata(pagetype::code ty = pagetype::toc, uint16_t sz = 0) : ptfd(encode(ty, sz)) { }
-  static uint16_t encode(pagetype::code ty, uint16_t sz) { return ((pagetype::encode(ty) & 3) << 14) | (sz & 0x3FFF); }
+  pagedata(pagetype::code ty = pagetype::toc, uint16_t availSz = 0) : ptfd(encode(ty, availSz)) { }
+  static uint16_t encode(pagetype::code ty, uint16_t availSz) { return ((pagetype::encode(ty) & 3) << 14) | (availSz & 0x3FFF); }
   pagetype::code type() const { return pagetype::decode(this->ptfd >> 14); }
-  uint16_t size() const { return this->ptfd & 0x3FFF; }
-  void type(pagetype::code x) { this->ptfd = encode(x, size()); }
-  void size(uint16_t x) { this->ptfd = encode(type(), x); }
+  uint16_t availBytes() const { return this->ptfd & 0x3FFF; }
+  void type(pagetype::code x) { this->ptfd = encode(x, availBytes()); }
+  void availBytes(uint16_t x) { this->ptfd = encode(type(), x); }
 };
 typedef std::vector<pagedata> pagetable;
 
@@ -430,7 +430,7 @@ inline void updatePageSizeIndex(imagefile* f, file_pageindex_t page) {
   for (size_t k = 0; k < pord.size(); ++k) {
     if (pord[k] == page) {
       for (size_t i = k; i < pord.size() - 1; ++i) {
-        if (f->pages[pord[i]].size() < f->pages[pord[i+1]].size()) {
+        if (f->pages[pord[i]].availBytes() < f->pages[pord[i+1]].availBytes()) {
           std::swap(pord[i], pord[i+1]);
         } else {
           break;
@@ -448,14 +448,14 @@ inline void insertPageSizeIndex(imagefile* f, file_pageindex_t page) {
   static const size_t maxPageMemory = 200;
 
   const pagedata& pd = f->pages[page];
-  if (pd.size() < minPageSize) return;
+  if (pd.availBytes() < minPageSize) return;
 
   // figure out where to put this page
   pageseq& pord = f->freespace[pd.type()];
   size_t k = pord.size();
 
   for (size_t i = 0; i < pord.size(); ++i) {
-    if (pd.size() > f->pages[i].size()) {
+    if (pd.availBytes() > f->pages[i].availBytes()) {
       k = i;
       break;
     }
@@ -465,6 +465,16 @@ inline void insertPageSizeIndex(imagefile* f, file_pageindex_t page) {
   if (pord.size() > maxPageMemory) { pord.resize(maxPageMemory); }
 }
 
+// align a value to a boundary
+template <typename T>
+  inline T align(T x, T m) {
+    if (m == 0 || (x % m) == 0) {
+      return x;
+    } else {
+      return (1 + (x / m)) * m;
+    }
+  }
+
 // try to find a page with as much free space as requested
 inline bool findPageWithSpace(imagefile* f, pagetype::code pt, size_t datalen, size_t alignment, file_pageindex_t* idx) {
   const pageseq& pord = f->freespace[pt];
@@ -473,9 +483,8 @@ inline bool findPageWithSpace(imagefile* f, pagetype::code pt, size_t datalen, s
   }
 
   const auto& pd  = f->pages[pord[0]];
-  size_t      pad = (f->page_size - pd.size()) % alignment;
 
-  if ((datalen + pad) > pd.size()) {
+  if (align<size_t>(f->page_size - pd.availBytes(), alignment) + datalen > f->page_size) {
     return false;
   } else {
     *idx = pord[0];
@@ -487,7 +496,7 @@ inline bool findPageWithSpace(imagefile* f, pagetype::code pt, size_t datalen, s
 inline void updateTOCData(imagefile* f, file_pageindex_t page, const pagedata& pd) {
   // pages never suddenly get free space
   pagedata& opd = f->pages[page];
-  assert(pd.size() <= opd.size());
+  assert(pd.availBytes() <= opd.availBytes());
 
   // update the page table data in memory and on disk
   opd = pd;
@@ -575,11 +584,10 @@ inline size_t findSpace(imagefile* f, pagetype::code pt, size_t datalen, size_t 
   if (findPageWithSpace(f, pt, datalen, alignment, &fpage)) {
     pagedata& pd = f->pages[fpage];
 
-    uint64_t offset = f->page_size - pd.size();
-    uint64_t pad    = offset % alignment;
+    uint64_t offset = align<size_t>(f->page_size - pd.availBytes(), alignment);
 
-    updateTOCData(f, fpage, pagedata(pt, pd.size() - (datalen+pad)));
-    return position(f, fpage, offset+pad);
+    updateTOCData(f, fpage, pagedata(pt, f->page_size - (offset+datalen)));
+    return position(f, fpage, offset);
   }
 
   // if we got here, then we need to allocate one or more contiguous pages for this data
@@ -630,16 +638,6 @@ inline void addBinding(imagefile* f, const std::string& vname, const bytes& type
   // oh and we'll want to keep track of it too
   f->bindings[vname] = binding(type, offset, boffset);
 }
-
-// align a value to a boundary
-template <typename T>
-  inline T align(T x, T m) {
-    if (m == 0 || (x % m) == 0) {
-      return x;
-    } else {
-      return (1 + (x / m)) * m;
-    }
-  }
 
 // mmap a region out of this file
 inline fregion& createFileRegionMap(imagefile* f, file_pageindex_t page, size_t pages) {
@@ -873,7 +871,7 @@ inline size_t readEnvironmentPage(imagefile* f, file_pageindex_t p) {
     file_pageindex_t tpage = file_pageindex_t(pos / f->page_size);
     uint16_t         rpos  = (pos % f->page_size) + 1;
 
-    if (rpos == (f->page_size - f->pages[tpage].size())) {
+    if (rpos == (f->page_size - f->pages[tpage].availBytes())) {
       break;
     }
   }
@@ -1336,21 +1334,25 @@ template <typename T>
   struct store<std::vector<T>, typename tbool<!store<T>::can_memcpy>::type> : public storeVectorDef<T> {
     static const bool can_memcpy = false;
     static void write(imagefile* f, void* p, const std::vector<T>& x) {
-      size_t tsz = store<T>::size();
-      auto   bc  = sizeof(size_t) + tsz*x.size();
+      if (x.size() > 0) {
+        size_t tsz = store<T>::size();
+        auto   bc  = sizeof(size_t) + tsz*x.size();
 
-      size_t dloc = findSpace(f, pagetype::data, bc, sizeof(size_t));
-      uint8_t* d = reinterpret_cast<uint8_t*>(mapFileData(f, dloc, bc));
-      *reinterpret_cast<size_t*>(d) = x.size();
+        size_t dloc = findSpace(f, pagetype::data, bc, sizeof(size_t));
+        uint8_t* d = reinterpret_cast<uint8_t*>(mapFileData(f, dloc, bc));
+        *reinterpret_cast<size_t*>(d) = x.size();
 
-      auto dc = d + sizeof(size_t);
-      for (const auto& xv : x) {
-        store<T>::write(f, dc, xv);
-        dc += tsz;
+        auto dc = d + sizeof(size_t);
+        for (const auto& xv : x) {
+          store<T>::write(f, dc, xv);
+          dc += tsz;
+        }
+        unmapFileData(f, d, bc);
+
+        *reinterpret_cast<size_t*>(p) = dloc;
+      } else {
+        *reinterpret_cast<size_t*>(p) = f->empty_array;
       }
-      unmapFileData(f, d, bc);
-
-      *reinterpret_cast<size_t*>(p) = dloc;
     }
     static void read(imagefile* f, const void* p, std::vector<T>* x) {
       size_t   tsz  = store<T>::size();
@@ -1363,6 +1365,49 @@ template <typename T>
       for (size_t i = 0; i < *c; ++i) {
         store<T>::read(f, dc, &(*x)[i]);
         dc += tsz;
+      }
+
+      unmapFileData(f, d, *c);
+      unmapFileData(f, c, sizeof(size_t));
+    }
+  };
+
+// bit vectors wind up being represented differently ...
+template <>
+  struct store<std::vector<bool>> : public storeVectorDef<bool> {
+    static const bool can_memcpy = false;
+    static void write(imagefile* f, void* p, const std::vector<bool>& x) {
+      if (x.size() > 0) {
+        auto   bc  = sizeof(size_t) + x.size();
+
+        size_t dloc = findSpace(f, pagetype::data, bc, sizeof(size_t));
+        uint8_t* d = reinterpret_cast<uint8_t*>(mapFileData(f, dloc, bc));
+        *reinterpret_cast<size_t*>(d) = x.size();
+
+        auto dc = d + sizeof(size_t);
+        for (const auto& xv : x) {
+          store<bool>::write(f, dc, xv);
+          dc += 1;
+        }
+        unmapFileData(f, d, bc);
+
+        *reinterpret_cast<size_t*>(p) = dloc;
+      } else {
+        *reinterpret_cast<size_t*>(p) = f->empty_array;
+      }
+    }
+    static void read(imagefile* f, const void* p, std::vector<bool>* x) {
+      auto     dloc = *reinterpret_cast<const size_t*>(p);
+      size_t*  c    = reinterpret_cast<size_t*>(mapFileData(f, dloc, sizeof(size_t)));
+      uint8_t* d    = reinterpret_cast<uint8_t*>(mapFileData(f, dloc+sizeof(size_t), *c));
+      uint8_t* dc   = d;
+
+      x->resize(*c);
+      for (size_t i = 0; i < *c; ++i) {
+        bool val=false;
+        store<bool>::read(f, dc, &val);
+        (*x)[i] = val;
+        dc += 1;
       }
 
       unmapFileData(f, d, *c);
@@ -2009,6 +2054,8 @@ public:
     seekAbs(this->f, 0);
     write(this->f, static_cast<uint8_t>(0x0d));
   }
+
+  imagefile* fileData() { return this->f; }
 private:
   typedef std::map<std::string, seriesi*> wseriess;
   imagefile* f;
@@ -2263,6 +2310,8 @@ public:
         unmapFileData(f, p, store<T>::size());
       }
     }
+
+  imagefile* fileData() { return this->f; }
 private:
   typedef std::map<std::string, seriesi*> rseriess;
   imagefile* f;
