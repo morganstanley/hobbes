@@ -533,8 +533,6 @@ void cc::dumpTypeEnv(str::seq* syms, str::seq* types) const {
 }
 
 std::string cc::showTypeEnv() const {
-  const TEnv::PolyTypeEnv& ptenv = this->tenv->typeEnvTable();
-
   str::seqs table;
   table.resize(3);
 
