@@ -231,7 +231,7 @@ reader::PageEntries* reader::pageEntries() const {
   PageEntries* r = makeArray<PageEntry>(this->fdata->pages.size());
   for (size_t i = 0; i < r->size; ++i) {
     r->data[i].first  = this->fdata->pages[i].type();
-    r->data[i].second = this->fdata->pages[i].size();
+    r->data[i].second = this->fdata->pages[i].availBytes();
   }
   return r;
 }
@@ -309,7 +309,7 @@ std::string showPageDesc(const pagedata& pd) {
   default:                    ss << "?"; break;
   }
 
-  std::string sz = str::from(pd.size());
+  std::string sz = str::from(pd.availBytes());
   for (size_t p = sz.size(); p < 5; ++p) {
     ss << "0";
   }

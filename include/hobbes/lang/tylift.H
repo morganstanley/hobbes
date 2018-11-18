@@ -68,24 +68,6 @@ struct recursion {
   recursion(void* x) : value(x) { }
 };
 
-// represent arrays of unknown length by a size and a variable-length array payload
-template <typename T>
-  struct array {
-    typedef array<T>* ptr;
-
-    size_t size;
-    T      data[1]; // unknown length, bytes inline with this structure
-  };
-template <typename T> const T* begin(const array<T>* d) { return d->data; }
-template <typename T> const T* end  (const array<T>* d) { return d->data + d->size; }
-template <typename T>       T* begin(      array<T>* d) { return d->data; }
-template <typename T>       T* end  (      array<T>* d) { return d->data + d->size; }
-
-template <typename T> const T* begin(const array<T>& d) { return d.data; }
-template <typename T> const T* end  (const array<T>& d) { return d.data + d.size; }
-template <typename T>       T* begin(      array<T>& d) { return d.data; }
-template <typename T>       T* end  (      array<T>& d) { return d.data + d.size; }
-
 // a linked list is a recursive sum of nested tuples starting at unit
 template <typename T>
   struct seq {
