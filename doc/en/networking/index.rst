@@ -5,3 +5,4 @@ Networking
    :maxdepth: 2
 
    hi.rst
+   cpp.rst
