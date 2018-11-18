@@ -81,7 +81,7 @@ Get the total amount of water that fell in the third bucket:
 
 ::
 
-  > sum(raindrops.ThirdBucket[:0]
+  > sum(raindrops.ThirdBucket[:0])
   614
 
 .. note:: **Slice?**
@@ -100,3 +100,21 @@ Get the total amount of water that fell in the third bucket:
     [int]
 
   The ``sum`` function is overloaded for arrays, but not for the Hobbes internal *stack of arrays* type!
+
+Let's get the count of all raindrops bigger than size 5:
+
+  > size([x | x <- raindrops.FirstBucket[0:] ++ raindrops.SecondBucket[0:] ++ raindrops.ThirdBucket[0:] ++ raindrops.FourthBucket[0:], x > 5])
+  193
+
+Transactions
+------------
+
+Because we used a *manually* commited log group for our raindrop data (see :ref:`Logs and Transactions <hobbes_logs_and_transactions>`), we can see a list of all the raindrops in order, regardless of the bucket they fell in:
+
+  ::
+
+    > raindrops.transactions
+    
+(TODO)
+
+This even shows us the committed transactions for where there was no logged event - i.e. the one in five chance that a raindrop missed a bucket!

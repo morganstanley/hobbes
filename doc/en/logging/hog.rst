@@ -33,6 +33,8 @@ Hog is reponsible for consuming messages from a particular LogGroup and coordina
 
 Conversely, Hog is also able to receive log messages from a remote process with ``-s``.
 
+.. _hog_logging_to_disk:
+
 Logging to disk with hog
 ------------------------
 

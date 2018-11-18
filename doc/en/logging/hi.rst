@@ -62,21 +62,56 @@ Therefore the annotation becomes, at compile time, a *type-safe* indication of t
 
   Incidentally, the *same* process is happening when we use *hog* to send structured data over the network for persistence: the header is sent when the target hog process starts up, and the type information contained into the header is passed through to the persisted file before data starts to stream.
 
+.. _hobbes_one_off_data_processing:
+
 One-off data processing
 =======================
 
 We can query data inside a logfile using the comprehensions syntax we saw :ref:`previously<comprehensions>`. It's even possible to see updates to the file as it's being written - changes will be visible in hobbes code whilst elements are being added to the file. This allows for reactive programming but it also means that calculation results may change between invocations - so be careful!
 
-Remember that our logger contains the following line:
+
+As a collection
+---------------
+
+Firstly, we can see what data is available in the file simply by typing the name of the variable, `messages`:
 
 ::
 
-  HSTORE(SimpleLogger, FirstEvent, "First", 0, 1, 2);
+  > messages
+  (TODO)
+
+This shows us all the data members available to us, along with their types. You might recognise this type information from the *hog* output, when we saved the persisted data in :ref:`previous section <hog_logging_to_disk>`:.
+
+
+.. note:: **types**
+  There's a lot going on here! For a start, you might notice the types of FirstEvent and SecondEvent don't look all that much like you'd expect. For example, remember that our logger contains the following line:
+
+  ::
+
+    HSTORE(SimpleLogger, FirstEvent, "First", 0, 1, 2);
+
+  You might reasonably expect `messages.FirstEvent` to have the type ``[([char]*int*int*int)]`` - i.e. an array of tuples, each containing a string and three ints. The internal representation of the Hobbes persistence file is just slightly out of scope for this introduction - but you'll be pleased to know it (mostly) doesn't matter that much: as we'll see soon, you can use the Hobbes comprehension syntax to deal with the data as though it looked just as you expect!
+
+Both datasets (one for each event) are available to us as data members under the file variable ``messages``:
+
+::
+  
+  > messages.FirstEvent
+  First 0 1 2
+  First 0 1 2
+  First 0 1 2
+  First 0 1 2
+  First 0 1 2
+  First 0 1 2
+  First 0 1 2
+  ...
+
+This is useful to show that persistence is working. However, in order to process the data, you'll probably want to make use of Hobbes's comprehensions.
 
 As a comprehension
 ------------------
 
-Although the type of the data isn't quite an array, we can use comprehension syntax to collect data. In fact, this is a very common usecase for Hobbes in production. It allows us to filter and map across large amounts of data in a neat consistent manner:
+Although the type of the data isn't quite an array, we can use comprehension syntax to collect, organise, and process the persisted data. In fact, this is a very common usecase for Hobbes in production. It allows us to filter and map across large amounts of data in a neat consistent manner:
 
 ::
 
@@ -87,7 +122,7 @@ Although the type of the data isn't quite an array, we can use comprehension syn
 
 .. note:: **tuples?**
   
-  Hobbes exposes this persisted element (the *line* of logged data, really) as a tuple, so you can unpack it using the numbered indexing syntax.
+  Hobbes exposes this persisted element (the *line* of logged data, really) as a tuple, so you can unpack it using the numbered indexing syntax. In this case, we're showing the (zero-indexed!) first field - i.e. the 0 from the log message above.
 
 We can take this further and unpack the tuple in the extraction portion of the comprehension:
 
@@ -102,10 +137,14 @@ We can take this further and unpack the tuple in the extraction portion of the c
   "First" 0
   "First" 0
 
+Here we're unpacking all four fields from the log statement and printing the first two.
+
 Take a slice
 ------------
 
 Similarly, we can use the "slice" notation to work with a subset of logged messages:
+
+::
 
   > messages.SecondEvent[0:3]
   First 0 1 2 
@@ -115,6 +154,10 @@ Similarly, we can use the "slice" notation to work with a subset of logged messa
 .. note:: **ordering**
   
   The internal structure of Due to the internal structue of the persisted file, while elements may *look* ordered, this ordering We can force a 'most recent first' ordering of logged elements using the open-slice notation:
+
+::
+
+  messages.SecondEvent[0:]
 
 .. note:: **where's my data?!**
   
@@ -129,6 +172,30 @@ Similarly, we can use the "slice" notation to work with a subset of logged messa
   ::
     
     SimpleLogger.commit();
+
+.. _hobbes_logs_and_transactions:
+
+Logs and Transactions
+=====================
+
+As we discussed above, you can find the names and types of the log events available in the persisted storage group file simply by inspecting the variable you assigned it to using `LoadFile`. 
+
+::
+
+  > messages
+
+Alongside the data members for each of your log events, you'll also see a ``statements`` field and a ``log`` field. ``statements`` is for Hobbes internal use (feel free to have a look - it contains some back-references to the logging source code), whilst ``log`` is a collection of all messages logged to any event connected to the group.
+
+This can be useful if you want a stream of all the messages you've logged, and the data is available in a handy type that Hobbes has created for us - a variant of all the possible logged types. This makes it easy to use the :ref:`pattern matching <hobbes_pattern_matching>` syntax to iterage through logged messages and act on them.
+
+Manually committed transactions
+-------------------------------
+
+As we touched on in :ref:`logging <hobbes_logging>`, log data persisted in a *manually committed* log group will have a timestamp associated with each entry.
+
+This is simply an artefact of the way Hobbes has been used at Morgan Stanley, rather than an explicit design decision. If you wanted a timestamp associated with an auto-commit group you could specialise ``hobbes::storage::store<T>`` for ``std::chrono::time_point`` (see :ref:`data types <hobbes_persistable_types>` for more information) and collect a timestamp member for each log statement.
+
+However, there's one more difference - for a manually committed group there's a ``transactions`` member instead of a ``log`` member for your group's persistence file, which shows the timestamp alongside the log data.
 
 Reactive processing
 ===================

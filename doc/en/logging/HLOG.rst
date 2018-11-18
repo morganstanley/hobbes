@@ -45,6 +45,8 @@ Alternatively, specifying ``hobbes::storage::AutoCommit`` gives us uncorrelated 
 
 Transactions which are manually committed will have a timestamp logged alongside them which can be used in out-of-band analysis and reporting, whereas autocommitted transactions have no timestamp. You can always call ``commit`` on an autocommit LogGroup, which will immediately persist the current transaction.
 
+Finally, there's one more difference in how persisted data is made available to us in code - which we'll investigate in :ref:`logs and transactions <hobbes_logs_and_transactions>`
+
 Once the LogGroup has been set up, we can start to log data. For that, we'll want to look at the ``HLOG`` and ``HSTORE`` macros.
 
 HLOG and HSTORE
