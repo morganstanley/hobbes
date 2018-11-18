@@ -41,6 +41,8 @@ In practice, that's not so much of a problem because you either write the tools 
 
 The logfiles themselves have a *header/body* format, with a header describing the names and types (and by inference, the *sizes*) of each column. Immediately following the header is the body, which contains the actual persisted data. Therefore, performing an equality search on a member *n* of a struct of size *m* is trivial: you simply loop through every *m* bytes and compare the search value against the value at an offset of *n*.
 
+.. _hobbes_loadfile_unqualifier:
+
 The LoadFile unqualifier
 ------------------------
 
