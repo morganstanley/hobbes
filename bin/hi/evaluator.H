@@ -53,6 +53,7 @@ public:
   void breakdownEvalExpr(const std::string& expr);
   void searchDefs(const std::string& expr_to_type);
   void resetREPLCycle();
+  bool satisfied(const hobbes::ConstraintPtr&);
 private:
   hobbes::cc ctx;
   bool       silent;

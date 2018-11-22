@@ -1230,6 +1230,11 @@ struct liftTypeAsAssumpF : public switchExprTyFn {
   }
 };
 
+
+unsolved_constraints::unsolved_constraints(const LexicalAnnotation&  la, const std::string& msg, const Constraints& cs) : annotated_error(la, msg), cs(cs) { }
+unsolved_constraints::unsolved_constraints(const LexicallyAnnotated& la, const std::string& msg, const Constraints& cs) : annotated_error(la, msg), cs(cs) { }
+const Constraints& unsolved_constraints::constraints() const { return this->cs; }
+
 const MonoTypePtr& requireMonotype(const TEnvPtr& tenv, const ExprPtr& e) {
   if (e->type() == QualTypePtr()) {
     throw annotated_error(*e, "Expression '" + show(e) + "' not explicitly annotated.  Internal compiler error.");
@@ -1238,11 +1243,8 @@ const MonoTypePtr& requireMonotype(const TEnvPtr& tenv, const ExprPtr& e) {
   if (e->type()->constraints().size() > 0) {
     Constraints cs = expandHiddenTCs(tenv, simplifyVarNames(e->type())->constraints());
     std::ostringstream ss;
-    ss << "Failed to compile expression due to unresolved type constraint" << (cs.size() > 1 ? "s" : "") << ":";
-    for (const auto& c : cs) {
-      ss << "\n  " << show(c);
-    }
-    throw annotated_error(*e, ss.str());
+    ss << "Failed to compile expression due to unresolved type constraint" << (cs.size() > 1 ? "s" : "");
+    throw unsolved_constraints(*e, ss.str(), cs);
   }
   
   return e->type()->monoType();

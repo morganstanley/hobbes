@@ -153,10 +153,6 @@ template <typename T>
     StoredSeries storage;
   };
 
-inline MonoTypePtr filerefty(const MonoTypePtr& t) {
-  return tapp(primty("fileref"), list(t));
-}
-
 }
 
 #endif

@@ -22,6 +22,9 @@ namespace str = hobbes::str;
 
 namespace hi {
 
+// the one evaluator for this process
+evaluator* eval = 0;
+
 // control color options (these can be tweaked by ~/.hirc)
 ConsoleColors colors;
 
@@ -47,7 +50,7 @@ void setDefaultColorScheme() {
   colors.oddlinebg      = 238;
 }
 
-bool consoleCmdsEnabled = true;
+bool consoleCmdsEnabled = false;
 bool extConsoleCmdsEnabled() {
   return consoleCmdsEnabled;
 }
@@ -97,9 +100,14 @@ void printAnnotatedText(const hobbes::LexicalAnnotation& la) {
   std::cout << resetfmt() << std::endl;
 }
 
-void printAnnotatedError(const hobbes::annotated_error& ae) {
+void printAnnotatedError(const hobbes::annotated_error& ae, const hobbes::Constraints& cs) {
   for (const auto& m : ae.messages()) {
     std::cout << setbold() << setfgc(colors.errorfg) << m.second.lineDesc() << ": " << m.first << "\n";
+    for (const auto& c : cs) {
+      if (eval && !eval->satisfied(c)) {
+        std::cout << "  " << hobbes::show(c) << std::endl;
+      }
+    }
     printAnnotatedText(m.second);
   }
 }
@@ -176,9 +184,6 @@ std::string prompttext() {
   return ss.str();
 }
 
-// the one evaluator for this process
-evaluator* eval = 0;
-
 // provide possibilities for autocompletion
 str::seq completionMatches;
 
@@ -206,8 +211,6 @@ char** completions(const char* pfx, int start, int end) {
 void evalLine(char*);
 
 void repl(evaluator* ev) {
-  eval = ev;
-
   // set up stdin to be read incrementally
   std::ostringstream prompt;
   prompt << resetfmt() << setbold() << setfgc(colors.promptfg) << "> " << setfgc(colors.stdtextfg) << std::flush;
@@ -331,8 +334,10 @@ void evalLine(char* x) {
     }
 
     eval->resetREPLCycle();
+  } catch (hobbes::unsolved_constraints& cs) {
+    printAnnotatedError(cs, cs.constraints());
   } catch (hobbes::annotated_error& ae) {
-    printAnnotatedError(ae);
+    printAnnotatedError(ae, hobbes::Constraints());
   } catch (std::exception& ex) {
     std::cout << setfgc(colors.errorfg) << setbold() << ex.what() << std::endl;
   }
@@ -594,8 +599,8 @@ int main(int argc, char** argv) {
 
     // start an evaluator and process ~/.hirc if it exists
     // (this should apply whatever settings the user prefers)
-    evaluator eval(args);
-    initHI(&eval, args.useDefColors);
+    eval = new evaluator(args);
+    initHI(eval, args.useDefColors);
 
     // show the repl header
     if (!args.silent) {
@@ -618,25 +623,28 @@ int main(int argc, char** argv) {
     // load any modules passed in
     if (args.mfiles.size() > 0) {
       for (ModuleFiles::const_iterator m = args.mfiles.begin(); m != args.mfiles.end(); ++m) {
-        eval.loadModule(str::expandPath(*m));
+        eval->loadModule(str::expandPath(*m));
       }
     }
 
     // should we evaluate some given expression?
     if (!args.evalExpr.empty()) {
-      eval.evalExpr(args.evalExpr);
+      eval->evalExpr(args.evalExpr);
     }
 
     // finally, run some kind of REPL if requested
     if (args.machineREPL) {
-      eval.runMachineREPL();
+      eval->runMachineREPL();
     } else if (!args.exitAfterEval) {
-      repl(&eval);
+      repl(eval);
     }
     std::cout << resetfmt();
     return 0;
+  } catch (hobbes::unsolved_constraints& cs) {
+    printAnnotatedError(cs, cs.constraints());
+    return -1;
   } catch (hobbes::annotated_error& ae) {
-    printAnnotatedError(ae);
+    printAnnotatedError(ae, hobbes::Constraints());
     return -1;
   } catch (std::exception& ex) {
     std::cout << "Fatal error: " << ex.what() << resetfmt() << std::endl;

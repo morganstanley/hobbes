@@ -932,8 +932,8 @@ l1mtype: id                                { $$ = autorelease(new MonoTypePtr(mo
        | "intV"                            { $$ = autorelease(new MonoTypePtr(($1 == 0) ? Prim::make("void") : TLong::make($1))); }
        | "boolV"                           { $$ = autorelease(new MonoTypePtr($1 ? TLong::make(1) : TLong::make(0))); }
        | "exists" id "." l1mtype           { $$ = autorelease(new MonoTypePtr(Exists::make(*$2, *$4))); }
-       | l1mtype "@" l1mtype               { $$ = autorelease(new MonoTypePtr(TApp::make(Prim::make("fileref"), list(*$1, *$3)))); }
-       | l1mtype "@" "?"                   { $$ = autorelease(new MonoTypePtr(TApp::make(Prim::make("fileref"), list(*$1)))); }
+       | l1mtype "@" l1mtype               { $$ = autorelease(new MonoTypePtr(fileRefTy(*$1, *$3))); }
+       | l1mtype "@" "?"                   { $$ = autorelease(new MonoTypePtr(fileRefTy(*$1))); }
        | "^" id "." l1mtype                { $$ = autorelease(new MonoTypePtr(Recursive::make(*$2, *$4))); }
        | "stringV"                         { $$ = autorelease(new MonoTypePtr(TString::make(str::unescape(str::trimq(*$1))))); }
        | "`" l0expr "`"                    { $$ = autorelease(new MonoTypePtr(TApp::make(primty("quote"), list(texpr(ExprPtr($2)))))); }

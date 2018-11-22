@@ -272,7 +272,7 @@ ProcessTxnF initStorageSession(Session* s, const std::string& dirPfx, storage::P
     s->streams[stmt.id]  = ss;
     s->writeFns[stmt.id] = c->compileFn<void(storage::Transaction*)>("txn", "either(hstoreRead(txn), (), " + writefn + ")");
 
-    txnEntries.push_back(Variant::Member(stmt.name, filerefty(ss->storageType()), stmt.id));
+    txnEntries.push_back(Variant::Member(stmt.name, fileRefTy(ss->storageType()), stmt.id));
   }
 
   if (sm != hobbes::StoredSeries::Compressed) {

@@ -272,7 +272,7 @@ struct addFileSignalF : public op {
   PolyTypePtr type(typedb&) const {
     MonoTypePtr tg0(TGen::make(0));
     MonoTypePtr tg1(TGen::make(1));
-    MonoTypePtr fr = tapp(primty("fileref"), list(tg0, tg1));
+    MonoTypePtr fr = fileRefTy(tg0, tg1);
     PolyTypePtr npty(new PolyType(3, qualtype(functy(list(fr, functy(list(fr), primty("bool"))), primty("unit")))));
     return npty;
   }

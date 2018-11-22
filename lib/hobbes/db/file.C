@@ -47,7 +47,7 @@ struct mapFileRefs : public switchTyFn {
     if (ap->args().size() == 2) {
       if (const Prim* f = is<Prim>(ap->fn())) {
         if (f->name() == "fileref") {
-          return MonoTypePtr(TApp::make(ap->fn(), list(switchOf(ap->args()[1], *this))));
+          return fileRefTy(switchOf(ap->args()[1], *this));
         }
       }
     }
@@ -64,7 +64,7 @@ struct mapStoredArrays : public switchTyFn {
 
 // translate a stored type by file version
 static MonoTypePtr v0_to_v1(const MonoTypePtr& t) {
-  return tapp(primty("fileref"), list(switchOf(t, mapFileRefs())));
+  return fileRefTy(switchOf(t, mapFileRefs()));
 }
 
 static MonoTypePtr v1_to_v2(const MonoTypePtr& t) {
@@ -257,10 +257,6 @@ void reader::unsafeUnloadArray(void* p, size_t sz) {
 }
 
 // change any file ref types to point to this reader because they must be out of this file (this is a bit of a hack)
-MonoTypePtr mkFR(const MonoTypePtr& t) {
-  return tapp(primty("fileref"), list(t));
-}
-
 void reader::showFileSummary(std::ostream& out) const {
   out << this->fdata->path << " : " << str::showDataSize(this->fdata->file_size) << std::endl;
 }

@@ -122,11 +122,6 @@ static MonoTypePtr entuple(const MonoTypePtr& ty) {
   return MonoTypePtr(Record::make(ms));
 }
 
-// A -> A@?
-static MonoTypePtr filerefTy(const MonoTypePtr& ty) {
-  return tapp(primty("fileref"), list(ty));
-}
-
 // A N -> carray A N
 static MonoTypePtr carrayty(const MonoTypePtr& ty, size_t n) {
   Record::Members ms;
@@ -139,7 +134,7 @@ static MonoTypePtr carrayty(const MonoTypePtr& ty, size_t n) {
 static MonoTypePtr storedListOf(const MonoTypePtr& ty) {
   Record::Members pms;
   pms.push_back(Record::Member(".f0", ty));
-  pms.push_back(Record::Member(".f1", filerefTy(tvar("x"))));
+  pms.push_back(Record::Member(".f1", fileRefTy(tvar("x"))));
   MonoTypePtr pty(Record::make(pms));
 
   Variant::Members ms;
@@ -150,7 +145,7 @@ static MonoTypePtr storedListOf(const MonoTypePtr& ty) {
 
 // A -> ^x.(()+([A]@?*x@?))@?
 static MonoTypePtr storedStreamOf(const MonoTypePtr& ty, size_t n) {
-  return filerefTy(storedListOf(filerefTy(carrayty(ty, n))));
+  return fileRefTy(storedListOf(fileRefTy(carrayty(ty, n))));
 }
 
 // A -- StoredAs A B --> B
