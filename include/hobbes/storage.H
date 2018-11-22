@@ -39,6 +39,9 @@
 #include <netdb.h>
 #include <fcntl.h>
 
+// types with static reflection info (for reflective structs, variants, etc)
+#include "reflect.H"
+
 namespace hobbes { namespace storage { namespace internal {
 
 // a few things have to be OS-specific here
@@ -1029,50 +1032,20 @@ template <size_t... pcs>
 #define PRIV_HSTORE_TSTR1024(i,s) PRIV_HSTORE_TSTR512(i+(512*0),s),PRIV_HSTORE_TSTR512(i+(512*1),s)
 #define PRIV_HSTORE_TSTR(s)       ::hobbes::storage::strpack<PRIV_HSTORE_TSTR1024(0,s)>
 
-// type/value serialization (guarded by compile-time predicates)
-#define PRIV_HSTORE_TYCTOR_PRIM      static_cast<int>(0)
-#define PRIV_HSTORE_TYCTOR_TVAR      static_cast<int>(2)
-#define PRIV_HSTORE_TYCTOR_FIXEDARR  static_cast<int>(4)
-#define PRIV_HSTORE_TYCTOR_ARR       static_cast<int>(5)
-#define PRIV_HSTORE_TYCTOR_VARIANT   static_cast<int>(6)
-#define PRIV_HSTORE_TYCTOR_STRUCT    static_cast<int>(7)
-#define PRIV_HSTORE_TYCTOR_SIZE      static_cast<int>(11)
-#define PRIV_HSTORE_TYCTOR_TAPP      static_cast<int>(12)
-#define PRIV_HSTORE_TYCTOR_RECURSIVE static_cast<int>(13)
-#define PRIV_HSTORE_TYCTOR_TABS      static_cast<int>(15)
-
+/*****************************
+ *
+ * store<T> : the main interface for type-directed storage into shared memory pipes
+ *
+ *****************************/
 template <typename T, typename P = void>
   struct store {
   };
-template <typename T>
-  void w(const T& x, bytes* out) {
-    out->insert(out->end(), reinterpret_cast<const uint8_t*>(&x), reinterpret_cast<const uint8_t*>(&x) + sizeof(x));
-  }
-inline void ws(const char* x, bytes* out) {
-  size_t n = strlen(x);
-  w(n, out);
-  out->insert(out->end(), x, x + n);
-}
-inline void ws(const std::string& x, bytes* out) {
-  w(static_cast<size_t>(x.size()), out);
-  out->insert(out->end(), x.begin(), x.end());
-}
-inline void ws(const bytes& x, bytes* out) {
-  w(static_cast<size_t>(x.size()), out);
-  out->insert(out->end(), x.begin(), x.end());
-}
 
-inline void encode_primty(const char* tn, bytes* out) {
-  w(PRIV_HSTORE_TYCTOR_PRIM, out);
-  ws(tn, out);
-  w(false, out);
-}
 #define PRIV_HSTORE_DEFINE_PRIMTYS(T, n) \
   template <> \
     struct store<T> { \
-      typedef void can_memcpy; \
-      static void        encode(bytes* out)          { encode_primty(n, out); } \
-      static std::string describe()                  { return n; } \
+      static const bool can_memcpy = true; \
+      static ty::desc    type()                      { return ty::prim(n); } \
       static size_t      size(const T&)              { return sizeof(T); } \
       static bool        write(wpipe& p, const T& x) { return p.write(reinterpret_cast<const uint8_t*>(&x), sizeof(x)); } \
     }
@@ -1093,248 +1066,239 @@ PRIV_HSTORE_DEFINE_PRIMTYS(__int128, "int128");
 PRIV_HSTORE_DEFINE_PRIMTYS(float,    "float");
 PRIV_HSTORE_DEFINE_PRIMTYS(double,   "double");
 
-template <typename T, typename P = void>
-  struct cannot_memcpy {
-    typedef void type;
+// store unit
+template <>
+  struct store<unit> {
+    static const bool can_memcpy = false;
+    static ty::desc type()                     { return ty::prim("unit"); }
+    static size_t   size()                     { return 0; }
+    static void     write(wpipe&, const unit&) { }
   };
+
+// store fixed-length arrays
+template <typename T, size_t N>
+  struct fixedArrTyDesc { static ty::desc type() { return ty::array(store<T>::type(), ty::nat(N)); } };
+
+template <typename T, size_t N>
+  struct store<T[N], typename tbool<store<T>::can_memcpy>::type> : public fixedArrTyDesc<T,N> {
+    static const bool can_memcpy = true;
+    static size_t size (const T (&v)[N])           { return sizeof(T)*N; }
+    static bool   write(wpipe& p, const T (&v)[N]) { return p.write(reinterpret_cast<const uint8_t*>(v), sizeof(T)*N); }
+  };
+template <typename T, size_t N>
+  struct store<std::array<T, N>, typename tbool<store<T>::can_memcpy>::type> : public fixedArrTyDesc<T, N> {
+    static const bool can_memcpy = true;
+    static size_t size (const std::array<T, N>& x)           { return sizeof(T)*N; }
+    static bool   write(wpipe& p, const std::array<T, N>& x) { return p.write(reinterpret_cast<const uint8_t*>(&x), size(x)); }
+  };
+template <typename T, size_t N>
+  struct store<T[N], typename tbool<!store<T>::can_memcpy>::type> : public fixedArrTyDesc<T,N> {
+    static const bool can_memcpy = false;
+    static size_t size(const T (&v)[N])            { size_t s = 0; for (size_t i = 0; i < N; ++i) { s += store<T>::size(v[i]); } return s; }
+    static bool   write(wpipe& p, const T (&v)[N]) { for (size_t i = 0; i < N; ++i) { if (!store<T>::write(p, v[i])) { return false; } } return true; }
+  };
+template <typename T, size_t N>
+  struct store<std::array<T, N>, typename tbool<!store<T>::can_memcpy>::type> : public fixedArrTyDesc<T, N> {
+    static const bool can_memcpy = false;
+    static size_t size (const std::array<T, N>& x)           { size_t n = 0; for (size_t i = 0; i < N; ++i) { n += store<T>::size(x[i]); } return n; }
+    static bool   write(wpipe& p, const std::array<T, N>& x) { for (size_t i = 0; i < N; ++i) { if (!store<T>::write(p, x[i])) return false; } return true; }
+  };
+
+// store strings
+template <>
+  struct store<const char*> {
+    static const bool can_memcpy = false;
+    static ty::desc type ()                        { return ty::array(ty::prim("char")); }
+    static size_t   size (const char* s)           { return sizeof(size_t) + strlen(s); }
+    static bool     write(wpipe& p, const char* s) { size_t n = strlen(s); return store<size_t>::write(p, n) && p.write(reinterpret_cast<const uint8_t*>(s), n); }
+  };
+template <>
+  struct store<char*> {
+    static const bool can_memcpy = false;
+    static ty::desc type ()                  { return ty::array(ty::prim("char")); }
+    static size_t   size (char* s)           { return sizeof(size_t) + strlen(s); }
+    static bool     write(wpipe& p, char* s) { size_t n = strlen(s); return store<size_t>::write(p, n) && p.write(reinterpret_cast<const uint8_t*>(s), n); }
+  };
+template <>
+  struct store<std::string> {
+    static const bool can_memcpy = false;
+    static ty::desc type ()                               { return ty::array(ty::prim("char")); }
+    static size_t   size (const std::string& s)           { return sizeof(size_t) + s.size(); }
+    static bool     write(wpipe& p, const std::string& s) { size_t n = s.size(); return store<size_t>::write(p, n) && p.write(reinterpret_cast<const uint8_t*>(s.data()), n); }
+  };
+
+// support storage of vectors
 template <typename T>
-  struct cannot_memcpy<T, typename store<T>::can_memcpy> {
+  struct store<std::vector<T>, typename tbool<store<T>::can_memcpy>::type> {
+    static const bool can_memcpy = false;
+    static ty::desc type ()                                   { return ty::array(store<T>::type()); }
+    static size_t   size (const std::vector<T>& xs)           { return sizeof(size_t) + (xs.size() * sizeof(T)); }
+    static bool     write(wpipe& p, const std::vector<T>& xs) { size_t n = xs.size(); return store<size_t>::write(p, n) && p.write(reinterpret_cast<const uint8_t*>(&xs[0]), n * sizeof(T)); }
   };
 
-template <typename ... Ts>
-  struct store_tuple_types {
-    static const size_t count = 0;
-    static void        encode(size_t,bytes*)      { }
-    static std::string describe()                 { return ""; }
-    static size_t      size(const Ts&...)         { return 0; }
-    static bool        write(wpipe&,const Ts&...) { return true; }
-  };
-template <typename T, typename ... Ts>
-  struct store_tuple_types<T, Ts...> {
-    static const size_t count = 1 + store_tuple_types<Ts...>::count;
-
-    static void encode(size_t f, bytes* out) {
-      char fn[32];
-      snprintf(fn, sizeof(fn), ".f%lld", static_cast<unsigned long long>(f));
-      ws(fn, out);
-      w(static_cast<int>(-1), out);
-      store<T>::encode(out);
-
-      store_tuple_types<Ts...>::encode(f+1, out);
+template <typename T>
+  struct store<std::vector<T>, typename tbool<!store<T>::can_memcpy>::type> {
+    static const bool can_memcpy = false;
+    static ty::desc type() { return ty::array(store<T>::type()); }
+    static size_t size(const std::vector<T>& xs) {
+      size_t t = sizeof(size_t);
+      for (const auto& x : xs) {
+        t += store<T>::size(x);
+      }
+      return t;
     }
-    static std::string describe() {
-      return store<T>::describe() + "*" + store_tuple_types<Ts...>::describe();
-    }
-    static size_t size(const T& x, const Ts&... xs) {
-      return store<T>::size(x) + store_tuple_types<Ts...>::size(xs...);
-    }
-    static bool write(wpipe& p, const T& x, const Ts&... xs) {
-      return store<T>::write(p, x) && store_tuple_types<Ts...>::write(p, xs...);
-    }
-  };
-template <size_t i, size_t e, typename ... Ts>
-  struct storeTuple {
-    static size_t size(const std::tuple<Ts...>& t) {
-      return store<typename std::tuple_element<i, std::tuple<Ts...>>::type>::size(std::get<i>(t)) +
-             storeTuple<i+1, e, Ts...>::size(t);
-    }
-    static bool write(wpipe& p, const std::tuple<Ts...>& t) {
-      return store<typename std::tuple_element<i, std::tuple<Ts...>>::type>::write(p, std::get<i>(t)) &&
-             storeTuple<i+1, e, Ts...>::write(p, t);
-    }
-  };
-template <size_t e, typename ... Ts>
-  struct storeTuple<e, e, Ts...> {
-    static size_t size(const std::tuple<Ts...>&) {
-      return 0;
-    }
-    static bool write(wpipe&, const std::tuple<Ts...>&) {
+    static bool write(wpipe& p, const std::vector<T>& xs) {
+      size_t n = xs.size();
+      if (!store<size_t>::write(p, n)) {
+        return false;
+      }
+      for (const auto& x : xs) {
+        if (!store<T>::write(p, x)) {
+          return false;
+        }
+      }
       return true;
     }
   };
-template <typename ... Ts>
-  struct store< std::tuple<Ts...> > {
-    static const size_t arity = store_tuple_types<Ts...>::count;
 
-    static void encode(bytes* out) {
-      size_t localArity = arity; // required because 'arity' doesn't have an address
-
-      if (localArity > 0) {
-        w(PRIV_HSTORE_TYCTOR_STRUCT, out);
-        w(localArity, out);
-        store_tuple_types<Ts...>::encode(0, out);
-      } else {
-        encode_primty("unit", out);
+template <>
+  struct store<std::vector<bool>> {
+    static const bool can_memcpy = false;
+    static ty::desc type() { return ty::array(store<bool>::type()); }
+    static size_t size(const std::vector<bool>& xs) { return sizeof(size_t) + (xs.size() * sizeof(bool)); }
+    static bool write(wpipe& p, const std::vector<bool>& xs) {
+      size_t n = xs.size();
+      if (!store<size_t>::write(p, n)) { return false; }
+      for (const auto& x : xs) {
+        if (!store<bool>::write(p, x)) {
+          return false;
+        }
       }
-    }
-    static std::string describe() {
-      std::string x = store_tuple_types<Ts...>::describe();
-      return (x.size() > 1) ? x.substr(0,x.size()-1) : x;
-    }
-    static size_t size(const std::tuple<Ts...>& t) {
-      return storeTuple<0, std::tuple_size<std::tuple<Ts...>>::value, Ts...>::size(t);
-    }
-    static bool write(wpipe& p, const std::tuple<Ts...>& t) {
-      return storeTuple<0, std::tuple_size<std::tuple<Ts...>>::value, Ts...>::write(p, t);
+      return true;
     }
   };
 
-// very basic macro metaprogramming
-#define PRIV_HSTORE_FIRST(a, ...) a
-#define PRIV_HSTORE_SECOND(a, b, ...) b
-#define PRIV_HSTORE_JOIN(a,b) a ## b
-#define PRIV_HSTORE_IS_NEGATE(...) PRIV_HSTORE_SECOND(__VA_ARGS__, 0)
-#define PRIV_HSTORE_NOT(x) PRIV_HSTORE_IS_NEGATE(PRIV_HSTORE_JOIN(PRIV_HSTORE_SNOT_, x))
-#define PRIV_HSTORE_SNOT_0 NEGATE, 1
-#define PRIV_HSTORE_BOOL(x) PRIV_HSTORE_NOT(PRIV_HSTORE_NOT(x))
-#define PRIV_HSTORE_IF_ELSE(condition) PRIV_HSTORE_SIF_ELSE(PRIV_HSTORE_BOOL(condition))
-#define PRIV_HSTORE_SIF_ELSE(condition) PRIV_HSTORE_JOIN(PRIV_HSTORE_SIF_, condition)
-#define PRIV_HSTORE_SIF_1(...) __VA_ARGS__ PRIV_HSTORE_SIF_1_ELSE
-#define PRIV_HSTORE_SIF_0(...)             PRIV_HSTORE_SIF_0_ELSE
-#define PRIV_HSTORE_SIF_1_ELSE(...)
-#define PRIV_HSTORE_SIF_0_ELSE(...) __VA_ARGS__
-#define PRIV_HSTORE_EMPTY()
-#define PRIV_HSTORE_EVAL(...) PRIV_HSTORE_EVAL256(__VA_ARGS__)
-#define PRIV_HSTORE_EVAL256(...) PRIV_HSTORE_EVAL128(PRIV_HSTORE_EVAL128(__VA_ARGS__))
-#define PRIV_HSTORE_EVAL128(...) PRIV_HSTORE_EVAL64(PRIV_HSTORE_EVAL64(__VA_ARGS__))
-#define PRIV_HSTORE_EVAL64(...) PRIV_HSTORE_EVAL32(PRIV_HSTORE_EVAL32(__VA_ARGS__))
-#define PRIV_HSTORE_EVAL32(...) PRIV_HSTORE_EVAL16(PRIV_HSTORE_EVAL16(__VA_ARGS__))
-#define PRIV_HSTORE_EVAL16(...) PRIV_HSTORE_EVAL8(PRIV_HSTORE_EVAL8(__VA_ARGS__))
-#define PRIV_HSTORE_EVAL8(...) PRIV_HSTORE_EVAL4(PRIV_HSTORE_EVAL4(__VA_ARGS__))
-#define PRIV_HSTORE_EVAL4(...) PRIV_HSTORE_EVAL2(PRIV_HSTORE_EVAL2(__VA_ARGS__))
-#define PRIV_HSTORE_EVAL2(...) PRIV_HSTORE_EVAL1(PRIV_HSTORE_EVAL1(__VA_ARGS__))
-#define PRIV_HSTORE_EVAL1(...) __VA_ARGS__
-#define PRIV_HSTORE_DEFER2(m) m PRIV_HSTORE_EMPTY PRIV_HSTORE_EMPTY()()
-#define PRIV_HSTORE_HAS_PARGS(...) PRIV_HSTORE_BOOL(PRIV_HSTORE_FIRST(PRIV_HSTORE_SEOAP_ __VA_ARGS__)())
-#define PRIV_HSTORE_SEOAP_(...) PRIV_HSTORE_BOOL(PRIV_HSTORE_FIRST(PRIV_HSTORE_SEOA_ __VA_ARGS__)())
-#define PRIV_HSTORE_SEOA_() 0
-#define PRIV_HSTORE_MAP(f, VS...) PRIV_HSTORE_EVAL(PRIV_HSTORE_MAPP(f, VS))
-#define PRIV_HSTORE_MAPP(f, H, T...)        \
-  f H                                 \
-  PRIV_HSTORE_IF_ELSE(PRIV_HSTORE_HAS_PARGS(T))(  \
-    PRIV_HSTORE_DEFER2(PRIV_HSTORE_SMAPP)()(f, T) \
-  )(                                  \
-  )
-#define PRIV_HSTORE_SMAPP() PRIV_HSTORE_MAPP
-#define PRIV_HSTORE_MAPL(f, VS...) PRIV_HSTORE_EVAL(PRIV_HSTORE_MAPLP(f, VS))
-#define PRIV_HSTORE_MAPLP(f, H, T...)              \
-  f(H)                                             \
-  PRIV_HSTORE_IF_ELSE(PRIV_HSTORE_HAS_PARGS(T))(   \
-    PRIV_HSTORE_DEFER2(PRIV_HSTORE_SMAPLP)()(f, T) \
-  )(                                               \
-  )
-#define PRIV_HSTORE_SMAPLP() PRIV_HSTORE_MAPLP
+/*
+ * store tuples (this gets a little complicated)
+ */
 
-// support storing packed, reflective structs
-#define HSTORE_FIELDC_SUCC(t,n) +1
-#define HSTORE_FIELD_COUNT(FIELDS...) (0 PRIV_HSTORE_MAP(HSTORE_FIELDC_SUCC, FIELDS))
+// a generic method to write tuples as a last resort
+template <size_t i, size_t n, typename ... Ts>
+  struct storeTupleDef {
+    typedef typename nth<i, Ts...>::type H;
+    typedef typename tuple<Ts...>::offs  offs;
+    typedef storeTupleDef<i+1, n, Ts...> Recurse;
 
-#define HSTORE_FIELDS_SUCC(t,n) +::hobbes::storage::store< t >::size(this-> n)
-#define HSTORE_FIELD_SIZE(FIELDS...) (0 PRIV_HSTORE_MAP(HSTORE_FIELDS_SUCC, FIELDS))
+    static void fieldDefs(ty::Struct::Fields* fs) {
+      fs->push_back(ty::Struct::Field(".f" + string::from(i), static_cast<int>(offsetAt<i, offs>::value), store<H>::type()));
+      Recurse::fieldDefs(fs);
+    }
+    static ty::desc type() { ty::Struct::Fields fs; fieldDefs(&fs); return ty::record(fs); }
 
-#define HSTORE_FIELDW_SUCC(t,n) &&::hobbes::storage::store< t >::write(p, this-> n)
-#define HSTORE_FIELD_WRITES(FIELDS...) (true PRIV_HSTORE_MAP(HSTORE_FIELDW_SUCC, FIELDS))
+    static size_t size(const tuple<Ts...>& x) {
+      return store<H>::size(x.template at<i>()) + Recurse::size(x);
+    }
 
-#define HSTORE_STRUCT_FIELD(t, n) t n;
-#define HSTORE_STRUCT_FIELD_ENC(t, n) ::hobbes::storage::ws(#n, out); ::hobbes::storage::w(static_cast<int>(-1), out); ::hobbes::storage::store< t >::encode(out);
-#define HSTORE_STRUCT_FIELD_DESC(t, n) + (", " #n " : " + ::hobbes::storage::store< t >::describe())
-#define HSTORE_STRUCT_FIELD_EQ(t, n) && this->n == rhs.n
-
-#define DEFINE_PACKED_HSTORE_STRUCT(T, FIELDS...) \
-  struct T { \
-    PRIV_HSTORE_MAP(HSTORE_STRUCT_FIELD, FIELDS) /* struct fields */ \
-    typedef void is_packed_hstore_struct; /* identify this type as a packed struct */ \
-    static void encode(::hobbes::storage::bytes* out) { \
-      size_t localArity = HSTORE_FIELD_COUNT(FIELDS); \
-      if (localArity > 0) { \
-        ::hobbes::storage::w(PRIV_HSTORE_TYCTOR_STRUCT, out); \
-        ::hobbes::storage::w(localArity, out); \
-        PRIV_HSTORE_MAP(HSTORE_STRUCT_FIELD_ENC, FIELDS) \
-      } else { \
-        ::hobbes::storage::encode_primty("unit", out); \
-      } \
-    } \
-    static std::string describe() { \
-      return "{" + ( std::string("") PRIV_HSTORE_MAP(HSTORE_STRUCT_FIELD_DESC, FIELDS) ).substr(2) + "}"; \
-    } \
-    bool operator==(const T& rhs) const { \
-      return true PRIV_HSTORE_MAP(HSTORE_STRUCT_FIELD_EQ, FIELDS); \
-    } \
-  } __attribute__((packed))
-
-template <typename T>
-  struct store<T, typename T::is_packed_hstore_struct> {
-    typedef void can_memcpy;
-    static void        encode(bytes* out)          { T::encode(out); }
-    static std::string describe()                  { return T::describe(); }
-    static size_t      size(const T&)              { return sizeof(T); }
-    static bool        write(wpipe& p, const T& x) { return p.write(reinterpret_cast<const uint8_t*>(&x), sizeof(x)); }
+    static bool incrWrite(wpipe& p, const tuple<Ts...>& x) {
+      return store<H>::write(p, x.template at<i>()) &&
+             Recurse::incrWrite(p, x);
+    }
+  };
+template <size_t n, typename ... Ts>
+  struct storeTupleDef<n, n, Ts...> {
+    static void fieldDefs(ty::Struct::Fields*)         { }
+    static ty::desc type()                             { return ty::prim("unit"); }
+    static size_t size(const tuple<Ts...>&)            { return  0; }
+    static bool incrWrite(wpipe&, const tuple<Ts...>&) { return true; }
   };
 
-// support storing standard, reflective structs
-#define DEFINE_HSTORE_STRUCT(T, FIELDS...) \
-  struct T { \
-    PRIV_HSTORE_MAP(HSTORE_STRUCT_FIELD, FIELDS) /* struct fields */ \
-    typedef void is_hstore_struct; /* identify this type as a struct */ \
-    static std::string name() { return #T; } \
-    static void encode(::hobbes::storage::bytes* out) { \
-      size_t localArity = HSTORE_FIELD_COUNT(FIELDS); \
-      if (localArity > 0) { \
-        ::hobbes::storage::w(PRIV_HSTORE_TYCTOR_STRUCT, out); \
-        ::hobbes::storage::w(localArity, out); \
-        PRIV_HSTORE_MAP(HSTORE_STRUCT_FIELD_ENC, FIELDS) \
-      } else { \
-        ::hobbes::storage::encode_primty("unit", out); \
-      } \
-    } \
-    static std::string describe() { \
-      return "{" + ( std::string("") PRIV_HSTORE_MAP(HSTORE_STRUCT_FIELD_DESC, FIELDS) ).substr(2) + "}"; \
-    } \
-    bool operator==(const T& rhs) const { \
-      return true PRIV_HSTORE_MAP(HSTORE_STRUCT_FIELD_EQ, FIELDS); \
-    } \
-    size_t size() const { \
-      return HSTORE_FIELD_SIZE(FIELDS); \
-    } \
-    bool write(::hobbes::storage::wpipe& p) const { \
-      return HSTORE_FIELD_WRITES(FIELDS); \
-    } \
-  }
+// when we store standard-layout tuples, we can only bulk memcpy them if:
+//   * all fields up to the last one are packed (no internal padding, but trailing padding is ok since we can truncate it with memcpy)
+//   * all field types can be memcopied
+template <typename T, typename P = void>
+  struct storeStdLayoutTuple { };
 
-template <typename T>
-  struct store<T, typename T::is_hstore_struct> {
-    static std::string storageName()               { return T::name(); }
-    static void        encode(bytes* out)          { T::encode(out); }
-    static std::string describe()                  { return T::describe(); }
-    static size_t      size(const T& x)            { return x.size(); }
-    static bool        write(wpipe& p, const T& x) { return x.write(p); }
+template <typename ... Ts>
+  struct all_memcpyableFs { static const bool value = true; };
+template <typename T, typename ... Ts>
+  struct all_memcpyableFs<T, Ts...> { static const bool value = store<T>::can_memcpy && all_memcpyableFs<Ts...>::value; };
+
+// the whole tuple can be memcopied
+//   e.g.: int*int
+template <typename ... Ts>
+  struct storeStdLayoutTuple<tuple<Ts...>, typename tbool<tuple<Ts...>::packed && all_memcpyableFs<Ts...>::value>::type> {
+    static const bool can_memcpy = true;
+    static ty::desc type()                                 { return storeTupleDef<0, sizeof...(Ts), Ts...>::type(); }
+    static size_t   size(const tuple<Ts...>&)              { return sizeof(tuple<Ts...>); }
+    static bool     write(wpipe& p, const tuple<Ts...>& t) { return p.write(reinterpret_cast<const uint8_t*>(&t), sizeof(t)); }
   };
 
-// support storing standard pairs of types
+// the tuple prefix can be memcopied but the whole thing can't because it has trailing padding
+//   e.g.: double*int
+template <typename ... Ts>
+  struct storeStdLayoutTuple<tuple<Ts...>, typename tbool<!tuple<Ts...>::packed && tuple<Ts...>::offs::packed && all_memcpyableFs<Ts...>::value>::type> {
+    static const bool can_memcpy = false;
+    static ty::desc type()                                 { return storeTupleDef<0, sizeof...(Ts), Ts...>::type(); }
+    static size_t   size(const tuple<Ts...>&)              { return tuple<Ts...>::offs::size; }
+    static bool     write(wpipe& p, const tuple<Ts...>& t) { return p.write(reinterpret_cast<const uint8_t*>(&t), tuple<Ts...>::offs::size); }
+  };
+
+// the tuple can't be memcopied
+template <typename ... Ts>
+  struct storeStdLayoutTuple<tuple<Ts...>, typename tbool<(!tuple<Ts...>::packed && !tuple<Ts...>::offs::packed) || !all_memcpyableFs<Ts...>::value>::type> {
+    static const bool can_memcpy = false;
+    typedef storeTupleDef<0, sizeof...(Ts), Ts...> Reflect;
+    static ty::desc type()                                 { return Reflect::type(); }
+    static size_t   size(const tuple<Ts...>& t)            { return Reflect::size(t); }
+    static bool     write(wpipe& p, const tuple<Ts...>& t) { return Reflect::incrWrite(p, t); }
+  };
+
+// many types can be stored "as if" some standard layout tuple
+// those types can describe themselves however they would like, then defer to this implementation to actually write and compute size
+template <typename R, typename T>
+  struct storeAsIfTuple {
+    static const bool can_memcpy = storeStdLayoutTuple<T>::can_memcpy;
+
+    static size_t size (const R& r)           { return storeStdLayoutTuple<T>::size(*reinterpret_cast<const T*>(&r)); }
+    static bool   write(wpipe& p, const R& r) { return storeStdLayoutTuple<T>::write(p, *reinterpret_cast<const T*>(&r)); }
+  };
+
+// store pairs
 template <typename U, typename V>
-  struct store<std::pair<U,V>> {
-    static void encode(bytes* out) {
-      w(PRIV_HSTORE_TYCTOR_STRUCT, out);
-      w(static_cast<size_t>(2), out);
-      
-      ws(".f0", out);
-      w(static_cast<int>(-1), out);
-      store<U>::encode(out);
+  struct store<std::pair<U,V>> : public storeAsIfTuple<std::pair<U,V>, tuple<U,V>> {
+    static ty::desc type() { return storeStdLayoutTuple<tuple<U,V>>::type(); }
+  };
 
-      ws(".f1", out);
-      w(static_cast<int>(-1), out);
-      store<V>::encode(out);
+// store reflective structs
+#define DEFINE_HSTORE_STRUCT(T, FIELDS...) DEFINE_STRUCT(T, FIELDS)
+
+struct defStructF {
+  ty::Struct::Fields* fs;
+  defStructF(ty::Struct::Fields* fs) : fs(fs) { }
+  template <typename T>
+    void visit(const char* fname) {
+      this->fs->push_back(ty::Struct::Field(fname, -1, store<T>::type()));
     }
-    static std::string describe() {
-      return "(" + store<U>::describe() + "*" + store<V>::describe() + ")";
-    }
-    static size_t size(const std::pair<U, V>& x) {
-      return store<U>::size(x.first) + store<V>::size(x.second);
-    }
-    static bool write(wpipe& p, const std::pair<U, V>& x) {
-      return store<U>::write(p, x.first) && store<V>::write(p, x.second);
+};
+template <typename T>
+  struct store<T, typename tbool<T::is_hmeta_struct>::type> : public storeAsIfTuple<T, typename T::as_tuple_type> {
+    static std::string storageName() { return T::_hmeta_struct_type_name(); }
+
+    static ty::desc type() {
+      ty::Struct::Fields fs;
+      defStructF df(&fs);
+      T::meta(df);
+      return ty::record(fs);
     }
   };
+
+// this macro is deprecated, but has been used to define a struct to record s.t. it stores via memcpy
+// for backward compatibility, assert that a packed struct is packed
+// this breaks if users don't declare structs in a way that would be packed without the packed annotation
+// but allows all structs that happen to be packed to share the same memcpy logic
+#define DEFINE_PACKED_HSTORE_STRUCT(T, FIELDS...) \
+  DEFINE_STRUCT(T, FIELDS); \
+  static_assert(::hobbes::storage::storeStdLayoutTuple<T>::can_memcpy)
 
 // support storing "struct views" (select fields / const accessor functions) out of a type
 template <typename T, typename F>
@@ -1357,225 +1321,150 @@ template <typename T, typename F>
     static F read(const T& x, Acc a) { return (x.*a)(); }
   };
 
-#define PRIV_HSTORE_DSV_T(f)     member<decltype(resolve(&SelfT::f))>::type
-#define PRIV_HSTORE_DSV_READ(f)  member<decltype(resolve(&SelfT::f))>::read(x, std::integral_constant<member<decltype(resolve(&SelfT::f))>::Acc, &SelfT::f>::value)
-#define PRIV_HSTORE_DSV_COUNT(_) +1
-#define PRIV_HSTORE_DSV_ENCF(f)  ws(#f, out); w(int(-1), out); store< PRIV_HSTORE_DSV_T(f) >::encode(out);
-#define PRIV_HSTORE_DSV_DESC(f)  ss << ", " << #f << ":" << store< PRIV_HSTORE_DSV_T(f) >::describe();
-#define PRIV_HSTORE_DSV_SIZE(f)  + store< PRIV_HSTORE_DSV_T(f) >::size(PRIV_HSTORE_DSV_READ(f))
-#define PRIV_HSTORE_DSV_WRITE(f) && store< PRIV_HSTORE_DSV_T(f) >::write(p, PRIV_HSTORE_DSV_READ(f))
+#define PRIV_HSTORE_DSV_T(f)         member<decltype(resolve(&SelfT::f))>::type
+#define PRIV_HSTORE_DSV_READ(f)      member<decltype(resolve(&SelfT::f))>::read(x, std::integral_constant<member<decltype(resolve(&SelfT::f))>::Acc, &SelfT::f>::value)
+#define PRIV_HSTORE_DSV_DEF_FIELD(f) fs.push_back(ty::Struct::Field(#f, -1, store<PRIV_HSTORE_DSV_T(f)>::type()));
+#define PRIV_HSTORE_DSV_SIZE(f)      + store< PRIV_HSTORE_DSV_T(f) >::size(PRIV_HSTORE_DSV_READ(f))
+#define PRIV_HSTORE_DSV_WRITE(f)     && store< PRIV_HSTORE_DSV_T(f) >::write(p, PRIV_HSTORE_DSV_READ(f))
 
 #define DEFINE_HSTORE_STRUCT_VIEW(T, FIELDS...) \
   namespace hobbes { namespace storage { \
     template <> \
       struct store<T> { \
         typedef T SelfT; \
-        static void encode(bytes* out) { w(PRIV_HSTORE_TYCTOR_STRUCT, out); w(size_t(0 PRIV_HSTORE_MAPL(PRIV_HSTORE_DSV_COUNT, FIELDS)), out); PRIV_HSTORE_MAPL(PRIV_HSTORE_DSV_ENCF, FIELDS); } \
-        static std::string describe() { std::ostringstream ss; PRIV_HSTORE_MAPL(PRIV_HSTORE_DSV_DESC, FIELDS); return "{ " + ss.str().substr(2) + " }"; } \
-        static size_t size(const T& x) { return 0 PRIV_HSTORE_MAPL(PRIV_HSTORE_DSV_SIZE, FIELDS); } \
-        static bool write(wpipe& p, const T& x) { return true PRIV_HSTORE_MAPL(PRIV_HSTORE_DSV_WRITE, FIELDS); } \
         static std::string storageName() { return #T; } \
+        static ty::desc type() { ty::Struct::Fields fs; PRIV_HPPF_MAPL(PRIV_HSTORE_DSV_DEF_FIELD, FIELDS); return ty::record(fs); } \
+        static size_t size(const T& x) { return 0 PRIV_HPPF_MAPL(PRIV_HSTORE_DSV_SIZE, FIELDS); } \
+        static bool write(wpipe& p, const T& x) { return true PRIV_HPPF_MAPL(PRIV_HSTORE_DSV_WRITE, FIELDS); } \
       }; \
     template <> \
       struct store<T*> { \
         typedef T SelfT; \
-        static void encode(bytes* out) { w(PRIV_HSTORE_TYCTOR_STRUCT, out); w(size_t(0 PRIV_HSTORE_MAPL(PRIV_HSTORE_DSV_COUNT, FIELDS)), out); PRIV_HSTORE_MAPL(PRIV_HSTORE_DSV_ENCF, FIELDS); } \
-        static std::string describe() { std::ostringstream ss; PRIV_HSTORE_MAPL(PRIV_HSTORE_DSV_DESC, FIELDS); return "{ " + ss.str().substr(2) + " }"; } \
-        static size_t size(const T* px) { const T& x = *px; return 0 PRIV_HSTORE_MAPL(PRIV_HSTORE_DSV_SIZE, FIELDS); } \
-        static bool write(wpipe& p, const T* px) { const T& x = *px; return true PRIV_HSTORE_MAPL(PRIV_HSTORE_DSV_WRITE, FIELDS); } \
         static std::string storageName() { return #T; } \
+        static ty::desc type() { ty::Struct::Fields fs; PRIV_HPPF_MAPL(PRIV_HSTORE_DSV_DEF_FIELD, FIELDS); return ty::record(fs); } \
+        static size_t size(const T* px) { const T& x = *px; return 0 PRIV_HPPF_MAPL(PRIV_HSTORE_DSV_SIZE, FIELDS); } \
+        static bool write(wpipe& p, const T* px) { const T& x = *px; return true PRIV_HPPF_MAPL(PRIV_HSTORE_DSV_WRITE, FIELDS); } \
       }; \
     template <> \
       struct store<const T*> { \
         typedef T SelfT; \
-        static void encode(bytes* out) { w(PRIV_HSTORE_TYCTOR_STRUCT, out); w(size_t(0 PRIV_HSTORE_MAPL(PRIV_HSTORE_DSV_COUNT, FIELDS)), out); PRIV_HSTORE_MAPL(PRIV_HSTORE_DSV_ENCF, FIELDS); } \
-        static std::string describe() { std::ostringstream ss; PRIV_HSTORE_MAPL(PRIV_HSTORE_DSV_DESC, FIELDS); return "{ " + ss.str().substr(2) + " }"; } \
-        static size_t size(const T* px) { const T& x = *px; return 0 PRIV_HSTORE_MAPL(PRIV_HSTORE_DSV_SIZE, FIELDS); } \
-        static bool write(wpipe& p, const T* px) { const T& x = *px; return true PRIV_HSTORE_MAPL(PRIV_HSTORE_DSV_WRITE, FIELDS); } \
         static std::string storageName() { return #T; } \
+        static ty::desc type() { ty::Struct::Fields fs; PRIV_HPPF_MAPL(PRIV_HSTORE_DSV_DEF_FIELD, FIELDS); return ty::record(fs); } \
+        static size_t size(const T* px) { const T& x = *px; return 0 PRIV_HPPF_MAPL(PRIV_HSTORE_DSV_SIZE, FIELDS); } \
+        static bool write(wpipe& p, const T* px) { const T& x = *px; return true PRIV_HPPF_MAPL(PRIV_HSTORE_DSV_WRITE, FIELDS); } \
       }; \
   }}
 #define HSTORE_MAKE_FRIEND template <typename _> friend class hobbes::storage::store;
 
-// support storing reflective enumerations
-#define HSTORE_ENUM_CTOR_DEF(n) n ,
-#define HSTORE_ENUM_CTOR_CTOR(n) static const SelfT n() { return SelfT(SelfT::Enum::n); }
-#define HSTORE_ENUM_CTORC_SUCC(n) +1
-#define HSTORE_ENUM_CTOR_STR(n) + "|" #n
-#define HSTORE_ENUM_CTOR_ENCODE(n) \
-  ::hobbes::storage::ws(#n, out); \
-  ::hobbes::storage::w(static_cast<uint32_t>(Enum :: n), out); \
-  ::hobbes::storage::encode_primty("unit", out);
+// store std::tuples
+// (std::tuples don't have standard layout so we need to store them the hard way)
+template <size_t i, size_t e, typename ... Ts>
+  struct storeTuple {
+    static size_t size(const std::tuple<Ts...>& t) {
+      return store<typename std::tuple_element<i, std::tuple<Ts...>>::type>::size(std::get<i>(t)) +
+             storeTuple<i+1, e, Ts...>::size(t);
+    }
+    static bool write(wpipe& p, const std::tuple<Ts...>& t) {
+      return store<typename std::tuple_element<i, std::tuple<Ts...>>::type>::write(p, std::get<i>(t)) &&
+             storeTuple<i+1, e, Ts...>::write(p, t);
+    }
+  };
+template <size_t e, typename ... Ts>
+  struct storeTuple<e, e, Ts...> {
+    static size_t size(const std::tuple<Ts...>&) { return 0; }
+    static bool write(wpipe&, const std::tuple<Ts...>&) { return true; }
+  };
+template <typename ... Ts>
+  struct store< std::tuple<Ts...> > {
+    static ty::desc type() { return storeStdLayoutTuple<tuple<Ts...>>::type(); }
 
-#define DEFINE_HSTORE_ENUM(T, CTORS...) \
-  struct T { \
-    typedef void is_hstore_enum; \
-    enum class Enum : uint32_t { \
-      PRIV_HSTORE_MAP(HSTORE_ENUM_CTOR_DEF, CTORS) \
-      COUNT \
-    }; \
-    Enum value; \
-    T() : value() { } \
-    T(Enum v) : value(v) { } \
-    T& operator=(Enum v) { this->value = v; return *this; } \
-    operator Enum() const { return this->value; } \
-    typedef T SelfT; \
-    PRIV_HSTORE_MAP(HSTORE_ENUM_CTOR_CTOR, CTORS) \
-    static void encode(::hobbes::storage::bytes* out) { \
-      ::hobbes::storage::w(PRIV_HSTORE_TYCTOR_VARIANT, out); \
-      ::hobbes::storage::w(static_cast<size_t>(0 PRIV_HSTORE_MAP(HSTORE_ENUM_CTORC_SUCC, CTORS)), out); \
-      PRIV_HSTORE_MAP(HSTORE_ENUM_CTOR_ENCODE, CTORS); \
-    } \
-    static std::string describe() { \
-      return (std::string("") PRIV_HSTORE_MAP(HSTORE_ENUM_CTOR_STR, CTORS)).substr(1); \
-    } \
-    bool operator==(const T& rhs) const { return this->value == rhs.value; } \
-  }
-
-template <typename T>
-  struct store<T, typename T::is_hstore_enum> {
-    typedef void can_memcpy;
-    static void        encode(bytes* out)          { T::encode(out); }
-    static std::string describe()                  { return T::describe(); }
-    static size_t      size(const T&)              { return sizeof(T); }
-    static bool        write(wpipe& p, const T& x) { return p.write(reinterpret_cast<const uint8_t*>(&x), sizeof(x)); }
+    static size_t size(const std::tuple<Ts...>& t) {
+      return storeTuple<0, sizeof...(Ts), Ts...>::size(t);
+    }
+    static bool write(wpipe& p, const std::tuple<Ts...>& t) {
+      return storeTuple<0, sizeof...(Ts), Ts...>::write(p, t);
+    }
   };
 
-// support storing variants (with and without explicit constructor names)
-#define DEFINE_HSTORE_VARIANT_GEN(T, VDECL, VCTORS, VCOPY, VDESTROY, CTORCOUNT, VENCODE, VDESC, VSIZE, VWRITE, VVISITCASE, VEQCASE, CTAGS, CDATA) \
-  template <typename R> \
-    struct T##Visitor { \
-      VDECL \
-    }; \
-  struct T { \
-    typedef void is_hstore_variant; \
-    typedef T SelfT; \
-    T() : tag(Enum::COUNT) { } \
-    VCTORS \
-    T(const T& rhs) : tag(rhs.tag) { \
-      switch (this->tag) { \
-      VCOPY \
-      default: break; \
-      } \
-    } \
-    ~T() { \
-      switch (this->tag) { \
-      VDESTROY \
-      default: break; \
-      } \
-    } \
-    T& operator=(const T& rhs) { \
-      if (this == &rhs) return *this; \
-      switch (this->tag) { \
-      VDESTROY \
-      default: break; \
-      } \
-      this->tag = rhs.tag; \
-      switch (this->tag) { \
-      VCOPY \
-      default: break; \
-      } \
-      return *this; \
-    } \
-    static void encode(::hobbes::storage::bytes* out) { \
-      ::hobbes::storage::w(PRIV_HSTORE_TYCTOR_VARIANT, out); \
-      ::hobbes::storage::w((size_t)(0 CTORCOUNT), out); \
-      VENCODE; \
-    } \
-    static std::string describe() { \
-      return "|" + (std::string("") VDESC).substr(1) + "|"; \
-    } \
-    size_t wireSize() const { \
-      switch (this->tag) { \
-      VSIZE \
-      default: return 0; \
-      } \
-    } \
-    bool write(::hobbes::storage::wpipe& p) const { \
-      switch (this->tag) { \
-      VWRITE \
-      default: return false; \
-      } \
-    } \
-    template <typename R> \
-      R visit(const T##Visitor<R>& v) const { \
-        switch (this->tag) { \
-        VVISITCASE \
-        default: throw std::runtime_error("while deconstructing the " #T " variant, cannot decide payload type because tag is invalid"); \
-        } \
-      } \
-    bool operator==(const T& rhs) const { \
-      if (this->tag != rhs.tag) { \
-        return false; \
-      } else { \
-        switch (this->tag) { \
-        VEQCASE \
-        default: return false; \
-        } \
-      } \
-    } \
-  private: \
-    enum class Enum : uint32_t { \
-      CTAGS \
-      COUNT \
-    }; \
-    Enum tag; \
-    union { \
-      char data[1]; \
-      CDATA \
-    }; \
-  }
+// store enumerations
+template <typename T>
+  struct store<T, typename tbool<T::is_hmeta_enum>::type> {
+    static const bool can_memcpy = true;
+    
+    static ty::desc type()                      { return ty::enumdef(store<typename T::rep_t>::type(), T::meta()); }
+    static size_t   size(const T&)              { return sizeof(typename T::rep_t); }
+    static bool     write(wpipe& p, const T& x) { return p.write(reinterpret_cast<const uint8_t*>(&x), sizeof(x)); }
+  };
 
-// (with implicit ctor names)
-#define HSTORE_VARIANT_CTOR(n, t) static SelfT n(const t & x) { SelfT r; r.tag = Enum::tag_##n; new (r.data) t(x); return r; }
-#define HSTORE_VARIANT_CTOR_STR(n, t) + "," #n ":" + ::hobbes::storage::store< t >::describe()
-#define HSTORE_VARIANT_CTOR_TAG(n, t) tag_##n,
-#define HSTORE_VARIANT_SIZE_CASE(n, t)    case Enum::tag_##n: return sizeof(int) + ::hobbes::storage::store< t >::size(this->n##_data);
-#define HSTORE_VARIANT_WRITE_CASE(n, t) case Enum::tag_##n: return ::hobbes::storage::store<int>::write(p, (int)this->tag) && ::hobbes::storage::store< t >::write(p, this->n##_data);
-#define HSTORE_VARIANT_PCOPY(n, t)      case Enum::tag_##n: new (this->data) t(rhs.n##_data); break;
-#define HSTORE_VARIANT_PDESTROY(n, t)   case Enum::tag_##n: { typedef t PRIV_DT; ((PRIV_DT*)&this->n##_data)->~PRIV_DT(); } break;
-#define HSTORE_VARIANT_SUCC(n, t) +1
-#define HSTORE_VARIANT_CTOR_OPAQUEDATA(n, t) t n##_data;
-#define HSTORE_VARIANT_CTOR_ENCODE(n, t) \
-  ::hobbes::storage::ws(#n, out); \
-  ::hobbes::storage::w((uint32_t)Enum::tag_##n, out); \
-  ::hobbes::storage::store< t >::encode(out);
+// store variants
+template <size_t i, size_t n, typename ... Ts>
+  struct storeVariantDef {
+    typedef typename nth<i, Ts...>::type   H;
+    typedef variant<Ts...>                 VT;
+    typedef storeVariantDef<i+1, n, Ts...> Recurse;
 
-#define HSTORE_VARIANT_VDECL(n, t) virtual R n(const t & x) const = 0;
-#define HSTORE_VARIANT_VCASE(n, t) case Enum::tag_##n: return v. n (this->n##_data);
-#define HSTORE_VARIANT_EQCASE(n, t) case Enum::tag_##n: return (this->n##_data == rhs.n##_data);
+    static void ctorDefs(ty::Variant::Ctors* cs) {
+      cs->push_back(ty::Variant::Ctor(".f" + string::from(i), static_cast<int>(i), store<H>::type()));
+      Recurse::ctorDefs(cs);
+    }
+    static ty::desc type() { ty::Variant::Ctors cs; ctorDefs(&cs); return ty::variant(cs); }
 
-#define DEFINE_HSTORE_VARIANT(T, CTORS...) \
-  DEFINE_HSTORE_VARIANT_GEN(T, PRIV_HSTORE_MAP(HSTORE_VARIANT_VDECL, CTORS), PRIV_HSTORE_MAP(HSTORE_VARIANT_CTOR, CTORS), PRIV_HSTORE_MAP(HSTORE_VARIANT_PCOPY, CTORS), PRIV_HSTORE_MAP(HSTORE_VARIANT_PDESTROY, CTORS), PRIV_HSTORE_MAP(HSTORE_VARIANT_SUCC, CTORS), PRIV_HSTORE_MAP(HSTORE_VARIANT_CTOR_ENCODE, CTORS), PRIV_HSTORE_MAP(HSTORE_VARIANT_CTOR_STR, CTORS), PRIV_HSTORE_MAP(HSTORE_VARIANT_SIZE_CASE, CTORS), PRIV_HSTORE_MAP(HSTORE_VARIANT_WRITE_CASE, CTORS), PRIV_HSTORE_MAP(HSTORE_VARIANT_VCASE, CTORS), PRIV_HSTORE_MAP(HSTORE_VARIANT_EQCASE, CTORS), PRIV_HSTORE_MAP(HSTORE_VARIANT_CTOR_TAG, CTORS), PRIV_HSTORE_MAP(HSTORE_VARIANT_CTOR_OPAQUEDATA, CTORS))
+    static size_t maxSize()      { return std::max<size_t>(store<H>::size(),      Recurse::maxSize());      }
+    static size_t maxAlignment() { return std::max<size_t>(store<H>::alignment(), Recurse::maxAlignment()); }
+    static size_t tagOffset()    { return align<size_t>(sizeof(uint32_t), maxAlignment()); }
 
-// (with explicit ctor names)
-#define HSTORE_VARIANT_LBL_CTOR(n, lbl, t) static SelfT n(const t & x) { SelfT r; r.tag = Enum::tag_##n; new (r.data) t(x); return r; }
-#define HSTORE_VARIANT_LBL_CTOR_STR(n, lbl, t) + "," #n ":" + ::hobbes::storage::store< t >::describe()
-#define HSTORE_VARIANT_LBL_CTOR_TAG(n, lbl, t) tag_##n,
-#define HSTORE_VARIANT_LBL_SIZE_CASE(n, lbl, t)    case Enum::tag_##n: return sizeof(int) + ::hobbes::storage::store< t >::size(this->n##_data);
-#define HSTORE_VARIANT_LBL_WRITE_CASE(n, lbl, t) case Enum::tag_##n: return ::hobbes::storage::store<int>::write(p, (int)this->tag) && ::hobbes::storage::store< t >::write(p, this->n##_data);
-#define HSTORE_VARIANT_LBL_PCOPY(n, lbl, t)      case Enum::tag_##n: new (this->data) t(rhs.n##_data); break;
-#define HSTORE_VARIANT_LBL_PDESTROY(n, lbl, t)   case Enum::tag_##n: { typedef t PRIV_DT; ((PRIV_DT*)&this->n##_data)->~PRIV_DT(); } break;
-#define HSTORE_VARIANT_LBL_SUCC(n, lbl, t) +1
-#define HSTORE_VARIANT_LBL_CTOR_OPAQUEDATA(n, lbl, t) t n##_data;
-#define HSTORE_VARIANT_LBL_CTOR_ENCODE(n, lbl, t) \
-  ::hobbes::storage::ws(#lbl, out); \
-  ::hobbes::storage::w((uint32_t)Enum::tag_##n, out); \
-  ::hobbes::storage::store< t >::encode(out);
+    static size_t size()      { return align<size_t>(align<size_t>(sizeof(uint32_t), maxAlignment()) + maxSize(), maxAlignment()); }
+    static size_t alignment() { return std::max<size_t>(sizeof(uint32_t), maxAlignment()); }
+  };
+template <size_t n, typename ... Ts>
+  struct storeVariantDef<n, n, Ts...> {
+    static void     ctorDefs(ty::Variant::Ctors*) { }
+    static ty::desc type()                        { return ty::prim("void"); }
+    static size_t   maxSize()                     { return 0;  }
+    static size_t   maxAlignment()                { return 1;  }
+  };
 
-#define HSTORE_VARIANT_LBL_VDECL(n, lbl, t) virtual R n(const t & x) const = 0;
-#define HSTORE_VARIANT_LBL_VCASE(n, lbl, t) case Enum::tag_##n: return v. n (this->n##_data);
-#define HSTORE_VARIANT_LBL_EQCASE(n, lbl, t) case Enum::tag_##n: return (this->n##_data == rhs.n##_data);
+template <size_t tag, typename T, typename M>
+  struct variantGenWrite {
+    static bool fn(T* vd, wpipe* f) {
+      return store<T>::write(*f, *vd);
+    }
+  };
+template <typename ... Ts>
+  struct store<variant<Ts...>> : public storeVariantDef<0, sizeof...(Ts), Ts...> {
+    static const bool can_memcpy = false;
+    typedef storeVariantDef<0, sizeof...(Ts), Ts...> Reflect;
 
-#define DEFINE_HSTORE_VARIANT_WITH_LABELS(T, CTORS...) \
-  DEFINE_HSTORE_VARIANT_GEN(T, PRIV_HSTORE_MAP(HSTORE_VARIANT_LBL_VDECL, CTORS), PRIV_HSTORE_MAP(HSTORE_VARIANT_LBL_CTOR, CTORS), PRIV_HSTORE_MAP(HSTORE_VARIANT_LBL_PCOPY, CTORS), PRIV_HSTORE_MAP(HSTORE_VARIANT_LBL_PDESTROY, CTORS), PRIV_HSTORE_MAP(HSTORE_VARIANT_LBL_SUCC, CTORS), PRIV_HSTORE_MAP(HSTORE_VARIANT_LBL_CTOR_ENCODE, CTORS), PRIV_HSTORE_MAP(HSTORE_VARIANT_LBL_CTOR_STR, CTORS), PRIV_HSTORE_MAP(HSTORE_VARIANT_LBL_SIZE_CASE, CTORS), PRIV_HSTORE_MAP(HSTORE_VARIANT_LBL_WRITE_CASE, CTORS), PRIV_HSTORE_MAP(HSTORE_VARIANT_LBL_VCASE, CTORS), PRIV_HSTORE_MAP(HSTORE_VARIANT_LBL_EQCASE, CTORS), PRIV_HSTORE_MAP(HSTORE_VARIANT_LBL_CTOR_TAG, CTORS), PRIV_HSTORE_MAP(HSTORE_VARIANT_LBL_CTOR_OPAQUEDATA, CTORS))
+    static void write(wpipe& p, const variant<Ts...>& x) {
+      return x.template apply<bool, variantGenWrite, void, wpipe*>(&p);
+    }
+  };
+
+// store variants with named constructors
+struct descVariantF {
+  ty::Variant::Ctors* ctors;
+  descVariantF(ty::Variant::Ctors* ctors) : ctors(ctors) { }
+
+  template <typename T>
+    void ctor(const char* n, int id) {
+      this->ctors->push_back(ty::Variant::Ctor(n, id, store<T>::storeType()));
+    }
+};
 
 template <typename T>
-  struct store<T, typename T::is_hstore_variant> {
-    static void        encode(bytes* out)          { T::encode(out); }
-    static std::string describe()                  { return T::describe(); }
-    static size_t      size(const T& x)            { return x.wireSize(); }
-    static bool        write(wpipe& p, const T& x) { return x.write(p); }
+  struct store<T, typename tbool<T::is_hmeta_variant>::type> {
+    typedef typename T::as_variant_type VT;
+    static const bool can_memcpy = store<VT>::can_memcpy;
+
+    static ty::desc storeType() {
+      ty::Variant::Ctors cs;
+      descVariantF f(&cs);
+      T::meta(f);
+      return ty::variant(cs);
+    }
+
+    static size_t size (const T& x)           { return store<VT>::size(*reinterpret_cast<const VT*>(&x)); }
+    static void   write(wpipe& p, const T& x) { store<VT>::write(p, *reinterpret_cast<const VT*>(&x)); }
   };
 
 // store recursive types
@@ -1593,12 +1482,8 @@ template <typename T>
 
 template <>
   struct store<recursion> {
-    static void encode(bytes* out) {
-      w(PRIV_HSTORE_TYCTOR_TVAR, out);
-      ws("x", out);
-    }
-    static std::string describe() {
-      return "x";
+    static ty::desc type() {
+      return ty::var("x");
     }
 
     typedef size_t (*RecSizeF)(const recursion&);
@@ -1623,12 +1508,7 @@ template <>
 template <typename T>
   struct store<recursive<T>> {
     static void encode(bytes* out) {
-      w(PRIV_HSTORE_TYCTOR_RECURSIVE, out);
-      ws("x", out);
-      store<T>::encode(out);
-    }
-    static std::string describe() {
-      return "^x." + store<T>::describe();
+      return ty::recursive("x", store<T>::type());
     }
     static size_t recSize(const recursion& x) {
       return size(*reinterpret_cast<const recursive<T>*>(x.value));
@@ -1655,162 +1535,15 @@ template <typename T>
     }
   };
 
-// store unit
-struct unit {
-  unit() { }
-  bool operator==(const unit&) const { return true; }
-  bool operator< (const unit&) const { return false; }
-};
-
-template <>
-  struct store<unit> {
-    static void encode(bytes* out) { encode_primty("unit", out); }
-    static std::string describe() { return "()"; }
-    static size_t size(const unit&) { return 0; }
-    static bool write(wpipe&, const unit&) { return true; }
-  };
-
 // store opaque type aliases
-#define DEFINE_HSTORE_TYPE_ALIAS(PRIV_ATY, PRIV_REPTY) \
-  struct PRIV_ATY { \
-    typedef void is_hstore_alias; \
-    typedef PRIV_REPTY type; \
-    static const char* name() { return #PRIV_ATY; } \
-    inline operator PRIV_REPTY() { return this->value; } \
-    PRIV_REPTY value; \
-    PRIV_ATY() : value() { } \
-    PRIV_ATY(const PRIV_REPTY& x) : value(x) { } \
-    constexpr PRIV_ATY(const PRIV_ATY& x) = default; \
-    PRIV_ATY& operator=(const PRIV_ATY& x) = default; \
-    bool operator==(const PRIV_ATY& x) const { return this->value == x.value; } \
-  }
-
 template <typename T>
-  struct store<T, typename T::is_hstore_alias> {
-    static void        encode(bytes* out)          { w(PRIV_HSTORE_TYCTOR_PRIM, out); ws(T::name(), out); w(true, out); store<typename T::type>::encode(out); }
-    static std::string describe()                  { return T::name(); }
-    static size_t      size(const T& x)            { return store<typename T::type>::size(x.value); }
-    static bool        write(wpipe& p, const T& x) { return store<typename T::type>::write(p, x.value); }
-  };
+  struct store<T, typename tbool<T::is_hmeta_alias>::type> {
+    typedef typename T::type RT;
+    static const bool can_memcpy = store<RT>::can_memcpy;
 
-// store fixed-length arrays
-template <typename T, size_t N>
-  struct fixedArrTyDesc {
-    static void encode(bytes* out) {
-      w(PRIV_HSTORE_TYCTOR_FIXEDARR, out);
-      store<T>::encode(out);
-      w(PRIV_HSTORE_TYCTOR_SIZE, out);
-      w(static_cast<long>(N), out);
-    }
-
-    static std::string describe() {
-      char nf[32];
-      snprintf(nf, sizeof(nf), "%lld", static_cast<unsigned long long>(N));
-      return "[:" + store<T>::describe() + "|" + std::string(nf) + ":]";
-    }
-  };
-
-template <typename T, size_t N>
-  struct fixedArrMemcpyWrite {
-    static size_t size(const T (&v)[N]) {
-      return sizeof(T)*N;
-    }
-    static bool write(wpipe& p, const T (&v)[N]) {
-      return p.write(reinterpret_cast<const uint8_t*>(v), sizeof(T)*N);
-    }
-  };
-
-template <typename T, size_t N>
-  struct fixedArrIterWrite {
-    static size_t size(const T (&v)[N]) {
-      size_t s = 0;
-      for (size_t i = 0; i < N; ++i) {
-        s += store<T>::size(v[i]);
-      }
-      return s;
-    }
-    static bool write(wpipe& p, const T (&v)[N]) {
-      for (size_t i = 0; i < N; ++i) {
-        if (!store<T>::write(p, v[i])) {
-          return false;
-        }
-      }
-      return true;
-    }
-  };
-
-template <typename T, size_t N>
-  struct store<T[N], typename store<T>::can_memcpy> : public fixedArrTyDesc<T,N>, fixedArrMemcpyWrite<T,N> { };
-
-template <typename T, size_t N>
-  struct store<T[N], typename cannot_memcpy<T>::type> : public fixedArrTyDesc<T,N>, fixedArrIterWrite<T,N> { };
-
-template <typename T, size_t N>
-  struct store<std::array<T, N>, typename store<T>::can_memcpy> : public fixedArrTyDesc<T, N> {
-    static size_t size(const std::array<T, N>& x) { return sizeof(T)*N; }
-    static bool write(wpipe& p, const std::array<T, N>& x) { return p.write(reinterpret_cast<const uint8_t*>(&x), size(x)); }
-  };
-template <typename T, size_t N>
-  struct store<std::array<T, N>, typename cannot_memcpy<T>::type> : public fixedArrTyDesc<T, N> {
-    static size_t size(const std::array<T, N>& x) { size_t n = 0; for (size_t i = 0; i < N; ++i) { n += store<T>::size(x[i]); } return n; }
-    static bool write(wpipe& p, const std::array<T, N>& x) { for (size_t i = 0; i < N; ++i) { if (!store<T>::write(p, x[i])) return false; } return true; }
-  };
-
-// support storage of vectors
-template <typename T>
-  struct store<std::vector<T>, typename store<T>::can_memcpy> {
-    static void encode(bytes* out) { w(PRIV_HSTORE_TYCTOR_ARR, out); store<T>::encode(out); }
-    static std::string describe() { return "[" + store<T>::describe() + "]"; }
-    static size_t size(const std::vector<T>& xs) { return sizeof(size_t) + (xs.size() * sizeof(T)); }
-    static bool write(wpipe& p, const std::vector<T>& xs) { size_t n = xs.size(); return store<size_t>::write(p, n) && p.write(reinterpret_cast<const uint8_t*>(&xs[0]), n * sizeof(T)); }
-  };
-
-template <typename T>
-  struct store<std::vector<T>, typename cannot_memcpy<T>::type> {
-    static void encode(bytes* out) { w(PRIV_HSTORE_TYCTOR_ARR, out); store<T>::encode(out); }
-    static std::string describe() { return "[" + store<T>::describe() + "]"; }
-    static size_t size(const std::vector<T>& xs) {
-      size_t t = sizeof(size_t);
-      for (const auto& x : xs) {
-        t += store<T>::size(x);
-      }
-      return t;
-    }
-    static bool write(wpipe& p, const std::vector<T>& xs) {
-      size_t n = xs.size();
-      if (!store<size_t>::write(p, n)) {
-        return false;
-      }
-      for (const auto& x : xs) {
-        if (!store<T>::write(p, x)) {
-          return false;
-        }
-      }
-      return true;
-    }
-  };
-
-// support storage of strings
-template <>
-  struct store<const char*> {
-    static void encode(bytes* out) { w(PRIV_HSTORE_TYCTOR_ARR, out); store<char>::encode(out); }
-    static std::string describe() { return "[char]"; }
-    static size_t size(const char* s) { return sizeof(size_t) + strlen(s); }
-    static bool write(wpipe& p, const char* s) { size_t n = strlen(s); return store<size_t>::write(p, n) && p.write(reinterpret_cast<const uint8_t*>(s), n); }
-  };
-template <>
-  struct store<char*> {
-    static void encode(bytes* out) { w(PRIV_HSTORE_TYCTOR_ARR, out); store<char>::encode(out); }
-    static std::string describe() { return "[char]"; }
-    static size_t size(char* s) { return sizeof(size_t) + strlen(s); }
-    static bool write(wpipe& p, char* s) { size_t n = strlen(s); return store<size_t>::write(p, n) && p.write(reinterpret_cast<const uint8_t*>(s), n); }
-  };
-template <>
-  struct store<std::string> {
-    static void encode(bytes* out) { w(PRIV_HSTORE_TYCTOR_ARR, out); store<char>::encode(out); }
-    static std::string describe() { return "[char]"; }
-    static size_t size(const std::string& s) { return sizeof(size_t) + s.size(); }
-    static bool write(wpipe& p, const std::string& s) { size_t n = s.size(); return store<size_t>::write(p, n) && p.write(reinterpret_cast<const uint8_t*>(s.data()), n); }
+    static ty::desc type ()                     { return ty::prim(T::name(), store<RT>::type()); ; }
+    static size_t   size (const T& x)           { return store<RT>::size(x.value); }
+    static bool     write(wpipe& p, const T& x) { return store<RT>::write(p, x.value); }
   };
 
 // support values carrying field names (easier to record structs without making an explicit struct type)
@@ -1822,13 +1555,12 @@ template <typename F, typename T>
 
 template <typename F, typename T>
   struct store<namedValue<F,T>> {
-    static void encode(bytes* out) { store<T>::encode(out); }
-    static std::string describe() { return store<T>::describe(); }
-    static size_t size(const namedValue<F,T>& x) { return store<T>::size(x.value); }
-    static bool write(wpipe& p, const namedValue<F,T>& x) { return store<T>::write(p, x.value); }
+    static ty::desc type ()                                   { return store<T>::type(); }
+    static size_t   size (const namedValue<F,T>& x)           { return store<T>::size(x.value); }
+    static bool     write(wpipe& p, const namedValue<F,T>& x) { return store<T>::write(p, x.value); }
   };
 
-#define HNAME(N,E) ::hobbes::storage::namedValue<PRIV_HSTORE_TSTR(#N),decltype(E)>(E)
+#define HNAME(N,E) ::hobbes::storage::namedValue<PRIV_HPPF_TSTR(#N),decltype(E)>(E)
 
 // allow inference of log statement names from payload types
 typedef void (*tynamehints)(std::vector<std::string>*);
@@ -1870,8 +1602,7 @@ template <typename ... Ts>
     typedef unit head_type;
     static const size_t count = 0;
     static const bool isTuple = true;
-    static void encode(const char*,size_t,bytes*) {}
-    static std::string describe(const char*,size_t) { return ""; }
+    static void fields(const char*,size_t,ty::Struct::Fields*) {}
     static void nameHints(std::vector<std::string>*) {}
   };
 template <typename T, typename ... Ts>
@@ -1879,22 +1610,12 @@ template <typename T, typename ... Ts>
     typedef T head_type;
     static const size_t count = 1 + hstore_payload_types<Ts...>::count;
     static const bool isTuple = hstore_argl_name<T>::isTuple && hstore_payload_types<Ts...>::isTuple;
-    static void encode(const char* fmt, size_t f, bytes* out) {
+    static void fields(const char* fmt, size_t f, ty::Struct::Fields* fs) {
       char fn[128];
       hstore_argl_name<T>::nameDesc(fmt, f, fn, sizeof(fn));
-      ws(fn, out);
-      w(static_cast<int>(-1), out);
-      store<T>::encode(out);
-      hstore_payload_types<Ts...>::encode(fmt, f+1, out);
-    }
-    static std::string describe(const char* fmt, size_t f) {
-      if (fmt) {
-        char fn[128];
-        hstore_argl_name<T>::nameDesc(fmt, f, fn, sizeof(fn));
-        return "," + std::string(fn) + ":" + store<T>::describe() + hstore_payload_types<Ts...>::describe(fmt, f+1);
-      } else {
-        return "*" + store<T>::describe() + hstore_payload_types<Ts...>::describe(0,0);
-      }
+      fs->push_back(ty::Struct::Field(fn, -1, store<T>::type()));
+
+      hstore_payload_types<Ts...>::fields(fmt, f+1, fs);
     }
     static void nameHints(std::vector<std::string>* ns) {
       storeNames<T>::accum(ns);
@@ -1909,38 +1630,23 @@ template <typename ... Ts>
 typedef void (*tydescfn)(bytes*,std::string*);
 template <typename TyList>
   void makeTyDescF(bytes* e, std::string* d) {
-    if (e) {
-      size_t localArity = TyList::count;
-      bool   isTuple    = TyList::isTuple;
+    ty::desc td;
 
-      if (!isTuple) {
-        w(PRIV_HSTORE_TYCTOR_STRUCT, e);
-        w(localArity, e);
-        TyList::encode("field%lld", 0, e);
-      } else {
-        // don't bother to entuple log argument lists if there's just one argument
-        switch (localArity) {
-        case 0:
-          encode_primty("unit", e);
-          break;
-        case 1:
-          store<typename TyList::head_type>::encode(e);
-          break;
-        default:
-          w(PRIV_HSTORE_TYCTOR_STRUCT, e);
-          w(localArity, e);
-          TyList::encode(".f%lld", 0, e);
-          break;
-        }
-      }
+    if (!TyList::isTuple || TyList::count > 1) {
+      ty::Struct::Fields fs;
+      TyList::fields(TyList::isTuple ? ".f%lld" : "field%lld", 0, &fs);
+      td = ty::record(fs);
+    } else if (TyList::count == 0) {
+      td = ty::prim("unit");
+    } else {
+      td = store<typename TyList::head_type>::type();
     }
 
+    if (e) {
+      ty::encode(td, e);
+    }
     if (d) {
-      if (TyList::isTuple) {
-        *d = TyList::describe(0,0).substr(1);
-      } else {
-        *d = "{" + TyList::describe("field%lld",0).substr(1) + "}";
-      }
+      *d = ty::show(td);
     }
   }
 
@@ -1995,23 +1701,23 @@ struct StorageGroup {
   void prepareMeta(bytes* meta) {
     if (!this->statements) return; // if nothing to record, nothing to prepare
 
-    w(HSTORE_VERSION, meta);
-    w(static_cast<int>(this->qos), meta);
-    w(static_cast<int>(cm), meta);
+    ty::w(HSTORE_VERSION, meta);
+    ty::w(static_cast<int>(this->qos), meta);
+    ty::w(static_cast<int>(cm), meta);
 
     // write the count of storage statements, then each statement's static data
-    w(static_cast<uint32_t>(this->statements->size()), meta);
+    ty::w(static_cast<uint32_t>(this->statements->size()), meta);
     for (auto s : *this->statements) {
-      ws(s.first,         meta);
-      w (s.second.flags,  meta);
-      ws(s.second.fmtstr, meta);
-      ws(s.second.file,   meta);
-      w (s.second.line,   meta);
-      w (s.second.id,     meta);
+      ty::ws(s.first,         meta);
+      ty::w (s.second.flags,  meta);
+      ty::ws(s.second.fmtstr, meta);
+      ty::ws(s.second.file,   meta);
+      ty::w (s.second.line,   meta);
+      ty::w (s.second.id,     meta);
       
       bytes td;
       s.second.tdesc(&td,0);
-      ws(td, meta);
+      ty::ws(td, meta);
     }
   }
 
