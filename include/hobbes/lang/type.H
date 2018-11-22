@@ -1255,6 +1255,10 @@ inline MonoTypePtr fnresult(const MonoTypePtr& fty) {
 
 void compactMTypeMemory();
 
+// shorthand for making file ref types
+MonoTypePtr fileRefTy(const MonoTypePtr&, const MonoTypePtr&);
+MonoTypePtr fileRefTy(const MonoTypePtr&);
+
 // hash record and variant members
 template <>
   struct genHash<Record::Member> {

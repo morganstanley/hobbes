@@ -239,6 +239,10 @@ ExprPtr cc::unsweetenExpression(const TEnvPtr& te, const std::string& vname, con
   return result;
 }
 
+void raiseUnsolvedCsts(cc& c, const std::string& vname, const ExprPtr& e, const PolyTypePtr& t) {
+  throw unsolved_constraints(*e, "Constraints left unresolved in residual expression", expandHiddenTCs(c.typeEnv(), simplifyVarNames(e->type())->constraints()));
+}
+
 void cc::drainUnqualifyDefs(const Definitions& ds) {
   hlock _;
   bool finaldef = !this->drainingDefs;
@@ -261,7 +265,7 @@ void cc::drainUnqualifyDefs(const Definitions& ds) {
     } else {
       if (forwardDeclared) {
         if (vname.substr(0, 4) == ".rfn" || isMonotype(this->tenv->lookup(vname))) {
-          throw annotated_error(*xe, "Internal error, residual instance function '" + vname + "' should have had monotype '" + show(this->tenv->lookup(vname)) + "' but instead inferred '" + show(xety) + "' in:\n  " + showAnnotated(xe));
+          raiseUnsolvedCsts(*this, vname, xe, this->tenv->lookup(vname));
         }
         this->tenv->unbind(vname);
       }
@@ -304,7 +308,7 @@ void cc::define(const std::string& vname, const ExprPtr& e) {
   } else {
     if (forwardDeclared) {
       if (isMonotype(this->tenv->lookup(vname))) {
-        throw annotated_error(*xe, "Internal error, residual instance function '" + vname + "' should have had monotype '" + show(this->tenv->lookup(vname)) + "' but instead inferred '" + show(xety) + "'");
+        raiseUnsolvedCsts(*this, vname, xe, this->tenv->lookup(vname));
       }
       this->tenv->unbind(vname);
     }

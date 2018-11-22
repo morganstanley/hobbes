@@ -42,7 +42,7 @@ template <typename T>
 template <typename T, bool InStruct>
   struct lift< fileref<T>, InStruct > {
     static MonoTypePtr type(typedb& tenv) {
-      return MonoTypePtr(TApp::make(MonoTypePtr(Prim::make("fileref")), list(lift<T, false>::type(tenv))));
+      return fileRefTy(lift<T, false>::type(tenv));
     }
   };
 
@@ -66,7 +66,7 @@ template <typename T, bool InStruct>
   struct lift<dbseq<T>*, InStruct> {
     static MonoTypePtr type(typedb& tenv) {
       // ^x.()+T*x@n
-      MonoTypePtr tlink = MonoTypePtr(TApp::make(MonoTypePtr(Prim::make("fileref")), list(tvar("x"))));
+      MonoTypePtr tlink = fileRefTy(tvar("x"));
       MonoTypePtr tcons = tuplety(list(lift<T, true>::type(tenv), tlink));
 
       return MonoTypePtr(Recursive::make("x", MonoTypePtr(Variant::make(list(Variant::Member(".f0", primty("unit"), 0), Variant::Member(".f1", tcons, 1))))));

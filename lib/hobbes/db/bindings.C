@@ -77,8 +77,7 @@ struct injFileReferencesF : public switchTyFn {
     if (const Prim* tfn = is<Prim>(tf)) {
       if (tfn->name() == "fileref") {
         if (targs.size() == 1) {
-          targs.resize(2);
-          targs[1] = texpr(this->f);
+          return fileRefTy(targs[0], texpr(this->f));
         }
       }
     }
@@ -289,7 +288,7 @@ struct dbloadF : public op {
   PolyTypePtr type(typedb&) const {
     static MonoTypePtr tg0(TGen::make(0));
     static MonoTypePtr tg1(TGen::make(1));
-    static PolyTypePtr npty(new PolyType(2, qualtype(Func::make(tuplety(list(tapp(primty("fileref"), list(tg0, tg1)))), tg0))));
+    static PolyTypePtr npty(new PolyType(2, qualtype(Func::make(tuplety(list(fileRefTy(tg0, tg1))), tg0))));
     return npty;
   }
 };
@@ -333,7 +332,7 @@ struct dbloadPF : public op {
     static MonoTypePtr tg0(TGen::make(0));
     static MonoTypePtr tg1(TGen::make(1));
     static MonoTypePtr tg2(TGen::make(2));
-    static PolyTypePtr npty(new PolyType(3, qualtype(Func::make(tuplety(list(tapp(primty("file"), list(tg0, tg1)), tapp(primty("fileref"), list(tg2)))), tg2))));
+    static PolyTypePtr npty(new PolyType(3, qualtype(Func::make(tuplety(list(tapp(primty("file"), list(tg0, tg1)), fileRefTy(tg2))), tg2))));
     return npty;
   }
 };
@@ -356,7 +355,7 @@ struct dbRefFileF : public op {
     MonoTypePtr tg1(TGen::make(1));
     MonoTypePtr tg2(TGen::make(2));
     MonoTypePtr tg3(TGen::make(3));
-    PolyTypePtr npty(new PolyType(4, qualtype(Func::make(tuplety(list(tapp(primty("fileref"), list(tg0, tg1)))), tapp(primty("file"), list(tg2, tg3))))));
+    PolyTypePtr npty(new PolyType(4, qualtype(Func::make(tuplety(list(fileRefTy(tg0, tg1))), tapp(primty("file"), list(tg2, tg3))))));
     return npty;
   }
 };
@@ -433,7 +432,7 @@ struct dballocF : public op {
   }
 
   PolyTypePtr type(typedb&) const {
-    return PolyTypePtr(new PolyType(2, qualtype(Func::make(tuplety(list(primty("unit"))), tapp(primty("fileref"), list(tgen(0), tgen(1)))))));
+    return PolyTypePtr(new PolyType(2, qualtype(Func::make(tuplety(list(primty("unit"))), fileRefTy(tgen(0), tgen(1))))));
   }
 };
 
@@ -469,7 +468,7 @@ struct dbstoreF : public op {
   PolyTypePtr type(typedb&) const {
     static MonoTypePtr tg0(TGen::make(0));
     static MonoTypePtr tg1(TGen::make(1));
-    static PolyTypePtr npty(new PolyType(2, qualtype(Func::make(tuplety(list(tg0)), tapp(primty("fileref"), list(tg0, tg1))))));
+    static PolyTypePtr npty(new PolyType(2, qualtype(Func::make(tuplety(list(tg0)), fileRefTy(tg0, tg1)))));
     return npty;
   }
 };
@@ -503,7 +502,7 @@ struct dbstorePF : public op {
   PolyTypePtr type(typedb&) const {
     static MonoTypePtr tg0(TGen::make(0));
     static MonoTypePtr tg1(TGen::make(1));
-    static PolyTypePtr npty(new PolyType(2, qualtype(Func::make(tuplety(list(tapp(primty("file"), list(tlong(1), tg0)), tg1)), tapp(primty("fileref"), list(tg1))))));
+    static PolyTypePtr npty(new PolyType(2, qualtype(Func::make(tuplety(list(tapp(primty("file"), list(tlong(1), tg0)), tg1)), fileRefTy(tg1)))));
     return npty;
   }
 };
@@ -530,7 +529,7 @@ struct dballocArrF : public op {
   PolyTypePtr type(typedb&) const {
     static MonoTypePtr tg0(TGen::make(0));
     static MonoTypePtr tg1(TGen::make(1));
-    static PolyTypePtr npty(new PolyType(2, qualtype(Func::make(tuplety(list(primty("long"))), tapp(primty("fileref"), list(arrayty(tg0), tg1))))));
+    static PolyTypePtr npty(new PolyType(2, qualtype(Func::make(tuplety(list(primty("long"))), fileRefTy(arrayty(tg0), tg1)))));
     return npty;
   }
 };
@@ -550,7 +549,7 @@ struct dballocArrPF : public op {
   PolyTypePtr type(typedb&) const {
     static MonoTypePtr tg0(TGen::make(0));
     static MonoTypePtr tg1(TGen::make(1));
-    static PolyTypePtr npty(new PolyType(2, qualtype(Func::make(tuplety(list(tapp(primty("file"), list(tlong(1), tg0)), primty("long"))), tapp(primty("fileref"), list(arrayty(tg1)))))));
+    static PolyTypePtr npty(new PolyType(2, qualtype(Func::make(tuplety(list(tapp(primty("file"), list(tlong(1), tg0)), primty("long"))), fileRefTy(arrayty(tg1))))));
     return npty;
   }
 };
@@ -577,7 +576,7 @@ struct dbarrCapacityF : public op {
   PolyTypePtr type(typedb&) const {
     static MonoTypePtr tg0(TGen::make(0));
     static MonoTypePtr tg1(TGen::make(1));
-    static PolyTypePtr npty(new PolyType(3, qualtype(Func::make(tuplety(list(tapp(primty("fileref"), list(darrayty(tg0), tg1)))), primty("long")))));
+    static PolyTypePtr npty(new PolyType(3, qualtype(Func::make(tuplety(list(fileRefTy(darrayty(tg0), tg1))), primty("long")))));
     return npty;
   }
 };
@@ -598,7 +597,7 @@ struct dbarrCapacityPF : public op {
     static MonoTypePtr tg0(TGen::make(0));
     static MonoTypePtr tg1(TGen::make(1));
     static MonoTypePtr tg2(TGen::make(2));
-    static PolyTypePtr npty(new PolyType(3, qualtype(Func::make(tuplety(list(tapp(primty("file"), list(tg0, tg1)), tapp(primty("fileref"), list(darrayty(tg2))))), primty("long")))));
+    static PolyTypePtr npty(new PolyType(3, qualtype(Func::make(tuplety(list(tapp(primty("file"), list(tg0, tg1)), fileRefTy(darrayty(tg2)))), primty("long")))));
     return npty;
   }
 };
