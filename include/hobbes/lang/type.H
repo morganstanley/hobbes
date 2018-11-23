@@ -66,9 +66,6 @@ public:
 
   // improves performance of unhiding opaque type aliases
   mutable ptr unaliasedType;
-
-  // improves performance of resolving type applications just after parse-time
-  mutable ptr unappTyDefns;
 };
 
 typedef MonoType::ptr MonoTypePtr;
