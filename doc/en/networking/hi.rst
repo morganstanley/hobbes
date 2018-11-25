@@ -70,7 +70,9 @@ The ``invoke`` and ``receive`` functions allow Hobbes to execute commands remote
 
 Secondly, the strange 'quoted' form of ``addOne``. The quoted form of the invocation isn't a string - it's parsed but as-yet unexecuted Hobbes in a form which can be serialised and set to a remote Hobbes process for invocation. It's this mechanism that Hobbes uses to determine the return type of the method - on the remote process!
 
-In this manner we're able to execute functions on the server from the client - without any of the complex type negotionation or serialisation that we'd otherwise have to do. 
+In this manner we're able to execute functions on the server from the client - without any of the complex type negotionation or serialisation that we'd otherwise have to do.
+
+Once the work has been executed remotely, the result has been serialised, sent across the network, deserialised and displayed in our local *client* prompt.
 
 Inspection of the connection
 ============================
@@ -86,20 +88,20 @@ If we use ``printConnection`` to take another look at ``c``, we'll see that the 
 
 Firstly, we can see that Hobbes has given the remote ``addOne`` function a numeric ID - this means that future invocations will be much faster.
 
-Secondly, Hobbes has used the connection to communicate with the remote host and find out the type of ``addOne`` - a function that takes an int and returns an int. 
+Secondly, Hobbes has used the connection to communicate with the remote host and find out the type of ``addOne`` - a function that takes an ``int`` and returns an ``int``. 
 
 Delayed Invocation
 ==================
 
 In the above example the type information Hobbes gathered from the server was made available at the first invocation of the method, using ``receive``. However, Hobbes has the ability to query type information from the server using the unqualifier mechanism much earlier, before the method is even invoked.
 
-Go back to the REPL and add another method, addTwo:
+Go back to the *server* and add another method, addTwo:
 
 ::
 
   addTwo = \x.x+2
 
-Then on the client,
+Then on the *client*,
 
 ::
 
@@ -110,7 +112,14 @@ Then on the client,
   1  int  int   addOne
   2  int  int   addTwo
 
-In this example, ``remoteAddTwo`` is a function defined by a lambda - i.e. one that we haven't yet called! All we've passed is the information about the input type - the ``int`` argument to ``addTwo`` - and the Hobbes server process has done all the type inference and returned the structured type data for us.
+In this example, ``remoteAddTwo`` is a function defined by a lambda - that we haven't yet called! All we've passed is the information about the input type - the ``int`` argument to ``addTwo`` - and the Hobbes server process has done all the type inference and returned the structured type data for us.
+
+We can invoke the remote function in the usual way, by passing parameters to the function name:
+
+::
+
+  > remoteAddTwo(3)
+  5
 
 Errors
 ======
