@@ -1298,7 +1298,7 @@ template <typename T>
 // but allows all structs that happen to be packed to share the same memcpy logic
 #define DEFINE_PACKED_HSTORE_STRUCT(T, FIELDS...) \
   DEFINE_STRUCT(T, FIELDS); \
-  static_assert(::hobbes::storage::storeStdLayoutTuple<T>::can_memcpy)
+  static_assert(::hobbes::storage::storeStdLayoutTuple<T::as_tuple_type>::can_memcpy, "declaration of packed struct found inconsistent with internal padding (add explicit fields or re-order fields to eliminate padding)")
 
 // support storing "struct views" (select fields / const accessor functions) out of a type
 template <typename T, typename F>
