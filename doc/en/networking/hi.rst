@@ -5,10 +5,12 @@ Networking with hi
 
 Hobbes supports native, typesafe client-server network programming in a very similar manner to its support for structured logfiles. Connection information alongside the types of data involved are exposed through an unqualifier much like :ref:`LoadFile <hobbes_loadfile_unqualifier>`, in a manner mostly invisible to the user.
 
+You can use Hobbes networking to perform actions on another host, such as gathering usage statistics, or performing administrative actions such as changing the log level.
+
 Setting up the receiver
 =======================
 
-``hi`` can be set to receive messages over the network by opening a port:
+*hi* can be set to receive messages over the network. If we invoke *hi* with the ``-p`` flag we can specify the port to listen on:
 
 ::
 
@@ -17,17 +19,23 @@ Setting up the receiver
   running a repl server at myhost:8080
   >
 
+We'll call this the *server*, and next we'll connect to it over the network.
+
 Opening a connection
 ====================
 
-From another instance of *hi*, create a connection to the first using the ``Connect`` unqualifier:
+From another instance of *hi*, create a connection to the *server* using the ``Connect`` unqualifier:
 
 ::
   
   $ hi -s
   > c = connection :: (Connect "myhost:8080" p) => p
 
-From here, you can inspect the details of the connection with ``printConnection``:
+  ..note:: **Unqualifiers**
+
+    For more information about how this works, have a look at the :ref:`LoadFile unqualifier <hobbes_loadfile_unqualifier>`, which we use to load data using the Hobbes persistence API.
+
+We'll call this the *client*. From here, you can inspect the details of the connection with ``printConnection``:
 
 ::
 
@@ -37,33 +45,35 @@ From here, you can inspect the details of the connection with ``printConnection`
 
   >
 
-There's not much here yet, so let's create some functionality on the server.
+There's not much here yet, so let's create some functionality on the *server*.
 
 Remote methods
 ==============
 
-Back on the REPL server, create a new function called addOne:
+Back on the *server*, create a new function called addOne:
 
 ::
 
   > addOne = \x.x+1
   >
 
-Then on the client, let's make that functionality available remotely. We'll use the hobbes type negotiation mechanism to make sure all the types line up:
+Then on the *client*, let's make that functionality available remotely. We'll use the hobbes type negotiation mechanism to make sure all the types line up:
 
 ::
 
   > receive(invoke(c, `addOne`, 12))
   13
 
-Wow! 
+Wow! There's some new Hobbes here, so let's go through this line piece by piece.
 
-The ``invoke`` and ``receive`` functions allow Hobbes to execute commands remotely and interpret the results.
+The ``invoke`` and ``receive`` functions allow Hobbes to execute commands remotely and interpret the results. We call them together becuase the type information about the return value of the ``addOne`` function is passed between them.
 
-The quoted form of the invokation isn't a string - it's parsed but as-yet unexecuted Hobbes in a form which can be serialised and set to a remote Hobbes process for invocation. It's this mechanism that Hobbes uses to determine the return type of the method - on the remote process!
+Secondly, the strange 'quoted' form of ``addOne``. The quoted form of the invocation isn't a string - it's parsed but as-yet unexecuted Hobbes in a form which can be serialised and set to a remote Hobbes process for invocation. It's this mechanism that Hobbes uses to determine the return type of the method - on the remote process!
+
+In this manner we're able to execute functions on the server from the client - without any of the complex type negotionation or serialisation that we'd otherwise have to do. 
 
 Inspection of the connection
-----------------------------
+============================
 
 If we use ``printConnection`` to take another look at ``c``, we'll see that the initial remote invocation of the function ``addOne`` has had some effects:
 
@@ -76,7 +86,7 @@ If we use ``printConnection`` to take another look at ``c``, we'll see that the 
 
 Firstly, we can see that Hobbes has given the remote ``addOne`` function a numeric ID - this means that future invocations will be much faster.
 
-Secondly - Hobbes has used the connection to communicate with the remote host and find out the type of ``addOne`` - a function that takes an int and returns an int. 
+Secondly, Hobbes has used the connection to communicate with the remote host and find out the type of ``addOne`` - a function that takes an int and returns an int. 
 
 Delayed Invocation
 ==================

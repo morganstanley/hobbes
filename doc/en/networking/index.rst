@@ -6,3 +6,4 @@ Networking
 
    hi.rst
    cpp.rst
+   datatypes.rst
