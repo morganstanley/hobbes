@@ -169,11 +169,11 @@ template <size_t... pcs>
       return reinterpret_cast<const char*>(smsg);
     }
   };
-#define PRIV_HPPF_TSTR32(i,s)   ::hobbes::storage::at8(i+(8*0),s),::hobbes::storage::at8(i+(8*1),s),::hobbes::storage::at8(i+(8*2),s),::hobbes::storage::at8(i+(8*3),s)
+#define PRIV_HPPF_TSTR32(i,s)   ::hobbes::at8(i+(8*0),s),::hobbes::at8(i+(8*1),s),::hobbes::at8(i+(8*2),s),::hobbes::at8(i+(8*3),s)
 #define PRIV_HPPF_TSTR128(i,s)  PRIV_HPPF_TSTR32(i+(32*0),s),PRIV_HPPF_TSTR32(i+(32*1),s),PRIV_HPPF_TSTR32(i+(32*2),s),PRIV_HPPF_TSTR32(i+(32*3),s)
 #define PRIV_HPPF_TSTR512(i,s)  PRIV_HPPF_TSTR128(i+(128*0),s),PRIV_HPPF_TSTR128(i+(128*1),s),PRIV_HPPF_TSTR128(i+(128*2),s),PRIV_HPPF_TSTR128(i+(128*3),s)
 #define PRIV_HPPF_TSTR1024(i,s) PRIV_HPPF_TSTR512(i+(512*0),s),PRIV_HPPF_TSTR512(i+(512*1),s)
-#define PRIV_HPPF_TSTR(s)       ::hobbes::storage::strpack<PRIV_HPPF_TSTR1024(0,s)>
+#define PRIV_HPPF_TSTR(s)       ::hobbes::strpack<PRIV_HPPF_TSTR1024(0,s)>
 
 // value-level bool -> type-level bool
 template <bool f> struct tbool { };

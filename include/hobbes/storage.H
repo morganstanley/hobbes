@@ -1003,35 +1003,6 @@ public:
   }
 };
 
-// basic compile-time strings
-template <size_t N>
-  constexpr char at(size_t i, const char (&s)[N]) {
-    return (i < N) ? s[i] : '\0';
-  }
-template <size_t N>
-  constexpr size_t at8S(size_t i, size_t k, const char (&s)[N]) {
-    return (k==8) ? 0 : ((static_cast<size_t>(at(i+k,s))<<(8*k))|at8S(i,k+1,s));
-  }
-template <size_t N>
-  constexpr size_t at8(size_t i, const char (&s)[N]) {
-    return at8S(i, 0, s);
-  }
-template <size_t... pcs>
-  struct strpack {
-    static const char* str() {
-      constexpr size_t msg[] = {pcs...};
-      static_assert(msg[(sizeof(msg)/sizeof(msg[0]))-1] == 0, "compile-time string larger than internal max limit (this limit can be bumped in storage.H)");
-
-      static const size_t smsg[] = {pcs...};
-      return reinterpret_cast<const char*>(smsg);
-    }
-  };
-#define PRIV_HSTORE_TSTR32(i,s)   ::hobbes::storage::at8(i+(8*0),s),::hobbes::storage::at8(i+(8*1),s),::hobbes::storage::at8(i+(8*2),s),::hobbes::storage::at8(i+(8*3),s)
-#define PRIV_HSTORE_TSTR128(i,s)  PRIV_HSTORE_TSTR32(i+(32*0),s),PRIV_HSTORE_TSTR32(i+(32*1),s),PRIV_HSTORE_TSTR32(i+(32*2),s),PRIV_HSTORE_TSTR32(i+(32*3),s)
-#define PRIV_HSTORE_TSTR512(i,s)  PRIV_HSTORE_TSTR128(i+(128*0),s),PRIV_HSTORE_TSTR128(i+(128*1),s),PRIV_HSTORE_TSTR128(i+(128*2),s),PRIV_HSTORE_TSTR128(i+(128*3),s)
-#define PRIV_HSTORE_TSTR1024(i,s) PRIV_HSTORE_TSTR512(i+(512*0),s),PRIV_HSTORE_TSTR512(i+(512*1),s)
-#define PRIV_HSTORE_TSTR(s)       ::hobbes::storage::strpack<PRIV_HSTORE_TSTR1024(0,s)>
-
 /*****************************
  *
  * store<T> : the main interface for type-directed storage into shared memory pipes
@@ -1984,12 +1955,12 @@ template <size_t N>
   }
 
 // create statement groups
-#define DECLARE_STORAGE_GROUP(NAME, cm)                     extern ::hobbes::storage::StorageGroup<PRIV_HSTORE_TSTR(#NAME),cm> NAME
-#define DEFINE_STORAGE_GROUP(NAME, pagec, qos, cm, ARGS...) ::hobbes::storage::StorageGroup<PRIV_HSTORE_TSTR(#NAME),cm> NAME(pagec, qos, ## ARGS)
+#define DECLARE_STORAGE_GROUP(NAME, cm)                     extern ::hobbes::storage::StorageGroup<PRIV_HPPF_TSTR(#NAME),cm> NAME
+#define DEFINE_STORAGE_GROUP(NAME, pagec, qos, cm, ARGS...) ::hobbes::storage::StorageGroup<PRIV_HPPF_TSTR(#NAME),cm> NAME(pagec, qos, ## ARGS)
 
 // record some data
 #define APPLY_HSTORE_STMT(GROUP, NAME, FLAGS, FMTSTR, ARGS...) \
-  ::hobbes::storage::write(&GROUP, ({static_assert(::hobbes::storage::maxVarRef(FMTSTR) <= decltype(::hobbes::storage::makePayloadTypes(ARGS))::count, "Log format string and payload arity mismatch"); ::hobbes::storage::StorageStatement<decltype(GROUP),&GROUP,PRIV_HSTORE_TSTR(__FILE__),__LINE__,PRIV_HSTORE_TSTR(#NAME),FLAGS,PRIV_HSTORE_TSTR(FMTSTR),decltype(::hobbes::storage::makePayloadTypes(ARGS))>::id;}), ## ARGS)
+  ::hobbes::storage::write(&GROUP, ({static_assert(::hobbes::storage::maxVarRef(FMTSTR) <= decltype(::hobbes::storage::makePayloadTypes(ARGS))::count, "Log format string and payload arity mismatch"); ::hobbes::storage::StorageStatement<decltype(GROUP),&GROUP,PRIV_HPPF_TSTR(__FILE__),__LINE__,PRIV_HPPF_TSTR(#NAME),FLAGS,PRIV_HPPF_TSTR(FMTSTR),decltype(::hobbes::storage::makePayloadTypes(ARGS))>::id;}), ## ARGS)
 
 #define HSTORE(GROUP, NAME, ARGS...)       APPLY_HSTORE_STMT(GROUP, NAME, 0,     "", ## ARGS)
 #define HLOG(GROUP, NAME, FMTSTR, ARGS...) APPLY_HSTORE_STMT(GROUP, NAME, 1, FMTSTR, ## ARGS)
