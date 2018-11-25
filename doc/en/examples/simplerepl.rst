@@ -22,9 +22,9 @@ Here's the full code listing. Afterwards we'll dig into all the parts one by one
     (const hobbes::array<char>*, name)
   );
 
-  typedef std::pair<int, const hobbes::array<char>*> Writer1;
+  typedef std::pair<int, const hobbes::array<char>*> Writer;
 
-  Writer1* getWriter(){
+  Writer* getWriter(){
     return hobbes::make<Writer1>(34, hobbes::makeString("Sam"));
   }
 
