@@ -31,7 +31,7 @@ From another instance of *hi*, create a connection to the *server* using the ``C
   $ hi -s
   > c = connection :: (Connect "myhost:8080" p) => p
 
-  ..note:: **Unqualifiers**
+  .. note:: **Unqualifiers**
 
     For more information about how this works, have a look at the :ref:`LoadFile unqualifier <hobbes_loadfile_unqualifier>`, which we use to load data using the Hobbes persistence API.
 
