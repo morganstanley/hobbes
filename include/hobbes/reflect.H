@@ -236,6 +236,7 @@ template <typename T, typename ... Ts> struct tupleTail<T, Ts...> { typedef tupl
 #define PRIV_HPPF_STRUCT_FIELD_VISIT(t, n) v.template visit<t>(#n);
 #define PRIV_HPPF_STRUCT_FIELD_EQ(t, n) && this->n == rhs.n
 #define PRIV_HPPF_STRUCT_FIELD_TYARGL(t, n) , t
+#define PRIV_HPPF_STRUCT_FIELD_NLOOKUP(t, n) if (o == idx) { return #n; } ++o;
 
 #define DEFINE_STRUCT(T, FIELDS...) \
   struct T { \
@@ -245,6 +246,12 @@ template <typename T, typename ... Ts> struct tupleTail<T, Ts...> { typedef tupl
     template <typename V> \
       static void meta(V& v) { \
         PRIV_HPPF_MAP(PRIV_HPPF_STRUCT_FIELD_VISIT, FIELDS) \
+      } \
+    template <size_t idx> \
+      static const char* _hmeta_field_name() { \
+        size_t o = 0; \
+        PRIV_HPPF_MAP(PRIV_HPPF_STRUCT_FIELD_NLOOKUP, FIELDS) \
+        return "???"; \
       } \
     template <typename X> \
       inline typename std::enable_if<std::is_base_of<X, T>::value, bool>::type operator==(const X& rhs) const { \
