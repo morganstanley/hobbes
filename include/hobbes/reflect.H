@@ -134,6 +134,7 @@ template <typename ... Fields>
     typedef offsetInfo<0, 0, Fields...> offs;
     static const size_t alignment = offs::malignment;
     static const size_t size      = alignTo(offs::size, offs::malignment);
+    static const size_t count     = sizeof...(Fields);
     uint8_t buffer[size];
 
     tuple() {

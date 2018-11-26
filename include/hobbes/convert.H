@@ -14,6 +14,15 @@ namespace hobbes { namespace convert {
 
 //TODO
 size_t sizeOf(const ty::desc& t) {
+  if (t->tid == PRIV_HPPF_TYCTOR_PRIM) {
+    const ty::Prim* pt = reinterpret_cast<const ty::Prim*>(t.get());
+
+    if (pt->n == "int") {
+      return 4;
+    } else if (pt->n == "long") {
+      return 8;
+    }
+  }
   throw std::runtime_error("nyi");
 }
 
@@ -21,21 +30,27 @@ size_t sizeOf(const ty::desc& t) {
  *
  * into<T> : the main interface for (partial) "dynamically typed" conversion into a fixed type
  *           this is a _partial_ function because not all types convert into all other types
- *           we only state what type we want to convert into exactly because this is the only static knowledge we have
- *           important to the performance of such functions is that the type is known at an earlier less-time-critical stage than when we need to use them
+ *           we state only what type we want to convert into (rather than the type from and the type to) exactly because this is the only static knowledge we have
+ *           important to the performance of such functions is that the type description is known at an earlier less-time-critical stage than when we need to use them
  *
  *****************************/
 template <typename T, typename P = void>
   struct into {
   };
 
-// this is what a convert function looks like -- something that takes a void* (whose type was dynamically determined beforehand) and maps into a statically-known type
+// this is what a convert function looks like:
+//   something that takes a void* (whose type was dynamically determined beforehand)
+//   and maps into a statically-known type
 template <typename T>
   struct convFn {
     typedef std::function<void(const void*, T*)> type;
   };
 
+/////////////////////////
+//
 // primitive conversion (where static_cast is safe)
+//
+/////////////////////////
 #define PRIV_HCONV_PCONV_FROM(name, t) \
   } else if (pt->n == name) { \
     return [](const void* from, dest_type_t* to) { *to = static_cast<dest_type_t>(*reinterpret_cast<const t*>(from)); };
@@ -68,32 +83,48 @@ SCAST_CONVERT("long",  uint64_t, ("char", char), ("byte", uint8_t), ("short", in
 SCAST_CONVERT("float",  float,  ("char", char), ("byte", uint8_t), ("short", int16_t), ("int", int32_t));
 SCAST_CONVERT("double", double, ("char", char), ("byte", uint8_t), ("short", int16_t), ("int", int32_t), ("long", int64_t), ("float", float));
 
-// we can convert an array if we can convert its element type
+/////////////////////////
+//
+// fixed array conversion such that if 'Convert a b', then 'Convert a[N] b[N]'
+//
+/////////////////////////
+
 template <typename T, size_t N>
   struct into<std::array<T, N>> {
     static typename convFn<std::array<T,N>>::type from(const ty::desc& t) {
-      const FArr* pfa  = reinterpret_cast<const FArr*>(t.get());
+      const ty::FArr* pfa  = reinterpret_cast<const ty::FArr*>(t.get());
 
       if (t->tid != PRIV_HPPF_TYCTOR_FIXEDARR) {
         throw std::runtime_error("Can't convert from " + ty::show(t) + " to " + string::demangle<std::array<T,N>>());
       } else if (pfa->len->tid != PRIV_HPPF_TYCTOR_SIZE) {
         throw std::runtime_error("Invalid type description due to non-size array length: " + ty::show(t));
       } else if (reinterpret_cast<const ty::Nat*>(pfa->len.get())->x != N) {
-        throw std::runtime_error("Can't convert from " + ty::show(t) + " to " + string::demangle<std::array<T,N>() + " due to length-mismatch");
+        throw std::runtime_error("Can't convert from " + ty::show(t) + " to " + string::demangle<std::array<T,N>>() + " due to length-mismatch");
       } else {
         auto   convElem = into<T>::from(pfa->t);
         size_t step     = sizeOf(pfa->t);
 
         return [convElem, step](const void* src, std::array<T, N>* dst) {
           for (size_t i = 0; i < N; ++i) {
-            convElem(reinterpret_cast<const char*>(src) + step, &(*dst)[i]);
+            convElem(reinterpret_cast<const char*>(src), &dst->at(i));
+            src = reinterpret_cast<const char*>(src) + step;
           }
         };
       }
     }
   };
 
-// we can convert a struct if all needed fields are present and they can all be converted
+/////////////////////////
+//
+// struct conversion such that if 'src={sh*st}', 'dst={dh*dt}', 'Convert sh dh', and 'Convert st dt', then 'Convert src dst'
+//
+/////////////////////////
+
+// the scheme for converting a single field
+// we need to know:
+//   * the offset in the source struct where source data can be found for this field
+//   * the offset in the dest struct where the converted value will be placed
+//   * the function to convert source to dest for this field
 template <typename T>
   struct StructConvField {
     struct type {
@@ -101,35 +132,41 @@ template <typename T>
 
       size_t                   srcOffset;
       size_t                   dstOffset;
-      typename confFn<T>::type convert;
+      typename convFn<T>::type convert;
     };
   };
 
-template <typename ConvFns, size_t i, size_t n, typename ... Ts>
-  struct ConvertStructDef {
-    typedef typename nth<i, Ts...>::type H;
-    typedef ConvertStructDef<ConvFns, i+1, n, Ts...> Recurse;
+// a whole-struct conversion function is a tuple of 'StructConvField' at each field of the destination structure
+// to produce this function, we need to consider each field of the destination structure,
+// find its source in the source structure, and produce the conversion function at each field
+//
+// if the field can't be found in the source structure (by name) then we can't produce the conversion function
+template <typename DstStructT, typename DstTupleT, typename StructConvF, size_t i, size_t n>
+  struct MakeStructConvF { };
 
-    static void convertStep(const ConvFns& cfns, const void* src, void* dst) {
-      const auto& cfn = cfns.at<i>();
-      cfn.convert(reinterpret_cast<const uint8_t*>(src) + cfn.srcOffset, reinterpret_cast<H*>(reinterpret_cast<uint8_t*>(dst) + cfn.dstOffset));
-      Recurse::convertStep(cfns, src, dst);
-    }
-  };
-template <typename ConvFns, size_t n, typename ... Ts>
-  struct ConvertStructDef<ConvFns, n, n, Ts...> {
-    static void convertStep(const ConvFns&, const void*, void*) { }
-  };
-template <typename ConvFns, typename ... Ts>
-  struct ConvertIntoTuple {
-    static void convert(const ConvFns& cfns, const void* src, tuple<Ts...>* dst) {
-      typedef ConvertStructDef<ConvFns, 0, sizeof...(Ts), Ts...> CSD;
-      CSD::convertStep(cfns, src, dst);
-    }
+// the base case ('unit' at the end of the struct, no more fields to convert)
+template <typename DstStructT, typename StructConvF, size_t n, typename ... Ts>
+  struct MakeStructConvF<DstStructT, tuple<Ts...>, StructConvF, n, n> {
+    static void init(const ty::Struct*, StructConvF*) { }
   };
 
+// the inductive case (decide the conversion function for the pointed-to field, then continue walking the struct)
 template <typename DstStructT, typename StructConvF, size_t i, size_t n, typename ... Ts>
-  struct InitStructConvF {
+  struct MakeStructConvF<DstStructT, tuple<Ts...>, StructConvF, i, n> {
+    static void init(const ty::Struct* srcTy, StructConvF* convFs) {
+      // figure out how to convert just this field
+      const ty::Struct::Field& srcField = namedField(srcTy, DstStructT::template _hmeta_field_name<i>());
+
+      auto& convF     = convFs->template at<i>();
+      convF.srcOffset = srcField.template at<1>();
+      convF.dstOffset = offsetAt<i, typename DstStructT::as_tuple_type::offs>::value;
+      convF.convert   = into<typename nth<i, Ts...>::type>::from(srcField.at<2>());
+
+      // and continue for the rest of the fields
+      MakeStructConvF<DstStructT, tuple<Ts...>, StructConvF, i+1, n>::init(srcTy, convFs);
+    }
+
+    // find the definition of the named field in the source struct (or roll back this whole function if it can't be found)
     static const ty::Struct::Field& namedField(const ty::Struct* ty, const std::string& fname) {
       for (const auto& field : ty->fields) {
         if (field.at<0>() == fname) {
@@ -138,23 +175,30 @@ template <typename DstStructT, typename StructConvF, size_t i, size_t n, typenam
       }
       throw std::runtime_error("The field '" + fname + "' is not defined");
     }
-
-    static void init(const ty::Struct* srcTy, StructConfF* convFs) {
-      // figure out how to convert just this field
-      const auto& srcField = namedField(srcTy, DstStructT::_hmeta_field_name<i>());
-
-      auto& convF     = convFs->at<i>();
-      convF.srcOffset = srcField.at<1>();
-      convF.dstOffset = offsetAt<i, DstStructT::as_tuple_type::offs>::value;
-      convF.convert   = into<>::from(srcField.at<2>());
-
-      // and continue for the rest of the fields
-      InitStructConvF<DstStructT, StructConvF, i+1, n, Ts...>::init(srcTy, convFs);
-    }
   };
-template <typename DstStructT, typename StructConvF, size_t n, typename ... Ts>
-  struct InitStructConvF<DstStructT, StructConvF, n, n, Ts...> {
-    static void init(const ty::Struct*, StructConfF*) { }
+
+// apply a constructed conversion map (made via 'MakeStructConvF') to an actual source type
+// this will run on the "critical path" so should be minimal
+template <typename ConvFns, typename DstTupleT, size_t i, size_t n>
+  struct ApplyStructConvF { };
+
+// the base case ('unit' needs no conversion)
+template <typename ConvFns, size_t n, typename ... Ts>
+  struct ApplyStructConvF<ConvFns, tuple<Ts...>, n, n> {
+    static void apply(const ConvFns& cfns, const void* src, tuple<Ts...>* dst) { }
+  };
+
+// the inductive case (apply at the pointed-to field, then continue walking the struct)
+template <typename ConvFns, size_t i, size_t n, typename ... Ts>
+  struct ApplyStructConvF<ConvFns, tuple<Ts...>, i, n> {
+    typedef typename nth<i, Ts...>::type H;
+    typedef ApplyStructConvF<ConvFns, tuple<Ts...>, i+1, n> Recurse;
+
+    static void apply(const ConvFns& cfns, const void* src, tuple<Ts...>* dst) {
+      const auto& cfn = cfns.template at<i>();
+      cfn.convert(reinterpret_cast<const uint8_t*>(src) + cfn.srcOffset, reinterpret_cast<H*>(reinterpret_cast<uint8_t*>(dst) + cfn.dstOffset));
+      Recurse::apply(cfns, src, dst);
+    }
   };
 
 template <typename T>
@@ -165,14 +209,16 @@ template <typename T>
       if (t->tid != PRIV_HPPF_TYCTOR_STRUCT) {
         throw std::runtime_error("Can't convert from " + ty::show(t) + " due to kind mismatch (not a struct)");
       } else {
-        // find all of the fields we need to convert out of
-        // and where/how to convert into
-        typedef typename fmap<StructConvField, typename T::as_tuple_type>::type StructConvF;
+        typedef typename T::as_tuple_type TT;
+
+        // prepare the conversion map out of the source into the dest
+        typedef typename fmap<StructConvField, TT>::type StructConvF;
         StructConvF scf;
+        MakeStructConvF<T, TT, StructConvF, 0, TT::count>::init(pr, &scf);
 
         // finally, if we could construct this conversion map, then we can produce a convert function that applies it
         return [scf](const void* src, T* dst) {
-          ConvertIntoTuple<StructConvF>::convert(scf, src, dst);
+          ApplyStructConvF<StructConvF, TT, 0, TT::count>::apply(scf, src, reinterpret_cast<TT*>(dst));
         };
       }
     }
