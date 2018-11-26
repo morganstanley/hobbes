@@ -314,6 +314,9 @@ private:
 
   // the JIT engine that compiles our monotyped expressions
   jitcc jit;
+public:
+  // compiler-local type structure caches for internal use
+  std::unordered_map<MonoType*, MonoTypePtr> unappTyDefns;
 private:
   // disable copying
   cc(const cc&);
