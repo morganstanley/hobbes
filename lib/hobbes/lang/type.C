@@ -2142,8 +2142,6 @@ public:
         return sizeof(void*);
       } else if (f->name() == "file") {
         return sizeof(long);
-      } else if (f->name() == "fileref") {
-        return sizeof(long);
       } else if (f->name() == "process") {
         return sizeof(long);
       } else if (f->name() == "connection") {
@@ -2230,7 +2228,7 @@ bool isPrimName(const std::string& tn) {
     "[]", "list", "lseq", "process", "quote", "promise", "connection", "wpipe", "rpipe",
 
     /* ::: Set -> Set -> Set */
-    "->", "closure", "fseq", "file", "fileref"
+    "->", "closure", "fseq", "file"
   };
   
   for (unsigned int i = 0; i < sizeof(prims)/sizeof(prims[0]); ++i) {
@@ -2563,6 +2561,11 @@ MonoTypePtr decodePrim(const bytes& in, unsigned int* n) {
   bool        hasHRep = read<bool>(in, n);
   MonoTypePtr hrep    = hasHRep ? decodeFrom(in, n) : MonoTypePtr();
 
+  // special case decoding logic for old files that don't provide the representation for fileref types
+  if (pname == "fileref" && !hrep) {
+    return Prim::make(pname, tabs(str::strings("x"), Prim::make("long")));
+  }
+
   return Prim::make(pname, hrep);
 }
 
@@ -2777,8 +2780,12 @@ MonoTypePtr unalias(const MonoTypePtr& ty) {
   }
 }
 
-MonoTypePtr makeFileRef(const MonoTypePtr& ty, const MonoTypePtr& f) {
-  return TApp::make(primty("fileref"), list(ty, f));
+MonoTypePtr fileRefTy(const MonoTypePtr& ty, const MonoTypePtr& f) {
+  return TApp::make(primty("fileref", tabs(str::strings("x", "f"), Prim::make("long"))), list(ty, f));
+}
+
+MonoTypePtr fileRefTy(const MonoTypePtr& ty) {
+  return TApp::make(primty("fileref", tabs(str::strings("x"), Prim::make("long"))), list(ty));
 }
 
 }

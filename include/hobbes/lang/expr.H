@@ -1379,6 +1379,17 @@ private:
 Case::Bindings switchOf(const Case::Bindings& bs, const switchExpr<ExprPtr>& f);
 Switch::Bindings switchOf(const Switch::Bindings& bs, const switchExpr<ExprPtr>& f);
 
+// when asserting that an expression has a monotype, we might find an exceptional circumstance where some type constraints remain unsolved
+class unsolved_constraints : public annotated_error {
+public:
+  unsolved_constraints(const LexicalAnnotation&, const std::string&, const Constraints&);
+  unsolved_constraints(const LexicallyAnnotated&, const std::string&, const Constraints&);
+
+  const Constraints& constraints() const;
+private:
+  Constraints cs;
+};
+
 // require that a mono-type can be extracted from an expression
 const MonoTypePtr& requireMonotype(const TEnvPtr&, const ExprPtr&);
 MonoTypes requireMonotype(const TEnvPtr&, const Exprs&);

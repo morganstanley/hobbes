@@ -251,6 +251,133 @@ TEST(Storage, Alignment) {
   }
 }
 
+DEFINE_STRUCT(
+  Point,
+  (double, x),
+  (double, y)
+);
+
+DEFINE_STRUCT(
+  Box,
+  (Point, topLeft),
+  (Point, botRight)
+);
+
+DEFINE_STRUCT(
+  Food,
+  (std::string, name),
+  (double,      price),
+  (double,      weight),
+  (Box,         packAs)
+);
+
+DEFINE_VARIANT(
+  Vehicle,
+  (Car,   std::string),
+  (Feet,  int),
+  (Cat,   double),
+  (Horse, short)
+);
+
+DEFINE_VARIANT_WITH_LABELS(
+  IntOrDouble,
+  (left,  .f0, int),
+  (right, .f1, double)
+);
+
+void expectAligned(fregion::imagefile* f, const std::string& n, size_t alignment) {
+  auto b = f->bindings.find(n);
+  if (b == f->bindings.end()) {
+    throw std::runtime_error("File doesn't define '" + n + "', test error");
+  }
+  if (b->second.offset%alignment != 0) {
+    throw std::runtime_error("The data for '" + n + "' is stored at " + str::from(b->second.offset) + " but should be aligned to " + str::from(alignment) + " (slipped by " + str::from(b->second.offset%alignment) + ")");
+  }
+}
+
+double randV(double s) {
+  return s * (static_cast<double>(rand())/static_cast<double>(RAND_MAX));
+}
+
+TEST(Storage, FRegionAlignment) {
+  std::string fname = mkFName();
+  fregion::writer f(fname);
+# define FRALIGN_TEST(n) \
+    f.define(#n, n); \
+    expectAligned(f.fileData(), #n, fregion::store<decltype(n)>::alignment())
+
+  try {
+    std::array<int, 42> someInts;
+    FRALIGN_TEST(someInts);
+
+    int oneInt;
+    FRALIGN_TEST(oneInt);
+
+    std::pair<int,double> intAndDouble;
+    FRALIGN_TEST(intAndDouble);
+  
+    Food favFood;
+    favFood.name = "chicken";
+    favFood.price = 3.14159;
+    favFood.weight = 4.2;
+    favFood.packAs.topLeft.x  = -20;
+    favFood.packAs.topLeft.y  =  20;
+    favFood.packAs.botRight.x =  20;
+    favFood.packAs.botRight.y = -20;
+    FRALIGN_TEST(favFood);
+    
+    std::vector<Food> availFoods;
+    for (size_t i = 0; i < 10; ++i) {
+      static std::string names[]  = { "hot dog", "hamburger", "samosa", "egg drop soup", "pizza", "salad", "cake", "ice cream", "haggis", "bagel" };
+      static double      prices[] = {       3.2,         9.1,      2.3,            10.4,     1.1,     7.0,   11.9,         0.5,    -31.4,     4.1 };
+
+      Food f;
+      f.name  = names[i%(sizeof(names)/sizeof(names[0]))];
+      f.price = prices[i%(sizeof(prices)/sizeof(prices[0]))];
+      f.weight = randV(100.0);
+      f.packAs.topLeft.x  = randV(100.0);
+      f.packAs.topLeft.y  = randV(100.0);
+      f.packAs.botRight.x = randV(100.0);
+      f.packAs.botRight.y = randV(100.0);
+      availFoods.push_back(f);
+    }
+    FRALIGN_TEST(availFoods);
+
+    Vehicle favVehicle = Vehicle::Feet(20);
+    FRALIGN_TEST(favVehicle);
+
+    std::vector<Vehicle> vehicles;
+    for (size_t i = 0; i < 20; ++i) {
+      switch (static_cast<int>(randV(1000.0)) % 4) {
+      case 0:
+        vehicles.push_back(Vehicle::Car("red"));
+        break;
+      case 1:
+        vehicles.push_back(Vehicle::Feet(randV(70)));
+        break;
+      case 2:
+        vehicles.push_back(Vehicle::Cat(randV(99)));
+        break;
+      case 3:
+        vehicles.push_back(Vehicle::Horse(randV(42)));
+        break;
+      }
+    }
+    FRALIGN_TEST(vehicles);
+
+    IntOrDouble intOrDouble = IntOrDouble::left(42);
+    FRALIGN_TEST(intOrDouble);
+ 
+    std::array<IntOrDouble, 20> someIntsOrDoubles;
+    FRALIGN_TEST(someIntsOrDoubles);
+
+    unlink(fname.c_str());
+  } catch (...) {
+    unlink(fname.c_str());
+    throw;
+  }
+}
+
 TEST(Storage, GrowAwayFromReader) {
   std::string fname = mkFName();
   try {
@@ -410,13 +537,16 @@ DEFINE_VARIANT(
   (just,    std::string)
 );
 
+typedef std::array<std::string,2> FRStrArr;
+
 DEFINE_STRUCT(
   FRTest,
   (int,                      x),
   (double,                   y),
   (std::vector<std::string>, z),
   (FRTestFood,               u),
-  (MStr,                     v)
+  (MStr,                     v),
+  (FRStrArr,                 w)
 );
 
 TEST(Storage, FRegionCompatibility) {
@@ -433,6 +563,8 @@ TEST(Storage, FRegionCompatibility) {
       t.z.push_back("c");
       t.u = FRTestFood::HotDog();
       t.v = MStr::just("chicken");
+      t.w[0] = "a";
+      t.w[1] = "b";
       s(t);
     }
 
@@ -440,7 +572,7 @@ TEST(Storage, FRegionCompatibility) {
 
     cc rc;
     rc.define("f", "inputFile :: (LoadFile \"" + fname + "\" w) => w");
-    EXPECT_EQ(rc.compileFn<size_t()>("size([() | x <- f.frtest, x.z == [\"a\", \"b\", \"c\"] and x.u === |HotDog| and x.v matches |just=\"chicken\"|])")(), size_t(1000));
+    EXPECT_EQ(rc.compileFn<size_t()>("size([() | x <- f.frtest, x.z == [\"a\", \"b\", \"c\"] and x.u === |HotDog| and x.v matches |just=\"chicken\"| and x.w == [\"a\", \"b\"]])")(), size_t(1000));
 
     fregion::reader rf(fname);
     auto rs = rf.series<FRTest>("frtest");

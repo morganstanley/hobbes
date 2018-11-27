@@ -4603,13 +4603,13 @@ yyreduce:
 
   case 321:
 #line 935 "hexpr.y" /* yacc.c:1646  */
-    { (yyval.mtype) = autorelease(new MonoTypePtr(TApp::make(Prim::make("fileref"), list(*(yyvsp[-2].mtype), *(yyvsp[0].mtype))))); }
+    { (yyval.mtype) = autorelease(new MonoTypePtr(fileRefTy(*(yyvsp[-2].mtype), *(yyvsp[0].mtype)))); }
 #line 4595 "hexpr.parse.C" /* yacc.c:1646  */
     break;
 
   case 322:
 #line 936 "hexpr.y" /* yacc.c:1646  */
-    { (yyval.mtype) = autorelease(new MonoTypePtr(TApp::make(Prim::make("fileref"), list(*(yyvsp[-2].mtype))))); }
+    { (yyval.mtype) = autorelease(new MonoTypePtr(fileRefTy(*(yyvsp[-2].mtype)))); }
 #line 4601 "hexpr.parse.C" /* yacc.c:1646  */
     break;
 

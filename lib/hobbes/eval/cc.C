@@ -239,6 +239,10 @@ ExprPtr cc::unsweetenExpression(const TEnvPtr& te, const std::string& vname, con
   return result;
 }
 
+void raiseUnsolvedCsts(cc& c, const std::string& vname, const ExprPtr& e, const PolyTypePtr& t) {
+  throw unsolved_constraints(*e, "Constraints left unresolved in residual expression", expandHiddenTCs(c.typeEnv(), simplifyVarNames(e->type())->constraints()));
+}
+
 void cc::drainUnqualifyDefs(const Definitions& ds) {
   hlock _;
   bool finaldef = !this->drainingDefs;
@@ -261,7 +265,7 @@ void cc::drainUnqualifyDefs(const Definitions& ds) {
     } else {
       if (forwardDeclared) {
         if (vname.substr(0, 4) == ".rfn" || isMonotype(this->tenv->lookup(vname))) {
-          throw annotated_error(*xe, "Internal error, residual instance function '" + vname + "' should have had monotype '" + show(this->tenv->lookup(vname)) + "' but instead inferred '" + show(xety) + "' in:\n  " + showAnnotated(xe));
+          raiseUnsolvedCsts(*this, vname, xe, this->tenv->lookup(vname));
         }
         this->tenv->unbind(vname);
       }
@@ -304,7 +308,7 @@ void cc::define(const std::string& vname, const ExprPtr& e) {
   } else {
     if (forwardDeclared) {
       if (isMonotype(this->tenv->lookup(vname))) {
-        throw annotated_error(*xe, "Internal error, residual instance function '" + vname + "' should have had monotype '" + show(this->tenv->lookup(vname)) + "' but instead inferred '" + show(xety) + "'");
+        raiseUnsolvedCsts(*this, vname, xe, this->tenv->lookup(vname));
       }
       this->tenv->unbind(vname);
     }
@@ -521,20 +525,19 @@ void cc::dumpTypeEnv() const {
 }
 
 void cc::dumpTypeEnv(str::seq* syms, str::seq* types) const {
-  const TEnv::PolyTypeEnv& ptenv = this->tenv->typeEnvTable();
-
-  for (TEnv::PolyTypeEnv::const_iterator te = ptenv.begin(); te != ptenv.end(); ++te) {
+  for (auto te : this->tenv->typeEnvTable()) {
     // don't show hidden symbols since they're not meant for users
-    if (te->first.size() > 0 && te->first[0] != '.') {
-      syms->push_back(te->first);
-      types->push_back(show(te->second));
+    if (te.first.size() > 0 && te.first[0] != '.') {
+      syms->push_back(te.first);
+
+      auto t = te.second->instantiate();
+      auto cs = expandHiddenTCs(typeEnv(), t->constraints());
+      types->push_back(show(hobbes::qualtype(cs, t->monoType())));
     }
   }
 }
 
 std::string cc::showTypeEnv() const {
-  const TEnv::PolyTypeEnv& ptenv = this->tenv->typeEnvTable();
-
   str::seqs table;
   table.resize(3);
 

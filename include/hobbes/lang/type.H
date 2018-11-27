@@ -66,9 +66,6 @@ public:
 
   // improves performance of unhiding opaque type aliases
   mutable ptr unaliasedType;
-
-  // improves performance of resolving type applications just after parse-time
-  mutable ptr unappTyDefns;
 };
 
 typedef MonoType::ptr MonoTypePtr;
@@ -1254,6 +1251,10 @@ inline MonoTypePtr fnresult(const MonoTypePtr& fty) {
 }
 
 void compactMTypeMemory();
+
+// shorthand for making file ref types
+MonoTypePtr fileRefTy(const MonoTypePtr&, const MonoTypePtr&);
+MonoTypePtr fileRefTy(const MonoTypePtr&);
 
 // hash record and variant members
 template <>
