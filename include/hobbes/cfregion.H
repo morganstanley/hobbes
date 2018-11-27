@@ -17,10 +17,12 @@
 #ifndef HOBBES_HCFREGION_H_INCLUDED
 #define HOBBES_HCFREGION_H_INCLUDED
 
-#include <hobbes/fregion.H>
 #include <queue>
 #include <algorithm>
 #include <numeric>
+
+// the structured data file lib
+#include "fregion.H"
 
 namespace hobbes { namespace fregion {
 

@@ -17,11 +17,86 @@
 #include <vector>
 #include <iostream>
 #include <sstream>
+#include <string.h>
 #include <assert.h>
 #include <stdexcept>
 #include <type_traits>
+#include <cxxabi.h>
 
 namespace hobbes {
+
+// basic string utilities used here
+namespace string {
+  template <typename T>
+    inline std::string from(const T& x) {
+      std::ostringstream ss;
+      ss << x;
+      return ss.str();
+    }
+
+  // pretty-print C++ type names
+  template <typename T>
+    inline std::string demangle() {
+      if (const char* tn = typeid(T).name()) {
+        int s = 0;
+        if (char* dmn = abi::__cxa_demangle(tn, 0, 0, &s)) {
+          std::string r(dmn);
+          free(dmn);
+          return r;
+        } else {
+          return std::string(tn);
+        }
+      } else {
+        return "";
+      }
+    }
+
+  // tokenize strings
+  typedef std::vector<std::string> seq;
+  inline seq csplit(const std::string& str, const std::string& pivot) {
+    typedef std::string::size_type size_type;
+  
+    seq       ret;
+    size_type mp = 0;
+  
+    while (mp != std::string::npos) {
+      size_type nmp = str.find(pivot, mp);
+  
+      if (nmp == std::string::npos) {
+        ret.push_back(str.substr(mp, str.size() - mp));
+        mp = nmp;
+      } else {
+        ret.push_back(str.substr(mp, nmp - mp));
+        mp = nmp + pivot.size();
+      }
+    }
+  
+    return ret;
+  }
+
+  typedef std::pair<std::string, std::string> pair;
+  inline pair rsplit(const std::string& s, const std::string& ss) {
+    size_t p = s.rfind(ss);
+    if (p == std::string::npos) {
+      return pair("", s);
+    } else {
+      return pair(s.substr(0, p), s.substr(p + ss.size(), s.size()));
+    }
+  }
+
+  inline std::string cdelim(const seq& ss, const std::string& d) {
+    if (ss.size() > 0) {
+      std::ostringstream x;
+      x << ss[0];
+      for (size_t i = 1; i < ss.size(); ++i) {
+        x << d << ss[i];
+      }
+      return x.str();
+    } else {
+      return "";
+    }
+  }
+}
 
 typedef __int128 int128_t;
 
@@ -62,6 +137,43 @@ typedef __int128 int128_t;
   )(                                  \
   )
 #define PRIV_HPPF_SMAPP() PRIV_HPPF_MAPP
+#define PRIV_HPPF_MAPL(f, VS...) PRIV_HPPF_EVAL(PRIV_HPPF_MAPLP(f, VS))
+#define PRIV_HPPF_MAPLP(f, H, T...)              \
+  f(H)                                             \
+  PRIV_HPPF_IF_ELSE(PRIV_HPPF_HAS_PARGS(T))(   \
+    PRIV_HPPF_DEFER2(PRIV_HPPF_SMAPLP)()(f, T) \
+  )(                                               \
+  )
+#define PRIV_HPPF_SMAPLP() PRIV_HPPF_MAPLP
+
+// basic compile-time strings
+template <size_t N>
+  constexpr char at(size_t i, const char (&s)[N]) {
+    return (i < N) ? s[i] : '\0';
+  }
+template <size_t N>
+  constexpr size_t at8S(size_t i, size_t k, const char (&s)[N]) {
+    return (k==8) ? 0 : ((static_cast<size_t>(at(i+k,s))<<(8*k))|at8S(i,k+1,s));
+  }
+template <size_t N>
+  constexpr size_t at8(size_t i, const char (&s)[N]) {
+    return at8S(i, 0, s);
+  }
+template <size_t... pcs>
+  struct strpack {
+    static const char* str() {
+      constexpr size_t msg[] = {pcs...};
+      static_assert(msg[(sizeof(msg)/sizeof(msg[0]))-1] == 0, "compile-time string larger than internal max limit (this limit can be bumped in storage.H)");
+
+      static const size_t smsg[] = {pcs...};
+      return reinterpret_cast<const char*>(smsg);
+    }
+  };
+#define PRIV_HPPF_TSTR32(i,s)   ::hobbes::at8(i+(8*0),s),::hobbes::at8(i+(8*1),s),::hobbes::at8(i+(8*2),s),::hobbes::at8(i+(8*3),s)
+#define PRIV_HPPF_TSTR128(i,s)  PRIV_HPPF_TSTR32(i+(32*0),s),PRIV_HPPF_TSTR32(i+(32*1),s),PRIV_HPPF_TSTR32(i+(32*2),s),PRIV_HPPF_TSTR32(i+(32*3),s)
+#define PRIV_HPPF_TSTR512(i,s)  PRIV_HPPF_TSTR128(i+(128*0),s),PRIV_HPPF_TSTR128(i+(128*1),s),PRIV_HPPF_TSTR128(i+(128*2),s),PRIV_HPPF_TSTR128(i+(128*3),s)
+#define PRIV_HPPF_TSTR1024(i,s) PRIV_HPPF_TSTR512(i+(512*0),s),PRIV_HPPF_TSTR512(i+(512*1),s)
+#define PRIV_HPPF_TSTR(s)       ::hobbes::strpack<PRIV_HPPF_TSTR1024(0,s)>
 
 // value-level bool -> type-level bool
 template <bool f> struct tbool { };
@@ -77,15 +189,16 @@ constexpr size_t szmax(size_t x, size_t y) {
 
 template <size_t index, size_t base, typename ... Fields>
   struct offsetInfo {
-    static const size_t offset     = base;
-    static const size_t malignment = 1;
-    static const size_t size       = 0;
+    static const size_t offset       = base;
+    static const size_t maxAlignment = 1;
+    static const size_t size         = 0;
+    static const bool   packed       = true; // but technically unit can't be memcopied
 
-    static void defInit(uint8_t*) { }
+    static void defInit (uint8_t*) { }
     static void initFrom(uint8_t*, const Fields&...) { }
     static void copyFrom(uint8_t*, const uint8_t*) { }
-    static void destroy(uint8_t*) { }
-    static bool eq(const uint8_t*, const uint8_t*) { return true; }
+    static void destroy (uint8_t*) { }
+    static bool eq      (const uint8_t*, const uint8_t*) { return true; } // all units are equal
   };
 template <size_t index, size_t base, typename Field, typename ... Fields>
   struct offsetInfo<index, base, Field, Fields...> {
@@ -93,8 +206,9 @@ template <size_t index, size_t base, typename Field, typename ... Fields>
 
     typedef offsetInfo<index+1, offset+sizeof(Field), Fields...> tail;
 
-    static const size_t malignment = szmax(alignof(Field), tail::malignment);
-    static const size_t size       = (offset-base) + sizeof(Field) + tail::size;
+    static const size_t maxAlignment = szmax(alignof(Field), tail::maxAlignment);
+    static const size_t size         = (offset-base) + sizeof(Field) + tail::size;
+    static const bool   packed       = (offset == base) && tail::packed;
 
     static void defInit(uint8_t* b) {
       new (b+offset) Field();
@@ -132,8 +246,9 @@ template <size_t n, typename Field, typename ... Fields>
 template <typename ... Fields>
   struct tuple {
     typedef offsetInfo<0, 0, Fields...> offs;
-    static const size_t alignment = offs::malignment;
-    static const size_t size      = alignTo(offs::size, offs::malignment);
+    static const size_t alignment = offs::maxAlignment;
+    static const size_t size      = alignTo(offs::size, offs::maxAlignment);
+    static const bool   packed    = (size == offs::size) && offs::packed;
     uint8_t buffer[size];
 
     tuple() {
@@ -242,6 +357,7 @@ template <typename T, typename ... Ts> struct tupleTail<T, Ts...> { typedef tupl
     PRIV_HPPF_MAP(PRIV_HPPF_STRUCT_FIELD, FIELDS) /* struct fields */ \
     static const bool is_hmeta_struct = true; /* identify this type as a struct */ \
     typedef typename ::hobbes::tupleTail<int PRIV_HPPF_MAP(PRIV_HPPF_STRUCT_FIELD_TYARGL, FIELDS)>::type as_tuple_type; \
+    static std::string _hmeta_struct_type_name() { return #T; } \
     template <typename V> \
       static void meta(V& v) { \
         PRIV_HPPF_MAP(PRIV_HPPF_STRUCT_FIELD_VISIT, FIELDS) \
@@ -1004,7 +1120,16 @@ template <typename T>
   void w(const T& x, bytes* out) {
     out->insert(out->end(), reinterpret_cast<const uint8_t*>(&x), reinterpret_cast<const uint8_t*>(&x) + sizeof(x));
   }
+inline void ws(const char* x, bytes* out) {
+  size_t n = strlen(x);
+  w(n, out);
+  out->insert(out->end(), x, x + n);
+}
 inline void ws(const std::string& x, bytes* out) {
+  w(static_cast<size_t>(x.size()), out);
+  out->insert(out->end(), x.begin(), x.end());
+}
+inline void ws(const bytes& x, bytes* out) {
   w(static_cast<size_t>(x.size()), out);
   out->insert(out->end(), x.begin(), x.end());
 }
