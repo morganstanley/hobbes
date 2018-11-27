@@ -18,6 +18,7 @@ namespace hobbes {
 class GrammarValue : public LexicallyAnnotated {
 public:
   GrammarValue(const LexicallyAnnotated&);
+  virtual ~GrammarValue() = default;
   virtual void show(std::ostream&) const = 0;
 private:
   GrammarValue();
