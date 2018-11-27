@@ -32,7 +32,7 @@ std::string hogBinaryPath() {
   return path;
 }
 
-DEFINE_HSTORE_STRUCT(
+DEFINE_PACKED_HSTORE_STRUCT(
   Point3D,
   (int, x),
   (int, y),
