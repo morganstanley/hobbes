@@ -525,13 +525,14 @@ void cc::dumpTypeEnv() const {
 }
 
 void cc::dumpTypeEnv(str::seq* syms, str::seq* types) const {
-  const TEnv::PolyTypeEnv& ptenv = this->tenv->typeEnvTable();
-
-  for (TEnv::PolyTypeEnv::const_iterator te = ptenv.begin(); te != ptenv.end(); ++te) {
+  for (auto te : this->tenv->typeEnvTable()) {
     // don't show hidden symbols since they're not meant for users
-    if (te->first.size() > 0 && te->first[0] != '.') {
-      syms->push_back(te->first);
-      types->push_back(show(te->second));
+    if (te.first.size() > 0 && te.first[0] != '.') {
+      syms->push_back(te.first);
+
+      auto t = te.second->instantiate();
+      auto cs = expandHiddenTCs(typeEnv(), t->constraints());
+      types->push_back(show(hobbes::qualtype(cs, t->monoType())));
     }
   }
 }

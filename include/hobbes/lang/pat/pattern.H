@@ -52,6 +52,7 @@ ExprPtr compileRegexFn(cc*, const std::string& regex, const LexicalAnnotation&);
 // a general representation of patterns to match
 class Pattern : public LexicallyAnnotated {
 public:
+  virtual ~Pattern() = default;
   virtual void show(std::ostream&) const = 0;
   virtual bool operator==(const Pattern&) const = 0;
 
