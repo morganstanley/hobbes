@@ -12,8 +12,6 @@
 #ifndef HOBBES_HNET_H_INCLUDED
 #define HOBBES_HNET_H_INCLUDED
 
-#include <hobbes/reflect.H>
-
 #include <vector>
 #include <queue>
 #include <functional>
@@ -32,6 +30,9 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <string.h>
+
+// types with static reflection info (for reflective structs, variants, etc)
+#include "reflect.H"
 
 namespace hobbes { namespace net {
 

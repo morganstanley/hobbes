@@ -261,7 +261,11 @@ void evaluator::resetREPLCycle() {
 
 bool evaluator::satisfied(const hobbes::ConstraintPtr& c) {
   hobbes::Definitions ds;
-  bool result = hobbes::satisfied(this->ctx.typeEnv(), c, &ds);
+  bool result = false;
+  try {
+    result = hobbes::satisfied(this->ctx.typeEnv(), c, &ds);
+  } catch (std::exception&) {
+  }
   this->ctx.drainUnqualifyDefs(ds);
   return result;
 }
