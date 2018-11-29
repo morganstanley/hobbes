@@ -428,9 +428,10 @@ struct SectTest {
   std::string w;
   hobbes::datetimeT dt;
   hobbes::timespanT ts;
+  const hobbes::array<char>* array;
   void* q;
 };
-DEFINE_HSTORE_STRUCT_VIEW(SectTest, x, y, z, w, dt, ts);
+DEFINE_HSTORE_STRUCT_VIEW(SectTest, x, y, z, w, dt, ts, array);
 
 TEST(Hog, SupportedTypes) {
   HogApp local(RunMode{{"TestRecTypes"}, /* consolidate = */ true});
@@ -443,6 +444,7 @@ TEST(Hog, SupportedTypes) {
   st.w = "test";
   st.dt.value = hobbes::now();
   st.ts.value = 60*1000*1000;
+  st.array = hobbes::makeString(st.w);
   HLOG(TestRecTypes, sectView, "test sect view", st);
   TestRecTypes.commit();
 
@@ -453,7 +455,7 @@ TEST(Hog, SupportedTypes) {
   for (const auto& log : local.logpaths()) {
     c.define("f"+hobbes::str::from(i++), "inputFile::(LoadFile \""+log+"\" w)=>w");
   }
-  EXPECT_TRUE(c.compileFn<bool()>("all(\\x.x  matches {x=42,y=3.14159,z=[0S,1S,2S,3S,4S,5S,6S,7S,8S,9S],w=\"test\"},f0.sectView[0:])")());
+  EXPECT_TRUE(c.compileFn<bool()>("all(\\x.x  matches {x=42,y=3.14159,z=[0S,1S,2S,3S,4S,5S,6S,7S,8S,9S],w=\"test\",array=\"test\"},f0.sectView[0:])")());
 }
 
 DEFINE_STORAGE_GROUP(
