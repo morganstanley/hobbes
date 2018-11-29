@@ -89,6 +89,11 @@ instance Array (long * <char>) char where
   element p i = cptrrefby(p.1, i)
   elements xs i e = defElementsWith(xs, \(_,p) i.cptrrefby(p,i), i, e)
 
+instance (Array a e) => Array a@f e where
+  size xs = size(load(xs))
+  element xs i = element(load(xs), i)
+  elements xs i e = elements(load(xs), i, e)
+
 data vector t s n = [:byte|n:]
 instance Array (vector t s n) t where
   size     v     = vectorSize(unsafeCast(v), salength(newPrim()::[:char|s:]))

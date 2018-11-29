@@ -1153,12 +1153,10 @@ template <>
 
 template <typename T>
   struct store<array<T>*, typename tbool<store<T>::can_memcpy>::type> {
-    static const bool can_memcpy = true;
+    static const bool can_memcpy = false;
     static ty::desc type() { return ty::array(store<T>::type()); }
     static size_t size(const array<T>* xs) { return sizeof(size_t) + xs->size * sizeof(T); }
-    static bool write(wpipe& p, const array<T>* xs) {
-      return store<size_t>::write(p, xs->size) && p.write(reinterpret_cast<const uint8_t*>(xs->data), xs->size * sizeof(T));
-    }
+    static bool write(wpipe& p, const array<T>* xs) { return p.write(reinterpret_cast<const uint8_t*>(xs), size(xs)); }
   };
 
 template <typename T>
