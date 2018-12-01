@@ -1644,13 +1644,8 @@ inline size_t alignOf(const desc& t) {
   const Prim*      pt   = reinterpret_cast<const Prim*>(pd);
   const Var*       pvn  = reinterpret_cast<const Var*>(pd);
   const FArr*      pfa  = reinterpret_cast<const FArr*>(pd);
-  const Arr*       pa   = reinterpret_cast<const Arr*>(pd);
   const Variant*   pv   = reinterpret_cast<const Variant*>(pd);
   const Struct*    ps   = reinterpret_cast<const Struct*>(pd);
-  const Recursive* pr   = reinterpret_cast<const Recursive*>(pd);
-  const Fn*        pfn  = reinterpret_cast<const Fn*>(pd);
-  const App*       papp = reinterpret_cast<const App*>(pd);
-  const Nat*       pn   = reinterpret_cast<const Nat*>(pd);
 
   switch (t->tid) {
   case PRIV_HPPF_TYCTOR_PRIM:
@@ -1724,13 +1719,8 @@ inline size_t sizeOf(const desc& t) {
   const Prim*      pt   = reinterpret_cast<const Prim*>(pd);
   const Var*       pvn  = reinterpret_cast<const Var*>(pd);
   const FArr*      pfa  = reinterpret_cast<const FArr*>(pd);
-  const Arr*       pa   = reinterpret_cast<const Arr*>(pd);
   const Variant*   pv   = reinterpret_cast<const Variant*>(pd);
   const Struct*    ps   = reinterpret_cast<const Struct*>(pd);
-  const Recursive* pr   = reinterpret_cast<const Recursive*>(pd);
-  const Fn*        pfn  = reinterpret_cast<const Fn*>(pd);
-  const App*       papp = reinterpret_cast<const App*>(pd);
-  const Nat*       pn   = reinterpret_cast<const Nat*>(pd);
 
   switch (t->tid) {
   case PRIV_HPPF_TYCTOR_PRIM:
