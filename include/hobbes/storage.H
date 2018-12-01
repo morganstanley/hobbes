@@ -1012,6 +1012,8 @@ template <typename T, typename P = void>
   struct store {
   };
 
+template <typename T> struct store<const T*> : store<T*> {};
+
 #define PRIV_HSTORE_DEFINE_PRIMTYS(T, n) \
   template <> \
     struct store<T> { \
@@ -1142,6 +1144,38 @@ template <>
       if (!store<size_t>::write(p, n)) { return false; }
       for (const auto& x : xs) {
         if (!store<bool>::write(p, x)) {
+          return false;
+        }
+      }
+      return true;
+    }
+  };
+
+template <typename T>
+  struct store<array<T>*, typename tbool<store<T>::can_memcpy>::type> {
+    static const bool can_memcpy = false;
+    static ty::desc type() { return ty::array(store<T>::type()); }
+    static size_t size(const array<T>* xs) { return sizeof(size_t) + xs->size * sizeof(T); }
+    static bool write(wpipe& p, const array<T>* xs) { return p.write(reinterpret_cast<const uint8_t*>(xs), size(xs)); }
+  };
+
+template <typename T>
+  struct store<array<T>*, typename tbool<!store<T>::can_memcpy>::type> {
+    static const bool can_memcpy = false;
+    static ty::desc type() { return ty::array(store<T>::type()); }
+    static size_t size(const array<T>* xs) {
+      size_t size = sizeof(size_t);
+      for (const auto & x : xs) {
+        size += store<T>::size(x);
+      }
+      return size;
+    }
+    static bool write(wpipe& p, const array<T>* xs) {
+      if (!store<size_t>::write(p, xs->size)) {
+        return false;
+      }
+      for (const auto & x : xs) {
+        if (!store<T>::write(p, x)) {
           return false;
         }
       }
