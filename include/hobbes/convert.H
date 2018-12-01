@@ -1,5 +1,5 @@
 /*
- * convert : structural conversion/convertibility (as with the hobbes 'convert' function)
+ * convert : structural conversion/convertibility
  *
  */
 
@@ -9,22 +9,9 @@
 #include "reflect.H"
 #include <stdexcept>
 #include <array>
+#include <unordered_map>
 
 namespace hobbes { namespace convert {
-
-//TODO
-size_t sizeOf(const ty::desc& t) {
-  if (t->tid == PRIV_HPPF_TYCTOR_PRIM) {
-    const ty::Prim* pt = reinterpret_cast<const ty::Prim*>(t.get());
-
-    if (pt->n == "int") {
-      return 4;
-    } else if (pt->n == "long") {
-      return 8;
-    }
-  }
-  throw std::runtime_error("nyi");
-}
 
 /*****************************
  *
@@ -51,6 +38,22 @@ template <typename T>
 // primitive conversion (where static_cast is safe)
 //
 /////////////////////////
+#define SCAST_CONVERT_ALONE(ToName, To) \
+  template <> \
+    struct into<To> { \
+      typedef To dest_type_t; \
+      static convFn<To>::type from(const ty::desc& t) { \
+        const ty::Prim* pt = reinterpret_cast<const ty::Prim*>(t.get()); \
+        if (t->tid != PRIV_HPPF_TYCTOR_PRIM) { \
+          throw std::runtime_error("Can't convert non-primitive type " + ty::show(t) + " to " + string::demangle<To>()); \
+        } else if (pt->n == ToName) {  \
+          return [](const void* from, To* to) { *to = *reinterpret_cast<const To*>(from); }; /* identity */ \
+        } else { \
+          throw std::runtime_error("Can't convert from " + ty::show(t) + " to " + string::demangle<To>()); \
+        } \
+      } \
+    }
+
 #define PRIV_HCONV_PCONV_FROM(name, t) \
   } else if (pt->n == name) { \
     return [](const void* from, dest_type_t* to) { *to = static_cast<dest_type_t>(*reinterpret_cast<const t*>(from)); };
@@ -72,6 +75,8 @@ template <typename T>
       } \
     }
 
+SCAST_CONVERT_ALONE("bool",  bool);
+SCAST_CONVERT_ALONE("char",  char);
 SCAST_CONVERT("byte",  uint8_t,  ("char", char));
 SCAST_CONVERT("short", int16_t,  ("char", char), ("byte", uint8_t));
 SCAST_CONVERT("short", uint16_t, ("char", char), ("byte", uint8_t));
@@ -79,6 +84,10 @@ SCAST_CONVERT("int",   int32_t,  ("char", char), ("byte", uint8_t), ("short", in
 SCAST_CONVERT("int",   uint32_t, ("char", char), ("byte", uint8_t), ("short", int16_t));
 SCAST_CONVERT("long",  int64_t,  ("char", char), ("byte", uint8_t), ("short", int16_t), ("int", int32_t));
 SCAST_CONVERT("long",  uint64_t, ("char", char), ("byte", uint8_t), ("short", int16_t), ("int", int32_t));
+#if defined(__APPLE__) && defined(__MACH__)
+SCAST_CONVERT("long",  long,   ("char", char), ("byte", uint8_t), ("short", int16_t), ("int", int32_t));
+SCAST_CONVERT("long",  size_t, ("char", char), ("byte", uint8_t), ("short", int16_t), ("int", int32_t));
+#endif
 
 SCAST_CONVERT("float",  float,  ("char", char), ("byte", uint8_t), ("short", int16_t), ("int", int32_t));
 SCAST_CONVERT("double", double, ("char", char), ("byte", uint8_t), ("short", int16_t), ("int", int32_t), ("long", int64_t), ("float", float));
@@ -102,7 +111,7 @@ template <typename T, size_t N>
         throw std::runtime_error("Can't convert from " + ty::show(t) + " to " + string::demangle<std::array<T,N>>() + " due to length-mismatch");
       } else {
         auto   convElem = into<T>::from(pfa->t);
-        size_t step     = sizeOf(pfa->t);
+        size_t step     = ty::sizeOf(pfa->t);
 
         return [convElem, step](const void* src, std::array<T, N>* dst) {
           for (size_t i = 0; i < N; ++i) {
@@ -116,7 +125,7 @@ template <typename T, size_t N>
 
 /////////////////////////
 //
-// struct conversion such that if 'src={sh*st}', 'dst={dh*dt}', 'Convert sh dh', and 'Convert st dt', then 'Convert src dst'
+// struct conversion such that if 'dst={lbl:dh*dt}', 'src/lbl::sh', 'Convert sh dh', and 'Convert src dt', then 'Convert src dst'
 //
 /////////////////////////
 
@@ -128,11 +137,15 @@ template <typename T, size_t N>
 template <typename T>
   struct StructConvField {
     struct type {
-      typedef T value_type;
+      typedef T                        value_type;
+      typedef typename convFn<T>::type convert_fn;
 
-      size_t                   srcOffset;
-      size_t                   dstOffset;
-      typename convFn<T>::type convert;
+      size_t     srcOffset;
+      size_t     dstOffset;
+      convert_fn convert;
+
+      type() : srcOffset(0), dstOffset(0), convert() { }
+      type(const type& rhs) : srcOffset(rhs.srcOffset), dstOffset(rhs.dstOffset), convert(rhs.convert) { }
     };
   };
 
@@ -223,6 +236,103 @@ template <typename T>
       }
     }
   };
+
+/////////////////////////
+//
+// variant conversion such that if 'src=|lbl:sh+st|', 'dst/lbl::dh', 'Convert sh dh', and 'Convert st dst', then 'Convert src dst'
+//
+/////////////////////////
+
+// a variant conversion function over a variant type holds conversion functions at every possible ctor/payload
+template <typename T>
+  struct VariantConvF {
+    typedef std::function<void(const void*, T*)> CtorConvF;
+    typedef std::unordered_map<uint32_t, CtorConvF> Ctors;
+
+    Ctors  ctors;
+    size_t srcPayloadOffset;
+    size_t maxAlign;
+
+    VariantConvF() : srcPayloadOffset(4), maxAlign(1) {
+    }
+
+    void apply(const void* src, T* dst) const {
+      auto c = this->ctors.find(*reinterpret_cast<const uint32_t*>(src));
+      c->second(reinterpret_cast<const uint8_t*>(src) + this->srcPayloadOffset, dst);
+    }
+  };
+
+// a whole-variant conversion function is a tuple of 'VariantConvCtor' at each ctor of the destination variant
+// to produce this function, we need to consider each field of the destination variant,
+// find its source in the source variant, and produce the conversion function at each constructor
+//
+// if the source variant doesn't have a constructor in our dest, we can give any conversion function (it'll never be called)
+// (this is a roundabout way of doing static induction on the source type, since we only know the source type dynamically)
+template <typename DstVariantT, typename DstGVariantT, typename VariantConvF, size_t i, size_t n>
+  struct MakeVariantConvF { };
+
+// the base case ('void' at the end of the variant, no more ctors to convert)
+template <typename DstVariantT, typename VariantConvF, size_t n, typename ... Ts>
+  struct MakeVariantConvF<DstVariantT, variant<Ts...>, VariantConvF, n, n> {
+    static void init(const ty::Variant*, VariantConvF*) { }
+  };
+
+// the inductive case (decide the conversion function for the pointed-to constructor (if defined), then continue walking the variant)
+template <typename DstVariantT, typename VariantConvF, size_t i, size_t n, typename ... Ts>
+  struct MakeVariantConvF<DstVariantT, variant<Ts...>, VariantConvF, i, n> {
+    static void init(const ty::Variant* srcTy, VariantConvF* convFs) {
+      typedef typename nth<i, Ts...>::type H;
+
+      // figure out how to convert just this constructor (if possible)
+      if (const ty::Variant::Ctor* srcCtor = namedCtor(srcTy, DstVariantT::template _hmeta_ctor_name<i>())) {
+        convFs->maxAlign         = std::max<size_t>(convFs->maxAlign, ty::alignOf(srcCtor->at<2>()));
+        convFs->srcPayloadOffset = alignTo(4, convFs->maxAlign);
+
+        auto convP = into<H>::from(srcCtor->at<2>());
+        convFs->ctors[srcCtor->template at<1>()] = [convP](const void* src, variant<Ts...>* dst) {
+          dst->unsafeTag() = DstVariantT::template _hmeta_ctor_id<i>();
+          convP(src, reinterpret_cast<H*>(dst->unsafePayload()));
+        };
+      }
+
+      // and continue for the rest of the fields
+      MakeVariantConvF<DstVariantT, variant<Ts...>, VariantConvF, i+1, n>::init(srcTy, convFs);
+    }
+
+    // find the definition of the named ctor in the source variant (or return null if there is no such ctor)
+    static const ty::Variant::Ctor* namedCtor(const ty::Variant* ty, const std::string& cname) {
+      for (size_t k = 0; k < ty->ctors.size(); ++k) {
+        if (ty->ctors[k].at<0>() == cname) {
+          return &ty->ctors[k];
+        }
+      }
+      return 0;
+    }
+  };
+
+// apply a constructed conversion map (made via 'MakeVariantConvF') to an actual source type
+template <typename T>
+  struct into<T, typename tbool<T::is_hmeta_variant>::type> {
+    static typename convFn<T>::type from(const ty::desc& t) {
+      const ty::Variant* pv = reinterpret_cast<const ty::Variant*>(t.get());
+
+      if (t->tid != PRIV_HPPF_TYCTOR_VARIANT) {
+        throw std::runtime_error("Can't convert from " + ty::show(t) + " due to kind mismatch (not a variant)");
+      } else {
+        typedef typename T::as_variant_type VT;
+
+        // prepare the conversion map out of the source into the dest
+        VariantConvF<VT> vcf;
+        MakeVariantConvF<T, VT, VariantConvF<VT>, 0, VT::count>::init(pv, &vcf);
+
+        // finally, if we could construct this conversion map, then we can produce a convert function that applies it
+        return [vcf](const void* src, T* dst) {
+          vcf.apply(src, reinterpret_cast<VT*>(dst));
+        };
+      }
+    }
+  };
+
 
 }}
 

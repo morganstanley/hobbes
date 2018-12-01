@@ -15,6 +15,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <map>
 #include <iostream>
 #include <sstream>
 #include <string.h>
@@ -179,6 +180,17 @@ template <size_t... pcs>
 template <bool f> struct tbool { };
 template <>       struct tbool<true> { typedef void type; };
 
+// test to see if a type(s) can be printed
+template <typename T, typename P = void>
+  struct can_show_type { static const bool value = false; };
+template <typename T>
+  struct can_show_type<T, decltype(void(std::declval<std::ostream&>() << std::declval<const T&>()))> { static const bool value = true; };
+
+template <typename ... Ts>
+  struct can_show_types { static const bool value = true; };
+template <typename T, typename ... Ts>
+  struct can_show_types<T, Ts...> { static const bool value = can_show_type<T>::value && can_show_types<Ts...>::value; };
+
 // a standard layout tuple type
 constexpr size_t alignTo(size_t x, size_t a) {
   return (x % a == 0) ? x : (a * (1 + x/a));
@@ -334,6 +346,28 @@ template <template <typename T> class F>
     typedef tuple<> type;
   };
 
+// show a tuple iff its fields can be shown
+template <size_t i, size_t n, typename ... Ts>
+  struct ShowTuple {
+    static void show(std::ostream& o, const tuple<Ts...>& v) {
+      if (i > 0) o << ", ";
+      o << v.template at<i>();
+      ShowTuple<i+1, n, Ts...>::show(o, v);
+    }
+  };
+template <size_t n, typename ... Ts>
+  struct ShowTuple<n, n, Ts...> {
+    static void show(std::ostream&, const tuple<Ts...>&) { }
+  };
+
+template <typename ... Ts>
+  inline typename std::enable_if<can_show_types<Ts...>::value, std::ostream&>::type operator<<(std::ostream& o, const tuple<Ts...>& v) {
+    o << "(";
+    ShowTuple<0, tuple<Ts...>::count, Ts...>::show(o, v);
+    o << ")";
+    return o;
+  }
+
 // the trivially true proposition -- ie: C's "void" with its one value constructible
 struct unit {
   unit() { }
@@ -353,6 +387,7 @@ template <typename T, typename ... Ts> struct tupleTail<T, Ts...> { typedef tupl
 #define PRIV_HPPF_STRUCT_FIELD_EQ(t, n) && this->n == rhs.n
 #define PRIV_HPPF_STRUCT_FIELD_TYARGL(t, n) , t
 #define PRIV_HPPF_STRUCT_FIELD_NLOOKUP(t, n) if (o == idx) { return #n; } ++o;
+#define PRIV_HPPF_STRUCT_FIELD_SHOW(_, n) ss << ", " << #n << "=" << v.n;
 
 #define DEFINE_STRUCT(T, FIELDS...) \
   struct T { \
@@ -373,6 +408,13 @@ template <typename T, typename ... Ts> struct tupleTail<T, Ts...> { typedef tupl
     template <typename X> \
       inline typename std::enable_if<std::is_base_of<X, T>::value, bool>::type operator==(const X& rhs) const { \
         return true PRIV_HPPF_MAP(PRIV_HPPF_STRUCT_FIELD_EQ, FIELDS); \
+      } \
+    template <typename X> \
+      friend inline typename std::enable_if<std::is_base_of<X,T>::value && ::hobbes::can_show_type<typename T::as_tuple_type>::value,std::ostream&>::type operator<<(std::ostream& o, const X& v) { \
+        std::ostringstream ss; \
+        PRIV_HPPF_MAP(PRIV_HPPF_STRUCT_FIELD_SHOW, FIELDS); \
+        o << "{ " << ss.str().substr(2) << " }"; \
+        return o; \
       } \
   }
 
@@ -407,8 +449,8 @@ template <typename T, typename ... Ts> struct tupleTail<T, Ts...> { typedef tupl
     } \
     bool operator==(const T& rhs) const { return this->value == rhs.value; } \
     std::string show() const { switch (this->value) { PRIV_HPPF_MAP(PRIV_HPPF_ENUM_SHOW, CTORS); default: return "?"; } } \
-  }; \
-  inline std::ostream& operator<<(std::ostream& o, const T& v) { o << v.show(); return o; }
+    friend inline std::ostream& operator<<(std::ostream& o, const T& v) { o << v.show(); return o; } \
+  }
 
 #define DEFINE_ENUM(T, CTORS...) DEFINE_PACKED_ENUM(T, uint32_t, CTORS)
 
@@ -513,7 +555,8 @@ template <size_t, typename T, typename U>
 template <typename ... Ctors>
   class variant {
   public:
-    static_assert(sizeof...(Ctors) > 0, "Empty variants are impossible to construct");
+    static const size_t count = sizeof...(Ctors);
+    static_assert(count > 0, "Empty variants are impossible to construct");
 
     typedef variantApp<void, variantPayloadCtor, void, tuple<Ctors...>, const void*> VCCtor;
     typedef variantApp<void, variantPayloadDtor, void, tuple<Ctors...>>              VDtor;
@@ -598,21 +641,39 @@ template <typename T>
 template <typename ... Ts>
   struct toVariant<tuple<Ts...>> { typedef variant<Ts...> type; };
 
+// show a variant iff its constructors can be shown
+template <size_t, typename T, typename U>
+  struct ShowVariantPayload {
+    static void fn(T* x, std::ostream* out) {
+      *out << *x;
+    }
+  };
+
+template <typename ... Ts>
+  inline typename std::enable_if<0<sizeof...(Ts) && can_show_types<Ts...>::value, std::ostream&>::type operator<<(std::ostream& o, const variant<Ts...>& cv) {
+    variant<Ts...>& v = *const_cast<variant<Ts...>*>(&cv);
+    o << "|" << v.unsafeTag() << "=";
+    variantApp<void, ShowVariantPayload, void, tuple<Ts...>, std::ostream*>::apply(v.unsafeTag(), const_cast<void*>(reinterpret_cast<const void*>(v.unsafePayload())), &o);
+    o << "|";
+    return o;
+  }
+
 // reflective variants
-#define PRIV_HPPF_VARIANT_TYARGL(n, t)    , t
-#define PRIV_HPPF_VARIANT_CTOR(n, t)      static SelfT n(const t & x) { SelfT r; r.tag = Enum::tag_##n; new (&r.n##_data) t(x); return r; }
-#define PRIV_HPPF_VARIANT_PCOPY(n, t)     case Enum::tag_##n: new (&this->n##_data) t(rhs.n##_data); break;
-#define PRIV_HPPF_VARIANT_GINIT(n, t)     case Enum::tag_##n: new (&this->n##_data) t(); v.template init<t>(&this->n##_data); break;
-#define PRIV_HPPF_VARIANT_PDESTROY(n, t)  case Enum::tag_##n: { typedef t PRIV_DT; reinterpret_cast<PRIV_DT*>(&this->n##_data)->~PRIV_DT(); } break;
-#define PRIV_HPPF_VARIANT_CTOR_TAG(n, t)  tag_##n,
-#define PRIV_HPPF_VARIANT_CTOR_DATA(n, t) t n##_data;
-#define PRIV_HPPF_VARIANT_CTOR_COUNT(n,t) +1
-#define PRIV_HPPF_VARIANT_EQCASE(n, t)    case Enum::tag_##n: return (this->n##_data == rhs.n##_data);
-#define PRIV_HPPF_VARIANT_META(n, t)      v.template ctor<t>(#n, static_cast<uint32_t>(Enum::tag_##n));
-#define PRIV_HPPF_VARIANT_VDECL(n, t)     virtual R n(const t & x) const = 0;
-#define PRIV_HPPF_VARIANT_VCASE(n, t)     case Enum::tag_##n: return v. n (this->n##_data);
-#define PRIV_HPPF_VARIANT_GVCASE(n, t)    case Enum::tag_##n: return v.template visit<t>(#n, static_cast<uint32_t>(Enum::tag_##n), this->n##_data);
-#define PRIV_HPPF_VARIANT_SHOW(n, t)      case Enum::tag_##n: o << "|" << #n << "=" << this->n##_data << "|"; break;
+#define PRIV_HPPF_VARIANT_TYARGL(_, t)      , t
+#define PRIV_HPPF_VARIANT_CTOR(n, t)        static SelfT n(const t & x) { SelfT r; r.tag = Enum::tag_##n; new (&r.n##_data) t(x); return r; }
+#define PRIV_HPPF_VARIANT_PCOPY(n, t)       case Enum::tag_##n: new (&this->n##_data) t(rhs.n##_data); break;
+#define PRIV_HPPF_VARIANT_GINIT(n, t)       case Enum::tag_##n: new (&this->n##_data) t(); v.template init<t>(&this->n##_data); break;
+#define PRIV_HPPF_VARIANT_PDESTROY(n, t)    case Enum::tag_##n: { typedef t PRIV_DT; reinterpret_cast<PRIV_DT*>(&this->n##_data)->~PRIV_DT(); } break;
+#define PRIV_HPPF_VARIANT_CTOR_TAG(n, t)    tag_##n,
+#define PRIV_HPPF_VARIANT_CTOR_DATA(n, t)   t n##_data;
+#define PRIV_HPPF_VARIANT_CTOR_COUNT(_,__)   +1
+#define PRIV_HPPF_VARIANT_EQCASE(n, _)      case Enum::tag_##n: return (this->n##_data == rhs.n##_data);
+#define PRIV_HPPF_VARIANT_META(n, t)        v.template ctor<t>(#n, static_cast<uint32_t>(Enum::tag_##n));
+#define PRIV_HPPF_VARIANT_VDECL(n, t)       virtual R n(const t & x) const = 0;
+#define PRIV_HPPF_VARIANT_VCASE(n, _)       case Enum::tag_##n: return v. n (this->n##_data);
+#define PRIV_HPPF_VARIANT_GVCASE(n, t)      case Enum::tag_##n: return v.template visit<t>(#n, static_cast<uint32_t>(Enum::tag_##n), this->n##_data);
+#define PRIV_HPPF_VARIANT_SHOW(n, t)        case X::Enum::tag_##n: o << "|" << #n << "=" << v.n##_data << "|"; break;
+#define PRIV_HPPF_VARIANT_HMCTOR_NAME(n, _) case Enum::tag_##n: return #n;
 
 #define DEFINE_VARIANT(T, CTORS...) \
   template <typename R> \
@@ -681,13 +742,19 @@ template <typename ... Ts>
         default: break; \
         } \
       } \
-    std::ostream& show(std::ostream& o) const { \
-      switch (this->tag) { \
-      PRIV_HPPF_MAP(PRIV_HPPF_VARIANT_SHOW, CTORS) \
-      default: o << "?"; break; \
+    template <size_t i> \
+      static const char* _hmeta_ctor_name() { \
+        static_assert(i < as_variant_type::count, "Invalid constructor index in variant"); \
+        switch (static_cast<Enum>(i)) { \
+        PRIV_HPPF_MAP(PRIV_HPPF_VARIANT_HMCTOR_NAME, CTORS) \
+        default: return "impossible"; \
+        } \
       } \
-      return o; \
-    } \
+    template <size_t i> \
+      static uint32_t _hmeta_ctor_id() { \
+        static_assert(i < as_variant_type::count, "Invalid constructor index in variant"); \
+        return static_cast<uint32_t>(i); \
+      } \
     template <typename X> \
       inline typename std::enable_if<std::is_base_of<X, T>::value, bool>::type operator==(const X& rhs) const { \
         if (this->tag != rhs.tag) { \
@@ -709,8 +776,16 @@ template <typename ... Ts>
       char data[1]; \
       PRIV_HPPF_MAP(PRIV_HPPF_VARIANT_CTOR_DATA, CTORS) \
     }; \
-  }; \
-  inline std::ostream& operator<<(std::ostream& o, const T& v) { return v.show(o); }
+  public: \
+    template <typename X> \
+      friend inline typename std::enable_if<std::is_base_of<X,T>::value && ::hobbes::can_show_type<T::as_variant_type>::value,std::ostream&>::type operator<<(std::ostream& o, const X& v) { \
+        switch (v.tag) { \
+        PRIV_HPPF_MAP(PRIV_HPPF_VARIANT_SHOW, CTORS) \
+        default: o << "?"; break; \
+        } \
+        return o; \
+      } \
+  }
 
 // reflective variants with explicit constructor names
 #define PRIV_HPPF_LBLVARIANT_TYARGL(n, lbl, t)     , t
@@ -726,7 +801,7 @@ template <typename ... Ts>
 #define PRIV_HPPF_LBLVARIANT_VDECL(n, lbl, t)      virtual R n(const t & x) const = 0;
 #define PRIV_HPPF_LBLVARIANT_VCASE(n, lbl, t)      case Enum::tag_##n: return v. n (this->n##_data);
 #define PRIV_HPPF_LBLVARIANT_GVCASE(n, lbl, t)     case Enum::tag_##n: return v.template visit<t>(#lbl, static_cast<uint32_t>(Enum::tag_##n), this->n##_data);
-#define PRIV_HPPF_LBLVARIANT_SHOW(n, lbl, t)       case Enum::tag_##n: o << "|" << #lbl << "=" << this->n##_data << "|"; break;
+#define PRIV_HPPF_LBLVARIANT_SHOW(n, lbl, t)       case Enum::tag_##n: o << "|" << #lbl << "=" << v.n##_data << "|"; break;
 
 #define DEFINE_VARIANT_WITH_LABELS(T, CTORS...) \
   template <typename R> \
@@ -795,13 +870,6 @@ template <typename ... Ts>
         default: break; \
         } \
       } \
-    std::ostream& show(std::ostream& o) const { \
-      switch (this->tag) { \
-      PRIV_HPPF_MAP(PRIV_HPPF_LBLVARIANT_SHOW, CTORS) \
-      default: o << "?"; break; \
-      } \
-      return o; \
-    } \
     template <typename X> \
       inline typename std::enable_if<std::is_base_of<X, T>::value, bool>::type operator==(const X& rhs) const { \
         if (this->tag != rhs.tag) { \
@@ -823,8 +891,16 @@ template <typename ... Ts>
       char data[1]; \
       PRIV_HPPF_MAP(PRIV_HPPF_LBLVARIANT_CTOR_DATA, CTORS) \
     }; \
-  }; \
-  inline std::ostream& operator<<(std::ostream& o, const T& v) { return v.show(o); }
+  public: \
+    template <typename X> \
+      friend inline typename std::enable_if<std::is_base_of<X,T>::value && ::hobbes::can_show_type<T::as_variant_type>::value,std::ostream&>::type operator<<(std::ostream& o, const X& v) { \
+        switch (v.tag) { \
+        PRIV_HPPF_MAP(PRIV_HPPF_LBLVARIANT_SHOW, CTORS) \
+        default: o << "?"; break; \
+        } \
+        return o; \
+      } \
+  }
 
 // arrays with dynamically-determined length
 template <typename T>
@@ -1559,6 +1635,167 @@ inline bool equivModOffset(const desc& t0, const desc& t1) {
   default:
     assert(false && "Invalid type description, internal error");
     return false;
+  }
+}
+
+// standard memory layout
+inline size_t alignOf(const desc& t) {
+  const D*         pd   = t.get();
+  const Prim*      pt   = reinterpret_cast<const Prim*>(pd);
+  const Var*       pvn  = reinterpret_cast<const Var*>(pd);
+  const FArr*      pfa  = reinterpret_cast<const FArr*>(pd);
+  const Arr*       pa   = reinterpret_cast<const Arr*>(pd);
+  const Variant*   pv   = reinterpret_cast<const Variant*>(pd);
+  const Struct*    ps   = reinterpret_cast<const Struct*>(pd);
+  const Recursive* pr   = reinterpret_cast<const Recursive*>(pd);
+  const Fn*        pfn  = reinterpret_cast<const Fn*>(pd);
+  const App*       papp = reinterpret_cast<const App*>(pd);
+  const Nat*       pn   = reinterpret_cast<const Nat*>(pd);
+
+  switch (t->tid) {
+  case PRIV_HPPF_TYCTOR_PRIM:
+    if (pt->rep) {
+      return alignOf(pt->rep);
+    } else {
+      static std::map<std::string, size_t> paligns = {
+        { "unit",   1 }, { "bool", 1 }, { "char", 1 }, { "byte",  1 },
+        { "short",  2 }, { "int",  4 }, { "long", 8 }, { "float", 4 },
+        { "double", 8 }
+      };
+      auto pa = paligns.find(pt->n);
+      if (pa != paligns.end()) {
+        return pa->second;
+      } else {
+        throw std::runtime_error("Can't determine alignment of unknown primitive type: " + pt->n);
+      }
+    }
+
+  case PRIV_HPPF_TYCTOR_TVAR:
+    throw std::runtime_error("Can't determine alignment of type variable: " + pvn->n);
+
+  case PRIV_HPPF_TYCTOR_FIXEDARR:
+    return alignOf(pfa->t);
+
+  case PRIV_HPPF_TYCTOR_ARR:
+    throw std::runtime_error("Can't determine alignment of variable-length array type: " + show(t));
+
+  case PRIV_HPPF_TYCTOR_VARIANT:
+    if (pv->ctors.size() == 0) {
+      return 1;
+    } else {
+      size_t maxAlign = 4; // the variant tag is an int
+      for (const auto& ctor : pv->ctors) {
+        maxAlign = std::max<size_t>(maxAlign, alignOf(ctor.at<2>()));
+      }
+      return maxAlign;
+    }
+
+  case PRIV_HPPF_TYCTOR_STRUCT:
+    if (ps->fields.size() == 0) {
+      return 1;
+    } else {
+      size_t maxAlign = 1;
+      for (const auto& field : ps->fields) {
+        maxAlign = std::max<size_t>(maxAlign, alignOf(field.at<2>()));
+      }
+      return maxAlign;
+    }
+
+  case PRIV_HPPF_TYCTOR_SIZE:
+    throw std::runtime_error("Can't determine alignment of type-level number: " + show(t));
+
+  case PRIV_HPPF_TYCTOR_TAPP:
+    throw std::runtime_error("nyi, alignment of " + show(t));
+
+  case PRIV_HPPF_TYCTOR_RECURSIVE:
+    return alignof(void*);
+
+  case PRIV_HPPF_TYCTOR_TABS:
+    throw std::runtime_error("Can't decide alignment of type abstraction: " + show(t));
+
+  default:
+    assert(false && "Invalid type description, internal error");
+    break;
+  }
+}
+
+inline size_t sizeOf(const desc& t) {
+  const D*         pd   = t.get();
+  const Prim*      pt   = reinterpret_cast<const Prim*>(pd);
+  const Var*       pvn  = reinterpret_cast<const Var*>(pd);
+  const FArr*      pfa  = reinterpret_cast<const FArr*>(pd);
+  const Arr*       pa   = reinterpret_cast<const Arr*>(pd);
+  const Variant*   pv   = reinterpret_cast<const Variant*>(pd);
+  const Struct*    ps   = reinterpret_cast<const Struct*>(pd);
+  const Recursive* pr   = reinterpret_cast<const Recursive*>(pd);
+  const Fn*        pfn  = reinterpret_cast<const Fn*>(pd);
+  const App*       papp = reinterpret_cast<const App*>(pd);
+  const Nat*       pn   = reinterpret_cast<const Nat*>(pd);
+
+  switch (t->tid) {
+  case PRIV_HPPF_TYCTOR_PRIM:
+    if (pt->rep) {
+      return sizeOf(pt->rep);
+    } else if (pt->n == "unit") {
+      return 0;
+    } else {
+      return alignOf(t);
+    }
+
+  case PRIV_HPPF_TYCTOR_TVAR:
+    throw std::runtime_error("Can't determine size of type variable: " + pvn->n);
+
+  case PRIV_HPPF_TYCTOR_FIXEDARR:
+    if (pfa->len->tid == PRIV_HPPF_TYCTOR_SIZE) {
+      return sizeOf(pfa->t) * reinterpret_cast<const Nat*>(pfa->len.get())->x;
+    } else {
+      throw std::runtime_error("Can't determine size of fixed array: " + show(t));
+    }
+
+  case PRIV_HPPF_TYCTOR_ARR:
+    throw std::runtime_error("Can't determine size of variable-length array type: " + show(t));
+
+  case PRIV_HPPF_TYCTOR_VARIANT:
+    if (pv->ctors.size() == 0) {
+      return 4;
+    } else {
+      size_t maxSize  = 4; // the variant tag is an int
+      size_t maxAlign = 4;
+      for (const auto& ctor : pv->ctors) {
+        maxSize  = std::max<size_t>(maxSize,  sizeOf(ctor.at<2>()));
+        maxAlign = std::max<size_t>(maxAlign, alignOf(ctor.at<2>()));
+      }
+      return alignTo(alignTo(4, maxAlign) + maxSize, maxAlign);
+    }
+
+  case PRIV_HPPF_TYCTOR_STRUCT:
+    if (ps->fields.size() == 0) {
+      return 1;
+    } else {
+      size_t maxAlign = 1;
+      size_t offset   = 0;
+      for (const auto& field : ps->fields) {
+        maxAlign = std::max<size_t>(maxAlign, alignOf(field.at<2>()));
+        offset   = alignTo(offset, alignOf(field.at<2>())) + sizeOf(field.at<2>());
+      }
+      return alignTo(offset, maxAlign);
+    }
+
+  case PRIV_HPPF_TYCTOR_SIZE:
+    throw std::runtime_error("Can't determine size of type-level number: " + show(t));
+
+  case PRIV_HPPF_TYCTOR_TAPP:
+    throw std::runtime_error("nyi, size of " + show(t));
+
+  case PRIV_HPPF_TYCTOR_RECURSIVE:
+    return sizeof(void*);
+
+  case PRIV_HPPF_TYCTOR_TABS:
+    throw std::runtime_error("Can't decide size of type abstraction: " + show(t));
+
+  default:
+    assert(false && "Invalid type description, internal error");
+    break;
   }
 }
 
