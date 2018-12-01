@@ -181,10 +181,14 @@ template <bool f> struct tbool { };
 template <>       struct tbool<true> { typedef void type; };
 
 // test to see if a type(s) can be printed
-template <typename T, typename P = void>
-  struct can_show_type { static const bool value = false; };
+template <typename T, class = decltype(std::declval<std::ostream&>() << std::declval<T>())>
+  std::true_type has_shl_ostream_defined(const T&);
+std::false_type has_shl_ostream_defined(...);
+
 template <typename T>
-  struct can_show_type<T, decltype(void(std::declval<std::ostream&>() << std::declval<const T&>()))> { static const bool value = true; };
+  struct can_show_type {
+    static const bool value = decltype(has_shl_ostream_defined(std::declval<T>()))::value;
+  };
 
 template <typename ... Ts>
   struct can_show_types { static const bool value = true; };
@@ -1709,8 +1713,7 @@ inline size_t alignOf(const desc& t) {
     throw std::runtime_error("Can't decide alignment of type abstraction: " + show(t));
 
   default:
-    assert(false && "Invalid type description, internal error");
-    break;
+    throw std::runtime_error("Invalid type description to alignOf, internal error");
   }
 }
 
@@ -1784,8 +1787,7 @@ inline size_t sizeOf(const desc& t) {
     throw std::runtime_error("Can't decide size of type abstraction: " + show(t));
 
   default:
-    assert(false && "Invalid type description, internal error");
-    break;
+    throw std::runtime_error("Invalid type description for sizeOf, internal error");
   }
 }
 

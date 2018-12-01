@@ -2,6 +2,7 @@
 #include <iostream>
 #include <array>
 
+namespace hobbes {
 template <typename T, size_t N>
   std::ostream& operator<<(std::ostream& o, const std::array<T,N>& x) {
     o << "[";
@@ -14,9 +15,12 @@ template <typename T, size_t N>
     o << "]";
     return o;
   }
+}
 
 #include <hobbes/fregion.H>
 #include <hobbes/convert.H>
+
+using namespace hobbes;
 
 // the type we want to convert FROM (the type we receive)
 typedef std::array<int, 5> IArr;
