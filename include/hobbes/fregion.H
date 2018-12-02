@@ -1185,6 +1185,44 @@ template <typename T, size_t N>
     }
   };
 
+// store fixed-capacity variable-length arrays
+template <typename T, size_t N>
+  struct storeCArrayDef {
+    // data carray t n = {avail:long, buffer:[:t|n:]}
+    static ty::desc storeType() { return ty::app(prim("carray", ty::fn("t", "c", ty::rec("avail", 0, ty::prim("long"), "buffer", sizeof(size_t), ty::array(ty::var("t"), ty::var("c"))))), store<T>::storeType(), ty::nat(N)); }
+
+    static size_t size()      { static const size_t sz=align(sizeof(size_t), alignment())+store<T>::size()*N; return sz; }
+    static size_t alignment() { static const size_t a =std::max<size_t>(sizeof(size_t), store<T>::alignment()); return a; }
+  };
+
+template <typename T, size_t N>
+  struct store<carray<T,N>, typename tbool<store<T>::can_memcpy>::type> : public storeCArrayDef<T,N> {
+    static const bool can_memcpy = true;
+    static void write(imagefile*, void*       p, const carray<T,N>& x) { memcpy(p, &x, storeCArrayDef<T,N>::alignment()+sizeof(T)*x.size); }
+    static void read(imagefile*,  const void* p, carray<T,N>*       x) { memcpy(x,  p, storeCArrayDef<T,N>::alignment()+sizeof(T)*(*reinterpret_cast<const size_t*>(p))); }
+  };
+
+template <typename T, size_t N>
+  struct store<carray<T,N>, typename tbool<!store<T>::can_memcpy>::type> : public storeCArrayDef<T,N> {
+    static const bool can_memcpy = false;
+    static void write(imagefile* f, void* p, const carray<T,N>& x) {
+      *reinterpret_cast<size_t*>(p) = x.size;
+      p = reinterpret_cast<uint8_t*>(p) + storeCArrayDef<T,N>::alignment();
+      for (size_t i = 0; i < x.size; ++i) {
+        store<T>::write(f, p, x.data[i]);
+        p = reinterpret_cast<uint8_t*>(p) + store<T>::size();
+      }
+    }
+    static void read(imagefile* f, const void* p, carray<T,N>* x) {
+      x->size = *reinterpret_cast<const size_t*>(p);
+      p = reinterpret_cast<const uint8_t*>(p) + storeCArrayDef<T,N>::alignment();
+      for (size_t i = 0; i < x->size; ++i) {
+        store<T>::read(f, p, &x->data[i]);
+        p = reinterpret_cast<const uint8_t*>(p) + store<T>::size();
+      }
+    }
+  };
+
 // store strings
 template <>
   struct store<std::string> {
@@ -1379,30 +1417,35 @@ template <size_t i, size_t n, typename ... Ts>
     typedef typename TT::offs            offs;
     typedef storeTupleDef<i+1, n, Ts...> Recurse;
 
-    static void fieldDefs(ty::Struct::Fields* fs) {
-      fs->push_back(ty::Struct::Field(".f" + string::from(i), static_cast<int>(offsetAt<i, offs>::value), store<H>::storeType()));
-      Recurse::fieldDefs(fs);
+    static void fieldDefs(size_t offset, ty::Struct::Fields* fs) {
+      offset = align(offset, store<H>::alignment());
+      fs->push_back(ty::Struct::Field(".f" + string::from(i), offset, store<H>::storeType()));
+      Recurse::fieldDefs(offset + store<H>::size(), fs);
     }
-    static ty::desc storeType() { ty::Struct::Fields fs; fieldDefs(&fs); return ty::record(fs); }
+    static ty::desc storeType() { ty::Struct::Fields fs; fieldDefs(0, &fs); return ty::record(fs); }
 
-    static size_t alignment() { return TT::alignment; }
-    static size_t size()      { return TT::size;      }
+    static size_t alignment()                   { static size_t a=std::max<size_t>(store<H>::alignment(), Recurse::alignment()); return a; }
+    static size_t tailOffsetFrom(size_t offset) { return Recurse::tailOffsetFrom(align(offset, store<H>::alignment()) + store<H>::size()); }
+    static size_t size()                        { static size_t sz=align(tailOffsetFrom(0), alignment()); return sz; }
 
     static void incrWrite(imagefile* f, void* p, const tuple<Ts...>& x) {
+      p = reinterpret_cast<void*>(align(reinterpret_cast<size_t>(p), store<H>::alignment()));
       store<H>::write(f, p, x.template at<i>());
-      Recurse::incrWrite(f, p, x);
+      Recurse::incrWrite(f, reinterpret_cast<uint8_t*>(p) + store<H>::size(), x);
     }
     static void incrRead(imagefile* f, const void* p, tuple<Ts...>* x) {
+      p = reinterpret_cast<const void*>(align(reinterpret_cast<size_t>(p), store<H>::alignment()));
       store<H>::read(f, p, &x->template at<i>());
-      Recurse::incrRead(f, p, x);
+      Recurse::incrRead(f, reinterpret_cast<const uint8_t*>(p) + store<H>::size(), x);
     }
   };
 template <size_t n, typename ... Ts>
   struct storeTupleDef<n, n, Ts...> {
-    static void fieldDefs(ty::Struct::Fields*) { }
-    static ty::desc storeType()   { return ty::prim("unit"); }
-    static size_t alignment()     { return  0; }
-    static size_t size()          { return  0; }
+    static void fieldDefs(size_t, ty::Struct::Fields*) { }
+    static ty::desc storeType()                 { return ty::prim("unit"); }
+    static size_t alignment()                   { return  1; }
+    static size_t tailOffsetFrom(size_t offset) { return offset; }
+    static size_t size()                        { return  0; }
 
     static void incrWrite(imagefile*, void*, const tuple<Ts...>&) { }
     static void incrRead (imagefile*, const void*, tuple<Ts...>*) { }
