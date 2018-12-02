@@ -802,25 +802,25 @@ TEST(Storage, FRegionCArrays) {
     hobbes::fregion::reader r(fname);
 
     auto& rxs = *r.definition<XS>("xs");
-    EXPECT_EQ(rxs.size, 10);
+    EXPECT_EQ(rxs.size, 10UL);
     for (size_t i = 0; i < rxs.size; ++i) {
-      EXPECT_EQ(rxs[i].first, i);
+      EXPECT_EQ(rxs[i].first, static_cast<int>(i));
       EXPECT_EQ(rxs[i].second, i*3.14159);
     }
 
     YS rys;
     r.definition<YS>("ys", &rys);
-    EXPECT_EQ(rys.size, 2);
+    EXPECT_EQ(rys.size, 2UL);
     EXPECT_EQ(rys[0].at<0>(), 42);
     EXPECT_EQ(rys[0].at<1>(), "cowboy");
-    EXPECT_EQ(rys[0].at<2>().size(), 3);
+    EXPECT_EQ(rys[0].at<2>().size(), 3UL);
     EXPECT_TRUE(rys[0].at<2>()[0] == IorD(100));
     EXPECT_TRUE(rys[0].at<2>()[1] == IorD(3.14159));
     EXPECT_TRUE(rys[0].at<2>()[2] == IorD(200));
 
     EXPECT_EQ(rys[1].at<0>(), 8675);
     EXPECT_EQ(rys[1].at<1>(), "chicken");
-    EXPECT_EQ(rys[1].at<2>().size(), 3);
+    EXPECT_EQ(rys[1].at<2>().size(), 3UL);
     EXPECT_TRUE(rys[1].at<2>()[0] == IorD(2.1));
     EXPECT_TRUE(rys[1].at<2>()[1] == IorD(4.2));
     EXPECT_TRUE(rys[1].at<2>()[2] == IorD(29));
