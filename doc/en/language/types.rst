@@ -109,7 +109,7 @@ Double
 Arrays
 ======
 
-Just like in C++, Hobbes arrays are contiguous values in memory, with special syntax for ``char`` and ``byte`` arrays. Hobbes supports bounds-checking to prevent a common class of bug by maintaining the array length alongside the data in memory.
+Just like in C++, Hobbes arrays are zero-indexed, contiguous values in memory, with special syntax for ``char`` and ``byte`` arrays. Hobbes supports bounds-checking to prevent a common class of bug by maintaining the array length alongside the data in memory.
 
 ::
 
@@ -131,6 +131,72 @@ Just like in C++, Hobbes arrays are contiguous values in memory, with special sy
   It's important the note the subtle difference between the literal syntax for ``byte`` and for ``byte`` *arrays* - the case of the 'X' is very important!
 
   Uppercase for ``byte``, lowercase for ``byte`` array.
+
+Array functions
+---------------
+
+A number of functions are overloaded for array types:
+
+::
+  > [0, 1, 2] ++ [3, 4, 5]
+  [0, 1, 2, 3, 4, 5]
+
+  > size([0,1,2])
+  3
+
+You can index into an array using square brackets:
+
+::
+  > nums = [6, 2, 4, 6, 5, 9, 8, 5, 6, 3]
+  > nums[3]
+  6
+
+
+In addition, the open and closed slice syntax is available:
+
+::
+
+  > nums[3:6]
+  [6, 5, 9]
+  > nums[2:]
+  [4, 6, 5, 9, 8, 5, 6, 3]
+
+You can read ``[2:]`` as "the second index, until the end". The converse works, too:
+
+::
+
+  > nums[:2]
+  [3, 6, 5, 8, 9, 5, 6, 4]
+
+This is "the end until the second index". Indexes from the end of the array can be counted with a *unary negate*:
+
+::
+
+  > nums[2:-3]
+  [4, 6, 5, 9, 8]
+
+And of course you do that in both positions in the slice:
+
+::
+
+  > nums[-2:-4]
+  [5, 8]
+
+.. warning:: **Array indexes**
+
+  Array indexes in Hobbes aren't bounds checked, so whilst you can *slice* from the end of an array, you can't use the same syntax to *index*:
+
+  ::
+
+    > nums[-3]
+    51627831
+
+  In addition, attempts to slice off the end of an array will act as though you were slicing from the beginning or the end, respectively:
+
+  ::
+
+    > nums[-2014:305]
+    [6, 2, 4, 6, 5, 9, 8, 5, 6, 3]
 
 Array sequences
 ---------------

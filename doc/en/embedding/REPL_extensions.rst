@@ -3,6 +3,14 @@ Hi extensions
 
 ``hi`` is a rich and expansive REPL, with a number of tools which allow us to inspect generated code.
 
+Commandline options
+===================
+
+-s
+  Silent mode - don't display the prelude or version information
+
+-p nnnn
+  Listen on port *nnnn*
 
 Type information
 ================

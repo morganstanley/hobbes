@@ -10,6 +10,8 @@ Structured logging from within C++
 
 Hobbes persistence is backed by a shared memory region which is initialised when the logging application starts up. In order to define some of the parameters for writing to this region, we'll use the ``DEFINE_STORAGE_GROUP`` macro.
 
+.. _hobbes_define_storage_group:
+
 DEFINE_STORAGE_GROUP
 --------------------
 
@@ -37,7 +39,13 @@ The third parameter to ``DEFINE_STORAGE_GROUP`` is the behaviour to exhibit if w
 Manual vs Automatic commit
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The final parameter to ``DEFINE_STORAGE_GROUP`` allows us to specify the commit behaviour. ``hobbes::storage::ManualCommit`` means that all log statements up to the ``commit`` call will be grouped together in a transaction, which we can inspect later. Alternatively, specifying ``hobbes::storage::AutoCommit`` gives us uncorrelated log messages on the consumer side, but we don't need to call ``commit`` ourselves.
+The final parameter to ``DEFINE_STORAGE_GROUP`` allows us to specify the commit behaviour. ``hobbes::storage::ManualCommit`` means that all log statements up to the ``commit`` call will be grouped together in a transaction, which we can inspect later.
+
+Alternatively, specifying ``hobbes::storage::AutoCommit`` gives us uncorrelated log messages on the consumer side, but we don't need to call ``commit`` ourselves.
+
+Transactions which are manually committed will have a timestamp logged alongside them which can be used in out-of-band analysis and reporting, whereas autocommitted transactions have no timestamp. You can always call ``commit`` on an autocommit LogGroup, which will immediately persist the current transaction.
+
+Finally, there's one more difference in how persisted data is made available to us in code - which we'll investigate in :ref:`logs and transactions <hobbes_logs_and_transactions>`
 
 Once the LogGroup has been set up, we can start to log data. For that, we'll want to look at the ``HLOG`` and ``HSTORE`` macros.
 
@@ -68,7 +76,13 @@ Using the ``HLOG`` macro provides compile-time safety for the format string, and
     12
   );
 
-Hobbes is also able to persist aggregate types we declare ourselves with ``DEFINE_HSTORE_STRUCT``, as well as custom types by specialising the ``hobbes::storage::store<YourType>`` class. Information about ``hobbes::storage:store`` can be found in the Hobbes GitHub repository.
+Information about the types Hobbes is able to persist can be found in :ref:`hobbes persistable types <hobbes_persistable_types>`
+
+.. warning:: **File size**
+
+  Practically speaking, what we're discussing here is data *persistence* rather than logging. For that reason there's no model for output file rotation. That means that your persisted data files might very large grow in size, and you'll need to find a way to externally manage that.
+  
+  At Morgan Stanley, Hobbes persistence is used in production applications which might be bounced daily or even weekly, resulting in persisted files of many dozens of gigabytes.
 
 Declaring structured types for HSTORE logging
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
