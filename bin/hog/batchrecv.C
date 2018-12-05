@@ -49,7 +49,10 @@ struct gzbuffer {
     this->zin.next_in   = const_workaround(inb.data());
     this->zin.avail_in  = inb.size();
     
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wold-style-cast"
     checkZLibRC(inflateInit2(&this->zin, 15 | 32)); // window bits + ENABLE_ZLIB_GZIP
+#pragma GCC diagnostic pop
     decompressChunk();
   }
 

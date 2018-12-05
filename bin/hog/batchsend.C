@@ -148,7 +148,9 @@ void sendInitMessageToAll(const std::string& groupName, std::vector<Destination>
   }
 }
 
-void sendSegmentFilesToAll(std::vector<Destination>& destinations) {
+using IdleFn = std::function<void()>;
+
+void sendSegmentFilesToAll(std::vector<Destination>& destinations, IdleFn idleFn) {
   bool yield = false;
   while (!yield) {
     for (auto & d : destinations) {
@@ -164,13 +166,14 @@ void sendSegmentFilesToAll(std::vector<Destination>& destinations) {
         yield = true;
       }
     }
+    idleFn();
   }
 }
 
-void runConnectedSegmentSendingProcess(const std::string& groupName, std::vector<Destination>& destinations) {
+void runConnectedSegmentSendingProcess(const std::string& groupName, std::vector<Destination>& destinations, IdleFn idleFn) {
   try {
     sendInitMessageToAll(groupName, destinations);
-    sendSegmentFilesToAll(destinations);
+    sendSegmentFilesToAll(destinations, idleFn);
   } catch (...) {
     for (auto & d : destinations) {
       d.markdown();
@@ -191,7 +194,7 @@ void connect(std::vector<Destination>& destinations) {
   }
 }
 
-void runSegmentSendingProcess(const std::string groupName, std::vector<Destination>& destinations) {
+void runSegmentSendingProcess(const std::string groupName, std::vector<Destination>& destinations, IdleFn idleFn) {
   if (destinations.empty()) {
     out() << "no batchsend host specified, compressed segment files will accumulate locally" << std::endl;
   } else {
@@ -199,7 +202,10 @@ void runSegmentSendingProcess(const std::string groupName, std::vector<Destinati
     while (true) {
       try {
         connect(destinations);
-        runConnectedSegmentSendingProcess(groupName, destinations);
+        runConnectedSegmentSendingProcess(groupName, destinations, idleFn);
+      } catch (const ShutdownException& ex) {
+        out() << ex.what() << std::endl;
+        return;
       } catch (std::exception& ex) {
         out() << "error while trying to push data: " << ex.what() << std::endl;
       }
@@ -216,6 +222,16 @@ std::string segmentFileName(uint32_t seg) {
   return "segment-" + segidx + ".gz";
 }
 
+bool segFileFlushed(const Destination& d) {
+  glob_t g;
+  if (glob((d.localdir + "/segment-*.gz").c_str(), GLOB_NOSORT, 0, &g) == 0) {
+    auto remaining = g.gl_pathc;
+    globfree(&g);
+    return remaining == 0;
+  }
+  return false;
+}
+
 struct BatchSendSession {
   struct gzFile_s*         buffer;
   uint32_t                 c;
@@ -225,9 +241,10 @@ struct BatchSendSession {
   std::string              tempfilename;
   std::vector<Destination> destinations;
   std::thread              sendingThread;
+  bool                     stopRequested;
 
   BatchSendSession(const std::string& groupName, const std::string& dir, size_t clevel, const std::vector<std::string>& sendto)
-    : buffer(0), c(0), sz(0), dir(dir) {
+    : buffer(0), c(0), sz(0), dir(dir), stopRequested(false) {
     for (const auto & hostport : sendto) {
       auto localdir = ensureDirExists(dir + "/" + hostport + "/");
       destinations.push_back(Destination{localdir, hostport});
@@ -238,7 +255,16 @@ struct BatchSendSession {
 
     allocFile();
 
-    this->sendingThread = std::thread(std::bind(&runSegmentSendingProcess, groupName, std::ref(destinations)));
+    auto idleFn = [this, groupName]() {
+      static thread_local uint64_t count = 0;
+      if (++count % 16) return; // not checking on each idle cycle
+
+      if (stopRequested && std::all_of(destinations.begin(), destinations.end(), segFileFlushed)) {
+        throw ShutdownException("I/O sender shutting down, group name: " + groupName + ", directory: " + this->dir);
+      }
+    };
+
+    this->sendingThread = std::thread(std::bind(&runSegmentSendingProcess, groupName, std::ref(destinations), idleFn));
   }
 
   void allocFile() {
@@ -269,6 +295,13 @@ struct BatchSendSession {
       exit(-1);
     }
     this->sz += sz;
+  }
+
+  void stop() {
+    // wrap up and stop I/O sender
+    this->stepFile();
+    this->stopRequested = true;
+    this->sendingThread.join();
   }
 };
 
@@ -313,7 +346,7 @@ static void initNetSession(BatchSendSession* s, const std::string& groupName, co
   s->stepFile();
 }
 
-void pushLocalData(const storage::QueueConnection& qc, const std::string& groupName, const std::string& dir, size_t clevel, size_t batchsendsize, long batchsendtime, const std::vector<std::string>& sendto, const hobbes::storage::WaitPolicy wp) {
+void pushLocalData(const storage::QueueConnection& qc, const std::string& groupName, const std::string& dir, size_t clevel, size_t batchsendsize, long batchsendtime, const std::vector<std::string>& sendto, const hobbes::storage::WaitPolicy wp, bool* conn) {
   auto pt = hobbes::storage::thisProcThread();
   batchsendsize = std::max<size_t>(10*1024*1024, batchsendsize);
   BatchSendSession sn(groupName, dir + "/tmp_" + str::from(pt.first) + "-" + str::from(pt.second) + "/", clevel, sendto);
@@ -333,21 +366,31 @@ void pushLocalData(const storage::QueueConnection& qc, const std::string& groupN
     };
   }
 
-  storage::runReadProcessWithTimeout(
-    qc,
-    wp,
-    [&](storage::PipeQOS qos, storage::CommitMethod cm, const storage::statements& ss) {
-      initNetSession(&sn, groupName, dir, qos, cm, ss);
-      return
-        [&](storage::Transaction& txn) {
-          write(&sn, txn.size());
-          write(&sn, txn.ptr(), txn.size());
-          batchCheckF();
-        };
-    },
-    batchsendtime,
-    batchCheckF
-  );
+  auto timeoutF = [&,conn](const hobbes::storage::reader& reader) {
+    if (*conn == false && *reader.config().wstate == PRIV_HSTORE_STATE_READER_WAITING) {
+      // if we are here, the client is disconnected and the queue is drained
+      // stop tcp send session synchronously and shut down the reader
+      sn.stop();
+      throw ShutdownException("SHM reader shutting down, name: " + qc.shmname);
+    } else {
+      batchCheckF();
+    }
+  };
+
+  auto initFn = [&](storage::PipeQOS qos, storage::CommitMethod cm, const storage::statements& ss) {
+    initNetSession(&sn, groupName, dir, qos, cm, ss);
+    return [&](storage::Transaction& txn) {
+      write(&sn, txn.size());
+      write(&sn, txn.ptr(), txn.size());
+      batchCheckF();
+    };
+  };
+
+  try {
+    storage::runReadProcessWithTimeout(qc, wp, initFn, batchsendtime, timeoutF);
+  } catch (const ShutdownException& ex) {
+    out() << ex.what() << std::endl;
+  }
 }
 
 }

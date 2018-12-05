@@ -205,7 +205,46 @@ RunMode config(int argc, const char** argv) {
   return r;
 }
 
-void evalGroupHostConnection(SessionGroup* sg, const std::string& groupName, const RunMode& m, std::vector<std::thread>* ts, int c) {
+using RegFn = std::function<void()>;
+
+DEFINE_ENUM(PipeState,
+  (Ready),
+  (Draining),
+  (Disconnected)
+);
+
+DEFINE_STRUCT(PipeStats,
+  (PipeState, state),
+  (std::string, name)
+);
+
+struct RegInfo {
+  // std::vector<PipeStats> stats;
+  std::vector<std::thread*> readers;
+  std::list<RegFn> regFns;
+  bool connected;
+};
+
+void cleanup(RegInfo& reg) {
+  // signal and wait for hog readers to complete
+  reg.connected = false;
+
+  for (auto reader : reg.readers) {
+    if (reader) {
+      reader->join();
+    }
+  }
+  reg.readers.clear();
+
+  // register the next client connection
+  if (!reg.regFns.empty()) {
+    auto regFn = reg.regFns.front();
+    regFn();
+    reg.regFns.pop_front();
+  }
+}
+
+void evalGroupHostConnection(SessionGroup* sg, const std::string& groupName, const RunMode& m, std::vector<std::thread>* ts, int c, RegInfo& reg) {
   try {
     uint8_t cmd=0;
     hobbes::fdread(c, reinterpret_cast<char*>(&cmd), sizeof(cmd));
@@ -222,27 +261,33 @@ void evalGroupHostConnection(SessionGroup* sg, const std::string& groupName, con
     std::string d = instantiateDir(groupName, m.dir);
     switch (m.t) {
     case RunMode::local:
-      ts->push_back(std::thread(std::bind(&recordLocalData, sg, qc, d, wp)));
+      ts->push_back(std::thread(std::bind(&recordLocalData, sg, qc, d, wp, &reg.connected)));
+      reg.readers.push_back(&ts->back());
       break;
     case RunMode::batchsend:
-      ts->push_back(std::thread(std::bind(&pushLocalData, qc, groupName, ensureDirExists(d), m.clevel, m.batchsendsize, m.batchsendtime, m.sendto, wp)));
+      ts->push_back(std::thread(std::bind(&pushLocalData, qc, groupName, ensureDirExists(d), m.clevel, m.batchsendsize, m.batchsendtime, m.sendto, wp, &reg.connected)));
+      reg.readers.push_back(&ts->back());
       break;
     default:
       break;
     }
   } catch (std::exception& ex) {
-    out() << "error on connection for '" << groupName << "': " << ex.what() << std::endl;
+    out() << "error on connection for '" << groupName << "' from " << c << " : " << ex.what() << std::endl;
     hobbes::unregisterEventHandler(c);
     close(c);
+    cleanup(reg);
   }
 }
 
 void runGroupHost(const std::string& groupName, const RunMode& m, std::vector<std::thread>* ts) {
   SessionGroup* sg = makeSessionGroup(m.consolidate, m.storageMode);
 
+  static std::map<std::string, RegInfo> reg;
+  auto & info = reg[groupName];
+
   hobbes::registerEventHandler(
     hobbes::storage::makeGroupHost(groupName, m.groupServerDir),
-    [sg,groupName,ts,&m](int s) {
+    [sg,groupName,ts,&m,&info](int s) {
       out() << "new connection for '" << groupName << "'" << std::endl;
 
       int c = accept(s, 0, 0);
@@ -254,12 +299,20 @@ void runGroupHost(const std::string& groupName, const RunMode& m, std::vector<st
             out() << "disconnected client for '" << groupName << "' due to version mismatch (expected " << HSTORE_VERSION << " but got " << version << ")" << std::endl;
             close(c);
           } else {
-            hobbes::registerEventHandler(
-              c,
-              [sg,groupName,ts,&m](int c) {
-                evalGroupHostConnection(sg, groupName, m, ts, c);
-              }
-            );
+            auto regFn = [sg, groupName, ts, &m, c, &info]() {
+              out() << "registering client connection for '" << groupName << "' from fd " << c << std::endl;
+              hobbes::registerEventHandler(c, [sg, groupName, ts, &m, &info](int c) {
+                evalGroupHostConnection(sg, groupName, m, ts, c, info);
+              });
+            };
+            // invoke or defer client/shmem registration
+            if (info.connected) {
+              out() << "blocking client connection for '" << groupName << "' from fd " << c << std::endl;
+              info.regFns.push_back(regFn);
+            } else {
+              info.connected = true;
+              regFn();
+            }
           }
         } catch (std::exception& ex) {
           out() << "error on connection for '" << groupName << "': " << ex.what() << std::endl;

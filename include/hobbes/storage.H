@@ -2165,7 +2165,7 @@ private:
   }
 };
 
-inline void runReadProcessWithTimeout(const QueueConnection& qc, const WaitPolicy wp, const std::function<std::function<void(Transaction&)>(PipeQOS, CommitMethod, const statements&)>& initF, size_t timeoutNS, const std::function<void()>& timeoutF) {
+inline void runReadProcessWithTimeout(const QueueConnection& qc, const WaitPolicy wp, const std::function<std::function<void(Transaction&)>(PipeQOS, CommitMethod, const statements&)>& initF, size_t timeoutNS, const std::function<void(const reader&)>& userTimeoutF) {
   Transaction txn(qc.shmname);
   reader      rd(qc, wp);
   rpipe       p(&rd);
@@ -2203,6 +2203,10 @@ inline void runReadProcessWithTimeout(const QueueConnection& qc, const WaitPolic
 
   auto txnF = initF(static_cast<PipeQOS>(qos), static_cast<CommitMethod>(cm), ss);
 
+  auto timeoutF = [&rd, userTimeoutF]() {
+    userTimeoutF(rd);
+  };
+
   // read transactions and call back into user code
   while (true) {
     if (txn.readToCompletion(p, timeoutNS, timeoutF)) {
@@ -2213,7 +2217,7 @@ inline void runReadProcessWithTimeout(const QueueConnection& qc, const WaitPolic
 }
 
 inline void runReadProcess(const QueueConnection& qc, const WaitPolicy wp, const std::function<std::function<void(Transaction&)>(PipeQOS, CommitMethod, const statements&)>& initF) {
-  runReadProcessWithTimeout(qc, wp, initF, 0, [](){});
+  runReadProcessWithTimeout(qc, wp, initF, 0, [](const reader&){});
 }
 
 }}

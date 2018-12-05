@@ -12,7 +12,7 @@
 #include "session.H"
 
 namespace hog {
-void recordLocalData(SessionGroup*, const hobbes::storage::QueueConnection&, const std::string& dir, const hobbes::storage::WaitPolicy);
+void recordLocalData(SessionGroup*, const hobbes::storage::QueueConnection&, const std::string& dir, const hobbes::storage::WaitPolicy, bool* conn);
 }
 
 #endif
