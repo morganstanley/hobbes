@@ -601,11 +601,6 @@ DEFINE_VARIANT(
   (bob, std::string)
 );
 
-struct ShowMyVariant : MyVariantVisitor<int> {
-  int jimmy(const int& x) const { std::cout << "|jimmy=" << x << "|"; return 0; }
-  int bob(const std::string& x) const { std::cout << "|bob=" << x << "|"; return 0; }
-};
-
 DEFINE_ENUM(
   MyColor,
   (Red),
