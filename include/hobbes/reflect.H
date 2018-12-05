@@ -602,9 +602,10 @@ template <typename ... Ctors>
         return variantApp<R, F, U, tuple<Ctors...>, Args...>::apply(this->tag, const_cast<void*>(reinterpret_cast<const void*>(this->storage)), args...);
       }
   public:
-    const uint32_t& unsafeTag() const { return this->tag; }
-    uint32_t&       unsafeTag()       { return this->tag; }
-    void*           unsafePayload()   { return this->storage; }
+    const uint32_t& unsafeTag() const     { return this->tag; }
+    uint32_t&       unsafeTag()           { return this->tag; }
+    const void*     unsafePayload() const { return this->storage; }
+    void*           unsafePayload()       { return this->storage; }
   private:
     uint32_t tag;
     union {
@@ -927,6 +928,25 @@ template <typename T> const T* end  (const array<T>& d) { return d.data + d.size
 template <typename T>       T* begin(      array<T>& d) { return d.data; }
 template <typename T>       T* end  (      array<T>& d) { return d.data + d.size; }
 
+// arrays with dynamically-determined length but with a fixed-capacity
+template <typename T, size_t N>
+  struct carray {
+    size_t size;
+    T      data[N];
+
+    const T& operator[](size_t i) const { return this->data[i]; }
+          T& operator[](size_t i)       { return this->data[i]; }
+  };
+
+template <typename T, size_t N> const T* begin(const carray<T,N>* d) { return d->data; }
+template <typename T, size_t N> const T* end  (const carray<T,N>* d) { return d->data + d->size; }
+template <typename T, size_t N>       T* begin(      carray<T,N>* d) { return d->data; }
+template <typename T, size_t N>       T* end  (      carray<T,N>* d) { return d->data + d->size; }
+
+template <typename T, size_t N> const T* begin(const carray<T,N>& d) { return d.data; }
+template <typename T, size_t N> const T* end  (const carray<T,N>& d) { return d.data + d.size; }
+template <typename T, size_t N>       T* begin(      carray<T,N>& d) { return d.data; }
+template <typename T, size_t N>       T* end  (      carray<T,N>& d) { return d.data + d.size; }
 
 // define opaque type aliases
 #define DEFINE_TYPE_ALIAS_AS(PRIV_ATY, N, PRIV_REPTY) \

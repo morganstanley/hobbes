@@ -762,3 +762,75 @@ TEST(Storage, CFRegion_H2C) {
   }
 }
 
+TEST(Storage, FRegionCArrays) {
+  std::string fname = mkFName();
+  try {
+    hobbes::fregion::writer w(fname);
+
+    // verify memcopyable carrays can be accessed by reference
+    //   'carray (int*double) 20'
+    typedef std::pair<int,double> IandD;
+    typedef hobbes::carray<IandD, 20> XS;
+
+    auto& xs = *w.define<XS>("xs");
+    for (size_t i = 0; i < 10; ++i) {
+      xs[i] = std::pair<int,double>(i,i*3.14159);
+    }
+    xs.size = 10;
+    
+    // verify that non-memcopyable can be written
+    //     'carray (int * [char]@? * [int+double]@?) 20'
+    typedef hobbes::variant<int,double> IorD;
+    typedef std::vector<IorD>   IorDs;
+    typedef hobbes::tuple<int, std::string, IorDs> Y;
+    typedef hobbes::carray<Y, 20> YS;
+
+    IorDs idi; idi.push_back(IorD(100)); idi.push_back(IorD(3.14159)); idi.push_back(IorD(200));
+    IorDs ddi; ddi.push_back(IorD(2.1)); ddi.push_back(IorD(4.2));     ddi.push_back(IorD(29));
+    YS ys;
+    ys[0] = Y(42, "cowboy", idi);
+    ys[1] = Y(8675, "chicken", ddi);
+    ys.size = 2;
+    w.define<YS>("ys", ys);
+
+    // expect to be able to read back the carray data from C++
+    hobbes::fregion::reader r(fname);
+
+    auto& rxs = *r.definition<XS>("xs");
+    EXPECT_EQ(rxs.size, 10UL);
+    for (size_t i = 0; i < rxs.size; ++i) {
+      EXPECT_EQ(rxs[i].first, static_cast<int>(i));
+      EXPECT_EQ(rxs[i].second, i*3.14159);
+    }
+
+    YS rys;
+    r.definition<YS>("ys", &rys);
+    EXPECT_EQ(rys.size, 2UL);
+    EXPECT_EQ(rys[0].at<0>(), 42);
+    EXPECT_EQ(rys[0].at<1>(), "cowboy");
+    EXPECT_EQ(rys[0].at<2>().size(), 3UL);
+    EXPECT_TRUE(rys[0].at<2>()[0] == IorD(100));
+    EXPECT_TRUE(rys[0].at<2>()[1] == IorD(3.14159));
+    EXPECT_TRUE(rys[0].at<2>()[2] == IorD(200));
+
+    EXPECT_EQ(rys[1].at<0>(), 8675);
+    EXPECT_EQ(rys[1].at<1>(), "chicken");
+    EXPECT_EQ(rys[1].at<2>().size(), 3UL);
+    EXPECT_TRUE(rys[1].at<2>()[0] == IorD(2.1));
+    EXPECT_TRUE(rys[1].at<2>()[1] == IorD(4.2));
+    EXPECT_TRUE(rys[1].at<2>()[2] == IorD(29));
+
+    // expect to be able to read back carrays from hobbes
+    hobbes::cc c;
+    c.define("db", "inputFile::(LoadFile \"" + fname + "\" w)=>w");
+
+    EXPECT_TRUE(c.compileFn<bool()>("db.xs == [(i, i*3.14159) | i <- [0..9]]")());
+    EXPECT_TRUE(c.compileFn<bool()>("db.ys == [(42, \"cowboy\", [|0=100|::(int+double), |1=3.14159|, |0=200|]), (8675, \"chicken\", [|1=2.1|, |1=4.2|, |0=29|])]")());
+
+    unlink(fname.c_str());
+  } catch (...) {
+    unlink(fname.c_str());
+    throw;
+  }
+}
+
