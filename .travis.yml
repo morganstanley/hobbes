@@ -4,13 +4,13 @@ env:
     - DEPS=""
 matrix:
   include:
-    - os: osx
-      compiler: clang
-      osx_image: xcode8.3
-      env:
-        - DEPS="${DEPS} llvm@4"
-        - LLVM_DIR=/usr/local/opt/llvm@4/lib/cmake/llvm/
-        - ARGS=-V
+#    - os: osx
+#      compiler: clang
+#      osx_image: xcode8.3
+#      env:
+#        - DEPS="${DEPS} llvm@4"
+#        - LLVM_DIR=/usr/local/opt/llvm@4/lib/cmake/llvm/
+#        - ARGS=-V
 #    - os: osx
 #      compiler: clang
 #      osx_image: xcode8
