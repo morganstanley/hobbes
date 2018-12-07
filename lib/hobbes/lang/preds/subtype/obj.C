@@ -247,7 +247,9 @@ ExprPtr applyVtblAdjustment(const ExprPtr& e, int o, const std::string& targetTy
   off->type(qualtype(MonoTypePtr(Prim::make("int"))));
   ExprPtr ap(new App(adj, list(e, off), e->la()));
   ap->type(qualtype(tty));
-  return ap;
+  ExprPtr apwty = assume(ap, tty, e->la());
+  apwty->type(qualtype(tty));
+  return apwty;
 }
 
 ExprPtr applyOffsetAdjustment(const ExprPtr& e, int o, const std::string& targetTy) {
@@ -258,7 +260,9 @@ ExprPtr applyOffsetAdjustment(const ExprPtr& e, int o, const std::string& target
   off->type(qualtype(MonoTypePtr(Prim::make("int"))));
   ExprPtr ap(new App(adj, list(e, off), e->la()));
   ap->type(qualtype(tty));
-  return ap;
+  ExprPtr apwty = assume(ap, tty, e->la());
+  apwty->type(qualtype(tty));
+  return apwty;
 }
 
 ExprPtr applyAdjustment(const PtrAdjustment& p, const ExprPtr& e) {
