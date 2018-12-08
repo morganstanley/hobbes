@@ -170,6 +170,7 @@ TEST(Objects, FwdDecl) {
   EXPECT_EQ((c().compileFn<size_t(const Undef*)>("u", "undefCount(u)")(reinterpret_cast<const Undef*>(0))), size_t(42));
 }
 
+#ifndef __clang__
 class Base {
 public:
   int x;
@@ -191,4 +192,5 @@ TEST(Objects, ThroughVarRef) {
   c().define("indGetX", "getBaseX");
   EXPECT_EQ(c().compileFn<int()>("indGetX(testObj)")(), 42);
 }
+#endif
 
