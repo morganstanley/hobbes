@@ -323,7 +323,7 @@ struct ObjUnqualify : public switchExprTyFn {
       result->type(v->type());
       return switchOf(result, *this);
     } else {
-      throw std::runtime_error("Unexpected non-functional subtype constraint on variable: " + showAnnotated(v));
+      return wrapWithTy(v->type(), v->clone());
     }
   }
 
