@@ -563,8 +563,9 @@ public:
 
   PolyTypePtr type(typedb&) const {
     static MonoTypePtr tg0(TGen::make(0));
+    static MonoTypePtr tg1(TGen::make(1));
     static MonoTypePtr tint(Prim::make("int"));
-    static PolyTypePtr fty(new PolyType(1, qualtype(Func::make(tuplety(list(tg0, tint)), tg0))));
+    static PolyTypePtr fty(new PolyType(2, qualtype(Func::make(tuplety(list(tg0, tint)), tg1))));
     return fty;
   }
 };
@@ -596,8 +597,9 @@ public:
 
   PolyTypePtr type(typedb&) const {
     static MonoTypePtr tg0(TGen::make(0));
+    static MonoTypePtr tg1(TGen::make(1));
     static MonoTypePtr tint(Prim::make("int"));
-    static PolyTypePtr fty(new PolyType(1, qualtype(Func::make(tuplety(list(tg0, tint)), tg0))));
+    static PolyTypePtr fty(new PolyType(2, qualtype(Func::make(tuplety(list(tg0, tint)), tg1))));
     return fty;
   }
 };
