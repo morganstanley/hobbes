@@ -5,6 +5,7 @@
 #include <hobbes/util/time.H>
 #include <thread>
 #include <mutex>
+#include <atomic>
 #include <condition_variable>
 #include <stdexcept>
 #include <vector>
@@ -207,32 +208,18 @@ RunMode config(int argc, const char** argv) {
 
 using RegFn = std::function<void()>;
 
-DEFINE_ENUM(PipeState,
-  (Ready),
-  (Draining),
-  (Disconnected)
-);
-
-DEFINE_STRUCT(PipeStats,
-  (PipeState, state),
-  (std::string, name)
-);
-
 struct RegInfo {
-  // std::vector<PipeStats> stats;
-  std::vector<std::thread*> readers;
+  std::vector<std::thread> readers;
   std::list<RegFn> regFns;
-  bool connected;
+  std::atomic<bool> connected;
 };
 
 void cleanup(RegInfo& reg) {
   // signal and wait for hog readers to complete
   reg.connected = false;
 
-  for (auto reader : reg.readers) {
-    if (reader) {
-      reader->join();
-    }
+  for (auto & reader : reg.readers) {
+    reader.join();
   }
   reg.readers.clear();
 
@@ -244,7 +231,7 @@ void cleanup(RegInfo& reg) {
   }
 }
 
-void evalGroupHostConnection(SessionGroup* sg, const std::string& groupName, const RunMode& m, std::vector<std::thread>* ts, int c, RegInfo& reg) {
+void evalGroupHostConnection(SessionGroup* sg, const std::string& groupName, const RunMode& m, int c, RegInfo& reg) {
   try {
     uint8_t cmd=0;
     hobbes::fdread(c, reinterpret_cast<char*>(&cmd), sizeof(cmd));
@@ -261,12 +248,10 @@ void evalGroupHostConnection(SessionGroup* sg, const std::string& groupName, con
     std::string d = instantiateDir(groupName, m.dir);
     switch (m.t) {
     case RunMode::local:
-      ts->push_back(std::thread(std::bind(&recordLocalData, sg, qc, d, wp, &reg.connected)));
-      reg.readers.push_back(&ts->back());
+      reg.readers.push_back(std::thread(std::bind(&recordLocalData, sg, qc, d, wp, std::ref(reg.connected))));
       break;
     case RunMode::batchsend:
-      ts->push_back(std::thread(std::bind(&pushLocalData, qc, groupName, ensureDirExists(d), m.clevel, m.batchsendsize, m.batchsendtime, m.sendto, wp, &reg.connected)));
-      reg.readers.push_back(&ts->back());
+      reg.readers.push_back(std::thread(std::bind(&pushLocalData, qc, groupName, ensureDirExists(d), m.clevel, m.batchsendsize, m.batchsendtime, m.sendto, wp, pid, std::ref(reg.connected))));
       break;
     default:
       break;
@@ -279,15 +264,12 @@ void evalGroupHostConnection(SessionGroup* sg, const std::string& groupName, con
   }
 }
 
-void runGroupHost(const std::string& groupName, const RunMode& m, std::vector<std::thread>* ts) {
+void runGroupHost(const std::string& groupName, const RunMode& m, RegInfo& reg) {
   SessionGroup* sg = makeSessionGroup(m.consolidate, m.storageMode);
-
-  static std::map<std::string, RegInfo> reg;
-  auto & info = reg[groupName];
 
   hobbes::registerEventHandler(
     hobbes::storage::makeGroupHost(groupName, m.groupServerDir),
-    [sg,groupName,ts,&m,&info](int s) {
+    [sg,groupName,&m,&reg](int s) {
       out() << "new connection for '" << groupName << "'" << std::endl;
 
       int c = accept(s, 0, 0);
@@ -299,18 +281,18 @@ void runGroupHost(const std::string& groupName, const RunMode& m, std::vector<st
             out() << "disconnected client for '" << groupName << "' due to version mismatch (expected " << HSTORE_VERSION << " but got " << version << ")" << std::endl;
             close(c);
           } else {
-            auto regFn = [sg, groupName, ts, &m, c, &info]() {
+            auto regFn = [sg, groupName, &m, c, &reg]() {
               out() << "registering client connection for '" << groupName << "' from fd " << c << std::endl;
-              hobbes::registerEventHandler(c, [sg, groupName, ts, &m, &info](int c) {
-                evalGroupHostConnection(sg, groupName, m, ts, c, info);
+              hobbes::registerEventHandler(c, [sg, groupName, &m, &reg](int c) {
+                evalGroupHostConnection(sg, groupName, m, c, reg);
               });
             };
             // invoke or defer client/shmem registration
-            if (info.connected) {
+            if (reg.connected) {
               out() << "blocking client connection for '" << groupName << "' from fd " << c << std::endl;
-              info.regFns.push_back(regFn);
+              reg.regFns.push_back(regFn);
             } else {
-              info.connected = true;
+              reg.connected = true;
               regFn();
             }
           }
@@ -328,14 +310,14 @@ void run(const RunMode& m) {
   if (m.t == RunMode::batchrecv) {
     pullRemoteDataT(m.dir, m.localport, m.consolidate, m.storageMode).join();
   } else if (m.groups.size() > 0) {
-    std::vector<std::thread> tasks;
+    std::map<std::string, RegInfo> registry;
 
     signal(SIGPIPE, SIG_IGN);
 
     for (auto g : m.groups) {
       try {
         out() << "install a monitor for the '" << g << "' group" << std::endl;
-        runGroupHost(g, m, &tasks);
+        runGroupHost(g, m, registry[g]);
       } catch (std::exception& ex) {
         out() << "error while installing a monitor for '" << g << "': " << ex.what() << std::endl;
         throw;

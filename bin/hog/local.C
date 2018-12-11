@@ -13,11 +13,11 @@
 
 namespace hog {
 
-void recordLocalData(SessionGroup* sg, const hobbes::storage::QueueConnection& qc, const std::string& dir, const hobbes::storage::WaitPolicy wp, bool* conn) {
+void recordLocalData(SessionGroup* sg, const hobbes::storage::QueueConnection& qc, const std::string& dir, const hobbes::storage::WaitPolicy wp, std::atomic<bool>& conn) {
   using namespace hobbes;
 
-  auto timeoutF = [&qc,conn](const storage::reader& reader) {
-    if (*conn == false && *reader.config().wstate == PRIV_HSTORE_STATE_READER_WAITING) {
+  auto timeoutF = [&qc,&conn](const storage::reader& reader) {
+    if (conn == false && *reader.config().wstate == PRIV_HSTORE_STATE_READER_WAITING) {
       throw ShutdownException("SHM reader shutting down, name: " + qc.shmname);
     }
   };
