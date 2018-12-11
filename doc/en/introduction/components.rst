@@ -3,8 +3,8 @@ Components
 
 Hobbes is comprised of two main components:
 
-1: A programming language
--------------------------
+A programming language
+~~~~~~~~~~~~~~~~~~~~~~
 
 Hobbes is a haskell-like programming language with a rich type system. Hobbes code can be embedded in a C++ program and data marshalled between the two. This means you can write C++ code which binds against a Hobbes environment and calls into Hobbes functions to execute functionality.
 
@@ -15,10 +15,10 @@ Similarly, you can make C++ functions available to the embedded Hobbes code. Ult
 For more details about hosting Hobbes in a C++ application, see :ref:`Embedding Hobbes <hobbes_hosting>`.
      
 
-2: A persistence format
------------------------
+A persistence format
+~~~~~~~~~~~~~~~~~~~~
     
-A data storage and expression format for out-of-band data processing. Hobbes comes with a typesafe, space-efficient persistence format for realtime storage and retrieval of application data.
+Secondly, Hobbes comes with a typesafe, space-efficient persistence format for realtime storage and retrieval of application data.
 
 This can be used for inter-process communication over TCP, quering and filtering of daily application logs, or fast post-hoc analysis of application behaviour based on Hobbes' internal decision tree structure.
 

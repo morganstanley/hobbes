@@ -13,7 +13,7 @@ Hobbes was developed to manage the runtime of low-latency processes such as equi
 
 The target user base is the development and production management teams responsible for building and maintaining these processes in production. As such, Hobbes is *obsessively* pragmatic: the vast majority of design choices are aimed at fulfilling these needs.
 
-Perhaps most surprisingly, Hobbes is a variant of the pure-functional programming language *Haskell*. The following is an example of some Hobbes code from a production system:
+Perhaps most surprisingly, Hobbes is a variant of the pure-functional programming language *Haskell*. The following is an example of some Hobbes code from a production system at Morgan Stanley:
 
 .. code-block:: haskell
 
@@ -56,7 +56,6 @@ License information `here <https://github.com/Morgan-Stanley/hobbes/blob/master/
   :caption: Embedding
   
   embedding/compiler
-  embedding/REPL_extensions
 
 .. toctree::
   :hidden:
@@ -81,7 +80,7 @@ License information `here <https://github.com/Morgan-Stanley/hobbes/blob/master/
   :caption: Appendix
 
   appendix/stdlib
-  appendix/match
+  appendix/hi
 
 .. toctree::
   :hidden:

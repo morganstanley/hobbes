@@ -70,7 +70,7 @@ On the host where the application is logging, invoke ``hog`` with the ``-p`` par
 
 ::
 
-  $ hog -g SimpleLogger -p $a $b $h:$p
+  $ hog -g SimpleLogger -p $t $s $h:$p
 
 Where:
 
