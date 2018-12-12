@@ -10,6 +10,7 @@
 #include <hobbes/util/preprocessor.H>
 #include <string>
 #include <vector>
+#include <array>
 #include <set>
 #include <map>
 #include <stdexcept>
@@ -255,6 +256,13 @@ template <typename T, size_t N, bool InStruct>
   struct lift<T[N], InStruct> : public liftFixedArray<T, N> { };
 template <typename T, size_t N, bool InStruct>
   struct lift<const T[N], InStruct> : public liftFixedArray<T, N> { };
+
+template <typename T, size_t N>
+  struct lift<std::array<T,N>, true> : public liftFixedArray<T, N> { };
+template <typename T, size_t N>
+  struct lift<std::array<T,N>*, false> : public liftFixedArray<T, N> { };
+template <typename T, size_t N>
+  struct lift<std::array<T,N>&, false> : public liftFixedArray<T, N> { };
 
 // lifts for C functions
 template <typename ... Ts>
