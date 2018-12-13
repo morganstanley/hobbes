@@ -2,6 +2,7 @@
 #include <hobbes/storage.H>
 #include <hobbes/db/file.H>
 #include <hobbes/ipc/net.H>
+#include <hobbes/util/codec.H>
 #include <hobbes/util/perf.H>
 #include <hobbes/util/str.H>
 #include "test.H"
@@ -196,14 +197,16 @@ public:
 
   std::string basePath() const { return this->cwd; }
 
-  std::vector<std::string> logpaths() const {
-    std::string group;
-    if (this->mode.groups.size() == 0) {
-      group = "Space"; // maybe refactor a little to avoid this (if we ever need a batchrecv test for a different group)
-    } else if (this->mode.groups.size() > 1) {
-      throw std::runtime_error("multi groups through logpaths nyi");
-    } else {
-      group = this->mode.groups[0];
+  std::vector<std::string> logpaths(const std::string& grp = "") const {
+    std::string group(grp);
+    if (group.empty()) {
+      if (this->mode.groups.size() == 0) {
+        group = "Space"; // maybe refactor a little to avoid this (if we ever need a batchrecv test for a different group)
+      } else if (this->mode.groups.size() > 1) {
+        throw std::runtime_error("multi groups through logpaths nyi");
+      } else {
+        group = this->mode.groups[0];
+      }
     }
 
     std::vector<std::string> paths;
@@ -226,6 +229,34 @@ public:
     });
 
     return paths;
+  }
+
+  std::string pollLogFile(const char* group) {
+    assert(mode.t != RunMode::batchsend);
+    std::string log;
+    while (log.empty()) {
+      auto paths = logpaths(group);
+      if (!paths.empty()) {
+        log = paths[0];
+        std::cout << "log found: " << log << std::endl;
+      } else {
+        sleep(1);
+      }
+    }
+    return log;
+  }
+
+  void waitSegFileGone() {
+    assert(mode.t == RunMode::batchsend);
+    std::string pattern(cwd);
+    for (const auto & group : mode.groups) {
+      glob_t g;
+      auto p = pattern + "/" + group + "/*/*/*/segment-*.gz";
+      while (glob(p.c_str(), GLOB_NOSORT, nullptr, &g) == 0) {
+        globfree(&g);
+        sleep(1);
+      }
+    }
   }
 
 private:
@@ -493,6 +524,174 @@ TEST(Hog, UnreliableReconnect) {
     }
   }
   EXPECT_TRUE(s && "reconnection failed");
+}
+
+DEFINE_STORAGE_GROUP(
+  TestOrderedRead,
+  8,
+  hobbes::storage::Reliable,
+  hobbes::storage::ManualCommit
+);
+
+class ProducerApp {
+public:
+  ProducerApp(std::function<void(int)> producerFn) : pid(-1), cmdfd(-1), ackfd(-1), producerFn(producerFn) {}
+
+  ~ProducerApp() {
+    if (cmdfd != -1) ::close(cmdfd);
+    if (ackfd != -1) ::close(ackfd);
+  }
+
+  void start() {
+    int cmdfd[2] = {0, 0};
+    int ackfd[2] = {0, 0};
+
+    if (pipe(cmdfd) < 0) {
+      throw std::runtime_error("error while pipe: " + std::string(strerror(errno)));
+    }
+
+    if (pipe(ackfd) < 0) {
+      throw std::runtime_error("error while pipe: " + std::string(strerror(errno)));
+    }
+
+    pid = fork();
+    if (pid == -1) {
+      throw std::runtime_error("error while fork: " + std::string(strerror(errno)));
+    } else if (pid) {
+      // parent process
+      this->cmdfd = cmdfd[1]; ::close(cmdfd[0]);
+      this->ackfd = ackfd[0]; ::close(ackfd[1]);
+
+      int started = 0;
+      hobbes::fdread(this->ackfd, &started);
+    } else {
+      // child process - the same image but reacts on parent's instruction
+      this->cmdfd = cmdfd[0]; ::close(cmdfd[1]);
+      this->ackfd = ackfd[1]; ::close(ackfd[0]);
+      run();
+    }
+  }
+
+  void stop() {
+    assert(pid != -1);
+    if (kill(pid, SIGTERM) == -1) {
+      throw std::runtime_error("error while kill: " + std::string(strerror(errno)));
+    }
+    int ws;
+    if (waitpid(pid, &ws, 0) == -1) {
+      throw std::runtime_error("error while waitpid: " + std::string(strerror(errno)));
+    }
+  }
+
+  void execute(int id) {
+    assert(cmdfd != -1);
+    hobbes::fdwrite(cmdfd, id);
+
+    int done = 0;
+    hobbes::fdread(ackfd, &done);
+  }
+
+private:
+  void run() {
+    assert(pid == 0 && "only called in child process");
+    hobbes::registerEventHandler(cmdfd, [this](int fd) {
+      int runid;
+      hobbes::fdread(fd, &runid);
+
+      producerFn(runid);
+
+      const int done = 1;
+      hobbes::fdwrite(this->ackfd, done);
+    });
+    const int started = 1;
+    hobbes::fdwrite(this->ackfd, started);
+    hobbes::runEventLoop();
+  }
+
+  pid_t pid;
+  int cmdfd;
+  int ackfd;
+  std::function<void(int)> producerFn;
+};
+
+TEST(HogTransaction, OrderedReader) {
+  auto producerFn = [](int runid) {
+    for (auto seqno = 0; seqno < 8; ++seqno) {
+      HLOG(TestOrderedRead, seq, "runid: $0, seqno: $1", runid, seqno);
+      TestOrderedRead.commit();
+    }
+  };
+  ProducerApp proc1(producerFn);
+  ProducerApp proc2(producerFn);
+  HogApp batchrecv(RunMode(availablePort(10000, 10100), /* consolidate */ true));
+  HogApp batchsend(RunMode{{"TestOrderedRead"}, {batchrecv.localport()}, 1024, 1000000});
+
+  batchrecv.start();
+  batchsend.start();
+
+  sleep(5);
+
+  proc1.start();
+  proc1.execute(1);
+
+  proc2.start();
+  proc2.execute(3); // data will be blocked until proc1 exits
+
+  proc1.execute(2);
+  proc1.stop();
+
+  proc2.execute(4);
+  proc2.stop();
+
+  batchsend.waitSegFileGone();
+
+  auto log = batchrecv.pollLogFile("TestOrderedRead");
+  hobbes::cc cc;
+  cc.define("f", "inputFile::(LoadFile \"" + log + "\" w)=>w");
+  EXPECT_TRUE(cc.compileFn<bool()>("[x.0|x<-f.seq][:0] == concat([repeat(x, 8L)|x<-[1..4]])")());
+}
+
+DEFINE_STORAGE_GROUP(
+  TestOrderedSend,
+  8,
+  hobbes::storage::Reliable,
+  hobbes::storage::ManualCommit
+);
+
+TEST(HogTransaction, OrderedSender) {
+  auto producerFn = [](int runid) {
+    for (auto seqno = 0; seqno < 8; ++seqno) {
+      HLOG(TestOrderedSend, seq, "runid: $0, seqno: $1", runid, seqno);
+      TestOrderedSend.commit();
+    }
+  };
+  ProducerApp proc1(producerFn);
+  ProducerApp proc2(producerFn);
+  HogApp batchrecv(RunMode(availablePort(10000, 10100), /* consolidate */ true));
+  HogApp batchsend(RunMode{{"TestOrderedSend"}, {batchrecv.localport()}, 1024, 1000000});
+
+  batchsend.start(); // just start batchsend first
+  sleep(5);
+
+  proc1.start();
+  proc1.execute(1);
+
+  proc2.start();
+  proc2.execute(3); // data will be blocked until proc1 exits
+
+  proc1.execute(2);
+  proc1.stop();
+
+  proc2.execute(4);
+  proc2.stop();
+
+  batchrecv.start(); // segfiles will be sent in order once connected
+  batchsend.waitSegFileGone();
+
+  auto log = batchrecv.pollLogFile("TestOrderedSend");
+  hobbes::cc cc;
+  cc.define("f", "inputFile::(LoadFile \"" + log + "\" w)=>w");
+  EXPECT_TRUE(cc.compileFn<bool()>("[x.0|x<-f.seq][:0] == concat([repeat(x, 8L)|x<-[1..4]])")());
 }
 
 void rmrf(const char* p) {
