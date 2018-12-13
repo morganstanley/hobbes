@@ -13,6 +13,7 @@
 #include <array>
 #include <set>
 #include <map>
+#include <chrono>
 #include <stdexcept>
 
 namespace hobbes {
@@ -219,6 +220,12 @@ HOBBES_LIFT_PRIMITIVE(double,             double);
 
 template <typename T>
   inline MonoTypePtr prim() { return lift<T, false>::type(nulltdb); }
+
+// lift chrono types
+template <bool InStruct>
+  struct lift<std::chrono::duration<int64_t, std::micro>, InStruct> { static MonoTypePtr type(typedb&) { return Prim::make("timespan", Prim::make("long")); } };
+template <bool InStruct>
+  struct lift<std::chrono::duration<uint64_t, std::micro>, InStruct> { static MonoTypePtr type(typedb&) { return Prim::make("timespan", Prim::make("long")); } };
 
 // introduce opaque (named) alias types
 template <typename T, bool InStruct>
