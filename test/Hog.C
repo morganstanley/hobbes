@@ -475,7 +475,7 @@ TEST(Hog, SupportedTypes) {
   st.x = 42;
   for (size_t i = 0; i < 10; ++i) { st.z[i] = short(i); }
   st.w = "test";
-  st.dt.value = hobbes::now();
+  st.dt = hobbes::now();
   st.ts.value = 60*1000*1000;
   st.str = hobbes::makeString(st.w);
   st.strs = hobbes::makeArray<const hobbes::array<char>*>(2);

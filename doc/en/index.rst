@@ -37,14 +37,64 @@ License
 License information `here <https://github.com/Morgan-Stanley/hobbes/blob/master/LICENSE.md>`_.
 
 .. toctree::
-   :maxdepth: 2
+  :hidden:
+  :caption: Introduction
 
-   introduction/index
-   language/index
-   embedding/index
-   logging/index
-   networking/index
-   appendix/index
-   examples/index
-   about
+  introduction/components
+  introduction/domain
+
+.. toctree::
+  :hidden:
+  :caption: Language
+
+  language/types
+  language/controlflow
+  language/polymorphism
+
+.. toctree::
+  :hidden:
+  :caption: Embedding
+  
+  embedding/compiler
+  embedding/REPL_extensions
+
+.. toctree::
+  :hidden:
+  :caption: Logging
+
+  logging/HLOG
+  logging/hog
+  logging/hi
+  logging/datatypes
+
+.. toctree::
+  :hidden:
+  :caption: Networking
+
+  networking/hi
+  networking/cpp
+  networking/datatypes
+
+.. toctree::
+  :hidden:
+  :maxdepth: 2
+  :caption: Appendix
+
+  appendix/stdlib
+  appendix/match
+
+.. toctree::
+  :hidden:
+  :maxdepth: 2
+  :caption: Examples
+  
+  examples/simplerepl
+  examples/raindrop_logger
+
+.. toctree::
+  :hidden:
+  :maxdepth: 2
+  :caption: About
+  
+  about
 

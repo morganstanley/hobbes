@@ -84,7 +84,6 @@ bool Objs::pathExists(const std::string& from, const std::string& to) const {
   }
 }
 
-
 PtrAdjustmentPath Objs::adjustment(const std::string& derived, const std::string& base) const {
   if (derived == base) {
     return PtrAdjustmentPath();
@@ -112,7 +111,7 @@ PtrAdjustmentPath Objs::adjustment(const std::string& derived, const std::string
           }
           appendPath(&result, suffix);
           return result;
-        } catch (std::exception& ex) {
+        } catch (std::exception&) {
           // oh, I guess it wasn't that one
         }
       }
@@ -248,7 +247,9 @@ ExprPtr applyVtblAdjustment(const ExprPtr& e, int o, const std::string& targetTy
   off->type(qualtype(MonoTypePtr(Prim::make("int"))));
   ExprPtr ap(new App(adj, list(e, off), e->la()));
   ap->type(qualtype(tty));
-  return ap;
+  ExprPtr apwty = assume(ap, tty, e->la());
+  apwty->type(qualtype(tty));
+  return apwty;
 }
 
 ExprPtr applyOffsetAdjustment(const ExprPtr& e, int o, const std::string& targetTy) {
@@ -259,7 +260,9 @@ ExprPtr applyOffsetAdjustment(const ExprPtr& e, int o, const std::string& target
   off->type(qualtype(MonoTypePtr(Prim::make("int"))));
   ExprPtr ap(new App(adj, list(e, off), e->la()));
   ap->type(qualtype(tty));
-  return ap;
+  ExprPtr apwty = assume(ap, tty, e->la());
+  apwty->type(qualtype(tty));
+  return apwty;
 }
 
 ExprPtr applyAdjustment(const PtrAdjustment& p, const ExprPtr& e) {
@@ -299,6 +302,31 @@ struct ObjUnqualify : public switchExprTyFn {
     return result;
   }
 
+  ExprPtr with(const Var* v) const {
+    if (!hasConstraint(this->constraint, v->type())) {
+      return wrapWithTy(v->type(), v->clone());
+    } else if (const Func* fty = is<Func>(v->type()->monoType())) {
+      ExprPtr newFn(v->clone());
+      newFn->type(v->type());
+
+      auto ts = fty->parameters();
+      auto ns = freshNames(ts.size());
+      Exprs args;
+      for (size_t i = 0; i < ns.size(); ++i) {
+        ExprPtr arg(new Var(ns[i], v->la()));
+        arg->type(qualtype(ts[i]));
+        args.push_back(arg);
+      }
+      auto body = ExprPtr(new App(newFn, args, v->la()));
+      body->type(qualtype(list(this->constraint), fty->result()));
+      auto result = ExprPtr(new Fn(ns, body, v->la()));
+      result->type(v->type());
+      return switchOf(result, *this);
+    } else {
+      return wrapWithTy(v->type(), v->clone());
+    }
+  }
+
   ExprPtr with(const Fn* v) const {
     const Func* fty = is<Func>(v->type()->monoType());
     if (!fty) {
@@ -315,7 +343,7 @@ struct ObjUnqualify : public switchExprTyFn {
   
   ExprPtr with(const App* v) const {
     if (hasConstraint(this->constraint, v->fn()->type())) {
-      ExprPtr f    = switchOf(v->fn(), *this);
+      ExprPtr f    = is<Var>(v->fn()) ? wrapWithTy(v->fn()->type(), v->fn()->clone()) : switchOf(v->fn(), *this);
       Exprs   args = switchOf(v->args(), *this);
       Idxs    ixs  = coercionIndexes(this->tenv, v->fn(), this->isa.greater, this->ds);
 
