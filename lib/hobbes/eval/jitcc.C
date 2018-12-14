@@ -5,6 +5,8 @@
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wold-style-cast"
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#pragma GCC diagnostic ignored "-Wctor-dtor-privacy"
 
 #if LLVM_VERSION_MINOR == 3 or LLVM_VERSION_MINOR == 5
 #include "llvm/ExecutionEngine/JIT.h"
@@ -263,7 +265,7 @@ public:
   size_t sz;
   LenWatch(const std::string& fname) : fname(fname), sz(0) { }
   size_t size() const { return this->sz; }
-  void NotifyObjectEmitted(const llvm::object::ObjectFile& o, const llvm::RuntimeDyld::LoadedObjectInfo& dl) {
+  void NotifyObjectEmitted(const llvm::object::ObjectFile& o, const llvm::RuntimeDyld::LoadedObjectInfo&) {
     for (auto s : o.symbols()) {
       const llvm::object::ELFSymbolRef* esr = reinterpret_cast<const llvm::object::ELFSymbolRef*>(&s);
 
@@ -288,7 +290,7 @@ public:
   size_t sz;
   LenWatch(const std::string& fname) : fname(fname), sz(0) { }
   size_t size() const { return this->sz; }
-  void NotifyObjectEmitted(const llvm::object::ObjectFile& o, const llvm::RuntimeDyld::LoadedObjectInfo& dl) {
+  void NotifyObjectEmitted(const llvm::object::ObjectFile& o, const llvm::RuntimeDyld::LoadedObjectInfo&) {
     for (auto s : o.symbols()) {
       llvm::StringRef nm;
       if (s.getName(nm)) {
