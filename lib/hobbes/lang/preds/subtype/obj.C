@@ -206,7 +206,7 @@ bool Objs::refine(const TEnvPtr&, const MonoTypePtr&, const MonoTypePtr&, MonoTy
   return false;
 }
 
-bool Objs::satisfied(const TEnvPtr& tenv, const MonoTypePtr& lhs, const MonoTypePtr& rhs) const {
+bool Objs::satisfied(const TEnvPtr&, const MonoTypePtr& lhs, const MonoTypePtr& rhs) const {
   const OpaquePtr* derived = is<OpaquePtr>(lhs);
   const OpaquePtr* base    = is<OpaquePtr>(rhs);
 
@@ -217,7 +217,7 @@ bool Objs::satisfied(const TEnvPtr& tenv, const MonoTypePtr& lhs, const MonoType
   }
 }
 
-bool Objs::satisfiable(const TEnvPtr& tenv, const MonoTypePtr& lhs, const MonoTypePtr& rhs) const {
+bool Objs::satisfiable(const TEnvPtr&, const MonoTypePtr& lhs, const MonoTypePtr& rhs) const {
   const OpaquePtr* derived = is<OpaquePtr>(lhs);
   const OpaquePtr* base    = is<OpaquePtr>(rhs);
 
@@ -399,7 +399,7 @@ ExprPtr Objs::unqualify(const TEnvPtr& tenv, const ConstraintPtr& cst, const Exp
   return switchOf(e, ObjUnqualify(this, tenv, cst, ds));
 }
 
-PolyTypePtr Objs::lookup(const std::string& vn) const {
+PolyTypePtr Objs::lookup(const std::string&) const {
   return PolyTypePtr(); // nothing to see here
 }
 

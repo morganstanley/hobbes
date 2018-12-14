@@ -145,7 +145,7 @@ bool VariantAppP::satisfiable(const TEnvPtr& tenv, const ConstraintPtr& cst, Def
   return false;
 }
 
-void VariantAppP::explain(const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPtr& e, Definitions* ds, annmsgs* msgs) {
+void VariantAppP::explain(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*, annmsgs*) {
 }
 
 PolyTypePtr VariantAppP::lookup(const std::string& vn) const {

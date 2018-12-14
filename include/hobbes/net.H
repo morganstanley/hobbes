@@ -272,13 +272,13 @@ template <>
   struct io<unit> {
     static const bool can_memcpy = false;
 
-    static ty::desc type()                    { return ty::prim("unit"); }
-    static void     write(int s, const unit&) { }
-    static void     read (int s, unit*)       { }
+    static ty::desc type()                  { return ty::prim("unit"); }
+    static void     write(int, const unit&) { }
+    static void     read (int, unit*)       { }
 
     typedef uint8_t async_read_state;
-    static void prepare(uint8_t* o) {}
-    static bool accum(int s, uint8_t* o, unit* x) { return true; }
+    static void prepare(uint8_t*) {}
+    static bool accum(int, uint8_t*, unit*) { return true; }
   };
 
 // support enumerations
@@ -769,7 +769,7 @@ template <size_t i, size_t n, typename ... Fs>
   };
 template <size_t n, typename ... Fs>
   struct tupInd<n, n, Fs...> {
-    static void accFields(ty::Struct::Fields* fs) { }
+    static void accFields(ty::Struct::Fields*) { }
     static ty::desc type() { return ty::prim("unit"); }
 
     static void write(int, const tuple<Fs...>&) { }

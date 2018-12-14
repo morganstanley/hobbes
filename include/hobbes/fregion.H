@@ -1490,7 +1490,7 @@ struct calcSizeF {
   calcSizeF(size_t* sz, size_t* maxAlign) : sz(sz), maxAlign(maxAlign) { *this->sz = 0; }
 
   template <typename T>
-    void visit(const char* fname) {
+    void visit(const char*) {
       *this->sz       = align<size_t>(*this->sz, store<T>::alignment()) + store<T>::size();
       *this->maxAlign = std::max<size_t>(*this->maxAlign, store<T>::alignment());
     }
@@ -1536,7 +1536,7 @@ struct writeFieldF {
   writeFieldF(imagefile* f, uint8_t* o, const uint8_t* i) : f(f), o(o), i(i), ooffset(0), ioffset(0) { }
 
   template <typename T>
-    void visit(const char* fname) {
+    void visit(const char*) {
       size_t ooff = align<size_t>(this->ooffset, store<T>::alignment());
       size_t ioff = align<size_t>(this->ioffset, alignof(T));
 
@@ -1555,7 +1555,7 @@ struct readFieldF {
   readFieldF(imagefile* f, const uint8_t* i, uint8_t* o) : f(f), i(i), o(o), ooffset(0), ioffset(0) { }
 
   template <typename T>
-    void visit(const char* fname) {
+    void visit(const char*) {
       size_t ioff = align<size_t>(this->ioffset, store<T>::alignment());
       size_t ooff = align<size_t>(this->ooffset, alignof(T));
 

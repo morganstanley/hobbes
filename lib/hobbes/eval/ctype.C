@@ -6,7 +6,7 @@
 
 namespace hobbes {
 
-llvm::Type* llvmPrim(const std::string& name, bool asArg) {
+llvm::Type* llvmPrim(const std::string& name) {
   if (name == "unit") {
     return voidType();
   } else if (name == "void") {
@@ -48,7 +48,7 @@ public:
     if (v->representation().get()) {
       return switchOf(v->representation(), *this);
     } else {
-      return llvmPrim(v->name(), this->asArg);
+      return llvmPrim(v->name());
     }
   }
 
@@ -64,7 +64,7 @@ public:
     throw std::runtime_error("Internal compiler error: Cannot translate type variable '" + v->name() + "' to LLVM type");
   }
 
-  llvm::Type* with(const TGen* v) const {
+  llvm::Type* with(const TGen*) const {
     throw std::runtime_error("Internal compiler error: Cannot translate polytype instantiation point to LLVM type.");
   }
 
@@ -126,7 +126,7 @@ public:
     }
 
     if (cms.size() == 0) {
-      return llvmPrim("unit", asArg);
+      return llvmPrim("unit");
     } else {
       return asPtrIf(packedRecordType(cms), asArg);
     }
@@ -140,7 +140,7 @@ public:
     return toLLVM(unpackedType(v), true);
   }
 
-  llvm::Type* with(const Recursive* v) const {
+  llvm::Type* with(const Recursive*) const {
     return ptrType(byteType());
   }
 

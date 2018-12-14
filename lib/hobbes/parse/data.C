@@ -45,7 +45,7 @@ linedb::LineCol linedb::pos(nat i) const {
 }
 
 // load a set of lines around an implicated set from the specified line database
-ldblines load(const linedb::ptr& ldb, const linedb::LineCol& i, const linedb::LineCol& f) {
+ldblines load(const linedb::ptr& ldb, const linedb::LineCol& i, const linedb::LineCol&) {
   if (ldb->sourceType() != 0) {
     throw std::runtime_error("I don't know how to load that source text type");
   }

@@ -595,7 +595,7 @@ terminal* reduceOpTerminal(const parserdef& pd, const action& a) {
   return 0;
 }
 
-bool shiftInstead(const parserdef& pd, const precedence& px, nat shs, terminal* t, const action& a) {
+bool shiftInstead(const parserdef& pd, const precedence& px, nat, terminal* t, const action& a) {
   terminal* u = reduceOpTerminal(pd, a);
 
   if (!u) {

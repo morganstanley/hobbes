@@ -4,7 +4,7 @@
 
 namespace hobbes {
 
-bool HCVariantEliminator::satisfied(const TEnvPtr& tenv, const HasCtor& hc, Definitions*) const {
+bool HCVariantEliminator::satisfied(const TEnvPtr&, const HasCtor& hc, Definitions*) const {
   if (const Variant* vty = is<Variant>(hc.variant)) {
     if (const TString* fname = is<TString>(hc.ctorlbl)) {
       if (const Variant::Member* m = vty->mmember(fname->value())) {
@@ -15,7 +15,7 @@ bool HCVariantEliminator::satisfied(const TEnvPtr& tenv, const HasCtor& hc, Defi
   return false;
 }
 
-bool HCVariantEliminator::satisfiable(const TEnvPtr& tenv, const HasCtor& hc, Definitions* ds) const {
+bool HCVariantEliminator::satisfiable(const TEnvPtr& tenv, const HasCtor& hc, Definitions*) const {
   if (const Variant* vty = is<Variant>(hc.variant)) {
     if (const TString* fname = is<TString>(hc.ctorlbl)) {
       const Variant::Member* vm = vty->mmember(fname->value());
@@ -27,7 +27,7 @@ bool HCVariantEliminator::satisfiable(const TEnvPtr& tenv, const HasCtor& hc, De
   return is<TVar>(hc.variant);
 }
 
-bool HCVariantEliminator::refine(const TEnvPtr& tenv, const HasCtor& hc, MonoTypeUnifier* s, Definitions*) {
+bool HCVariantEliminator::refine(const TEnvPtr&, const HasCtor& hc, MonoTypeUnifier* s, Definitions*) {
   if (const Variant* vty = is<Variant>(hc.variant)) {
     if (const TString* fname = is<TString>(hc.ctorlbl)) {
       if (const Variant::Member* m = vty->mmember(fname->value())) {

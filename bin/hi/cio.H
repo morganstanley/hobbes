@@ -107,7 +107,7 @@ struct resetfmt {
   resetfmt() { }
 };
 
-inline std::ostream& operator<<(std::ostream& lhs, const resetfmt& c) {
+inline std::ostream& operator<<(std::ostream& lhs, const resetfmt&) {
   sendCmd(lhs, 0, 'm');
   return lhs;
 }
@@ -116,7 +116,7 @@ struct clearscr {
   clearscr() { }
 };
 
-inline std::ostream& operator<<(std::ostream& lhs, const clearscr& c) {
+inline std::ostream& operator<<(std::ostream& lhs, const clearscr&) {
   sendCmd(lhs, 2, 'J');
   return lhs;
 }

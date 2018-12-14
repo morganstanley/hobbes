@@ -36,15 +36,8 @@ static std::recursive_mutex hccmtx;
 hlock:: hlock() { hccmtx.lock();   }
 hlock::~hlock() { hccmtx.unlock(); }
 
-phlock::phlock() : f(true) { hccmtx.lock(); }
-phlock::~phlock()          { if (this->f) hccmtx.unlock(); }
-void phlock::release()     { hccmtx.unlock(); this->f = false; }
-
 // the compiler
 cc::cc() :
-  // protect initialization
-  initLock(),
-
   // init local resources
   readModuleFileF(&defReadModuleFile),
   readModuleF(&defReadModule),
@@ -58,12 +51,11 @@ cc::cc() :
   lowerPrimMatchTables(false),
   columnwiseMatches(false),
   tenv(new TEnv()),
-  objs(new Objs()),
-  jit(this->tenv)
+  objs(new Objs())
 {
-  // with initialization complete, translate to scoped protection
+  // protect access to LLVM
   hlock _;
-  this->initLock.release();
+  this->jit = new jitcc(this->tenv);
 
   // initialize the environment of primitive instructions
   initDefOperators(this);
@@ -139,7 +131,10 @@ cc::cc() :
   // boot
   compileBootCode(*this);
 }
-cc::~cc() { }
+cc::~cc() {
+  hlock _;
+  delete this->jit;
+}
 
 SearchEntries cc::search(const MonoTypePtr& src, const MonoTypePtr& dst) { hlock _; return hobbes::search(*this, this->searchCache, src, dst); }
 SearchEntries cc::search(const ExprPtr&     e,   const MonoTypePtr& dst) { hlock _; return hobbes::search(*this, this->searchCache, e, dst); }
@@ -204,7 +199,7 @@ void cc::forwardDeclare(const std::string& vname, const QualTypePtr& qt) {
 bool cc::hasValueBinding(const std::string& vname) {
   hlock _;
   // either we have a bound/compiled mono-typed value, or we have a polytype value (through a generated or user-defined type class)
-  return this->jit.isDefined(vname) || isClassMember(this->tenv, vname);
+  return this->jit->isDefined(vname) || isClassMember(this->tenv, vname);
 }
 
 //
@@ -239,7 +234,7 @@ ExprPtr cc::unsweetenExpression(const TEnvPtr& te, const std::string& vname, con
   return result;
 }
 
-void raiseUnsolvedCsts(cc& c, const std::string& vname, const ExprPtr& e, const PolyTypePtr& t) {
+[[noreturn]] void raiseUnsolvedCsts(cc& c, const std::string&, const ExprPtr& e, const PolyTypePtr&) {
   throw unsolved_constraints(*e, "Constraints left unresolved in residual expression", expandHiddenTCs(c.typeEnv(), simplifyVarNames(e->type())->constraints()));
 }
 
@@ -277,7 +272,7 @@ void cc::drainUnqualifyDefs(const Definitions& ds) {
     this->drainingDefs = false;
 
     if (this->drainDefs.size() > 0) {
-      this->jit.compileFunctions(this->drainDefs);
+      this->jit->compileFunctions(this->drainDefs);
       this->drainDefs.clear();
     }
   }
@@ -300,7 +295,7 @@ void cc::define(const std::string& vname, const ExprPtr& e) {
   PolyTypePtr xety = hobbes::generalize(xe->type());
 
   if (isMonotype(xety)) {
-    this->jit.defineGlobal(vname, xe);
+    this->jit->defineGlobal(vname, xe);
 
     if (!forwardDeclared) {
       this->tenv->bind(vname, xety);
@@ -333,7 +328,7 @@ void cc::define(const std::string& vname, const std::string& expr) {
 void cc::bind(const PolyTypePtr& ty, const std::string& vn, void* x) {
   hlock _;
   this->tenv->bind(vn, ty);
-  this->jit.bindGlobal(vn, requireMonotype(ty), x);
+  this->jit->bindGlobal(vn, requireMonotype(ty), x);
 }
 
 // define a transparent type alias
@@ -513,11 +508,11 @@ bool cc::isTypeName(const std::string& tn) const {
 }
 
 llvm::IRBuilder<>* cc::builder() const {
-  return this->jit.builder();
+  return this->jit->builder();
 }
 
 llvm::Module* cc::module() const {
-  return const_cast<cc*>(this)->jit.module();
+  return const_cast<cc*>(this)->jit->module();
 }
 
 void cc::dumpTypeEnv() const {
@@ -557,12 +552,12 @@ const TEnvPtr& cc::typeEnv() const {
 
 void cc::dumpModule() {
   hlock _;
-  this->jit.dump();
+  this->jit->dump();
 }
 
 cc::bytes cc::machineCodeForExpr(const std::string& expr) {
   hlock _;
-  return this->jit.machineCodeForExpr(unsweetenExpression(readExpr(expr)));
+  return this->jit->machineCodeForExpr(unsweetenExpression(readExpr(expr)));
 }
 
 template <typename K, typename T>
@@ -583,17 +578,17 @@ PolyTypePtr cc::lookupVarType(const std::string& vname) const {
 void cc::bindLLFunc(const std::string& fname, op* f) {
   hlock _;
   this->tenv->bind(fname, f->type(*this));
-  this->jit.bindInstruction(fname, f);
+  this->jit->bindInstruction(fname, f);
 }
 
 void cc::bindExternFunction(const std::string& fname, const MonoTypePtr& fty, void* fn) {
   hlock _;
   this->tenv->bind(fname, generalize(fty));
-  this->jit.bindGlobal(fname, fty, fn);
+  this->jit->bindGlobal(fname, fty, fn);
 }
 
 void* cc::memalloc(size_t sz, size_t asz) {
-  return this->jit.memalloc(sz, asz);
+  return this->jit->memalloc(sz, asz);
 }
 
 inline TEnvPtr allocTEnvFrame(const str::seq& names, const MonoTypes& tys, const TEnvPtr& ptenv) {
@@ -622,7 +617,7 @@ void* cc::unsafeCompileFn(const MonoTypePtr& retTy, const str::seq& tnames, cons
   }
 
   return
-    this->jit.reifyMachineCodeForFn(
+    this->jit->reifyMachineCodeForFn(
       retTy,
       names,
       argTys,
@@ -644,7 +639,7 @@ void* cc::unsafeCompileFn(const MonoTypePtr& fnTy, const str::seq& names, const 
 
 void cc::releaseMachineCode(void* f) {
   hlock _;
-  this->jit.releaseMachineCode(f);
+  this->jit->releaseMachineCode(f);
 }
 
 void cc::enableModuleInlining(bool f) { this->runModInlinePass = f; }

@@ -24,7 +24,7 @@ std::string ProcessP::constraintName() {
 }
 
 // resolve process spawn constraints
-bool ProcessP::refine(const TEnvPtr& tenv, const ConstraintPtr& cst, MonoTypeUnifier* u, Definitions*) {
+bool ProcessP::refine(const TEnvPtr&, const ConstraintPtr& cst, MonoTypeUnifier* u, Definitions*) {
   size_t uc = u->size();
   MonoTypePtr cmdt, pidt;
   if (dec(cst, &cmdt, &pidt)) {
@@ -35,7 +35,7 @@ bool ProcessP::refine(const TEnvPtr& tenv, const ConstraintPtr& cst, MonoTypeUni
   return uc != u->size();
 }
 
-bool ProcessP::satisfied(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions*) const {
+bool ProcessP::satisfied(const TEnvPtr&, const ConstraintPtr& cst, Definitions*) const {
   MonoTypePtr cmdt, pidt;
   if (dec(cst, &cmdt, &pidt)) {
     if (const TString* cmd = is<TString>(cmdt)) {
@@ -62,7 +62,7 @@ bool ProcessP::satisfiable(const TEnvPtr& tenv, const ConstraintPtr& cst, Defini
   }
 }
 
-void ProcessP::explain(const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPtr& e, Definitions* ds, annmsgs* msgs) {
+void ProcessP::explain(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*, annmsgs*) {
 }
 
 struct ProcessPUnqualify : public switchExprTyFn {
@@ -100,7 +100,7 @@ struct ProcessPUnqualify : public switchExprTyFn {
   }
 };
 
-ExprPtr ProcessP::unqualify(const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPtr& e, Definitions*) const {
+ExprPtr ProcessP::unqualify(const TEnvPtr&, const ConstraintPtr& cst, const ExprPtr& e, Definitions*) const {
   return switchOf(e, ProcessPUnqualify(cst));
 }
 

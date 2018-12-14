@@ -12,7 +12,7 @@
 
 namespace hog {
 
-void recordLocalData(SessionGroup* sg, const hobbes::storage::QueueConnection& qc, const std::string& dir, const hobbes::storage::WaitPolicy wp) {
+[[noreturn]] void recordLocalData(SessionGroup* sg, const hobbes::storage::QueueConnection& qc, const std::string& dir, const hobbes::storage::WaitPolicy wp) {
   using namespace hobbes;
 
   storage::runReadProcess(

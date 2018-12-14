@@ -68,7 +68,7 @@ bool AppendsToUnqualifier::satisfiable(const TEnvPtr& tenv, const ConstraintPtr&
   return dec(cst, &at) && findEliminator(tenv, &at) != 0;
 }
 
-void AppendsToUnqualifier::explain(const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPtr& e, Definitions* ds, annmsgs* msgs) {
+void AppendsToUnqualifier::explain(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*, annmsgs*) {
 }
 
 ExprPtr AppendsToUnqualifier::unqualify(const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPtr& e, Definitions* ds) const {

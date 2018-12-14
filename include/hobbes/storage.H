@@ -171,7 +171,7 @@ static inline void waitForUpdate(volatile uint32_t* p, int eqV, size_t timeoutNS
     }
   }
 }
-static inline void wakeN(volatile uint32_t* p, int c) {
+static inline void wakeN(volatile uint32_t*, int) {
   // assume the waiter is polling, nothing to do
 }
 
@@ -1061,7 +1061,7 @@ template <typename T, size_t N>
 template <typename T, size_t N>
   struct store<std::array<T, N>, typename tbool<store<T>::can_memcpy>::type> : public fixedArrTyDesc<T, N> {
     static const bool can_memcpy = true;
-    static size_t size (const std::array<T, N>& x)           { return sizeof(T)*N; }
+    static size_t size (const std::array<T, N>&)             { return sizeof(T)*N; }
     static bool   write(wpipe& p, const std::array<T, N>& x) { return p.write(reinterpret_cast<const uint8_t*>(&x), size(x)); }
   };
 template <typename T, size_t N>
@@ -2165,7 +2165,7 @@ private:
   }
 };
 
-inline void runReadProcessWithTimeout(const QueueConnection& qc, const WaitPolicy wp, const std::function<std::function<void(Transaction&)>(PipeQOS, CommitMethod, const statements&)>& initF, size_t timeoutNS, const std::function<void()>& timeoutF) {
+[[noreturn]] inline void runReadProcessWithTimeout(const QueueConnection& qc, const WaitPolicy wp, const std::function<std::function<void(Transaction&)>(PipeQOS, CommitMethod, const statements&)>& initF, size_t timeoutNS, const std::function<void()>& timeoutF) {
   Transaction txn(qc.shmname);
   reader      rd(qc, wp);
   rpipe       p(&rd);
@@ -2212,7 +2212,7 @@ inline void runReadProcessWithTimeout(const QueueConnection& qc, const WaitPolic
   }
 }
 
-inline void runReadProcess(const QueueConnection& qc, const WaitPolicy wp, const std::function<std::function<void(Transaction&)>(PipeQOS, CommitMethod, const statements&)>& initF) {
+[[noreturn]] inline void runReadProcess(const QueueConnection& qc, const WaitPolicy wp, const std::function<std::function<void(Transaction&)>(PipeQOS, CommitMethod, const statements&)>& initF) {
   runReadProcessWithTimeout(qc, wp, initF, 0, [](){});
 }
 

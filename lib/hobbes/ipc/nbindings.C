@@ -66,7 +66,7 @@ public:
   static std::string constraintName() { return "Connect"; }
   static std::string connectVar() { return "connection"; }
 
-  bool refine(const TEnvPtr& tenv, const ConstraintPtr& cst, MonoTypeUnifier* u, Definitions* ds) {
+  bool refine(const TEnvPtr&, const ConstraintPtr& cst, MonoTypeUnifier* u, Definitions*) {
     MonoTypePtr hostport;
     MonoTypePtr handle;
 
@@ -86,7 +86,7 @@ public:
     return false;
   }
 
-  bool satisfied(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions* ds) const {
+  bool satisfied(const TEnvPtr&, const ConstraintPtr& cst, Definitions*) const {
     MonoTypePtr hostport;
     MonoTypePtr handle;
 
@@ -98,7 +98,7 @@ public:
     return false;
   }
 
-  bool satisfiable(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions* ds) const {
+  bool satisfiable(const TEnvPtr&, const ConstraintPtr& cst, Definitions*) const {
     MonoTypePtr hostport;
     MonoTypePtr handle;
     
@@ -107,7 +107,7 @@ public:
            (is<TVar>(handle) || isPartialConnection(handle));
   }
 
-  void explain(const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPtr& e, Definitions* ds, annmsgs* msgs) {
+  void explain(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*, annmsgs*) {
   }
 
   struct StripConnQual : public switchExprTyFn {
@@ -172,7 +172,7 @@ public:
   static std::string constraintName() { return "Invoke"; }
   static std::string netInvoke() { return "invoke"; }
 
-  bool refine(const TEnvPtr& tenv, const ConstraintPtr& cst, MonoTypeUnifier* u, Definitions* ds) {
+  bool refine(const TEnvPtr&, const ConstraintPtr& cst, MonoTypeUnifier* u, Definitions*) {
     MonoTypePtr ch, expr, inty, outty;
     if (decodeConstraint(cst, &ch, &expr, &inty, &outty)) {
       if (const TLong* chv = is<TLong>(ch)) {
@@ -223,7 +223,7 @@ public:
     return hasFreeVariables(inty) || satisfied(tenv, cst, ds);
   }
 
-  void explain(const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPtr& e, Definitions* ds, annmsgs* msgs) {
+  void explain(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*, annmsgs*) {
   }
 
   struct RewriteInvokes : public switchExprTyFn {
@@ -279,7 +279,7 @@ public:
     return r;
   }
 
-  FunDeps dependencies(const ConstraintPtr& cst) const {
+  FunDeps dependencies(const ConstraintPtr&) const {
     return list(FunDep(list(0, 1, 2), 3));
   }
 private:
@@ -385,7 +385,7 @@ public:
     return hasFreeVariables(rty) || satisfied(tenv, cst, ds);
   }
 
-  void explain(const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPtr& e, Definitions* ds, annmsgs* msgs) {
+  void explain(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*, annmsgs*) {
   }
 
   struct RewriteReceives : public switchExprTyFn {
@@ -439,7 +439,7 @@ public:
     return r;
   }
 
-  FunDeps dependencies(const ConstraintPtr& cst) const {
+  FunDeps dependencies(const ConstraintPtr&) const {
     return FunDeps();
   }
 private:
@@ -518,7 +518,7 @@ struct printConnectionF : public op {
   printConnectionF(const std::string& showf) : showf(showf) {
   }
 
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) {
     if (Client* conn = decodeConnType(tys[0])) {
       ExprPtr wfrtfn = var(this->showf, functy(list(primty("long")), primty("unit")), es[0]->la());
       return c->compile(fncall(wfrtfn, list(constant(reinterpret_cast<long>(conn), es[0]->la())), es[0]->la()));
@@ -527,7 +527,7 @@ struct printConnectionF : public op {
     }
   }
 
-  PolyTypePtr type(typedb& tenv) const {
+  PolyTypePtr type(typedb&) const {
     return polytype(1, qualtype(functy(list(tapp(primty("connection"), list(tgen(0)))), primty("unit"))));
   }
 };
@@ -536,7 +536,7 @@ struct remoteHostF : public op {
   remoteHostF() {
   }
 
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) {
     if (Client* conn = decodeConnType(tys[0])) {
       return c->compile(ExprPtr(mkarray(conn->remoteHost(), es[0]->la())));
     } else {
@@ -544,7 +544,7 @@ struct remoteHostF : public op {
     }
   }
 
-  PolyTypePtr type(typedb& tenv) const {
+  PolyTypePtr type(typedb&) const {
     return polytype(1, qualtype(functy(list(tapp(primty("connection"), list(tgen(0)))), arrayty(primty("char")))));
   }
 };

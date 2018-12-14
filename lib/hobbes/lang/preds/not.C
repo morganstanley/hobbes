@@ -21,21 +21,21 @@ std::string NotEqualTypes::constraintName() {
   return "!equals";
 }
 
-bool NotEqualTypes::refine(const TEnvPtr& tenv, const ConstraintPtr& cst, MonoTypeUnifier* s, Definitions*) {
+bool NotEqualTypes::refine(const TEnvPtr&, const ConstraintPtr&, MonoTypeUnifier*, Definitions*) {
   return false;
 }
 
-bool NotEqualTypes::satisfied(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions*) const {
+bool NotEqualTypes::satisfied(const TEnvPtr&, const ConstraintPtr& cst, Definitions*) const {
   MonoTypePtr lhs, rhs;
   return dec(cst, &lhs, &rhs) && !hasFreeVariables(lhs) && !hasFreeVariables(rhs) && !(*lhs == *rhs);
 }
 
-bool NotEqualTypes::satisfiable(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions* ds) const {
+bool NotEqualTypes::satisfiable(const TEnvPtr&, const ConstraintPtr& cst, Definitions*) const {
   MonoTypePtr lhs, rhs;
   return dec(cst, &lhs, &rhs) && (hasFreeVariables(lhs) || hasFreeVariables(rhs) || !(*lhs == *rhs));
 }
 
-void NotEqualTypes::explain(const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPtr& e, Definitions* ds, annmsgs* msgs) {
+void NotEqualTypes::explain(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*, annmsgs*) {
 }
 
 struct StripCst : public switchExprTyFn {
@@ -50,11 +50,11 @@ struct StripCst : public switchExprTyFn {
   }
 };
 
-ExprPtr NotEqualTypes::unqualify(const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPtr& e, Definitions*) const {
+ExprPtr NotEqualTypes::unqualify(const TEnvPtr&, const ConstraintPtr& cst, const ExprPtr& e, Definitions*) const {
   return switchOf(e, StripCst(cst));
 }
 
-PolyTypePtr NotEqualTypes::lookup(const std::string& vn) const {
+PolyTypePtr NotEqualTypes::lookup(const std::string&) const {
   return PolyTypePtr(); // this won't be necessary
 }
 

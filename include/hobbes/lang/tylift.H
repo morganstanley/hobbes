@@ -43,14 +43,14 @@ struct typedb {
 struct nulltypedb : public typedb {
   MonoTypePtr defineNamedType(const std::string& name, const str::seq& argNames, const MonoTypePtr& ty);
   bool isTypeName(const std::string&) const;
-  MonoTypePtr namedTypeRepresentation(const std::string&) const;
+  [[noreturn]] MonoTypePtr namedTypeRepresentation(const std::string&) const;
 
-  void defineTypeAlias(const std::string& name, const str::seq& argNames, const MonoTypePtr& ty);
+  [[noreturn]] void defineTypeAlias(const std::string& name, const str::seq& argNames, const MonoTypePtr& ty);
   bool isTypeAliasName(const std::string& name) const;
   MonoTypePtr replaceTypeAliases(const MonoTypePtr& ty) const;
   
-  PolyTypePtr opaquePtrPolyType(const std::type_info&, unsigned int sz, bool inStruct);
-  MonoTypePtr opaquePtrMonoType(const std::type_info&, unsigned int sz, bool inStruct);
+  [[noreturn]] PolyTypePtr opaquePtrPolyType(const std::type_info&, unsigned int sz, bool inStruct);
+  [[noreturn]] MonoTypePtr opaquePtrMonoType(const std::type_info&, unsigned int sz, bool inStruct);
  
   PolyTypePtr generalize(const MonoTypePtr& mt) const;
 };
@@ -354,7 +354,7 @@ template <typename T, typename P = void>
 template <const char* TN, typename T>
   struct liftVarCtor< label<TN, T> > {
     typedef typename label<TN, T>::type type;
-    static std::string labelText(int idx) { return label<TN, T>::name(); }
+    static std::string labelText(int) { return label<TN, T>::name(); }
   };
 template <typename ... CTys>
   struct liftVarCtors {
