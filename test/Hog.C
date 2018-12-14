@@ -496,7 +496,7 @@ TEST(Hog, UnreliableReconnect) {
 }
 
 void rmrf(const char* p) {
-  nftw(p, [](const char* fp, const struct stat*, int tf, struct FTW*) -> int { remove(fp); return 0; }, 64, FTW_DEPTH | FTW_PHYS);
+  nftw(p, [](const char* fp, const struct stat*, int, struct FTW*) -> int { remove(fp); return 0; }, 64, FTW_DEPTH | FTW_PHYS);
 }
 TEST(Hog, Cleanup) {
   rmrf("./.htest");

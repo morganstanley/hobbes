@@ -354,7 +354,7 @@ template <typename T, typename P = void>
 template <const char* TN, typename T>
   struct liftVarCtor< label<TN, T> > {
     typedef typename label<TN, T>::type type;
-    static std::string labelText(int idx) { return label<TN, T>::name(); }
+    static std::string labelText(int) { return label<TN, T>::name(); }
   };
 template <typename ... CTys>
   struct liftVarCtors {

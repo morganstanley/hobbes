@@ -1484,10 +1484,10 @@ const ExprPtr& TExpr::expr() const { return this->e; }
 /////////////////////
 // type visitor utilities
 /////////////////////
-UnitV walkTy::with(const Prim*       v) const { return unitv; }
-UnitV walkTy::with(const OpaquePtr*  v) const { return unitv; }
-UnitV walkTy::with(const TVar*       v) const { return unitv; }
-UnitV walkTy::with(const TGen*       v) const { return unitv; }
+UnitV walkTy::with(const Prim*        ) const { return unitv; }
+UnitV walkTy::with(const OpaquePtr*   ) const { return unitv; }
+UnitV walkTy::with(const TVar*        ) const { return unitv; }
+UnitV walkTy::with(const TGen*        ) const { return unitv; }
 UnitV walkTy::with(const TAbs*       v) const { switchOf(v->body(), *this); return unitv; }
 UnitV walkTy::with(const TApp*       v) const { switchOf(v->fn(), *this); for (auto a : v->args()) { switchOf(a, *this); } return unitv; }
 UnitV walkTy::with(const FixedArray* v) const { switchOf(v->type(), *this); switchOf(v->length(), *this); return unitv; }
@@ -1497,9 +1497,9 @@ UnitV walkTy::with(const Record*     v) const { for (auto f : v->members()) { sw
 UnitV walkTy::with(const Func*       v) const { switchOf(v->argument(), *this); switchOf(v->result(), *this); return unitv; }
 UnitV walkTy::with(const Exists*     v) const { switchOf(v->absType(), *this); return unitv; }
 UnitV walkTy::with(const Recursive*  v) const { switchOf(v->recType(), *this); return unitv; }
-UnitV walkTy::with(const TString*    v) const { return unitv; }
-UnitV walkTy::with(const TLong*      v) const { return unitv; }
-UnitV walkTy::with(const TExpr*      v) const { return unitv; }
+UnitV walkTy::with(const TString*     ) const { return unitv; }
+UnitV walkTy::with(const TLong*       ) const { return unitv; }
+UnitV walkTy::with(const TExpr*       ) const { return unitv; }
 
 MonoTypePtr switchTyFn::with(const Prim*       v) const { return Prim::make(v->name(), v->representation()); }
 MonoTypePtr switchTyFn::with(const OpaquePtr*  v) const { return OpaquePtr::make(v->name(), v->size(), v->storedContiguously()); }
@@ -1685,12 +1685,12 @@ int tgenSize(const MonoTypes& mts) {
   return x;
 }
 
-int tgenSize(const Constraints& cs) {
+[[noreturn]] int tgenSize(const Constraints&) {
   throw std::runtime_error("tgenSize on constraints NYI");
 }
 
-int tgenSize(const QualTypePtr& qt) {
-  return std::max<int>(tgenSize(qt->constraints()), tgenSize(qt->monoType()));
+[[noreturn]] int tgenSize(const QualTypePtr&) {
+  throw std::runtime_error("tgenSize on constraints NYI");
 }
 
 // find the set of tgen variables in a type expression
@@ -2109,12 +2109,12 @@ public:
   nat with(const TVar*       v) const { throw std::runtime_error("Can't determine size of type variable '" + v->name() + "'"); }
   nat with(const TGen*       v) const { throw std::runtime_error("Can't determine size of polytype argument #" + str::from(v->id())); }
   nat with(const FixedArray* v) const { return r(v->type()) * v->requireLength(); }
-  nat with(const Array*      v) const { return sizeof(void*); }
+  nat with(const Array*       ) const { return sizeof(void*); }
   nat with(const Variant*    v) const { return rv(v); }
   nat with(const Record*     v) const { return rv(v); }
-  nat with(const Func*       v) const { return sizeof(void*); }
-  nat with(const Exists*     v) const { return sizeof(void*); }
-  nat with(const Recursive*  v) const { return sizeof(void*); }
+  nat with(const Func*        ) const { return sizeof(void*); }
+  nat with(const Exists*      ) const { return sizeof(void*); }
+  nat with(const Recursive*   ) const { return sizeof(void*); }
 
   nat with(const TAbs* v) const {
     throw std::runtime_error("Can't determine size of type abstraction: " + show(v));
@@ -2158,9 +2158,9 @@ public:
   }
 
   // type-level values/expressions have no runtime content (they're equivalent to unit)
-  nat with(const TString* v) const { return 0; }
-  nat with(const TLong*   v) const { return 0; }
-  nat with(const TExpr*   v) const { return 0; }
+  nat with(const TString* ) const { return 0; }
+  nat with(const TLong*   ) const { return 0; }
+  nat with(const TExpr*   ) const { return 0; }
 private:
   nat withPrim(const std::string& pn) const {
     if (pn == "unit") {
@@ -2252,14 +2252,14 @@ MonoTypePtr unroll(const MonoTypePtr& rty) {
 #define ntdbthrow(x, ti) \
    throw std::runtime_error("Internal compiler error, " x " on null type db for '" + str::demangle((ti).name()) + "'.")
 
-MonoTypePtr nulltypedb::defineNamedType(const std::string& name, const str::seq& argNames, const MonoTypePtr& ty) { return ty; }
+MonoTypePtr nulltypedb::defineNamedType(const std::string&, const str::seq&, const MonoTypePtr& ty) { return ty; }
 bool        nulltypedb::isTypeName(const std::string&) const { return false; }
-MonoTypePtr nulltypedb::namedTypeRepresentation(const std::string&) const {throw std::runtime_error("Can't unalias types in a null type database"); }
-void        nulltypedb::defineTypeAlias(const std::string& name, const str::seq& argNames, const MonoTypePtr& ty) { throw std::runtime_error("Can't define transparent type aliases through a null type database."); }
-bool        nulltypedb::isTypeAliasName(const std::string& name) const { return false; }
+[[noreturn]] MonoTypePtr nulltypedb::namedTypeRepresentation(const std::string&) const {throw std::runtime_error("Can't unalias types in a null type database"); }
+[[noreturn]] void        nulltypedb::defineTypeAlias(const std::string&, const str::seq&, const MonoTypePtr&) { throw std::runtime_error("Can't define transparent type aliases through a null type database."); }
+bool        nulltypedb::isTypeAliasName(const std::string&) const { return false; }
 MonoTypePtr nulltypedb::replaceTypeAliases(const MonoTypePtr& ty) const { return ty; }
-PolyTypePtr nulltypedb::opaquePtrPolyType(const std::type_info& ti, unsigned int sz, bool inStruct) { ntdbthrow("opaquePtrPolyType", ti); }
-MonoTypePtr nulltypedb::opaquePtrMonoType(const std::type_info& ti, unsigned int sz, bool inStruct) { ntdbthrow("opaquePtrMonoType", ti); }
+[[noreturn]] PolyTypePtr nulltypedb::opaquePtrPolyType(const std::type_info& ti, unsigned int, bool) { ntdbthrow("opaquePtrPolyType", ti); }
+[[noreturn]] MonoTypePtr nulltypedb::opaquePtrMonoType(const std::type_info& ti, unsigned int, bool) { ntdbthrow("opaquePtrMonoType", ti); }
 PolyTypePtr nulltypedb::generalize(const MonoTypePtr& mt) const { return polytype(mt); }
 nulltypedb nulltdb;
 

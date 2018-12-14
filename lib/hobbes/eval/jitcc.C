@@ -306,7 +306,7 @@ public:
   LenWatch(const std::string& fname) : fname(fname), sz(0) { }
   size_t size() const { return this->sz; }
   virtual ~LenWatch() { }
-  virtual void NotifyFunctionEmitted(const llvm::Function& f, void* mc, size_t sz, const llvm::JITEventListener::EmittedFunctionDetails&) {
+  virtual void NotifyFunctionEmitted(const llvm::Function& f, void*, size_t sz, const llvm::JITEventListener::EmittedFunctionDetails&) {
     if (f.getName().str() == this->fname) {
       this->sz = sz;
     }
@@ -784,7 +784,7 @@ llvm::Function* jitcc::allocFunction(const std::string& fname, const MonoTypes& 
     );
 }
 
-void* jitcc::reifyMachineCodeForFn(const MonoTypePtr& reqTy, const str::seq& names, const MonoTypes& tys, const ExprPtr& exp) {
+void* jitcc::reifyMachineCodeForFn(const MonoTypePtr&, const str::seq& names, const MonoTypes& tys, const ExprPtr& exp) {
   return getMachineCode(compileFunction("", names, tys, exp));
 }
 

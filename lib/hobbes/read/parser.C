@@ -48,11 +48,11 @@ extern void yy_delete_buffer(YY_BUFFER_STATE);
 
 namespace hobbes {
 
-void throwFileError(const std::string& fname, const YYLTYPE& errPos, const std::string& emsg) {
+[[noreturn]] void throwFileError(const std::string& fname, const YYLTYPE& errPos, const std::string& emsg) {
   throw annotated_error::fileError(fname, Pos(errPos.first_line, errPos.first_column), Pos(errPos.last_line, errPos.last_column), emsg);
 }
 
-void throwBufferError(const char* buffer, const YYLTYPE& errPos, const std::string& emsg) {
+[[noreturn]] void throwBufferError(const char* buffer, const YYLTYPE& errPos, const std::string& emsg) {
   throw annotated_error::bufferError(buffer, Pos(errPos.first_line, errPos.first_column), Pos(errPos.last_line, errPos.last_column), emsg);
 }
 

@@ -59,7 +59,7 @@ QualTypePtr underlyingFnType(const TEnvPtr& tenv, const ConstraintPtr& c) {
   return QualTypePtr();
 }
 
-bool HFTEnvLookupEliminator::satisfied(const TEnvPtr& tenv, const HasField& hf, Definitions* ds) const {
+bool HFTEnvLookupEliminator::satisfied(const TEnvPtr& tenv, const HasField& hf, Definitions*) const {
   const auto& rty    = hf.recordType;
   const auto& fnamet = hf.fieldName;
   const auto& fty    = hf.fieldType;
@@ -74,7 +74,7 @@ bool HFTEnvLookupEliminator::satisfied(const TEnvPtr& tenv, const HasField& hf, 
   return unifiable(tenv, objViewToFlatView(rty, ffnty), tenv->lookup(fname->value())->instantiate()->monoType());
 }
 
-bool HFTEnvLookupEliminator::satisfiable(const TEnvPtr& tenv, const HasField& hf, Definitions* ds) const {
+bool HFTEnvLookupEliminator::satisfiable(const TEnvPtr& tenv, const HasField& hf, Definitions*) const {
   auto rty    = hf.recordType;
   auto fnamet = hf.fieldName;
   auto fty    = hf.fieldType;
@@ -93,7 +93,7 @@ bool HFTEnvLookupEliminator::satisfiable(const TEnvPtr& tenv, const HasField& hf
   }
 }
 
-bool HFTEnvLookupEliminator::refine(const TEnvPtr& tenv, const HasField& hf, MonoTypeUnifier* s, Definitions* ds) {
+bool HFTEnvLookupEliminator::refine(const TEnvPtr& tenv, const HasField& hf, MonoTypeUnifier* s, Definitions*) {
   auto rty    = hf.recordType;
   auto fnamet = hf.fieldName;
   auto fty    = hf.fieldType;

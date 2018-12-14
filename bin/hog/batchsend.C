@@ -293,7 +293,7 @@ template <typename T>
     write(s, reinterpret_cast<const uint8_t*>(&x), sizeof(x));
   }
 
-static void initNetSession(BatchSendSession* s, const std::string& groupName, const std::string& dir, storage::PipeQOS qos, storage::CommitMethod cm, const storage::statements& stmts) {
+static void initNetSession(BatchSendSession* s, const std::string&, const std::string&, storage::PipeQOS qos, storage::CommitMethod cm, const storage::statements& stmts) {
   // write init message data to our current batch send file
   write(s, static_cast<int>(qos));
   write(s, static_cast<int>(cm));
@@ -313,7 +313,7 @@ static void initNetSession(BatchSendSession* s, const std::string& groupName, co
   s->stepFile();
 }
 
-void pushLocalData(const storage::QueueConnection& qc, const std::string& groupName, const std::string& dir, size_t clevel, size_t batchsendsize, long batchsendtime, const std::vector<std::string>& sendto, const hobbes::storage::WaitPolicy wp) {
+[[noreturn]] void pushLocalData(const storage::QueueConnection& qc, const std::string& groupName, const std::string& dir, size_t clevel, size_t batchsendsize, long batchsendtime, const std::vector<std::string>& sendto, const hobbes::storage::WaitPolicy wp) {
   auto pt = hobbes::storage::thisProcThread();
   batchsendsize = std::max<size_t>(10*1024*1024, batchsendsize);
   BatchSendSession sn(groupName, dir + "/tmp_" + str::from(pt.first) + "-" + str::from(pt.second) + "/", clevel, sendto);

@@ -270,7 +270,7 @@ bool evaluator::satisfied(const hobbes::ConstraintPtr& c) {
   return result;
 }
 
-void showSearchResults(const std::string& expr, const hobbes::SearchEntries& ses) {
+void showSearchResults(const std::string&, const hobbes::SearchEntries& ses) {
   if (ses.size() > 0) {
     std::map<std::string, std::string> stbl;
     for (const auto& se : ses) {

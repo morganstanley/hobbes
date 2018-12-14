@@ -198,7 +198,7 @@ template <typename ConvFns, typename DstTupleT, size_t i, size_t n>
 // the base case ('unit' needs no conversion)
 template <typename ConvFns, size_t n, typename ... Ts>
   struct ApplyStructConvF<ConvFns, tuple<Ts...>, n, n> {
-    static void apply(const ConvFns& cfns, const void* src, tuple<Ts...>* dst) { }
+    static void apply(const ConvFns&, const void*, tuple<Ts...>*) { }
   };
 
 // the inductive case (apply at the pointed-to field, then continue walking the struct)

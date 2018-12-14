@@ -17,7 +17,7 @@ namespace hobbes {
       llvm::Value* x = c->compile(es[0]); \
       return c->builder()->mem(x, "t"); \
     } \
-    PolyTypePtr type(typedb& tenv) const { \
+    PolyTypePtr type(typedb&) const { \
       return polytype(prim<rty(aty0)>()); \
     } \
   }
@@ -30,7 +30,7 @@ namespace hobbes {
       llvm::Value* right = c->compile(es[1]); \
       return c->builder()->mem(left, right, "t"); \
     } \
-    PolyTypePtr type(typedb& tenv) const { \
+    PolyTypePtr type(typedb&) const { \
       return polytype(prim<rty(aty0,aty1)>()); \
     } \
   }
@@ -42,7 +42,7 @@ namespace hobbes {
       llvm::Value* e = c->compile(es[0]); \
       return c->builder()->CreateCast(cflag, e, toLLVM(prim<outty>()), "t"); \
     } \
-    PolyTypePtr type(typedb& tenv) const { \
+    PolyTypePtr type(typedb&) const { \
       return polytype(prim<outty(inty)>()); \
     } \
   }
@@ -54,7 +54,7 @@ namespace hobbes {
       llvm::Value* x = c->compile(es[0]); \
       return c->builder()->mem(x, a0, "t"); \
     } \
-    PolyTypePtr type(typedb& tenv) const { \
+    PolyTypePtr type(typedb&) const { \
       return polytype(prim<outty(inty)>()); \
     } \
   }
@@ -66,7 +66,7 @@ namespace hobbes {
       llvm::Value* x = c->compile(es[0]); \
       return c->builder()->mem(x, a0, a1, "t"); \
     } \
-    PolyTypePtr type(typedb& tenv) const { \
+    PolyTypePtr type(typedb&) const { \
       return polytype(prim<outty(inty)>()); \
     } \
   }
@@ -275,7 +275,7 @@ public:
 // array-length lookup
 class alenexp : public op {
 public:
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) {
     return c->builder()->CreateLoad(structOffset(c->builder(), c->compile(es[0]), 0), false, "at");
   }
 
@@ -431,7 +431,7 @@ class saacopy : public op {
 // generic contextless function application
 class applyCFn : public op {
 public:
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr& rty, const Exprs& es) {
     if (const MkRecord* args = is<MkRecord>(es[1])) {
       return c->compile(fncall(es[0], exprs(args->fields()), es[0]->la()));
     } else {
@@ -472,7 +472,7 @@ public:
 // identity transform -- do nothing
 class idexp : public op {
 public:
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) {
     return c->compile(es[0]);
   }
 
@@ -486,7 +486,7 @@ public:
 // identity transform, with (unsafe) bit cast
 class castexp : public op {
 public:
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr& rty, const Exprs& es) {
     llvm::Value* r = c->compile(es[0]);
     if (isUnit(rty)) {
       return cvalue(true);
@@ -509,7 +509,7 @@ public:
   newPrimfn(bool zeroMem = false) : zeroMem(zeroMem) {
   }
 
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr& rty, const Exprs&) {
     if (isUnit(rty)) {
       return cvalue(true);
     } else if (!hasPointerRep(rty)) {
@@ -530,7 +530,7 @@ private:
 
 class newArrayfn : public op {
 public:
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr& rty, const Exprs& es) {
     const Array* aty = is<Array>(rty);
     if (!aty) {
       throw annotated_error(*es[0], "Invalid usage, newArray called for non-array type");
@@ -555,7 +555,7 @@ public:
 // adjust a pointer, through a vtbl or not (this should only wind up being used for witnessing subclass relations)
 class adjptr : public op {
 public:
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) {
     llvm::Value* p = c->compile(es[0]);
     llvm::Value* o = c->compile(es[1]);
     return c->builder()->CreateGEP(p, o);
@@ -572,7 +572,7 @@ public:
 
 class adjvtblptr : public op {
 public:
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) {
     llvm::Type* tppchar =
       llvm::PointerType::getUnqual(
         llvm::PointerType::getUnqual(llvm::Type::getInt8Ty(context()))
@@ -607,7 +607,7 @@ public:
 // compile-time record deconstruction
 class recHLabel : public op {
 public:
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs&) {
     if (tys.size() != 1) {
       throw std::runtime_error("Internal error, recordHeadLabel applied incorrectly");
     }
@@ -680,7 +680,7 @@ public:
 
 class varHLabel : public op {
 public:
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs&) {
     if (tys.size() != 1) {
       throw std::runtime_error("Internal error, varHLabel applied incorrectly");
     }
@@ -904,7 +904,7 @@ size_t stdstrsize(const std::string& x)           { return x.size(); }
 char   stdstrelem(const std::string& x, size_t i) { return x[i]; }
 
 class packLongF : public op {
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) {
     llvm::Value* c0 = c->builder()->CreateShl(c->builder()->CreateIntCast(c->compile(es[0]), longType(), false), 56);
     llvm::Value* c1 = c->builder()->CreateShl(c->builder()->CreateIntCast(c->compile(es[1]), longType(), false), 48);
     llvm::Value* c2 = c->builder()->CreateShl(c->builder()->CreateIntCast(c->compile(es[2]), longType(), false), 40);
@@ -925,7 +925,7 @@ class packLongF : public op {
 };
 
 class packIntF : public op {
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) {
     llvm::Value* c0 = c->builder()->CreateIntCast(c->compile(es[0]), intType(), false);
     llvm::Value* c1 = c->builder()->CreateIntCast(c->compile(es[1]), intType(), false);
     llvm::Value* c2 = c->builder()->CreateIntCast(c->compile(es[2]), intType(), false);
@@ -951,7 +951,7 @@ class packIntF : public op {
 };
 
 class packShortF : public op {
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) {
     llvm::Value* c0 = c->builder()->CreateIntCast(c->compile(es[0]), shortType(), false);
     llvm::Value* c1 = c->builder()->CreateIntCast(c->compile(es[1]), shortType(), false);
 
@@ -969,7 +969,7 @@ class packShortF : public op {
 };
 
 class cptrrefbyF : public op {
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) {
     return
       c->builder()->CreateLoad(
         offset(c->builder(), c->compile(es[0]), c->compile(es[1])),

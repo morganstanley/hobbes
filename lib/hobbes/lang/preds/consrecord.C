@@ -150,7 +150,7 @@ bool RecordDeconstructor::satisfiable(const TEnvPtr& tenv, const ConstraintPtr& 
   }
 }
 
-void RecordDeconstructor::explain(const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPtr& e, Definitions* ds, annmsgs* msgs) {
+void RecordDeconstructor::explain(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*, annmsgs*) {
 }
 
 PolyTypePtr RecordDeconstructor::lookup(const std::string& vn) const {

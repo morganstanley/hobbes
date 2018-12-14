@@ -21,21 +21,21 @@ std::string EqualTypes::constraintName() {
   return "equals";
 }
 
-bool EqualTypes::refine(const TEnvPtr& tenv, const ConstraintPtr& cst, MonoTypeUnifier* s, Definitions*) {
+bool EqualTypes::refine(const TEnvPtr&, const ConstraintPtr&, MonoTypeUnifier*, Definitions*) {
   return false;
 }
 
-bool EqualTypes::satisfied(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions*) const {
+bool EqualTypes::satisfied(const TEnvPtr&, const ConstraintPtr& cst, Definitions*) const {
   MonoTypePtr lhs, rhs;
   return dec(cst, &lhs, &rhs) && *lhs == *rhs;
 }
 
-bool EqualTypes::satisfiable(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions* ds) const {
+bool EqualTypes::satisfiable(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions*) const {
   MonoTypePtr lhs, rhs;
   return dec(cst, &lhs, &rhs) && unifiable(tenv, lhs, rhs);
 }
 
-void EqualTypes::explain(const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPtr& e, Definitions* ds, annmsgs* msgs) {
+void EqualTypes::explain(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*, annmsgs*) {
 }
 
 struct StripEqCst : public switchExprTyFn {
@@ -50,12 +50,12 @@ struct StripEqCst : public switchExprTyFn {
   }
 };
 
-ExprPtr EqualTypes::unqualify(const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPtr& e, Definitions*) const {
+ExprPtr EqualTypes::unqualify(const TEnvPtr&, const ConstraintPtr& cst, const ExprPtr& e, Definitions*) const {
   // equality between types has no runtime significance
   return switchOf(e, StripEqCst(cst));
 }
 
-PolyTypePtr EqualTypes::lookup(const std::string& vn) const {
+PolyTypePtr EqualTypes::lookup(const std::string&) const {
   return PolyTypePtr(); // this won't be necessary
 }
 

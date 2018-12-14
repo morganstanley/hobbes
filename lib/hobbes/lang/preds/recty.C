@@ -27,7 +27,7 @@ std::string FixIsoRecur::constraintName() {
 }
 
 // resolve recursive type constraints
-bool FixIsoRecur::refine(const TEnvPtr& tenv, const ConstraintPtr& cst, MonoTypeUnifier* u, Definitions*) {
+bool FixIsoRecur::refine(const TEnvPtr&, const ConstraintPtr& cst, MonoTypeUnifier* u, Definitions*) {
   size_t uc = u->size();
   IsoRecur ir;
   if (dec(cst, &ir)) {
@@ -38,7 +38,7 @@ bool FixIsoRecur::refine(const TEnvPtr& tenv, const ConstraintPtr& cst, MonoType
   return uc != u->size();
 }
 
-bool FixIsoRecur::satisfied(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions*) const {
+bool FixIsoRecur::satisfied(const TEnvPtr&, const ConstraintPtr& cst, Definitions*) const {
   IsoRecur ir;
   if (dec(cst, &ir)) {
     if (is<Recursive>(ir.rolled)) {
@@ -68,7 +68,7 @@ bool FixIsoRecur::satisfiable(const TEnvPtr& tenv, const ConstraintPtr& cst, Def
   }
 }
 
-void FixIsoRecur::explain(const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPtr& e, Definitions* ds, annmsgs* msgs) {
+void FixIsoRecur::explain(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*, annmsgs*) {
 }
 
 struct IsoRecUnqualify : public switchExprTyFn {
@@ -94,7 +94,7 @@ struct IsoRecUnqualify : public switchExprTyFn {
   }
 };
 
-ExprPtr FixIsoRecur::unqualify(const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPtr& e, Definitions*) const {
+ExprPtr FixIsoRecur::unqualify(const TEnvPtr&, const ConstraintPtr& cst, const ExprPtr& e, Definitions*) const {
   return switchOf(e, IsoRecUnqualify(cst));
 }
 

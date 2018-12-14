@@ -19,14 +19,14 @@ bool DataP::refine(const TEnvPtr&, const ConstraintPtr& c, MonoTypeUnifier* u, D
   return false;
 }
 
-bool DataP::satisfied(const TEnvPtr& tenv, const ConstraintPtr& c, Definitions*) const {
+bool DataP::satisfied(const TEnvPtr&, const ConstraintPtr& c, Definitions*) const {
   if (c->name() == DataP::constraintName() && c->arguments().size() == 2) {
     return *c->arguments()[1] == *repTypeStep(c->arguments()[0]) && !(*c->arguments()[0] == *c->arguments()[1]);
   }
   return false;
 }
 
-bool DataP::satisfiable(const TEnvPtr& tenv, const ConstraintPtr& c, Definitions* ds) const {
+bool DataP::satisfiable(const TEnvPtr& tenv, const ConstraintPtr& c, Definitions*) const {
   if (c->name() != DataP::constraintName() || c->arguments().size() != 2) {
     return false;
   } else if (is<TVar>(c->arguments()[0])) {
@@ -36,7 +36,7 @@ bool DataP::satisfiable(const TEnvPtr& tenv, const ConstraintPtr& c, Definitions
   }
 }
 
-void DataP::explain(const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPtr& e, Definitions* ds, annmsgs* msgs) {
+void DataP::explain(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*, annmsgs*) {
 }
 
 struct StripCst : public switchExprTyFn {

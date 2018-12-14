@@ -332,7 +332,7 @@ std::string moveToUniqueFilename(const std::string& oldpath, const std::string& 
 // make it easy to bind files
 template <>
   struct liftValue< reader* > {
-    static MonoTypePtr type(typedb& tenv, reader* r) {
+    static MonoTypePtr type(typedb&, reader* r) {
       MonoTypeSubst fdefs = r->signature();
       Record::Members ms;
       for (const auto& m : fdefs) {
@@ -345,7 +345,7 @@ template <>
 
 template <>
   struct liftValue< writer* > {
-    static MonoTypePtr type(typedb& tenv, writer* w) {
+    static MonoTypePtr type(typedb&, writer* w) {
       MonoTypeSubst fdefs = w->signature();
       Record::Members ms;
       for (const auto& m : fdefs) {

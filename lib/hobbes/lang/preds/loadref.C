@@ -26,7 +26,7 @@ std::string DBFileRefLoader::constraintName() {
 }
 
 // resolve requests to load values from a local database
-bool DBFileRefLoader::refine(const TEnvPtr& tenv, const ConstraintPtr& cst, MonoTypeUnifier* u, Definitions*) {
+bool DBFileRefLoader::refine(const TEnvPtr&, const ConstraintPtr& cst, MonoTypeUnifier* u, Definitions*) {
   size_t uc = u->size();
   FRefLoadable fref;
   if (dec(cst, &fref)) {
@@ -43,7 +43,7 @@ bool DBFileRefLoader::refine(const TEnvPtr& tenv, const ConstraintPtr& cst, Mono
   return uc != u->size();
 }
 
-bool DBFileRefLoader::satisfied(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions*) const {
+bool DBFileRefLoader::satisfied(const TEnvPtr&, const ConstraintPtr& cst, Definitions*) const {
   FRefLoadable fref;
   if (dec(cst, &fref)) {
     if (const TApp* ap = is<TApp>(fref.ref)) {
@@ -59,7 +59,7 @@ bool DBFileRefLoader::satisfied(const TEnvPtr& tenv, const ConstraintPtr& cst, D
   return false;
 }
 
-bool DBFileRefLoader::satisfiable(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions*) const {
+bool DBFileRefLoader::satisfiable(const TEnvPtr&, const ConstraintPtr& cst, Definitions*) const {
   FRefLoadable fref;
   if (dec(cst, &fref)) {
     if (const TApp* ap = is<TApp>(fref.ref)) {
@@ -84,7 +84,7 @@ bool DBFileRefLoader::satisfiable(const TEnvPtr& tenv, const ConstraintPtr& cst,
   }
 }
 
-void DBFileRefLoader::explain(const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPtr& e, Definitions* ds, annmsgs* msgs) {
+void DBFileRefLoader::explain(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*, annmsgs*) {
 }
 
 struct DBFLUnqualify : public switchExprTyFn {
@@ -133,7 +133,7 @@ struct DBFLUnqualify : public switchExprTyFn {
   }
 };
 
-ExprPtr DBFileRefLoader::unqualify(const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPtr& e, Definitions*) const {
+ExprPtr DBFileRefLoader::unqualify(const TEnvPtr&, const ConstraintPtr& cst, const ExprPtr& e, Definitions*) const {
   return switchOf(e, DBFLUnqualify(cst));
 }
 

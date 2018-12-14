@@ -12,27 +12,27 @@ struct destructType : public switchType<bool> {
   MonoTypePtr* r = 0;
   destructType(MonoTypePtr* r) : r(r) { }
 
-  bool with(const Prim* v) const {
+  bool with(const Prim*) const {
     return false;
   }
 
-  bool with(const OpaquePtr* v) const {
+  bool with(const OpaquePtr*) const {
     return false;
   }
 
-  bool with(const TVar* v) const {
+  bool with(const TVar*) const {
     return false;
   }
 
-  bool with(const TGen* v) const {
+  bool with(const TGen*) const {
     return false;
   }
 
-  bool with(const TAbs* v) const {
+  bool with(const TAbs*) const {
     return false;
   }
 
-  bool with(const TApp* v) const {
+  bool with(const TApp*) const {
     return false;
   }
 
@@ -53,11 +53,11 @@ struct destructType : public switchType<bool> {
     return true;
   }
 
-  bool with(const Variant* v) const {
+  bool with(const Variant*) const {
     return false;
   }
 
-  bool with(const Record* v) const {
+  bool with(const Record*) const {
     return false;
   }
 
@@ -101,11 +101,11 @@ struct destructType : public switchType<bool> {
     return true;
   }
   
-  bool with(const TString* v) const {
+  bool with(const TString*) const {
     return false;
   }
 
-  bool with(const TLong* v) const {
+  bool with(const TLong*) const {
     return false;
   }
  
@@ -170,7 +170,7 @@ bool DeconstructP::refine(const TEnvPtr&, const ConstraintPtr& c, MonoTypeUnifie
   return false;
 }
 
-bool DeconstructP::satisfied(const TEnvPtr& tenv, const ConstraintPtr& c, Definitions*) const {
+bool DeconstructP::satisfied(const TEnvPtr&, const ConstraintPtr& c, Definitions*) const {
   if (c->name() != DeconstructP::constraintName() || c->arguments().size() != 2) {
     return false;
   }
@@ -199,7 +199,7 @@ bool DeconstructP::satisfiable(const TEnvPtr& tenv, const ConstraintPtr& c, Defi
   }
 }
 
-void DeconstructP::explain(const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPtr& e, Definitions* ds, annmsgs* msgs) {
+void DeconstructP::explain(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*, annmsgs*) {
 }
 
 struct StripCst : public switchExprTyFn {

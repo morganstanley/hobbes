@@ -48,7 +48,7 @@ Unit::Unit(const LexicalAnnotation& la) : Base(la) { }
 Expr* Unit::clone() const { return new Unit(la()); }
 void Unit::show(std::ostream& out) const          { out << "()"; }
 void Unit::showAnnotated(std::ostream& out) const { show(out); showTy(out, type()); }
-bool Unit::equiv(const Unit& rhs)           const { return true; }
+bool Unit::equiv(const Unit&)               const { return true; }
 bool Unit::lt(const Unit&)                  const { return false; }
 MonoTypePtr Unit::primType() const { return MonoTypePtr(Prim::make("unit")); }
 
@@ -1282,7 +1282,7 @@ const ExprPtr& stripAssumpHead(const ExprPtr& e) {
 
 // find the set of free variables in an expression
 struct freeVarF : public switchExprC<VarSet> {
-  VarSet withConst(const Expr* v)      const { return VarSet(); }
+  VarSet withConst(const Expr*)        const { return VarSet(); }
   VarSet with     (const Var* v)       const { return toSet(list(v->value())); }
   VarSet with     (const Let* v)       const { return setUnion(list(freeVars(v->varExpr()), setDifference(freeVars(v->bodyExpr()), toSet(list(v->var()))))); }
   VarSet with     (const Fn* v)        const { return setDifference(freeVars(v->body()), toSet(v->varNames())); }
@@ -1348,7 +1348,7 @@ struct etvarNamesF : public switchExprC<UnitV> {
   etvarNamesF(NameSet* out) : out(out) { }
   UnitV an(const Expr* v) const { if (v->type()) { tvarNames(v->type(), this->out); } return unitv; }
 
-  UnitV withConst(const Expr* v)      const { return unitv; }
+  UnitV withConst(const Expr*)        const { return unitv; }
   UnitV with     (const Var* v)       const { return an(v); }
   UnitV with     (const Let* v)       const { switchOf(v->varExpr(), *this); switchOf(v->bodyExpr(), *this); return an(v); }
   UnitV with     (const Fn* v)        const { switchOf(v->body(), *this); return an(v); }
@@ -1509,7 +1509,7 @@ struct encodeExprF : public switchExpr<UnitV> {
   std::ostream& out;
   encodeExprF(std::ostream& out) : out(out) { }
 
-  UnitV with(const Unit* v) const {
+  UnitV with(const Unit*) const {
     encode(Unit::type_case_id, this->out);
     return unitv;
   }

@@ -144,7 +144,7 @@ void dbglog(const std::string& msg) {
   }
 }
 
-void printAnnotatedText(cc* eval, std::ostream& out, const hobbes::LexicalAnnotation& la) {
+void printAnnotatedText(cc*, std::ostream& out, const hobbes::LexicalAnnotation& la) {
   static const size_t diffLine = 4;
   static const size_t termWidth = 80;
 
@@ -208,7 +208,7 @@ void printAnnotatedError(cc* eval, std::ostream& out, const hobbes::annotated_er
   }
 }
 
-void printError(cc* eval, std::ostream& out, const std::exception& ex) {
+void printError(cc*, std::ostream& out, const std::exception& ex) {
   std::string m(ex.what());
   dbglog("** " + m);
   out << "** " << m;

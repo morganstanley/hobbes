@@ -80,7 +80,7 @@ ExprPtr makeRecord(const MkRecord::FieldDefs& fds, const LexicalAnnotation& la) 
   }
 }
 
-void failAppendRecordConstraint(const std::string& lhs, const std::string& rhs, const std::string& result) {
+[[noreturn]] void failAppendRecordConstraint(const std::string& lhs, const std::string& rhs, const std::string& result) {
   std::ostringstream ss;
   ss << "Cannot solve type constraint: " << lhs << " ++ " << rhs << " = " << result;
   throw std::runtime_error(ss.str());
@@ -157,7 +157,7 @@ MonoTypePtr recordPrefix(const TEnvPtr& tenv, const MonoTypePtr& rhs, const Mono
   return makeRecordType(lhs);
 }
 
-bool ATRecordEliminator::satisfied(const TEnvPtr& tenv, const MonoTypePtr& lhs, const MonoTypePtr& rhs, const MonoTypePtr& result) const {
+bool ATRecordEliminator::satisfied(const TEnvPtr&, const MonoTypePtr& lhs, const MonoTypePtr& rhs, const MonoTypePtr& result) const {
   return isRecordLike(lhs) && isRecordLike(rhs) && isRecordLike(result) && (*result == *joinedRecord(lhs, rhs));
 }
 

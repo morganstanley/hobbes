@@ -458,7 +458,7 @@ struct inferTypeF : public switchPattern<MonoTypePtr> {
     return v->equivConstant()->primType();
   }
 
-  MonoTypePtr with(const MatchAny* v) const {
+  MonoTypePtr with(const MatchAny*) const {
     return freshTypeVar();
   }
 
@@ -487,7 +487,7 @@ struct inferTypeF : public switchPattern<MonoTypePtr> {
     return MonoTypePtr(Record::make(ms));
   }
 
-  MonoTypePtr with(const MatchVariant* v) const {
+  MonoTypePtr with(const MatchVariant*) const {
     // too broad, but for this purpose should be fine
     return freshTypeVar();
   }
@@ -563,7 +563,7 @@ struct inferMappingF : public switchPattern<UnitV> {
     return unitv;
   }
 
-  UnitV with(const MatchRegex* x) const {
+  UnitV with(const MatchRegex*) const {
     // regex translation will decide how to conflate binding names
     return unitv;
   }
