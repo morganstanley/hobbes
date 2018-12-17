@@ -948,24 +948,24 @@ template <typename T, size_t N> const T* end  (const carray<T,N>& d) { return d.
 template <typename T, size_t N>       T* begin(      carray<T,N>& d) { return d.data; }
 template <typename T, size_t N>       T* end  (      carray<T,N>& d) { return d.data + d.size; }
 
-// define opaque type aliases
+// define opaque type aliases (inherit from 'alias', add a static 'name()' function)
+template <typename RepTy>
+  struct alias {
+    static const bool is_hmeta_alias = true;
+    typedef RepTy type;
+    RepTy value;
+
+    alias() : value() { }
+    alias(const RepTy& x) : value(x) { }
+    constexpr alias(const alias<RepTy>&) = default;
+    alias& operator=(const alias<RepTy>&) = default;
+  };
+
 #define DEFINE_TYPE_ALIAS_AS(PRIV_ATY, N, PRIV_REPTY) \
-  struct PRIV_ATY { \
-    static const bool is_hmeta_alias = true; \
-    typedef void is_hstore_alias; \
-    typedef PRIV_REPTY type; \
+  struct PRIV_ATY : public ::hobbes::alias<PRIV_REPTY> { \
+    using ::hobbes::alias<PRIV_REPTY>::alias; \
     static const char* name() { return #N; } \
-    inline operator PRIV_REPTY() { return this->value; } \
-    PRIV_REPTY value; \
-    PRIV_ATY() : value() { } \
-    PRIV_ATY(const PRIV_REPTY& x) : value(x) { } \
-    constexpr PRIV_ATY(const PRIV_ATY& x) = default; \
-    PRIV_ATY& operator=(const PRIV_ATY& x) = default; \
-  }; \
-  template <typename T> \
-    inline typename std::enable_if<std::is_base_of<T, PRIV_ATY>::value, bool>::type operator==(const T& a, const T& b) { \
-      return a.value == b.value; \
-    }
+  }
 
 #define DEFINE_TYPE_ALIAS(PRIV_ATY, PRIV_REPTY) DEFINE_TYPE_ALIAS_AS(PRIV_ATY, PRIV_ATY, PRIV_REPTY)
 

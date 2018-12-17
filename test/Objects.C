@@ -170,3 +170,27 @@ TEST(Objects, FwdDecl) {
   EXPECT_EQ((c().compileFn<size_t(const Undef*)>("u", "undefCount(u)")(reinterpret_cast<const Undef*>(0))), size_t(42));
 }
 
+#ifndef __clang__
+class Base {
+public:
+  int x;
+  int getBaseX() { return this->x; }
+};
+class Offset {
+public:
+  int y;
+};
+class Derived : public Base, public Offset {
+public:
+  Derived() { this->y = 0; this->x = 42; }
+  virtual int off() { return 20; }
+};
+TEST(Objects, ThroughVarRef) {
+  static Derived d;
+  c().bind("testObj", &d);
+  c().bind("getBaseX", memberfn(&Derived::getBaseX)); // <-- should infer Base::getBaseX instead of Derived, since that's where getBaseX is introduced
+  c().define("indGetX", "getBaseX");
+  EXPECT_EQ(c().compileFn<int()>("indGetX(testObj)")(), 42);
+}
+#endif
+
