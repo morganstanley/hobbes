@@ -9,6 +9,8 @@
 #include <hobbes/storage.H>
 #include <hobbes/db/series.H>
 
+#include <stdexcept>
+
 namespace hog {
 
 // make a storage file (via appendStorageSession) and produce a function to write transactions into it
@@ -21,6 +23,11 @@ ProcessTxnF appendStorageSession(SessionGroup*, const std::string& dirPfx, hobbe
 
 // common way to prepare output directories from dir prefix patterns
 std::string ensureDirExists(const std::string& dirPfx);
+
+class ShutdownException : public std::runtime_error {
+public:
+  explicit ShutdownException(const std::string& msg) : std::runtime_error(msg) {}
+};
 
 }
 
