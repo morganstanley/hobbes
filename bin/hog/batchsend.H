@@ -11,7 +11,7 @@
 #include <hobbes/storage.H>
 
 namespace hog {
-void pushLocalData(const hobbes::storage::QueueConnection&, const std::string& groupName, const std::string& dir, size_t clevel, size_t batchsendsize, long batchsendtimeInMicros, const std::vector<std::string>& sendto, const hobbes::storage::WaitPolicy, uint64_t gid, std::atomic<bool>& conn);
+void pushLocalData(const hobbes::storage::QueueConnection&, const std::string& groupName, const std::string& dir, size_t clevel, size_t batchsendsize, long batchsendtimeInMicros, const std::vector<std::string>& sendto, const hobbes::storage::WaitPolicy, std::atomic<bool>& conn);
 }
 
 #endif

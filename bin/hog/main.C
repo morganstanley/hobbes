@@ -206,29 +206,18 @@ RunMode config(int argc, const char** argv) {
   return r;
 }
 
-using RegFn = std::function<void()>;
-
 struct RegInfo {
-  std::vector<std::thread> readers;
-  std::list<RegFn> regFns;
   std::atomic<bool> connected;
+  std::vector<std::thread> readers;
 };
 
 void cleanup(RegInfo& reg) {
   // signal and wait for hog readers to complete
   reg.connected = false;
-
   for (auto & reader : reg.readers) {
     reader.join();
   }
   reg.readers.clear();
-
-  // register the next client connection
-  if (!reg.regFns.empty()) {
-    auto regFn = reg.regFns.front();
-    regFn();
-    reg.regFns.pop_front();
-  }
 }
 
 void evalGroupHostConnection(SessionGroup* sg, const std::string& groupName, const RunMode& m, int c, RegInfo& reg) {
@@ -251,7 +240,7 @@ void evalGroupHostConnection(SessionGroup* sg, const std::string& groupName, con
       reg.readers.push_back(std::thread(std::bind(&recordLocalData, sg, qc, d, wp, std::ref(reg.connected))));
       break;
     case RunMode::batchsend:
-      reg.readers.push_back(std::thread(std::bind(&pushLocalData, qc, groupName, ensureDirExists(d), m.clevel, m.batchsendsize, m.batchsendtime, m.sendto, wp, pid, std::ref(reg.connected))));
+      reg.readers.push_back(std::thread(std::bind(&pushLocalData, qc, groupName, ensureDirExists(d), m.clevel, m.batchsendsize, m.batchsendtime, m.sendto, wp, std::ref(reg.connected))));
       break;
     default:
       break;
@@ -264,7 +253,7 @@ void evalGroupHostConnection(SessionGroup* sg, const std::string& groupName, con
   }
 }
 
-void runGroupHost(const std::string& groupName, const RunMode& m, RegInfo& reg) {
+void runGroupHost(const std::string& groupName, const RunMode& m, std::map<int, RegInfo>& reg) {
   SessionGroup* sg = makeSessionGroup(m.consolidate, m.storageMode);
 
   hobbes::registerEventHandler(
@@ -281,20 +270,11 @@ void runGroupHost(const std::string& groupName, const RunMode& m, RegInfo& reg) 
             out() << "disconnected client for '" << groupName << "' due to version mismatch (expected " << HSTORE_VERSION << " but got " << version << ")" << std::endl;
             close(c);
           } else {
-            auto regFn = [sg, groupName, &m, c, &reg]() {
-              out() << "registering client connection for '" << groupName << "' from fd " << c << std::endl;
-              hobbes::registerEventHandler(c, [sg, groupName, &m, &reg](int c) {
-                evalGroupHostConnection(sg, groupName, m, c, reg);
-              });
-            };
-            // invoke or defer client/shmem registration
-            if (reg.connected) {
-              out() << "blocking client connection for '" << groupName << "' from fd " << c << std::endl;
-              reg.regFns.push_back(regFn);
-            } else {
-              reg.connected = true;
-              regFn();
-            }
+            out() << "registering client connection for '" << groupName << "' from fd " << c << std::endl;
+            reg[c].connected = true;
+            hobbes::registerEventHandler(c, [sg, groupName, &m, &reg](int c) {
+              evalGroupHostConnection(sg, groupName, m, c, reg[c]);
+            });
           }
         } catch (std::exception& ex) {
           out() << "error on connection for '" << groupName << "': " << ex.what() << std::endl;
@@ -310,7 +290,7 @@ void run(const RunMode& m) {
   if (m.t == RunMode::batchrecv) {
     pullRemoteDataT(m.dir, m.localport, m.consolidate, m.storageMode).join();
   } else if (m.groups.size() > 0) {
-    std::map<std::string, RegInfo> registry;
+    std::map<std::string, std::map<int, RegInfo>> registry;
 
     signal(SIGPIPE, SIG_IGN);
 

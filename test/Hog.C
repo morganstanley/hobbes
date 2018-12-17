@@ -238,7 +238,6 @@ public:
       auto paths = logpaths(group);
       if (!paths.empty()) {
         log = paths[0];
-        std::cout << "log found: " << log << std::endl;
       } else {
         sleep(1);
       }
@@ -526,21 +525,9 @@ TEST(Hog, UnreliableReconnect) {
   EXPECT_TRUE(s && "reconnection failed");
 }
 
-DEFINE_STORAGE_GROUP(
-  TestOrderedRead,
-  8,
-  hobbes::storage::Reliable,
-  hobbes::storage::ManualCommit
-);
-
 class ProducerApp {
 public:
   ProducerApp(std::function<void(int)> producerFn) : pid(-1), cmdfd(-1), ackfd(-1), producerFn(producerFn) {}
-
-  ~ProducerApp() {
-    if (cmdfd != -1) ::close(cmdfd);
-    if (ackfd != -1) ::close(ackfd);
-  }
 
   void start() {
     int cmdfd[2] = {0, 0};
@@ -573,15 +560,30 @@ public:
   }
 
   void stop() {
-    assert(pid != -1);
-    if (kill(pid, SIGTERM) == -1) {
-      throw std::runtime_error("error while kill: " + std::string(strerror(errno)));
-    }
-    int ws;
-    if (waitpid(pid, &ws, 0) == -1) {
-      throw std::runtime_error("error while waitpid: " + std::string(strerror(errno)));
+    if (started()) {
+      if (kill(pid, SIGTERM) == -1) {
+        throw std::runtime_error("error while kill: " + std::string(strerror(errno)));
+      }
+      int ws;
+      if (waitpid(pid, &ws, 0) == -1) {
+        throw std::runtime_error("error while waitpid: " + std::string(strerror(errno)));
+      }
+
+      if (cmdfd != -1) ::close(cmdfd);
+      if (ackfd != -1) ::close(ackfd);
+
+      pid = -1;
+      cmdfd = -1;
+      ackfd = -1;
     }
   }
+
+  void restart() {
+    stop();
+    start();
+  }
+
+  bool started() const { return pid != -1; }
 
   void execute(int id) {
     assert(cmdfd != -1);
@@ -614,9 +616,16 @@ private:
   std::function<void(int)> producerFn;
 };
 
-TEST(HogTransaction, OrderedReader) {
+DEFINE_STORAGE_GROUP(
+  TestOrderedRead,
+  1024,
+  hobbes::storage::Reliable,
+  hobbes::storage::ManualCommit
+);
+
+TEST(Hog, OrderedReader) {
   auto producerFn = [](int runid) {
-    for (auto seqno = 0; seqno < 8; ++seqno) {
+    for (size_t seqno = 0; seqno < TestOrderedRead.mempages; ++seqno) {
       HLOG(TestOrderedRead, seq, "runid: $0, seqno: $1", runid, seqno);
       TestOrderedRead.commit();
     }
@@ -632,35 +641,45 @@ TEST(HogTransaction, OrderedReader) {
   sleep(5);
 
   proc1.start();
-  proc1.execute(1);
+  proc1.execute(0);
 
   proc2.start();
-  proc2.execute(3); // data will be blocked until proc1 exits
+  proc2.execute(1); // batchsend reading data from proc1 & proc2 concurrently
 
-  proc1.execute(2);
+  proc2.restart();  // blocked until old data in proc2 drained in order
+  proc2.execute(2);
+
   proc1.stop();
 
-  proc2.execute(4);
+  proc2.restart();  // blocked until old data drained in order
+  proc2.execute(3);
+
   proc2.stop();
 
+  auto log = batchrecv.pollLogFile("TestOrderedRead");
   batchsend.waitSegFileGone();
 
-  auto log = batchrecv.pollLogFile("TestOrderedRead");
   hobbes::cc cc;
   cc.define("f", "inputFile::(LoadFile \"" + log + "\" w)=>w");
-  EXPECT_TRUE(cc.compileFn<bool()>("[x.0|x<-f.seq][:0] == concat([repeat(x, 8L)|x<-[1..4]])")());
+
+  // assert the ordering: 1 happens before 2, 0/1/2 happen before 3
+  EXPECT_TRUE(cc.compileFn<bool()>("[x.0|x<-f.seq, x.0 in [1,2]][:0] == concat([repeat(x, 1024L)|x<-[1,2]])")());
+  EXPECT_TRUE(cc.compileFn<bool()>("[x.0|x<-f.seq, x.0 in [0,3]][:0] == concat([repeat(x, 1024L)|x<-[0,3]])")());
+  EXPECT_TRUE(cc.compileFn<bool()>("[x.0|x<-f.seq, x.0 in [1,3]][:0] == concat([repeat(x, 1024L)|x<-[1,3]])")());
+  EXPECT_TRUE(cc.compileFn<bool()>("[x.0|x<-f.seq, x.0 in [2,3]][:0] == concat([repeat(x, 1024L)|x<-[2,3]])")());
 }
 
 DEFINE_STORAGE_GROUP(
   TestOrderedSend,
-  8,
+  1024,
   hobbes::storage::Reliable,
   hobbes::storage::ManualCommit
 );
 
-TEST(HogTransaction, OrderedSender) {
+/// The same test sequence as above except for running batchrecv in the end
+TEST(Hog, OrderedSender) {
   auto producerFn = [](int runid) {
-    for (auto seqno = 0; seqno < 8; ++seqno) {
+    for (size_t seqno = 0; seqno < TestOrderedSend.mempages; ++seqno) {
       HLOG(TestOrderedSend, seq, "runid: $0, seqno: $1", runid, seqno);
       TestOrderedSend.commit();
     }
@@ -674,24 +693,34 @@ TEST(HogTransaction, OrderedSender) {
   sleep(5);
 
   proc1.start();
-  proc1.execute(1);
+  proc1.execute(0);
 
   proc2.start();
-  proc2.execute(3); // data will be blocked until proc1 exits
+  proc2.execute(1); // batchsend reading data from proc1 & proc2 concurrently
 
-  proc1.execute(2);
+  proc2.restart();  // blocked until old data drained in order
+  proc2.execute(2);
+
   proc1.stop();
 
-  proc2.execute(4);
+  proc2.restart();  // blocked until old data drained in order
+  proc2.execute(3);
+
   proc2.stop();
 
   batchrecv.start(); // segfiles will be sent in order once connected
-  batchsend.waitSegFileGone();
 
   auto log = batchrecv.pollLogFile("TestOrderedSend");
+  batchsend.waitSegFileGone();
+
   hobbes::cc cc;
   cc.define("f", "inputFile::(LoadFile \"" + log + "\" w)=>w");
-  EXPECT_TRUE(cc.compileFn<bool()>("[x.0|x<-f.seq][:0] == concat([repeat(x, 8L)|x<-[1..4]])")());
+
+  // assert the ordering: 1 happens before 2, 0/1/2 happen before 3
+  EXPECT_TRUE(cc.compileFn<bool()>("[x.0|x<-f.seq, x.0 in [1,2]][:0] == concat([repeat(x, 1024L)|x<-[1,2]])")());
+  EXPECT_TRUE(cc.compileFn<bool()>("[x.0|x<-f.seq, x.0 in [0,3]][:0] == concat([repeat(x, 1024L)|x<-[0,3]])")());
+  EXPECT_TRUE(cc.compileFn<bool()>("[x.0|x<-f.seq, x.0 in [1,3]][:0] == concat([repeat(x, 1024L)|x<-[1,3]])")());
+  EXPECT_TRUE(cc.compileFn<bool()>("[x.0|x<-f.seq, x.0 in [2,3]][:0] == concat([repeat(x, 1024L)|x<-[2,3]])")());
 }
 
 void rmrf(const char* p) {
