@@ -17,7 +17,7 @@ QualTypePtr concreteClosureMethodType(const MonoTypePtr& envty, const MonoTypes&
   return qualtype(MonoTypePtr(Func::make(tuplety(cons(envty, fargtys)), rty)));
 }
 
-QualTypePtr abstractClosureType(const Fn* f, const MonoTypes& fargtys, const MonoTypePtr& rty) {
+QualTypePtr abstractClosureType(const Fn*, const MonoTypes& fargtys, const MonoTypePtr& rty) {
   MonoTypes fargs = cons(MonoTypePtr(TVar::make("E")), fargtys);
 
   return qualtype(MonoTypePtr(Exists::make("E", tuplety(list(MonoTypePtr(Func::make(tuplety(fargs), rty)), MonoTypePtr(TVar::make("E")))))));

@@ -341,7 +341,7 @@ template <typename T>
     write(s, reinterpret_cast<const uint8_t*>(&x), sizeof(x));
   }
 
-static void initNetSession(BatchSendSession* s, const std::string& groupName, const std::string& dir, storage::PipeQOS qos, storage::CommitMethod cm, const storage::statements& stmts) {
+static void initNetSession(BatchSendSession* s, const std::string&, const std::string&, storage::PipeQOS qos, storage::CommitMethod cm, const storage::statements& stmts) {
   // write init message data to our current batch send file
   write(s, static_cast<int>(qos));
   write(s, static_cast<int>(cm));

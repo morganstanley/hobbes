@@ -193,7 +193,7 @@ void runRecvConnection(SessionGroup* sg, NetConnection* pc, std::string dir) {
   }
 }
 
-void runRecvServer(std::unique_ptr<NetServer> server, std::string dir, bool consolidate, hobbes::StoredSeries::StorageMode sm) {
+[[noreturn]] void runRecvServer(std::unique_ptr<NetServer> server, std::string dir, bool consolidate, hobbes::StoredSeries::StorageMode sm) {
   SessionGroup* sg = makeSessionGroup(consolidate, sm);
   std::vector<std::thread> cthreads;
 

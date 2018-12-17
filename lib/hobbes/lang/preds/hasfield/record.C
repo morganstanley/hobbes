@@ -55,7 +55,7 @@ bool HFRecordEliminator::satisfiable(const TEnvPtr& tenv, const HasField& hf, De
   return is<TVar>(hf.recordType);
 }
 
-bool HFRecordEliminator::refine(const TEnvPtr& tenv, const HasField& hf, MonoTypeUnifier* s, Definitions*) {
+bool HFRecordEliminator::refine(const TEnvPtr&, const HasField& hf, MonoTypeUnifier* s, Definitions*) {
   if (const Record* r = is<Record>(hf.recordType)) {
     std::string fname;
     if (isFieldName(hf.fieldName, &fname)) {

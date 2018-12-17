@@ -111,7 +111,7 @@ bool FieldVerifier::satisfiable(const TEnvPtr& tenv, const ConstraintPtr& cst, D
   return false;
 }
 
-void FieldVerifier::explain(const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPtr& e, Definitions* ds, annmsgs* msgs) {
+void FieldVerifier::explain(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*, annmsgs*) {
 }
 
 struct RewriteFnAccess : public switchExprTyFn {

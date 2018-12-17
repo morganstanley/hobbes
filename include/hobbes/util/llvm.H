@@ -6,6 +6,8 @@
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wold-style-cast"
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#pragma GCC diagnostic ignored "-Wctor-dtor-privacy"
 
 #include <llvm/Config/llvm-config.h>
 

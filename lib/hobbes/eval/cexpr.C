@@ -645,11 +645,11 @@ public:
     return this->c->lookupFunction(v->value());
   }
 
-  llvm::Constant* with(const Let* v) const {
+  llvm::Constant* with(const Let*) const {
     return 0;
   }
 
-  llvm::Constant* with(const LetRec* v) const {
+  llvm::Constant* with(const LetRec*) const {
     return 0;
   }
 
@@ -670,11 +670,11 @@ public:
     }
   }
 
-  llvm::Constant* with(const App* v) const {
+  llvm::Constant* with(const App*) const {
     return 0;
   }
 
-  llvm::Constant* with(const Assign* v) const {
+  llvm::Constant* with(const Assign*) const {
     return 0;
   }
 
@@ -704,7 +704,7 @@ public:
       );
   }
 
-  llvm::Constant* with(const MkVariant* v) const {
+  llvm::Constant* with(const MkVariant*) const {
     return 0;
   }
 
@@ -724,19 +724,19 @@ public:
     return constantRecord(this->c->module(), rcs, rty);
   }
 
-  llvm::Constant* with(const AIndex* v) const {
+  llvm::Constant* with(const AIndex*) const {
     return 0;
   }
 
-  llvm::Constant* with(const Case* v) const {
+  llvm::Constant* with(const Case*) const {
     return 0;
   }
 
-  llvm::Constant* with(const Switch* v) const {
+  llvm::Constant* with(const Switch*) const {
     return 0;
   }
 
-  llvm::Constant* with(const Proj* v) const {
+  llvm::Constant* with(const Proj*) const {
     return 0;
   }
 
@@ -744,11 +744,11 @@ public:
     return switchOf(v->expr(), *this);
   }
 
-  llvm::Constant* with(const Pack* v) const {
+  llvm::Constant* with(const Pack*) const {
     return 0;
   }
 
-  llvm::Constant* with(const Unpack* v) const {
+  llvm::Constant* with(const Unpack*) const {
     return 0;
   }
 private:

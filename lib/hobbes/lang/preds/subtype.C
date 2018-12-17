@@ -61,7 +61,7 @@ bool SubtypeUnqualifier::satisfiable(const TEnvPtr& tenv, const ConstraintPtr& c
   return dec(cst, &st) && findEliminator(tenv, st) != 0;
 }
 
-void SubtypeUnqualifier::explain(const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPtr& e, Definitions* ds, annmsgs* msgs) {
+void SubtypeUnqualifier::explain(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*, annmsgs*) {
 }
 
 ExprPtr SubtypeUnqualifier::unqualify(const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPtr& expr, Definitions* ds) const {

@@ -369,7 +369,7 @@ void destroyUCWriter(UCWriter* w) {
 }
 
 // bind definitions related to compressed storage
-void initCStorageFileDefs(FieldVerifier* fv, cc& c) {
+void initCStorageFileDefs(FieldVerifier*, cc& c) {
   c.bind("ddmMake",    &makeDynDModel0);
   c.bind("ddmInit",    memberfn(&DynDModel0::init));
   c.bind("ddmDestroy", &destroyDynDModel0);

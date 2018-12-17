@@ -28,11 +28,11 @@ void symbol::show(std::ostream& out) const {
   out << this->sname;
 }
 
-PatternPtr symbol::matchPattern() const {
+[[noreturn]] PatternPtr symbol::matchPattern() const {
   throw std::runtime_error("Internal error, can't match abstract symbol");
 }
 
-ExprPtr symbol::matchRefExpr() const {
+[[noreturn]] ExprPtr symbol::matchRefExpr() const {
   throw std::runtime_error("Internal error, can't match abstract symbol");
 }
 
@@ -48,11 +48,11 @@ terminal* endOfFile::value() {
   return &e;
 }
 
-PatternPtr endOfFile::matchPattern() const {
+[[noreturn]] PatternPtr endOfFile::matchPattern() const {
   throw std::runtime_error("Internal error, can't match EOF");
 }
 
-ExprPtr endOfFile::matchRefExpr() const {
+[[noreturn]] ExprPtr endOfFile::matchRefExpr() const {
   throw std::runtime_error("Internal error, can't match EOF");
 }
 

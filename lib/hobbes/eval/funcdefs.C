@@ -429,7 +429,7 @@ long lfloor(double x) { return floor(x); }
 long truncd(double x) { return x; }
 
 void dbglog(const std::string&);
-void failvarmatch(const array<char>* file, size_t line, const array<char>* txt, char* addr) {
+[[noreturn]] void failvarmatch(const array<char>* file, size_t line, const array<char>* txt, char* addr) {
   std::ostringstream ss;
   ss << "FATAL ERROR: Unexpected variant match failure on " << reinterpret_cast<void*>(addr) << " at " << makeStdString(file) << ":" << line << " ('" << makeStdString(txt) << "')";
   dbglog(ss.str());
