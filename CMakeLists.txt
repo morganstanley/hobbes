@@ -47,16 +47,20 @@ endif()
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${cxx_flags}")
 
-enable_testing()
-add_executable(hobbes-test ${test_files})
-target_link_libraries(hobbes-test hobbes ncurses ${sys_libs})
-add_test(hobbes-test hobbes-test)
-
 add_executable(hi ${hi_files})
 target_link_libraries(hi hobbes ncurses readline ${sys_libs})
 add_executable(hog ${hog_files})
 target_link_libraries(hog hobbes ncurses ${sys_libs})
 
+enable_testing()
+add_executable(hobbes-test ${test_files})
+target_link_libraries(hobbes-test hobbes ncurses ${sys_libs})
+add_test(hobbes-test hobbes-test)
+include(FindPythonInterp)
+set_property(TARGET hobbes-test PROPERTY COMPILE_FLAGS "-DPYTHON_EXECUTABLE=\"${PYTHON_EXECUTABLE}\" -DSCRIPT_DIR=\"${CMAKE_SOURCE_DIR}/scripts/\"")
+
 install(TARGETS hobbes hobbes-pic DESTINATION "lib")
 install(TARGETS hi hog DESTINATION "bin")
 install(DIRECTORY "include/hobbes" DESTINATION "include")
+install(DIRECTORY "scripts" DESTINATION "scripts")
+

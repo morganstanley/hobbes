@@ -895,6 +895,8 @@ class FRegion:
     for vn, bind in self.rep.env.iteritems():
       bind.reader = makeReader({}, bind.ty)
 
+  def __str__(self): return self.__repr__()
+
   def __repr__(self):
     vns = []
     hts = []
