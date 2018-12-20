@@ -76,7 +76,7 @@ std::ostream& operator<<(std::ostream& o, const RunMode& m) {
     o << "|local={ dir=\"" << m.dir << "\", serverDir=\"" << m.groupServerDir << "\", groups=" << m.groups << " }|";
     break;
   case RunMode::batchsend:
-    o << "|batchsend={ dir=\"" << m.dir << "\", serverDir=\"" << m.groupServerDir << "\", clevel=" << m.clevel << ", batchsendsize=" << m.batchsendsize << "B, sendto=" << m.sendto << ", groups=" << m.groups << " }|";
+    o << "|batchsend={ dir=\"" << m.dir << "\", serverDir=\"" << m.groupServerDir << "\", clevel=" << m.clevel << ", batchsendsize=" << m.batchsendsize << "B, batchsendtime=" << m.batchsendtime << "microsec, sendto=" << m.sendto << ", groups=" << m.groups << " }|";
     break;
   case RunMode::batchrecv:
     o << "|batchrecv={ dir=\"" << m.dir << "\", localport=" << m.localport << " }|";
@@ -294,6 +294,7 @@ void runGroupHost(const std::string& groupName, const RunMode& m, std::map<int, 
 }
 
 void run(const RunMode& m) {
+  StatFile::instance().log(ProcessEnvironment{hobbes::now(), hobbes::string::from(m)});
   out() << "hog running in mode : " << m << std::endl;
   if (m.t == RunMode::batchrecv) {
     pullRemoteDataT(m.dir, m.localport, m.consolidate, m.storageMode).join();

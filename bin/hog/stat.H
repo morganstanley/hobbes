@@ -10,6 +10,11 @@
 
 namespace hog {
 
+DEFINE_STRUCT(ProcessEnvironment,
+  (hobbes::datetimeT, startTime),
+  (std::string,       runMode)
+);
+
 DEFINE_ENUM(ReaderStatus,
   (Started),
   (Closed)
