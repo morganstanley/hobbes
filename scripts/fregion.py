@@ -885,7 +885,7 @@ def makeAppReader(renv,app):
     if (app.f.name=="fileref" and len(app.args)>=1):
       return FileRefReader(renv, app.args[0])
     elif (app.f.name=="carray" and len(app.args)>=2):
-      return makeArrReader(renv, app.args[0])
+      return makeArrReader(renv, Arr(app.args[0]))
     elif (app.f.name=="darray" and len(app.args)>=1):
       return DArrReader(renv, app.args[0])
   raise Exception("I don't know how to read '" + str(app) + "'")
