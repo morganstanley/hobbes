@@ -2026,6 +2026,7 @@ public:
   }
 
   imagefile* fileData() { return this->f; }
+  const imagefile* fileData() const { return this->f; }
 private:
   typedef std::map<std::string, seriesi*> wseriess;
   imagefile* f;
@@ -2315,6 +2316,7 @@ public:
     }
 
   imagefile* fileData() { return this->f; }
+  const imagefile* fileData() const { return this->f; }
 private:
   typedef std::map<std::string, seriesi*> rseriess;
   imagefile* f;

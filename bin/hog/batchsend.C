@@ -20,6 +20,7 @@
 
 #include "network.H"
 #include "session.H"
+#include "stat.H"
 #include "out.H"
 
 using namespace hobbes;
@@ -200,16 +201,23 @@ void runSegmentSendingProcess(const std::string groupName, std::vector<Destinati
   if (destinations.empty()) {
     out() << "no batchsend host specified, compressed segment files will accumulate locally" << std::endl;
   } else {
+    const auto id = hobbes::storage::thisProcThread();
+    StatFile::instance().log(SenderState{hobbes::now(), id, SenderStatus::Enum::Suspended});
+
     while (!readyFn()) {
       out() << "batchsend not ready, waiting on other sender(s)" << std::endl;
       sleep(10);
     }
+
+    StatFile::instance().log(SenderState{hobbes::now(), id, SenderStatus::Enum::Started});
     out() << "running segment sending process publishing to " << destinations << std::endl;
+
     while (true) {
       try {
         connect(destinations);
         runConnectedSegmentSendingProcess(groupName, destinations, idleFn);
       } catch (const ShutdownException& ex) {
+        StatFile::instance().log(SenderState{hobbes::now(), id, SenderStatus::Enum::Closed});
         out() << ex.what() << std::endl;
         return;
       } catch (std::exception& ex) {
@@ -267,7 +275,16 @@ struct BatchSendSession {
       }
     };
 
-    this->sendingThread = std::thread(std::bind(&runSegmentSendingProcess, groupName, std::ref(destinations), readyFn, idleFn));
+    const auto readerId = hobbes::storage::thisProcThread();
+    this->sendingThread = std::thread([this, groupName, dir, readerId, readyFn, idleFn]() {
+      const auto senderId = hobbes::storage::thisProcThread();
+      std::vector<std::string> senderqueue;
+      for (auto s : this->detached) {
+        senderqueue.push_back(s->dir);
+      }
+      StatFile::instance().log(SenderRegistration{hobbes::now(), readerId, senderId, this->dir, senderqueue});
+      runSegmentSendingProcess(groupName, destinations, readyFn, idleFn);
+    });
   }
 
   void allocFile() {
@@ -412,6 +429,7 @@ void pushLocalData(const storage::QueueConnection& qc, const std::string& groupN
       // if we are here, the client is disconnected and the queue is drained
       // detach tcp send session synchronously and shut down the reader
       SenderGroup::detach(sn);
+      StatFile::instance().log(ReaderState{hobbes::now(), pt, ReaderStatus::Enum::Closed});
       throw ShutdownException("SHM reader shutting down, name: " + qc.shmname);
     } else {
       batchCheckF();
@@ -426,6 +444,8 @@ void pushLocalData(const storage::QueueConnection& qc, const std::string& groupN
       batchCheckF();
     };
   };
+
+  StatFile::instance().log(ReaderState{hobbes::now(), pt, ReaderStatus::Enum::Started});
 
   try {
     storage::runReadProcessWithTimeout(qc, wp, initFn, batchsendtime, timeoutF);

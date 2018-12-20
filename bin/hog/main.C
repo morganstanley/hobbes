@@ -1,8 +1,8 @@
-
 #include <hobbes/storage.H>
 #include <hobbes/util/str.H>
 #include <hobbes/util/codec.H>
 #include <hobbes/util/time.H>
+
 #include <thread>
 #include <mutex>
 #include <atomic>
@@ -14,6 +14,7 @@
 #include "batchsend.H"
 #include "batchrecv.H"
 #include "session.H"
+#include "stat.H"
 #include "path.H"
 #include "out.H"
 
@@ -227,20 +228,27 @@ void evalGroupHostConnection(SessionGroup* sg, const std::string& groupName, con
 
     auto wp = static_cast<hobbes::storage::WaitPolicy>(0x1 & (cmd >> 1));
   
-    uint64_t pid=0,tid=0;
+    uint64_t pid=0, tid=0;
     hobbes::fdread(c, reinterpret_cast<char*>(&pid), sizeof(pid));
     hobbes::fdread(c, reinterpret_cast<char*>(&tid), sizeof(tid));
     out() << "queue registered for group '" << groupName << "' from " << pid << ":" << tid << ", cmd " << static_cast<int>(cmd) << std::endl;
   
-    auto qc = hobbes::storage::consumeGroup(groupName, hobbes::storage::ProcThread(pid, tid));
-  
+    const hobbes::storage::ProcThread writerId {pid, tid};
+    auto qc = hobbes::storage::consumeGroup(groupName, writerId);
+
     std::string d = instantiateDir(groupName, m.dir);
     switch (m.t) {
     case RunMode::local:
-      reg.readers.push_back(std::thread(std::bind(&recordLocalData, sg, qc, d, wp, std::ref(reg.connected))));
+      reg.readers.emplace_back([=, &reg]() {
+        StatFile::instance().log(ReaderRegistration{hobbes::now(), writerId, hobbes::storage::thisProcThread(), qc.shmname});
+        recordLocalData(sg, qc, d, wp, reg.connected);
+      });
       break;
     case RunMode::batchsend:
-      reg.readers.push_back(std::thread(std::bind(&pushLocalData, qc, groupName, ensureDirExists(d), m.clevel, m.batchsendsize, m.batchsendtime, m.sendto, wp, std::ref(reg.connected))));
+      reg.readers.emplace_back([=, &reg]() {
+        StatFile::instance().log(ReaderRegistration{hobbes::now(), writerId, hobbes::storage::thisProcThread(), qc.shmname});
+        pushLocalData(qc, groupName, ensureDirExists(d), m.clevel, m.batchsendsize, m.batchsendtime, m.sendto, wp, reg.connected);
+      });
       break;
     default:
       break;
@@ -290,6 +298,7 @@ void run(const RunMode& m) {
   if (m.t == RunMode::batchrecv) {
     pullRemoteDataT(m.dir, m.localport, m.consolidate, m.storageMode).join();
   } else if (m.groups.size() > 0) {
+    out() << "hog stat file : " << StatFile::instance().filename() << std::endl;
     std::map<std::string, std::map<int, RegInfo>> registry;
 
     signal(SIGPIPE, SIG_IGN);
