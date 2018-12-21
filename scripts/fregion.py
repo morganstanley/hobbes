@@ -923,9 +923,17 @@ class RecReader:
     return self.r.read(m,offset)
 
 def makeRecReader(renv, rec):
+  o = renv.get(rec.vn)
+
   r = RecReader()
   renv[rec.vn] = r
   r.r = makeReader(renv, rec.ty)
+
+  if (o != None):
+    renv[rec.vn]=o
+  else:
+    renv.pop(rec.vn, None)
+
   return r
 
 def makeVarReader(renv, vn):
