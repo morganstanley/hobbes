@@ -609,9 +609,12 @@ class FREnvelope:
 
     # read the environment data in this file
     self.env = dict([])
-    for page in range(0, len(self.pages)):
+    page=0
+    while (page < len(self.pages)):
       if (isEnvPage(self.pages[page])):
         page += self.readEnvPage(self.env, page)
+      else:
+        page += 1
 
     # if reading the old format, we need to reinterpret recorded types
     if (self.version == 1):
@@ -646,7 +649,7 @@ class FREnvelope:
       if (rpos == (4096 - availBytes(self.pages[tpage]))):
         break
 
-    return int(math.ceil((float(offset-initOffset))/4096)-1)
+    return int(math.ceil((float(offset-initOffset))/4096.0))
 
   def readEnvRecord(self, env, offset):
     vpos = struct.unpack('Q', self.m[offset:offset+8])[0]
@@ -731,6 +734,7 @@ class StructView:
         r += ', ' + self.fs[i] + '=' + str(self.vs[i])
     r += '}'
     return r
+  def __str__(self): return self.__repr__()
   def __getattr__(self, attr):
     return self.vs[self.foffs[attr]]
 
@@ -741,7 +745,7 @@ class StructReader:
     self.os = os
     self.rs = rs
     foffs={}
-    for i in range(0,len(self.fs)):
+    for i in range(len(self.fs)):
       foffs[self.fs[i]] = i
     self.foffs = foffs
   def read(self,m,offset):
@@ -749,16 +753,6 @@ class StructReader:
     for i in range(len(self.os)):
       vs.append(self.rs[i].read(m,offset+self.os[i]))
     return StructView(self.fs, self.foffs, vs)
-
-class VariantView:
-  def __init__(self, cn, value):
-    self.cn    = cn
-    self.value = value
-  def __repr__(self):
-    if (len(self.cn)>0 and self.cn[0] == '.'):
-      return "|" + self.cn[2:] + "=" + str(self.value) + "|"
-    else:
-      return "|" + self.cn + "=" + str(self.value) + "|"
 
 class MaybeReader:
   def __init__(self, renv, ty):
@@ -772,21 +766,51 @@ class MaybeReader:
     else:
       return self.jr.read(m,offset+self.poff)
 
+class EnumView:
+  def __init__(self, ns, t):
+    self.ns = ns
+    self.t = t
+  def __repr__(self):
+    return '|' + str(self.ns.get(self.t)) + '|'
+
+class EnumReader:
+  def __init__(self, ctors):
+    self.tr = UnpackReader('I',4)
+    ns={}
+    for ctor in ctors:
+      ns[ctor[1]] = ctor[0]
+    self.ns = ns
+  def read(self,m,offset):
+    t = self.tr.read(m,offset)
+    return EnumView(self.ns, t)
+    
+class VariantView:
+  def __init__(self, cn, value):
+    self.cn    = cn
+    self.value = value
+  def __repr__(self):
+    if (len(self.cn)>0 and self.cn[0] == '.'):
+      return "|" + self.cn[2:] + "=" + str(self.value) + "|"
+    else:
+      return "|" + self.cn + "=" + str(self.value) + "|"
+
 class VariantReader:
   def __init__(self, renv, ctors):
     poff=4
     crs={}
+    cns={}
     for ctor in ctors:
       poff = align(poff, alignOf(ctor[2]))
       crs[ctor[1]] = makeReader(renv, ctor[2])
+      cns[ctor[1]] = ctor[0]
 
-    self.tr    = UnpackReader('I', 4)
-    self.ctors = ctors
-    self.poff  = poff
-    self.crs   = crs
+    self.tr   = UnpackReader('I', 4)
+    self.poff = poff
+    self.crs  = crs
+    self.cns  = cns
   def read(self,m,offset):
     t = self.tr.read(m,offset)
-    return VariantView(self.ctors[t][0], self.crs[t].read(m,offset+self.poff))
+    return VariantView(self.cns[t], self.crs[t].read(m,offset+self.poff))
 
 class FileRefReader:
   def __init__(self,renv,ty):
@@ -869,6 +893,8 @@ def makeArrReader(renv,a):
 def makeVariantReader(renv,v):
   if (len(v.ctors)==2 and v.ctors[0][0] == ".f0" and v.ctors[0][1] == 0 and isinstance(v.ctors[0][2],Prim) and v.ctors[0][2].name == "unit"):
     return MaybeReader(renv,v.ctors[1][2])
+  elif (all(map(lambda c: isinstance(c[2],Prim) and c[2].name=="unit", v.ctors))):
+    return EnumReader(v.ctors)
   else:
     return VariantReader(renv,v.ctors)
 
