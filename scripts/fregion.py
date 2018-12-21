@@ -19,6 +19,7 @@ import os
 import mmap
 import struct
 import math
+import datetime
 
 #######
 #
@@ -544,6 +545,27 @@ def decodeTypeDesc(d, p):
 
 #######
 #
+# Version updates as type transforms (where possible)
+#
+#######
+
+def V1toV2Type(ty):
+  tyDisp = {
+    "prim":    lambda p:  p if (p.rep == None) else Prim(p.name, V1toV2Type(p.rep)),
+    "var":     lambda v:  v,
+    "farr":    lambda fa: FixedArr(V1toV2Type(fa.ty), V1toV2Type(ta.tlen)),
+    "arr":     lambda a:  App(Prim("darray", Abs(["t"], Prim("long", None))), [V1toV2Type(a.ty)]),
+    "variant": lambda v:  Variant([(ctor[0], ctor[1], V1toV2Type(ctor[2])) for ctor in v.ctors]),
+    "struct":  lambda s:  Struct([(field[0], field[1], V1toV2Type(field[2])) for field in s.fields]),
+    "long":    lambda n:  n,
+    "app":     lambda a:  App(V1toV2Type(a.f), [V1toV2Type(arg) for arg in a.args]),
+    "rec":     lambda r:  Recursive(r.vn, V1toV2Type(r.ty)),
+    "abs":     lambda a:  Abs(a.vns, V1toV2Type(a.ty))
+  }
+  return TyCase(tyDisp).apply(ty)
+
+#######
+#
 # File envelope decoding (read page data, environment data)
 #
 #######
@@ -578,7 +600,7 @@ class FREnvelope:
 
     if (self.pageSize != 4096):
       raise Exception('Expected 4K page size')
-    if (self.version != 2):
+    if (not(self.version in [1,2])):
       raise Exception('Structured data file format version ' + str(self.version) + ' not supported')
 
     # read the page data in this file
@@ -587,9 +609,17 @@ class FREnvelope:
 
     # read the environment data in this file
     self.env = dict([])
-    for page in range(0, len(self.pages)):
+    page=0
+    while (page < len(self.pages)):
       if (isEnvPage(self.pages[page])):
         page += self.readEnvPage(self.env, page)
+      else:
+        page += 1
+
+    # if reading the old format, we need to reinterpret recorded types
+    if (self.version == 1):
+      for vn, b in self.env.iteritems():
+        b.ty = V1toV2Type(b.ty)
 
   # read page data entries into the 'pages' argument
   # if there is a link to a subsequent page to read page data from, follow it
@@ -604,7 +634,7 @@ class FREnvelope:
       k += 2
     n = struct.unpack('Q', self.m[e:e+8])[0]
     if (n != 0):
-      self.readPageEntries(self, pages, n*4096, (n+1)*4096)
+      self.readPageEntries(pages, n*4096, (n+1)*4096)
 
   # read environment data into the 'env' argument out of 'page'
   def readEnvPage(self, env, page):
@@ -619,7 +649,7 @@ class FREnvelope:
       if (rpos == (4096 - availBytes(self.pages[tpage]))):
         break
 
-    return int(math.ceil((float(offset-initOffset))/4096)-1)
+    return int(math.ceil((float(offset-initOffset))/4096.0))
 
   def readEnvRecord(self, env, offset):
     vpos = struct.unpack('Q', self.m[offset:offset+8])[0]
@@ -648,7 +678,6 @@ class FREnvelope:
 
 class UnitReader:
   def read(self,m,offset): return None
-  def __repr__(self): return "()"
 
 class UnpackReader:
   def __init__(self,fmt,sz):
@@ -656,8 +685,6 @@ class UnpackReader:
     self.sz = sz
   def read(self,m,offset):
     return struct.unpack(self.fmt,m[offset:offset+self.sz])[0]
-  def __repr__(self):
-    return str(self.value)
 
 class FArrReader:
   def __init__(self, renv, ty, c):
@@ -707,6 +734,7 @@ class StructView:
         r += ', ' + self.fs[i] + '=' + str(self.vs[i])
     r += '}'
     return r
+  def __str__(self): return self.__repr__()
   def __getattr__(self, attr):
     return self.vs[self.foffs[attr]]
 
@@ -717,7 +745,7 @@ class StructReader:
     self.os = os
     self.rs = rs
     foffs={}
-    for i in range(0,len(self.fs)):
+    for i in range(len(self.fs)):
       foffs[self.fs[i]] = i
     self.foffs = foffs
   def read(self,m,offset):
@@ -726,6 +754,36 @@ class StructReader:
       vs.append(self.rs[i].read(m,offset+self.os[i]))
     return StructView(self.fs, self.foffs, vs)
 
+class MaybeReader:
+  def __init__(self, renv, ty):
+    self.poff = align(4, alignOf(ty))
+    self.tr   = UnpackReader('I', 4)
+    self.jr   = makeReader(renv, ty)
+  def read(self,m,offset):
+    t = self.tr.read(m,offset)
+    if (t == 0):
+      return None
+    else:
+      return self.jr.read(m,offset+self.poff)
+
+class EnumView:
+  def __init__(self, ns, t):
+    self.ns = ns
+    self.t = t
+  def __repr__(self):
+    return '|' + str(self.ns.get(self.t)) + '|'
+
+class EnumReader:
+  def __init__(self, ctors):
+    self.tr = UnpackReader('I',4)
+    ns={}
+    for ctor in ctors:
+      ns[ctor[1]] = ctor[0]
+    self.ns = ns
+  def read(self,m,offset):
+    t = self.tr.read(m,offset)
+    return EnumView(self.ns, t)
+    
 class VariantView:
   def __init__(self, cn, value):
     self.cn    = cn
@@ -740,17 +798,19 @@ class VariantReader:
   def __init__(self, renv, ctors):
     poff=4
     crs={}
+    cns={}
     for ctor in ctors:
       poff = align(poff, alignOf(ctor[2]))
       crs[ctor[1]] = makeReader(renv, ctor[2])
+      cns[ctor[1]] = ctor[0]
 
-    self.tr    = UnpackReader('I', 4)
-    self.ctors = ctors
-    self.poff  = poff
-    self.crs   = crs
+    self.tr   = UnpackReader('I', 4)
+    self.poff = poff
+    self.crs  = crs
+    self.cns  = cns
   def read(self,m,offset):
     t = self.tr.read(m,offset)
-    return VariantView(self.ctors[t][0], self.crs[t].read(m,offset+self.poff))
+    return VariantView(self.cns[t], self.crs[t].read(m,offset+self.poff))
 
 class FileRefReader:
   def __init__(self,renv,ty):
@@ -758,6 +818,13 @@ class FileRefReader:
     self.r = makeReader(renv,ty)
   def read(self,m,offset):
     return self.r.read(m,self.pr.read(m,offset))
+
+class StrReader:
+  def __init__(self):
+    self.nr = UnpackReader('Q',8)
+  def read(self,m,offset):
+    n=self.nr.read(m,offset)
+    return m[offset+8:offset+8+n]
 
 class ArrReader:
   def __init__(self,renv,ty):
@@ -772,6 +839,19 @@ class ArrReader:
       vs.append(self.r.read(m,o))
       o+=self.vlen
     return vs
+
+class DArrReader:
+  def __init__(self,renv,ty):
+    self.ar = makeArrReader(renv,Arr(ty))
+  def read(self,m,offset):
+    return self.ar.read(m,offset+8)
+
+class MapReader:
+  def __init__(self,f,r):
+    self.f = f
+    self.r = r
+  def read(self,m,offset):
+    return self.f(self.r.read(m,offset))
 
 class NYIReader:
   def read(self,m,offset):
@@ -796,6 +876,8 @@ def makePrimReader(p):
     return UnpackReader('f', 4)
   elif (p.name == "double"):
     return UnpackReader('d', 8)
+  elif (p.name == "datetime"):
+    return MapReader(lambda n: datetime.datetime.fromtimestamp(n/1000000.0), UnpackReader('Q', 8))
   else:
     raise Exception("I don't know how to decode this primitive type: " + p.name)
 
@@ -803,10 +885,18 @@ def makeFArrReader(renv,fa):
   return FArrReader(renv, fa.ty, fa.tlen.n)
 
 def makeArrReader(renv,a):
-  return ArrReader(renv,a.ty)
+  if (isinstance(a.ty,Prim) and a.ty.name == "char"):
+    return StrReader()
+  else:
+    return ArrReader(renv,a.ty)
 
 def makeVariantReader(renv,v):
-  return VariantReader(renv,v.ctors)
+  if (len(v.ctors)==2 and v.ctors[0][0] == ".f0" and v.ctors[0][1] == 0 and isinstance(v.ctors[0][2],Prim) and v.ctors[0][2].name == "unit"):
+    return MaybeReader(renv,v.ctors[1][2])
+  elif (all(map(lambda c: isinstance(c[2],Prim) and c[2].name=="unit", v.ctors))):
+    return EnumReader(v.ctors)
+  else:
+    return VariantReader(renv,v.ctors)
 
 def makeStructReader(renv,s):
   if (len(s.fields) == 0):
@@ -821,7 +911,9 @@ def makeAppReader(renv,app):
     if (app.f.name=="fileref" and len(app.args)>=1):
       return FileRefReader(renv, app.args[0])
     elif (app.f.name=="carray" and len(app.args)>=2):
-      return ArrReader(renv, app.args[0])
+      return makeArrReader(renv, Arr(app.args[0]))
+    elif (app.f.name=="darray" and len(app.args)>=1):
+      return DArrReader(renv, app.args[0])
   raise Exception("I don't know how to read '" + str(app) + "'")
 
 class RecReader:
@@ -831,9 +923,17 @@ class RecReader:
     return self.r.read(m,offset)
 
 def makeRecReader(renv, rec):
+  o = renv.get(rec.vn)
+
   r = RecReader()
   renv[rec.vn] = r
   r.r = makeReader(renv, rec.ty)
+
+  if (o != None):
+    renv[rec.vn]=o
+  else:
+    renv.pop(rec.vn, None)
+
   return r
 
 def makeVarReader(renv, vn):

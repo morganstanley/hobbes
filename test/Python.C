@@ -151,6 +151,9 @@ void makeTestData(const std::string& path) {
     }
     s(ts);
   }
+
+  w.define<hobbes::variant<hobbes::unit, std::string>>("ms_none", hobbes::variant<hobbes::unit, std::string>(hobbes::unit()));
+  w.define<hobbes::variant<hobbes::unit, std::string>>("ms_just", hobbes::variant<hobbes::unit, std::string>(std::string("chicken")));
 }
 
 void makeTestScript(const std::string& path) {
@@ -181,11 +184,11 @@ if (sum([sum(x.value) for x in f.tvs if x.cn=='chickens']) != 135):
   sys.exit(-1)
 
 def smapInto(r,f,x):
-  if (x.cn==".f0"):
+  if (x == None):
     return r
   else:
-    r.append(f(x.value[0]))
-    return smapInto(r,f,x.value[1])
+    r.append(f(x[0]))
+    return smapInto(r,f,x[1])
 def smap(f,x):
   r=[]
   smapInto(r,f,x)
@@ -193,6 +196,13 @@ def smap(f,x):
 
 if (sum(smap(lambda vs: sum(map(lambda v:v.x, vs)),f.stss)) != 207900):
   print("Expected .x over f.stss to sum to 207900 but failed: "+str(f.stss))
+  sys.exit(-1)
+
+if (f.ms_none != None):
+  print("Expected 'maybe' type with nothing as python None value: " + str(f.ms_none))
+  sys.exit(-1)
+if (f.ms_just != "chicken"):
+  print("Expected 'maybe' type with something as just that value: " + str(f.ms_just))
   sys.exit(-1)
 
 sys.exit(0)
