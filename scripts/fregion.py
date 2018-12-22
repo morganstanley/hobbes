@@ -14,16 +14,17 @@
 #      meta(f).x
 #
 #    to add reading support for a custom user type:
-#      fregion.FRegion.addType("MyTypeName", lambda renv, td: makeMyTypeNameReader(renv,td))
+#      fregion.FRegion.addType("MyTypeName", lambda renv, td, repty: makeMyTypeNameReader(renv,td,repty))
 #    where:
-#      'renv' will be the "reader environment" (necessary for any call to makeReader)
-#      'td'   will be the full type description where "MyTypeName" appears at root (e.g. for 'fileref', App(Prim('fileref', ...), [Arr(Prim('char'))]))
+#      'renv'  will be the "reader environment" (necessary for any call to makeReader)
+#      'td'    will be the full type description where "MyTypeName" appears at root (e.g. for 'fileref', App(Prim('fileref', ...), [Arr(Prim('char'))]))
+#      'repty' will be the determined 'representation type' (which can also be determined through 'td')
 #    and:
 #      the returned 'reader' must be a class with a "read" function like:
-#        def read(m,v):
+#        def read(self,m,o):
 #      where
 #        'm' will give access to the memory for the file being read out of
-#        'v' will be the "representation value" (as specified in the type description where "MyTypeName" appears)
+#        'o' will be the memory offset where the value to be read is placed
 #      and:
 #        the returned value may be whatever the application decides is sensible
 #
