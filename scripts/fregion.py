@@ -13,6 +13,21 @@
 #    to read the 'metadata' for the field 'x' (type and offset details):
 #      meta(f).x
 #
+#    to add reading support for a custom user type:
+#      fregion.FRegion.addType("MyTypeName", lambda renv, td, repty: makeMyTypeNameReader(renv,td,repty))
+#    where:
+#      'renv'  will be the "reader environment" (necessary for any call to makeReader)
+#      'td'    will be the full type description where "MyTypeName" appears at root (e.g. for 'fileref', App(Prim('fileref', ...), [Arr(Prim('char'))]))
+#      'repty' will be the determined 'representation type' (which can also be determined through 'td')
+#    and:
+#      the returned 'reader' must be a class with a "read" function like:
+#        def read(self,m,o):
+#      where
+#        'm' will give access to the memory for the file being read out of
+#        'o' will be the memory offset where the value to be read is placed
+#      and:
+#        the returned value may be whatever the application decides is sensible
+#
 ########################################################
 
 import os
@@ -191,20 +206,6 @@ class TyCase:
 def fail(msg):
   raise Exception(msg)
 
-def expectFn(ty):
-  if (isinstance(ty,Prim)):
-    if (ty.rep == None):
-      if (ty.name == "fileref"):
-        return Abs(["t"], Prim("long",None))
-      else:
-        raise Exception("Expected function representation in place of primitive: " + ty.name)
-    else:
-      return expectFn(ty.rep)
-  elif (isinstance(ty,Abs)):
-    return ty
-  else:
-    raise Exception("Expected function in place of type: " + str(ty))
-
 def dictWithout(m,k):
   r=m.copy()
   r.drop(k)
@@ -214,31 +215,8 @@ def dictWithouts(m,ks):
   for k in ks:
     r.drop(k)
   return r
-def dictMerge(m0,m1):
-  m=m0.copy()
-  m.update(m1)
-  return m
 def addFreeVar(m,vn):
   m[vn]=None
-def freeVarsIntoVariant(m,v):
-  for ctor in v.ctors:
-    freeVarsInto(m,ctor[2])
-def freeVarsIntoStruct(m,s):
-  for field in s.fields:
-    freeVarsInto(m,field[2])
-def freeVarsIntoApp(m,a):
-  freeVarsInto(m,a.f)
-  for ty in a.args:
-    freeVarsInto(m,ty)
-def freeVarsIntoRec(m,r):
-  lm=freeVars(r.ty)
-  lm.drop(r.vn)
-  m.update(lm)
-def freeVarsIntoAbs(m,a):
-  lm=freeVars(a.ty)
-  for n in a.vns:
-    lm.drop(n)
-  m.update(lm)
 
 def freeVarsInto(m,ty):
   tyDisp = {
@@ -246,12 +224,12 @@ def freeVarsInto(m,ty):
     "var":     lambda v:  addFreeVar(m,v.name),
     "farr":    lambda fa: (freeVarsInto(m,fa.ty), freeVarsInto(m,fa.tlen)),
     "arr":     lambda a:  freeVarsInto(m,a.ty),
-    "variant": lambda v:  freeVarsIntoVariant(m,v),
-    "struct":  lambda s:  freeVarsIntoStruct(m,s),
+    "variant": lambda v:  [freeVarsInto(m,ctor[2]) for ctor in v.ctors],
+    "struct":  lambda s:  [freeVarsInto(m,field[2]) for field in s.fields],
     "long":    lambda n:  None,
-    "app":     lambda a:  freeVarsIntoApp(m,a),
-    "rec":     lambda r:  freeVarsIntoRec(m,r),
-    "abs":     lambda a:  freeVarsIntoAbs(m,a)
+    "app":     lambda a:  (freeVarsInto(m,a.f), [freeVarsInto(m,arg) for arg in f.args]),
+    "rec":     lambda r:  m.update(dictWithout(freeVars(r.ty),r.vn)),
+    "abs":     lambda a:  m.update(dictWithouts(freeVars(a.ty),a.vns))
   }
   return TyCase(tyDisp).apply(ty)
 
@@ -329,6 +307,29 @@ def substitute(m,ty):
   }
   return TyCase(tyDisp).apply(ty)
 
+def expectFn(ty):
+  if (isinstance(ty,Prim)):
+    if (ty.rep == None):
+      if (ty.name == "fileref"):
+        return Abs(["t"], Prim("long",None))
+      else:
+        raise Exception("Expected function representation in place of primitive: " + ty.name)
+    else:
+      return expectFn(ty.rep)
+  elif (isinstance(ty,Abs)):
+    return ty
+  else:
+    raise Exception("Expected function in place of type: " + str(ty))
+
+def evalApp(pf, args):
+  f = expectFn(pf)
+  if (len(args)!=len(f.vns)):
+    raise Exception("Arity mismatch in application (expected " + str(len(f.vns)) + " arguments): " + str(App(pf,args)))
+  m={}
+  for i in range(len(f.vns)):
+    m[f.vns[i]] = args[i]
+  return substitute(m, f.ty)
+
 #######
 #
 # determine memory layout of any type
@@ -354,17 +355,11 @@ def alignOfVariant(v):
   return a
 
 def alignOfApp(a):
-  f = expectFn(a.f)
-  if (len(a.args)!=len(f.vns)):
-    raise Exception("Arity mismatch in application (expected " + str(len(f.vns)) + " arguments): " + str(a))
-  m={}
-  for i in range(len(f.vns)):
-    m[f.vns[i]] = a.args[i]
-  return alignOf(substitute(m, f.ty))
+  return alignOf(evalApp(a.f, a.args))
 
 def alignOf(ty):
   tyDisp = {
-    "prim":    lambda p:  1 if (p.name == "unit") else sizeOfPrim(p),
+    "prim":    lambda p:  1 if (p.name == "unit") else alignOf(p.rep) if (p.rep != None) else sizeOfPrim(p),
     "var":     lambda v:  fail("Can't determine alignment of type variable: " + v.name),
     "farr":    lambda fa: alignOf(fa.ty),
     "arr":     lambda a:  fail("Can't determine alignment of variable-length array: " + str(a)),
@@ -416,13 +411,7 @@ def sizeOfVariant(v):
   return align(align(4,a)+maxsz,a)
 
 def sizeOfApp(a):
-  f = expectFn(a.f)
-  if (len(a.args)!=len(f.vns)):
-    raise Exception("Arity mismatch in application (expected " + str(len(f.vns)) + " arguments): " + str(a))
-  m={}
-  for i in range(len(f.vns)):
-    m[f.vns[i]] = a.args[i]
-  return sizeOf(substitute(m, f.ty))
+  return sizeOf(evalApp(a.f, a.args))
 
 def sizeOf(ty):
   tyDisp = {
@@ -812,13 +801,6 @@ class VariantReader:
     t = self.tr.read(m,offset)
     return VariantView(self.cns[t], self.crs[t].read(m,offset+self.poff))
 
-class FileRefReader:
-  def __init__(self,renv,ty):
-    self.pr = UnpackReader('Q',8)
-    self.r = makeReader(renv,ty)
-  def read(self,m,offset):
-    return self.r.read(m,self.pr.read(m,offset))
-
 class StrReader:
   def __init__(self):
     self.nr = UnpackReader('Q',8)
@@ -840,24 +822,20 @@ class ArrReader:
       o+=self.vlen
     return vs
 
-class DArrReader:
-  def __init__(self,renv,ty):
-    self.ar = makeArrReader(renv,Arr(ty))
-  def read(self,m,offset):
-    return self.ar.read(m,offset+8)
-
-class MapReader:
-  def __init__(self,f,r):
-    self.f = f
-    self.r = r
-  def read(self,m,offset):
-    return self.f(self.r.read(m,offset))
-
 class NYIReader:
   def read(self,m,offset):
     raise Exception("nyi")
 
-def makePrimReader(p):
+globalTypeExts={}
+
+def makeCustomReader(name, renv, ty, repty):
+  mkR = globalTypeExts.get(name)
+  if (mkR != None):
+    return mkR(renv, ty, repty)
+  else:
+    raise Exception("I don't know how to decode this type: " + str(ty))
+
+def makePrimReader(renv, p):
   if (p.name == "unit"):
     return UnitReader()
   elif (p.name == "bool"):
@@ -876,10 +854,10 @@ def makePrimReader(p):
     return UnpackReader('f', 4)
   elif (p.name == "double"):
     return UnpackReader('d', 8)
-  elif (p.name == "datetime"):
-    return MapReader(lambda n: datetime.datetime.fromtimestamp(n/1000000.0), UnpackReader('Q', 8))
+  elif (p.rep != None):
+    return makeCustomReader(p.name, renv, p, p.rep)
   else:
-    raise Exception("I don't know how to decode this primitive type: " + p.name)
+    raise Exception("I don't know how to decode the primitive type: " + p.name)
 
 def makeFArrReader(renv,fa):
   return FArrReader(renv, fa.ty, fa.tlen.n)
@@ -908,14 +886,10 @@ def makeStructReader(renv,s):
 
 def makeAppReader(renv,app):
   if (isinstance(app.f,Prim)):
-    if (app.f.name=="fileref" and len(app.args)>=1):
-      return FileRefReader(renv, app.args[0])
-    elif (app.f.name=="carray" and len(app.args)>=2):
-      return makeArrReader(renv, Arr(app.args[0]))
-    elif (app.f.name=="darray" and len(app.args)>=1):
-      return DArrReader(renv, app.args[0])
-  raise Exception("I don't know how to read '" + str(app) + "'")
-
+    return makeCustomReader(app.f.name, renv, app, evalApp(app.f, app.args))
+  else:
+    raise Exception("I don't know how to read '" + str(app) + "'")
+    
 class RecReader:
   def __init__(self):
     self.r = None
@@ -944,7 +918,7 @@ def makeVarReader(renv, vn):
 
 def makeReader(renv,ty):
   readerDisp = {
-    "prim":    lambda p:  makePrimReader(p),
+    "prim":    lambda p:  makePrimReader(renv, p),
     "var":     lambda v:  makeVarReader(renv, v.name),
     "farr":    lambda fa: makeFArrReader(renv,fa),
     "arr":     lambda a:  makeArrReader(renv,a),
@@ -995,6 +969,10 @@ class FRegion:
     for vn, bind in self.rep.env.iteritems():
       bind.reader = makeReader({}, bind.ty)
 
+  @staticmethod
+  def addType(name, gen):
+    globalTypeExts[name] = gen
+
   def __str__(self): return self.__repr__()
 
   def __repr__(self):
@@ -1025,4 +1003,41 @@ class FRMeta:
       return b
 
 def meta(f): return FRMeta(f)
+
+#######
+#
+# support common "application types" by default
+#
+#######
+
+# date/time
+class DateTimeReader:
+  def __init__(self, renv, repty):
+    self.nr = makeReader(renv, repty)
+  def read(self,m,o):
+    return datetime.datetime.fromtimestamp(self.nr.read(m,o)/1000000.0)
+
+FRegion.addType("datetime", lambda renv, ty, repty: DateTimeReader(renv, repty))
+
+# file refs (within-file pointer types)
+class FileRefReader:
+  def __init__(self,renv,ty,repty):
+    self.refr = makeReader(renv,repty)
+    self.r    = makeReader(renv,ty)
+  def read(self,m,offset):
+    return self.r.read(m,self.refr.read(m,offset))
+
+FRegion.addType("fileref", lambda renv, ty, repty: FileRefReader(renv, ty.args[0], repty))
+
+# carrays (variable-length arrays stored with a static capacity)
+FRegion.addType("carray", lambda renv, ty, repty: makeArrReader(renv, Arr(ty.args[0])))
+
+# darrays (old style variable-length arrays stored with capacity)
+class DArrReader:
+  def __init__(self,renv,ty):
+    self.ar = makeArrReader(renv,Arr(ty))
+  def read(self,m,offset):
+    return self.ar.read(m,offset+8)
+
+FRegion.addType("darray", lambda renv, ty, repty: DArrReader(renv, ty.args[0]))
 

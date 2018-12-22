@@ -69,6 +69,26 @@ DEFINE_VARIANT(
   (chickens, IArr)
 );
 
+DEFINE_TYPE_ALIAS(Chickens, int);
+
+template <typename T, size_t N>
+  struct CustomBuffer {
+    T buffer[N];
+  };
+
+namespace hobbes { namespace fregion {
+template <typename T, size_t N>
+  struct store<CustomBuffer<T,N>> {
+    static const bool  can_memcpy = store<std::array<T,N>>::can_memcpy;
+
+    static ty::desc    storeType()                                    { return ty::app(ty::prim("CustomBuffer", ty::fn("t","n", ty::array(ty::var("t"), ty::var("n")))), store<T>::storeType(), ty::nat(N)); }
+    static size_t      size()                                         { return store<std::array<T,N>>::size(); }
+    static size_t      alignment()                                    { return store<std::array<T,N>>::alignment(); }
+    static void        write(imagefile* f, void* p,       const T& x) { store<std::array<T,N>>::write(f, p, reinterpret_cast<const std::array<T,N>&>(x)); }
+    static void        read (imagefile* f, const void* p, T* x)       { store<std::array<T,N>>::read(f, p, reinterpret_cast<std::array<T,N>*>(x)); }
+  };
+}}
+
 void makeTestData(const std::string& path) {
   hobbes::fregion::writer w(path);
   *w.define<bool>   ("f") = true;
@@ -154,12 +174,25 @@ void makeTestData(const std::string& path) {
 
   w.define<hobbes::variant<hobbes::unit, std::string>>("ms_none", hobbes::variant<hobbes::unit, std::string>(hobbes::unit()));
   w.define<hobbes::variant<hobbes::unit, std::string>>("ms_just", hobbes::variant<hobbes::unit, std::string>(std::string("chicken")));
+
+  w.define<Chickens>("chickens")->value = 42;
+  strcpy(w.define<CustomBuffer<char, 10>>("cbuffer")->buffer, "chickens");
 }
 
 void makeTestScript(const std::string& path) {
   const char* script = R"SCRIPT(
 import fregion
 import sys
+
+class RepReader:
+  def __init__(self,renv,ty):
+    self.r = fregion.makeReader(renv,ty)
+  def read(self,m,o):
+    return self.r.read(m,o)
+
+fregion.FRegion.addType("Chickens", lambda renv, ty, repty: RepReader(renv,repty))
+fregion.FRegion.addType("CustomBuffer", lambda renv, ty, repty: RepReader(renv,repty))
+
 f = fregion.FRegion(sys.argv[1])
 if (f.s != 42):
   print("Expected f.s=42 but f.s="+str(f.s))
@@ -203,6 +236,21 @@ if (f.ms_none != None):
   sys.exit(-1)
 if (f.ms_just != "chicken"):
   print("Expected 'maybe' type with something as just that value: " + str(f.ms_just))
+  sys.exit(-1)
+
+if (f.chickens != 42):
+  print("Expected custom 'Chickens' type to read as 42: " + str(f.chickens))
+  sys.exit(-1)
+
+def explode(s):
+  r=[]
+  for i in range(len(s)):
+    r.append(s[i])
+  return r
+
+expectCB=explode('chickens')
+if (f.cbuffer[0:len(expectCB)] != expectCB):
+  print("Expected 'cbuffer' to equal 'chickens': " + str(f.cbuffer))
   sys.exit(-1)
 
 sys.exit(0)
