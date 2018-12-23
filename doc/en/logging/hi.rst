@@ -154,7 +154,7 @@ Similarly, we can use the "slice" notation to work with a subset of logged messa
 
 .. note:: **ordering**
   
-  The internal structure of Due to the internal structue of the persisted file, while elements may *look* ordered, this ordering We can force a 'most recent first' ordering of logged elements using the open-slice notation:
+  Due to the internal structue of the persisted file, while elements may *look* ordered, they are not. We can force a 'most recent first' ordering of logged elements using the open-slice notation:
 
 ::
 

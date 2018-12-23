@@ -133,6 +133,10 @@ There's usually a point at which our pairs or tuples grow in importance in our d
     return writers;
   }
 
+  ...
+  c.bind("getWriters", $getWriters);
+  ...
+
 ...and in the REPL:
 
 ::
@@ -163,6 +167,10 @@ Slightly more complex, our 'OR' type, the variant:
       return hobbes::make<CountOrMessage(hobbes::makeString("haha"));
     }
   }
+
+  ...
+  c.bind("classify", $classify);
+  ...
 
 In our example we define our variant type in C++, and then create an instance depending on the value of some function parameter. Then in the Hobbes REPL we are able to call the bound function ``classify`` and deal with the result in a functional manner:
 

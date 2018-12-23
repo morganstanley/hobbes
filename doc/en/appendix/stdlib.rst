@@ -38,7 +38,7 @@ Because the ``Add`` Type Class (and the rest of the family: ``Subtract``, ``Mult
   
 .. note:: **built in?**
   
-  It's important to not that the ``+`` operator isn't "built in" to Hobbes as operators might be in other programming languages. The resolution of ``+`` works because the compiler has recognised that there is a typeclass ``Add`` which provides an operator called ``+`` that can act on two ints.
+  It's important to note that the ``+`` operator isn't "built in" to Hobbes as operators might be in other programming languages. The resolution of ``+`` works because the compiler has recognised that there is a typeclass ``Add`` which provides an operator called ``+`` that can act on two ints.
 
 Indeed, we can support ``+`` elsewhere by instantiating the Type Class for our own types:
 
@@ -51,9 +51,9 @@ Indeed, we can support ``+`` elsewhere by instantiating the Type Class for our o
   instance Add counter counter counter where
     (+) = counterAdd
 
-.. note:: **type definitions in ``hi``**
+.. note:: **type definitions in hi**
 
-  Just like in Haskell, the hi REPL doesn't support type definitions. So in this case, we've included the above Hobbes code in a file called ``counter.hob`` and instructed the ``hi`` REPL to read it at startup. The members defined in ``counter.hob`` can then be used directly.
+  Just like in Haskell, the hi REPL doesn't support type definitions. So in this case, we've included the above Hobbes code in a file called ``counter.hob`` and instructed the *hi* REPL to read it at startup. The members defined in ``counter.hob`` can then be used directly.
 
 ::
 

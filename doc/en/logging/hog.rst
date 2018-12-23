@@ -54,8 +54,8 @@ If we take our log message driver application from the :ref:`previous section <h
 
 This output tells us a couple of things:
 
-  #. Firstly, Hog is running in local mode, meaning that it's going to consume messages from the Hobbes ringbuffer in memory and write them out to disk.
-  #. When the driver application starts we get some state information about the LogGroup, and the message types
+  #. Firstly, Hog is running in local mode, meaning that it's going to consume messages from the Hobbes ringbuffer in memory and write them out to disk;
+  #. When the driver application starts we get some state information about the LogGroup, and the message types;
   #. Hog has been able to determine the message names and, crucially, their types.
 
 Reading logs from remote processes with hog

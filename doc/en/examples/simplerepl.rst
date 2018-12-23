@@ -226,9 +226,9 @@ Finally, the ``main`` method brings it all together:
     return 0;
   }
 
-#. We initialise an instance of ``hobbes::cc`` on the stack.
-#. We bind five functions to it by their address.
-#. Then, in a loop, we print a prompt, accept a string from STDIN, and attempt to compile and execute the input string.
-#. Any failures are caught and reported
+#. We initialise an instance of ``hobbes::cc`` on the stack;
+#. We bind five functions to it by their address;
+#. Then, in a loop, we print a prompt, accept a string from STDIN, and attempt to compile and execute the input string;
+#. Any failures are caught and reported;
 #. Finally, any unreferenced data left after the REPL loop is collected to avoid memory leaks.
 

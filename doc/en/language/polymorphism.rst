@@ -56,9 +56,9 @@ Type annotations
   > :t 3.2
   double
 
-We can also declare a polymorphic function and shown that Hobbes can find restrictions on the type of its parameters. This is powerful for two reasons:
+We can also declare a polymorphic function and show that Hobbes can find restrictions on the type of its parameters. This is powerful for two reasons:
 
-  #. We don't have to write as much code
+  #. We don't have to write as much code;
   #. We can share behaviour across data types as long as they share the ability to perform certain actions. That is, our algorithms become more generic.
 
 ::
