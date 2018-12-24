@@ -69,7 +69,7 @@ bool TypeofP::satisfiable(const TEnvPtr& tenv, const ConstraintPtr& c, Definitio
   }
 }
 
-void TypeofP::explain(const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPtr& e, Definitions* ds, annmsgs* msgs) {
+void TypeofP::explain(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*, annmsgs*) {
 }
 
 struct StripCst : public switchExprTyFn {

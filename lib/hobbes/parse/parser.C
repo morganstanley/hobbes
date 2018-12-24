@@ -86,7 +86,7 @@ MonoTypePtr parseVariant(const ParserEvalInfo& pei) {
   return MonoTypePtr(Variant::make(ms));
 }
 
-MonoTypePtr parseResultType(const ParserEvalInfo& pei) {
+MonoTypePtr parseResultType(const ParserEvalInfo&) {
   Variant::Members ms;
   ms.push_back(Variant::Member(".f0", primty("unit"), 0));
   ms.push_back(Variant::Member(".f1", TVar::make("..r"), 1));
@@ -149,7 +149,7 @@ str::seq shiftVarNames(const ParserEvalInfo& pei, size_t fromS, size_t toS) {
   return r;
 }
 
-ExprPtr parseFailure(const ParserEvalInfo& pei, size_t i) {
+ExprPtr parseFailure(const ParserEvalInfo& pei, size_t) {
   return assume(ExprPtr(new MkVariant(".failure", mktunit(pei.la), pei.la)), parseVariant(pei), pei.la);
 }
 

@@ -109,7 +109,7 @@ bool Existentials::satisfied(const TEnvPtr& tenv, const ConstraintPtr& cst, Defi
   }
 }
 
-bool Existentials::satisfiable(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions* ds) const {
+bool Existentials::satisfiable(const TEnvPtr&, const ConstraintPtr& cst, Definitions*) const {
   PacksTo pt;
   if (dec(cst, &pt)) {
     if (is<TVar>(pt.abstractType)) {
@@ -128,7 +128,7 @@ bool Existentials::satisfiable(const TEnvPtr& tenv, const ConstraintPtr& cst, De
   }
 }
 
-void Existentials::explain(const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPtr& e, Definitions* ds, annmsgs* msgs) {
+void Existentials::explain(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*, annmsgs*) {
 }
 
 struct UnqualifySafePackF : public switchExprTyFn {
@@ -163,7 +163,7 @@ struct StripTransparentPackF : public switchExprTyFn {
   }
 };
 
-ExprPtr Existentials::unqualify(const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPtr& e, Definitions*) const {
+ExprPtr Existentials::unqualify(const TEnvPtr&, const ConstraintPtr& cst, const ExprPtr& e, Definitions*) const {
   // if we're eliminating a constraint that indicates no information is hidden, then get rid of the superfluous packs
   // else, just remove the constraint from terms and let final compilation determine how to do the packing
   PacksTo pt;
@@ -179,7 +179,7 @@ ExprPtr Existentials::unqualify(const TEnvPtr& tenv, const ConstraintPtr& cst, c
   }
 }
 
-PolyTypePtr Existentials::lookup(const std::string& vn) const {
+PolyTypePtr Existentials::lookup(const std::string&) const {
   return PolyTypePtr(); // this won't be necessary
 }
 

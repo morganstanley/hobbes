@@ -923,9 +923,9 @@ void mergeConstraints(const Constraints& fcs, Constraints* tcs);
 MonoTypes tgens(int vs);
 int tgenSize(const MonoTypePtr& mt);
 int tgenSize(const MonoTypes& mts);
-int tgenSize(const Constraints& cs);
+[[noreturn]] int tgenSize(const Constraints& cs);
 int tgenSize(const ConstraintPtr& c);
-int tgenSize(const QualTypePtr& qt);
+[[noreturn]] int tgenSize(const QualTypePtr& qt);
 
 typedef std::set<int> TGenVarSet;
 TGenVarSet tgenVars(const MonoTypePtr&);

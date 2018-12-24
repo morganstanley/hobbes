@@ -664,7 +664,7 @@ stateidx_t makeVSSuccState(const std::string&, std::string, MDFA* dfa, const Pat
   return makeDFAState(dfa, nps);
 }
 
-MStatePtr makeVSSwitch(const std::string& switchVar, MDFA* dfa, const SwitchVariant::CtorJumps& jmps, stateidx_t defState) {
+MStatePtr makeVSSwitch(const std::string& switchVar, MDFA*, const SwitchVariant::CtorJumps& jmps, stateidx_t defState) {
   return MStatePtr(new SwitchVariant(switchVar, jmps, defState));
 }
 
@@ -1512,11 +1512,11 @@ public:
     this->ftype = polytype(functy(atys, primty("int")));
   }
 
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) {
     return fncall(c->builder(), this->vfn, compileArgs(c, es));
   }
 
-  PolyTypePtr type(typedb& tenv) const {
+  PolyTypePtr type(typedb&) const {
     return this->ftype;
   }
 private:

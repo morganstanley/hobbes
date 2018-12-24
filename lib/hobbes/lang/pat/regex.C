@@ -347,7 +347,7 @@ struct bnamesF : public switchRegex<UnitV> {
   bnamesF(str::set* bnames) : bnames(bnames) { }
 
   UnitV with(const REps*) const { return unitv; }
-  UnitV with(const RCharRange* x) const { return unitv; }
+  UnitV with(const RCharRange*) const { return unitv; }
   UnitV with(const RStar* x) const { return switchOf(x->v, *this); }
 
   UnitV with(const REither* x) const {

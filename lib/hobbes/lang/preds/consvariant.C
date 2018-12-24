@@ -114,7 +114,7 @@ bool VariantDeconstructor::satisfiable(const TEnvPtr& tenv, const ConstraintPtr&
   }
 }
 
-void VariantDeconstructor::explain(const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPtr& e, Definitions* ds, annmsgs* msgs) {
+void VariantDeconstructor::explain(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*, annmsgs*) {
 }
 
 PolyTypePtr VariantDeconstructor::lookup(const std::string& vn) const {
