@@ -1191,7 +1191,7 @@ template <typename T, size_t N>
     // data carray t n = {avail:long, buffer:[:t|n:]}
     static ty::desc storeType() { return ty::app(prim("carray", ty::fn("t", "c", ty::rec("avail", 0, ty::prim("long"), "buffer", sizeof(size_t), ty::array(ty::var("t"), ty::var("c"))))), store<T>::storeType(), ty::nat(N)); }
 
-    static size_t size()      { static const size_t sz=align(sizeof(size_t), alignment())+store<T>::size()*N; return sz; }
+    static size_t size()      { static const size_t sz=align(align(sizeof(size_t), alignment())+store<T>::size()*N, alignment()); return sz; }
     static size_t alignment() { static const size_t a =std::max<size_t>(sizeof(size_t), store<T>::alignment()); return a; }
   };
 
@@ -1478,9 +1478,9 @@ struct defStructF {
 
   template <typename T>
     void visit(const char* fname) {
-      size_t i = align<size_t>(this->offset, store<T>::alignment());
-      this->fs->push_back(ty::Struct::Field(fname, i, store<T>::storeType()));
-      this->offset = i + store<T>::size();
+      this->offset = align<size_t>(this->offset, store<T>::alignment());
+      this->fs->push_back(ty::Struct::Field(fname, this->offset, store<T>::storeType()));
+      this->offset += store<T>::size();
     }
 };
 
