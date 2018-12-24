@@ -937,6 +937,21 @@ template <typename T, size_t N>
     const T& operator[](size_t i) const { return this->data[i]; }
           T& operator[](size_t i)       { return this->data[i]; }
   };
+template <size_t N>
+  struct carray<char,N> {
+    size_t size;
+    char   data[N];
+
+    const char& operator[](size_t i) const { return this->data[i]; }
+          char& operator[](size_t i)       { return this->data[i]; }
+
+    carray<char,N>& operator=(const char* s) {
+      size_t n = std::min<size_t>(N, strlen(s));
+      memcpy(this->data, s, n);
+      this->size = n;
+      return *this;
+    }
+  };
 
 template <typename T, size_t N> const T* begin(const carray<T,N>* d) { return d->data; }
 template <typename T, size_t N> const T* end  (const carray<T,N>* d) { return d->data + d->size; }
