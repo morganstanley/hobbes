@@ -106,7 +106,7 @@ struct Session {
 // a basic transactional file allocation method -- just start a fresh file
 class AllocFreshFile {
 public:
-  AllocFreshFile(const std::string& dirPfx, storage::CommitMethod cm, const storage::statements&) : dirPfx(dirPfx) {
+  AllocFreshFile(const std::string& dirPfx, storage::CommitMethod, const storage::statements&) : dirPfx(dirPfx) {
     this->tmpPath = freshTempFile(dirPfx);
     this->f       = new writer(this->tmpPath);
   }
@@ -245,7 +245,7 @@ private:
 
 // initialize a storage session with a caller-defined file allocation method
 template <typename FileAllocMethod>
-ProcessTxnF initStorageSession(Session* s, const std::string& dirPfx, storage::PipeQOS qos, storage::CommitMethod cm, const storage::statements& stmts, hobbes::StoredSeries::StorageMode sm) {
+ProcessTxnF initStorageSession(Session* s, const std::string& dirPfx, storage::PipeQOS, storage::CommitMethod cm, const storage::statements& stmts, hobbes::StoredSeries::StorageMode sm) {
   static std::mutex initMtx; // make sure that only one thread initializes at a time
   std::lock_guard<std::mutex> lk(initMtx);
 

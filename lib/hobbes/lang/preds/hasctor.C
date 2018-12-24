@@ -59,7 +59,7 @@ bool CtorVerifier::satisfiable(const TEnvPtr& tenv, const ConstraintPtr& cst, De
   return dec(cst, &hc) && findEliminator(tenv, hc, ds);
 }
 
-void CtorVerifier::explain(const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPtr& e, Definitions* ds, annmsgs* msgs) {
+void CtorVerifier::explain(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*, annmsgs*) {
 }
 
 struct RewriteMSelect : public switchExprTyFn {

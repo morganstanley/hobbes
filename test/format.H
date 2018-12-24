@@ -18,9 +18,9 @@ inline void showJSON(const char* xs, std::ostream& os) {
     switch (c) {
       case '"':  os << "\\\""; break;
       case '\\': os << "\\\\"; break;
-      case '\n': os << "\\\n"; break;
-      case '\r': os << "\\\r"; break;
-      case '\t': os << "\\\t"; break;
+      case '\n': os << "\\n";  break;
+      case '\r': os << "\\r";  break;
+      case '\t': os << "\\t";  break;
       default:   os << c;      break;
     }
   }

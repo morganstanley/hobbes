@@ -295,7 +295,7 @@ bool pullTypeArg(const std::string& fname, size_t idx, MonoTypePtr* p, const Mon
 
 // alias the file and 'signals' type as a way of getting at top-level file addresses
 class signalsF : public op {
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) {
     return c->compile(es[0]);
   }
 
@@ -347,7 +347,7 @@ MonoTypePtr sigFnType(const std::string& fn, const ExprPtr& db) {
   }
 }
 
-bool AddDBFieldSignal::refine(const TEnvPtr& tenv, const HasField& hf, MonoTypeUnifier* u, Definitions*) {
+bool AddDBFieldSignal::refine(const TEnvPtr&, const HasField& hf, MonoTypeUnifier* u, Definitions*) {
   auto dir   = hf.direction;
   auto rty   = hf.recordType;
   auto fname = hf.fieldName;
@@ -369,7 +369,7 @@ bool AddDBFieldSignal::refine(const TEnvPtr& tenv, const HasField& hf, MonoTypeU
   return false;
 }
 
-bool AddDBFieldSignal::satisfied(const TEnvPtr& tenv, const HasField& hf, Definitions*) const {
+bool AddDBFieldSignal::satisfied(const TEnvPtr&, const HasField& hf, Definitions*) const {
   auto dir   = hf.direction;
   auto rty   = hf.recordType;
   auto fname = hf.fieldName;

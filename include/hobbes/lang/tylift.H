@@ -10,8 +10,10 @@
 #include <hobbes/util/preprocessor.H>
 #include <string>
 #include <vector>
+#include <array>
 #include <set>
 #include <map>
+#include <chrono>
 #include <stdexcept>
 
 namespace hobbes {
@@ -41,14 +43,14 @@ struct typedb {
 struct nulltypedb : public typedb {
   MonoTypePtr defineNamedType(const std::string& name, const str::seq& argNames, const MonoTypePtr& ty);
   bool isTypeName(const std::string&) const;
-  MonoTypePtr namedTypeRepresentation(const std::string&) const;
+  [[noreturn]] MonoTypePtr namedTypeRepresentation(const std::string&) const;
 
-  void defineTypeAlias(const std::string& name, const str::seq& argNames, const MonoTypePtr& ty);
+  [[noreturn]] void defineTypeAlias(const std::string& name, const str::seq& argNames, const MonoTypePtr& ty);
   bool isTypeAliasName(const std::string& name) const;
   MonoTypePtr replaceTypeAliases(const MonoTypePtr& ty) const;
   
-  PolyTypePtr opaquePtrPolyType(const std::type_info&, unsigned int sz, bool inStruct);
-  MonoTypePtr opaquePtrMonoType(const std::type_info&, unsigned int sz, bool inStruct);
+  [[noreturn]] PolyTypePtr opaquePtrPolyType(const std::type_info&, unsigned int sz, bool inStruct);
+  [[noreturn]] MonoTypePtr opaquePtrMonoType(const std::type_info&, unsigned int sz, bool inStruct);
  
   PolyTypePtr generalize(const MonoTypePtr& mt) const;
 };
@@ -219,6 +221,12 @@ HOBBES_LIFT_PRIMITIVE(double,             double);
 template <typename T>
   inline MonoTypePtr prim() { return lift<T, false>::type(nulltdb); }
 
+// lift chrono types
+template <bool InStruct>
+  struct lift<std::chrono::duration<int64_t, std::micro>, InStruct> { static MonoTypePtr type(typedb&) { return Prim::make("timespan", Prim::make("long")); } };
+template <bool InStruct>
+  struct lift<std::chrono::duration<uint64_t, std::micro>, InStruct> { static MonoTypePtr type(typedb&) { return Prim::make("timespan", Prim::make("long")); } };
+
 // introduce opaque (named) alias types
 template <typename T, bool InStruct>
   struct lift<T, InStruct, typename tbool<T::is_hmeta_alias>::type> {
@@ -255,6 +263,13 @@ template <typename T, size_t N, bool InStruct>
   struct lift<T[N], InStruct> : public liftFixedArray<T, N> { };
 template <typename T, size_t N, bool InStruct>
   struct lift<const T[N], InStruct> : public liftFixedArray<T, N> { };
+
+template <typename T, size_t N>
+  struct lift<std::array<T,N>, true> : public liftFixedArray<T, N> { };
+template <typename T, size_t N>
+  struct lift<std::array<T,N>*, false> : public liftFixedArray<T, N> { };
+template <typename T, size_t N>
+  struct lift<std::array<T,N>&, false> : public liftFixedArray<T, N> { };
 
 // lifts for C functions
 template <typename ... Ts>
@@ -339,7 +354,7 @@ template <typename T, typename P = void>
 template <const char* TN, typename T>
   struct liftVarCtor< label<TN, T> > {
     typedef typename label<TN, T>::type type;
-    static std::string labelText(int idx) { return label<TN, T>::name(); }
+    static std::string labelText(int) { return label<TN, T>::name(); }
   };
 template <typename ... CTys>
   struct liftVarCtors {

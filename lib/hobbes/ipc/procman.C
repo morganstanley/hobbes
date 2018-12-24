@@ -19,7 +19,7 @@ const proc& ProcManager::lp(long pid) const {
   throw std::runtime_error("Not a spawned process: " + str::from(pid));
 }
 
-bool ProcManager::refine(const TEnvPtr& tenv, const HasField& hf, MonoTypeUnifier* u, Definitions* ds) {
+bool ProcManager::refine(const TEnvPtr&, const HasField& hf, MonoTypeUnifier* u, Definitions*) {
   auto rty   = hf.recordType;
   auto fname = hf.fieldName;
   auto hasty = hf.fieldType;

@@ -100,3 +100,42 @@ TEST(Compiler, ccInManyThreads) {
   EXPECT_EQ(badChecks, size_t(0));
 }
 
+typedef std::array<int,10> IArr;
+typedef std::array<IArr,10> IMat;
+
+DEFINE_STRUCT(ArrTest,
+  (short,  a),
+  (IMat,   xss),
+  (double, y)
+);
+
+TEST(Compiler, liftStdArray) {
+  IArr xs;
+  for (size_t i = 0; i < xs.size(); ++i) {
+    xs[i] = i;
+  }
+  EXPECT_EQ((c().compileFn<int(IArr*)>("xs","sum(xs[0:])")(&xs)), 45);
+
+  ArrTest atst;
+  atst.a = 0;
+  for (size_t i = 0; i < atst.xss.size(); ++i) {
+    for (size_t j = 0; j < atst.xss[i].size(); ++j) {
+      atst.xss[i][j] = i+j;
+    }
+  }
+  atst.y = 3.14159;
+  EXPECT_EQ((c().compileFn<int(ArrTest*)>("s","sum(concat([[x|x<-xs[0:]]|xs<-s.xss[0:]]))")(&atst)), 900);
+}
+
+typedef std::chrono::duration<int64_t, std::micro> ctimespanT;
+
+std::ostream& operator<<(std::ostream& out, ctimespanT dt) {
+  out << *reinterpret_cast<int64_t*>(&dt) << "us";
+  return out;
+}
+
+TEST(Compiler, liftChronoTimespan) {
+  EXPECT_EQ(c().compileFn<ctimespanT()>("20ms")(), std::chrono::milliseconds(20));
+  EXPECT_TRUE(c().compileFn<bool(ctimespanT)>("x", "x==20ms")(std::chrono::milliseconds(20)));
+}
+

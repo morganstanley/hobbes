@@ -187,7 +187,7 @@ std::string prompttext() {
 // provide possibilities for autocompletion
 str::seq completionMatches;
 
-char* completionStep(const char* pfx, int state) {
+char* completionStep(const char*, int state) {
   if (state >= 0 && size_t(state) < completionMatches.size()) {
     return strdup(completionMatches[state].c_str());
   } else {
@@ -195,7 +195,7 @@ char* completionStep(const char* pfx, int state) {
   }
 }
 
-char** completions(const char* pfx, int start, int end) {
+char** completions(const char* pfx, int start, int) {
   if (start == 0) {
     completionMatches = eval->completionsFor(pfx);
     return rl_completion_matches(const_cast<char*>(pfx), &completionStep);
@@ -210,7 +210,7 @@ char** completions(const char* pfx, int start, int end) {
 // run a read-eval-print loop
 void evalLine(char*);
 
-void repl(evaluator* ev) {
+void repl(evaluator*) {
   // set up stdin to be read incrementally
   std::ostringstream prompt;
   prompt << resetfmt() << setbold() << setfgc(colors.promptfg) << "> " << setfgc(colors.stdtextfg) << std::flush;

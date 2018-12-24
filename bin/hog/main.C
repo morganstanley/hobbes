@@ -1,10 +1,11 @@
-
 #include <hobbes/storage.H>
 #include <hobbes/util/str.H>
 #include <hobbes/util/codec.H>
 #include <hobbes/util/time.H>
+
 #include <thread>
 #include <mutex>
+#include <atomic>
 #include <condition_variable>
 #include <stdexcept>
 #include <vector>
@@ -13,6 +14,7 @@
 #include "batchsend.H"
 #include "batchrecv.H"
 #include "session.H"
+#include "stat.H"
 #include "path.H"
 #include "out.H"
 
@@ -74,7 +76,7 @@ std::ostream& operator<<(std::ostream& o, const RunMode& m) {
     o << "|local={ dir=\"" << m.dir << "\", serverDir=\"" << m.groupServerDir << "\", groups=" << m.groups << " }|";
     break;
   case RunMode::batchsend:
-    o << "|batchsend={ dir=\"" << m.dir << "\", serverDir=\"" << m.groupServerDir << "\", clevel=" << m.clevel << ", batchsendsize=" << m.batchsendsize << "B, sendto=" << m.sendto << ", groups=" << m.groups << " }|";
+    o << "|batchsend={ dir=\"" << m.dir << "\", serverDir=\"" << m.groupServerDir << "\", clevel=" << m.clevel << ", batchsendsize=" << m.batchsendsize << "B, batchsendtime=" << m.batchsendtime << "microsec, sendto=" << m.sendto << ", groups=" << m.groups << " }|";
     break;
   case RunMode::batchrecv:
     o << "|batchrecv={ dir=\"" << m.dir << "\", localport=" << m.localport << " }|";
@@ -205,44 +207,66 @@ RunMode config(int argc, const char** argv) {
   return r;
 }
 
-void evalGroupHostConnection(SessionGroup* sg, const std::string& groupName, const RunMode& m, std::vector<std::thread>* ts, int c) {
+struct RegInfo {
+  std::atomic<bool> connected;
+  std::vector<std::thread> readers;
+};
+
+void cleanup(RegInfo& reg) {
+  // signal and wait for hog readers to complete
+  reg.connected = false;
+  for (auto & reader : reg.readers) {
+    reader.join();
+  }
+  reg.readers.clear();
+}
+
+void evalGroupHostConnection(SessionGroup* sg, const std::string& groupName, const RunMode& m, int c, RegInfo& reg) {
   try {
     uint8_t cmd=0;
     hobbes::fdread(c, reinterpret_cast<char*>(&cmd), sizeof(cmd));
 
     auto wp = static_cast<hobbes::storage::WaitPolicy>(0x1 & (cmd >> 1));
   
-    uint64_t pid=0,tid=0;
+    uint64_t pid=0, tid=0;
     hobbes::fdread(c, reinterpret_cast<char*>(&pid), sizeof(pid));
     hobbes::fdread(c, reinterpret_cast<char*>(&tid), sizeof(tid));
     out() << "queue registered for group '" << groupName << "' from " << pid << ":" << tid << ", cmd " << static_cast<int>(cmd) << std::endl;
   
-    auto qc = hobbes::storage::consumeGroup(groupName, hobbes::storage::ProcThread(pid, tid));
-  
+    const hobbes::storage::ProcThread writerId {pid, tid};
+    auto qc = hobbes::storage::consumeGroup(groupName, writerId);
+
     std::string d = instantiateDir(groupName, m.dir);
     switch (m.t) {
     case RunMode::local:
-      ts->push_back(std::thread(std::bind(&recordLocalData, sg, qc, d, wp)));
+      reg.readers.emplace_back([=, &reg]() {
+        StatFile::instance().log(ReaderRegistration{hobbes::now(), writerId, hobbes::storage::thisProcThread(), qc.shmname});
+        recordLocalData(sg, qc, d, wp, reg.connected);
+      });
       break;
     case RunMode::batchsend:
-      ts->push_back(std::thread(std::bind(&pushLocalData, qc, groupName, ensureDirExists(d), m.clevel, m.batchsendsize, m.batchsendtime, m.sendto, wp)));
+      reg.readers.emplace_back([=, &reg]() {
+        StatFile::instance().log(ReaderRegistration{hobbes::now(), writerId, hobbes::storage::thisProcThread(), qc.shmname});
+        pushLocalData(qc, groupName, ensureDirExists(d), m.clevel, m.batchsendsize, m.batchsendtime, m.sendto, wp, reg.connected);
+      });
       break;
     default:
       break;
     }
   } catch (std::exception& ex) {
-    out() << "error on connection for '" << groupName << "': " << ex.what() << std::endl;
+    out() << "error on connection for '" << groupName << "' from " << c << " : " << ex.what() << std::endl;
     hobbes::unregisterEventHandler(c);
     close(c);
+    cleanup(reg);
   }
 }
 
-void runGroupHost(const std::string& groupName, const RunMode& m, std::vector<std::thread>* ts) {
+void runGroupHost(const std::string& groupName, const RunMode& m, std::map<int, RegInfo>& reg) {
   SessionGroup* sg = makeSessionGroup(m.consolidate, m.storageMode);
 
   hobbes::registerEventHandler(
     hobbes::storage::makeGroupHost(groupName, m.groupServerDir),
-    [sg,groupName,ts,&m](int s) {
+    [sg,groupName,&m,&reg](int s) {
       out() << "new connection for '" << groupName << "'" << std::endl;
 
       int c = accept(s, 0, 0);
@@ -254,12 +278,11 @@ void runGroupHost(const std::string& groupName, const RunMode& m, std::vector<st
             out() << "disconnected client for '" << groupName << "' due to version mismatch (expected " << HSTORE_VERSION << " but got " << version << ")" << std::endl;
             close(c);
           } else {
-            hobbes::registerEventHandler(
-              c,
-              [sg,groupName,ts,&m](int c) {
-                evalGroupHostConnection(sg, groupName, m, ts, c);
-              }
-            );
+            out() << "registering client connection for '" << groupName << "' from fd " << c << std::endl;
+            reg[c].connected = true;
+            hobbes::registerEventHandler(c, [sg, groupName, &m, &reg](int c) {
+              evalGroupHostConnection(sg, groupName, m, c, reg[c]);
+            });
           }
         } catch (std::exception& ex) {
           out() << "error on connection for '" << groupName << "': " << ex.what() << std::endl;
@@ -271,18 +294,20 @@ void runGroupHost(const std::string& groupName, const RunMode& m, std::vector<st
 }
 
 void run(const RunMode& m) {
+  StatFile::instance().log(ProcessEnvironment{hobbes::now(), hobbes::string::from(m)});
   out() << "hog running in mode : " << m << std::endl;
   if (m.t == RunMode::batchrecv) {
     pullRemoteDataT(m.dir, m.localport, m.consolidate, m.storageMode).join();
   } else if (m.groups.size() > 0) {
-    std::vector<std::thread> tasks;
+    out() << "hog stat file : " << StatFile::instance().filename() << std::endl;
+    std::map<std::string, std::map<int, RegInfo>> registry;
 
     signal(SIGPIPE, SIG_IGN);
 
     for (auto g : m.groups) {
       try {
         out() << "install a monitor for the '" << g << "' group" << std::endl;
-        runGroupHost(g, m, &tasks);
+        runGroupHost(g, m, registry[g]);
       } catch (std::exception& ex) {
         out() << "error while installing a monitor for '" << g << "': " << ex.what() << std::endl;
         throw;

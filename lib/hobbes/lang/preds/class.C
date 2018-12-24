@@ -843,7 +843,7 @@ std::string show(const TCInstanceFnPtr& x) {
 }
 
 // expedient serialization of ground type class instances ..
-void serializeGroundInstance(const TEnvPtr& tenv, const TClass* c, const TCInstancePtr& inst, std::ostream& out) {
+void serializeGroundInstance(const TEnvPtr&, const TClass*, const TCInstancePtr& inst, std::ostream& out) {
   encode(inst->types(), out);
   encode(inst->memberMapping(), out);
 }
