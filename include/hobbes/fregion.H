@@ -987,6 +987,20 @@ inline std::string moveToUniqueFilename(const std::string& oldpath, const std::s
   });
 }
 
+// a file reference is an index into a file where we can find a value of type T
+template <typename T>
+  struct fileref {
+    fileref(uint64_t index = 0) : index(index) { }
+    uint64_t index;
+    bool operator==(const fileref<T>& rhs) const { return this->index == rhs.index; }
+
+    fileref<T>& operator=(const fileref<T>& x) { this->index = x.index; return *this; }
+
+    T* load(imagefile* f) const {
+      return reinterpret_cast<T*>(mapFileData(f, this->index, sizeof(T)));
+    }
+  };
+
 /***********************
  *
  * type description utilities for storage types
