@@ -208,12 +208,12 @@ def fail(msg):
 
 def dictWithout(m,k):
   r=m.copy()
-  r.drop(k)
+  r.pop(k,None)
   return r
 def dictWithouts(m,ks):
   r=m.copy()
   for k in ks:
-    r.drop(k)
+    r.pop(k,None)
   return r
 def addFreeVar(m,vn):
   m[vn]=None
@@ -277,7 +277,7 @@ def substituteInRec(m,r):
   else:
     return Recursive(r.vn, substitute(lm, r.ty))
 def substituteInAbs(m,a):
-  lm=dictWithouts(m,r.vns)
+  lm=dictWithouts(m,a.vns)
   fvs=dictFreeVars(lm)
   vns=[]
   for vn in a.vns:
@@ -724,6 +724,11 @@ class StructView:
     r += '}'
     return r
   def __str__(self): return self.__repr__()
+  def __eq__(self,other):
+    if (not(isinstance(other,StructView))):
+      return False
+    else:
+      return self.fs == other.fs and self.vs == other.vs
   def __getattr__(self, attr):
     return self.vs[self.foffs[attr]]
 
@@ -1025,7 +1030,11 @@ class FileRefReader:
     self.refr = makeReader(renv,repty)
     self.r    = makeReader(renv,ty)
   def read(self,m,offset):
-    return self.r.read(m,self.refr.read(m,offset))
+    o=self.refr.read(m,offset)
+    if (o==0):
+      return None
+    else:
+      return self.r.read(m,o)
 
 FRegion.addType("fileref", lambda renv, ty, repty: FileRefReader(renv, ty.args[0], repty))
 
@@ -1040,4 +1049,65 @@ class DArrReader:
     return self.ar.read(m,offset+8)
 
 FRegion.addType("darray", lambda renv, ty, repty: DArrReader(renv, ty.args[0]))
+
+# skip-list maps
+class SLView:
+  def __init__(self,sl):
+    self.sl=sl
+
+  @staticmethod
+  def findNextGLEB(n, level, k):
+    while (not(n==None)):
+      sn=n.next[level]
+      if (sn==None or k < sn.key):
+        if (level==0):
+          return n
+        else:
+          level=level-1
+      elif (sn.key <= k):
+        n = sn
+      else:
+        return n
+
+  def __getitem__(self,k):
+    if (self.sl.count==0):
+      return None
+    else:
+      n = SLView.findNextGLEB(self.sl.root, self.sl.count-1, k)
+      if (not(n == None) and n.key==k):
+        return n.value
+      else:
+        return None
+  def __contains__(self,k):
+    if (self.sl.count==0):
+      return False
+    else:
+      n=SLView.findNextGLEB(self.sl.root, self.sl.count-1, k)
+      return (not(n==None) and n.key==k)
+  def __iter__(self):
+    n=self.sl.root.next[0]
+    while (not(n==None)):
+      yield (n.key,n.value)
+      n=n.next[0]
+  def __len__(self): return self.sl.count
+  def __str__(self): return self.__repr__()
+  def __repr__(self):
+    ks=[]
+    eqs=[]
+    vs=[]
+    n=self.sl.root.next[0]
+    while (not(n == None)):
+      ks.append(str(n.key))
+      eqs.append(' = ')
+      vs.append(str(n.value))
+      n=n.next[0]
+    return tableFormat([ks,eqs,vs])
+
+class SLMapReader:
+  def __init__(self,renv,repty):
+    self.sr = makeReader(renv, repty)
+  def read(self,m,offset):
+    return SLView(self.sr.read(m,offset))
+
+FRegion.addType("slmap", lambda renv, ty, repty: SLMapReader(renv, repty))
 
