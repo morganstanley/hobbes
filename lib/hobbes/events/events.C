@@ -232,7 +232,7 @@ void registerEventHandler(int fd, const std::function<void(int)>& fn, bool vn) {
 }
 
 void registerInterruptHandler(const std::function<void()>& fn) {
-  threadEPollFD();
+  threadKQFD();
   auto* c = new eventcbclosure(-1, [fn](int){fn();});
   (*kqClosures)[-1] = c;
 }
