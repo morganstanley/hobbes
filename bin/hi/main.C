@@ -10,6 +10,8 @@
 #include <time.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <signal.h>
+#include <setjmp.h>
 
 #include "cio.H"
 #include "evaluator.H"
@@ -207,6 +209,23 @@ char** completions(const char* pfx, int start, int) {
   }
 }
 
+// allow expression evaluation to be interrupted
+static bool terminating = false;
+static sigjmp_buf continueInterrupt;
+[[noreturn]] void interruptEval(int) {
+  siglongjmp(continueInterrupt, 42);
+}
+class interruption_error : public std::exception { };
+void installInterruptHandler() {
+  if (sigsetjmp(continueInterrupt,1) == 0) {
+    signal(SIGINT, &interruptEval);
+  } else if (!terminating) {
+    throw interruption_error();
+  } else {
+    exit(-1);
+  }
+}
+
 // run a read-eval-print loop
 void evalLine(char*);
 
@@ -219,8 +238,25 @@ void repl(evaluator*) {
   // set up readline autocompletion
   rl_attempted_completion_function = completions;
 
+  // if interrupted while polling, just kill the repl process
+  hobbes::registerInterruptHandler(
+    []() {
+      terminating = true;
+      std::cout << "Quit" << std::endl;
+      rl_callback_handler_remove();
+      exit(-1);
+    }
+  );
+
   // dispatch stdin events to our line handler (through readline)
-  hobbes::registerEventHandler(STDIN_FILENO, [](int,void*){rl_callback_read_char();}, 0);
+  hobbes::registerEventHandler
+  (
+    STDIN_FILENO,
+    [](int,void*) {
+      rl_callback_read_char();
+    },
+    0
+  );
 
   // poll for events and dispatch them
   hobbes::runEventLoop();
@@ -241,6 +277,8 @@ void evalLine(char* x) {
   }
 
   try {
+    installInterruptHandler();
+
     // should we process a basic command?
     if (line == ":q") {
       exit(0);
@@ -338,6 +376,8 @@ void evalLine(char* x) {
     printAnnotatedError(cs, cs.constraints());
   } catch (hobbes::annotated_error& ae) {
     printAnnotatedError(ae, hobbes::Constraints());
+  } catch (interruption_error&) {
+    std::cout << "Interrupted" << std::endl;
   } catch (std::exception& ex) {
     std::cout << setfgc(colors.errorfg) << setbold() << ex.what() << std::endl;
   }
@@ -645,6 +685,9 @@ int main(int argc, char** argv) {
     return -1;
   } catch (hobbes::annotated_error& ae) {
     printAnnotatedError(ae, hobbes::Constraints());
+    return -1;
+  } catch (interruption_error&) {
+    std::cout << "Quit" << std::endl;
     return -1;
   } catch (std::exception& ex) {
     std::cout << "Fatal error: " << ex.what() << resetfmt() << std::endl;
