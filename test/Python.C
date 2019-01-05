@@ -51,9 +51,11 @@ private:
   std::vector<const char*> argv;
 };
 
+#if defined(PYTHON_EXECUTABLE) and defined(SCRIPT_DIR)
 static std::string mkFName(const std::string& ext = "db") {
   return hobbes::uniqueFilename("/tmp/hdb-unittest", "." + ext);
 }
+#endif
 
 typedef std::array<int, 10> IArr;
 DEFINE_STRUCT(
