@@ -1073,7 +1073,7 @@ class SLView:
     if (self.sl.count==0):
       return None
     else:
-      n = SLView.findNextGLEB(self.sl.root, self.sl.count-1, k)
+      n = SLView.findNextGLEB(self.sl.root, len(self.sl.root.next)-1, k)
       if (not(n == None) and n.key==k):
         return n.value
       else:
@@ -1082,7 +1082,7 @@ class SLView:
     if (self.sl.count==0):
       return False
     else:
-      n=SLView.findNextGLEB(self.sl.root, self.sl.count-1, k)
+      n=SLView.findNextGLEB(self.sl.root, len(self.sl.root.next)-1, k)
       return (not(n==None) and n.key==k)
   def __iter__(self):
     n=self.sl.root.next[0]
