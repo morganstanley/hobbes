@@ -632,11 +632,9 @@ TEST(Hog, OrderedReader) {
   };
   ProducerApp proc1(producerFn);
   ProducerApp proc2(producerFn);
-  HogApp batchrecv(RunMode(availablePort(10000, 10100), /* consolidate */ true));
-  HogApp batchsend(RunMode{{"TestOrderedRead"}, {batchrecv.localport()}, 1024, 1000000});
+  HogApp local(RunMode{{"TestOrderedRead"}, /* consolidate = */ true});
 
-  batchrecv.start();
-  batchsend.start();
+  local.start();
 
   sleep(5);
 
@@ -656,11 +654,16 @@ TEST(Hog, OrderedReader) {
 
   proc2.stop();
 
-  auto log = batchrecv.pollLogFile("TestOrderedRead");
-  batchsend.waitSegFileGone();
-
   hobbes::cc cc;
+  auto log = local.pollLogFile("TestOrderedRead");
   cc.define("f", "inputFile::(LoadFile \"" + log + "\" w)=>w");
+
+  const auto total = 4 * TestOrderedRead.mempages;
+  auto sizeFn = cc.compileFn<size_t()>("size(f.seq)");
+  while (sizeFn() != total) {
+    std::cout << "waiting slog to complete, expecting " << total << " records" << std::endl;
+    sleep(1);
+  }
 
   // assert the ordering: 1 happens before 2, 0/1/2 happen before 3
   EXPECT_TRUE(cc.compileFn<bool()>("[x.0|x<-f.seq, x.0 in [1,2]][:0] == concat([repeat(x, 1024L)|x<-[1,2]])")());
@@ -676,7 +679,7 @@ DEFINE_STORAGE_GROUP(
   hobbes::storage::ManualCommit
 );
 
-/// The same test sequence as above except for running batchrecv in the end
+/// The same test sequence as above except for running hog as batchsend/batchrecv modes
 TEST(Hog, OrderedSender) {
   auto producerFn = [](int runid) {
     for (size_t seqno = 0; seqno < TestOrderedSend.mempages; ++seqno) {
