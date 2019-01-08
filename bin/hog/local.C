@@ -27,7 +27,7 @@ void recordLocalData(SessionGroup* sg, const hobbes::storage::QueueConnection& q
   };
 
   try {
-    storage::runReadProcessWithTimeout(qc, wp, initF, 0, timeoutF);
+    storage::runReadProcessWithTimeout(qc, wp, initF, 1e9, timeoutF);
   } catch (const ShutdownException& ex) {
     out() << ex.what() << std::endl;
   }
