@@ -781,6 +781,7 @@ public:
     size_t so = remsz;
     while (stepPage() && sz - so >= this->pagesz) {
       memcpy(this->page, src + so, this->pagesz);
+      this->offset = this->pagesz;
       so += this->pagesz;
     }
     if (!this->page) {

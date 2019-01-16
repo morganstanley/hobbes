@@ -48,6 +48,8 @@ if(LINUX)
 endif()
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${cxx_flags}")
+set(CMAKE_CXX_FLAGS_DEBUG "-g")
+set(CMAKE_CXX_FLAGS_RELEASE "-O2")
 
 add_executable(hi ${hi_files})
 target_link_libraries(hi hobbes ncurses readline ${sys_libs})
