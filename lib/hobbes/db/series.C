@@ -506,7 +506,7 @@ MonoTypePtr decideCSeqType(cc* c, const MonoTypePtr& t, size_t n) {
   return decode(ty::encoding(storedCompressedSeqTypeDef(ty::decode(tenc), ty::decode(menc), n)));
 }
 
-size_t makeCRootRef(writer* file, const MonoTypePtr& cseqType) {
+size_t makeCRootRef(writer* file, const MonoTypePtr&) {
   return fregion::findSpace(file->fileData(), fregion::pagetype::data, 3*sizeof(size_t), sizeof(size_t));
 }
 
