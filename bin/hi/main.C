@@ -97,9 +97,8 @@ void printAnnotatedText(const hobbes::LexicalAnnotation& la) {
     } else {
       std::cout << setfgc(colors.stdtextfg) << setbgc(colors.oddlinebg) << lineText;
     }
-    std::cout << "\n";
+    std::cout << resetfmt() << "\n";
   }
-  std::cout << resetfmt() << std::endl;
 }
 
 void printAnnotatedError(const hobbes::annotated_error& ae, const hobbes::Constraints& cs) {
@@ -281,6 +280,7 @@ void evalLine(char* x) {
 
     // should we process a basic command?
     if (line == ":q") {
+      std::cout << resetfmt() << std::flush;
       exit(0);
     }
 
