@@ -62,17 +62,17 @@ License information `here <https://github.com/Morgan-Stanley/hobbes/blob/master/
   :caption: Logging
 
   logging/HLOG
+  logging/datatypes
   logging/hog
   logging/hi
-  logging/datatypes
 
 .. toctree::
   :hidden:
   :caption: Networking
 
   networking/hi
-  networking/cpp
   networking/datatypes
+  networking/cpp
 
 .. toctree::
   :hidden:

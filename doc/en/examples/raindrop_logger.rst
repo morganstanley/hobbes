@@ -114,7 +114,5 @@ Because we used a *manually* commited log group for our raindrop data (see :ref:
   ::
 
     > raindrops.transactions
-    
-(TODO)
 
 This even shows us the committed transactions for where there was no logged event - i.e. the one in five chance that a raindrop missed a bucket!

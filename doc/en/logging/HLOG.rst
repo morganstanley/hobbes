@@ -80,7 +80,7 @@ Information about the types Hobbes is able to persist can be found in :ref:`hobb
 
 .. warning:: **File size**
 
-  Practically speaking, what we're discussing here is data *persistence* rather than logging. For that reason there's no model for output file rotation. That means that your persisted data files might very large grow in size, and you'll need to find a way to externally manage that.
+  Practically speaking, what we're discussing here is data *persistence* rather than logging. For that reason there's no model for output file rotation. That means that your persisted data files might grow very large in size, and you'll need to find a way to externally manage that.
   
   At Morgan Stanley, Hobbes persistence is used in production applications which might be bounced daily or even weekly, resulting in persisted files of many dozens of gigabytes.
 
@@ -102,7 +102,7 @@ We can create our own structured types for HSTORE logging with the ``DEFINE_HSTO
 Example
 =======
 
-A simple example of a log producer is shown below. We initialise a small unreliable logger(!) then drop a few log messages with HLOG:
+A simple example of a log producer is shown below. We initialise a small logger with drop and auto-commit semantics, and then drop a few log messages with HLOG:
 
 .. code-block:: c++
 

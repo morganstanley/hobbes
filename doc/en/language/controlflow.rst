@@ -1,9 +1,7 @@
 Control Flow
 ************
 
-The Hobbes language itself is quite small. We've already seen the definition of a function type using the function-literal, or *lambda* syntax, in :ref:`type classes <type_classes>`.
-
-Further function definitions, as well as types, type classes, and their instances, must be written in a Hobbes file in order to be defined. These examples are therefore shown without the hi prompt - for more example, see :ref:`hi can load files <hi_load_files>`
+The Hobbes language itself is quite small. Function definitions, as well as types, type classes, and their instances, must be written in a Hobbes file in order to be defined. These examples are therefore shown without the hi prompt - for more examples, see :ref:`hi can load files <hi_load_files>`
 
 The control flow rules for Hobbes are similar to Haskell:
 
