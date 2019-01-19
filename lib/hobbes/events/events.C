@@ -85,6 +85,12 @@ void registerEventHandler(int fd, const std::function<void(int)>& fn, bool) {
   }
 }
 
+void registerInterruptHandler(const std::function<void()>& fn) {
+  threadEPollFD();
+  auto* c = new eventcbclosure(-1, [fn](int){fn();});
+  (*epClosures)[-1] = c;
+}
+
 bool stepEventLoop() {
   while (true) {
     int timeout = -1;
@@ -104,8 +110,15 @@ bool stepEventLoop() {
         (c->fn)(c->fd);
         resetMemoryPool();
       }
-    } else if (fds < 0 && errno != EINTR) {
-      status = false;
+    } else if (fds < 0) {
+      if (errno != EINTR) {
+        status = false;
+      } else if (epClosures) {
+        auto f = epClosures->find(-1);
+        if (f != epClosures->end()) {
+          f->second->fn(-1);
+        }
+      }
     } else if (!timers.empty()) {
       std::vector<timer> newTimers;
 
@@ -218,6 +231,12 @@ void registerEventHandler(int fd, const std::function<void(int)>& fn, bool vn) {
   }
 }
 
+void registerInterruptHandler(const std::function<void()>& fn) {
+  threadKQFD();
+  auto* c = new eventcbclosure(-1, [fn](int){fn();});
+  (*kqClosures)[-1] = c;
+}
+
 bool stepEventLoop() {
   while (true) {
     struct kevent evts[64];
@@ -231,6 +250,11 @@ bool stepEventLoop() {
       return true;
     } else if (errno != EINTR) {
       return false;
+    } else if (kqClosures) {
+      auto f = kqClosures->find(-1);
+      if (f != kqClosures->end()) {
+        f->second->fn(-1);
+      }
     }
   }
 }
