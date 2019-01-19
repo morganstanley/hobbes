@@ -834,3 +834,50 @@ TEST(Storage, FRegionCArrays) {
   }
 }
 
+DEFINE_STRUCT(
+  Quote,
+  (double, bpx),
+  (size_t, bsz),
+  (double, apx),
+  (size_t, asz)
+);
+
+TEST(Storage, KeySeries) {
+  std::string fname = mkFName();
+  try {
+    writer w(fname);
+    keyseries<std::array<char,10>, Quote> ticks(&c(), &w, "ticks", 10000, StoredSeries::Compressed);
+
+    std::array<char,10> bob;
+    strcpy(bob.data(), "bob");
+    for (size_t i = 0; i < 20000; ++i) {
+      Quote q;
+      q.bpx = 3.14159;
+      q.bsz = 20;
+      q.apx = 6.282;
+      q.asz = 1;
+      ticks.record(bob, q);
+    }
+
+    std::array<char,10> jim;
+    strcpy(jim.data(), "jim");
+    for (size_t i = 0; i < 20000; ++i) {
+      Quote q;
+      q.bpx = 4.2;
+      q.bsz = 90;
+      q.apx = 8.4;
+      q.asz = 1;
+      ticks.record(jim, q);
+    }
+
+    hobbes::cc c;
+    c.define("db", "inputFile::(LoadFile \"" + fname + "\" w)=>w");
+    EXPECT_TRUE(c.compileFn<bool()>("concat([[({k=k},t)|t<-v[0:10]]|(k,v)<-db.ticks])==[({k=\"bob\"},{bpx=3.14159,bsz=20,apx=6.282,asz=1})|_<-[0..9]]++[({k=\"jim\"},{bpx=4.2,bsz=90,apx=8.4,asz=1})|_<-[0..9]]")());
+
+    unlink(fname.c_str());
+  } catch (...) {
+    unlink(fname.c_str());
+    throw;
+  }
+}
+
