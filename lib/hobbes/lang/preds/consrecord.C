@@ -55,6 +55,16 @@ static bool dec(const ConstraintPtr& c, ConsRecord* cr) {
         cr->headFieldName = c->arguments()[3];
         cr->headType      = c->arguments()[4];
         cr->tailType      = c->arguments()[5];
+
+        if (const Record* r = is<Record>(cr->recordType)) {
+          if (r->members().size() > 0) {
+            auto lpfx = r->members()[r->members().size()-1].field.substr(0,2);
+
+            if (lpfx != ".p" && ((lpfx != ".f" && cr->asTuple) || (lpfx == ".f" && !cr->asTuple))) {
+              return false;
+            }
+          }
+        }
         return true;
       }
     }

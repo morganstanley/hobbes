@@ -2,6 +2,7 @@
 #include <hobbes/hobbes.H>
 #include <hobbes/db/file.H>
 #include <hobbes/fregion.H>
+#include <hobbes/slmap.H>
 #include <fstream>
 #include "test.H"
 
@@ -50,9 +51,11 @@ private:
   std::vector<const char*> argv;
 };
 
+#if defined(PYTHON_EXECUTABLE) and defined(SCRIPT_DIR)
 static std::string mkFName(const std::string& ext = "db") {
   return hobbes::uniqueFilename("/tmp/hdb-unittest", "." + ext);
 }
+#endif
 
 typedef std::array<int, 10> IArr;
 DEFINE_STRUCT(
@@ -177,6 +180,10 @@ void makeTestData(const std::string& path) {
 
   w.define<Chickens>("chickens")->value = 42;
   strcpy(w.define<CustomBuffer<char, 10>>("cbuffer")->buffer, "chickens");
+
+  hobbes::slmap<int, int> m("slmap", w);
+  m.insert(42, 31337);
+  m.insert(99, 100);
 }
 
 void makeTestScript(const std::string& path) {
@@ -251,6 +258,10 @@ def explode(s):
 expectCB=explode('chickens')
 if (f.cbuffer[0:len(expectCB)] != expectCB):
   print("Expected 'cbuffer' to equal 'chickens': " + str(f.cbuffer))
+  sys.exit(-1)
+
+if (f.slmap[42] != 31337):
+  print("Expected slmap to have a key=42 mapping: " + str(f.slmap))
   sys.exit(-1)
 
 sys.exit(0)

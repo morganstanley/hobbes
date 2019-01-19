@@ -350,8 +350,12 @@ inline int mqlisten(const std::string& fileName) {
   if (s == -1) {
     throw std::runtime_error("Unable to allocate socket: " + std::string(strerror(errno)));
   }
-  
+
   sockaddr_un addr;
+  if (fileName.size() > sizeof(addr.sun_path) - 1) {
+    throw std::runtime_error("Domain socket pathname too long: " + fileName);
+  }
+
   memset(&addr, 0, sizeof(addr));
   addr.sun_family = AF_UNIX;
   unlink(fileName.c_str());
@@ -777,6 +781,7 @@ public:
     size_t so = remsz;
     while (stepPage() && sz - so >= this->pagesz) {
       memcpy(this->page, src + so, this->pagesz);
+      this->offset = this->pagesz;
       so += this->pagesz;
     }
     if (!this->page) {
