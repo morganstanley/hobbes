@@ -7,26 +7,9 @@ Like many functional-style programming languages, the power of Hobbes lies in it
 
 .. hint:: 
 
-  **Hi, the Hobbes REPL**
+  **hi, the Hobbes interpreter**
 
-  In the ``bin`` directory of your Hobbes build, you'll find the Hobbes interactive interpreter, "Hi". You can use it to execute any of the code you see on these pages by just typing the line and hitting 'enter'. It's an example of a REPL, or "Read, Eval, Print Loop".
-
-  When used interactively, Hi will show you the results of the execution of a line immediately:
-
-  ::
-    
-    hobbes/bin $ hi
-
-    hi : an interactive shell for hobbes
-      type ':h' for help on commands
-
-    > true
-    true
-    > 1 + 2.3
-    3.3
-
-  Throughout this documentation we'll show the Hi prompt ('>') to indicate text you can type into Hi. You don't need to type the prompt too.
-
+  You can execute most of the code examples we'll show here in hi, the interpreter that comes packaged with Hobbes. For more information, take a look at the chapter :ref:`hi, the Hobbes interpreter <hi>`
 
 Primitive Types
 ===============
@@ -138,6 +121,7 @@ Array functions
 A number of functions are overloaded for array types:
 
 ::
+
   > [0, 1, 2] ++ [3, 4, 5]
   [0, 1, 2, 3, 4, 5]
 
@@ -147,6 +131,7 @@ A number of functions are overloaded for array types:
 You can index into an array using square brackets:
 
 ::
+
   > nums = [6, 2, 4, 6, 5, 9, 8, 5, 6, 3]
   > nums[3]
   6
@@ -198,6 +183,8 @@ And of course you do that in both positions in the slice:
     > nums[-2014:305]
     [6, 2, 4, 6, 5, 9, 8, 5, 6, 3]
 
+.. _sequence_expressions:
+
 Array sequences
 ---------------
 
@@ -207,8 +194,6 @@ A *sequence expression* can be used to initialise an array of ints. The syntax i
   
   > [1..4]
   [1, 2, 3, 4]
-  > :t [1..4]
-  [int]
 
 We can take this further and generate *infinite* sequences by leaving the upper bound open:
 
@@ -270,7 +255,7 @@ Like records but with no field names, tuples are used to keep commonly-associate
 
 .. note:: **Assignment**
   
-  Notice here that we've assigned the tuple to the name *endpoint*. This name now exists in the global context. For local scoping, see of values, see :ref:`Local scoping <let_expressions>`
+  Notice here that we've assigned the tuple to the name *endpoint*. This name now exists in the global context, which means you can refer to those values using the name "endpoint" from now on. For local scoping, see :ref:`Local scoping <let_expressions>`
 
 .. note:: **Pretty-printing**
   
@@ -312,7 +297,7 @@ This allows us to model enum-like structures with associated data. In the follow
 
 .. note:: **Type Annotations**
     
-  Sometimes Hobbes requires us to specify the type of a value. In the case above, we want to be careful about the instantiation of the ``|Succeeded|`` type: we need to be clear that we're instantiating a subtype of ``status``, rather than a naked record type with just one subtype which happens to be called 'Succeeded'. Hi can show us the inferred type of a value with ``:t``:
+  Sometimes Hobbes requires us to specify the type of a value. In the case above, we want to be careful about the instantiation of the ``|Succeeded|`` type: we need to be clear that we're instantiating a subtype of ``status``, rather than a naked record type with just one subtype which happens to be called 'Succeeded'. hi can show us the inferred type of a value with ``:t``:
 
   ::
 
@@ -343,13 +328,17 @@ In this case we're using the index (0 or 1) to specify the actual variant type w
 Recursive type definitions
 ==========================
 
-With a small adjustment, the sum type can be used to model both cases in our list:
+Recursive types (i.e. a type whos definition includes itself) are a powerful way to define complex data structures and are commonly found in functional programming.
+
+The canonical example is the list, which is defined as two parts: head and tail. The head is a single list element, whilst the tail is... another list!
+
+In Hobbes, we declare that a type is recursive by simply giving it a name and denoting the name with a caret:
 
 ::
 
   ^x.(()+([char]*x))
 
-In this type expression we use the caret to give a name to the type which can be used recursively throughout the expression. In this case the list type, ``x``, is declared as a sum type of an empty list, or a string and a list.
+In this type expression we use the caret to give a name to the type so it can be used recursively throughout the expression. In this case the list type, ``x``, is declared as a sum type of an empty list, or a string and a list.
 
 We can easily construct one using Hobbes's constructor syntax:
 

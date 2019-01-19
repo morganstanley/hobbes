@@ -5,11 +5,11 @@ Digging into the domain
 
 Taking a deeper look into our domain might help clear things up.
 
-Hobbes has been designed from the ground up to help devops staff manage the in-process configuration of extremely low latency order managers.
+Hobbes has been designed from the ground up, specifically to help devops staff manage the in-process configuration of extremely low latency Order Managers. An Order Manager (sometimes just called the "OM") is a key component in a trading system - it's responsible for maintaining the state of all the trade orders the organisation has received and is processing. 
 
-An Order Manager ("OM") takes instructions in the form "Buy 100 stocks of *Example co* if the price is below 144.2 USD". This is called a *limit order*, because the action is contingent on some property of the stock (in this case, its price).
+The OM takes instructions in the form "Buy 100 stocks of *Example co.* if the price is below 144.2 USD". This is called a *limit order*, because the action is contingent on some property of the stock (in this case, its price).
 
-The Order Manager will hold this order and watch the price at which *Example co* is being sold at different exchanges, and once the price drops below 144.2 it'll go ahead and issue an instruction to buy the stock. Some time later the exchange will respond with the result: either the purchase succeeded and the order filled, or else the details of the failure.
+The Order Manager will hold this order and watch the price at which *Example co.* is being sold at different exchanges, and once the price drops below 144.2 it'll go ahead and issue an instruction to buy the stock. Some time later the exchange will respond with the result: either the purchase succeeded and the order filled, or else the details of the failure.
 
 The alternative to a *limit order* is a *market order*, where the stock is bought regardless of the current price.
 

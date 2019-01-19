@@ -3,38 +3,14 @@ Control Flow
 
 The Hobbes language itself is quite small. We've already seen the definition of a function type using the function-literal, or *lambda* syntax, in :ref:`type classes <type_classes>`.
 
-Further function definitions, as well as types, type classes, and their instances, must be written in a Hobbes file in order to be defined.
-
-.. _hi_load_files:
-
-.. note:: **Hi can read files**
-  
-  If you pass the name of a text file to the Hobbes interpreter hi, it'll evaluate the code in the file and make symbol names available to you in the hi session:
-
-  :: 
-
-    bin/hobbes $ cat match.hob
-    foo = match 3 with
-      | 1 -> "hello"
-      | 2 -> "hobbes"
-      | _ -> "oops"
-
-    bin/hobbes $ hi match.hob
-    hi : an interactive shell for hobbes
-      type ':h' for help on commands
-
-    loaded module 'match.hob'
-    > foo
-    "oops"
-
-  This makes it much easier to write more complex, multi-line expressions of the kind we'll see in this section. Some of these examples are therefore **shown without the hi prompt**.
+Further function definitions, as well as types, type classes, and their instances, must be written in a Hobbes file in order to be defined. These examples are therefore shown without the hi prompt - for more example, see :ref:`hi can load files <hi_load_files>`
 
 The control flow rules for Hobbes are similar to Haskell:
 
 Functions
 =========
 
-We've seen the lambda syntax for in-line function definition, but in Hobbes functions are first declared by their type, and then implemented for specific values.
+Functions are first declared by their type, and then implemented for specific values.
 
 ::
   
@@ -269,11 +245,6 @@ Similarly, these two are equivalent in Hobbes:
 
 This process of conversion to another program structure is commonly called "desugaring", because the nicer, lighter-weight style is known as "syntactic sugar". There are many examples of sugaring in the Hobbes language, and we'll try to point them out as we go. Sweet!
 
-Match Performance
------------------
-
-Because matching is such a fundamentally important part of the language, much time and energy has been spent on ekeing out every last drop of performance from their execution. For lots more information, head over to :ref:`the appendix <match_performance>`.
-
 Tuple Decomposition
 ===================
 
@@ -287,10 +258,6 @@ A tuple can be decomposed into its individual parts very simply:
   > :t port
   int
 
-.. note::
-
-  This is another example of Hobbes sugaring over match expressions, as discussed :ref:`earlier<sugar>`.
-
 .. _comprehensions:
 
 Comprehensions
@@ -298,7 +265,7 @@ Comprehensions
 
 Similar to comprehensions in Python, these allow us to describe the algorithm used to create a sequence of data.
 
-.. warning:: Remember, Hobbes code is executed eagerly, meaning the comprehension will usually be evaluated in full when it is declared.
+.. note:: Remember, Hobbes code is executed eagerly, meaning the comprehension will usually be evaluated in full when it is declared.
 
 ::
 
@@ -310,16 +277,18 @@ The comprehension is split into a mapping function, a generator expression, and 
 
 .. note:: **sequence expressions**
 
-  Look closely and you'll see the *:ref:`sequence expression <sequence_expressions>`* syntax described in the types chapter. You could also use an inline array declaration here:
+  Look closely and you'll see the :ref:`sequence expression <sequence_expressions>` syntax described in the types chapter. You could also use an inline array declaration here:
 
   ::
 
-  > [show(x) | x <- [11, 12, 13], x % 3 == 0]
+    > [show(x) | x <- [11, 12, 13], x % 3 == 0]
 
   Or alternatively the name of an array declared elsewhere:
 
-  > nums = [98, 99, 100]
-  > [show(x) | x <- nums, x % 3 == 0]
+  ::
+
+    > nums = [98, 99, 100]
+    > [show(x) | x <- nums, x % 3 == 0]
 
 
 The comprehension syntax is an expression, and can therefore be used anywhere a range of elements is expected. For an example, the Hobbes standard library contains the following code:
@@ -336,7 +305,7 @@ This describes a function ``productWith``, which combines the cross product of e
   > productWith((\x y.x+y),[1,2,3],[4,5,6])
   [5, 6, 7, 6, 7, 8, 7, 8, 9]
 
-If we were to write out this ``productWith`` function in a less functional style, it might look like this:
+If we were to write out this ``productWith`` function in pseudocode, it might look like this:
 
 ::
 

@@ -49,7 +49,7 @@ Many other type classes are available in the :ref:`Hobbes standard library <stan
 Type annotations
 ================
 
-We've seen that ``hi`` is able to infer the type of a value:
+``hi`` is able to infer the type of a value:
 
 ::
 

@@ -80,7 +80,6 @@ Firstly, we can see what data is available in the file simply by typing the name
 ::
 
   > messages
-  (TODO)
 
 This shows us all the data members available to us, along with their types. You might recognise this type information from the *hog* output, when we saved the persisted data in :ref:`previous section <hog_logging_to_disk>`:.
 
