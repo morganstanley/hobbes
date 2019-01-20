@@ -235,7 +235,7 @@ template <typename K, typename V>
     size_t count;
     slnode<K,V> root;
 
-    static ty::desc type() {
+    static ty::desc type(const ty::desc& kty = fregion::store<K>::storeType(), const ty::desc& vty = fregion::store<V>::storeType()) {
       // slmap k v
       return
         ty::app(
@@ -245,8 +245,8 @@ template <typename K, typename V>
               ty::rec("count", -1, ty::prim("long"), "root", -1, slnode<K,V>::type(ty::var("k"), ty::var("v")))
             )
           ),
-          fregion::store<K>::storeType(),
-          fregion::store<V>::storeType()
+          kty,
+          vty
         );
     }
 
@@ -267,7 +267,7 @@ template <typename K, typename V>
     static const bool can_memcpy = store<K>::can_memcpy && store<V>::can_memcpy;
     static_assert(can_memcpy, "only maps with memcpyable types currently supported");
 
-    static ty::desc storeType() { return slmapdata<K,V>::type(); }
+    static ty::desc storeType(const ty::desc& kty = store<K>::storeType(), const ty::desc& vty = store<V>::storeType()) { return slmapdata<K,V>::type(kty, vty); }
     static size_t size() { return sizeof(slmapdata<K,V>); }
     static size_t alignment() { return alignof(slmapdata<K,V>); }
     static void write(imagefile*, void* p, const slmapdata<K,V>& x) { memcpy(p, &x, sizeof(x)); }
@@ -322,6 +322,57 @@ template <typename K, typename V>
     slmap();
     slmap(const slmap<K,V>&);
     slmap<K,V>& operator=(const slmap<K,V>&);
+  };
+
+template <typename K>
+  class slrefmap {
+  public:
+    typedef uint64_t ufileref;
+
+    slrefmap(const std::string& name, fregion::imagefile* f, const ty::desc& refType) {
+      this->f = f;
+
+      // allocate space for this structure and prepare to write
+      ty::desc mty = fregion::store<slmapdata<K,ufileref>>::storeType(fregion::store<K>::storeType(), refType);
+
+      auto b = this->f->bindings.find(name);
+      if (b == this->f->bindings.end()) {
+        // this structure is not yet defined, so define it and begin writing to it
+        size_t dloc = fregion::findSpace(this->f, fregion::pagetype::data, sizeof(slmapdata<K,ufileref>), alignof(slmapdata<K,ufileref>));
+        this->d = reinterpret_cast<slmapdata<K,ufileref>*>(fregion::mapFileData(this->f, dloc, sizeof(slmapdata<K,ufileref>)));
+        addBinding(this->f, name, ty::encoding(mty), dloc);
+      } else {
+        // the structure is already defined, make sure it has the right type def and then resume writing to it
+        if (b->second.type != ty::encoding(mty)) {
+          throw std::runtime_error("File already defines slmap '" + name + "' with type inconsistent with " + ty::show(mty));
+        } else {
+          this->d = reinterpret_cast<slmapdata<K,ufileref>*>(fregion::mapFileData(this->f, b->second.offset, sizeof(slmapdata<K,ufileref>)));
+        }
+      }
+    }
+
+    size_t size() const {
+      return this->d->count;
+    }
+
+    typedef sliterator<K,ufileref> iterator;
+    iterator end()   { return iterator(); }
+    iterator begin() { return (this->d->root.next.size==0 || this->d->root.next[0].index==0) ? end() : iterator(this->f, this->d->root.next[0].load(f)); }
+
+    void insert(const K& k, const ufileref& v) {
+      this->d->insert(this->f, k, v);
+    }
+
+    iterator find(const K& k) {
+      return iterator(this->f, this->d->lookup(this->f, k));
+    }
+  private:
+    fregion::imagefile* f;
+    slmapdata<K,ufileref>* d;
+  private:
+    slrefmap();
+    slrefmap(const slrefmap<K>&);
+    slrefmap<K>& operator=(const slrefmap<K>&);
   };
 
 }

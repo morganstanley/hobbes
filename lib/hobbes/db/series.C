@@ -33,6 +33,19 @@ StoredSeries::StoredSeries(cc* c, writer* file, const std::string& name, const M
   }
 }
 
+StoredSeries::StoredSeries(cc* c, writer* file, const ufileref loc, const MonoTypePtr& ty, size_t n, StorageMode sm) : sm(sm) {
+  switch (this->sm) {
+  case StoredSeries::Raw:
+    new (this->storage.rss) RawStoredSeries(c, file, loc, ty, n);
+    break;
+  case StoredSeries::Compressed:
+    new (this->storage.css) CompressedStoredSeries(c, file, loc, ty, n);
+    break;
+  default:
+    throw std::runtime_error("Invalid/unsupported storage mode (" + describeStorageMode(this->sm) + ")");
+  }
+}
+
 StoredSeries::~StoredSeries() {
   switch (this->sm) {
   case StoredSeries::Raw:
@@ -46,7 +59,31 @@ StoredSeries::~StoredSeries() {
   }
 }
 
-// what type will actually be recorded?
+// where has this series been placed?
+ufileref StoredSeries::rootRef() const {
+  switch (this->sm) {
+  case StoredSeries::Raw:
+    return stripPunErr<RawStoredSeries>(this->storage.css)->rootRef();
+  case StoredSeries::Compressed:
+    return stripPunErr<CompressedStoredSeries>(this->storage.css)->rootRef();
+  default:
+    throw std::runtime_error("Invalid/unsupported storage mode (" + describeStorageMode(this->sm) + ")");
+  }
+}
+
+// what would the whole sequence type look like if storing the given type?
+MonoTypePtr StoredSeries::seriesTypeDesc(StorageMode sm, cc* c, const MonoTypePtr& t, size_t bsize) {
+  switch (sm) {
+  case StoredSeries::Raw:
+    return RawStoredSeries::seriesTypeDesc(c, t, bsize);
+  case StoredSeries::Compressed:
+    return CompressedStoredSeries::seriesTypeDesc(c, t, bsize);
+  default:
+    throw std::runtime_error("Invalid/unsupported storage mode (" + describeStorageMode(sm) + ")");
+  }
+}
+
+// what type is actually being recorded?
 const MonoTypePtr& StoredSeries::storageType() const {
   switch (this->sm) {
   case StoredSeries::Raw:
@@ -218,18 +255,57 @@ RawStoredSeries::RawStoredSeries(cc* c, writer* outputFile, const std::string& f
   this->batchStorageSize = storageSizeOf(this->batchType);
   this->storeFn          = reinterpret_cast<StoreFn>(storageFunction(c, ty, this->storedType, LexicalAnnotation::null()));
 
+  auto seriesTy = storedStreamOf(this->storedType, this->batchSize);
+
   if (this->outputFile->isDefined(fieldName)) {
     // load the existing stream state
-    this->headNodeRef = reinterpret_cast<uint64_t*>(this->outputFile->unsafeLookup(fieldName, storedStreamOf(this->storedType, this->batchSize)));
+    this->rootLoc     = this->outputFile->unsafeLookupOffset(fieldName, seriesTy);
+    this->headNodeRef = reinterpret_cast<uint64_t*>(this->outputFile->unsafeLoad(seriesTy, this->rootLoc));
+
     restartFromBatchNode();
   } else {
     // start a fresh batch -- we couldn't load anything
-    this->headNodeRef = reinterpret_cast<uint64_t*>(this->outputFile->unsafeDefine(fieldName, storedStreamOf(this->storedType, this->batchSize)));
+    this->headNodeRef = reinterpret_cast<uint64_t*>(this->outputFile->unsafeDefine(fieldName, seriesTy));
+    this->rootLoc     = this->outputFile->unsafeOffsetOf(seriesTy, this->headNodeRef);
+
+    consBatchNode(allocBatchNode(this->outputFile));
+  }
+}
+
+RawStoredSeries::RawStoredSeries(cc* c, writer* outputFile, ufileref root, const MonoTypePtr& ty, size_t batchSize) : outputFile(outputFile), recordType(ty), batchSize(batchSize) {
+  // determine the type of this stored stream in the file
+  this->storedType       = storeAs(c, ty);
+  this->storageSize      = storageSizeOf(this->storedType);
+  this->batchType        = carrayty(this->storedType, this->batchSize);
+  this->batchStorageSize = storageSizeOf(this->batchType);
+  this->storeFn          = reinterpret_cast<StoreFn>(storageFunction(c, ty, this->storedType, LexicalAnnotation::null()));
+
+  auto seriesTy = storedStreamOf(this->storedType, this->batchSize);
+
+  if (root != 0) {
+    // load the existing stream state
+    this->rootLoc     = root;
+    this->headNodeRef = reinterpret_cast<uint64_t*>(this->outputFile->unsafeLoad(seriesTy, this->rootLoc));
+
+    restartFromBatchNode();
+  } else {
+    // start a fresh batch -- we couldn't load anything
+    this->rootLoc     = findSpace(this->outputFile->fileData(), fregion::pagetype::data, storageSizeOf(seriesTy), alignment(seriesTy));
+    this->headNodeRef = reinterpret_cast<uint64_t*>(this->outputFile->unsafeLoad(seriesTy, this->rootLoc));
+
     consBatchNode(allocBatchNode(this->outputFile));
   }
 }
 
 RawStoredSeries::~RawStoredSeries() {
+}
+
+ufileref RawStoredSeries::rootRef() const {
+  return this->rootLoc;
+}
+
+MonoTypePtr RawStoredSeries::seriesTypeDesc(cc* c, const MonoTypePtr& ty, size_t batchSize) {
+  return storedStreamOf(storeAs(c, ty), batchSize);
 }
 
 const MonoTypePtr& RawStoredSeries::storageType() const {
@@ -430,6 +506,10 @@ MonoTypePtr decideCSeqType(cc* c, const MonoTypePtr& t, size_t n) {
   return decode(ty::encoding(storedCompressedSeqTypeDef(ty::decode(tenc), ty::decode(menc), n)));
 }
 
+size_t makeCRootRef(writer* file, const MonoTypePtr&) {
+  return fregion::findSpace(file->fileData(), fregion::pagetype::data, 3*sizeof(size_t), sizeof(size_t));
+}
+
 size_t makeCRootRef(writer* file, const std::string& fn, const MonoTypePtr& cseqType) {
   using namespace hobbes::fregion;
 
@@ -543,12 +623,34 @@ static CompressedStoredSeries::CDeallocM compressedMDeallocFn(cc* c, const MonoT
   }
 }
 
+CompressedStoredSeries::CompressedStoredSeries(cc* c, writer* file, ufileref rootRef, const MonoTypePtr& t, size_t n) :
+  outputFile(file),
+  recordType(t),
+  modelTypes(decideModelType(c, t)),
+  seqType(decideCSeqType(c, t, n)),
+  rootLoc(rootRef == 0 ? makeCRootRef(file, seqType) : rootRef),
+  w(file, rootLoc, n, sizeOf(modelTypes.first)),
+  dynModelMem(4096 /* default 4K page size but expandable for large models */),
+  writeFn(compressedWriteFunction(c, t)),
+  allocMFn(compressedMAllocFn(c, t)),
+  prepMFn(compressedMPrepFn(c, t)),
+  deallocMFn(compressedMDeallocFn(c, t))
+{
+  auto rid = addThreadRegion("cseq-region-" + freshName(), &this->dynModelMem);
+  auto oid = setThreadRegion(rid);
+  this->dynModel = this->allocMFn(file);
+  this->prepMFn(&this->w, this->dynModel);
+  setThreadRegion(oid);
+  removeThreadRegion(rid);
+}
+
 CompressedStoredSeries::CompressedStoredSeries(cc* c, writer* file, const std::string& fn, const MonoTypePtr& t, size_t n) :
   outputFile(file),
   recordType(t),
   modelTypes(decideModelType(c, t)),
   seqType(decideCSeqType(c, t, n)),
-  w(file, makeCRootRef(file, fn, seqType), n, sizeOf(modelTypes.first)),
+  rootLoc(makeCRootRef(file, fn, seqType)),
+  w(file, rootLoc, n, sizeOf(modelTypes.first)),
   dynModelMem(4096 /* default 4K page size but expandable for large models */),
   writeFn(compressedWriteFunction(c, t)),
   allocMFn(compressedMAllocFn(c, t)),
@@ -565,6 +667,14 @@ CompressedStoredSeries::CompressedStoredSeries(cc* c, writer* file, const std::s
 
 CompressedStoredSeries::~CompressedStoredSeries() {
   this->deallocMFn(this->dynModel);
+}
+
+ufileref CompressedStoredSeries::rootRef() const {
+  return this->rootLoc;
+}
+
+MonoTypePtr CompressedStoredSeries::seriesTypeDesc(cc* c, const MonoTypePtr& t, size_t bsize) {
+  return decideCSeqType(c, t, bsize);
 }
 
 // what type will actually be recorded?

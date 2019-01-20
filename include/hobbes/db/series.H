@@ -10,16 +10,26 @@
 #include <hobbes/db/cbindings.H>
 #include <hobbes/lang/tylift.H>
 #include <hobbes/util/time.H>
+#include <hobbes/slmap.H>
 #include <hobbes/util/perf.H>
 
 namespace hobbes {
 
+typedef uint64_t ufileref;
+
 class RawStoredSeries {
 public:
   RawStoredSeries(cc*, writer*, const std::string&, const MonoTypePtr&, size_t);
+  RawStoredSeries(cc*, writer*, ufileref, const MonoTypePtr&, size_t);
   ~RawStoredSeries();
 
-  // what type will actually be recorded?
+  // where has this series been placed?
+  ufileref rootRef() const;
+
+  // what would the whole sequence type look like for the given type?
+  static MonoTypePtr seriesTypeDesc(cc*, const MonoTypePtr&, size_t);
+
+  // what type is actually being recorded?
   const MonoTypePtr& storageType() const;
 
   // record a value in this series
@@ -37,6 +47,8 @@ public:
   // "clear" the data (just reset the root node, ignore old data)
   void clear(bool signal = true);
 private:
+  ufileref rootLoc;
+
   writer*     outputFile;
   MonoTypePtr recordType;
   MonoTypePtr storedType;
@@ -64,6 +76,7 @@ private:
 
 class CompressedStoredSeries {
 public:
+  CompressedStoredSeries(cc*, writer*, ufileref, const MonoTypePtr&, size_t);
   CompressedStoredSeries(cc*, writer*, const std::string&, const MonoTypePtr&, size_t);
   ~CompressedStoredSeries();
 
@@ -72,7 +85,13 @@ public:
   typedef void (*CPrepM)(UCWriter*,uint8_t*);
   typedef void (*CDeallocM)(uint8_t*);
 
-  // what type will actually be recorded?
+  // where has this series been placed?
+  ufileref rootRef() const;
+
+  // what would the whole compressed sequence type look like for the given type?
+  static MonoTypePtr seriesTypeDesc(cc*, const MonoTypePtr&, size_t);
+
+  // what type is actually being recorded?
   const MonoTypePtr& storageType() const;
   
   // record a value in this series
@@ -89,6 +108,7 @@ private:
   MonoTypePtr recordType;
   ModelTypes  modelTypes;
   MonoTypePtr seqType;
+  ufileref    rootLoc;
   UCWriter    w;
   uint8_t*    dynModel;
   region      dynModelMem;
@@ -106,11 +126,21 @@ public:
     Raw = 0,
     Compressed
   };
-
-  StoredSeries(cc*, writer*, const std::string&, const MonoTypePtr&, size_t, StorageMode sm = Raw);
   ~StoredSeries();
 
-  // what type will actually be recorded?
+  // create a stored series with a top-level variable binding
+  StoredSeries(cc*, writer*, const std::string&, const MonoTypePtr&, size_t, StorageMode sm = Raw);
+
+  // create an "anonymous" stored series at a predefined location (or if location==0, create at a new location)
+  StoredSeries(cc*, writer*, ufileref, const MonoTypePtr&, size_t, StorageMode sm = Raw);
+
+  // where has this series been placed?
+  ufileref rootRef() const;
+
+  // what would the whole sequence type look like if storing the given type?
+  static MonoTypePtr seriesTypeDesc(StorageMode, cc*, const MonoTypePtr&, size_t);
+
+  // what type is actually being recorded?
   const MonoTypePtr& storageType() const;
 
   // record a value in this series
@@ -152,6 +182,64 @@ template <typename T>
   private:
     StoredSeries storage;
   };
+
+template <typename K>
+  class keyseriesdv {
+  public:
+    keyseriesdv(cc* c, writer* db, const std::string& name, const MonoTypePtr& vty, size_t bsize = 10000, StoredSeries::StorageMode sm = StoredSeries::Raw) :
+      c(c), db(db), vty(vty), bsize(bsize), sm(sm),
+      pmap(name, db->fileData(), toTD(StoredSeries::seriesTypeDesc(sm, c, vty, bsize)))
+    {
+      for (const auto& pm : this->pmap) {
+        this->dmap[pm.first] = new StoredSeries(this->c, this->db, pm.second, vty, this->bsize, this->sm);
+      }
+    }
+
+    ~keyseriesdv() {
+      for (auto& d : this->dmap) {
+        delete d.second;
+      }
+    }
+
+    void record(const K& k, const void* v, bool signal = true) {
+      auto d = this->dmap.find(k);
+      if (d != this->dmap.end()) {
+        d->second->record(v, signal);
+      } else {
+        auto* s = new StoredSeries(this->c, this->db, 0, this->vty, this->bsize, this->sm);
+        this->pmap.insert(k, s->rootRef());
+        this->dmap[k] = s;
+        s->record(v, signal);
+      }
+    }
+  private:
+    cc*                       c;
+    writer*                   db;
+    MonoTypePtr               vty;
+    size_t                    bsize;
+    StoredSeries::StorageMode sm;
+
+    slrefmap<K>                pmap;
+    std::map<K, StoredSeries*> dmap;
+
+    static ty::desc toTD(const MonoTypePtr& t) {
+      ty::bytes b;
+      encode(t, &b);
+      return ty::decode(b);
+    }
+  };
+
+template <typename K, typename V>
+  class keyseries : public keyseriesdv<K> {
+  public:
+    keyseries(cc* c, writer* db, const std::string& name, size_t bsize = 10000, StoredSeries::StorageMode sm = StoredSeries::Raw) : keyseriesdv<K>(c, db, name, lift<V,true>::type(*c), bsize, sm)
+    {
+    }
+    void record(const K& k, const V& v, bool signal = true) {
+      keyseriesdv<K>::record(k, reinterpret_cast<const void*>(&v), signal);
+    }
+  };
+
 
 }
 
