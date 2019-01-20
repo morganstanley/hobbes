@@ -183,38 +183,39 @@ template <typename T>
     StoredSeries storage;
   };
 
-template <typename K, typename V>
-  class keyseries {
+template <typename K>
+  class keyseriesdv {
   public:
-    keyseries(cc* c, writer* db, const std::string& name, size_t bsize = 10000, StoredSeries::StorageMode sm = StoredSeries::Raw) :
-      c(c), db(db), bsize(bsize), sm(sm),
-      pmap(name, db->fileData(), toTD(StoredSeries::seriesTypeDesc(sm, c, lift<V,true>::type(*c), bsize)))
+    keyseriesdv(cc* c, writer* db, const std::string& name, const MonoTypePtr& vty, size_t bsize = 10000, StoredSeries::StorageMode sm = StoredSeries::Raw) :
+      c(c), db(db), vty(vty), bsize(bsize), sm(sm),
+      pmap(name, db->fileData(), toTD(StoredSeries::seriesTypeDesc(sm, c, vty, bsize)))
     {
       for (const auto& pm : this->pmap) {
-        this->dmap[pm.first] = new StoredSeries(this->c, this->db, pm.second, lift<V,true>::type(*this->c), this->bsize, this->sm);
+        this->dmap[pm.first] = new StoredSeries(this->c, this->db, pm.second, vty, this->bsize, this->sm);
       }
     }
 
-    ~keyseries() {
+    ~keyseriesdv() {
       for (auto& d : this->dmap) {
         delete d.second;
       }
     }
 
-    void record(const K& k, const V& v, bool signal = true) {
+    void record(const K& k, const void* v, bool signal = true) {
       auto d = this->dmap.find(k);
       if (d != this->dmap.end()) {
-        d->second->record(&v, signal);
+        d->second->record(v, signal);
       } else {
-        auto* s = new StoredSeries(this->c, this->db, 0, lift<V,true>::type(*this->c), this->bsize, this->sm);
+        auto* s = new StoredSeries(this->c, this->db, 0, this->vty, this->bsize, this->sm);
         this->pmap.insert(k, s->rootRef());
         this->dmap[k] = s;
-        s->record(&v, signal);
+        s->record(v, signal);
       }
     }
   private:
     cc*                       c;
     writer*                   db;
+    MonoTypePtr               vty;
     size_t                    bsize;
     StoredSeries::StorageMode sm;
 
@@ -227,6 +228,18 @@ template <typename K, typename V>
       return ty::decode(b);
     }
   };
+
+template <typename K, typename V>
+  class keyseries : public keyseriesdv<K> {
+  public:
+    keyseries(cc* c, writer* db, const std::string& name, size_t bsize = 10000, StoredSeries::StorageMode sm = StoredSeries::Raw) : keyseriesdv<K>(c, db, name, lift<V,true>::type(*c), bsize, sm)
+    {
+    }
+    void record(const K& k, const V& v, bool signal = true) {
+      keyseriesdv<K>::record(k, reinterpret_cast<const void*>(&v), signal);
+    }
+  };
+
 
 }
 
