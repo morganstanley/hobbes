@@ -8,13 +8,13 @@
 #      f = fregion.FRegion(P)
 #
 #    to read the stored field 'x' out of f:
-#      f.x
-       
-#    If x is an array type, it is lazy loaded, and it supports the interface as following:
-#      1) for d in f.x()
-#      2) [] operator: f.x[1]
-#      3) slice operator: f.x[0:len] 
-#      4) len(f.x)       
+#      f.x       
+#    If x is recursive  type, it is lazy loaded, and it supports the interface as following:
+#      stream = RecStream(f.x)
+#
+#      1) for d in steam.iter()
+#      2) [] operator: stream[0] 
+#      3) len(f.x)       
 
 #      
 #    to read the 'metadata' for the field 'x' (type and offset details):
@@ -887,31 +887,25 @@ class ArrReaderGenerator:
     self.offset = offset
     self.m = m
     self.vlen = reader.vlen
-
+    
   def __len__(self):
     return self.size
   
   def __call__(self):
     o = self.offset
-    for i in xrange(self.size):
+    for i in xrange(0, self.size):
        tv = self.get(i)
        o += self.vlen
        yield(tv)
 
   def __getitem__(self, i):
     if not isinstance(i, (int,long)):
-      return
+      raise StopIteration
     return self.get(i)
-
-  def __getslice__(self, start, end):
-    rs = []
-    for i in range(start, end):
-      rs.append(self.get(i))
-    return rs
 
   def get(self, index):
     if index >= self.size:
-      return None
+      raise StopIteration
     o = self.offset + self.vlen * index
     return self.r.read(self.m, o)
   
@@ -1239,3 +1233,52 @@ class UuidReader:
   def read(self, m, o):
     bs = self.nr.read(m,o)
     return HobUUID(bytes=''.join(chr(e) for e in bs)) 
+
+
+#######
+#
+# RecSteam interface to structured data
+#
+#######
+class RecStream:
+  def __init__(self, stream):
+    self.nodes = []
+    self._reload(stream)
+  
+  def _reload(self, stream):
+    self.data = stream
+    def generate_node(s):
+      if s[0]:
+        self.nodes.append(s[0])
+      if s[1] != None:
+        generate_node(s[1])
+    generate_node(stream)
+   
+  def iter(self):
+    for nd in self.nodes:
+      for v in nd():
+        yield v
+  
+  def __len__(self):
+    return sum((len(x) for x in self.nodes))
+
+  def __str__(self):
+    sz = 0
+    content = ""
+    for v in self.iter():
+      sz += 1
+      if sz > 10:
+        content += "... ... ..."
+        break
+      content += "{}. {}\n".format(sz, v)
+    return content
+
+  def __getitem__(self, i):
+    c = 0
+    for nd in self.nodes:
+      if i >= (c + len(nd)):
+        c += len(nd)
+      else:
+        return nd[i-c]
+  
+    raise StopIteration
