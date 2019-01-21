@@ -138,7 +138,7 @@ struct SystemWatch {
 };
 
 SystemWatch* watcher() {
-  static SystemWatch w;
+  thread_local static SystemWatch w;
   return &w;
 }
 #elif defined(BUILD_OSX)
@@ -149,7 +149,7 @@ struct SystemWatch {
   }
 
   static SystemWatch* watcher() {
-    static SystemWatch w;
+    thread_local static SystemWatch w;
     return &w;
   }
 
