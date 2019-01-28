@@ -229,6 +229,8 @@ void installInterruptHandler() {
 void evalLine(char*);
 
 void repl(evaluator*) {
+  signal(SIGWINCH, SIG_IGN);
+
   // set up stdin to be read incrementally
   std::ostringstream prompt;
   prompt << resetfmt() << setbold() << setfgc(colors.promptfg) << "> " << setfgc(colors.stdtextfg) << std::flush;
