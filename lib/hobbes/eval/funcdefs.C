@@ -645,6 +645,8 @@ void initStdFuncDefs(cc& ctx) {
   ctx.bind("ceil",   &lceil);
   ctx.bind("floor",  &lfloor);
   ctx.bind("truncd", &truncd);
+  ctx.bind("sqrt",   &sqrt);
+  ctx.bind("log",    &log);
 
   // this should never be called, it's only here to do something in the event of variant tag match failure
   ctx.bind(".failvarmatch", &failvarmatch);
