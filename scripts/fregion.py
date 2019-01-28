@@ -8,12 +8,20 @@
 #      f = fregion.FRegion(P)
 #
 #    to read the stored field 'x' out of f:
-#      f.x
+#      f.x       
+#    If x is recursive  type, it is lazy loaded, and it supports the interface as following:
+#      stream = RecStream(f.x)
 #
+#      1) for d in steam.iter()
+#      2) [] operator: stream[0] 
+#      3) len(f.x)       
+
+#      
 #    to read the 'metadata' for the field 'x' (type and offset details):
 #      meta(f).x
 #
-#    to add reading support for a custom user type:
+#    There are 2 ways to add reading support for a custom user type:
+#    1.
 #      fregion.FRegion.addType("MyTypeName", lambda renv, td, repty: makeMyTypeNameReader(renv,td,repty))
 #    where:
 #      'renv'  will be the "reader environment" (necessary for any call to makeReader)
@@ -28,6 +36,14 @@
 #      and:
 #        the returned value may be whatever the application decides is sensible
 #
+#    2. Just use the decorator RegReader like:
+#        @RegReader("MyTypeName")
+#        class MyTypeReader:
+#          def __init__(self, renv, ty, repty):
+#            pass
+#          def read(self, m, offset):
+#            pass
+#
 ########################################################
 
 import os
@@ -35,6 +51,60 @@ import mmap
 import struct
 import math
 import datetime
+import uuid
+import base64
+
+#######
+#
+# useful tools
+#
+#######
+class Loader:
+  """
+    Lazy loading data from file
+  """
+  def __init__(self, fn, *args, **kw):
+    self.fn = fn
+    self.args = args
+    self.kw = kw
+  
+  def __getitem__(self, k):
+    if self.fn:
+      return self.fn(*self.args, **self.kw)[k]
+    return None
+  
+  def __call__(self):
+    if self.fn:
+      v =  self.fn(*self.args, **self.kw)
+      if isinstance(v, ArrReaderGenerator):
+        return v()
+      return v
+    return None
+  
+  @property
+  def value(self):
+    if self.fn:
+      return self.fn(*self.args, **self.kw)
+    return None
+  
+  def __str__(self):
+    return "{}".format(self.fn(*self.args, **self.kw))
+
+  def reader(self):
+    return self.fn.im_self
+
+def LazyRead(enable):
+  """
+    decorator to config lazy read function
+  """
+  def apply(func):  
+    def wrapper(*args, **kw):
+      return Loader(func, *args, **kw)
+    if enable:
+      return wrapper
+    else:
+      return func
+  return apply
 
 #######
 #
@@ -542,7 +612,7 @@ def V1toV2Type(ty):
   tyDisp = {
     "prim":    lambda p:  p if (p.rep == None) else Prim(p.name, V1toV2Type(p.rep)),
     "var":     lambda v:  v,
-    "farr":    lambda fa: FixedArr(V1toV2Type(fa.ty), V1toV2Type(ta.tlen)),
+    "farr":    lambda fa: FixedArr(V1toV2Type(fa.ty), V1toV2Type(fa.tlen)),
     "arr":     lambda a:  App(Prim("darray", Abs(["t"], Prim("long", None))), [V1toV2Type(a.ty)]),
     "variant": lambda v:  Variant([(ctor[0], ctor[1], V1toV2Type(ctor[2])) for ctor in v.ctors]),
     "struct":  lambda s:  Struct([(field[0], field[1], V1toV2Type(field[2])) for field in s.fields]),
@@ -682,7 +752,7 @@ class FArrReader:
     self.esz = sizeOf(ty)
   def read(self,m,offset):
     r=[]
-    o=offset;
+    o=offset
     for i in range(self.c):
       r.append(self.rdr.read(m,o))
       o += self.esz
@@ -730,7 +800,7 @@ class StructView:
     else:
       return self.fs == other.fs and self.vs == other.vs
   def __getattr__(self, attr):
-    return self.vs[self.foffs[attr]]
+    return self.vs[self.foffs[attr]].value
 
 class StructReader:
   def __init__(self, renv, fs, tys):
@@ -745,7 +815,7 @@ class StructReader:
   def read(self,m,offset):
     vs=[]
     for i in range(len(self.os)):
-      vs.append(self.rs[i].read(m,offset+self.os[i]))
+      vs.append(Loader(self.rs[i].read ,m,offset+self.os[i]))
     return StructView(self.fs, self.foffs, vs)
 
 class MaybeReader:
@@ -777,16 +847,21 @@ class EnumReader:
   def read(self,m,offset):
     t = self.tr.read(m,offset)
     return EnumView(self.ns, t)
-    
+
 class VariantView:
   def __init__(self, cn, value):
     self.cn    = cn
-    self.value = value
+    self.v = value
+
+  @property
+  def value(self):
+    return self.v()
+  
   def __repr__(self):
     if (len(self.cn)>0 and self.cn[0] == '.'):
-      return "|" + self.cn[2:] + "=" + str(self.value) + "|"
+      return "|" + self.cn[2:] + "=" + str(self.v) + "|"
     else:
-      return "|" + self.cn + "=" + str(self.value) + "|"
+      return "|" + self.cn + "=" + str(self.v) + "|"
 
 class VariantReader:
   def __init__(self, renv, ctors):
@@ -804,7 +879,7 @@ class VariantReader:
     self.cns  = cns
   def read(self,m,offset):
     t = self.tr.read(m,offset)
-    return VariantView(self.cns[t], self.crs[t].read(m,offset+self.poff))
+    return VariantView(self.cns[t], Loader(self.crs[t].read, m, offset+self.poff))
 
 class StrReader:
   def __init__(self):
@@ -813,20 +888,45 @@ class StrReader:
     n=self.nr.read(m,offset)
     return m[offset+8:offset+8+n]
 
+class ArrReaderGenerator:
+  def __init__(self, m, reader, size, offset):
+    self.r = reader.r
+    self.size = size
+    self.offset = offset
+    self.m = m
+    self.vlen = reader.vlen
+    
+  def __len__(self):
+    return self.size
+  
+  def __call__(self):
+    o = self.offset
+    for i in xrange(0, self.size):
+       tv = self.get(i)
+       o += self.vlen
+       yield(tv)
+
+  def __getitem__(self, i):
+    if not isinstance(i, (int,long)):
+      raise StopIteration
+    return self.get(i)
+
+  def get(self, index):
+    if index >= self.size:
+      raise StopIteration
+    o = self.offset + self.vlen * index
+    return self.r.read(self.m, o)
+  
 class ArrReader:
   def __init__(self,renv,ty):
     self.nr   = UnpackReader('Q',8)
     self.r    = makeReader(renv,ty)
     self.vlen = sizeOf(ty)
+
   def read(self,m,offset):
     n=self.nr.read(m,offset)
-    vs=[]
-    o=offset+8
-    for i in range(n):
-      vs.append(self.r.read(m,o))
-      o+=self.vlen
-    return vs
-
+    return ArrReaderGenerator(m, self, n, offset+8)
+   
 class NYIReader:
   def read(self,m,offset):
     raise Exception("nyi")
@@ -1015,20 +1115,26 @@ def meta(f): return FRMeta(f)
 #
 #######
 
+def RegReader(desc):
+  def newCls(cls):
+    FRegion.addType(desc, lambda renv, ty, repty: cls(renv, ty, repty))
+    return cls
+  return newCls
+
 # date/time
+@RegReader("datetime")
 class DateTimeReader:
-  def __init__(self, renv, repty):
+  def __init__(self, renv, ty, repty):
     self.nr = makeReader(renv, repty)
   def read(self,m,o):
     return datetime.datetime.fromtimestamp(self.nr.read(m,o)/1000000.0)
 
-FRegion.addType("datetime", lambda renv, ty, repty: DateTimeReader(renv, repty))
-
 # file refs (within-file pointer types)
+@RegReader("fileref")
 class FileRefReader:
   def __init__(self,renv,ty,repty):
     self.refr = makeReader(renv,repty)
-    self.r    = makeReader(renv,ty)
+    self.r    = makeReader(renv,ty.args[0])
   def read(self,m,offset):
     o=self.refr.read(m,offset)
     if (o==0):
@@ -1036,19 +1142,16 @@ class FileRefReader:
     else:
       return self.r.read(m,o)
 
-FRegion.addType("fileref", lambda renv, ty, repty: FileRefReader(renv, ty.args[0], repty))
-
 # carrays (variable-length arrays stored with a static capacity)
 FRegion.addType("carray", lambda renv, ty, repty: makeArrReader(renv, Arr(ty.args[0])))
 
 # darrays (old style variable-length arrays stored with capacity)
+@RegReader("darray")
 class DArrReader:
-  def __init__(self,renv,ty):
-    self.ar = makeArrReader(renv,Arr(ty))
+  def __init__(self,renv,ty,repty):
+    self.ar = makeArrReader(renv,Arr(ty.args[0]))
   def read(self,m,offset):
     return self.ar.read(m,offset+8)
-
-FRegion.addType("darray", lambda renv, ty, repty: DArrReader(renv, ty.args[0]))
 
 # skip-list maps
 class SLView:
@@ -1095,7 +1198,7 @@ class SLView:
     ks=[]
     eqs=[]
     vs=[]
-    n=self.sl.root.next[0]
+    n=self.sl.root().next[0]
     while (not(n == None)):
       ks.append(str(n.key))
       eqs.append(' = ')
@@ -1103,11 +1206,78 @@ class SLView:
       n=n.next[0]
     return tableFormat([ks,eqs,vs])
 
+@RegReader("slmap")
 class SLMapReader:
-  def __init__(self,renv,repty):
+  def __init__(self,renv,ty,repty):
     self.sr = makeReader(renv, repty)
   def read(self,m,offset):
     return SLView(self.sr.read(m,offset))
 
-FRegion.addType("slmap", lambda renv, ty, repty: SLMapReader(renv, repty))
+#uuid
+class HobUUID(uuid.UUID):
+  def __init__(self, *args, **kwargs):
+    uuid.UUID.__init__(self, *args, **kwargs)
+  def __str__(self):
+    return base64.b64encode(self.bytes, '-_')[:-2] + 'A'
 
+  @staticmethod
+  def bytes2uuid(bs):
+    return HobUUID(bytes=''.join(chr(e) for e in bs))
+
+@RegReader("uuid")
+class UuidReader:
+  def __init__(self, renv, repty, ty):
+    self.nr = FArrReader(renv, Prim("byte", None), 16)
+  @LazyRead(True)
+  def read(self, m, o):
+    bs = self.nr.read(m,o)
+    return HobUUID(bytes=''.join(chr(e) for e in bs)) 
+
+
+#######
+#
+# RecSteam interface to structured data
+#
+#######
+class RecStream:
+  def __init__(self, stream):
+    self.nodes = []
+    self._reload(stream)
+  
+  def _reload(self, stream):
+    self.data = stream
+    def generate_node(s):
+      if s[0]:
+        self.nodes.append(s[0])
+      if s[1] != None:
+        generate_node(s[1])
+    generate_node(stream)
+   
+  def iter(self):
+    for nd in self.nodes:
+      for v in nd():
+        yield v
+  
+  def __len__(self):
+    return sum((len(x) for x in self.nodes))
+
+  def __str__(self):
+    sz = 0
+    content = ""
+    for v in self.iter():
+      sz += 1
+      if sz > 10:
+        content += "... ... ..."
+        break
+      content += "{}. {}\n".format(sz, v)
+    return content
+
+  def __getitem__(self, i):
+    c = 0
+    for nd in self.nodes:
+      if i >= (c + len(nd)):
+        c += len(nd)
+      else:
+        return nd[i-c]
+  
+    raise StopIteration

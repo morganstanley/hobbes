@@ -20,6 +20,8 @@ class PythonProc {
 public:
   PythonProc(const std::string& py, const std::string& moddir, const std::string& script, const std::string& db) : py(py), moddir(moddir), script(script), db(db)
   {
+    if(this->py == "")
+      this->py = "/usr/bin/python"; // Give a default python execute path
     this->argv.push_back(this->py.c_str());
     this->argv.push_back(this->script.c_str());
     this->argv.push_back(this->db.c_str());
@@ -227,7 +229,7 @@ def smapInto(r,f,x):
   if (x == None):
     return r
   else:
-    r.append(f(x[0]))
+    r.append(f(x[0]()))
     return smapInto(r,f,x[1])
 def smap(f,x):
   r=[]
