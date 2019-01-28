@@ -800,7 +800,7 @@ class StructView:
     else:
       return self.fs == other.fs and self.vs == other.vs
   def __getattr__(self, attr):
-    return self.vs[self.foffs[attr]]
+    return self.vs[self.foffs[attr]].value
 
 class StructReader:
   def __init__(self, renv, fs, tys):
@@ -815,7 +815,7 @@ class StructReader:
   def read(self,m,offset):
     vs=[]
     for i in range(len(self.os)):
-      vs.append(Loader(self.rs[i].read, m, offset+self.os[i]))
+      vs.append(Loader(self.rs[i].read ,m,offset+self.os[i]))
     return StructView(self.fs, self.foffs, vs)
 
 class MaybeReader:
@@ -851,12 +851,17 @@ class EnumReader:
 class VariantView:
   def __init__(self, cn, value):
     self.cn    = cn
-    self.value = value
+    self.v = value
+
+  @property
+  def value(self):
+    return self.v()
+  
   def __repr__(self):
     if (len(self.cn)>0 and self.cn[0] == '.'):
-      return "|" + self.cn[2:] + "=" + str(self.value) + "|"
+      return "|" + self.cn[2:] + "=" + str(self.v) + "|"
     else:
-      return "|" + self.cn + "=" + str(self.value) + "|"
+      return "|" + self.cn + "=" + str(self.v) + "|"
 
 class VariantReader:
   def __init__(self, renv, ctors):
@@ -874,8 +879,7 @@ class VariantReader:
     self.cns  = cns
   def read(self,m,offset):
     t = self.tr.read(m,offset)
-    v = Loader(self.crs[t].read, m, offset+self.poff)
-    return VariantView(self.cns[t], v)
+    return VariantView(self.cns[t], Loader(self.crs[t].read, m, offset+self.poff))
 
 class StrReader:
   def __init__(self):
@@ -922,7 +926,7 @@ class ArrReader:
   def read(self,m,offset):
     n=self.nr.read(m,offset)
     return ArrReaderGenerator(m, self, n, offset+8)
-
+   
 class NYIReader:
   def read(self,m,offset):
     raise Exception("nyi")
@@ -1158,12 +1162,12 @@ class SLView:
   def findNextGLEB(n, level, k):
     while (not(n==None)):
       sn=n.next[level]
-      if (sn==None or k < sn.key()):
+      if (sn==None or k < sn.key):
         if (level==0):
           return n
         else:
           level=level-1
-      elif (sn.key() <= k):
+      elif (sn.key <= k):
         n = sn
       else:
         return n
@@ -1172,21 +1176,21 @@ class SLView:
     if (self.sl.count==0):
       return None
     else:
-      n = SLView.findNextGLEB(self.sl.root(), len(self.sl.root().next.value)-1, k)
-      if (not(n == None) and n.key()==k):
-        return n.value()
+      n = SLView.findNextGLEB(self.sl.root, len(self.sl.root.next)-1, k)
+      if (not(n == None) and n.key==k):
+        return n.value
       else:
         return None
   def __contains__(self,k):
     if (self.sl.count==0):
       return False
     else:
-      n=SLView.findNextGLEB(self.sl.root(), len(self.sl.root().next.value)-1, k)
+      n=SLView.findNextGLEB(self.sl.root, len(self.sl.root.next)-1, k)
       return (not(n==None) and n.key==k)
   def __iter__(self):
     n=self.sl.root.next[0]
     while (not(n==None)):
-      yield (n.key(),n.value())
+      yield (n.key,n.value)
       n=n.next[0]
   def __len__(self): return self.sl.count
   def __str__(self): return self.__repr__()
