@@ -4,12 +4,14 @@
 
 namespace hog {
 
+std::string StatFile::directory = hobbes::storage::defaultStoreDir();
+
 StatFile& StatFile::instance() {
   static StatFile statFile;
   return statFile;
 }
 
-StatFile::StatFile() : statFile(hobbes::storage::defaultStoreDir() + "/hogstat.db") {}
+StatFile::StatFile() : statFile(StatFile::directory + "/hogstat.db") {}
 
 }
 

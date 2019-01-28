@@ -67,6 +67,8 @@ public:
     return statFile.fileData()->path;
   }
 
+  static std::string directory;
+
 private:
   StatFile();
   ~StatFile() = default;

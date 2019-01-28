@@ -109,7 +109,7 @@ void showUsage() {
     "  -p t s host:port+ : decides to send data to remote process(es) every t time units or every s uncompressed bytes written\n"
     "  -s port           : decides to receive data on the given port\n"
     "  -c                : decides to store equally-typed data across processes in a single file\n"
-    "  -m <dir>          : decides where to place the domain socket for producer registration (default: " << hobbes::storage::defaultStoreDir() << ")\n"
+    "  -m <dir>          : decides where to place the domain socket for producer registration and hog stat file (default: " << hobbes::storage::defaultStoreDir() << ")\n"
     "  -z                : store data compressed\n"
   << std::endl;
 }
@@ -186,6 +186,7 @@ RunMode config(int argc, const char** argv) {
       ++i;
       if (i < argc) {
         r.groupServerDir = argv[i];
+        StatFile::directory = argv[i];
       } else {
         throw std::runtime_error("need domain socket directory for producer registration");
       }
