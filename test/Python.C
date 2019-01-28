@@ -206,19 +206,19 @@ f = fregion.FRegion(sys.argv[1])
 if (f.s != 42):
   print("Expected f.s=42 but f.s="+str(f.s))
   sys.exit(-1)
-if (f.ts.x != 42):
+if (f.ts.x() != 42):
   print("Expected f.ts.x=42 but f.ts.x="+str(f.ts.x))
   sys.exit(-1)
 if (f.p[0] != 42):
   print("Expected f.p[0]=42 but f.p[0]="+str(f.p[0]))
   sys.exit(-1)
-if (f.tv.cn != 'cars' or f.tv.value != 42):
+if (f.tv.cn != 'cars' or f.tv.value() != 42):
   print("Expected f.tv=|cars=42| but f.tv="+str(f.tv))
   sys.exit(-1)
 if (sum([sum(xs) for xs in f.mat]) != 2025):
   print("Expected matrix to sum to 2025 but failed: "+str(f.mat))
   sys.exit(-1)
-if (sum(map(lambda ts:ts.x,f.tss)) != 1890):
+if (sum(map(lambda ts:ts.x(),f.tss)) != 1890):
   print("Expected .x over f.tss to sum to 1890 but failed: "+str(f.tss))
   sys.exit(-1)
 if (sum([sum(x.value) for x in f.tvs if x.cn=='chickens']) != 135):
@@ -236,7 +236,7 @@ def smap(f,x):
   smapInto(r,f,x)
   return r
 
-if (sum(smap(lambda vs: sum(map(lambda v:v.x, vs)),f.stss[1])) != 207900):
+if (sum(smap(lambda vs: sum(map(lambda v:v.x(), vs)),f.stss)) != 207900):
   print("Expected .x over f.stss to sum to 207900 but failed: "+str(f.stss))
   sys.exit(-1)
 
