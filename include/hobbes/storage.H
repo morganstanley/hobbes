@@ -912,6 +912,11 @@ public:
       } else {
         // there's nothing to read, switch into reader-wait mode
         switch (xchg(waitState(), PRIV_HSTORE_STATE_READER_WAITING)) {
+          case PRIV_HSTORE_STATE_READER_WAITING:
+          // for some reason (e.g. resuming on a shm block which was being operated
+          // upon by an writer/reader instance that unnaturally terminated)
+          // this reader is in this state but not waiting as in the UNBLOCKED
+          // case. Just do UNBLOCKED case to resolve the potential infinite loop.
           case PRIV_HSTORE_STATE_UNBLOCKED:
             // we previously were unblocked
             // make sure that we still need to block the reader (in case the write index moved while we were getting here)
