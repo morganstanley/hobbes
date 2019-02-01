@@ -2305,16 +2305,7 @@ public:
         throw std::runtime_error(
           "Expected definition of '" + n + "' in file, but none was found"
         );
-      } else {
-        // binding defined, make sure that the types match
-        if (b->second.type != ty::encoding(ty::array(store<T>::storeType()))) {
-          throw std::runtime_error(
-            "File already defines '" + n + "' but with an inconsistent type.\n" +
-            "  Expected: " + ty::show(ty::array(store<T>::storeType())) + "\n"
-            "  Actual:   " + ty::show(ty::decode(b->second.type))
-          );
-        }
-        
+      } else if (b->second.type == ty::encoding(ty::array(store<T>::storeType()))) {
         // map the array length to determine how much to map for the array
         const size_t* lenp = reinterpret_cast<const size_t*>(mapFileData(this->f, b->second.offset, sizeof(size_t)));
         size_t        len  = *lenp;
@@ -2326,6 +2317,23 @@ public:
         unmapFileData(this->f, lenp, sizeof(size_t));
 
         return result;
+      } else if (b->second.type == ty::encoding(ty::fileRef(ty::array(store<T>::storeType())))) {
+        const size_t* offp = reinterpret_cast<const size_t*>(mapFileData(this->f, b->second.offset, sizeof(size_t)));
+        size_t off = *offp;
+        unmapFileData(this->f, offp, sizeof(size_t));
+
+        const size_t*   lenp   = reinterpret_cast<const size_t*>(mapFileData(this->f, off, sizeof(size_t)));
+        size_t          len    = *lenp;
+        const array<T>* result = reinterpret_cast<const array<T>*>(mapFileData(this->f, off, sizeof(size_t)+len*sizeof(T)));
+        unmapFileData(this->f, lenp, sizeof(size_t));
+        return result;
+      } else {
+        // binding defined, make sure that the types match
+        throw std::runtime_error(
+          "File defines '" + n + "' but with an inconsistent type.\n" +
+          "  Expected: " + ty::show(ty::array(store<T>::storeType())) + "\n"
+          "  Actual:   " + ty::show(ty::decode(b->second.type))
+        );
       }
     }
 
