@@ -1,6 +1,7 @@
 
 #include <hobbes/lang/module.H>
 #include <hobbes/util/array.H>
+#include <hobbes/util/lannotation.H>
 #include <sstream>
 
 namespace hobbes {
@@ -16,6 +17,22 @@ void Module::show(std::ostream& out) const {
     (*md)->show(out);
     out << std::endl;
   }
+}
+
+bool isValidOption(const std::string& o) {
+  return o == "SafeArrays";
+}
+
+void Module::setOption(const std::string& o, const LexicalAnnotation& la) {
+  if (!isValidOption(o)) {
+    throw annotated_error(la, "Unsupported language option: " + o);
+  } else {
+    this->opts.push_back(o);
+  }
+}
+
+const std::vector<std::string>& Module::options() const {
+  return this->opts;
 }
 
 /* module defs */

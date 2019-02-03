@@ -175,6 +175,7 @@ void showShellHelp() {
   cds.push_back(CmdDesc(":z E",   "Evaluate E and show a breakdown of compilation/evaluation time"));
   cds.push_back(CmdDesc(":c N",   "Describe the type class named N"));
   cds.push_back(CmdDesc(":i N",   "Show instances and instance generators for the type class N"));
+  cds.push_back(CmdDesc(":o K",   "Enable language option K"));
   showShellHelp(cds);
 }
 
@@ -305,7 +306,6 @@ void evalLine(char* x) {
       return;
     }
 
-    // should we save or load a file?
     if (line.size() > 2) {
       std::string cmd = line.substr(0, 2);
 
@@ -317,6 +317,9 @@ void evalLine(char* x) {
         return;
       } else if (cmd == ":i") {
         eval->showInstances(str::trim(line.substr(2)));
+        return;
+      } else if (cmd == ":o") {
+        eval->setOption(str::trim(line.substr(2)));
         return;
       }
     }
@@ -551,13 +554,14 @@ using namespace hi;
 void printUsage() {
   std::cout << "hi : an interactive interpreter for hobbes" << std::endl
             << std::endl
-            << "usage: hi [-p port] [-w port] [-e expr] [-s] [-x] [-a name=val]* [file+]" << std::endl
+            << "usage: hi [-p port] [-w port] [-e expr] [-s] [-x] [-o opt] [-a name=val]* [file+]" << std::endl
             << std::endl
             << "    -p          : run a REPL server on <port>"                                              << std::endl
             << "    -w          : run a web server on <port>"                                               << std::endl
             << "    -e          : evaluate <expr>"                                                          << std::endl
             << "    -s          : run in 'silent' mode without normal formatting"                           << std::endl
             << "    -x          : exit after input scripts are evaluated"                                   << std::endl
+            << "    -o opt      : enable language option 'opt'"                                             << std::endl
             << "    -a name=val : add a name/val pair to the set of arguments passed to subsequent scripts" << std::endl
             << "    files       : hobbes script files to evaluate"                                          << std::endl
             << std::endl;
@@ -582,6 +586,8 @@ Args processCommandLine(int argc, char** argv) {
       m = 3;
     } else if (arg == "-a") {
       m = 4;
+    } else if (arg == "-o") {
+      m = 5;
     } else if (arg == "-c" || arg == "--color") {
       r.useDefColors = true;
     } else if (arg == "-s") {
@@ -615,6 +621,10 @@ Args processCommandLine(int argc, char** argv) {
         m = 0;
         break;
         }
+      case 5:
+        r.opts.push_back(arg);
+        m = 0;
+        break;
       }
     }
   }

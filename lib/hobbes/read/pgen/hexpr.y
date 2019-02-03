@@ -333,6 +333,7 @@ extern PatVarCtorFn patVarCtorFn;
 %token TPARSEDEFN        "dodefn"
 %token TPARSEEXPR        "doexpr"
 
+%token TOPTION "option"
 %token TMODULE "module"
 %token TWHERE  "where"
 %token TIMPORT "import"
@@ -494,7 +495,8 @@ s: "domodule" module        { yyParsedModule = $2;                     }
  | "doexpr"   l0expr        { yyParsedExpr   = $2;                     }
 
 /* modules */
-module: "module" id "where" defs { $$ = new Module(*$2, *$4); }
+module: "option" id module       { $$ = $3; $$->setOption(*$2, m(@1)); }
+      | "module" id "where" defs { $$ = new Module(*$2, *$4); }
       | defs                     { $$ = new Module(freshName(), *$1); }
 
 defs: /* nothing */ { $$ = autorelease(new ModuleDefs()); }
