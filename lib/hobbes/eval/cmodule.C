@@ -78,11 +78,12 @@ void import(cc* e, const std::string& mname) {
 }
 
 // replace type variable references with expanded aliases or opaque definitions as necessary
-ExprPtr applyTypeDefns(cc*, const ExprPtr&);
+ExprPtr applyTypeDefns(const ModulePtr&, cc*, const ExprPtr&);
 
 struct appTyDefnF : public switchTyFn {
+  ModulePtr m;
   cc* e;
-  appTyDefnF(cc* e) : e(e) { }
+  appTyDefnF(const ModulePtr& m, cc* e) : m(m), e(e) { }
   MonoTypePtr with(const TVar* v) const {
     const auto& tn = v->name();
 
@@ -100,62 +101,64 @@ struct appTyDefnF : public switchTyFn {
   }
 
   MonoTypePtr with(const TExpr* x) const {
-    return TExpr::make(applyTypeDefns(this->e, x->expr()));
+    return TExpr::make(applyTypeDefns(this->m, this->e, translateExprWithOpts(m->options(), x->expr())));
   }
 };
-MonoTypePtr applyTypeDefns(cc* e, const MonoTypePtr& t) {
+MonoTypePtr applyTypeDefns(const ModulePtr& m, cc* e, const MonoTypePtr& t) {
   auto ua = e->unappTyDefns.find(t.get());
   if (ua != e->unappTyDefns.end()) return ua->second;
 
-  MonoTypePtr r = switchOf(t, appTyDefnF(e));
+  MonoTypePtr r = switchOf(t, appTyDefnF(m, e));
   e->unappTyDefns[t.get()] = r;
   return r;
 }
 
-MonoTypes applyTypeDefns(cc* e, const MonoTypes& ts) {
+MonoTypes applyTypeDefns(const ModulePtr& m, cc* e, const MonoTypes& ts) {
   MonoTypes r;
   for (const auto& t : ts) {
-    r.push_back(applyTypeDefns(e, t));
+    r.push_back(applyTypeDefns(m, e, t));
   }
   return r;
 }
 
-QualTypePtr applyTypeDefns(cc* e, const QualTypePtr& t) {
+QualTypePtr applyTypeDefns(const ModulePtr& m, cc* e, const QualTypePtr& t) {
   Constraints cs;
   for (const auto& c : t->constraints()) {
-    cs.push_back(ConstraintPtr(new Constraint(c->name(), applyTypeDefns(e, c->arguments()))));
+    cs.push_back(ConstraintPtr(new Constraint(c->name(), applyTypeDefns(m, e, c->arguments()))));
   }
-  return QualTypePtr(new QualType(cs, applyTypeDefns(e, t->monoType())));
+  return QualTypePtr(new QualType(cs, applyTypeDefns(m, e, t->monoType())));
 }
 
 struct appTyDefnEF : public switchExprTyFn {
+  ModulePtr m;
   cc* e;
-  appTyDefnEF(cc* e) : e(e) { }
-  QualTypePtr withTy(const QualTypePtr& t) const { if (t) return applyTypeDefns(this->e, t); else return t; }
+  appTyDefnEF(const ModulePtr& m, cc* e) : m(m), e(e) { }
+  QualTypePtr withTy(const QualTypePtr& t) const { if (t) return applyTypeDefns(this->m, this->e, t); else return t; }
 };
-ExprPtr applyTypeDefns(cc* e, const ExprPtr& x) {
-  return switchOf(x, appTyDefnEF(e));
+ExprPtr applyTypeDefns(const ModulePtr& m, cc* e, const ExprPtr& x) {
+  return switchOf(x, appTyDefnEF(m, e));
 }
 
 struct appTyDefnMF : public switchMDefTyFn {
+  ModulePtr m;
   cc* e;
-  appTyDefnMF(cc* e) : e(e) { }
-  QualTypePtr withTy(const QualTypePtr& t) const { if (t) return applyTypeDefns(this->e, t); else return t; }
+  appTyDefnMF(const ModulePtr& m, cc* e) : m(m), e(e) { }
+  QualTypePtr withTy(const QualTypePtr& t) const { if (t) return applyTypeDefns(this->m, this->e, t); else return t; }
 };
-ModuleDefPtr applyTypeDefns(cc* e, const ModuleDefPtr& md) {
-  return switchOf(md, appTyDefnMF(e));
+ModuleDefPtr applyTypeDefns(const ModulePtr& m, cc* e, const ModuleDefPtr& md) {
+  return switchOf(md, appTyDefnMF(m, e));
 }
 
-ModuleDefs applyTypeDefns(cc* e, const ModuleDefs& mds) {
+ModuleDefs applyTypeDefns(const ModulePtr& m, cc* e, const ModuleDefs& mds) {
   ModuleDefs r;
   for (const auto& md : mds) {
-    r.push_back(applyTypeDefns(e, md));
+    r.push_back(applyTypeDefns(m, e, md));
   }
   return r;
 }
 
 ModulePtr applyTypeDefns(cc* e, const ModulePtr& m) {
-  return ModulePtr(new Module(m->name(), applyTypeDefns(e, m->definitions())));
+  return ModulePtr(new Module(m->name(), applyTypeDefns(m, e, m->definitions())));
 }
 
 // index type variables and sanity check names to ensure no duplicates
@@ -240,7 +243,7 @@ TClass::Members resolveMembers(const MonoTypeSubst& s, const MVarTypeDefs& mvtds
 }
 
 // make a type class
-void compile(cc* e, const ClassDef* cd) {
+void compile(const ModulePtr&, cc* e, const ClassDef* cd) {
   try {
     NameIndexing    tns  = nameIndexing(cd->vars());
     MonoTypeSubst   s    = substitution(tns);
@@ -255,7 +258,7 @@ void compile(cc* e, const ClassDef* cd) {
 }
 
 // compile class instance member definitions
-MemberMapping compileMembers(MonoTypeUnifier* u, const TClassPtr& c, const MonoTypes& targs, cc* e, const MVarDefs& ds, bool asfn) {
+MemberMapping compileMembers(const ModulePtr& m, MonoTypeUnifier* u, const TClassPtr& c, const MonoTypes& targs, cc* e, const MVarDefs& ds, bool asfn) {
   // Class X => Instance Y, X unify Y applied to class member types should yield instance member types
   MonoTypes cargs = freshTypeVars(c->typeVars()); 
   mgu(targs, cargs, u);
@@ -278,6 +281,7 @@ MemberMapping compileMembers(MonoTypeUnifier* u, const TClassPtr& c, const MonoT
     } else {
       mexp = d->varExpr();
     }
+    mexp = translateExprWithOpts(m, mexp);
 
     // determine how to store this member depending on whether we're making an instance function,
     // or if we're generating a new function for a ground instance
@@ -299,7 +303,7 @@ MemberMapping compileMembers(MonoTypeUnifier* u, const TClassPtr& c, const MonoT
 }
 
 // make a type class instance
-void compile(cc* e, const InstanceDef* id) {
+void compile(const ModulePtr& m, cc* e, const InstanceDef* id) {
   try {
     UnqualifierPtr tyc = e->typeEnv()->lookupUnqualifier(id->className());
     TClassPtr      c   = std::dynamic_pointer_cast<TClass>(tyc);
@@ -313,7 +317,7 @@ void compile(cc* e, const InstanceDef* id) {
     NameIndexing  tns   = nameIndexing(tvarNames(id->args()));
     MonoTypes     targs = id->args();
     bool          asfn  = id->constraints().size() > 0 || tvarNames(targs).size() > 0;
-    MemberMapping ms    = compileMembers(&u, c, targs, e, id->members(), asfn);
+    MemberMapping ms    = compileMembers(m, &u, c, targs, e, id->members(), asfn);
 
     // is this a ground instance or an instance function?
     if (!asfn) {
@@ -334,7 +338,7 @@ void compile(cc* e, const InstanceDef* id) {
 }
 
 // compile import statements
-void compile(cc* e, const MImport* mimp) {
+void compile(const ModulePtr&, cc* e, const MImport* mimp) {
   pushModuleDir(mimp->path());
   try {
     import(e, mimp->name());
@@ -365,7 +369,7 @@ MonoTypePtr forceMonotype(cc* e, const QualTypePtr& qt, const LexicalAnnotation&
   }
 }
 
-void compile(cc* e, const MTypeDef* mtd) {
+void compile(const ModulePtr&, cc* e, const MTypeDef* mtd) {
   switch (mtd->visibility()) {
   case MTypeDef::Transparent:
     e->defineTypeAlias(mtd->name(), mtd->arguments(), forceMonotype(e, mtd->type(), mtd->la()));
@@ -379,8 +383,8 @@ void compile(cc* e, const MTypeDef* mtd) {
 }
 
 // compile regular variable definitions
-void compile(cc* e, const MVarDef* mvd) {
-  ExprPtr vde = (mvd->varWithArgs().size() == 1) ? mvd->varExpr() : ExprPtr(new Fn(Fn::VarNames(mvd->varWithArgs().begin() + 1, mvd->varWithArgs().end()), mvd->varExpr(), mvd->la()));
+void compile(const ModulePtr& m, cc* e, const MVarDef* mvd) {
+  ExprPtr vde = translateExprWithOpts(m, (mvd->varWithArgs().size() == 1) ? mvd->varExpr() : ExprPtr(new Fn(Fn::VarNames(mvd->varWithArgs().begin() + 1, mvd->varWithArgs().end()), mvd->varExpr(), mvd->la())));
 
   // make sure that globals with inaccessible names (evaluated for side-effects) have monomorphic type
   // (otherwise they'll quietly fail to run)
@@ -393,7 +397,7 @@ void compile(cc* e, const MVarDef* mvd) {
 }
 
 // compile forward-declarations
-void compile(cc* e, const MVarTypeDef* vtd) {
+void compile(const ModulePtr&, cc* e, const MVarTypeDef* vtd) {
   try {
     e->forwardDeclare(vtd->varName(), vtd->varType());
   } catch (std::exception& ex) {
@@ -405,24 +409,139 @@ void compile(cc* e, const MVarTypeDef* vtd) {
 //   (this disallows things like mutual recursion)
 void compile(cc* e, const ModulePtr& m) {
   for (auto tmd : m->definitions()) {
-    auto md = applyTypeDefns(e, tmd);
+    auto md = applyTypeDefns(m, e, tmd);
 
     if (const MImport* imp = is<MImport>(md)) {
-      compile(e, imp);
+      compile(m, e, imp);
     } else if (const ClassDef* cd = is<ClassDef>(md)) {
-      compile(e, cd);
+      compile(m, e, cd);
     } else if (const InstanceDef* id = is<InstanceDef>(md)) {
-      compile(e, id);
+      compile(m, e, id);
     } else if (const MTypeDef* td = is<MTypeDef>(md)) {
-      compile(e, td);
+      compile(m, e, td);
     } else if (const MVarDef* vd = is<MVarDef>(md)) {
-      compile(e, vd);
+      compile(m, e, vd);
     } else if (const MVarTypeDef* vtd = is<MVarTypeDef>(md)) {
-      compile(e, vtd);
+      compile(m, e, vtd);
     } else {
       throw std::runtime_error("Cannot compile module definition: " + show(md));
     }
   }
+}
+
+std::vector<std::string> getDefaultOptions() {
+  return str::strings();
+}
+
+OptDescs getAllOptions() {
+  OptDescs d;
+  d["SafeArrays"] = "Interpret array indexing 'safely' (always bounds-checked and mapped to an optional type in case of out-of-bounds access)";
+  return d;
+}
+
+ExprPtr translateExprWithOpts(const ModulePtr& m, const ExprPtr& e) {
+  return translateExprWithOpts(m->options(), e);
+}
+
+// make array indexing "safe"
+struct makeSafeAIndex : public switchExprC<ExprPtr> {
+  makeSafeAIndex() { }
+
+  ExprPtr withConst(const Expr* v) const { return ExprPtr(v->clone()); }
+
+  ExprPtr with(const Var* v) const { return ExprPtr(v->clone()); }
+
+  ExprPtr with(const Let* v) const {
+    return ExprPtr(new Let(v->var(), switchOf(v->varExpr(), *this), switchOf(v->bodyExpr(), *this), v->la()));
+  }
+
+  ExprPtr with(const LetRec* v) const {
+    str::set vns = toSet(v->varNames());
+    LetRec::Bindings bs;
+    for (const auto& b : v->bindings()) {
+      bs.push_back(LetRec::Binding(b.first, switchOf(b.second, *this)));
+    }
+    return ExprPtr(new LetRec(bs, switchOf(v->bodyExpr(), *this), v->la()));
+  }
+
+  ExprPtr with(const Fn* v) const {
+    return ExprPtr(new Fn(v->varNames(), switchOf(v->body(), *this), v->la()));
+  }
+
+  ExprPtr with(const App* v) const {
+    return ExprPtr(new App(switchOf(v->fn(), *this), switchOf(v->args(), *this), v->la()));
+  }
+
+  ExprPtr with(const Assign* v) const {
+    return ExprPtr(new Assign(switchOf(v->left(), *this), switchOf(v->right(), *this), v->la()));
+  }
+
+  ExprPtr with(const MkArray* v) const {
+    return ExprPtr(new MkArray(switchOf(v->values(), *this), v->la()));
+  }
+
+  ExprPtr with(const MkVariant* v) const {
+    return ExprPtr(new MkVariant(v->label(), switchOf(v->value(), *this), v->la()));
+  }
+  
+  ExprPtr with(const MkRecord* v) const {
+    return ExprPtr(new MkRecord(switchOf(v->fields(), *this), v->la()));
+  }
+
+  ExprPtr with(const AIndex* v) const {
+    return fncall(var("atm", v->la()), list(switchOf(v->array(), *this), switchOf(v->index(), *this)), v->la());
+  }
+
+  ExprPtr with(const Case* v) const {
+    const Case::Bindings& cbs = v->bindings();
+    Case::Bindings rcbs;
+    for (Case::Bindings::const_iterator cb = cbs.begin(); cb != cbs.end(); ++cb) {
+      rcbs.push_back(Case::Binding(cb->selector, cb->vname, switchOf(cb->exp, *this)));
+    }
+    ExprPtr de = v->defaultExpr();
+    if (de.get()) {
+      de = switchOf(de, *this);
+    }
+    return ExprPtr(new Case(switchOf(v->variant(), *this), rcbs, de, v->la()));
+  }
+
+  ExprPtr with(const Switch* v) const {
+    Switch::Bindings rsbs;
+    for (auto sb : v->bindings()) {
+      rsbs.push_back(Switch::Binding(sb.value, switchOf(sb.exp, *this)));
+    }
+    ExprPtr de = v->defaultExpr();
+    if (de) {
+      de = switchOf(de, *this);
+    }
+    return ExprPtr(new Switch(switchOf(v->expr(), *this), rsbs, de, v->la()));
+  }
+
+  ExprPtr with(const Proj* v) const {
+    return ExprPtr(new Proj(switchOf(v->record(), *this), v->field(), v->la()));
+  }
+
+  ExprPtr with(const Assump* v) const {
+    return ExprPtr(new Assump(switchOf(v->expr(), *this), v->ty(), v->la()));
+  }
+
+  ExprPtr with(const Pack* v) const {
+    return ExprPtr(new Pack(switchOf(v->expr(), *this), v->la()));
+  }
+
+  ExprPtr with(const Unpack* v) const {
+    return ExprPtr(new Unpack(v->varName(), switchOf(v->package(), *this), switchOf(v->expr(), *this), v->la()));
+  }
+};
+
+ExprPtr translateExprWithOpts(const std::vector<std::string>& opts, const ExprPtr& e) {
+  ExprPtr r = e;
+  for (const auto& opt : opts) {
+    if (opt == "SafeArrays") {
+      r = switchOf(r, makeSafeAIndex());
+    }
+  }
+  return r;
 }
 
 }

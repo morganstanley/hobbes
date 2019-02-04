@@ -79,6 +79,7 @@ std::string* identifier(const char* b, const char* e) {
 <BLOCK_COMMENT>\n      { yycolumn = 1; }
 <BLOCK_COMMENT>.       { }
 
+"option"               { return TOPTION; }
 "module"               { return TMODULE; }
 "where"                { return TWHERE; }
 "import"               { return TIMPORT; }
