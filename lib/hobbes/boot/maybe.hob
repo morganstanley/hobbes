@@ -41,7 +41,7 @@ mmapC :: (exists E.(((E, a) -> b) * E), ()+a) -> (()+b)
 mmapC f x = case x of |0:_=|0=()|, 1:y=|1=apply(f,y)||
 
 atm :: (Array as a, Convert i long) => (as, i) -> (()+a)
-atm xs i = let k=convert(i)::long in if (k < size(xs) and k > 0) then just(element(xs, k)) else nothing
+atm xs i = let k=convert(i)::long in if (k < size(xs) and k >= 0) then just(element(xs, k)) else nothing
 
 atMay :: (Convert b long) => ([a],b) -> (()+a)
 atMay = atm 
