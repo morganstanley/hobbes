@@ -1457,7 +1457,7 @@ struct descVariantF {
 
   template <typename T>
     void ctor(const char* n, int id) {
-      this->ctors->push_back(ty::Variant::Ctor(n, id, store<T>::storeType()));
+      this->ctors->push_back(ty::Variant::Ctor(n, id, store<T>::type()));
     }
 };
 
@@ -1466,7 +1466,7 @@ template <typename T>
     typedef typename T::as_variant_type VT;
     static const bool can_memcpy = store<VT>::can_memcpy;
 
-    static ty::desc storeType() {
+    static ty::desc type() {
       ty::Variant::Ctors cs;
       descVariantF f(&cs);
       T::meta(f);
