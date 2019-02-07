@@ -68,7 +68,7 @@ instance (ar={lbl:h*at}, br={lbl:h*bt}, Castable at bt) => Castable ar br where
 instance (ar={lbl:ah*at}, br={lbl:bh*()}, Castable ah bh) => Castable ar br where
   cast = unsafeCast
 
-instance (ap=(h*at), bp=(h*bp), Castable at bt) => Castable ap bp where
+instance (ap=(h*at), bp=(h*bt), Castable at bt) => Castable ap bp where
   cast = unsafeCast
 
 instance (ap=(ah*at), bp=(bh*()), Castable ah bh) => Castable ap bp where
