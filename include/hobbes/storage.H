@@ -1445,7 +1445,7 @@ template <typename ... Ts>
     static const bool can_memcpy = false;
     typedef storeVariantDef<0, sizeof...(Ts), Ts...> Reflect;
 
-    static void write(wpipe& p, const variant<Ts...>& x) {
+    static bool write(wpipe& p, const variant<Ts...>& x) {
       return x.template apply<bool, variantGenWrite, void, wpipe*>(&p);
     }
   };
