@@ -115,3 +115,13 @@ runRegexDFA cs i e s dfa =
       else
         (-1)
 
+// auto-flatten nested list comprehensions
+class MFlatten ts t | ts -> t where
+  mflatten :: ts -> [t]
+instance MFlatten [[a]] a where
+  mflatten = concat
+instance MFlatten [a] a where
+  mflatten = id
+instance (Array xs x, MFlatten [x] a) => MFlatten xs a where
+  mflatten xs = mflatten(xs[0:])
+

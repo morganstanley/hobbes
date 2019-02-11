@@ -732,5 +732,54 @@ str::set accessibleBindingNames(const PatternPtr& p) {
   return r;
 }
 
+// desugar list comprehensions
+ExprPtr irpatFunc(cc* c, const PatternPtr& pat, const ExprPtr& body, const LexicalAnnotation& la) {
+  return fn(str::strings(".arg"), compileMatch(c, list(var(".arg", la)), list(PatternRow(list(pat), body)), la), la);
+}
+
+ExprPtr rpatFunc(cc* c, const PatternPtr& pat, const ExprPtr& cond, const ExprPtr& body, const LexicalAnnotation& la) {
+  MonoTypePtr rty   = freshTypeVar();
+  MonoTypePtr mrty  = sumtype(primty("unit"), rty);
+  ExprPtr     fbody = assume(ExprPtr(new MkVariant(".f0", mktunit(la), la)), mrty, la);
+  ExprPtr     sbody = assume(ExprPtr(new MkVariant(".f1", body, la)), mrty, la);
+  PatternRow  pr    = cond ? PatternRow(list(pat), cond, sbody) : PatternRow(list(pat), sbody);
+
+  return fn(str::strings(".arg"), compileMatch(c, list(var(".arg", la)), list(pr, PatternRow(list(PatternPtr(new MatchAny("_", la))), fbody)), la), la);
+}
+
+ExprPtr conjoinConds(const Exprs& es, const LexicalAnnotation& la) {
+  if (es.size() == 0) {
+    return constant(bool(true), la);
+  } else {
+    ExprPtr c = es[0];
+    for (size_t i = 1; i < es.size(); ++i) {
+      c = fncall(var("and", la), list(c, es[i]), la);
+    }
+    return c;
+  }
+}
+
+ExprPtr desugarComprehension(cc* c, const ExprPtr& e, const CSelection& cs, const LexicalAnnotation& la) {
+  if (refutable(cs.pat)) {
+    return fncall(var("ffilterMMap", la), list(rpatFunc(c, cs.pat, cs.conds.size() > 0 ? conjoinConds(cs.conds, la) : ExprPtr(), e, la), cs.seq), la);
+  } else if (cs.conds.size() > 0) {
+    return fncall(var("ffilterMap", la), list(irpatFunc(c, cs.pat, conjoinConds(cs.conds, la), la), irpatFunc(c, cs.pat, e, la), cs.seq), la);
+  } else {
+    return fncall(var("fmap", la), list(irpatFunc(c, cs.pat, e, la), cs.seq), la);
+  }
+}
+
+Expr* desugarComprehension(cc* c, const ExprPtr& ex, const CSelections& cs, const LexicalAnnotation& la) {
+  if (cs.size() == 0) {
+    return ex->clone();
+  } else {
+    ExprPtr e = desugarComprehension(c, ex, *cs[cs.size()-1], la);
+    for (size_t i = cs.size()-1; i > 0; --i) {
+      e = fncall(var("mflatten", la), list(desugarComprehension(c, e, *cs[i-1], la)), la);
+    }
+    return e->clone();
+  }
+}
+
 }
 
