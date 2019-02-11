@@ -1461,6 +1461,15 @@ inline desc decode(const bytes& bs) {
   return decodeFrom(bs, &i);
 }
 
+inline void print(std::ostream& o, const bytes& bs) {
+  o << "0x";
+  for (auto b : bs) {
+    static const char nybs[] = "0123456789abcdef";
+    o << nybs[(b>>4)%16];
+    o << nybs[(b&0x0f)%16];
+  }
+}
+
 // describe a type description for human consumption
 inline void describe(const desc& t, std::ostream& o) {
   const D*         pd   = t.get();

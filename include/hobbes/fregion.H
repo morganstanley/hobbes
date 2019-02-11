@@ -1781,8 +1781,12 @@ template <typename T>
         addBinding(this->f, this->seqname, ty::encoding(this->stdef), dloc);
       } else {
         // the sequence is already defined, make sure it has the right type def and then resume writing to it
-        if (b->second.type != ty::encoding(this->stdef)) {
-          throw std::runtime_error("File already defines series '" + this->seqname + "' with type inconsistent with " + ty::show(store<T>::storeType()));
+        if (!equivModOffset(ty::decode(b->second.type), this->stdef)) {
+          throw std::runtime_error(
+            "File defines series '" + seqname + "' with inconsistent type:\n" + 
+            "  Expected: " + ty::show(this->stdef) + "\n" +
+            "  Actual:   " + ty::show(ty::decode(b->second.type))
+          );
         } else {
           this->headNodeRef = reinterpret_cast<uint64_t*>(mapFileData(this->f, b->second.offset, sizeof(size_t)));
           restartFromBatchNode();
@@ -2055,8 +2059,12 @@ template <typename T>
       // determine value and sequence types
       this->stdef = storedSeqType(this->tdef, this->batchSize);
 
-      if (b.type != encoding(this->stdef)) {
-        throw std::runtime_error("File defines series '" + seqname + "' with type inconsistent with " + ty::show(store<T>::storeType()));
+      if (!equivModOffset(ty::decode(b.type), this->stdef)) {
+        throw std::runtime_error(
+          "File defines series '" + seqname + "' with inconsistent type:\n" + 
+          "  Expected: " + ty::show(this->stdef) + "\n" +
+          "  Actual:   " + ty::show(ty::decode(b.type))
+        );
       }
 
       // load all nodes, prepare to walk in-order
@@ -2111,7 +2119,7 @@ template <typename T>
     void loadReadState(uint64_t root) {
       while (root != 0) {
         uint64_t* d = reinterpret_cast<uint64_t*>(mapFileData(this->f, root, 3*sizeof(uint64_t)));
-        if (d[0] == 0) {
+        if (static_cast<uint32_t>(d[0]) == 0) {
           root = 0;
         } else {
           this->batches.push(d[1]);
