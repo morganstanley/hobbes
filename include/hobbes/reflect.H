@@ -1461,7 +1461,7 @@ inline desc decode(const bytes& bs) {
   return decodeFrom(bs, &i);
 }
 
-void print(std::ostream& o, const bytes& bs) {
+inline void print(std::ostream& o, const bytes& bs) {
   o << "0x";
   for (auto b : bs) {
     static const char nybs[] = "0123456789abcdef";
