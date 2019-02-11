@@ -1781,7 +1781,7 @@ template <typename T>
         addBinding(this->f, this->seqname, ty::encoding(this->stdef), dloc);
       } else {
         // the sequence is already defined, make sure it has the right type def and then resume writing to it
-        if (!equivModOffset(ty::decode(b.second.type), this->stdef)) {
+        if (!equivModOffset(ty::decode(b->second.type), this->stdef)) {
           throw std::runtime_error(
             "File defines series '" + seqname + "' with inconsistent type:\n" + 
             "  Expected: " + ty::show(this->stdef) + "\n" +
