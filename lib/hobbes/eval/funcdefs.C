@@ -428,6 +428,10 @@ long lceil(double x) { return ceil(x); }
 long lfloor(double x) { return floor(x); }
 long truncd(double x) { return x; }
 
+double dsqrt(double x) { return sqrt(x); }
+double dlog(double x) { return log(x); }
+double dfabs(double x) { return fabs(x); }
+
 void dbglog(const std::string&);
 [[noreturn]] void failvarmatch(const array<char>* file, size_t line, const array<char>* txt, char* addr) {
   std::ostringstream ss;
@@ -645,9 +649,9 @@ void initStdFuncDefs(cc& ctx) {
   ctx.bind("ceil",   &lceil);
   ctx.bind("floor",  &lfloor);
   ctx.bind("truncd", &truncd);
-  ctx.bind("sqrt",   &sqrt);
-  ctx.bind("log",    &log);
-  ctx.bind("abs",    &fabs);
+  ctx.bind("sqrt",   &dsqrt);
+  ctx.bind("log",    &dlog);
+  ctx.bind("abs",    &dfabs);
 
   // this should never be called, it's only here to do something in the event of variant tag match failure
   ctx.bind(".failvarmatch", &failvarmatch);

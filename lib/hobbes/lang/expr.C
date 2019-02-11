@@ -1400,50 +1400,6 @@ NameSet tvarNames(const ExprPtr& e) {
   return r;
 }
 
-// desugar array comprehensions
-ComprehensionDef::ComprehensionDef(const std::string& varname, const ExprPtr& ex) : isfilter(false), varname(varname), ex(ex) {
-}
-
-ComprehensionDef::ComprehensionDef(const ExprPtr& ex) : isfilter(true), ex(ex) {
-}
-
-ExprPtr desugarCompFilter(const ExprPtr& ex, const ExprPtr& filterE, const LexicalAnnotation& la) {
-  return fncall(
-    var("if", la),
-    list(
-      filterE,
-      ExprPtr(new MkArray(list(ex), la)),
-      ExprPtr(new MkArray(Exprs(), la))
-    ),
-    la
-  );
-}
-
-ExprPtr desugarCompMap(const std::string& vn, const ExprPtr& ex, const ExprPtr& ae, const LexicalAnnotation& la) {
-  return fncall(var("map", la), list(fn(vn, ex, la), ae), la);
-}
-
-ExprPtr desugarCompConcat(const ExprPtr& ex, const LexicalAnnotation& la) {
-  return fncall(var("concat", la), list(ex), la);
-}
-
-ExprPtr desugarComprehensionFrom(const ExprPtr& ex, const ComprehensionDefs& cdefs, unsigned int i, const LexicalAnnotation& la) {
-  i = i - 1; // translate from count to index
-
-  const ComprehensionDef& cdef   = cdefs[i];
-  ExprPtr                 nextEx = cdef.isfilter ? desugarCompFilter(ex, cdef.ex, la) : desugarCompMap(cdef.varname, ex, cdef.ex, la);
-
-  if (i == 0) {
-    return nextEx;
-  } else {
-    return desugarCompConcat(desugarComprehensionFrom(nextEx, cdefs, i, la), la);
-  }
-}
-
-ExprPtr desugarComprehension(const ExprPtr& ex, const ComprehensionDefs& cdefs, const LexicalAnnotation& la) {
-  return desugarComprehensionFrom(ex, cdefs, cdefs.size(), la);
-}
-
 // generate a format expression from a format string
 ExprPtr fmtFoldConst(const ExprPtr& e, const std::string& c) {
   return fncall(var("append", e->la()), list(e, ExprPtr(mkarray(c, e->la()))), e->la());

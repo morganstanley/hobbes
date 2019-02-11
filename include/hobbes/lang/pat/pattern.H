@@ -284,6 +284,17 @@ bool isUnitPat(const PatternPtr&);
 // what variable names are introduced by a pattern (excluding _)?
 str::set accessibleBindingNames(const PatternPtr&);
 
+// simplify introducing list comprehensions
+struct CSelection {
+  PatternPtr pat;
+  ExprPtr    seq;
+  Exprs      conds;
+};
+typedef std::shared_ptr<CSelection> CSelectionPtr;
+typedef std::vector<CSelectionPtr> CSelections;
+
+Expr* desugarComprehension(cc* c, const ExprPtr& ex, const CSelections& cs, const LexicalAnnotation& la);
+
 }
 
 // make sure that pattern rows can be used as keys in hash maps

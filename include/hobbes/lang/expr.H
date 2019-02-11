@@ -1410,20 +1410,6 @@ VarSet freeVars(const Expr&);
 // find the type variables used in a term
 NameSet tvarNames(const ExprPtr&);
 
-// simplify introducing array comprehensions (these should just be syntax sugar for core terms anyway)
-struct ComprehensionDef {
-  ComprehensionDef(const std::string& varname, const ExprPtr& ex);
-  ComprehensionDef(const ExprPtr& ex);
-
-  bool        isfilter;
-  std::string varname;
-  ExprPtr     ex;
-};
-
-typedef std::vector<ComprehensionDef> ComprehensionDefs;
-
-ExprPtr desugarComprehension(const ExprPtr& ex, const ComprehensionDefs& cdefs, const LexicalAnnotation& la);
-
 // generate a format expression from a format string
 ExprPtr mkFormatExpr(const std::string& fmt, const LexicalAnnotation&);
 

@@ -34,6 +34,7 @@ TEST(Arrays, Slices) {
 
 TEST(Arrays, Comprehensions) {
   EXPECT_TRUE((c().compileFn<bool()>("sum([x | x <- [1..1000], x <= 100]) == 5050")()));
+  EXPECT_TRUE((c().compileFn<bool()>("countBy(.0,[(x,y)|x<-[1..5]|y<-[1..x]]) == [(i,i)|i<-[1..5]]")()));
 }
 
 TEST(Arrays, Streams) {
