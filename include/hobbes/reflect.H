@@ -414,7 +414,8 @@ template <typename T, typename ... Ts> struct tupleTail<T, Ts...> { typedef tupl
         return true PRIV_HPPF_MAP(PRIV_HPPF_STRUCT_FIELD_EQ, FIELDS); \
       } \
     template <typename X> \
-      friend inline typename std::enable_if<std::is_base_of<X,T>::value && ::hobbes::can_show_type<typename T::as_tuple_type>::value,std::ostream&>::type operator<<(std::ostream& o, const X& v) { \
+      friend inline typename std::enable_if<std::is_base_of<X,T>::value && hobbes::can_show_type<typename T::as_tuple_type>::value,std::ostream&>::type operator<<(std::ostream& o, const X& v) { \
+        using namespace hobbes; \
         std::ostringstream ss; \
         PRIV_HPPF_MAP(PRIV_HPPF_STRUCT_FIELD_SHOW, FIELDS); \
         o << "{ " << ss.str().substr(2) << " }"; \
