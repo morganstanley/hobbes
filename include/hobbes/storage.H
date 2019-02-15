@@ -1200,7 +1200,7 @@ template <size_t i, size_t n, typename ... Ts>
     typedef storeTupleDef<i+1, n, Ts...> Recurse;
 
     static void fieldDefs(ty::Struct::Fields* fs) {
-      fs->push_back(ty::Struct::Field(".f" + string::from(i), static_cast<int>(offsetAt<i, offs>::value), store<H>::type()));
+      fs->push_back(ty::Struct::Field(".f" + hobbes::string::from(i), static_cast<int>(offsetAt<i, offs>::value), store<H>::type()));
       Recurse::fieldDefs(fs);
     }
     static ty::desc type() { ty::Struct::Fields fs; fieldDefs(&fs); return ty::record(fs); }
@@ -1414,7 +1414,7 @@ template <size_t i, size_t n, typename ... Ts>
     typedef storeVariantDef<i+1, n, Ts...> Recurse;
 
     static void ctorDefs(ty::Variant::Ctors* cs) {
-      cs->push_back(ty::Variant::Ctor(".f" + string::from(i), static_cast<int>(i), store<H>::type()));
+      cs->push_back(ty::Variant::Ctor(".f" + hobbes::string::from(i), static_cast<int>(i), store<H>::type()));
       Recurse::ctorDefs(cs);
     }
     static ty::desc type() { ty::Variant::Ctors cs; ctorDefs(&cs); return ty::variant(cs); }
