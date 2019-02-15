@@ -45,11 +45,11 @@ template <typename T>
       static convFn<To>::type from(const ty::desc& t) { \
         const ty::Prim* pt = reinterpret_cast<const ty::Prim*>(t.get()); \
         if (t->tid != PRIV_HPPF_TYCTOR_PRIM) { \
-          throw std::runtime_error("Can't convert non-primitive type " + ty::show(t) + " to " + string::demangle<To>()); \
+          throw std::runtime_error("Can't convert non-primitive type " + ty::show(t) + " to " + hobbes::string::demangle<To>()); \
         } else if (pt->n == ToName) {  \
           return [](const void* from, To* to) { *to = *reinterpret_cast<const To*>(from); }; /* identity */ \
         } else { \
-          throw std::runtime_error("Can't convert from " + ty::show(t) + " to " + string::demangle<To>()); \
+          throw std::runtime_error("Can't convert from " + ty::show(t) + " to " + hobbes::string::demangle<To>()); \
         } \
       } \
     }
@@ -65,12 +65,12 @@ template <typename T>
       static convFn<To>::type from(const ty::desc& t) { \
         const ty::Prim* pt = reinterpret_cast<const ty::Prim*>(t.get()); \
         if (t->tid != PRIV_HPPF_TYCTOR_PRIM) { \
-          throw std::runtime_error("Can't convert non-primitive type " + ty::show(t) + " to " + string::demangle<To>()); \
+          throw std::runtime_error("Can't convert non-primitive type " + ty::show(t) + " to " + hobbes::string::demangle<To>()); \
         } else if (pt->n == ToName) {  \
           return [](const void* from, To* to) { *to = *reinterpret_cast<const To*>(from); }; /* identity */ \
         PRIV_HPPF_MAP(PRIV_HCONV_PCONV_FROM, From) \
         } else { \
-          throw std::runtime_error("Can't convert from " + ty::show(t) + " to " + string::demangle<To>()); \
+          throw std::runtime_error("Can't convert from " + ty::show(t) + " to " + hobbes::string::demangle<To>()); \
         } \
       } \
     }
@@ -104,11 +104,11 @@ template <typename T, size_t N>
       const ty::FArr* pfa  = reinterpret_cast<const ty::FArr*>(t.get());
 
       if (t->tid != PRIV_HPPF_TYCTOR_FIXEDARR) {
-        throw std::runtime_error("Can't convert from " + ty::show(t) + " to " + string::demangle<std::array<T,N>>());
+        throw std::runtime_error("Can't convert from " + ty::show(t) + " to " + hobbes::string::demangle<std::array<T,N>>());
       } else if (pfa->len->tid != PRIV_HPPF_TYCTOR_SIZE) {
         throw std::runtime_error("Invalid type description due to non-size array length: " + ty::show(t));
       } else if (reinterpret_cast<const ty::Nat*>(pfa->len.get())->x != N) {
-        throw std::runtime_error("Can't convert from " + ty::show(t) + " to " + string::demangle<std::array<T,N>>() + " due to length-mismatch");
+        throw std::runtime_error("Can't convert from " + ty::show(t) + " to " + hobbes::string::demangle<std::array<T,N>>() + " due to length-mismatch");
       } else {
         auto   convElem = into<T>::from(pfa->t);
         size_t step     = ty::sizeOf(pfa->t);

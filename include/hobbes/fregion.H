@@ -200,7 +200,7 @@ inline bool loadFileSize(imagefile* f) {
 
 inline void seekAbs(const imagefile* f, size_t pos) {
   if (::lseek(f->fd, pos, SEEK_SET) == -1) {
-    raiseSysError("Can't seek to offset=" + string::from(pos) + " in file with size=" + string::from(f->file_size), f->path);
+    raiseSysError("Can't seek to offset=" + hobbes::string::from(pos) + " in file with size=" + hobbes::string::from(f->file_size), f->path);
   }
 }
 
@@ -232,7 +232,7 @@ inline void fdwrite(imagefile* f, const char* x, size_t len) {
 
     if (di < 0) {
       if (errno != EINTR) {
-        raiseSysError("Failed to write " + string::from(len) + " bytes to file", f->path);
+        raiseSysError("Failed to write " + hobbes::string::from(len) + " bytes to file", f->path);
       }
     } else if (di == 0) {
       raiseSysError("Empty write error", f->path);
@@ -265,7 +265,7 @@ inline void fdread(const imagefile* f, char* x, size_t len) {
 
     if (di < 0) {
       if (errno != EINTR) {
-        raiseSysError("Failed to read " + string::from(len) + " bytes from file", f->path);
+        raiseSysError("Failed to read " + hobbes::string::from(len) + " bytes from file", f->path);
       }
     } else if (di == 0) {
       raiseSysError("Empty read error", f->path);
@@ -587,10 +587,10 @@ inline fregion& createFileRegionMap(imagefile* f, file_pageindex_t page, size_t 
   if (d == MAP_FAILED) {
     raiseSysError
     (
-      "Failed to map " + string::from(pages) +
-      " pages from page " + string::from(page) +
-      " out of " + string::from(f->file_size) +
-      " bytes with a page size of " + string::from(f->page_size) +
+      "Failed to map " + hobbes::string::from(pages) +
+      " pages from page " + hobbes::string::from(page) +
+      " out of " + hobbes::string::from(f->file_size) +
+      " bytes with a page size of " + hobbes::string::from(f->page_size) +
       " bytes",
       f->path
     );
@@ -607,7 +607,7 @@ inline fregion& createFileRegionMap(imagefile* f, file_pageindex_t page, size_t 
 // munmap a region out of this file
 inline void releaseFileRegionMap(imagefile* f, const fregion& fr) {
   if (munmap(fr.base, fr.pages * f->page_size) != 0) {
-    raiseSysError("Failed to unmap page " + string::from(fr.base_page) + " from file", f->path);
+    raiseSysError("Failed to unmap page " + hobbes::string::from(fr.base_page) + " from file", f->path);
   }
 }
 
@@ -698,11 +698,11 @@ inline void unmapFileData(imagefile* f, const void* p, size_t sz) {
 // we shouldn't ever work with files that have invalid page sizes
 inline uint16_t assertValidPageSize(const imagefile* f, size_t psize) {
   if (psize < HFREGION_MIN_PAGE_SIZE) {
-    throw std::runtime_error(f->path + ": System page size too small for db support (" + string::from(psize) + ")");
+    throw std::runtime_error(f->path + ": System page size too small for db support (" + hobbes::string::from(psize) + ")");
   } else if (psize > HFREGION_MAX_PAGE_SIZE) {
-    throw std::runtime_error(f->path + ": System page size too large for db support (" + string::from(psize) + ")");
+    throw std::runtime_error(f->path + ": System page size too large for db support (" + hobbes::string::from(psize) + ")");
   } else if ((psize % sizeof(pagedata)) != 0) {
-    throw std::runtime_error(f->path + ": System page size must be a multiple of " + string::from(sizeof(pagedata)) + " (" + string::from(psize) + ")");
+    throw std::runtime_error(f->path + ": System page size must be a multiple of " + hobbes::string::from(sizeof(pagedata)) + " (" + hobbes::string::from(psize) + ")");
   } else if ((sizeof(filehead) % sizeof(pagedata)) != 0) {
     // should be a static assert :T
     throw std::runtime_error("No page size is valid, file format internally inconsistent");
@@ -820,9 +820,9 @@ inline void readFile(imagefile* f, uint16_t minVersion, uint16_t maxVersion) {
     throw std::runtime_error("Not a valid structured data file: " + f->path);
   } else if (fh.version < minVersion || fh.version > maxVersion) {
     if (minVersion == maxVersion) {
-      throw std::runtime_error("Cannot read file format version=" + string::from(fh.version) + " (expected version=" + string::from(maxVersion) + ")");
+      throw std::runtime_error("Cannot read file format version=" + hobbes::string::from(fh.version) + " (expected version=" + hobbes::string::from(maxVersion) + ")");
     } else {
-      throw std::runtime_error("Cannot read file format version=" + string::from(fh.version) + " (expected version in [" + string::from(minVersion) + "," + string::from(maxVersion) + "])");
+      throw std::runtime_error("Cannot read file format version=" + hobbes::string::from(fh.version) + " (expected version in [" + hobbes::string::from(minVersion) + "," + hobbes::string::from(maxVersion) + "])");
     }
   }
   f->page_size = assertValidPageSize(f, fh.pagesize);
@@ -929,7 +929,7 @@ inline bool isFRegion(const std::string& fname) {
 
 // create all implied directories in a path
 inline void ensureDirExists(const std::string& path) {
-  string::seq ps = string::csplit(path, "/");
+  hobbes::string::seq ps = hobbes::string::csplit(path, "/");
   std::ostringstream pfx;
 
   for (const auto& p : ps) {
@@ -943,7 +943,7 @@ inline void ensureDirExists(const std::string& path) {
 // give the first unique filename with some prefix/suffix that satisfies some condition
 inline std::string withUniqueFilenameBy(const std::string& fprefix, const std::string& fsuffix, const std::function<bool(const std::string&)>& fileOp) {
   // the directory that this file is in can be created if necessary
-  ensureDirExists(string::rsplit(fprefix, "/").first);
+  ensureDirExists(hobbes::string::rsplit(fprefix, "/").first);
 
   // keep trying for new filenames until we get one that's distinct
   size_t inst = 0;
@@ -1433,7 +1433,7 @@ template <size_t i, size_t n, typename ... Ts>
 
     static void fieldDefs(size_t offset, ty::Struct::Fields* fs) {
       offset = align(offset, store<H>::alignment());
-      fs->push_back(ty::Struct::Field(".f" + string::from(i), offset, store<H>::storeType()));
+      fs->push_back(ty::Struct::Field(".f" + hobbes::string::from(i), offset, store<H>::storeType()));
       Recurse::fieldDefs(offset + store<H>::size(), fs);
     }
     static ty::desc storeType() { ty::Struct::Fields fs; fieldDefs(0, &fs); return ty::record(fs); }
@@ -1617,7 +1617,7 @@ template <size_t i, size_t n, typename ... Ts>
     typedef storeVariantDef<i+1, n, Ts...> Recurse;
 
     static void ctorDefs(ty::Variant::Ctors* cs) {
-      cs->push_back(ty::Variant::Ctor(".f" + string::from(i), static_cast<int>(i), store<H>::storeType()));
+      cs->push_back(ty::Variant::Ctor(".f" + hobbes::string::from(i), static_cast<int>(i), store<H>::storeType()));
       Recurse::ctorDefs(cs);
     }
     static ty::desc storeType() { ty::Variant::Ctors cs; ctorDefs(&cs); return ty::variant(cs); }
@@ -2029,8 +2029,8 @@ public:
 
           throw std::runtime_error(
             "File defines '" + n + "' with type " + ty::show(ty::array(store<T>::storeType())) +
-            " but with length=" + string::from(result->size) +
-            " though expected length=" + string::from(len)
+            " but with length=" + hobbes::string::from(result->size) +
+            " though expected length=" + hobbes::string::from(len)
           );
         }
 
