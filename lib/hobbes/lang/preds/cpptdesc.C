@@ -68,19 +68,19 @@ struct defineCPPTy : public switchType<UnitV> {
     return unitv;
   }
 
-  UnitV with(const TVar* v) const {
+  UnitV with(const TVar*) const {
     throw annotated_error(this->la, "Can't translate type with variables to C++ type.");
   }
 
-  UnitV with(const TGen* v) const {
+  UnitV with(const TGen*) const {
     throw annotated_error(this->la, "Can't translate polymorphic type to C++ type.");
   }
 
-  UnitV with(const TAbs* v) const {
+  UnitV with(const TAbs*) const {
     throw annotated_error(this->la, "Can't translate type abstraction to C++ type.");
   }
 
-  UnitV with(const TApp* v) const {
+  UnitV with(const TApp*) const {
     throw annotated_error(this->la, "Can't translate type application to C++ type.");
   }
 
@@ -157,23 +157,23 @@ struct defineCPPTy : public switchType<UnitV> {
     return unitv;
   }
 
-  UnitV with(const Exists* v) const {
+  UnitV with(const Exists*) const {
     throw annotated_error(this->la, "Can't translate existential type to C++ type.");
   }
 
-  UnitV with(const Recursive* v) const {
+  UnitV with(const Recursive*) const {
     throw annotated_error(this->la, "Can't translate recursive type to C++ type.");
   }
 
-  UnitV with(const TString* v) const {
+  UnitV with(const TString*) const {
     throw annotated_error(this->la, "Can't translate type string to C++ type.");
   }
 
-  UnitV with(const TLong* v) const {
+  UnitV with(const TLong*) const {
     throw annotated_error(this->la, "Can't translate type number to C++ type.");
   }
 
-  UnitV with(const TExpr* v) const {
+  UnitV with(const TExpr*) const {
     throw annotated_error(this->la, "Can't translate type expression to C++ type.");
   }
 };
@@ -208,7 +208,7 @@ std::string CPPTypeDescP::constraintName() {
   return "CPPType";
 }
 
-bool CPPTypeDescP::refine(const TEnvPtr&, const ConstraintPtr& cst, MonoTypeUnifier* u, Definitions*) {
+bool CPPTypeDescP::refine(const TEnvPtr&, const ConstraintPtr&, MonoTypeUnifier*, Definitions*) {
   return false;
 }
 
