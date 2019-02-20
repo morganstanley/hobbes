@@ -86,7 +86,7 @@ struct defineCPPTy : public switchType<UnitV> {
 
   UnitV with(const FixedArray* v) const {
     if (const auto* n = is<TLong>(v->length())) {
-      *this->out << "typedef std::array<" << acc(this->tname+"_elem", v->type()) << ", " << n->value() << "> " << this->tname << "\n";
+      *this->out << "typedef std::array<" << acc(this->tname+"_elem", v->type()) << ", " << n->value() << "> " << this->tname << ";\n";
     } else {
       throw annotated_error(this->la, "Expected fixed array to have length as number.");
     }
@@ -94,7 +94,7 @@ struct defineCPPTy : public switchType<UnitV> {
   }
 
   UnitV with(const Array* v) const {
-    *this->out << "typedef hobbes::array<" << acc(this->tname+"_elem", v->type()) << ">* " << this->tname << "\n";
+    *this->out << "typedef hobbes::array<" << acc(this->tname+"_elem", v->type()) << ">* " << this->tname << ";\n";
     return unitv;
   }
 
