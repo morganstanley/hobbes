@@ -113,6 +113,9 @@ cc::cc() :
   // support appending (appendable) types
   this->tenv->bind(AppendsToUnqualifier::constraintName(), UnqualifierPtr(new AppendsToUnqualifier()));
 
+  // support translation of hobbes type descs to C++ type descs
+  this->tenv->bind(CPPTypeDescP::constraintName(), UnqualifierPtr(new CPPTypeDescP()));
+
   // support connecting to remote processes
   initNetworkDefs(*this);
 
