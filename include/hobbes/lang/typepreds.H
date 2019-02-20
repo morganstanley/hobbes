@@ -24,6 +24,7 @@
 #include <hobbes/lang/preds/data.H>
 #include <hobbes/lang/preds/typeof.H>
 #include <hobbes/lang/preds/sizeof.H>
+#include <hobbes/lang/preds/cpptdesc.H>
 #include <hobbes/ipc/process.H>
 
 #endif

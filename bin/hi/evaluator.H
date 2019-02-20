@@ -13,17 +13,17 @@ struct Args {
   typedef std::map<std::string, std::string> NameVals;
   typedef std::vector<std::string> strs;
 
-  ModuleFiles  mfiles;
-  std::string  evalExpr;
-  bool         showDbg;
-  bool         useDefColors;
-  bool         silent;
-  int          replPort;
-  int          httpdPort;
-  bool         exitAfterEval;
-  NameVals     scriptNameVals;
-  bool         machineREPL;    // should we structure console I/O for machine-reading?
-  strs         opts;
+  ModuleFiles              mfiles;
+  std::vector<std::string> evalExprs;
+  bool                     showDbg;
+  bool                     useDefColors;
+  bool                     silent;
+  int                      replPort;
+  int                      httpdPort;
+  bool                     exitAfterEval;
+  NameVals                 scriptNameVals;
+  bool                     machineREPL;    // should we structure console I/O for machine-reading?
+  strs                     opts;
 
   Args() : useDefColors(false), silent(false), replPort(-1), httpdPort(-1), exitAfterEval(false), machineREPL(false) {
   }

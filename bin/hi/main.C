@@ -604,7 +604,7 @@ Args processCommandLine(int argc, char** argv) {
         r.mfiles.push_back(arg);
         break;
       case 1:
-        r.evalExpr = arg;
+        r.evalExprs.push_back(arg);
         m = 0;
         break;
       case 2:
@@ -679,9 +679,9 @@ int main(int argc, char** argv) {
       }
     }
 
-    // should we evaluate some given expression?
-    if (!args.evalExpr.empty()) {
-      eval->evalExpr(args.evalExpr);
+    // should we evaluate some given expression(s)?
+    for (const auto& expr : args.evalExprs) {
+      eval->evalExpr(expr);
     }
 
     // finally, run some kind of REPL if requested
