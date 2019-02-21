@@ -295,11 +295,14 @@ void runGroupHost(const std::string& groupName, const RunMode& m, std::map<int, 
 }
 
 void run(const RunMode& m) {
-  StatFile::instance().log(ProcessEnvironment{hobbes::now(), hobbes::string::from(m)});
   out() << "hog running in mode : " << m << std::endl;
   if (m.t == RunMode::batchrecv) {
+    StatFile::directory = "./";
+    StatFile::instance().log(ProcessEnvironment{hobbes::now(), hobbes::string::from(m)});
+    out() << "hog stat file : " << StatFile::instance().filename() << std::endl;
     pullRemoteDataT(m.dir, m.localport, m.consolidate, m.storageMode).join();
   } else if (m.groups.size() > 0) {
+    StatFile::instance().log(ProcessEnvironment{hobbes::now(), hobbes::string::from(m)});
     out() << "hog stat file : " << StatFile::instance().filename() << std::endl;
     std::map<std::string, std::map<int, RegInfo>> registry;
 

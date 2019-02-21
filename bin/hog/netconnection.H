@@ -19,6 +19,9 @@ public:
   virtual bool sendFile(int fd) = 0;
 
   virtual bool receive(void* buf, size_t size) = 0;
+
+  virtual std::string remoteHost() = 0;
+  virtual int remotePort() = 0;
 };
 
 class DefaultNetConnection : public NetConnection {
@@ -32,11 +35,11 @@ public:
 
   bool receive(void* buf, size_t size) override;
 
+  std::string remoteHost() override;
+  int remotePort() override;
 private:
-  int _socket;
+  int fd;
 };
-
-/// @throw std::runtime_error
 
 void sendString(NetConnection& c, const std::string& str);
 
@@ -44,6 +47,6 @@ void receiveIntoBuffer(NetConnection& c, std::vector<uint8_t>* dst);
 std::vector<uint8_t> receiveBuffer(NetConnection& c);
 std::string receiveString(NetConnection& c);
 
-} // namespace hog
+}
 
-#endif // HOG_NETCONNECTION_H_INCLUDED
+#endif
