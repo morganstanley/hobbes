@@ -54,32 +54,26 @@ void initSocket(int fd) {
 
 namespace hog {
 
-DefaultNetConnection::DefaultNetConnection(const std::string& hostport)
-  :_socket(hobbes::connectSocket(hostport))
-{
-  if (_socket < 0) {
+DefaultNetConnection::DefaultNetConnection(const std::string& hostport) : fd(hobbes::connectSocket(hostport)) {
+  if (this->fd < 0) {
     throw std::runtime_error("Failed to connect to: " + hostport);
   }
-
-  initSocket(_socket);
+  initSocket(this->fd);
 }
 
-DefaultNetConnection::DefaultNetConnection(int fd)
-  :_socket(fd)
-{
-  initSocket(_socket);
+DefaultNetConnection::DefaultNetConnection(int fd) : fd(fd) {
+  initSocket(this->fd);
 }
 
-DefaultNetConnection::~DefaultNetConnection()
-{
-  close(_socket);
+DefaultNetConnection::~DefaultNetConnection() {
+  close(this->fd);
 }
 
 bool DefaultNetConnection::send(const void* buf, size_t size) {
   const char* buffer = static_cast<const char*>(buf);
   size_t offset = 0;
   while (size > 0) {
-    const ssize_t sent = ::send(_socket, buffer + offset, size, sendFlag());
+    const ssize_t sent = ::send(this->fd, buffer + offset, size, sendFlag());
     if (sent < 0) {
       if (errno != EINTR) {
         return false;
@@ -109,7 +103,7 @@ bool DefaultNetConnection::sendFile(int fd) {
   off_t offset = 0;
 
   while (size) {
-    const ssize_t sent = sendfile(_socket, fd, &offset, size);
+    const ssize_t sent = sendfile(this->fd, fd, &offset, size);
     if (sent >= 0) {
       size -= sent;
     }
@@ -125,7 +119,7 @@ bool DefaultNetConnection::receive(void* buf, size_t size) {
   char* buffer = static_cast<char*>(buf);
   size_t offset = 0;
   while (size > 0) {
-    const ssize_t received = recv(_socket, buffer + offset, size, 0);
+    const ssize_t received = recv(this->fd, buffer + offset, size, 0);
     if (received >= 0) {
       offset += received;
       size -= received;
@@ -136,6 +130,14 @@ bool DefaultNetConnection::receive(void* buf, size_t size) {
   }
 
   return true;
+}
+
+std::string DefaultNetConnection::remoteHost() {
+  return hobbes::remoteHostname(this->fd);
+}
+
+int DefaultNetConnection::remotePort() {
+  return hobbes::remotePort(this->fd);
 }
 
 void sendString(NetConnection& c, const std::string& str) {

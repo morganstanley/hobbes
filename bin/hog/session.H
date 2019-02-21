@@ -15,6 +15,7 @@ namespace hog {
 
 // make a storage file (via appendStorageSession) and produce a function to write transactions into it
 // support optionally merging log session data where type structures are identical
+// provide a hook to users who want to see what output file gets decided and why
 class SessionGroup;
 SessionGroup* makeSessionGroup(bool consolidate = false, hobbes::StoredSeries::StorageMode sm = hobbes::StoredSeries::Raw);
 

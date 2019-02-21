@@ -29,6 +29,9 @@ int allocateFileSocketServer(const std::string& filepath);
 // get the name of the host on the other end of this socket
 std::string remoteHostname(int socket);
 
+// get the port on the remote end of this socket
+int remotePort(int socket);
+
 // run a REPL server at some port, either indirectly or directly with a compiler
 typedef std::vector<uint8_t> RawData;
 typedef uint32_t             exprid;

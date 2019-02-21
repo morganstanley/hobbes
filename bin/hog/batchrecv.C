@@ -11,8 +11,9 @@
 
 #include <zlib.h>
 
-#include "session.H"
 #include "network.H"
+#include "session.H"
+#include "stat.H"
 #include "path.H"
 #include "out.H"
 
@@ -133,6 +134,13 @@ void read(gzbuffer* in, storage::statements* stmts) {
   }
 }
 
+DEFINE_STRUCT(
+  RecvConnection,
+  (hobbes::datetimeT, datetime),
+  (std::string,       remoteHost),
+  (int,               remotePort)
+);
+
 void runRecvConnection(SessionGroup* sg, NetConnection* pc, std::string dir) {
   std::unique_ptr<NetConnection> connection(pc);
   std::vector<uint8_t> inb, outb, txn;
@@ -158,6 +166,9 @@ void runRecvConnection(SessionGroup* sg, NetConnection* pc, std::string dir) {
     auto txnF = appendStorageSession(sg, instantiateDir(group, dir), static_cast<storage::PipeQOS>(qos), static_cast<storage::CommitMethod>(cm), stmts);
 
     connection->send(&ack, sizeof(ack));
+
+    // record the fact that we've received a new connection and have associated it with a file
+    StatFile::instance().log(RecvConnection{hobbes::now(), pc->remoteHost(), pc->remotePort()});
 
     // now that we've prepared a log file,
     // just throw everything that we read into it
