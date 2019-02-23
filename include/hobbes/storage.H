@@ -1474,7 +1474,7 @@ template <typename T>
     }
 
     static size_t size (const T& x)           { return store<VT>::size(*reinterpret_cast<const VT*>(&x)); }
-    static void   write(wpipe& p, const T& x) { store<VT>::write(p, *reinterpret_cast<const VT*>(&x)); }
+    static bool   write(wpipe& p, const T& x) { return store<VT>::write(p, *reinterpret_cast<const VT*>(&x)); }
   };
 
 // store recursive types
