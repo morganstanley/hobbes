@@ -1437,9 +1437,7 @@ template <size_t n, typename ... Ts>
 template <size_t tag, typename T, typename M>
   struct variantGenWrite {
     static bool fn(T* vd, wpipe* f) {
-      if(store<size_t>::write(*f, tag))
-        return store<T>::write(*f, *vd);
-      return false;
+      return store<uint32_t>::write(*f, static_cast<uint32_t>(tag)) && store<T>::write(*f, *vd);
     }
   };
 template <typename ... Ts>
