@@ -1050,7 +1050,7 @@ template <>
     static const bool can_memcpy = false;
     static ty::desc type()                     { return ty::prim("unit"); }
     static size_t   size()                     { return 0; }
-    static void     write(wpipe&, const unit&) { }
+    static bool     write(wpipe&, const unit&) { return true; }
   };
 
 // store fixed-length arrays
@@ -1437,7 +1437,9 @@ template <size_t n, typename ... Ts>
 template <size_t tag, typename T, typename M>
   struct variantGenWrite {
     static bool fn(T* vd, wpipe* f) {
-      return store<T>::write(*f, *vd);
+      if(store<size_t>::write(*f, tag))
+        return store<T>::write(*f, *vd);
+      return false;
     }
   };
 template <typename ... Ts>
