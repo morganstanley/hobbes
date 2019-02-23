@@ -1435,6 +1435,12 @@ template <size_t n, typename ... Ts>
   };
 
 template <size_t tag, typename T, typename M>
+  struct variantGenSize {
+    static size_t fn(T* vd, int) {
+      return store<T>::size(*vd);
+    }
+  };
+template <size_t tag, typename T, typename M>
   struct variantGenWrite {
     static bool fn(T* vd, wpipe* f) {
       return store<uint32_t>::write(*f, static_cast<uint32_t>(tag)) && store<T>::write(*f, *vd);
@@ -1444,6 +1450,10 @@ template <typename ... Ts>
   struct store<variant<Ts...>> : public storeVariantDef<0, sizeof...(Ts), Ts...> {
     static const bool can_memcpy = false;
     typedef storeVariantDef<0, sizeof...(Ts), Ts...> Reflect;
+
+    static size_t size(const variant<Ts...>& x) {
+      return sizeof(uint32_t) + x.template apply<size_t, variantGenSize, void, int>(0);
+    }
 
     static bool write(wpipe& p, const variant<Ts...>& x) {
       return x.template apply<bool, variantGenWrite, void, wpipe*>(&p);
