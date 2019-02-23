@@ -1050,7 +1050,7 @@ template <>
     static const bool can_memcpy = false;
     static ty::desc type()                     { return ty::prim("unit"); }
     static size_t   size()                     { return 0; }
-    static void     write(wpipe&, const unit&) { }
+    static bool     write(wpipe&, const unit&) { return true; }
   };
 
 // store fixed-length arrays
@@ -1410,7 +1410,6 @@ template <typename T>
 template <size_t i, size_t n, typename ... Ts>
   struct storeVariantDef {
     typedef typename nth<i, Ts...>::type   H;
-    typedef variant<Ts...>                 VT;
     typedef storeVariantDef<i+1, n, Ts...> Recurse;
 
     static void ctorDefs(ty::Variant::Ctors* cs) {
@@ -1418,32 +1417,32 @@ template <size_t i, size_t n, typename ... Ts>
       Recurse::ctorDefs(cs);
     }
     static ty::desc type() { ty::Variant::Ctors cs; ctorDefs(&cs); return ty::variant(cs); }
-
-    static size_t maxSize()      { return std::max<size_t>(store<H>::size(),      Recurse::maxSize());      }
-    static size_t maxAlignment() { return std::max<size_t>(store<H>::alignment(), Recurse::maxAlignment()); }
-    static size_t tagOffset()    { return align<size_t>(sizeof(uint32_t), maxAlignment()); }
-
-    static size_t size()      { return align<size_t>(align<size_t>(sizeof(uint32_t), maxAlignment()) + maxSize(), maxAlignment()); }
-    static size_t alignment() { return std::max<size_t>(sizeof(uint32_t), maxAlignment()); }
   };
 template <size_t n, typename ... Ts>
   struct storeVariantDef<n, n, Ts...> {
     static void     ctorDefs(ty::Variant::Ctors*) { }
     static ty::desc type()                        { return ty::prim("void"); }
-    static size_t   maxSize()                     { return 0;  }
-    static size_t   maxAlignment()                { return 1;  }
   };
 
 template <size_t tag, typename T, typename M>
+  struct variantGenSize {
+    static size_t fn(T* vd, int) {
+      return store<T>::size(*vd);
+    }
+  };
+template <size_t tag, typename T, typename M>
   struct variantGenWrite {
     static bool fn(T* vd, wpipe* f) {
-      return store<T>::write(*f, *vd);
+      return store<uint32_t>::write(*f, static_cast<uint32_t>(tag)) && store<T>::write(*f, *vd);
     }
   };
 template <typename ... Ts>
   struct store<variant<Ts...>> : public storeVariantDef<0, sizeof...(Ts), Ts...> {
     static const bool can_memcpy = false;
-    typedef storeVariantDef<0, sizeof...(Ts), Ts...> Reflect;
+
+    static size_t size(const variant<Ts...>& x) {
+      return sizeof(uint32_t) + x.template apply<size_t, variantGenSize, void, int>(0);
+    }
 
     static bool write(wpipe& p, const variant<Ts...>& x) {
       return x.template apply<bool, variantGenWrite, void, wpipe*>(&p);
@@ -1474,7 +1473,7 @@ template <typename T>
     }
 
     static size_t size (const T& x)           { return store<VT>::size(*reinterpret_cast<const VT*>(&x)); }
-    static void   write(wpipe& p, const T& x) { store<VT>::write(p, *reinterpret_cast<const VT*>(&x)); }
+    static bool   write(wpipe& p, const T& x) { return store<VT>::write(p, *reinterpret_cast<const VT*>(&x)); }
   };
 
 // store recursive types

@@ -451,6 +451,13 @@ DEFINE_STORAGE_GROUP(
   hobbes::storage::ManualCommit
 );
 
+DEFINE_VARIANT(
+  TestVariant,
+  (Car, int),
+  (House, double),
+  (Chicken, std::vector<std::string>)
+);
+
 struct SectTest {
   int x;
   double y() const { return 3.14159; }
@@ -461,9 +468,10 @@ struct SectTest {
   const hobbes::array<char>* str;
   hobbes::array<const hobbes::array<char>*>* strs;
   hobbes::array<std::vector<int>>* ints;
+  TestVariant tv;
   void* q;
 };
-DEFINE_HSTORE_STRUCT_VIEW(SectTest, x, y, z, w, dt, ts, str, strs, ints);
+DEFINE_HSTORE_STRUCT_VIEW(SectTest, x, y, z, w, dt, ts, str, strs, ints, tv);
 
 TEST(Hog, SupportedTypes) {
   HogApp local(RunMode{{"TestRecTypes"}, /* consolidate = */ true});
@@ -484,6 +492,7 @@ TEST(Hog, SupportedTypes) {
   st.ints = hobbes::makeArray<std::vector<int>>(2);
   st.ints->data[0] = std::vector<int>{{0, 0}};
   st.ints->data[1] = std::vector<int>{{1, 1}};
+  st.tv = TestVariant::Car(42);
 
   HLOG(TestRecTypes, sectView, "test sect view", st);
   TestRecTypes.commit();
