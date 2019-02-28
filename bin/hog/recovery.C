@@ -18,7 +18,7 @@ namespace hog {
 
 DEFINE_STRUCT(SessionRecovered,
   (hobbes::datetimeT, datetime),
-  (std::string, sessionHash),
+  (size_t, sessionHash),
   (hobbes::storage::ProcThread, senderId),
   (hobbes::storage::ProcThread, readerId),
   (hobbes::datetimeT, originalSessionTime)
@@ -62,7 +62,7 @@ static void addStateToStatesMap(const T& state, RecoveredDetails::StateMap<T>& s
 }
 
 template <typename T>
-static std::vector<typename std::vector<T>::const_iterator> findRelatedData(const std::string& sessionHash, const std::vector<T>& ts) {
+static std::vector<typename std::vector<T>::const_iterator> findRelatedData(const size_t sessionHash, const std::vector<T>& ts) {
   std::vector<typename std::vector<T>::const_iterator> foundIterators;
   for (auto it = ts.cbegin(); it != ts.cend(); ++it) {
     if (it->sessionHash == sessionHash) {
@@ -161,7 +161,7 @@ struct RecoveryTask {
 
 struct RecoveryTaskGroup {
   const hog::RunMode runMode;
-  const std::string sessionHash;
+  const size_t sessionHash;
   const std::vector<std::string> argv;
   const hobbes::datetimeT startTime;
   const std::vector<RecoveryTask> recoveryTasks;

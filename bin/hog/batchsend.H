@@ -14,7 +14,7 @@
 
 namespace hog {
 
-void pushLocalData(const hobbes::storage::QueueConnection& qc, const std::string& sessionHash, const std::string& groupName, const std::string& partialDir, const std::string& fullDir, const hobbes::storage::ProcThread& readerId, const hobbes::storage::WaitPolicy wp, const RunMode& runMode, std::atomic<bool>& conn, const std::function<void()>& finalizeSenderF = []() {});
+void pushLocalData(const hobbes::storage::QueueConnection& qc, const size_t sessionHash, const std::string& groupName, const std::string& partialDir, const std::string& fullDir, const hobbes::storage::ProcThread& readerId, const hobbes::storage::WaitPolicy wp, const RunMode& runMode, std::atomic<bool>& conn, const std::function<void()>& finalizeSenderF = []() {});
 
 }
 

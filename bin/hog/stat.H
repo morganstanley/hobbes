@@ -11,7 +11,6 @@
 #include <hobbes/storage.H>
 #include <hobbes/fregion.H>
 #include <hobbes/util/time.H>
-#include <hobbes/util/hash.H>
 
 namespace hog {
 
@@ -22,7 +21,7 @@ DEFINE_ENUM(SessionType,
 
 DEFINE_STRUCT(ProcessEnvironment,
   (hobbes::datetimeT,           startTime),
-  (std::string,                 sessionHash),
+  (size_t,                      sessionHash),
   (std::string,                 runMode),
   (std::vector<std::string>,    argv),
   (SessionType,                 sessionType)
@@ -35,14 +34,14 @@ DEFINE_ENUM(ReaderStatus,
 
 DEFINE_STRUCT(ReaderState,
   (hobbes::datetimeT,           datetime),
-  (std::string,                 sessionHash),
+  (size_t,                      sessionHash),
   (hobbes::storage::ProcThread, id),
   (ReaderStatus,                status)
 );
 
 DEFINE_STRUCT(ReaderRegistration,
   (hobbes::datetimeT,           datetime),
-  (std::string,                 sessionHash),
+  (size_t,                      sessionHash),
   (hobbes::storage::ProcThread, writerId),
   (hobbes::storage::ProcThread, readerId),
   (std::string,                 shmname),
@@ -57,14 +56,14 @@ DEFINE_ENUM(SenderStatus,
 
 DEFINE_STRUCT(SenderState,
   (hobbes::datetimeT,           datetime),
-  (std::string,                 sessionHash),
+  (size_t,                      sessionHash),
   (hobbes::storage::ProcThread, id),
   (SenderStatus,                status)
 );
 
 DEFINE_STRUCT(SenderRegistration,
   (hobbes::datetimeT,           datetime),
-  (std::string,                 sessionHash),
+  (size_t,                      sessionHash),
   (hobbes::storage::ProcThread, readerId),
   (hobbes::storage::ProcThread, senderId),
   (std::string,                 directory),
@@ -102,7 +101,7 @@ private:
   std::mutex mutex;
 };
 
-std::string createSessionHash(const hobbes::datetimeT& timestamp, const hobbes::storage::ProcThread& pt);
+size_t createSessionHash(const hobbes::datetimeT& timestamp, const hobbes::storage::ProcThread& pt);
 
 }
 

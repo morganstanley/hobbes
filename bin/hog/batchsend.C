@@ -199,7 +199,7 @@ void connect(std::vector<Destination>& destinations) {
   }
 }
 
-void runSegmentSendingProcess(const std::string& sessionHash, const std::string groupName, std::vector<Destination>& destinations, ReadyFn readyFn, IdleFn idleFn) {
+void runSegmentSendingProcess(const size_t sessionHash, const std::string groupName, std::vector<Destination>& destinations, ReadyFn readyFn, IdleFn idleFn) {
   if (destinations.empty()) {
     out() << "no batchsend host specified, compressed segment files will accumulate locally" << std::endl;
   } else {
@@ -251,7 +251,7 @@ struct BatchSendSession {
   std::vector<const BatchSendSession*> detached;
   std::function<void()>    finalizer;
 
-  BatchSendSession(const std::string& sessionHash, const std::string& groupName, const std::string& dir, size_t clevel, const std::vector<std::string>& sendto, const std::vector<const BatchSendSession*> detached, const std::function<void()> finalizer)
+  BatchSendSession(const size_t sessionHash, const std::string& groupName, const std::string& dir, size_t clevel, const std::vector<std::string>& sendto, const std::vector<const BatchSendSession*> detached, const std::function<void()> finalizer)
     : buffer(0), c(0), sz(0), dir(dir), readerAlive(true), detached(detached), finalizer(finalizer) {
     for (const auto & hostport : sendto) {
       auto localdir = ensureDirExists(dir + "/" + hostport + "/");
@@ -399,7 +399,7 @@ struct SenderGroup {
   static std::vector<const BatchSendSession*> detached;
   static std::mutex mutex;
 
-  static BatchSendSession* create(const std::string& sessionHash, const std::string& name, const std::string& dir, size_t clevel, const std::vector<std::string>& sendto, const std::function<void()>& finalizeSenderF) {
+  static BatchSendSession* create(const size_t sessionHash, const std::string& name, const std::string& dir, size_t clevel, const std::vector<std::string>& sendto, const std::function<void()>& finalizeSenderF) {
     std::lock_guard<std::mutex> _{mutex};
 
     auto it = std::find_if_not(detached.begin(), detached.end(), [](const BatchSendSession* s) { return s->completed(); });
@@ -421,7 +421,7 @@ std::vector<std::unique_ptr<BatchSendSession>> SenderGroup::senders;
 std::vector<const BatchSendSession*> SenderGroup::detached;
 std::mutex SenderGroup::mutex;
 
-void pushLocalData(const hobbes::storage::QueueConnection& qc, const std::string& sessionHash, const std::string& groupName, const std::string& partialDir, const std::string& fullDir, const hobbes::storage::ProcThread& readerId, const hobbes::storage::WaitPolicy wp, const RunMode& runMode, std::atomic<bool>& conn, const std::function<void()>& finalizeSenderF) {
+void pushLocalData(const hobbes::storage::QueueConnection& qc, const size_t sessionHash, const std::string& groupName, const std::string& partialDir, const std::string& fullDir, const hobbes::storage::ProcThread& readerId, const hobbes::storage::WaitPolicy wp, const RunMode& runMode, std::atomic<bool>& conn, const std::function<void()>& finalizeSenderF) {
   auto sn = SenderGroup::create(sessionHash, groupName, fullDir, runMode.clevel, runMode.sendto, finalizeSenderF);
   const long batchsendtime = runMode.batchsendtime * 1000;
   const size_t batchsendsize = std::max<size_t>(10*1024*1024, runMode.batchsendsize);

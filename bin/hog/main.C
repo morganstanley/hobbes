@@ -35,7 +35,7 @@ void cleanup(RegInfo& reg) {
   reg.readers.clear();
 }
 
-void evalGroupHostConnection(SessionGroup* sg, const std::string& sessionHash, const std::string& groupName, const RunMode& m, int c, RegInfo& reg) {
+void evalGroupHostConnection(SessionGroup* sg, const size_t sessionHash, const std::string& groupName, const RunMode& m, int c, RegInfo& reg) {
   try {
     uint8_t cmd=0;
     hobbes::fdread(c, reinterpret_cast<char*>(&cmd), sizeof(cmd));
@@ -78,7 +78,7 @@ void evalGroupHostConnection(SessionGroup* sg, const std::string& sessionHash, c
   }
 }
 
-void runGroupHost(const std::string& sessionHash, const std::string& groupName, const RunMode& m, std::map<int, RegInfo>& reg) {
+void runGroupHost(const size_t sessionHash, const std::string& groupName, const RunMode& m, std::map<int, RegInfo>& reg) {
   SessionGroup* sg = makeSessionGroup(m.consolidate, m.storageMode);
 
   hobbes::registerEventHandler(
