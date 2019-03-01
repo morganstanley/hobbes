@@ -5,13 +5,17 @@
 #ifndef HOG_BATCHSEND_H_INCLUDED
 #define HOG_BATCHSEND_H_INCLUDED
 
-#include <string>
-#include <vector>
 #include <atomic>
+#include <functional>
+#include <string>
 #include <hobbes/storage.H>
 
+#include "config.H"
+
 namespace hog {
-void pushLocalData(const hobbes::storage::QueueConnection&, const std::string& groupName, const std::string& dir, size_t clevel, size_t batchsendsize, long batchsendtimeInMicros, const std::vector<std::string>& sendto, const hobbes::storage::WaitPolicy, std::atomic<bool>& conn);
+
+void pushLocalData(const hobbes::storage::QueueConnection& qc, const size_t sessionHash, const std::string& groupName, const std::string& partialDir, const std::string& fullDir, const hobbes::storage::ProcThread& readerId, const hobbes::storage::WaitPolicy wp, const RunMode& runMode, std::atomic<bool>& conn, const std::function<void()>& finalizeSenderF = []() {});
+
 }
 
 #endif

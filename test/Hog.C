@@ -13,6 +13,7 @@
 #include <cstdio>
 #include <climits>
 #include <thread>
+#include <utility>
 
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -20,6 +21,10 @@
 #include <signal.h>
 #include <glob.h>
 #include <ftw.h>
+
+void rmrf(const char* p) {
+  nftw(p, [](const char* fp, const struct stat*, int, struct FTW*) -> int { remove(fp); return 0; }, 64, FTW_DEPTH | FTW_PHYS);
+}
 
 std::string hogBinaryPath() {
   static char path[PATH_MAX];
@@ -51,6 +56,7 @@ struct RunMode {
   enum type { local, batchsend, batchrecv };
 
   type                     t;
+  bool                     resume;
 
   // batchsend
   std::vector<std::string> groups;
@@ -66,20 +72,23 @@ struct RunMode {
   std::string              program;
 
   RunMode(const std::vector<std::string>& groups, const std::vector<std::string>& sendto, size_t size, long time)
-  : t(batchsend), groups(groups), sendto(sendto),
+  : t(batchsend), resume(false), groups(groups), sendto(sendto),
     batchsendsize(std::to_string(size)),
     batchsendtime(std::to_string(time)),
     program(hogBinaryPath()) {
   }
 
   RunMode(int port, bool consolidate = false)
-    : t(batchrecv), port(std::to_string(port)), consolidate(consolidate), program(hogBinaryPath()) {}
+    : t(batchrecv), resume(false), port(std::to_string(port)), consolidate(consolidate), program(hogBinaryPath()) {}
 
   RunMode(const std::vector<std::string>& groups, bool consolidate = false)
-    : t(local), groups(groups), consolidate(consolidate), program(hogBinaryPath()) {}
+    : t(local), resume(false), groups(groups), consolidate(consolidate), program(hogBinaryPath()) {}
 
   std::vector<const char*> argv() const {
     std::vector<const char*> args { program.c_str() };
+    if (!resume) {
+      args.push_back("--no-recovery");
+    }
     switch (t) {
     case local:
       args.push_back("-g");
@@ -167,11 +176,11 @@ public:
   void stop() {
     if (started()) {
       if (kill(pid, SIGTERM) == -1) {
-        throw std::runtime_error("error while kill: " + std::string(strerror(errno)));
+        throw std::runtime_error("error while kill '" + std::to_string(pid) + "': " + std::string(strerror(errno)));
       }
       int ws;
       if (waitpid(pid, &ws, 0) == -1) {
-        throw std::runtime_error("error while waitpid: " + std::string(strerror(errno)));
+        throw std::runtime_error("error while waitpid on '" + std::to_string(pid) + "': " + std::string(strerror(errno)));
       }
       pid = -1;
     }
@@ -183,6 +192,12 @@ public:
       meanwhileFn();
     }
     start();
+  }
+
+  void restartAndResume(std::function<void()> meanwhileFn = [](){}) {
+    mode.resume = true;
+    restart(meanwhileFn);
+    mode.resume = false;
   }
 
   bool started() const { return pid != -1; }
@@ -246,20 +261,27 @@ public:
   }
 
   void waitSegFileGone() {
+    waitSegFileCount([](const int pathCount) { return pathCount == 0; });
+  }
+
+  void waitSegFileSome() {
+    waitSegFileCount([](const int pathCount) { return pathCount > 0; });
+  }
+
+  void waitSegFileCount(const std::function<bool(const int)> comparator) {
     assert(mode.t == RunMode::batchsend);
     std::string pattern(cwd);
     for (const auto & group : mode.groups) {
-      glob_t g;
-      auto p = pattern + "/" + group + "/*/*/*/segment-*.gz";
-      while (glob(p.c_str(), GLOB_NOSORT, nullptr, &g) == 0) {
-        globfree(&g);
+      // workingdir/$group/$date/data/tmp_$procid-$threadid/$host:$port/segment-*.gz
+      const auto p = pattern + "/" + group + "/*/data/tmp_*-*/*:*/segment-*.gz";
+      while (!comparator(hobbes::str::paths(p).size())) {
         sleep(1);
       }
     }
   }
 
 private:
-  const RunMode mode;
+  RunMode mode;
   char cwd[PATH_MAX];
   pid_t pid;
 };
@@ -282,6 +304,10 @@ void flushData(int first, int last) {
     HSTORE(Space, coordinate, Point3D{i, i, i});
   }
   Space.commit(); // flushing any data in the queue
+}
+
+TEST(Hog, PriorCleanup) {
+  rmrf("/var/tmp/hogstat.db");
 }
 
 #define EXPECT_EQ_IN_SERIES(logs, series, expr, expect) \
@@ -737,10 +763,52 @@ TEST(Hog, OrderedSender) {
   EXPECT_TRUE(cc.compileFn<bool()>("[x.0|x<-f.seq, x.0 in [2,3]][:0] == concat([repeat(x, 1024L)|x<-[2,3]])")());
 }
 
-void rmrf(const char* p) {
-  nftw(p, [](const char* fp, const struct stat*, int, struct FTW*) -> int { remove(fp); return 0; }, 64, FTW_DEPTH | FTW_PHYS);
+DEFINE_STORAGE_GROUP(
+  TestBatchSendRestart,
+  1024,
+  hobbes::storage::Reliable,
+  hobbes::storage::ManualCommit
+);
+
+/// The same test sequence as above except for running hog as batchsend/batchrecv modes
+TEST(Hog, BatchSendRestarter) {
+  rmrf("/var/tmp/hogstat.db");
+  auto producerFn = [](int runid) {
+    for (size_t seqno = 0; seqno < TestBatchSendRestart.mempages; ++seqno) {
+      HLOG(TestBatchSendRestart, seq, "runid: $0, seqno: $1", runid, seqno);
+      TestBatchSendRestart.commit();
+    }
+  };
+  ProducerApp proc1(producerFn);
+  HogApp batchrecv(RunMode(availablePort(10000, 10100), /* consolidate */ true));
+  HogApp batchsend(RunMode{{"TestBatchSendRestart"}, {batchrecv.localport()}, 1024, 1000000});
+
+  batchsend.start();
+  sleep(2);
+
+  proc1.start();
+  sleep(1);
+  proc1.execute(0);
+  sleep(1);
+  proc1.stop();
+
+  batchsend.waitSegFileSome();
+  batchsend.restartAndResume();
+  sleep(1);
+
+  batchrecv.start();
+
+  auto log = batchrecv.pollLogFile("TestBatchSendRestart");
+  batchsend.waitSegFileGone();
+
+  hobbes::cc cc;
+  cc.define("f", "inputFile::(LoadFile \"" + log + "\" w)=>w");
+
+  EXPECT_TRUE(cc.compileFn<bool()>("let n = 0 in [x | x <- f.seq[:0], x.0 == n] == [(n, y) | y <- [0..1023]]"));
 }
-TEST(Hog, Cleanup) {
+
+TEST(Hog, PostCleanup) {
+  rmrf("/var/tmp/hogstat.db");
   rmrf("./.htest");
   rmrf("./Space");
 }
