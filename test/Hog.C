@@ -803,8 +803,10 @@ TEST(Hog, BatchSendRestarter) {
 
   hobbes::cc cc;
   cc.define("f", "inputFile::(LoadFile \"" + log + "\" w)=>w");
+  cc.define("s", "inputFile::(LoadFile \"/var/tmp/hogstat.db\" w)=>w");
 
   EXPECT_TRUE(cc.compileFn<bool()>("let n = 0 in [x | x <- f.seq[:0], x.0 == n] == [(n, y) | y <- [0..1023]]"));
+  EXPECT_TRUE(cc.compileFn<bool()>("let hs = [h.sessionHash | h <- s.SenderRegistration[:0]]; ps = [p.sessionHash | p <- s.ProcessEnvironment[:0]] in sort(unique(hs)) == sort(ps)"));
 }
 
 TEST(Hog, PostCleanup) {
