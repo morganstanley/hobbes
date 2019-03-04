@@ -224,13 +224,12 @@ std::vector<RecoveryTask> getTasksRequiringRecovery(const RecoveredDetails& reco
   return tasks;
 }
 
-static void restartReaderSender(const RecoveryTask& recoveryTask, const RunMode& runMode, const std::function<void()>& finalizeSender) {
+static void restartReaderSender(const RecoveryTask& recoveryTask, const RunMode& runMode, const size_t sessionHash, const std::function<void()>& finalizeSender) {
   std::atomic<bool> isConnected;
   isConnected = false;
 
   hobbes::storage::QueueConnection qc = hobbes::storage::consumeQueue(recoveryTask.shmName);
 
-  const auto sessionHash = createSessionHash(hobbes::now(), hobbes::storage::thisProcThread());
   StatFile::instance().log(ReaderRegistration{hobbes::now(), sessionHash, recoveryTask.writerId, recoveryTask.readerId, qc.shmname, recoveryTask.groupName});
 
   pushLocalData(qc, sessionHash, recoveryTask.groupName, recoveryTask.processDateDirectory, recoveryTask.processDateDirectory, recoveryTask.readerId, hobbes::storage::Platform, runMode, isConnected, finalizeSender);
@@ -259,12 +258,12 @@ static void performGroupRecovery(const std::vector<RecoveryTaskGroup>& recoveryT
         // ensure intrasession ordering
         waitForReaderCompletion();
       }
-      groupThreads.emplace_back([&recoveryTask, &recoveryTaskGroup] () {
+      groupThreads.emplace_back([&recoveryTask, &recoveryTaskGroup, &currentSessionHash] () {
         const auto& startTime = recoveryTaskGroup.startTime;
         const auto& recoveredSessionHash = recoveryTaskGroup.sessionHash;
         const auto& runMode = recoveryTaskGroup.runMode;
         // the copy-captures in the below lambda are important as sender outlives this scope
-        restartReaderSender(recoveryTask, runMode, [recoveryTask, startTime, recoveredSessionHash]() {
+        restartReaderSender(recoveryTask, runMode, currentSessionHash, [recoveryTask, startTime, recoveredSessionHash]() {
           // log that this session was recovered so later recovery session don't repeat
           StatFile::instance().log(SessionRecovered{hobbes::now(), recoveredSessionHash, recoveryTask.senderId, recoveryTask.readerId, startTime});
         });
