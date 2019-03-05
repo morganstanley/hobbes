@@ -26,6 +26,10 @@ void rmrf(const char* p) {
   nftw(p, [](const char* fp, const struct stat*, int, struct FTW*) -> int { remove(fp); return 0; }, 64, FTW_DEPTH | FTW_PHYS);
 }
 
+static std::string hogStatPath() {
+  return hobbes::storage::defaultStoreDir() + "/hogstat.db";
+}
+
 std::string hogBinaryPath() {
   static char path[PATH_MAX];
   auto p = getenv("HOG_BIN");
@@ -89,6 +93,8 @@ struct RunMode {
     if (!resume) {
       args.push_back("--no-recovery");
     }
+    args.push_back("-m");
+    args.push_back(hobbes::storage::defaultStoreDir().c_str());
     switch (t) {
     case local:
       args.push_back("-g");
@@ -304,10 +310,6 @@ void flushData(int first, int last) {
     HSTORE(Space, coordinate, Point3D{i, i, i});
   }
   Space.commit(); // flushing any data in the queue
-}
-
-TEST(Hog, PriorCleanup) {
-  rmrf("/var/tmp/hogstat.db");
 }
 
 #define EXPECT_EQ_IN_SERIES(logs, series, expr, expect) \
@@ -772,7 +774,7 @@ DEFINE_STORAGE_GROUP(
 
 /// The same test sequence as above except for running hog as batchsend/batchrecv modes
 TEST(Hog, BatchSendRestarter) {
-  rmrf("/var/tmp/hogstat.db");
+  rmrf(hogStatPath().c_str());
   auto producerFn = [](int runid) {
     for (size_t seqno = 0; seqno < TestBatchSendRestart.mempages; ++seqno) {
       HLOG(TestBatchSendRestart, seq, "runid: $0, seqno: $1", runid, seqno);
@@ -803,14 +805,13 @@ TEST(Hog, BatchSendRestarter) {
 
   hobbes::cc cc;
   cc.define("f", "inputFile::(LoadFile \"" + log + "\" w)=>w");
-  cc.define("s", "inputFile::(LoadFile \"/var/tmp/hogstat.db\" w)=>w");
+  cc.define("s", "inputFile::(LoadFile \"" + hogStatPath() + "\" w)=>w");
 
   EXPECT_TRUE(cc.compileFn<bool()>("let n = 0 in [x | x <- f.seq[:0], x.0 == n] == [(n, y) | y <- [0..1023]]"));
   EXPECT_TRUE(cc.compileFn<bool()>("let hs = [h.sessionHash | h <- s.SenderRegistration[:0]]; ps = [p.sessionHash | p <- s.ProcessEnvironment[:0]] in sort(unique(hs)) == sort(ps)"));
 }
 
 TEST(Hog, PostCleanup) {
-  rmrf("/var/tmp/hogstat.db");
   rmrf("./.htest");
   rmrf("./Space");
 }
