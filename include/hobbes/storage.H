@@ -48,7 +48,6 @@ namespace hobbes { namespace storage { namespace internal {
 //  * available waiting strategy in shared memory
 //  * default waiting strategy
 #if defined(__APPLE__) && defined(__MACH__)
-
 // macOS doesn't support this flag to mmap so we can just 0 it out
 #ifndef MAP_POPULATE
 #define MAP_POPULATE 0
@@ -2155,8 +2154,14 @@ private:
   size_t   ri;
 
   void truncMapFile(size_t sz) {
-    if (::ftruncate(this->fd, sz) == -1) {
-      throw std::runtime_error("Failed to expand transaction persistence file");
+    off_t dsz = sz - this->file_size;
+    int r = ::posix_fallocate(this->fd, this->file_size, dsz);
+    if (r != 0) {
+      if (r == ENOSPC) {
+        throw std::runtime_error("Failed to expand transaction persistence file (no space available)");
+      } else {
+        throw std::runtime_error("Failed to expand transaction persistence file");
+      }
     }
     this->file_size = sz;
 
