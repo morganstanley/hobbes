@@ -56,7 +56,7 @@ struct RunMode {
   enum type { local, batchsend, batchrecv };
 
   type                     t;
-  bool                     resume;
+  char                     cwd[PATH_MAX];
 
   // batchsend
   std::vector<std::string> groups;
@@ -72,23 +72,35 @@ struct RunMode {
   std::string              program;
 
   RunMode(const std::vector<std::string>& groups, const std::vector<std::string>& sendto, size_t size, long time)
-  : t(batchsend), resume(false), groups(groups), sendto(sendto),
+  : t(batchsend), groups(groups), sendto(sendto),
     batchsendsize(std::to_string(size)),
     batchsendtime(std::to_string(time)),
     program(hogBinaryPath()) {
-  }
+      setupWorkingDirectory();
+    }
 
   RunMode(int port, bool consolidate = false)
-    : t(batchrecv), resume(false), port(std::to_string(port)), consolidate(consolidate), program(hogBinaryPath()) {}
+    : t(batchrecv), port(std::to_string(port)), consolidate(consolidate), program(hogBinaryPath()) {
+      setupWorkingDirectory();
+    }
 
   RunMode(const std::vector<std::string>& groups, bool consolidate = false)
-    : t(local), resume(false), groups(groups), consolidate(consolidate), program(hogBinaryPath()) {}
+    : t(local), groups(groups), consolidate(consolidate), program(hogBinaryPath()) {
+      setupWorkingDirectory();
+    }
+
+  void setupWorkingDirectory() {
+    strcpy(cwd, "./.htest/hog/XXXXXX");
+    hobbes::ensureDirExists(hobbes::str::rsplit(cwd, "/").first);
+    if (mkdtemp(cwd) == NULL) {
+      throw std::runtime_error("error while mkdtemp('" + std::string(cwd) + "'): " + std::string(strerror(errno)));
+    }
+  }
 
   std::vector<const char*> argv() const {
     std::vector<const char*> args { program.c_str() };
-    if (!resume) {
-      args.push_back("--no-recovery");
-    }
+    args.push_back("-m");
+    args.push_back(".");
     switch (t) {
     case local:
       args.push_back("-g");
@@ -126,14 +138,7 @@ struct RunMode {
 
 class HogApp {
 public:
-  HogApp(const RunMode& mode)
-  : mode(mode), pid(-1) {
-    strcpy(cwd, "./.htest/hog/XXXXXX");
-    hobbes::ensureDirExists(hobbes::str::rsplit(cwd, "/").first);
-    if (mkdtemp(cwd) == NULL) {
-      throw std::runtime_error("error while mkdtemp('" + std::string(cwd) + "'): " + std::string(strerror(errno)));
-    }
-  }
+  HogApp(const RunMode& mode) : mode(mode), pid(-1) {}
 
   ~HogApp() {
     if (started()) {
@@ -146,7 +151,7 @@ public:
     if (pid == -1) {
       throw std::runtime_error("error while fork: " + std::string(strerror(errno)));
     } else if (pid == 0) {
-      chdir(cwd);
+      chdir(mode.cwd);
 
       // IO redirect
       int ofd  = dup(STDOUT_FILENO);
@@ -194,23 +199,19 @@ public:
     start();
   }
 
-  void restartAndResume(std::function<void()> meanwhileFn = [](){}) {
-    mode.resume = true;
-    restart(meanwhileFn);
-    mode.resume = false;
-  }
-
   bool started() const { return pid != -1; }
 
   std::string name() const {
-    return hobbes::str::rsplit(cwd, "/").second;
+    return hobbes::str::rsplit(mode.cwd, "/").second;
   }
 
   std::string localport() const {
     return "localhost:" + mode.port;
   }
 
-  std::string basePath() const { return this->cwd; }
+  const char* cwd() const { return mode.cwd; }
+
+  std::string statFile() const { return std::string(mode.cwd) + "/hogstat.db"; }
 
   std::vector<std::string> logpaths(const std::string& grp = "") const {
     std::string group(grp);
@@ -225,7 +226,7 @@ public:
     }
 
     std::vector<std::string> paths;
-    std::string pattern(cwd);
+    std::string pattern(mode.cwd);
     pattern += "/" + group + "/*/*.log";
 
     glob_t g;
@@ -270,7 +271,7 @@ public:
 
   void waitSegFileCount(const std::function<bool(const int)> comparator) {
     assert(mode.t == RunMode::batchsend);
-    std::string pattern(cwd);
+    std::string pattern(mode.cwd);
     for (const auto & group : mode.groups) {
       // workingdir/$group/$date/data/tmp_$procid-$threadid/$host:$port/segment-*.gz
       const auto p = pattern + "/" + group + "/*/data/tmp_*-*/*:*/segment-*.gz";
@@ -281,9 +282,20 @@ public:
   }
 
 private:
-  RunMode mode;
-  char cwd[PATH_MAX];
+  const RunMode mode;
   pid_t pid;
+};
+
+struct EnvironmentGuard {
+  explicit EnvironmentGuard(const char* name, const char* value) : key(name) {
+    if (::setenv(name, value, /* overwrite */ 1) == -1) {
+      throw std::runtime_error("error while setenv: " + std::string(strerror(errno)));
+    }
+  }
+  ~EnvironmentGuard() {
+    ::unsetenv(key);
+  }
+  const char* key;
 };
 
 int availablePort(int low, int high) {
@@ -304,10 +316,6 @@ void flushData(int first, int last) {
     HSTORE(Space, coordinate, Point3D{i, i, i});
   }
   Space.commit(); // flushing any data in the queue
-}
-
-TEST(Hog, PriorCleanup) {
-  rmrf("/var/tmp/hogstat.db");
 }
 
 #define EXPECT_EQ_IN_SERIES(logs, series, expr, expect) \
@@ -398,6 +406,7 @@ DEFINE_STORAGE_GROUP(
 TEST(Hog, KillAndResume) {
   HogApp local(RunMode{{"KillAndResume"}, true});
   local.start();
+  EnvironmentGuard _{"HOBBES_STORE_DIR", local.cwd()};
   sleep(5);
 
   HLOG(KillAndResume, seq, "seq $0", 0); KillAndResume.commit();
@@ -442,6 +451,7 @@ DEFINE_STORAGE_GROUP(
 TEST(Hog, RestartEngine) {
   HogApp local(RunMode{{"RestartEngine"}, /* consolidate = */true});
   local.start();
+  EnvironmentGuard _{"HOBBES_STORE_DIR", local.cwd()};
   sleep(5);
 
   auto fn = [](){
@@ -502,6 +512,7 @@ DEFINE_HSTORE_STRUCT_VIEW(SectTest, x, y, z, w, dt, ts, str, strs, ints, tv);
 TEST(Hog, SupportedTypes) {
   HogApp local(RunMode{{"TestRecTypes"}, /* consolidate = */ true});
   local.start();
+  EnvironmentGuard _{"HOBBES_STORE_DIR", local.cwd()};
   sleep(5);
 
   SectTest st;
@@ -542,11 +553,14 @@ DEFINE_STORAGE_GROUP(
 );
 
 TEST(Hog, UnreliableReconnect) {
+  const RunMode mode{{"TestUnrReconnect"}, /* consolidate = */ true};
+  EnvironmentGuard _{"HOBBES_STORE_DIR", mode.cwd};
+
   // no consumer running, produce until we fail
   while (HLOG(TestUnrReconnect, seq, "unreliable seq"));
 
   // now that we've failed to log once, start a hog process
-  HogApp local(RunMode{{"TestUnrReconnect"}, /* consolidate = */ true});
+  HogApp local(mode);
   local.start();
   sleep(10);
 
@@ -564,7 +578,8 @@ TEST(Hog, UnreliableReconnect) {
 
 class ProducerApp {
 public:
-  ProducerApp(std::function<void(int)> producerFn) : pid(-1), cmdfd(-1), ackfd(-1), producerFn(producerFn) {}
+  ProducerApp(std::function<void(int)> producerFn, const char* servpath)
+    : pid(-1), cmdfd(-1), ackfd(-1), producerFn(producerFn), servpath(servpath) {}
 
   void start() {
     int cmdfd[2] = {0, 0};
@@ -592,6 +607,7 @@ public:
       // child process - the same image but reacts on parent's instruction
       this->cmdfd = cmdfd[0]; ::close(cmdfd[1]);
       this->ackfd = ackfd[1]; ::close(ackfd[0]);
+
       run();
     }
   }
@@ -633,6 +649,7 @@ public:
 private:
   void run() {
     assert(pid == 0 && "only called in child process");
+    EnvironmentGuard _{"HOBBES_STORE_DIR", servpath};
     hobbes::registerEventHandler(cmdfd, [this](int fd) {
       int runid;
       hobbes::fdread(fd, &runid);
@@ -651,6 +668,7 @@ private:
   int cmdfd;
   int ackfd;
   std::function<void(int)> producerFn;
+  const char* servpath;
 };
 
 DEFINE_STORAGE_GROUP(
@@ -661,15 +679,15 @@ DEFINE_STORAGE_GROUP(
 );
 
 TEST(Hog, OrderedReader) {
+  HogApp local(RunMode{{"TestOrderedRead"}, /* consolidate = */ true});
   auto producerFn = [](int runid) {
     for (size_t seqno = 0; seqno < TestOrderedRead.mempages; ++seqno) {
       HLOG(TestOrderedRead, seq, "runid: $0, seqno: $1", runid, seqno);
       TestOrderedRead.commit();
     }
   };
-  ProducerApp proc1(producerFn);
-  ProducerApp proc2(producerFn);
-  HogApp local(RunMode{{"TestOrderedRead"}, /* consolidate = */ true});
+  ProducerApp proc1(producerFn, local.cwd());
+  ProducerApp proc2(producerFn, local.cwd());
 
   local.start();
 
@@ -718,16 +736,16 @@ DEFINE_STORAGE_GROUP(
 
 /// The same test sequence as above except for running hog as batchsend/batchrecv modes
 TEST(Hog, OrderedSender) {
+  HogApp batchrecv(RunMode(availablePort(10000, 10100), /* consolidate */ true));
+  HogApp batchsend(RunMode{{"TestOrderedSend"}, {batchrecv.localport()}, 1024, 1000000});
   auto producerFn = [](int runid) {
     for (size_t seqno = 0; seqno < TestOrderedSend.mempages; ++seqno) {
       HLOG(TestOrderedSend, seq, "runid: $0, seqno: $1", runid, seqno);
       TestOrderedSend.commit();
     }
   };
-  ProducerApp proc1(producerFn);
-  ProducerApp proc2(producerFn);
-  HogApp batchrecv(RunMode(availablePort(10000, 10100), /* consolidate */ true));
-  HogApp batchsend(RunMode{{"TestOrderedSend"}, {batchrecv.localport()}, 1024, 1000000});
+  ProducerApp proc1(producerFn, batchsend.cwd());
+  ProducerApp proc2(producerFn, batchsend.cwd());
 
   batchsend.start(); // just start batchsend first
   sleep(5);
@@ -772,16 +790,15 @@ DEFINE_STORAGE_GROUP(
 
 /// The same test sequence as above except for running hog as batchsend/batchrecv modes
 TEST(Hog, BatchSendRestarter) {
-  rmrf("/var/tmp/hogstat.db");
+  HogApp batchrecv(RunMode(availablePort(10000, 10100), /* consolidate */ true));
+  HogApp batchsend(RunMode{{"TestBatchSendRestart"}, {batchrecv.localport()}, 1024, 1000000});
   auto producerFn = [](int runid) {
     for (size_t seqno = 0; seqno < TestBatchSendRestart.mempages; ++seqno) {
       HLOG(TestBatchSendRestart, seq, "runid: $0, seqno: $1", runid, seqno);
       TestBatchSendRestart.commit();
     }
   };
-  ProducerApp proc1(producerFn);
-  HogApp batchrecv(RunMode(availablePort(10000, 10100), /* consolidate */ true));
-  HogApp batchsend(RunMode{{"TestBatchSendRestart"}, {batchrecv.localport()}, 1024, 1000000});
+  ProducerApp proc1(producerFn, batchsend.cwd());
 
   batchsend.start();
   sleep(2);
@@ -793,7 +810,7 @@ TEST(Hog, BatchSendRestarter) {
   proc1.stop();
 
   batchsend.waitSegFileSome();
-  batchsend.restartAndResume();
+  batchsend.restart();
   sleep(1);
 
   batchrecv.start();
@@ -803,14 +820,13 @@ TEST(Hog, BatchSendRestarter) {
 
   hobbes::cc cc;
   cc.define("f", "inputFile::(LoadFile \"" + log + "\" w)=>w");
-  cc.define("s", "inputFile::(LoadFile \"/var/tmp/hogstat.db\" w)=>w");
+  cc.define("s", "inputFile::(LoadFile \"" + batchsend.statFile() + "\" w)=>w");
 
   EXPECT_TRUE(cc.compileFn<bool()>("let n = 0 in [x | x <- f.seq[:0], x.0 == n] == [(n, y) | y <- [0..1023]]"));
   EXPECT_TRUE(cc.compileFn<bool()>("let hs = [h.sessionHash | h <- s.SenderRegistration[:0]]; ps = [p.sessionHash | p <- s.ProcessEnvironment[:0]] in sort(unique(hs)) == sort(ps)"));
 }
 
-TEST(Hog, PostCleanup) {
-  rmrf("/var/tmp/hogstat.db");
+TEST(Hog, Cleanup) {
   rmrf("./.htest");
   rmrf("./Space");
 }
