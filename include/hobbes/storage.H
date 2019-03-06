@@ -48,7 +48,6 @@ namespace hobbes { namespace storage { namespace internal {
 //  * available waiting strategy in shared memory
 //  * default waiting strategy
 #if defined(__APPLE__) && defined(__MACH__)
-
 // macOS doesn't support this flag to mmap so we can just 0 it out
 #ifndef MAP_POPULATE
 #define MAP_POPULATE 0
