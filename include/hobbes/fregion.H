@@ -213,11 +213,16 @@ inline off_t filePosition(const imagefile* f) {
 }
 
 inline void allocPages(imagefile* f, size_t pages) {
-  size_t nsz = f->file_size + pages * f->page_size;
-  if (::ftruncate(f->fd, nsz) == -1) {
-    raiseSysError("Can't resize file", f->path);
+  off_t dsz = pages * f->page_size;
+  int r = ::posix_fallocate(f->fd, f->file_size, dsz);
+  if (r != 0) {
+    if (r == ENOSPC) {
+      raiseSysError("Can't resize file, no space available", f->path);
+    } else {
+      raiseSysError("Can't resize file", f->path);
+    }
   }
-  f->file_size = nsz;
+  f->file_size += dsz;
 }
 
 inline void allocPage(imagefile* f) {
