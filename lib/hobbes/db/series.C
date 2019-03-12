@@ -1,5 +1,6 @@
 
 #include <hobbes/db/series.H>
+#include <atomic>
 
 namespace hobbes {
 
@@ -327,6 +328,9 @@ void RawStoredSeries::clear(bool signal) {
 void RawStoredSeries::record(const void* v, bool signal) {
   // store this data at the stream head
   this->storeFn(this->outputFile, v, this->batchHead);
+
+  // fence data storage and count increment
+  std::atomic_thread_fence(std::memory_order_release);
 
   // then advance the stream head
   //  (allocate a new batch cell if necessary)
@@ -686,6 +690,10 @@ const MonoTypePtr& CompressedStoredSeries::storageType() const {
 // (assumes that all such values are passed by reference)
 void CompressedStoredSeries::record(const void* x, bool signal) {
   this->writeFn(&this->w, this->dynModel, x);
+
+  // fence data storage and count increment
+  std::atomic_thread_fence(std::memory_order_release);
+  
   if (this->w.step()) {
     this->prepMFn(&this->w, this->dynModel);
   }
