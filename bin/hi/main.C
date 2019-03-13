@@ -176,7 +176,20 @@ void showShellHelp() {
   cds.push_back(CmdDesc(":c N",   "Describe the type class named N"));
   cds.push_back(CmdDesc(":i N",   "Show instances and instance generators for the type class N"));
   cds.push_back(CmdDesc(":o K",   "Enable language option K"));
+  cds.push_back(CmdDesc(":^",     "Echo back the command history"));
   showShellHelp(cds);
+}
+
+void echoCommandHistory() {
+  const int history_max = 10;
+  HIST_ENTRY** history = history_list();
+  if (history) {
+    // take the last history_max elements of history
+    int startIndex = history_length > history_max ? history_length - history_max : 0;
+    for (int i = startIndex; i < history_length; ++i) {
+      std::cout << history[i]->line << std::endl;
+    }
+  }
 }
 
 // indicate that we want input
@@ -288,6 +301,11 @@ void evalLine(char* x) {
     }
 
     if (line == "") {
+      return;
+    }
+
+    if (line == ":^") {
+      echoCommandHistory();
       return;
     }
 
