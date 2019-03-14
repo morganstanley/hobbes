@@ -363,6 +363,50 @@ datetimeT datetimeAt(datetimeT dt, timeT t) {
   return datetimeT(dateFromDateTime(dt.value) + (timeFromDateTime(t.value) - mkTime(0,0,0,0)));
 }
 
+DEFINE_STRUCT(CTM,
+  (int, usec),
+  (int, sec),
+  (int, min),
+  (int, hour),
+  (int, mday),
+  (int, mon),
+  (int, year),
+  (int, wday),
+  (int, yday),
+  (int, isdst)
+);
+
+const CTM* mkCTM(int usec, const tm& xtm) {
+  CTM* r = make<CTM>();
+  r->usec  = usec;
+  r->sec   = xtm.tm_sec;
+  r->min   = xtm.tm_min;
+  r->hour  = xtm.tm_hour;
+  r->mday  = xtm.tm_mday;
+  r->mon   = xtm.tm_mon;
+  r->year  = xtm.tm_year;
+  r->wday  = xtm.tm_wday;
+  r->yday  = xtm.tm_yday;
+  r->isdst = xtm.tm_isdst;
+  return r;
+}
+
+const CTM* hlocaltime(datetimeT x) {
+  static const size_t USECS = 1000*1000;
+  time_t xt = x.value / USECS;
+  struct tm xtm;
+  localtime_r(&xt, &xtm);
+  return mkCTM(x.value % USECS, xtm);
+}
+
+const CTM* hgmtime(datetimeT x) {
+  static const size_t USECS = 1000*1000;
+  time_t xt = x.value / USECS;
+  struct tm xtm;
+  gmtime_r(&xt, &xtm);
+  return mkCTM(x.value % USECS, xtm);
+}
+
 timespanT gmtoffset(datetimeT x) {
   time_t xt = x.value / (1000*1000);
   struct tm xtm;
@@ -626,6 +670,8 @@ void initStdFuncDefs(cc& ctx) {
   ctx.bind("time",         &truncTime);
   ctx.bind("datetimeAt",   &datetimeAt);
   ctx.bind("gmtoffset",    &gmtoffset);
+  ctx.bind("localtime",    &hlocaltime);
+  ctx.bind("gmtime",       &hgmtime);
 
   ctx.bind("captureStdout", &captureStdout);
   ctx.bind("putStr",        &putStr);
