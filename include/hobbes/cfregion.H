@@ -697,6 +697,7 @@ template <> struct compress<long>     : public compressByteSeq<long>     { };
 template <> struct compress<__int128> : public compressByteSeq<__int128> { };
 
 #if defined(__APPLE__) && defined(__MACH__)
+template <> struct compress<int64_t>  : public compressByteSeq<int64_t>  { };
 template <> struct compress<size_t> : public compressByteSeq<size_t> { };
 #endif
 
@@ -936,6 +937,17 @@ template <typename T>
     static void init(const PModel& pm, CModel* cm)                            { compress<VT>::init(pm, cm); }
     static void write(cwbitstream* bits,  PModel* pm, CModel* cm, const T& t) { compress<VT>::write(bits, pm, cm, *reinterpret_cast<const VT*>(&t)); }
     static void read (crbitstream* rbits, PModel* pm, CModel* cm, T* t)       { compress<VT>::read(rbits, pm, cm,  reinterpret_cast<VT*>(t)); }
+  };
+
+template <typename T>
+  struct compress<T, typename tbool<T::is_hmeta_alias>::type> {
+    typedef typename T::type RT;
+    typedef typename compress<RT>::PModel PModel;
+    typedef typename compress<RT>::CModel CModel;
+
+    static void init(const PModel& pm, CModel* cm)                            { compress<RT>::init(pm, cm); }
+    static void write(cwbitstream* bits,  PModel* pm, CModel* cm, const T& t) { compress<RT>::write(bits, pm, cm, *reinterpret_cast<const RT*>(&t)); }
+    static void read (crbitstream* rbits, PModel* pm, CModel* cm, T* t)       { compress<RT>::read(rbits, pm, cm,  reinterpret_cast<RT*>(t)); }
   };
 
 /*******************************************************
@@ -1297,4 +1309,3 @@ private:
 }}
 
 #endif
-
