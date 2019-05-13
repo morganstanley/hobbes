@@ -762,6 +762,45 @@ TEST(Storage, CFRegion_H2C) {
   }
 }
 
+DEFINE_STRUCT(
+  CFTypeTest,
+  (datetimeT, t)
+);
+
+TEST(Storage, CFRegion_CTypes) {
+  std::string fname = mkFName();
+  try {
+    auto t = hobbes::now();
+
+    // write some compressed data
+    {
+      hobbes::fregion::cwriter w(fname);
+      auto& xs = w.series<CFTypeTest>("cts");
+      for (size_t i = 0; i < 100; ++i) {
+        CFTypeTest s;
+        s.t = t;
+        xs(s);
+      }
+    }
+
+    // verify that it reads back correctly
+    {
+      hobbes::fregion::creader r(fname);
+      auto& xs = r.series<CFTypeTest>("cts");
+      CFTypeTest s;
+      while (xs.next(&s)) {
+        EXPECT_TRUE(s.t.value == t.value);
+      }
+    }
+
+    unlink(fname.c_str());
+  } catch (...) {
+    unlink(fname.c_str());
+    throw;
+  }
+}
+
+
 TEST(Storage, FRegionCArrays) {
   std::string fname = mkFName();
   try {
