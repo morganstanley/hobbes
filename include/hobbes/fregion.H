@@ -586,6 +586,7 @@ inline fregion& createFileRegionMap(imagefile* f, file_pageindex_t page, size_t 
 
   // adjust our map page count to match the set increment
   pages = align<size_t>(pages, f->mmapPageMultiple);
+  pages = std::min(pages, (f->file_size - pageOffset(f, page)) / f->page_size);
 
   // map the specified file region into memory
   char* d = reinterpret_cast<char*>(mmap(0, pages * f->page_size, PROT_READ | (f->readonly ? 0 : PROT_WRITE), MAP_SHARED, f->fd, page * f->page_size));
