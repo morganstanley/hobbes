@@ -927,7 +927,7 @@ inline imagefile* openFile(const std::string& fname, bool readonly, uint16_t min
   imagefile* f        = new imagefile();
   f->path             = fname;
   f->readonly         = readonly;
-  f->mmapPageMultiple = 262144;    // map in 1GB increments
+  f->mmapPageMultiple = 50*262144;    // map in 50GiB increments
 
   try {
     // open the file
