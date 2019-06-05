@@ -458,7 +458,7 @@ struct inferTypeF : public switchPattern<MonoTypePtr> {
     return v->equivConstant()->primType();
   }
 
-  MonoTypePtr with(const MatchAny* v) const {
+  MonoTypePtr with(const MatchAny*) const {
     return freshTypeVar();
   }
 
@@ -487,7 +487,7 @@ struct inferTypeF : public switchPattern<MonoTypePtr> {
     return MonoTypePtr(Record::make(ms));
   }
 
-  MonoTypePtr with(const MatchVariant* v) const {
+  MonoTypePtr with(const MatchVariant*) const {
     // too broad, but for this purpose should be fine
     return freshTypeVar();
   }
@@ -563,7 +563,7 @@ struct inferMappingF : public switchPattern<UnitV> {
     return unitv;
   }
 
-  UnitV with(const MatchRegex* x) const {
+  UnitV with(const MatchRegex*) const {
     // regex translation will decide how to conflate binding names
     return unitv;
   }
@@ -637,6 +637,21 @@ ExprPtr compileMatchTest(cc* c, const ExprPtr& e, const PatternPtr& p, const Lex
     return ExprPtr(new Bool(true, rootLA));
   } else {
     return compileMatch(c, list(e), list(PatternRow(list(p), ExprPtr(new Bool(true, rootLA))), PatternRow(list(PatternPtr(new MatchAny("_", rootLA))), ExprPtr(new Bool(false, rootLA)))), rootLA);
+  }
+}
+
+ExprPtr compileRegexFn(cc* c, const std::string& regex, const LexicalAnnotation& rootLA) {
+  PatternPtr p(new MatchRegex(regex, rootLA));
+
+  auto ns = accessibleBindingNames(p);
+  if (ns.size() == 0) {
+    return fn("x", compileMatchTest(c, var("x", rootLA), p, rootLA), rootLA);
+  } else {
+    MkRecord::FieldDefs fs;
+    for (auto n : ns) {
+      fs.push_back(MkRecord::FieldDef(n, var(n, rootLA)));
+    }
+    return fn("x", compileMatch(c, list(var("x", rootLA)), list(PatternRow(list(p), fncall(var("just", rootLA), mkrecord(fs, rootLA), rootLA)), PatternRow(list(PatternPtr(new MatchAny("_", rootLA))), var("nothing", rootLA))), rootLA), rootLA);
   }
 }
 
@@ -715,6 +730,55 @@ str::set accessibleBindingNames(const PatternPtr& p) {
   str::set r;
   switchOf(p, accBindingNamesF(&r));
   return r;
+}
+
+// desugar list comprehensions
+ExprPtr irpatFunc(cc* c, const PatternPtr& pat, const ExprPtr& body, const LexicalAnnotation& la) {
+  return fn(str::strings(".arg"), compileMatch(c, list(var(".arg", la)), list(PatternRow(list(pat), body)), la), la);
+}
+
+ExprPtr rpatFunc(cc* c, const PatternPtr& pat, const ExprPtr& cond, const ExprPtr& body, const LexicalAnnotation& la) {
+  MonoTypePtr rty   = freshTypeVar();
+  MonoTypePtr mrty  = sumtype(primty("unit"), rty);
+  ExprPtr     fbody = assume(ExprPtr(new MkVariant(".f0", mktunit(la), la)), mrty, la);
+  ExprPtr     sbody = assume(ExprPtr(new MkVariant(".f1", body, la)), mrty, la);
+  PatternRow  pr    = cond ? PatternRow(list(pat), cond, sbody) : PatternRow(list(pat), sbody);
+
+  return fn(str::strings(".arg"), compileMatch(c, list(var(".arg", la)), list(pr, PatternRow(list(PatternPtr(new MatchAny("_", la))), fbody)), la), la);
+}
+
+ExprPtr conjoinConds(const Exprs& es, const LexicalAnnotation& la) {
+  if (es.size() == 0) {
+    return constant(bool(true), la);
+  } else {
+    ExprPtr c = es[0];
+    for (size_t i = 1; i < es.size(); ++i) {
+      c = fncall(var("and", la), list(c, es[i]), la);
+    }
+    return c;
+  }
+}
+
+ExprPtr desugarComprehension(cc* c, const ExprPtr& e, const CSelection& cs, const LexicalAnnotation& la) {
+  if (refutable(cs.pat)) {
+    return fncall(var("ffilterMMap", la), list(rpatFunc(c, cs.pat, cs.conds.size() > 0 ? conjoinConds(cs.conds, la) : ExprPtr(), e, la), cs.seq), la);
+  } else if (cs.conds.size() > 0) {
+    return fncall(var("ffilterMap", la), list(irpatFunc(c, cs.pat, conjoinConds(cs.conds, la), la), irpatFunc(c, cs.pat, e, la), cs.seq), la);
+  } else {
+    return fncall(var("fmap", la), list(irpatFunc(c, cs.pat, e, la), cs.seq), la);
+  }
+}
+
+Expr* desugarComprehension(cc* c, const ExprPtr& ex, const CSelections& cs, const LexicalAnnotation& la) {
+  if (cs.size() == 0) {
+    return ex->clone();
+  } else {
+    ExprPtr e = desugarComprehension(c, ex, *cs[cs.size()-1], la);
+    for (size_t i = cs.size()-1; i > 0; --i) {
+      e = fncall(var("mflatten", la), list(desugarComprehension(c, e, *cs[i-1], la)), la);
+    }
+    return e->clone();
+  }
 }
 
 }

@@ -49,8 +49,8 @@ public:
   const std::string& name() const;
   void show(std::ostream& out) const;
 
-  PatternPtr matchPattern() const;
-  ExprPtr matchRefExpr() const;
+  [[noreturn]] PatternPtr matchPattern() const;
+  [[noreturn]] ExprPtr matchRefExpr() const;
 private:
   std::string sname;
 };
@@ -62,8 +62,8 @@ public:
   void show(std::ostream&) const;
   static terminal* value();
 
-  PatternPtr matchPattern() const;
-  ExprPtr matchRefExpr() const;
+  [[noreturn]] PatternPtr matchPattern() const;
+  [[noreturn]] ExprPtr matchRefExpr() const;
 };
 
 // allow terminals to be ordered by basic precedence / associativity definitions

@@ -10,6 +10,8 @@
 #include <time.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <signal.h>
+#include <setjmp.h>
 
 #include "cio.H"
 #include "evaluator.H"
@@ -21,6 +23,9 @@
 namespace str = hobbes::str;
 
 namespace hi {
+
+// the one evaluator for this process
+evaluator* eval = 0;
 
 // control color options (these can be tweaked by ~/.hirc)
 ConsoleColors colors;
@@ -47,7 +52,7 @@ void setDefaultColorScheme() {
   colors.oddlinebg      = 238;
 }
 
-bool consoleCmdsEnabled = true;
+bool consoleCmdsEnabled = false;
 bool extConsoleCmdsEnabled() {
   return consoleCmdsEnabled;
 }
@@ -92,14 +97,18 @@ void printAnnotatedText(const hobbes::LexicalAnnotation& la) {
     } else {
       std::cout << setfgc(colors.stdtextfg) << setbgc(colors.oddlinebg) << lineText;
     }
-    std::cout << "\n";
+    std::cout << resetfmt() << "\n";
   }
-  std::cout << resetfmt() << std::endl;
 }
 
-void printAnnotatedError(const hobbes::annotated_error& ae) {
+void printAnnotatedError(const hobbes::annotated_error& ae, const hobbes::Constraints& cs) {
   for (const auto& m : ae.messages()) {
     std::cout << setbold() << setfgc(colors.errorfg) << m.second.lineDesc() << ": " << m.first << "\n";
+    for (const auto& c : cs) {
+      if (eval && !eval->satisfied(c)) {
+        std::cout << "  " << hobbes::show(c) << std::endl;
+      }
+    }
     printAnnotatedText(m.second);
   }
 }
@@ -166,7 +175,21 @@ void showShellHelp() {
   cds.push_back(CmdDesc(":z E",   "Evaluate E and show a breakdown of compilation/evaluation time"));
   cds.push_back(CmdDesc(":c N",   "Describe the type class named N"));
   cds.push_back(CmdDesc(":i N",   "Show instances and instance generators for the type class N"));
+  cds.push_back(CmdDesc(":o K",   "Enable language option K"));
+  cds.push_back(CmdDesc(":^",     "Echo back the command history"));
   showShellHelp(cds);
+}
+
+void echoCommandHistory() {
+  const int history_max = 10;
+  HIST_ENTRY** history = history_list();
+  if (history) {
+    // take the last history_max elements of history
+    int startIndex = history_length > history_max ? history_length - history_max : 0;
+    for (int i = startIndex; i < history_length; ++i) {
+      std::cout << history[i]->line << std::endl;
+    }
+  }
 }
 
 // indicate that we want input
@@ -176,13 +199,10 @@ std::string prompttext() {
   return ss.str();
 }
 
-// the one evaluator for this process
-evaluator* eval = 0;
-
 // provide possibilities for autocompletion
 str::seq completionMatches;
 
-char* completionStep(const char* pfx, int state) {
+char* completionStep(const char*, int state) {
   if (state >= 0 && size_t(state) < completionMatches.size()) {
     return strdup(completionMatches[state].c_str());
   } else {
@@ -190,7 +210,7 @@ char* completionStep(const char* pfx, int state) {
   }
 }
 
-char** completions(const char* pfx, int start, int end) {
+char** completions(const char* pfx, int start, int) {
   if (start == 0) {
     completionMatches = eval->completionsFor(pfx);
     return rl_completion_matches(const_cast<char*>(pfx), &completionStep);
@@ -202,11 +222,28 @@ char** completions(const char* pfx, int start, int end) {
   }
 }
 
+// allow expression evaluation to be interrupted
+static bool terminating = false;
+static sigjmp_buf continueInterrupt;
+[[noreturn]] void interruptEval(int) {
+  siglongjmp(continueInterrupt, 42);
+}
+class interruption_error : public std::exception { };
+void installInterruptHandler() {
+  if (sigsetjmp(continueInterrupt,1) == 0) {
+    signal(SIGINT, &interruptEval);
+  } else if (!terminating) {
+    throw interruption_error();
+  } else {
+    exit(-1);
+  }
+}
+
 // run a read-eval-print loop
 void evalLine(char*);
 
-void repl(evaluator* ev) {
-  eval = ev;
+void repl(evaluator*) {
+  signal(SIGWINCH, SIG_IGN);
 
   // set up stdin to be read incrementally
   std::ostringstream prompt;
@@ -216,8 +253,25 @@ void repl(evaluator* ev) {
   // set up readline autocompletion
   rl_attempted_completion_function = completions;
 
+  // if interrupted while polling, just kill the repl process
+  hobbes::registerInterruptHandler(
+    []() {
+      terminating = true;
+      std::cout << "Quit" << std::endl;
+      rl_callback_handler_remove();
+      exit(-1);
+    }
+  );
+
   // dispatch stdin events to our line handler (through readline)
-  hobbes::registerEventHandler(STDIN_FILENO, [](int,void*){rl_callback_read_char();}, 0);
+  hobbes::registerEventHandler
+  (
+    STDIN_FILENO,
+    [](int,void*) {
+      rl_callback_read_char();
+    },
+    0
+  );
 
   // poll for events and dispatch them
   hobbes::runEventLoop();
@@ -238,12 +292,20 @@ void evalLine(char* x) {
   }
 
   try {
+    installInterruptHandler();
+
     // should we process a basic command?
     if (line == ":q") {
+      std::cout << resetfmt() << std::flush;
       exit(0);
     }
 
     if (line == "") {
+      return;
+    }
+
+    if (line == ":^") {
+      echoCommandHistory();
       return;
     }
 
@@ -262,7 +324,6 @@ void evalLine(char* x) {
       return;
     }
 
-    // should we save or load a file?
     if (line.size() > 2) {
       std::string cmd = line.substr(0, 2);
 
@@ -274,6 +335,9 @@ void evalLine(char* x) {
         return;
       } else if (cmd == ":i") {
         eval->showInstances(str::trim(line.substr(2)));
+        return;
+      } else if (cmd == ":o") {
+        eval->setOption(str::trim(line.substr(2)));
         return;
       }
     }
@@ -331,8 +395,12 @@ void evalLine(char* x) {
     }
 
     eval->resetREPLCycle();
+  } catch (hobbes::unsolved_constraints& cs) {
+    printAnnotatedError(cs, cs.constraints());
   } catch (hobbes::annotated_error& ae) {
-    printAnnotatedError(ae);
+    printAnnotatedError(ae, hobbes::Constraints());
+  } catch (interruption_error&) {
+    std::cout << "Interrupted" << std::endl;
   } catch (std::exception& ex) {
     std::cout << setfgc(colors.errorfg) << setbold() << ex.what() << std::endl;
   }
@@ -504,13 +572,14 @@ using namespace hi;
 void printUsage() {
   std::cout << "hi : an interactive interpreter for hobbes" << std::endl
             << std::endl
-            << "usage: hi [-p port] [-w port] [-e expr] [-s] [-x] [-a name=val]* [file+]" << std::endl
+            << "usage: hi [-p port] [-w port] [-e expr] [-s] [-x] [-o opt] [-a name=val]* [file+]" << std::endl
             << std::endl
             << "    -p          : run a REPL server on <port>"                                              << std::endl
             << "    -w          : run a web server on <port>"                                               << std::endl
             << "    -e          : evaluate <expr>"                                                          << std::endl
             << "    -s          : run in 'silent' mode without normal formatting"                           << std::endl
             << "    -x          : exit after input scripts are evaluated"                                   << std::endl
+            << "    -o opt      : enable language option 'opt'"                                             << std::endl
             << "    -a name=val : add a name/val pair to the set of arguments passed to subsequent scripts" << std::endl
             << "    files       : hobbes script files to evaluate"                                          << std::endl
             << std::endl;
@@ -535,6 +604,8 @@ Args processCommandLine(int argc, char** argv) {
       m = 3;
     } else if (arg == "-a") {
       m = 4;
+    } else if (arg == "-o") {
+      m = 5;
     } else if (arg == "-c" || arg == "--color") {
       r.useDefColors = true;
     } else if (arg == "-s") {
@@ -551,7 +622,7 @@ Args processCommandLine(int argc, char** argv) {
         r.mfiles.push_back(arg);
         break;
       case 1:
-        r.evalExpr = arg;
+        r.evalExprs.push_back(arg);
         m = 0;
         break;
       case 2:
@@ -568,6 +639,10 @@ Args processCommandLine(int argc, char** argv) {
         m = 0;
         break;
         }
+      case 5:
+        r.opts.push_back(arg);
+        m = 0;
+        break;
       }
     }
   }
@@ -594,8 +669,8 @@ int main(int argc, char** argv) {
 
     // start an evaluator and process ~/.hirc if it exists
     // (this should apply whatever settings the user prefers)
-    evaluator eval(args);
-    initHI(&eval, args.useDefColors);
+    eval = new evaluator(args);
+    initHI(eval, args.useDefColors);
 
     // show the repl header
     if (!args.silent) {
@@ -618,25 +693,31 @@ int main(int argc, char** argv) {
     // load any modules passed in
     if (args.mfiles.size() > 0) {
       for (ModuleFiles::const_iterator m = args.mfiles.begin(); m != args.mfiles.end(); ++m) {
-        eval.loadModule(str::expandPath(*m));
+        eval->loadModule(str::expandPath(*m));
       }
     }
 
-    // should we evaluate some given expression?
-    if (!args.evalExpr.empty()) {
-      eval.evalExpr(args.evalExpr);
+    // should we evaluate some given expression(s)?
+    for (const auto& expr : args.evalExprs) {
+      eval->evalExpr(expr);
     }
 
     // finally, run some kind of REPL if requested
     if (args.machineREPL) {
-      eval.runMachineREPL();
+      eval->runMachineREPL();
     } else if (!args.exitAfterEval) {
-      repl(&eval);
+      repl(eval);
     }
     std::cout << resetfmt();
     return 0;
+  } catch (hobbes::unsolved_constraints& cs) {
+    printAnnotatedError(cs, cs.constraints());
+    return -1;
   } catch (hobbes::annotated_error& ae) {
-    printAnnotatedError(ae);
+    printAnnotatedError(ae, hobbes::Constraints());
+    return -1;
+  } catch (interruption_error&) {
+    std::cout << "Quit" << std::endl;
     return -1;
   } catch (std::exception& ex) {
     std::cout << "Fatal error: " << ex.what() << resetfmt() << std::endl;

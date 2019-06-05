@@ -144,6 +144,77 @@ void dbglog(const std::string& msg) {
   }
 }
 
+void printAnnotatedText(cc*, std::ostream& out, const hobbes::LexicalAnnotation& la) {
+  static const size_t diffLine = 4;
+  static const size_t termWidth = 80;
+
+  size_t l0 = la.p0.first <= diffLine ? 0 : (la.p0.first - diffLine);
+  size_t l1 = la.p1.first + diffLine;
+
+  str::seq linenos;
+  for (size_t l = l0; l < l1; ++l) {
+    linenos.push_back(str::from(l+1));
+  }
+  linenos = str::rightAlign(linenos);
+
+  str::seq lines = la.lines(l0, l1);
+  size_t mlinelen = std::max<size_t>(str::maxStrLen(lines), termWidth);
+
+  for (size_t r = 0; r < lines.size(); ++r) {
+    out << linenos[r] << " ";
+
+    size_t lineno = r+l0+1;
+    std::string lineText = lines[r] + std::string(mlinelen - lines[r].size(), ' ');
+
+    if (lineno == la.p0.first && lineno == la.p1.first) {
+      out << lineText.substr(0, la.p0.second-1)
+          << lineText.substr(la.p0.second-1, la.p1.second-la.p0.second+1)
+          << lineText.substr(la.p1.second);
+    } else if (lineno == la.p0.first) {
+      out << lineText.substr(0, la.p0.second-1) << lineText.substr(la.p0.second-1);
+    } else if (lineno > la.p0.first && lineno < la.p1.first) {
+      out << lineText;
+    } else if (lineno == la.p1.first) {
+      out << lineText.substr(0, la.p1.second) << lineText.substr(la.p1.second);
+    } else {
+      out << lineText;
+    }
+    out << "\n";
+  }
+}
+
+bool satisfied(cc* eval, const hobbes::ConstraintPtr& c) {
+  hobbes::Definitions ds;
+  bool result = false;
+  try {
+    result = hobbes::satisfied(eval->typeEnv(), c, &ds);
+  } catch (std::exception&) {
+  }
+  eval->drainUnqualifyDefs(ds);
+  return result;
+}
+
+void printAnnotatedError(cc* eval, std::ostream& out, const hobbes::annotated_error& ae, const hobbes::Constraints& cs) {
+  dbglog("** " + std::string(ae.what()));
+
+  for (const auto& m : ae.messages()) {
+    out << m.second.lineDesc() << ": " << m.first << "\n";
+    for (const auto& c : cs) {
+      if (eval && !satisfied(eval, c)) {
+        out << "  " << hobbes::show(c) << std::endl;
+      }
+    }
+    printAnnotatedText(eval, out, m.second);
+  }
+}
+
+void printError(cc*, std::ostream& out, const std::exception& ex) {
+  std::string m(ex.what());
+  dbglog("** " + m);
+  out << "** " << m;
+}
+
+
 #define CMD_REFINE_VNAME    static_cast<int>(0)
 #define CMD_PRECOMPILE_EXPR static_cast<int>(1)
 #define CMD_REPL_EVAL       static_cast<int>(2)
@@ -215,10 +286,12 @@ void runMachineREPLStep(cc* c) {
       try {
         c->compileFn<void()>("print(" + expr + ")")();
         resetMemoryPool();
+      } catch (hobbes::unsolved_constraints& cs) {
+        printAnnotatedError(c, std::cout, cs, cs.constraints());
+      } catch (hobbes::annotated_error& ae) {
+        printAnnotatedError(c, std::cout, ae, hobbes::Constraints());
       } catch (std::exception& ex) {
-        std::string msg(ex.what());
-        dbglog("*** " + msg);
-        std::cout << msg;
+        printError(c, std::cout, ex);
       }
       std::cout.rdbuf(stdoutbuffer);
 
@@ -239,14 +312,29 @@ void runMachineREPLStep(cc* c) {
 
       dbglog("typeof '" + expr + "'");
 
+      // buffer the result to remove any accidental internal terminators
+      std::ostringstream ss;
+      auto stdoutbuffer = std::cout.rdbuf(ss.rdbuf());
+
       try {
-        std::string ty = show(simplifyVarNames(c->unsweetenExpression(c->readExpr(expr))->type()));
-        fdwrite(STDOUT_FILENO, ty.data(), ty.size());
+        std::cout << show(simplifyVarNames(c->unsweetenExpression(c->readExpr(expr))->type()));
+      } catch (hobbes::unsolved_constraints& cs) {
+        printAnnotatedError(c, std::cout, cs, cs.constraints());
+      } catch (hobbes::annotated_error& ae) {
+        printAnnotatedError(c, std::cout, ae, hobbes::Constraints());
       } catch (std::exception& ex) {
-        std::string msg(ex.what());
-        dbglog("*** " + msg);
+        std::ostringstream ss;
+        printError(c, ss, ex);
+        std::string msg = ss.str();
         fdwrite(STDOUT_FILENO, msg.data(), msg.size());
       }
+      std::cout.rdbuf(stdoutbuffer);
+
+      // write buffered output to stdout without internal terminators
+      for (char c : ss.str()) {
+        std::cout << (c==0?'?':c);
+      }
+      std::cout << std::flush;
       fdwrite(STDOUT_FILENO, static_cast<char>(0));
       break;
     }
@@ -272,15 +360,28 @@ void runMachineREPLStep(cc* c) {
 
       dbglog("define " + vname + " = " + expr);
 
+      // buffer the result to remove any accidental internal terminators
+      std::ostringstream ss;
+      auto stdoutbuffer = std::cout.rdbuf(ss.rdbuf());
+
       try {
-        std::string msg = vname + " :: " + show(simplifyVarNames(c->unsweetenExpression(c->readExpr(expr))->type()));
         c->define(vname, expr);
-        fdwrite(STDOUT_FILENO, msg.data(), msg.size());
+        std::cout << vname << " :: " << show(simplifyVarNames(c->unsweetenExpression(c->readExpr(expr))->type()));
+      } catch (hobbes::unsolved_constraints& cs) {
+        printAnnotatedError(c, std::cout, cs, cs.constraints());
+      } catch (hobbes::annotated_error& ae) {
+        printAnnotatedError(c, std::cout, ae, hobbes::Constraints());
       } catch (std::exception& ex) {
-        std::string msg(ex.what());
-        dbglog("*** " + msg);
-        fdwrite(STDOUT_FILENO, msg.data(), msg.size());
+        printError(c, std::cout, ex);
       }
+      std::cout.rdbuf(stdoutbuffer);
+
+      // write buffered output to stdout without internal terminators
+      for (char c : ss.str()) {
+        std::cout << (c==0?'?':c);
+      }
+      std::cout << std::flush;
+
       fdwrite(STDOUT_FILENO, static_cast<char>(0));
       break;
     }

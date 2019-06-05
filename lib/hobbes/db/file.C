@@ -47,7 +47,7 @@ struct mapFileRefs : public switchTyFn {
     if (ap->args().size() == 2) {
       if (const Prim* f = is<Prim>(ap->fn())) {
         if (f->name() == "fileref") {
-          return MonoTypePtr(TApp::make(ap->fn(), list(switchOf(ap->args()[1], *this))));
+          return fileRefTy(switchOf(ap->args()[1], *this));
         }
       }
     }
@@ -64,7 +64,7 @@ struct mapStoredArrays : public switchTyFn {
 
 // translate a stored type by file version
 static MonoTypePtr v0_to_v1(const MonoTypePtr& t) {
-  return tapp(primty("fileref"), list(switchOf(t, mapFileRefs())));
+  return fileRefTy(switchOf(t, mapFileRefs()));
 }
 
 static MonoTypePtr v1_to_v2(const MonoTypePtr& t) {
@@ -109,6 +109,10 @@ reader::reader(const std::string& path) : reader(openFile(path, true, 0, HFREGIO
 
 reader::~reader() {
   closeFile(this->fdata);
+}
+
+imagefile* reader::fileData() const {
+  return this->fdata;
 }
 
 const std::string& reader::file() const {
@@ -227,7 +231,7 @@ reader::PageEntries* reader::pageEntries() const {
   PageEntries* r = makeArray<PageEntry>(this->fdata->pages.size());
   for (size_t i = 0; i < r->size; ++i) {
     r->data[i].first  = this->fdata->pages[i].type();
-    r->data[i].second = this->fdata->pages[i].size();
+    r->data[i].second = this->fdata->pages[i].availBytes();
   }
   return r;
 }
@@ -253,10 +257,6 @@ void reader::unsafeUnloadArray(void* p, size_t sz) {
 }
 
 // change any file ref types to point to this reader because they must be out of this file (this is a bit of a hack)
-MonoTypePtr mkFR(const MonoTypePtr& t) {
-  return tapp(primty("fileref"), list(t));
-}
-
 void reader::showFileSummary(std::ostream& out) const {
   out << this->fdata->path << " : " << str::showDataSize(this->fdata->file_size) << std::endl;
 }
@@ -305,7 +305,7 @@ std::string showPageDesc(const pagedata& pd) {
   default:                    ss << "?"; break;
   }
 
-  std::string sz = str::from(pd.size());
+  std::string sz = str::from(pd.availBytes());
   for (size_t p = sz.size(); p < 5; ++p) {
     ss << "0";
   }

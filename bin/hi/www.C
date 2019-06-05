@@ -400,7 +400,7 @@ void WWWServer::printQueryResult(int fd, const std::string& expr) {
   }
 }
 
-void print404(int fd, const std::string& fpath) {
+void print404(int fd, const std::string&) {
   write(fd, "HTTP 404 OK\n\nFile not found. :(");
 }
 

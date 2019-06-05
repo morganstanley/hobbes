@@ -11,17 +11,19 @@ typedef std::vector<std::string> ModuleFiles;
 
 struct Args {
   typedef std::map<std::string, std::string> NameVals;
+  typedef std::vector<std::string> strs;
 
-  ModuleFiles  mfiles;
-  std::string  evalExpr;
-  bool         showDbg;
-  bool         useDefColors;
-  bool         silent;
-  int          replPort;
-  int          httpdPort;
-  bool         exitAfterEval;
-  NameVals     scriptNameVals;
-  bool         machineREPL;    // should we structure console I/O for machine-reading?
+  ModuleFiles              mfiles;
+  std::vector<std::string> evalExprs;
+  bool                     showDbg;
+  bool                     useDefColors;
+  bool                     silent;
+  int                      replPort;
+  int                      httpdPort;
+  bool                     exitAfterEval;
+  NameVals                 scriptNameVals;
+  bool                     machineREPL;    // should we structure console I/O for machine-reading?
+  strs                     opts;
 
   Args() : useDefColors(false), silent(false), replPort(-1), httpdPort(-1), exitAfterEval(false), machineREPL(false) {
   }
@@ -53,10 +55,17 @@ public:
   void breakdownEvalExpr(const std::string& expr);
   void searchDefs(const std::string& expr_to_type);
   void resetREPLCycle();
+  bool satisfied(const hobbes::ConstraintPtr&);
+
+  void setOption(const std::string&);
 private:
   hobbes::cc ctx;
   bool       silent;
   WWWServer* wwwd;
+  Args::strs opts;
+
+  hobbes::ExprPtr readExpr(const std::string&);
+  std::pair<std::string, hobbes::ExprPtr> readExprDefn(const std::string&);
 };
 
 }

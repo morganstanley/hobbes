@@ -26,8 +26,19 @@
 
 namespace hobbes {
 
-typedef std::map<std::string, PolyTypePtr> TypeAliasMap;
-typedef std::map<std::string, MonoTypePtr> MonoTypeAliasMap;
+// protect access to hobbes/llvm resources between threads
+class hlock {
+public:
+  hlock(); ~hlock();
+};
+class phlock {
+public:
+  phlock();
+  void release();
+  ~phlock();
+private:
+  bool f;
+};
 
 // parameter parsing for the 'compileFn' family of functions
 typedef std::function<ExprPtr(const std::string&)> ExprParser;
@@ -44,6 +55,11 @@ template <>
   struct PArgl<std::string> {
     static str::seq names(const std::string&) { return str::seq(); }
     static ExprPtr expr(const ExprParser& p, const std::string& e) { return p(e); }
+  };
+template <>
+  struct PArgl<char*> {
+    static str::seq names(char*) { return str::seq(); }
+    static ExprPtr expr(const ExprParser& p, char* e) { return p(std::string(e)); }
   };
 template <>
   struct PArgl<const char*> {
@@ -92,6 +108,7 @@ public:
   SearchEntries search(const std::string&, const MonoTypePtr&);
   SearchEntries search(const std::string&, const std::string&);
 private:
+  // parser functions
   readModuleFileFn readModuleFileF;
   readModuleFn     readModuleF;
   readExprDefnFn   readExprDefnF;
@@ -161,12 +178,14 @@ public:
   // keep track of C++ classes so that we can perform upcasts where necessary
   template <typename T>
     void addObj() {
+      hlock _;
       this->objs->add<T>();
     }
 
   // convenience method for lifting C++ types
   template <typename T>
     PolyTypePtr liftType() {
+      hlock _;
       return generalize(lift<T>::type(*this));
     }
 
@@ -180,17 +199,20 @@ public:
 
   template <typename T>
     void bind(const std::string& vn, T* x) {
+      hlock _;
       bind(generalize(liftValue<T*>::type(*this, x)), vn, rcast<void*>(x));
     }
 
   template <typename T, int N>
     void bindArr(const std::string& vn, T x[N]) {
+      hlock _;
       bind(polytype(qualtype(arrayty(lift<T>::type(*this), N))), vn, rcast<void*>(x));
     }
 
   // simplify binding user functions
   template <typename R, typename ... Args>
     void bind(const std::string& fn, R (*pfn)(Args...)) {
+      hlock _;
       bindExternFunction(fn, lift<R(Args...)>::type(*this), rcast<void*>(pfn));
     }
 private:
@@ -247,7 +269,17 @@ public:
   void bindExternFunction(const std::string& fname, const MonoTypePtr& fty, void* fn);
 
   // allocate global data
-  void* memalloc(size_t);
+  void* memalloc(size_t, size_t);
+
+  template <typename T>
+    array<T>* makeArray(size_t n) {
+      auto* r = reinterpret_cast<array<T>*>(this->memalloc(sizeof(long) + (sizeof(T) * n), std::max<size_t>(sizeof(long), alignof(T))));
+      r->size = n;
+      if (r->size > 0) {
+        new (r->data) T[r->size];
+      }
+      return r;
+    }
 private:
   // cache for expression search results
   SearchCache searchCache;
@@ -264,8 +296,10 @@ private:
   int  dfaOverNfaMaxRatio        = 4;
 
   // the bound root type-def environment
-  TEnvPtr          tenv;
-  TypeAliasMap     typeAliases;
+  typedef std::map<std::string, PolyTypePtr> TypeAliasMap;
+
+  TEnvPtr      tenv;
+  TypeAliasMap typeAliases;
 
   PolyTypePtr lookupVarType(const std::string& vname) const;
 
@@ -276,7 +310,10 @@ private:
   ObjsPtr objs;
 
   // the JIT engine that compiles our monotyped expressions
-  jitcc jit;
+  jitcc* jit;
+public:
+  // compiler-local type structure caches for internal use
+  std::unordered_map<MonoType*, MonoTypePtr> unappTyDefns;
 private:
   // disable copying
   cc(const cc&);

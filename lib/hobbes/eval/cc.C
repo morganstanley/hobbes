@@ -27,11 +27,18 @@
 #include <stdexcept>
 #include <unordered_map>
 #include <fstream>
+#include <mutex>
 
 namespace hobbes {
 
+// protect access to hobbes/llvm resources
+static std::recursive_mutex hccmtx;
+hlock:: hlock() { hccmtx.lock();   }
+hlock::~hlock() { hccmtx.unlock(); }
+
 // the compiler
 cc::cc() :
+  // init local resources
   readModuleFileF(&defReadModuleFile),
   readModuleF(&defReadModule),
   readExprDefnF(&defReadExprDefn),
@@ -44,9 +51,12 @@ cc::cc() :
   lowerPrimMatchTables(false),
   columnwiseMatches(false),
   tenv(new TEnv()),
-  objs(new Objs()),
-  jit(this->tenv)
+  objs(new Objs())
 {
+  // protect access to LLVM
+  hlock _;
+  this->jit = new jitcc(this->tenv);
+
   // initialize the environment of primitive instructions
   initDefOperators(this);
 
@@ -103,6 +113,9 @@ cc::cc() :
   // support appending (appendable) types
   this->tenv->bind(AppendsToUnqualifier::constraintName(), UnqualifierPtr(new AppendsToUnqualifier()));
 
+  // support translation of hobbes type descs to C++ type descs
+  this->tenv->bind(CPPTypeDescP::constraintName(), UnqualifierPtr(new CPPTypeDescP()));
+
   // support connecting to remote processes
   initNetworkDefs(*this);
 
@@ -121,25 +134,26 @@ cc::cc() :
   // boot
   compileBootCode(*this);
 }
-
 cc::~cc() {
+  hlock _;
+  delete this->jit;
 }
 
-SearchEntries cc::search(const MonoTypePtr& src, const MonoTypePtr& dst) { return hobbes::search(*this, this->searchCache, src, dst); }
-SearchEntries cc::search(const ExprPtr&     e,   const MonoTypePtr& dst) { return hobbes::search(*this, this->searchCache, e, dst); }
-SearchEntries cc::search(const std::string& e,   const MonoTypePtr& dst) { return search(readExpr(e), dst); }
-SearchEntries cc::search(const std::string& e,   const std::string& t)   { return search(readExpr(e), readMonoType(t)); }
+SearchEntries cc::search(const MonoTypePtr& src, const MonoTypePtr& dst) { hlock _; return hobbes::search(*this, this->searchCache, src, dst); }
+SearchEntries cc::search(const ExprPtr&     e,   const MonoTypePtr& dst) { hlock _; return hobbes::search(*this, this->searchCache, e, dst); }
+SearchEntries cc::search(const std::string& e,   const MonoTypePtr& dst) { hlock _; return search(readExpr(e), dst); }
+SearchEntries cc::search(const std::string& e,   const std::string& t)   { hlock _; return search(readExpr(e), readMonoType(t)); }
 
-ModulePtr cc::readModuleFile(const std::string& x) { return this->readModuleFileF(this, x); }
+ModulePtr cc::readModuleFile(const std::string& x) { hlock _; return this->readModuleFileF(this, x); }
 void cc::setReadModuleFileFn(readModuleFileFn f) { this->readModuleFileF = f; }
 
-ModulePtr cc::readModule(const std::string& x) { return this->readModuleF(this, x); }
+ModulePtr cc::readModule(const std::string& x) { hlock _; return this->readModuleF(this, x); }
 void cc::setReadModuleFn(readModuleFn f) { this->readModuleF = f; }
 
-std::pair<std::string, ExprPtr> cc::readExprDefn(const std::string& x) { return this->readExprDefnF(this, x); }
+std::pair<std::string, ExprPtr> cc::readExprDefn(const std::string& x) { hlock _; return this->readExprDefnF(this, x); }
 void cc::setReadExprDefnFn(readExprDefnFn f) { this->readExprDefnF = f; }
 
-ExprPtr cc::readExpr(const std::string& x) { return this->readExprF(this, x); }
+ExprPtr cc::readExpr(const std::string& x) { hlock _; return this->readExprF(this, x); }
 void cc::setReadExprFn(readExprFn f) { this->readExprF = f; }
 MonoTypePtr cc::readMonoType(const std::string& x) {
   ExprPtr e = readExpr("()::"+x);
@@ -181,12 +195,14 @@ llvm::GlobalVariable* extractGlobal(llvm::Value* e) {
 }
 
 void cc::forwardDeclare(const std::string& vname, const QualTypePtr& qt) {
+  hlock _;
   this->tenv->bind(vname, hobbes::generalize(qt));
 }
 
 bool cc::hasValueBinding(const std::string& vname) {
+  hlock _;
   // either we have a bound/compiled mono-typed value, or we have a polytype value (through a generated or user-defined type class)
-  return this->jit.isDefined(vname) || isClassMember(this->tenv, vname);
+  return this->jit->isDefined(vname) || isClassMember(this->tenv, vname);
 }
 
 //
@@ -206,6 +222,7 @@ bool cc::hasValueBinding(const std::string& vname) {
 // big mutually-recursive set.
 //
 ExprPtr cc::unsweetenExpression(const TEnvPtr& te, const std::string& vname, const ExprPtr& e) {
+  hlock _;
   Definitions ds;
 
   ExprPtr result;
@@ -220,7 +237,12 @@ ExprPtr cc::unsweetenExpression(const TEnvPtr& te, const std::string& vname, con
   return result;
 }
 
+[[noreturn]] void raiseUnsolvedCsts(cc& c, const std::string&, const ExprPtr& e, const PolyTypePtr&) {
+  throw unsolved_constraints(*e, "Constraints left unresolved in residual expression", expandHiddenTCs(c.typeEnv(), simplifyVarNames(e->type())->constraints()));
+}
+
 void cc::drainUnqualifyDefs(const Definitions& ds) {
+  hlock _;
   bool finaldef = !this->drainingDefs;
   this->drainingDefs = true;
 
@@ -241,7 +263,7 @@ void cc::drainUnqualifyDefs(const Definitions& ds) {
     } else {
       if (forwardDeclared) {
         if (vname.substr(0, 4) == ".rfn" || isMonotype(this->tenv->lookup(vname))) {
-          throw annotated_error(*xe, "Internal error, residual instance function '" + vname + "' should have had monotype '" + show(this->tenv->lookup(vname)) + "' but instead inferred '" + show(xety) + "' in:\n  " + showAnnotated(xe));
+          raiseUnsolvedCsts(*this, vname, xe, this->tenv->lookup(vname));
         }
         this->tenv->unbind(vname);
       }
@@ -253,13 +275,15 @@ void cc::drainUnqualifyDefs(const Definitions& ds) {
     this->drainingDefs = false;
 
     if (this->drainDefs.size() > 0) {
-      this->jit.compileFunctions(this->drainDefs);
+      this->jit->compileFunctions(this->drainDefs);
       this->drainDefs.clear();
     }
   }
 }
 
 void cc::define(const std::string& vname, const ExprPtr& e) {
+  hlock _;
+
   // don't allow redefinitions of existing bindings
   if (hasValueBinding(vname)) {
     throw annotated_error(*e, "Variable already defined: " + vname);
@@ -274,7 +298,7 @@ void cc::define(const std::string& vname, const ExprPtr& e) {
   PolyTypePtr xety = hobbes::generalize(xe->type());
 
   if (isMonotype(xety)) {
-    this->jit.defineGlobal(vname, xe);
+    this->jit->defineGlobal(vname, xe);
 
     if (!forwardDeclared) {
       this->tenv->bind(vname, xety);
@@ -282,7 +306,7 @@ void cc::define(const std::string& vname, const ExprPtr& e) {
   } else {
     if (forwardDeclared) {
       if (isMonotype(this->tenv->lookup(vname))) {
-        throw annotated_error(*xe, "Internal error, residual instance function '" + vname + "' should have had monotype '" + show(this->tenv->lookup(vname)) + "' but instead inferred '" + show(xety) + "'");
+        raiseUnsolvedCsts(*this, vname, xe, this->tenv->lookup(vname));
       }
       this->tenv->unbind(vname);
     }
@@ -295,16 +319,19 @@ void cc::define(const std::string& vname, const ExprPtr& e) {
 //  here we can just piggyback off of the existing type class / instance-generator system
 //  to create a private type class with one instance generator matching this type signature
 void cc::definePolyValue(const std::string& vname, const ExprPtr& unsweetExpr) {
+  hlock _;
   definePrivateClass(this->tenv, vname, unsweetExpr);
 }
 
 void cc::define(const std::string& vname, const std::string& expr) {
+  hlock _;
   define(vname, readExpr(expr));
 }
 
 void cc::bind(const PolyTypePtr& ty, const std::string& vn, void* x) {
+  hlock _;
   this->tenv->bind(vn, ty);
-  this->jit.bindGlobal(vn, requireMonotype(ty), x);
+  this->jit->bindGlobal(vn, requireMonotype(ty), x);
 }
 
 // define a transparent type alias
@@ -357,11 +384,14 @@ struct repTypeAliasesF : public switchTyFn {
 };
 
 MonoTypePtr cc::replaceTypeAliases(const MonoTypePtr& ty) const {
+  hlock _;
   return switchOf(ty, repTypeAliasesF(this->ttyDefs));
 }
 
 // map C++ types
 PolyTypePtr cc::opaquePtrPolyType(const std::type_info& ti, unsigned int sz, bool inStruct) {
+  hlock _;
+
   // if this is an object type, record its class structure
   this->objs->add(ti);
 
@@ -370,8 +400,10 @@ PolyTypePtr cc::opaquePtrPolyType(const std::type_info& ti, unsigned int sz, boo
 }
 
 MonoTypePtr cc::opaquePtrMonoType(const std::type_info& ti, unsigned int sz, bool inStruct) {
+  hlock _;
+
   // we don't necesarily *HAVE* to make this type opaque, if we've previously been given a type mapping AND the type has a pointer representation
-  TypeAliasMap::const_iterator t = this->typeAliases.find(ti.name());
+  auto t = this->typeAliases.find(ti.name());
 
   if (t != this->typeAliases.end() && hasPointerRep(t->second)) {
     return requireMonotype(t->second);
@@ -389,10 +421,12 @@ MonoTypePtr cc::opaquePtrMonoType(const std::type_info& ti, unsigned int sz, boo
 }
 
 PolyTypePtr cc::generalize(const MonoTypePtr& mt) const {
+  hlock _;
   return this->objs->generalize(mt);
 }
 
 void cc::overload(const std::string& tyclass, const MonoTypes& tys) {
+  hlock _;
   UnqualifierPtr tyc = this->tenv->lookupUnqualifier(tyclass);
   TClassPtr      c   = std::dynamic_pointer_cast<TClass>(tyc);
   
@@ -414,6 +448,7 @@ void cc::overload(const std::string& tyclass, const MonoTypes& tys) {
 }
 
 void cc::overload(const std::string& tyclass, const MonoTypes& tys, const ExprPtr& e) {
+  hlock _;
   UnqualifierPtr tyc = this->tenv->lookupUnqualifier(tyclass);
   TClassPtr      c   = std::dynamic_pointer_cast<TClass>(tyc);
   
@@ -440,12 +475,14 @@ void cc::overload(const std::string& tyclass, const MonoTypes& tys, const std::s
 }
 
 void cc::addInstance(const TClassPtr& c, const TCInstancePtr& i) {
+  hlock _;
   Definitions ds;
   c->insert(this->typeEnv(), i, &ds);
   drainUnqualifyDefs(ds);
 }
 
 MonoTypePtr cc::defineNamedType(const std::string& name, const str::seq& argNames, const MonoTypePtr& ty) {
+  hlock _;
   if (argNames.size() > 0) {
     MonoTypePtr tfn    = tabs(argNames, ty);
     MonoTypePtr talias = MonoTypePtr(Prim::make(name, tfn));
@@ -464,19 +501,21 @@ MonoTypePtr cc::defineNamedType(const std::string& name, const str::seq& argName
 }
 
 MonoTypePtr cc::namedTypeRepresentation(const std::string& tn) const {
+  hlock _;
   return this->tenv->unalias(tn);
 }
 
 bool cc::isTypeName(const std::string& tn) const {
+  hlock _;
   return this->tenv->isOpaqueTypeAlias(tn);
 }
 
 llvm::IRBuilder<>* cc::builder() const {
-  return this->jit.builder();
+  return this->jit->builder();
 }
 
 llvm::Module* cc::module() const {
-  return const_cast<cc*>(this)->jit.module();
+  return const_cast<cc*>(this)->jit->module();
 }
 
 void cc::dumpTypeEnv() const {
@@ -484,20 +523,19 @@ void cc::dumpTypeEnv() const {
 }
 
 void cc::dumpTypeEnv(str::seq* syms, str::seq* types) const {
-  const TEnv::PolyTypeEnv& ptenv = this->tenv->typeEnvTable();
-
-  for (TEnv::PolyTypeEnv::const_iterator te = ptenv.begin(); te != ptenv.end(); ++te) {
+  for (auto te : this->tenv->typeEnvTable()) {
     // don't show hidden symbols since they're not meant for users
-    if (te->first.size() > 0 && te->first[0] != '.') {
-      syms->push_back(te->first);
-      types->push_back(show(te->second));
+    if (te.first.size() > 0 && te.first[0] != '.') {
+      syms->push_back(te.first);
+
+      auto t = te.second->instantiate();
+      auto cs = expandHiddenTCs(typeEnv(), t->constraints());
+      types->push_back(show(hobbes::qualtype(cs, t->monoType())));
     }
   }
 }
 
 std::string cc::showTypeEnv() const {
-  const TEnv::PolyTypeEnv& ptenv = this->tenv->typeEnvTable();
-
   str::seqs table;
   table.resize(3);
 
@@ -516,11 +554,13 @@ const TEnvPtr& cc::typeEnv() const {
 }
 
 void cc::dumpModule() {
-  this->jit.dump();
+  hlock _;
+  this->jit->dump();
 }
 
 cc::bytes cc::machineCodeForExpr(const std::string& expr) {
-  return this->jit.machineCodeForExpr(unsweetenExpression(readExpr(expr)));
+  hlock _;
+  return this->jit->machineCodeForExpr(unsweetenExpression(readExpr(expr)));
 }
 
 template <typename K, typename T>
@@ -534,21 +574,24 @@ template <typename K, typename T>
   }
 
 PolyTypePtr cc::lookupVarType(const std::string& vname) const {
+  hlock _;
   return this->tenv->lookup(vname);
 }
 
 void cc::bindLLFunc(const std::string& fname, op* f) {
+  hlock _;
   this->tenv->bind(fname, f->type(*this));
-  this->jit.bindInstruction(fname, f);
+  this->jit->bindInstruction(fname, f);
 }
 
 void cc::bindExternFunction(const std::string& fname, const MonoTypePtr& fty, void* fn) {
+  hlock _;
   this->tenv->bind(fname, generalize(fty));
-  this->jit.bindGlobal(fname, fty, fn);
+  this->jit->bindGlobal(fname, fty, fn);
 }
 
-void* cc::memalloc(size_t sz) {
-  return this->jit.memalloc(sz);
+void* cc::memalloc(size_t sz, size_t asz) {
+  return this->jit->memalloc(sz, asz);
 }
 
 inline TEnvPtr allocTEnvFrame(const str::seq& names, const MonoTypes& tys, const TEnvPtr& ptenv) {
@@ -565,6 +608,7 @@ inline TEnvPtr allocTEnvFrame(const str::seq& names, const MonoTypes& tys, const
 }
 
 void* cc::unsafeCompileFn(const MonoTypePtr& retTy, const str::seq& tnames, const MonoTypes& argTys, const ExprPtr& exp) {
+  hlock _;
   str::seq names = tnames;
 
   if (names.size() == 0 && argTys.size() == 1 && isUnit(argTys[0])) {
@@ -576,7 +620,7 @@ void* cc::unsafeCompileFn(const MonoTypePtr& retTy, const str::seq& tnames, cons
   }
 
   return
-    this->jit.reifyMachineCodeForFn(
+    this->jit->reifyMachineCodeForFn(
       retTy,
       names,
       argTys,
@@ -597,7 +641,8 @@ void* cc::unsafeCompileFn(const MonoTypePtr& fnTy, const str::seq& names, const 
 }
 
 void cc::releaseMachineCode(void* f) {
-  this->jit.releaseMachineCode(f);
+  hlock _;
+  this->jit->releaseMachineCode(f);
 }
 
 void cc::enableModuleInlining(bool f) { this->runModInlinePass = f; }

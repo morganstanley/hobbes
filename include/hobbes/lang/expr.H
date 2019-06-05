@@ -12,6 +12,8 @@
 
 namespace hobbes {
 
+typedef __int128 int128_t;
+
 class Expr : public LexicallyAnnotated {
 public:
   virtual ~Expr();
@@ -664,6 +666,24 @@ private:
   ExprPtr     body;
 };
 
+// 128-bit int
+class Int128 : public PrimitiveCase<Int128> {
+public:
+  Int128(int128_t x, const LexicalAnnotation&);
+  int128_t value() const;
+  void value(int128_t);
+  Expr* clone() const;
+  void show(std::ostream& out) const;
+  void showAnnotated(std::ostream& out) const;
+  bool equiv(const Int128&) const;
+  bool lt(const Int128&) const;
+  MonoTypePtr primType() const;
+
+  static const int type_case_id = 25;
+private:
+  int128_t x;
+};
+
 template <typename Case>
   ExprCase<Case>::ExprCase(const LexicalAnnotation& la) : Expr(Case::type_case_id, la) {
   }
@@ -696,6 +716,12 @@ inline ExprPtr constant(long x, const LexicalAnnotation& la) {
 inline ExprPtr constant(size_t x, const LexicalAnnotation& la) {
   ExprPtr r(new Long(x, la));
   r->type(qualtype(MonoTypePtr(Prim::make("long"))));
+  return r;
+}
+
+inline ExprPtr constant(int128_t x, const LexicalAnnotation& la) {
+  ExprPtr r(new Int128(x, la));
+  r->type(qualtype(MonoTypePtr(Prim::make("int128"))));
   return r;
 }
 
@@ -1037,6 +1063,7 @@ template <typename T>
     virtual T with(const Short*  v) const = 0;
     virtual T with(const Int*    v) const = 0;
     virtual T with(const Long*   v) const = 0;
+    virtual T with(const Int128* v) const = 0;
     virtual T with(const Float*  v) const = 0;
     virtual T with(const Double* v) const = 0;
   };
@@ -1058,6 +1085,8 @@ template <typename T>
       return f.with(crcast<Int*>(p.get()));
     case Long::type_case_id:
       return f.with(crcast<Long*>(p.get()));
+    case Int128::type_case_id:
+      return f.with(crcast<Int128*>(p.get()));
     case Float::type_case_id:
       return f.with(crcast<Float*>(p.get()));
     case Double::type_case_id:
@@ -1071,13 +1100,14 @@ template <typename T>
 //   (if the expression type is extended but functions on expressions aren't extended, it will be a compile-error)
 template <typename T>
   struct switchExpr {
-    virtual ~switchExpr() = default;
+    //virtual ~switchExpr() = default;
     virtual T with(const Unit* v)      const = 0;
     virtual T with(const Bool* v)      const = 0;
     virtual T with(const Char* v)      const = 0;
     virtual T with(const Byte* v)      const = 0;
     virtual T with(const Short* v)     const = 0;
     virtual T with(const Int* v)       const = 0;
+    virtual T with(const Int128* v)    const = 0;
     virtual T with(const Long* v)      const = 0;
     virtual T with(const Float* v)     const = 0;
     virtual T with(const Double* v)    const = 0;
@@ -1128,6 +1158,7 @@ template <typename T>
     T with(const Short*  v) const { return withConst(v); }
     T with(const Int*    v) const { return withConst(v); }
     T with(const Long*   v) const { return withConst(v); }
+    T with(const Int128* v) const { return withConst(v); }
     T with(const Float*  v) const { return withConst(v); }
     T with(const Double* v) const { return withConst(v); }
   };
@@ -1143,6 +1174,7 @@ template <typename T>
     virtual T with(Short* v)     = 0;
     virtual T with(Int* v)       = 0;
     virtual T with(Long* v)      = 0;
+    virtual T with(Int128* v)    = 0;
     virtual T with(Float* v)     = 0;
     virtual T with(Double* v)    = 0;
     virtual T with(Var* v)       = 0;
@@ -1181,6 +1213,8 @@ template <typename T, typename F>
       return f.with(crcast<Int*>(&e));
     case Long::type_case_id:
       return f.with(crcast<Long*>(&e));
+    case Int128::type_case_id:
+      return f.with(crcast<Int128*>(&e));
     case Float::type_case_id:
       return f.with(crcast<Float*>(&e));
     case Double::type_case_id:
@@ -1319,6 +1353,7 @@ struct switchExprTyFnM : public switchExprM<UnitV> {
   UnitV with(Short* v);
   UnitV with(Int* v);
   UnitV with(Long* v);
+  UnitV with(Int128* v);
   UnitV with(Float* v);
   UnitV with(Double* v);
   UnitV with(Var* v);
@@ -1344,6 +1379,17 @@ private:
 Case::Bindings switchOf(const Case::Bindings& bs, const switchExpr<ExprPtr>& f);
 Switch::Bindings switchOf(const Switch::Bindings& bs, const switchExpr<ExprPtr>& f);
 
+// when asserting that an expression has a monotype, we might find an exceptional circumstance where some type constraints remain unsolved
+class unsolved_constraints : public annotated_error {
+public:
+  unsolved_constraints(const LexicalAnnotation&, const std::string&, const Constraints&);
+  unsolved_constraints(const LexicallyAnnotated&, const std::string&, const Constraints&);
+
+  const Constraints& constraints() const;
+private:
+  Constraints cs;
+};
+
 // require that a mono-type can be extracted from an expression
 const MonoTypePtr& requireMonotype(const TEnvPtr&, const ExprPtr&);
 MonoTypes requireMonotype(const TEnvPtr&, const Exprs&);
@@ -1363,20 +1409,6 @@ VarSet freeVars(const Expr&);
 
 // find the type variables used in a term
 NameSet tvarNames(const ExprPtr&);
-
-// simplify introducing array comprehensions (these should just be syntax sugar for core terms anyway)
-struct ComprehensionDef {
-  ComprehensionDef(const std::string& varname, const ExprPtr& ex);
-  ComprehensionDef(const ExprPtr& ex);
-
-  bool        isfilter;
-  std::string varname;
-  ExprPtr     ex;
-};
-
-typedef std::vector<ComprehensionDef> ComprehensionDefs;
-
-ExprPtr desugarComprehension(const ExprPtr& ex, const ComprehensionDefs& cdefs, const LexicalAnnotation& la);
 
 // generate a format expression from a format string
 ExprPtr mkFormatExpr(const std::string& fmt, const LexicalAnnotation&);

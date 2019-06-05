@@ -1,8 +1,9 @@
-/* A Bison parser, made by GNU Bison 3.0.2.  */
+/* A Bison parser, made by GNU Bison 3.3.2.  */
 
 /* Bison interface for Yacc-like parsers in C
 
-   Copyright (C) 1984, 1989-1990, 2000-2013 Free Software Foundation, Inc.
+   Copyright (C) 1984, 1989-1990, 2000-2015, 2018-2019 Free Software Foundation,
+   Inc.
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -30,6 +31,9 @@
    This special exception was added by the Free Software Foundation in
    version 2.2 of Bison.  */
 
+/* Undocumented macros, especially those whose name start with YY_,
+   are private implementation details.  Do not rely on them.  */
+
 #ifndef YY_YY_HEXPR_PARSE_H_INCLUDED
 # define YY_YY_HEXPR_PARSE_H_INCLUDED
 /* Debug traces.  */
@@ -48,100 +52,102 @@ extern int yydebug;
     TPARSEMODULE = 258,
     TPARSEDEFN = 259,
     TPARSEEXPR = 260,
-    TMODULE = 261,
-    TWHERE = 262,
-    TIMPORT = 263,
-    TTYPE = 264,
-    TDATA = 265,
-    TCLASS = 266,
-    TINST = 267,
-    TINDENT = 268,
-    TBOOL = 269,
-    TCHAR = 270,
-    TBYTE = 271,
-    TBYTES = 272,
-    TSHORT = 273,
-    TINT = 274,
-    TLONG = 275,
-    TFLOAT = 276,
-    TDOUBLE = 277,
-    TIDENT = 278,
-    TSTRING = 279,
-    TREGEX = 280,
-    TTIMEINTERVAL = 281,
-    TTIME = 282,
-    TDATETIME = 283,
-    TTUPSECTION = 284,
-    TCSTARROW = 285,
-    TARROW = 286,
-    TCOLON = 287,
-    TEXISTS = 288,
-    TASSIGN = 289,
-    TPARROW = 290,
-    TEQUALS = 291,
-    TASSUMP = 292,
-    TAPPEND = 293,
-    TPLUS = 294,
-    TMINUS = 295,
-    TTIMES = 296,
-    TDIVIDE = 297,
-    TREM = 298,
-    TDOT = 299,
-    TEQUIV = 300,
-    TEQ = 301,
-    TCIEQ = 302,
-    TNEQ = 303,
-    TLT = 304,
-    TLTE = 305,
-    TGT = 306,
-    TGTE = 307,
-    TNOT = 308,
-    TLET = 309,
-    TCASE = 310,
-    TDEFAULT = 311,
-    TMATCH = 312,
-    TMATCHES = 313,
-    TPARSE = 314,
-    TWITH = 315,
-    TOF = 316,
-    TAND = 317,
-    TOR = 318,
-    TIF = 319,
-    TTHEN = 320,
-    TELSE = 321,
-    TIN = 322,
-    TPACK = 323,
-    TUNPACK = 324,
-    TDO = 325,
-    TRETURN = 326,
-    TLPAREN = 327,
-    TRPAREN = 328,
-    TLBRACKET = 329,
-    TRBRACKET = 330,
-    TLBRACE = 331,
-    TRBRACE = 332,
-    TBAR = 333,
-    TCOMMA = 334,
-    TSEMICOLON = 335,
-    TFN = 336,
-    TFNL = 337,
-    TCOMPOSE = 338,
-    TUPTO = 339,
-    TCARET = 340,
-    TAT = 341,
-    TDOLLAR = 342,
-    TQUESTION = 343,
-    TSQUOTE = 344,
-    TEQUOTE = 345
+    TOPTION = 261,
+    TMODULE = 262,
+    TWHERE = 263,
+    TIMPORT = 264,
+    TTYPE = 265,
+    TDATA = 266,
+    TCLASS = 267,
+    TINST = 268,
+    TINDENT = 269,
+    TBOOL = 270,
+    TCHAR = 271,
+    TBYTE = 272,
+    TBYTES = 273,
+    TSHORT = 274,
+    TINT = 275,
+    TLONG = 276,
+    TINT128 = 277,
+    TFLOAT = 278,
+    TDOUBLE = 279,
+    TIDENT = 280,
+    TSTRING = 281,
+    TREGEX = 282,
+    TTIMEINTERVAL = 283,
+    TTIME = 284,
+    TDATETIME = 285,
+    TTUPSECTION = 286,
+    TCSTARROW = 287,
+    TARROW = 288,
+    TCOLON = 289,
+    TEXISTS = 290,
+    TASSIGN = 291,
+    TPARROW = 292,
+    TEQUALS = 293,
+    TASSUMP = 294,
+    TAPPEND = 295,
+    TPLUS = 296,
+    TMINUS = 297,
+    TTIMES = 298,
+    TDIVIDE = 299,
+    TREM = 300,
+    TDOT = 301,
+    TEQUIV = 302,
+    TEQ = 303,
+    TCIEQ = 304,
+    TNEQ = 305,
+    TLT = 306,
+    TLTE = 307,
+    TGT = 308,
+    TGTE = 309,
+    TNOT = 310,
+    TLET = 311,
+    TCASE = 312,
+    TDEFAULT = 313,
+    TMATCH = 314,
+    TMATCHES = 315,
+    TPARSE = 316,
+    TWITH = 317,
+    TOF = 318,
+    TAND = 319,
+    TOR = 320,
+    TIF = 321,
+    TTHEN = 322,
+    TELSE = 323,
+    TIN = 324,
+    TPACK = 325,
+    TUNPACK = 326,
+    TDO = 327,
+    TRETURN = 328,
+    TLPAREN = 329,
+    TRPAREN = 330,
+    TLBRACKET = 331,
+    TRBRACKET = 332,
+    TLBRACE = 333,
+    TRBRACE = 334,
+    TBAR = 335,
+    TCOMMA = 336,
+    TSEMICOLON = 337,
+    TFN = 338,
+    TFNL = 339,
+    TCOMPOSE = 340,
+    TUPTO = 341,
+    TCARET = 342,
+    TAT = 343,
+    TDOLLAR = 344,
+    TQUESTION = 345,
+    TSQUOTE = 346,
+    TEQUOTE = 347
   };
 #endif
 
 /* Value type.  */
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
-typedef union YYSTYPE YYSTYPE;
+
 union YYSTYPE
 {
-#line 274 "hexpr.y" /* yacc.c:1909  */
+#line 274 "hexpr.y" /* yacc.c:1927  */
 
   hobbes::Module*              module;
   hobbes::ModuleDefs*          mdefs;
@@ -164,6 +170,8 @@ union YYSTYPE
   hobbes::PatternRow*          patternexp;
   hobbes::Patterns*            patterns;
   hobbes::Pattern*             pattern;
+  hobbes::CSelection*          cselection;
+  hobbes::CSelections*         cselections;
   hobbes::MatchRecord::Fields* recpatfields;
   hobbes::MatchRecord::Field*  recpatfield;
 
@@ -187,6 +195,7 @@ union YYSTYPE
   short                                   shortv;
   int                                     intv;
   long                                    longv;
+  __int128                                int128v;
   float                                   floatv;
   double                                  doublev;
 
@@ -198,8 +207,10 @@ union YYSTYPE
   hobbes::BoundGrammarValue*   pbelem;
   hobbes::GrammarValue*        pvalue;
 
-#line 202 "hexpr.parse.H" /* yacc.c:1909  */
+#line 211 "hexpr.parse.H" /* yacc.c:1927  */
 };
+
+typedef union YYSTYPE YYSTYPE;
 # define YYSTYPE_IS_TRIVIAL 1
 # define YYSTYPE_IS_DECLARED 1
 #endif

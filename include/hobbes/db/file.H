@@ -42,7 +42,7 @@ template <typename T>
 template <typename T, bool InStruct>
   struct lift< fileref<T>, InStruct > {
     static MonoTypePtr type(typedb& tenv) {
-      return MonoTypePtr(TApp::make(MonoTypePtr(Prim::make("fileref")), list(lift<T, false>::type(tenv))));
+      return fileRefTy(lift<T, false>::type(tenv));
     }
   };
 
@@ -66,7 +66,7 @@ template <typename T, bool InStruct>
   struct lift<dbseq<T>*, InStruct> {
     static MonoTypePtr type(typedb& tenv) {
       // ^x.()+T*x@n
-      MonoTypePtr tlink = MonoTypePtr(TApp::make(MonoTypePtr(Prim::make("fileref")), list(tvar("x"))));
+      MonoTypePtr tlink = fileRefTy(tvar("x"));
       MonoTypePtr tcons = tuplety(list(lift<T, true>::type(tenv), tlink));
 
       return MonoTypePtr(Recursive::make("x", MonoTypePtr(Variant::make(list(Variant::Member(".f0", primty("unit"), 0), Variant::Member(".f1", tcons, 1))))));
@@ -136,6 +136,7 @@ public:
   reader(const std::string&);
   virtual ~reader();
 
+  imagefile* fileData() const;
   const std::string& file() const;
   size_t size() const;
 
@@ -331,7 +332,7 @@ std::string moveToUniqueFilename(const std::string& oldpath, const std::string& 
 // make it easy to bind files
 template <>
   struct liftValue< reader* > {
-    static MonoTypePtr type(typedb& tenv, reader* r) {
+    static MonoTypePtr type(typedb&, reader* r) {
       MonoTypeSubst fdefs = r->signature();
       Record::Members ms;
       for (const auto& m : fdefs) {
@@ -344,7 +345,7 @@ template <>
 
 template <>
   struct liftValue< writer* > {
-    static MonoTypePtr type(typedb& tenv, writer* w) {
+    static MonoTypePtr type(typedb&, writer* w) {
       MonoTypeSubst fdefs = w->signature();
       Record::Members ms;
       for (const auto& m : fdefs) {

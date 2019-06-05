@@ -2,6 +2,8 @@
 #include <hobbes/hobbes.H>
 #include "test.H"
 
+namespace hobbes { region& threadRegion(); }
+
 using namespace hobbes;
 static cc& c() { static cc x; return x; }
 
@@ -32,6 +34,7 @@ TEST(Arrays, Slices) {
 
 TEST(Arrays, Comprehensions) {
   EXPECT_TRUE((c().compileFn<bool()>("sum([x | x <- [1..1000], x <= 100]) == 5050")()));
+  EXPECT_TRUE((c().compileFn<bool()>("countBy(.0,[(x,y)|x<-[1..5]|y<-[1..x]]) == [(i,i)|i<-[1..5]]")()));
 }
 
 TEST(Arrays, Streams) {
@@ -54,5 +57,17 @@ TEST(Arrays, CppRAIIConsistency) {
   for (size_t i = 0; i < xs->size; ++i) {
     EXPECT_EQ(xs->data[i], "");
   }
+}
+
+TEST(Arrays, Alignment) {
+  short*        s = reinterpret_cast<short*>(threadRegion().malloc(sizeof(short), alignof(short)));
+  int*          i = reinterpret_cast<int*>(threadRegion().malloc(sizeof(int)), alignof(int));
+  double*       d = reinterpret_cast<double*>(threadRegion().malloc(sizeof(double)), alignof(double));
+  array<int>*   a = makeArray<int>(100);
+
+  EXPECT_EQ(reinterpret_cast<size_t>(s)%sizeof(short),  size_t(0));
+  EXPECT_EQ(reinterpret_cast<size_t>(i)%sizeof(int),    size_t(0));
+  EXPECT_EQ(reinterpret_cast<size_t>(d)%sizeof(double), size_t(0));
+  EXPECT_EQ(reinterpret_cast<size_t>(a)%sizeof(size_t), size_t(0));
 }
 

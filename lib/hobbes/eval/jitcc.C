@@ -5,6 +5,8 @@
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wold-style-cast"
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#pragma GCC diagnostic ignored "-Wctor-dtor-privacy"
 
 #if LLVM_VERSION_MINOR == 3 or LLVM_VERSION_MINOR == 5
 #include "llvm/ExecutionEngine/JIT.h"
@@ -263,7 +265,7 @@ public:
   size_t sz;
   LenWatch(const std::string& fname) : fname(fname), sz(0) { }
   size_t size() const { return this->sz; }
-  void NotifyObjectEmitted(const llvm::object::ObjectFile& o, const llvm::RuntimeDyld::LoadedObjectInfo& dl) {
+  void NotifyObjectEmitted(const llvm::object::ObjectFile& o, const llvm::RuntimeDyld::LoadedObjectInfo&) {
     for (auto s : o.symbols()) {
       const llvm::object::ELFSymbolRef* esr = reinterpret_cast<const llvm::object::ELFSymbolRef*>(&s);
 
@@ -288,7 +290,7 @@ public:
   size_t sz;
   LenWatch(const std::string& fname) : fname(fname), sz(0) { }
   size_t size() const { return this->sz; }
-  void NotifyObjectEmitted(const llvm::object::ObjectFile& o, const llvm::RuntimeDyld::LoadedObjectInfo& dl) {
+  void NotifyObjectEmitted(const llvm::object::ObjectFile& o, const llvm::RuntimeDyld::LoadedObjectInfo&) {
     for (auto s : o.symbols()) {
       llvm::StringRef nm;
       if (s.getName(nm)) {
@@ -306,7 +308,7 @@ public:
   LenWatch(const std::string& fname) : fname(fname), sz(0) { }
   size_t size() const { return this->sz; }
   virtual ~LenWatch() { }
-  virtual void NotifyFunctionEmitted(const llvm::Function& f, void* mc, size_t sz, const llvm::JITEventListener::EmittedFunctionDetails&) {
+  virtual void NotifyFunctionEmitted(const llvm::Function& f, void*, size_t sz, const llvm::JITEventListener::EmittedFunctionDetails&) {
     if (f.getName().str() == this->fname) {
       this->sz = sz;
     }
@@ -559,9 +561,9 @@ void jitcc::popGlobalRegion(size_t x) {
   setThreadRegion(x);
 }
 
-void* jitcc::memalloc(size_t sz) {
+void* jitcc::memalloc(size_t sz, size_t asz) {
   size_t r = pushGlobalRegion();
-  void* result = ::hobbes::memalloc(sz);
+  void* result = ::hobbes::memalloc(sz, asz);
   popGlobalRegion(r);
   return result;
 }
@@ -761,14 +763,14 @@ void jitcc::unsafeCompileFunctions(UCFS* ufs) {
   }
 }
 
-llvm::Value* jitcc::compileAllocStmt(llvm::Value* sz, llvm::Type* mty, bool zeroMem) {
+llvm::Value* jitcc::compileAllocStmt(llvm::Value* sz, llvm::Value* asz, llvm::Type* mty, bool zeroMem) {
   llvm::Function* f = lookupFunction(zeroMem ? "mallocz" : "malloc");
   if (!f) throw std::runtime_error("Expected heap allocation function as call.");
-  return builder()->CreateBitCast(fncall(builder(), f, sz), mty);
+  return builder()->CreateBitCast(fncall(builder(), f, list(sz, asz)), mty);
 }
 
-llvm::Value* jitcc::compileAllocStmt(size_t sz, llvm::Type* mty, bool zeroMem) {
-  return compileAllocStmt(cvalue(static_cast<long>(sz)), mty, zeroMem);
+llvm::Value* jitcc::compileAllocStmt(size_t sz, size_t asz, llvm::Type* mty, bool zeroMem) {
+  return compileAllocStmt(cvalue(static_cast<long>(sz)), cvalue(static_cast<long>(asz)), mty, zeroMem);
 }
 
 void jitcc::releaseMachineCode(void*) {
@@ -784,7 +786,7 @@ llvm::Function* jitcc::allocFunction(const std::string& fname, const MonoTypes& 
     );
 }
 
-void* jitcc::reifyMachineCodeForFn(const MonoTypePtr& reqTy, const str::seq& names, const MonoTypes& tys, const ExprPtr& exp) {
+void* jitcc::reifyMachineCodeForFn(const MonoTypePtr&, const str::seq& names, const MonoTypes& tys, const ExprPtr& exp) {
   return getMachineCode(compileFunction("", names, tys, exp));
 }
 

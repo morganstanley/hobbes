@@ -34,6 +34,9 @@ instance Show int where
 instance Show long where
   show = showLong
 
+instance Show int128 where
+  show = showInt128
+
 instance Show float where
   show x = showFloat(x, floatFormatConfig.floatPrecision)
 
@@ -100,9 +103,27 @@ instance Show 0 where
 instance (v=|a+vt|, ShowVarValue a, Show vt) => Show v where
   show x = variantSplit(x, \xv."|"++variantHeadLabel(x)++showVarValue(xv)++"|", toClosure(show))
 
+data penum t v = t
+class UnpackEnum t v | t -> v where
+  unpackEnum :: t -> v
+instance (Convert t int) => UnpackEnum (penum t v) v where
+  unpackEnum x = unsafeCast({x=convert(unsafeCast(x)::t)::int})
+
+instance Eq (penum _ _) where
+  x === y = x.t === y.t
+instance (Ord t t) => Ord (penum t v) (penum t v) where
+  x <  y = x.t <  y.t
+  x <= y = x.t <= y.t
+  x >  y = x.t >  y.t
+  x >= y = x.t >= y.t
+instance (UnpackEnum t v, Show v) => Show t where
+  show e = show(unpackEnum(e))
+
 // serialization for arrays
 instance (Array cs char) => Show cs where
   show cs = show(cs[0:])
+instance (Array bs byte) => Show bs where
+  show bs = show(bs[0:])
 instance (Show a) => Show [a] where
   show xs = "[" ++ cdelim(map(show,xs), ", ") ++ "]"
 instance (Array as a, Show a) => Show as where
@@ -181,17 +202,19 @@ instance (PrintableAsTable a) => Print a where
 instance Print [char] where
   print cs = do { putStr("\""); putStr(cs); putStr("\""); }
 instance (Array cs char) => Print cs where
-  print cs = do { putStr("\""); putStr(cs[0:]); putStr("\""); }
+  print cs = print(cs[0:])
+instance (Array bs byte) => Print bs where
+  print bs = print(bs[0:])
 
-printArray :: (Array as a, Print a) => (as, long) -> ()
+printArray :: (Print a) => ([a], long) -> ()
 printArray xs i =
-  if (i == size(xs)) then
+  if (i == length(xs)) then
     ()
   else
-    do { putStr(", "); print(element(xs, i)); printArray(xs, i+1); }
+    do { putStr(", "); print(xs[i]); printArray(xs, i+1L); }
 
 instance (Array as a, Print a) => Print as where
-  print xs = if (size(xs)==0) then putStr("[]") else do { putStr("["); print(element(xs, 0L)); printArray(xs, 1L); putStr("]"); }
+  print xs = let n=size(xs) in if (n==0) then putStr("[]") else do { putStr("["); axs=elements(xs, 0L, n); print(axs[0]); printArray(axs, 1L); putStr("]"); }
 
 // print lists of things
 instance (Print a) => Print (^x.(()+(a*x))) where

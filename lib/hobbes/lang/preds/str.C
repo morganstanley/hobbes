@@ -70,7 +70,7 @@ public:
     }
   }
 
-  void explain(const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPtr& e, Definitions* ds, annmsgs* msgs) {
+  void explain(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*, annmsgs*) {
   }
 
   struct StripCst : public switchExprTyFn {
@@ -179,7 +179,7 @@ public:
     return c->arguments().size() == 2 && (is<TVar>(c->arguments()[0]) || is<TVar>(c->arguments()[1]) || satisfied(tenv, c, ds));
   }
 
-  void explain(const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPtr& e, Definitions* ds, annmsgs* msgs) {
+  void explain(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*, annmsgs*) {
   }
 
   struct StripCst : public switchExprTyFn {

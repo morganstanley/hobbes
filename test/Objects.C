@@ -53,12 +53,7 @@ public:
 };
 
 array<ArrObjV*>* arrobjs(int n) {
-  array<ArrObjV*>* r = reinterpret_cast<array<ArrObjV*>*>(memalloc(sizeof(long) + sizeof(ArrObjV) * n));
-  r->size = n;
-  for (int i = 0; i < n; ++i) {
-    new (r->data + n) ArrObjV();
-  }
-  return r;
+  return makeArray<ArrObjV*>(n);
 }
 
 // verify compilation of simple single-inheritance
@@ -174,4 +169,28 @@ TEST(Objects, FwdDecl) {
   c().bind("undefCount", &undefCount);
   EXPECT_EQ((c().compileFn<size_t(const Undef*)>("u", "undefCount(u)")(reinterpret_cast<const Undef*>(0))), size_t(42));
 }
+
+#ifndef __clang__
+class Base {
+public:
+  int x;
+  int getBaseX() { return this->x; }
+};
+class Offset {
+public:
+  int y;
+};
+class Derived : public Base, public Offset {
+public:
+  Derived() { this->y = 0; this->x = 42; }
+  virtual int off() { return 20; }
+};
+TEST(Objects, ThroughVarRef) {
+  static Derived d;
+  c().bind("testObj", &d);
+  c().bind("getBaseX", memberfn(&Derived::getBaseX)); // <-- should infer Base::getBaseX instead of Derived, since that's where getBaseX is introduced
+  c().define("indGetX", "getBaseX");
+  EXPECT_EQ(c().compileFn<int()>("indGetX(testObj)")(), 42);
+}
+#endif
 

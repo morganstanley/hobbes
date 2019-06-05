@@ -40,16 +40,17 @@ mmap f x = case x of |0:_=|0=()|, 1:y=|1=f(y)||
 mmapC :: (exists E.(((E, a) -> b) * E), ()+a) -> (()+b)
 mmapC f x = case x of |0:_=|0=()|, 1:y=|1=apply(f,y)||
 
+atm :: (Array as a, Convert i long) => (as, i) -> (()+a)
+atm xs i = let k=convert(i)::long in if (k < size(xs) and k >= 0) then just(element(xs, k)) else nothing
+
 atMay :: (Convert b long) => ([a],b) -> (()+a)
-atMay xs i = match (convert(i)::long) with
-             | k where (k >= 0L and k < length(xs)) -> |1=xs[k]|
-             | _                                    -> |0=()|
+atMay = atm 
 
 headMay :: [a] -> (()+a)
-headMay xs = atMay(xs,0L)
+headMay xs = atm(xs,0L)
 
 tailMay :: [a] -> (()+[a])
-tailMay xs = if (length(xs) == 0L) then |0=()| else |1=mapC(\i.xs[i],[1L..(length(xs)-1)])|
+tailMay xs = if (length(xs) == 0L) then nothing else just(xs[1:])
 
 // [doc] either just the one element of a size-1 array or nothing
 justOne :: [a] -> (()+a)

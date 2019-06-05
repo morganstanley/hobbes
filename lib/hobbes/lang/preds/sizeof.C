@@ -11,7 +11,7 @@ std::string SizeOfP::constraintName() {
   return "SizeOf";
 }
 
-bool SizeOfP::refine(const TEnvPtr& tenv, const ConstraintPtr& cst, MonoTypeUnifier* u, Definitions*) {
+bool SizeOfP::refine(const TEnvPtr&, const ConstraintPtr& cst, MonoTypeUnifier* u, Definitions*) {
   size_t uc = u->size();
   if (cst->arguments().size() == 2 && !hasFreeVariables(cst->arguments()[0])) {
     mgu(cst->arguments()[1], tlong(sizeOf(cst->arguments()[0])), u);
@@ -19,7 +19,7 @@ bool SizeOfP::refine(const TEnvPtr& tenv, const ConstraintPtr& cst, MonoTypeUnif
   return uc != u->size();
 }
 
-bool SizeOfP::satisfied(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions*) const {
+bool SizeOfP::satisfied(const TEnvPtr&, const ConstraintPtr& cst, Definitions*) const {
   if (cst->arguments().size() == 2 && !hasFreeVariables(cst->arguments()[0])) {
     if (const TLong* n = is<TLong>(cst->arguments()[1])) {
       return n->value() == sizeOf(cst->arguments()[0]);
@@ -32,7 +32,7 @@ bool SizeOfP::satisfiable(const TEnvPtr& tenv, const ConstraintPtr& cst, Definit
   return cst->arguments().size() == 2 && (hasFreeVariables(cst->arguments()[0]) || satisfied(tenv, cst, ds));
 }
 
-void SizeOfP::explain(const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPtr& e, Definitions* ds, annmsgs* msgs) {
+void SizeOfP::explain(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*, annmsgs*) {
 }
 
 struct SizeOfPUnqualify : public switchExprTyFn {
@@ -54,7 +54,7 @@ struct SizeOfPUnqualify : public switchExprTyFn {
   }
 };
 
-ExprPtr SizeOfP::unqualify(const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPtr& e, Definitions*) const {
+ExprPtr SizeOfP::unqualify(const TEnvPtr&, const ConstraintPtr& cst, const ExprPtr& e, Definitions*) const {
   return switchOf(e, SizeOfPUnqualify(cst));
 }
 

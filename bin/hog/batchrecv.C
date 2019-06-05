@@ -11,23 +11,13 @@
 
 #include <zlib.h>
 
-#include "session.H"
 #include "network.H"
+#include "session.H"
+#include "stat.H"
 #include "path.H"
 #include "out.H"
 
 using namespace hobbes;
-
-namespace {
-
-#if defined BUILD_LINUX
-  const uint8_t* const_workaround(const uint8_t* p) { return p; }
-#else // BUILD_OSX
-  // On one macOS paltform ZLIB_CONST does not take effect
-  uint8_t* const_workaround(const uint8_t* p) { return const_cast<uint8_t*>(p); }
-#endif
-
-} // namespace
 
 namespace hog {
 
@@ -46,10 +36,13 @@ struct gzbuffer {
     this->zin.zalloc    = Z_NULL;
     this->zin.zfree     = Z_NULL;
     this->zin.opaque    = Z_NULL;
-    this->zin.next_in   = const_workaround(inb.data());
+    this->zin.next_in   = const_cast<uint8_t*>(inb.data());
     this->zin.avail_in  = inb.size();
     
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wold-style-cast"
     checkZLibRC(inflateInit2(&this->zin, 15 | 32)); // window bits + ENABLE_ZLIB_GZIP
+#pragma GCC diagnostic pop
     decompressChunk();
   }
 
@@ -141,6 +134,13 @@ void read(gzbuffer* in, storage::statements* stmts) {
   }
 }
 
+DEFINE_STRUCT(
+  RecvConnection,
+  (hobbes::datetimeT, datetime),
+  (std::string,       remoteHost),
+  (int,               remotePort)
+);
+
 void runRecvConnection(SessionGroup* sg, NetConnection* pc, std::string dir) {
   std::unique_ptr<NetConnection> connection(pc);
   std::vector<uint8_t> inb, outb, txn;
@@ -167,6 +167,9 @@ void runRecvConnection(SessionGroup* sg, NetConnection* pc, std::string dir) {
 
     connection->send(&ack, sizeof(ack));
 
+    // record the fact that we've received a new connection and have associated it with a file
+    StatFile::instance().log(RecvConnection{hobbes::now(), pc->remoteHost(), pc->remotePort()});
+
     // now that we've prepared a log file,
     // just throw everything that we read into it
     while (true) {
@@ -190,8 +193,8 @@ void runRecvConnection(SessionGroup* sg, NetConnection* pc, std::string dir) {
   }
 }
 
-void runRecvServer(std::unique_ptr<NetServer> server, std::string dir, bool consolidate) {
-  SessionGroup* sg = makeSessionGroup(consolidate);
+[[noreturn]] void runRecvServer(std::unique_ptr<NetServer> server, std::string dir, bool consolidate, hobbes::StoredSeries::StorageMode sm) {
+  SessionGroup* sg = makeSessionGroup(consolidate, sm);
   std::vector<std::thread> cthreads;
 
   while (true) {
@@ -205,15 +208,15 @@ void runRecvServer(std::unique_ptr<NetServer> server, std::string dir, bool cons
   }
 }
 
-std::thread pullRemoteDataT(const std::string& dir, const std::string& listenport, bool consolidate) {
+std::thread pullRemoteDataT(const std::string& dir, const std::string& listenport, bool consolidate, hobbes::StoredSeries::StorageMode sm) {
   return std::thread([=](){
-    runRecvServer(createNetServer(listenport), dir, consolidate);
+    runRecvServer(createNetServer(listenport), dir, consolidate, sm);
   });
 }
 
-bool pullRemoteData(const std::string& dir, const std::string& listenport, bool consolidate) {
+bool pullRemoteData(const std::string& dir, const std::string& listenport, bool consolidate, hobbes::StoredSeries::StorageMode sm) {
   try {
-    auto recvThread = pullRemoteDataT(dir, listenport, consolidate);
+    auto recvThread = pullRemoteDataT(dir, listenport, consolidate, sm);
     return true;
   } catch (std::exception& ex) {
     out() << "failed to run receive server @ " << listenport << ": " << ex.what() << std::endl;

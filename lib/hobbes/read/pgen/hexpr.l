@@ -14,6 +14,7 @@ int yycolumn = 1;
 #include <hobbes/lang/expr.H>
 #include <hobbes/lang/pat/pattern.H>
 #include <hobbes/util/autorelease.H>
+#include <hobbes/util/stream.H>
 #include <hobbes/parse/grammar.H>
 #include <hobbes/read/pgen/hexpr.parse.H>
 #include <string>
@@ -25,6 +26,7 @@ int yycolumn = 1;
 #define SAVE_SHORT  yylval.shortv = (short)std::stoi(std::string(yytext, yytext + yyleng))
 #define SAVE_INT    yylval.intv = std::stoi(std::string(yytext, yytext + yyleng))
 #define SAVE_LONG   yylval.longv = std::stol(std::string(yytext, yytext + yyleng - 1))
+#define SAVE_INT128 readInt128(std::string(yytext, yytext + yyleng - 1), &yylval.int128v)
 #define SAVE_FLOAT  yylval.floatv = std::stof(std::string(yytext, yytext + yyleng))
 #define SAVE_DOUBLE yylval.doublev = std::stod(std::string(yytext, yytext + yyleng))
 
@@ -77,6 +79,7 @@ std::string* identifier(const char* b, const char* e) {
 <BLOCK_COMMENT>\n      { yycolumn = 1; }
 <BLOCK_COMMENT>.       { }
 
+"option"               { return TOPTION; }
 "module"               { return TMODULE; }
 "where"                { return TWHERE; }
 "import"               { return TIMPORT; }
@@ -157,6 +160,7 @@ std::string* identifier(const char* b, const char* e) {
 [0-9]+\.[0-9]+[Ff]     { SAVE_FLOAT;  return TFLOAT; }
 [0-9]+\.[0-9]+         { SAVE_DOUBLE; return TDOUBLE; }
 [0-9]+\.[0-9]+%        { SAVE_DOUBLE; yylval.doublev *= 0.01; return TDOUBLE; }
+[0-9]+H                { SAVE_INT128; return TINT128; }
 [0-9]+[Ll]             { SAVE_LONG;   return TLONG; }
 [0-9]+S                { SAVE_SHORT;  return TSHORT; }
 [0-9]+                 { SAVE_INT;    return TINT; }

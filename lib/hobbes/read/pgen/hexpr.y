@@ -120,36 +120,6 @@ Expr* compileNestedLetMatch(const LetBindings& bs, const ExprPtr& e, const Lexic
   return r->clone();
 }
 
-ExprPtr irpatFunc(const PatternPtr& pat, const ExprPtr& body, const LexicalAnnotation& la) {
-  return fn(str::strings(".arg"), compileMatch(yyParseCC, list(var(".arg", la)), list(PatternRow(list(pat), body)), la), la);
-}
-
-ExprPtr rpatFunc(const PatternPtr& pat, const ExprPtr& cond, const ExprPtr& body, const LexicalAnnotation& la) {
-  MonoTypePtr rty   = freshTypeVar();
-  MonoTypePtr mrty  = sumtype(primty("unit"), rty);
-  ExprPtr     fbody = assume(ExprPtr(new MkVariant(".f0", mktunit(la), la)), mrty, la);
-  ExprPtr     sbody = assume(ExprPtr(new MkVariant(".f1", body, la)), mrty, la);
-  PatternRow  pr    = cond ? PatternRow(list(pat), cond, sbody) : PatternRow(list(pat), sbody);
-
-  return fn(str::strings(".arg"), compileMatch(yyParseCC, list(var(".arg", la)), list(pr, PatternRow(list(PatternPtr(new MatchAny("_", la))), fbody)), la), la);
-}
-
-Expr* compileArrayComprehension(const ExprPtr& body, const PatternPtr& pat, const ExprPtr& arr, const LexicalAnnotation& la) {
-  if (refutable(pat)) {
-    return new App(var("ffilterMMap", la), list(rpatFunc(pat, ExprPtr(), body, la), arr), la);
-  } else {
-    return new App(var("fmap", la), list(irpatFunc(pat, body, la), arr), la);
-  }
-}
-
-Expr* compileArrayComprehension(const ExprPtr& body, const PatternPtr& pat, const ExprPtr& arr, const ExprPtr& cond, const LexicalAnnotation& la) {
-  if (refutable(pat)) {
-    return new App(var("ffilterMMap", la), list(rpatFunc(pat, cond, body, la), arr), la);
-  } else {
-    return new App(var("ffilterMap", la), list(irpatFunc(pat, cond, la), irpatFunc(pat, body, la), arr), la);
-  }
-}
-
 Expr* makeRefutablePatternFn(const Patterns& ps, const ExprPtr& e, const LexicalAnnotation& la) {
   str::seq vns;
   Exprs    vnes;
@@ -293,6 +263,8 @@ extern PatVarCtorFn patVarCtorFn;
   hobbes::PatternRow*          patternexp;
   hobbes::Patterns*            patterns;
   hobbes::Pattern*             pattern;
+  hobbes::CSelection*          cselection;
+  hobbes::CSelections*         cselections;
   hobbes::MatchRecord::Fields* recpatfields;
   hobbes::MatchRecord::Field*  recpatfield;
 
@@ -316,6 +288,7 @@ extern PatVarCtorFn patVarCtorFn;
   short                                   shortv;
   int                                     intv;
   long                                    longv;
+  __int128                                int128v;
   float                                   floatv;
   double                                  doublev;
 
@@ -332,6 +305,7 @@ extern PatVarCtorFn patVarCtorFn;
 %token TPARSEDEFN        "dodefn"
 %token TPARSEEXPR        "doexpr"
 
+%token TOPTION "option"
 %token TMODULE "module"
 %token TWHERE  "where"
 %token TIMPORT "import"
@@ -348,6 +322,7 @@ extern PatVarCtorFn patVarCtorFn;
 %token <shortv>  TSHORT        "shortV"
 %token <intv>    TINT          "intV"
 %token <longv>   TLONG         "longV"
+%token <int128v> TINT128       "int128V"
 %token <floatv>  TFLOAT        "floatV"
 %token <doublev> TDOUBLE       "doubleV"
 %token <string>  TIDENT        "id"
@@ -437,8 +412,8 @@ extern PatVarCtorFn patVarCtorFn;
 %type <mreclist>     mreclist
 %type <mvarlist>     mvarlist
 
-%type <exp>          l0expr l1expr l2expr l3expr l4expr l5expr l6expr
-%type <exps>         l6exprs cargs
+%type <exp>          l0expr lhexpr l1expr l2expr l3expr l4expr l5expr l6expr
+%type <exps>         l6exprs cargs cselconds
 %type <rfields>      recfields
 %type <vfields>      varfields
 %type <vbind>        varbind
@@ -448,6 +423,8 @@ extern PatVarCtorFn patVarCtorFn;
 %type <patternexp>   patternexp
 %type <patterns>     patterns patternseq patternseqn
 %type <pattern>      pattern refutablep irrefutablep
+%type <cselection>   cselection
+%type <cselections>  cselections
 %type <recpatfields> recpatfields
 %type <recpatfield>  recpatfield
 
@@ -492,7 +469,8 @@ s: "domodule" module        { yyParsedModule = $2;                     }
  | "doexpr"   l0expr        { yyParsedExpr   = $2;                     }
 
 /* modules */
-module: "module" id "where" defs { $$ = new Module(*$2, *$4); }
+module: "option" id module       { $$ = $3; $$->setOption(*$2, m(@1)); }
+      | "module" id "where" defs { $$ = new Module(*$2, *$4); }
       | defs                     { $$ = new Module(freshName(), *$1); }
 
 defs: /* nothing */ { $$ = autorelease(new ModuleDefs()); }
@@ -605,11 +583,13 @@ types: l0mtype       { $$ = autorelease(new MonoTypes()); $$->push_back(*$1); }
 /* expressions */
 l0expr: "\\" patterns "." l0expr { $$ = makePatternFn(*$2, ExprPtr($4), m(@1, @4)); }
       | "fn" patterns "." l0expr { $$ = makePatternFn(*$2, ExprPtr($4), m(@1, @4)); }
-      | "!" l1expr               { $$ = TAPP1(var("not",m(@1)), $2, m(@1,@2)); }
-      | l0expr "and" l0expr      { $$ = TAPP2(var("and",m(@2)), $1, $3, m(@1,@3)); }
-      | l0expr "or"  l0expr      { $$ = TAPP2(var("or",m(@2)),  $1, $3, m(@1,@3)); }
-      | l0expr "o"   l0expr      { $$ = TAPP2(var("compose",m(@2)), $1, $3, m(@1,@3)); }
-      | l1expr "<-"  l1expr      { $$ = new Assign(ExprPtr($1), ExprPtr($3), m(@1, @3)); }
+      | lhexpr "<-"  lhexpr      { $$ = new Assign(ExprPtr($1), ExprPtr($3), m(@1, @3)); }
+      | lhexpr                   { $$ = $1; }
+
+lhexpr: "!" l1expr               { $$ = TAPP1(var("not",m(@1)), $2, m(@1,@2)); }
+      | lhexpr "and" lhexpr      { $$ = TAPP2(var("and",m(@2)), $1, $3, m(@1,@3)); }
+      | lhexpr "or"  lhexpr      { $$ = TAPP2(var("or",m(@2)),  $1, $3, m(@1,@3)); }
+      | lhexpr "o"   lhexpr      { $$ = TAPP2(var("compose",m(@2)), $1, $3, m(@1,@3)); }
       | l1expr "in"  l1expr      { $$ = TAPP2(var("in",m(@2)), $1, $3, m(@1,@3)); }
       | l1expr                   { $$ = $1; }
 
@@ -679,6 +659,15 @@ dobindings: dobindings dobinding { $$ = $1; $$->push_back(*$2); }
 dobinding: irrefutablep "=" l0expr ";" { $$ = autorelease(new LetBinding(PatternPtr($1), ExprPtr($3))); }
          | l0expr ";"                  { $$ = autorelease(new LetBinding(PatternPtr(new MatchAny("_",m(@1))), ExprPtr($1))); }
 
+cselconds: cselconds "," lhexpr { $$ = $1; $$->push_back(ExprPtr($3)); }
+         | lhexpr               { $$ = autorelease(new Exprs()); $$->push_back(ExprPtr($1)); }
+
+cselection: pattern "<-" l0expr "," cselconds { $$ = new CSelection(); $$->pat = PatternPtr($1); $$->seq = ExprPtr($3); $$->conds = *$5; }
+          | pattern "<-" l0expr               { $$ = new CSelection(); $$->pat = PatternPtr($1); $$->seq = ExprPtr($3); }
+
+cselections: cselections "|" cselection { $$ = $1; $$->push_back(CSelectionPtr($3)); }
+           | cselection                 { $$ = autorelease(new CSelections()); $$->push_back(CSelectionPtr($1)); }
+
 /* assignment */
 l6expr: l6expr "(" cargs ")"    { $$ = new App(ExprPtr($1), *$3, m(@1, @4)); }
       | id                      { $$ = varCtorFn(*$1, m(@1)); }
@@ -686,8 +675,7 @@ l6expr: l6expr "(" cargs ")"    { $$ = new App(ExprPtr($1), *$3, m(@1, @4)); }
       /* array construction / elimination */
       | "[" l0expr ".." l0expr "]"                        { $$ = new App(var("range", m(@3)), list(ExprPtr($2), ExprPtr($4)), m(@1, @5)); }
       | "[" l0expr ".." "]"                               { $$ = new App(var("iterateS", m(@3)), list(ExprPtr($2), fn(str::strings(".x"), fncall(var("+", m(@3)), list(var(".x", m(@3)), ExprPtr(new Int(1, m(@3)))), m(@3)), m(@3))), m(@1, @4)); }
-      | "[" l0expr "|" pattern "<-" l0expr "]"            { $$ = compileArrayComprehension(ExprPtr($2), PatternPtr($4), ExprPtr($6), m(@1, @7)); }
-      | "[" l0expr "|" pattern "<-" l0expr "," l0expr "]" { $$ = compileArrayComprehension(ExprPtr($2), PatternPtr($4), ExprPtr($6), ExprPtr($8), m(@1, @9)); }
+      | "[" l0expr "|" cselections "]"                    { $$ = desugarComprehension(yyParseCC, ExprPtr($2), *$4, m(@1, @5)); }
       | "[" cargs "]"                                     { $$ = new MkArray(*$2, m(@1, @3)); }
       | l6expr "[" l0expr "]"                             { $$ = new AIndex(ExprPtr($1), ExprPtr($3), m(@1, @4)); }
       | l6expr "[" l0expr ":" l0expr "]"                  { $$ = new App(var("slice", m(@4)), list(ExprPtr($1), ExprPtr($3), ExprPtr($5)), m(@1, @6)); }
@@ -709,6 +697,9 @@ l6expr: l6expr "(" cargs ")"    { $$ = new App(ExprPtr($1), *$3, m(@1, @4)); }
       /* record sections */
       | recfieldpath { $$ = new Fn(str::strings("x"), proj(var("x", m(@1)), *$1, m(@1)), m(@1)); }
 
+      /* regex functions */
+      | "regexV" { $$ = compileRegexFn(yyParseCC, std::string($1->begin() + 1, $1->end() - 1), m(@1))->clone(); }
+
       /* existential construction / elimination */
       | "pack" l6expr                      { $$ = new Pack(ExprPtr($2), m(@1, @2)); }
       | "unpack" id "=" l6expr "in" l6expr { $$ = new Unpack(*$2, ExprPtr($4), ExprPtr($6), m(@1, @6)); }
@@ -721,6 +712,7 @@ l6expr: l6expr "(" cargs ")"    { $$ = new App(ExprPtr($1), *$3, m(@1, @4)); }
       | "shortV"    { $$ = new Short($1, m(@1)); }
       | "intV"      { $$ = new Int($1, m(@1)); }
       | "longV"     { $$ = new Long($1, m(@1)); }
+      | "int128V"   { $$ = new Int128($1, m(@1)); }
       | "floatV"    { $$ = new Float($1, m(@1)); }
       | "doubleV"   { $$ = new Double($1, m(@1)); }
       | "stringV"   { $$ = mkarray(str::unescape(str::trimq(*$1)), m(@1)); }
@@ -796,6 +788,7 @@ refutablep: "boolV"                    { $$ = new MatchLiteral(PrimitivePtr(new 
           | "shortV"                   { $$ = new MatchLiteral(PrimitivePtr(new Short($1, m(@1))), m(@1)); }
           | "intV"                     { $$ = new MatchLiteral(PrimitivePtr(new Int($1, m(@1))), m(@1)); }
           | "longV"                    { $$ = new MatchLiteral(PrimitivePtr(new Long($1, m(@1))), m(@1)); }
+          | "int128V"                  { $$ = new MatchLiteral(PrimitivePtr(new Int128($1, m(@1))), m(@1)); }
           | "doubleV"                  { $$ = new MatchLiteral(PrimitivePtr(new Double($1, m(@1))), m(@1)); }
           | "bytesV"                   { $$ = mkpatarray(str::dehexs(*$1), m(@1)); }
           | "stringV"                  { $$ = mkpatarray(str::unescape(str::trimq(*$1)), m(@1)); }
@@ -925,8 +918,8 @@ l1mtype: id                                { $$ = autorelease(new MonoTypePtr(mo
        | "intV"                            { $$ = autorelease(new MonoTypePtr(($1 == 0) ? Prim::make("void") : TLong::make($1))); }
        | "boolV"                           { $$ = autorelease(new MonoTypePtr($1 ? TLong::make(1) : TLong::make(0))); }
        | "exists" id "." l1mtype           { $$ = autorelease(new MonoTypePtr(Exists::make(*$2, *$4))); }
-       | l1mtype "@" l1mtype               { $$ = autorelease(new MonoTypePtr(TApp::make(Prim::make("fileref"), list(*$1, *$3)))); }
-       | l1mtype "@" "?"                   { $$ = autorelease(new MonoTypePtr(TApp::make(Prim::make("fileref"), list(*$1)))); }
+       | l1mtype "@" l1mtype               { $$ = autorelease(new MonoTypePtr(fileRefTy(*$1, *$3))); }
+       | l1mtype "@" "?"                   { $$ = autorelease(new MonoTypePtr(fileRefTy(*$1))); }
        | "^" id "." l1mtype                { $$ = autorelease(new MonoTypePtr(Recursive::make(*$2, *$4))); }
        | "stringV"                         { $$ = autorelease(new MonoTypePtr(TString::make(str::unescape(str::trimq(*$1))))); }
        | "`" l0expr "`"                    { $$ = autorelease(new MonoTypePtr(TApp::make(primty("quote"), list(texpr(ExprPtr($2)))))); }

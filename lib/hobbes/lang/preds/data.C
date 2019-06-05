@@ -12,31 +12,31 @@ bool DataP::refine(const TEnvPtr&, const ConstraintPtr& c, MonoTypeUnifier* u, D
   if (c->name() == DataP::constraintName() && c->arguments().size() == 2) {
     if (!hasFreeVariables(c->arguments()[0]) && hasFreeVariables(c->arguments()[1])) {
       size_t z = u->size();
-      mgu(c->arguments()[1], repType(c->arguments()[0]), u);
+      mgu(c->arguments()[1], repTypeStep(c->arguments()[0]), u);
       return z != u->size();
     }
   }
   return false;
 }
 
-bool DataP::satisfied(const TEnvPtr& tenv, const ConstraintPtr& c, Definitions*) const {
+bool DataP::satisfied(const TEnvPtr&, const ConstraintPtr& c, Definitions*) const {
   if (c->name() == DataP::constraintName() && c->arguments().size() == 2) {
-    return *c->arguments()[1] == *repType(c->arguments()[0]) && !(*c->arguments()[0] == *c->arguments()[1]);
+    return *c->arguments()[1] == *repTypeStep(c->arguments()[0]) && !(*c->arguments()[0] == *c->arguments()[1]);
   }
   return false;
 }
 
-bool DataP::satisfiable(const TEnvPtr& tenv, const ConstraintPtr& c, Definitions* ds) const {
+bool DataP::satisfiable(const TEnvPtr& tenv, const ConstraintPtr& c, Definitions*) const {
   if (c->name() != DataP::constraintName() || c->arguments().size() != 2) {
     return false;
   } else if (is<TVar>(c->arguments()[0])) {
     return true;
   } else {
-    return unifiable(tenv, repType(c->arguments()[0]), c->arguments()[1]);
+    return unifiable(tenv, repTypeStep(c->arguments()[0]), c->arguments()[1]);
   }
 }
 
-void DataP::explain(const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPtr& e, Definitions* ds, annmsgs* msgs) {
+void DataP::explain(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*, annmsgs*) {
 }
 
 struct StripCst : public switchExprTyFn {

@@ -12,6 +12,7 @@
 #include <stdexcept>
 #include <sstream>
 #include <hobbes/util/str.H>
+#include <hobbes/util/stream.H>
 
 struct Args final {
   std::set<std::string> tests;

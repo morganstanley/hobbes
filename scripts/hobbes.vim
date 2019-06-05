@@ -7,7 +7,7 @@ endif
 " keywords
 syn keyword hKeywords true false
 syn keyword hKeywords bool byte char short int long float double time datetime timespan
-syn keyword hKeywords module import where exists
+syn keyword hKeywords option module import where exists
 syn keyword hKeywords data type class instance
 syn keyword hKeywords pack unpack
 syn keyword hKeywords if then else

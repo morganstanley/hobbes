@@ -1,0 +1,34 @@
+/*
+ * storeslmap : support basic queries on skip-list maps
+ */
+
+data slmap k v = {count:long, root:{next:(carray (^x.{next:(carray x@? 16),key:k,value:v})@? 16),key:k,value:v}}
+
+slmtake n k =
+  if (k == 0) then
+    nil()
+  else
+    cons((n.key,n.value), slmtake(unroll(load(element(n.next,0L))), k-1))
+
+slmselect n i e =
+  if (i == 0) then
+    slmtake(n, e)
+  else if (element(n.next,0L) == 0L) then
+    nil()
+  else
+    slmselect(unroll(load(element(n.next,0L))), i-1, e-1)
+
+instance Array (slmap k v) (k*v) where
+  size m = m.t.count
+  element m i = toArray(slmselect(m.t.root,i+1,i+2))[0]
+  elements m i e = toArray(slmselect(m.t.root,i+1,e+1))
+
+instance SeqDesc (slmap k v) "slmap" (k*v)
+
+instance Map f c (k*v) r "slmap" (slmap k v) "array" [r] where
+  fmap f xs = fmap(f, elements(xs, 0L, size(xs)))
+instance FilterMap p pc f c (k*v) r "slmap" (slmap k v) "array" [r] where
+  ffilterMap p f xs = ffilterMap(p, f, elements(xs, 0L, size(xs)))
+instance FilterMMap f c (k*v) r "slmap" (slmap k v) "array" [r] where
+  ffilterMMap f xs = ffilterMMap(f, elements(xs, 0L, size(xs)))
+

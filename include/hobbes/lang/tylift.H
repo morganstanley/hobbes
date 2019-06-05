@@ -10,8 +10,10 @@
 #include <hobbes/util/preprocessor.H>
 #include <string>
 #include <vector>
+#include <array>
 #include <set>
 #include <map>
+#include <chrono>
 #include <stdexcept>
 
 namespace hobbes {
@@ -41,14 +43,14 @@ struct typedb {
 struct nulltypedb : public typedb {
   MonoTypePtr defineNamedType(const std::string& name, const str::seq& argNames, const MonoTypePtr& ty);
   bool isTypeName(const std::string&) const;
-  MonoTypePtr namedTypeRepresentation(const std::string&) const;
+  [[noreturn]] MonoTypePtr namedTypeRepresentation(const std::string&) const;
 
-  void defineTypeAlias(const std::string& name, const str::seq& argNames, const MonoTypePtr& ty);
+  [[noreturn]] void defineTypeAlias(const std::string& name, const str::seq& argNames, const MonoTypePtr& ty);
   bool isTypeAliasName(const std::string& name) const;
   MonoTypePtr replaceTypeAliases(const MonoTypePtr& ty) const;
   
-  PolyTypePtr opaquePtrPolyType(const std::type_info&, unsigned int sz, bool inStruct);
-  MonoTypePtr opaquePtrMonoType(const std::type_info&, unsigned int sz, bool inStruct);
+  [[noreturn]] PolyTypePtr opaquePtrPolyType(const std::type_info&, unsigned int sz, bool inStruct);
+  [[noreturn]] MonoTypePtr opaquePtrMonoType(const std::type_info&, unsigned int sz, bool inStruct);
  
   PolyTypePtr generalize(const MonoTypePtr& mt) const;
 };
@@ -67,24 +69,6 @@ struct recursion {
   void* value;
   recursion(void* x) : value(x) { }
 };
-
-// represent arrays of unknown length by a size and a variable-length array payload
-template <typename T>
-  struct array {
-    typedef array<T>* ptr;
-
-    size_t size;
-    T      data[1]; // unknown length, bytes inline with this structure
-  };
-template <typename T> const T* begin(const array<T>* d) { return d->data; }
-template <typename T> const T* end  (const array<T>* d) { return d->data + d->size; }
-template <typename T>       T* begin(      array<T>* d) { return d->data; }
-template <typename T>       T* end  (      array<T>* d) { return d->data + d->size; }
-
-template <typename T> const T* begin(const array<T>& d) { return d.data; }
-template <typename T> const T* end  (const array<T>& d) { return d.data + d.size; }
-template <typename T>       T* begin(      array<T>& d) { return d.data; }
-template <typename T>       T* end  (      array<T>& d) { return d.data + d.size; }
 
 // a linked list is a recursive sum of nested tuples starting at unit
 template <typename T>
@@ -230,11 +214,18 @@ HOBBES_LIFT_PRIMITIVE(long,               long);
 HOBBES_LIFT_PRIMITIVE(unsigned long,      long);
 HOBBES_LIFT_PRIMITIVE(long long,          long);
 HOBBES_LIFT_PRIMITIVE(unsigned long long, long);
+HOBBES_LIFT_PRIMITIVE(int128_t,           int128);
 HOBBES_LIFT_PRIMITIVE(float,              float);
 HOBBES_LIFT_PRIMITIVE(double,             double);
 
 template <typename T>
   inline MonoTypePtr prim() { return lift<T, false>::type(nulltdb); }
+
+// lift chrono types
+template <bool InStruct>
+  struct lift<std::chrono::duration<int64_t, std::micro>, InStruct> { static MonoTypePtr type(typedb&) { return Prim::make("timespan", Prim::make("long")); } };
+template <bool InStruct>
+  struct lift<std::chrono::duration<uint64_t, std::micro>, InStruct> { static MonoTypePtr type(typedb&) { return Prim::make("timespan", Prim::make("long")); } };
 
 // introduce opaque (named) alias types
 template <typename T, bool InStruct>
@@ -272,6 +263,13 @@ template <typename T, size_t N, bool InStruct>
   struct lift<T[N], InStruct> : public liftFixedArray<T, N> { };
 template <typename T, size_t N, bool InStruct>
   struct lift<const T[N], InStruct> : public liftFixedArray<T, N> { };
+
+template <typename T, size_t N>
+  struct lift<std::array<T,N>, true> : public liftFixedArray<T, N> { };
+template <typename T, size_t N>
+  struct lift<std::array<T,N>*, false> : public liftFixedArray<T, N> { };
+template <typename T, size_t N>
+  struct lift<std::array<T,N>&, false> : public liftFixedArray<T, N> { };
 
 // lifts for C functions
 template <typename ... Ts>
@@ -356,7 +354,7 @@ template <typename T, typename P = void>
 template <const char* TN, typename T>
   struct liftVarCtor< label<TN, T> > {
     typedef typename label<TN, T>::type type;
-    static std::string labelText(int idx) { return label<TN, T>::name(); }
+    static std::string labelText(int) { return label<TN, T>::name(); }
   };
 template <typename ... CTys>
   struct liftVarCtors {
@@ -400,23 +398,29 @@ template <typename ... CTys>
   struct lift< variant<CTys...>*, false > : public liftVariant< variant<CTys...> > { };
 
 // lift reflective enumerations
-template <typename T>
+template <typename T, typename R = uint32_t>
   struct liftEnum {
-    static MonoTypePtr type(typedb&) {
+    static MonoTypePtr type(typedb& tenv) {
       Variant::Members vms;
 
       for (const auto& m : T::meta()) {
         vms.push_back(Variant::Member(m.first, Prim::make("unit"), scast<uint32_t>(m.second)));
       }
 
-      return Variant::make(vms);
+      if (sizeof(R) == sizeof(uint32_t)) {
+        return Variant::make(vms);
+      } else {
+        return tapp(primty("penum", tabs(str::strings("r", "v"), tvar("r"))), list(lift<R>::type(tenv), Variant::make(vms)));
+      }
     }
   };
 
 template <typename T>
-  struct lift<T, true, typename tbool<T::is_hmeta_enum>::type> : public liftEnum<T> { };
+  struct lift<T, true, typename tbool<T::is_hmeta_enum>::type> : public liftEnum<T, typename T::rep_t> { };
 template <typename T>
-  struct lift<T*, false, typename tbool<T::is_hmeta_enum>::type> : public liftEnum<T> { };
+  struct lift<T*, false, typename tbool<T::is_hmeta_enum && sizeof(typename T::rep_t)==sizeof(uint32_t)>::type> : public liftEnum<T, typename T::rep_t> { };
+template <typename T>
+  struct lift<T, false, typename tbool<T::is_hmeta_enum && sizeof(typename T::rep_t)!=sizeof(uint32_t)>::type> : public liftEnum<T, typename T::rep_t> { };
 
 // lift plain tuples
 template <typename ... Fields>

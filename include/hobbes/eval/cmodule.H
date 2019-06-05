@@ -19,6 +19,13 @@ void popModuleDir();
 // compile a whole module into a cc context
 void compile(cc*, const ModulePtr& m);
 
+// set language options, display language options
+typedef std::map<std::string, std::string> OptDescs;
+OptDescs getAllOptions();
+
+ExprPtr translateExprWithOpts(const ModulePtr&, const ExprPtr&);
+ExprPtr translateExprWithOpts(const std::vector<std::string>&, const ExprPtr&);
+
 }
 
 #endif

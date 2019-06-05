@@ -210,9 +210,14 @@ public:
   const ModuleDefs&  definitions() const;
 
   void show(std::ostream& out) const;
+
+  // allow language options set within modules
+  void setOption(const std::string&, const LexicalAnnotation&);
+  const std::vector<std::string>& options() const;
 private:
   std::string mname;
   ModuleDefs  defs;
+  std::vector<std::string> opts;
 };
 
 typedef std::shared_ptr<Module> ModulePtr;

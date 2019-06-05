@@ -11,14 +11,18 @@
 #include <map>
 #include <thread>
 #include <mutex>
+#include <atomic>
+#include <functional>
 #include <vector>
 #include <memory>
 
 #include <glob.h>
 #include <zlib.h>
 
+#include "batchsend.H"
 #include "network.H"
 #include "session.H"
+#include "stat.H"
 #include "out.H"
 
 using namespace hobbes;
@@ -148,7 +152,10 @@ void sendInitMessageToAll(const std::string& groupName, std::vector<Destination>
   }
 }
 
-void sendSegmentFilesToAll(std::vector<Destination>& destinations) {
+using IdleFn = std::function<void()>;
+using ReadyFn = std::function<bool()>;
+
+void sendSegmentFilesToAll(std::vector<Destination>& destinations, IdleFn idleFn) {
   bool yield = false;
   while (!yield) {
     for (auto & d : destinations) {
@@ -164,13 +171,14 @@ void sendSegmentFilesToAll(std::vector<Destination>& destinations) {
         yield = true;
       }
     }
+    idleFn();
   }
 }
 
-void runConnectedSegmentSendingProcess(const std::string& groupName, std::vector<Destination>& destinations) {
+void runConnectedSegmentSendingProcess(const std::string& groupName, std::vector<Destination>& destinations, IdleFn idleFn) {
   try {
     sendInitMessageToAll(groupName, destinations);
-    sendSegmentFilesToAll(destinations);
+    sendSegmentFilesToAll(destinations, idleFn);
   } catch (...) {
     for (auto & d : destinations) {
       d.markdown();
@@ -191,15 +199,29 @@ void connect(std::vector<Destination>& destinations) {
   }
 }
 
-void runSegmentSendingProcess(const std::string groupName, std::vector<Destination>& destinations) {
+void runSegmentSendingProcess(const size_t sessionHash, const std::string groupName, std::vector<Destination>& destinations, ReadyFn readyFn, IdleFn idleFn) {
   if (destinations.empty()) {
     out() << "no batchsend host specified, compressed segment files will accumulate locally" << std::endl;
   } else {
+    const auto id = hobbes::storage::thisProcThread();
+    StatFile::instance().log(SenderState{hobbes::now(), sessionHash, id, SenderStatus::Enum::Suspended});
+
+    while (!readyFn()) {
+      out() << "batchsend not ready, waiting on other sender(s)" << std::endl;
+      sleep(10);
+    }
+
+    StatFile::instance().log(SenderState{hobbes::now(), sessionHash, id, SenderStatus::Enum::Started});
     out() << "running segment sending process publishing to " << destinations << std::endl;
+
     while (true) {
       try {
         connect(destinations);
-        runConnectedSegmentSendingProcess(groupName, destinations);
+        runConnectedSegmentSendingProcess(groupName, destinations, idleFn);
+      } catch (const ShutdownException& ex) {
+        StatFile::instance().log(SenderState{hobbes::now(), sessionHash, id, SenderStatus::Enum::Closed});
+        out() << ex.what() << std::endl;
+        return;
       } catch (std::exception& ex) {
         out() << "error while trying to push data: " << ex.what() << std::endl;
       }
@@ -225,12 +247,21 @@ struct BatchSendSession {
   std::string              tempfilename;
   std::vector<Destination> destinations;
   std::thread              sendingThread;
+  std::atomic<bool>        readerAlive;
+  std::vector<const BatchSendSession*> detached;
+  std::function<void()>    finalizer;
 
-  BatchSendSession(const std::string& groupName, const std::string& dir, size_t clevel, const std::vector<std::string>& sendto)
-    : buffer(0), c(0), sz(0), dir(dir) {
+  BatchSendSession(const size_t sessionHash, const std::string& groupName, const std::string& dir, size_t clevel, const std::vector<std::string>& sendto, const std::vector<const BatchSendSession*> detached, const std::function<void()> finalizer)
+    : buffer(0), c(0), sz(0), dir(dir), readerAlive(true), detached(detached), finalizer(finalizer) {
     for (const auto & hostport : sendto) {
       auto localdir = ensureDirExists(dir + "/" + hostport + "/");
       destinations.push_back(Destination{localdir, hostport});
+    }
+
+    // start from last segment in directory 
+    const auto paths = hobbes::str::paths(dir + "*/segment-*.gz");
+    if (paths.size() > 0) {
+      this->c = std::stoi(hobbes::str::rsplit(hobbes::str::rsplit(paths.back(), ".gz").first, "segment-").second);
     }
 
     this->clevel       = std::min<size_t>(9, std::max<size_t>(clevel, 1));
@@ -238,12 +269,43 @@ struct BatchSendSession {
 
     allocFile();
 
-    this->sendingThread = std::thread(std::bind(&runSegmentSendingProcess, groupName, std::ref(destinations)));
+    auto readyFn = [this]() {
+      return std::all_of(this->detached.begin(), this->detached.end(), [](const BatchSendSession* s) {
+        return s->completed();
+      });
+    };
+
+    auto idleFn = [this, groupName]() {
+      static thread_local uint64_t count = 0;
+      if (++count % 16) return; // not checking on each idle cycle
+
+      if (!readerAlive && completed()) {
+        this->finalizer();
+        throw ShutdownException("Sender shutting down, group name: " + groupName + ", directory: " + this->dir);
+      }
+    };
+
+    const auto readerId = hobbes::storage::thisProcThread();
+    this->sendingThread = std::thread([this, sessionHash, groupName, dir, readerId, readyFn, idleFn]() {
+      const auto senderId = hobbes::storage::thisProcThread();
+      std::vector<std::string> senderqueue;
+      for (auto s : this->detached) {
+        senderqueue.push_back(s->dir);
+      }
+      StatFile::instance().log(SenderRegistration{hobbes::now(), sessionHash, readerId, senderId, this->dir, senderqueue});
+      runSegmentSendingProcess(sessionHash, groupName, destinations, readyFn, idleFn);
+    });
   }
 
   void allocFile() {
-    this->buffer = reinterpret_cast<gzFile_s*>(gzopen(this->tempfilename.c_str(), ("wb" + str::from(this->clevel)).c_str()));
-    this->sz     = 0;
+    struct stat st;
+    if (::stat(this->tempfilename.c_str(), &st) == 0) {
+      this->sz     = st.st_size;
+      this->buffer = reinterpret_cast<gzFile_s*>(gzopen(this->tempfilename.c_str(), ("ab" + str::from(this->clevel)).c_str()));
+    } else {
+      this->sz     = 0;
+      this->buffer = reinterpret_cast<gzFile_s*>(gzopen(this->tempfilename.c_str(), ("wb" + str::from(this->clevel)).c_str()));
+    }
   }
 
   void stepFile() {
@@ -270,6 +332,25 @@ struct BatchSendSession {
     }
     this->sz += sz;
   }
+
+  bool completed() const {
+    return std::all_of(destinations.begin(), destinations.end(), [this](const Destination& d) {
+      glob_t g;
+      auto ret = glob((d.localdir + "/segment-*.gz").c_str(), GLOB_NOSORT, 0, &g);
+      if (ret == 0) {
+        auto remaining = g.gl_pathc;
+        globfree(&g);
+        return remaining == 0;
+      }
+      return ret == GLOB_NOMATCH;
+    });
+  }
+
+  void detach() {
+    // wrap up and notify the sender
+    this->stepFile();
+    this->readerAlive = false;
+  }
 };
 
 void write(BatchSendSession* s, const uint8_t* d, size_t sz) {
@@ -293,7 +374,7 @@ template <typename T>
     write(s, reinterpret_cast<const uint8_t*>(&x), sizeof(x));
   }
 
-static void initNetSession(BatchSendSession* s, const std::string& groupName, const std::string& dir, storage::PipeQOS qos, storage::CommitMethod cm, const storage::statements& stmts) {
+static void initNetSession(BatchSendSession* s, const std::string&, const std::string&, storage::PipeQOS qos, storage::CommitMethod cm, const storage::statements& stmts) {
   // write init message data to our current batch send file
   write(s, static_cast<int>(qos));
   write(s, static_cast<int>(cm));
@@ -313,41 +394,80 @@ static void initNetSession(BatchSendSession* s, const std::string& groupName, co
   s->stepFile();
 }
 
-void pushLocalData(const storage::QueueConnection& qc, const std::string& groupName, const std::string& dir, size_t clevel, size_t batchsendsize, long batchsendtime, const std::vector<std::string>& sendto, const hobbes::storage::WaitPolicy wp) {
-  auto pt = hobbes::storage::thisProcThread();
-  batchsendsize = std::max<size_t>(10*1024*1024, batchsendsize);
-  BatchSendSession sn(groupName, dir + "/tmp_" + str::from(pt.first) + "-" + str::from(pt.second) + "/", clevel, sendto);
+struct SenderGroup {
+  static std::vector<std::unique_ptr<BatchSendSession>> senders;
+  static std::vector<const BatchSendSession*> detached;
+  static std::mutex mutex;
+
+  static BatchSendSession* create(const size_t sessionHash, const std::string& name, const std::string& dir, size_t clevel, const std::vector<std::string>& sendto, const std::function<void()>& finalizeSenderF) {
+    std::lock_guard<std::mutex> _{mutex};
+
+    auto it = std::find_if_not(detached.begin(), detached.end(), [](const BatchSendSession* s) { return s->completed(); });
+    detached.erase(detached.begin(), it);
+
+    senders.push_back(std::unique_ptr<BatchSendSession>(new BatchSendSession{sessionHash, name, dir, clevel, sendto, detached, finalizeSenderF}));
+
+    return senders.back().get();
+  }
+
+  static void detach(BatchSendSession* sender) {
+    std::lock_guard<std::mutex> _{mutex};
+    detached.push_back(sender);
+    sender->detach();
+  }
+};
+
+std::vector<std::unique_ptr<BatchSendSession>> SenderGroup::senders;
+std::vector<const BatchSendSession*> SenderGroup::detached;
+std::mutex SenderGroup::mutex;
+
+void pushLocalData(const hobbes::storage::QueueConnection& qc, const size_t sessionHash, const std::string& groupName, const std::string& partialDir, const std::string& fullDir, const hobbes::storage::ProcThread& readerId, const hobbes::storage::WaitPolicy wp, const RunMode& runMode, std::atomic<bool>& conn, const std::function<void()>& finalizeSenderF) {
+  auto sn = SenderGroup::create(sessionHash, groupName, fullDir, runMode.clevel, runMode.sendto, finalizeSenderF);
+  const long batchsendtime = runMode.batchsendtime * 1000;
+  const size_t batchsendsize = std::max<size_t>(10*1024*1024, runMode.batchsendsize);
   long t0 = hobbes::time();
-  batchsendtime *= 1000;
 
   std::function<void()> batchCheckF;
   if (batchsendtime == 0) {
-    batchCheckF = [&]() { if (sn.sz >= batchsendsize) sn.stepFile(); };
+    batchCheckF = [&]() { if (sn->sz >= batchsendsize) sn->stepFile(); };
   } else {
     batchCheckF = [&]() {
       long t1 = hobbes::time();
-      if (((t1-t0) >= batchsendtime) || sn.sz >= batchsendsize) {
-        sn.stepFile();
+      if (((t1-t0) >= batchsendtime) || sn->sz >= batchsendsize) {
+        sn->stepFile();
         t0 = t1;
       }
     };
   }
 
-  storage::runReadProcessWithTimeout(
-    qc,
-    wp,
-    [&](storage::PipeQOS qos, storage::CommitMethod cm, const storage::statements& ss) {
-      initNetSession(&sn, groupName, dir, qos, cm, ss);
-      return
-        [&](storage::Transaction& txn) {
-          write(&sn, txn.size());
-          write(&sn, txn.ptr(), txn.size());
-          batchCheckF();
-        };
-    },
-    batchsendtime,
-    batchCheckF
-  );
+  auto timeoutF = [&](const hobbes::storage::reader& reader) {
+    if (conn == false && *reader.config().wstate == PRIV_HSTORE_STATE_READER_WAITING) {
+      // if we are here, the client is disconnected and the queue is drained
+      // detach tcp send session synchronously and shut down the reader
+      SenderGroup::detach(sn);
+      StatFile::instance().log(ReaderState{hobbes::now(), sessionHash, readerId, ReaderStatus::Enum::Closed});
+      throw ShutdownException("SHM reader shutting down, name: " + qc.shmname);
+    } else {
+      batchCheckF();
+    }
+  };
+
+  auto initFn = [&](storage::PipeQOS qos, storage::CommitMethod cm, const storage::statements& ss) {
+    initNetSession(sn, groupName, partialDir, qos, cm, ss);
+    return [&](storage::Transaction& txn) {
+      write(sn, txn.size());
+      write(sn, txn.ptr(), txn.size());
+      batchCheckF();
+    };
+  };
+
+  StatFile::instance().log(ReaderState{hobbes::now(), sessionHash, readerId, ReaderStatus::Enum::Started});
+
+  try {
+    storage::runReadProcessWithTimeout(qc, wp, initFn, batchsendtime, timeoutF);
+  } catch (const ShutdownException& ex) {
+    out() << ex.what() << std::endl;
+  }
 }
 
 }

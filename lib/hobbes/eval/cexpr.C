@@ -53,6 +53,7 @@ public:
   llvm::ConstantInt* with(const Short*  v) const { return civalue(v->value()); }
   llvm::ConstantInt* with(const Int*    v) const { return civalue(v->value()); }
   llvm::ConstantInt* with(const Long*   v) const { return civalue(v->value()); }
+  llvm::ConstantInt* with(const Int128* v) const { return civalue(v->value()); }
   llvm::ConstantInt* with(const Float*  v) const { return fail(*v); }
   llvm::ConstantInt* with(const Double* v) const { return fail(*v); }
 private:
@@ -78,6 +79,7 @@ public:
   llvm::Value* with(const Short*  v) const { return cvalue(v->value()); }
   llvm::Value* with(const Int*    v) const { return cvalue(v->value()); }
   llvm::Value* with(const Long*   v) const { return cvalue(v->value()); }
+  llvm::Value* with(const Int128* v) const { return cvalue(v->value()); }
   llvm::Value* with(const Float*  v) const { return cvalue(v->value()); }
   llvm::Value* with(const Double* v) const { return cvalue(v->value()); }
 
@@ -179,7 +181,7 @@ public:
     } else {
       bool         isStoredPtr = is<OpaquePtr>(aty->type()) || is<Func>(aty->type()); // consistent with ctype.C, store opaque ptrs and functions in arrays as pointers
       llvm::Type*  elemTy      = toLLVM(aty->type(), isStoredPtr);
-      llvm::Value* p           = compileAllocStmt(sizeof(long) + sizeOf(aty->type()) * vs.size(), ptrType(llvmVarArrType(elemTy)));
+      llvm::Value* p           = compileAllocStmt(sizeof(long) + sizeOf(aty->type()) * vs.size(), std::max<size_t>(sizeof(long), alignment(aty->type())), ptrType(llvmVarArrType(elemTy)));
 
       // store the array length
       llvm::Value* alenp = structOffset(builder(), p, 0);
@@ -211,7 +213,7 @@ public:
     Variant*    vty  = is<Variant>(mvty);
     if (!vty) { throw annotated_error(*v, "Internal compiler error, compiling variant without variant type: " + show(v) + " :: " + show(v->type())); }
 
-    llvm::Value* p  = compileAllocStmt(sizeOf(mvty), ptrType(byteType()));
+    llvm::Value* p  = compileAllocStmt(sizeOf(mvty), alignment(mvty), ptrType(byteType()));
     llvm::Value* tg = cvalue(vty->id(v->label()));
     llvm::Value* tv = compile(v->value());
 
@@ -250,7 +252,7 @@ public:
     if (llvm::Value* cr = compileConstRecord(vs, rty)) {
       return cr;
     } else {
-      llvm::Value* p = compileAllocStmt(sizeOf(mrty), toLLVM(mrty, true));
+      llvm::Value* p = compileAllocStmt(sizeOf(mrty), alignment(mrty), toLLVM(mrty, true));
 
       for (RecordValue::const_iterator rv = vs.begin(); rv != vs.end(); ++rv) {
         llvm::Value* fv  = rv->second;
@@ -525,8 +527,8 @@ private:
     return this->c->compileFunction(name, argns, argtys, exp);
   }
 
-  llvm::Value* compileAllocStmt(unsigned int sz, llvm::Type* mty) const {
-    return this->c->compileAllocStmt(sz, mty);
+  llvm::Value* compileAllocStmt(size_t sz, size_t asz, llvm::Type* mty) const {
+    return this->c->compileAllocStmt(sz, asz, mty);
   }
 
   void beginScope(const std::string& vname, llvm::Value* v) const {
@@ -635,6 +637,7 @@ public:
   llvm::Constant* with(const Short*  v) const { return cvalue(v->value()); }
   llvm::Constant* with(const Int*    v) const { return cvalue(v->value()); }
   llvm::Constant* with(const Long*   v) const { return cvalue(v->value()); }
+  llvm::Constant* with(const Int128* v) const { return cvalue(v->value()); }
   llvm::Constant* with(const Float*  v) const { return cvalue(v->value()); }
   llvm::Constant* with(const Double* v) const { return cvalue(v->value()); }
 
@@ -642,11 +645,11 @@ public:
     return this->c->lookupFunction(v->value());
   }
 
-  llvm::Constant* with(const Let* v) const {
+  llvm::Constant* with(const Let*) const {
     return 0;
   }
 
-  llvm::Constant* with(const LetRec* v) const {
+  llvm::Constant* with(const LetRec*) const {
     return 0;
   }
 
@@ -667,11 +670,11 @@ public:
     }
   }
 
-  llvm::Constant* with(const App* v) const {
+  llvm::Constant* with(const App*) const {
     return 0;
   }
 
-  llvm::Constant* with(const Assign* v) const {
+  llvm::Constant* with(const Assign*) const {
     return 0;
   }
 
@@ -701,7 +704,7 @@ public:
       );
   }
 
-  llvm::Constant* with(const MkVariant* v) const {
+  llvm::Constant* with(const MkVariant*) const {
     return 0;
   }
 
@@ -721,19 +724,19 @@ public:
     return constantRecord(this->c->module(), rcs, rty);
   }
 
-  llvm::Constant* with(const AIndex* v) const {
+  llvm::Constant* with(const AIndex*) const {
     return 0;
   }
 
-  llvm::Constant* with(const Case* v) const {
+  llvm::Constant* with(const Case*) const {
     return 0;
   }
 
-  llvm::Constant* with(const Switch* v) const {
+  llvm::Constant* with(const Switch*) const {
     return 0;
   }
 
-  llvm::Constant* with(const Proj* v) const {
+  llvm::Constant* with(const Proj*) const {
     return 0;
   }
 
@@ -741,11 +744,11 @@ public:
     return switchOf(v->expr(), *this);
   }
 
-  llvm::Constant* with(const Pack* v) const {
+  llvm::Constant* with(const Pack*) const {
     return 0;
   }
 
-  llvm::Constant* with(const Unpack* v) const {
+  llvm::Constant* with(const Unpack*) const {
     return 0;
   }
 private:

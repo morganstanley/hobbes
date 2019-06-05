@@ -17,7 +17,7 @@ namespace hobbes {
       llvm::Value* x = c->compile(es[0]); \
       return c->builder()->mem(x, "t"); \
     } \
-    PolyTypePtr type(typedb& tenv) const { \
+    PolyTypePtr type(typedb&) const { \
       return polytype(prim<rty(aty0)>()); \
     } \
   }
@@ -30,7 +30,7 @@ namespace hobbes {
       llvm::Value* right = c->compile(es[1]); \
       return c->builder()->mem(left, right, "t"); \
     } \
-    PolyTypePtr type(typedb& tenv) const { \
+    PolyTypePtr type(typedb&) const { \
       return polytype(prim<rty(aty0,aty1)>()); \
     } \
   }
@@ -42,7 +42,7 @@ namespace hobbes {
       llvm::Value* e = c->compile(es[0]); \
       return c->builder()->CreateCast(cflag, e, toLLVM(prim<outty>()), "t"); \
     } \
-    PolyTypePtr type(typedb& tenv) const { \
+    PolyTypePtr type(typedb&) const { \
       return polytype(prim<outty(inty)>()); \
     } \
   }
@@ -54,7 +54,7 @@ namespace hobbes {
       llvm::Value* x = c->compile(es[0]); \
       return c->builder()->mem(x, a0, "t"); \
     } \
-    PolyTypePtr type(typedb& tenv) const { \
+    PolyTypePtr type(typedb&) const { \
       return polytype(prim<outty(inty)>()); \
     } \
   }
@@ -66,7 +66,7 @@ namespace hobbes {
       llvm::Value* x = c->compile(es[0]); \
       return c->builder()->mem(x, a0, a1, "t"); \
     } \
-    PolyTypePtr type(typedb& tenv) const { \
+    PolyTypePtr type(typedb&) const { \
       return polytype(prim<outty(inty)>()); \
     } \
   }
@@ -74,26 +74,28 @@ namespace hobbes {
 IOP(not,  CreateNot, bool,          bool);
 IOP(bnot, CreateNot, unsigned char, unsigned char);
 
-CASTOP(b2i, llvm::Instruction::ZExt,   unsigned char, int);
-CASTOP(b2l, llvm::Instruction::ZExt,   unsigned char, long);
-CASTOP(i2d, llvm::Instruction::SIToFP, int,           double);
-CASTOP(i2f, llvm::Instruction::SIToFP, int,           float);
-CASTOP(i2l, llvm::Instruction::SExt,   int,           long);
-CASTOP(l2d, llvm::Instruction::SIToFP, long,          double);
-CASTOP(l2f, llvm::Instruction::SIToFP, long,          float);
-CASTOP(s2i, llvm::Instruction::SExt,   short,         int);
-CASTOP(f2d, llvm::Instruction::FPExt,  float,         double);
+CASTOP(b2i,   llvm::Instruction::ZExt,   unsigned char, int);
+CASTOP(b2l,   llvm::Instruction::ZExt,   unsigned char, long);
+CASTOP(i2d,   llvm::Instruction::SIToFP, int,           double);
+CASTOP(i2f,   llvm::Instruction::SIToFP, int,           float);
+CASTOP(i2l,   llvm::Instruction::SExt,   int,           long);
+CASTOP(l2i16, llvm::Instruction::SExt,   long,          int128_t);
+CASTOP(l2d,   llvm::Instruction::SIToFP, long,          double);
+CASTOP(l2f,   llvm::Instruction::SIToFP, long,          float);
+CASTOP(s2i,   llvm::Instruction::SExt,   short,         int);
+CASTOP(f2d,   llvm::Instruction::FPExt,  float,         double);
 
 CASTOP(tl2i, llvm::Instruction::Trunc, long, int);
 CASTOP(ti2s, llvm::Instruction::Trunc, int,  short);
 CASTOP(ti2b, llvm::Instruction::Trunc, int,  unsigned char);
 CASTOP(tl2b, llvm::Instruction::Trunc, long, unsigned char);
 
-IOP(sneg, CreateNeg,  short,  short);
-IOP(ineg, CreateNeg,  int,    int);
-IOP(lneg, CreateNeg,  long,   long);
-IOP(fneg, CreateFNeg, float,  float);
-IOP(dneg, CreateFNeg, double, double);
+IOP(sneg,   CreateNeg,  short,    short);
+IOP(ineg,   CreateNeg,  int,      int);
+IOP(lneg,   CreateNeg,  long,     long);
+IOP(i16neg, CreateNeg,  int128_t, int128_t);
+IOP(fneg,   CreateFNeg, float,    float);
+IOP(dneg,   CreateFNeg, double,   double);
 
 BOP(ceq,  CreateICmpEQ,  char, char, bool);
 BOP(cneq, CreateICmpNE,  char, char, bool);
@@ -181,6 +183,19 @@ BOP(llte, CreateICmpSLE, long, long, bool);
 BOP(lgt,  CreateICmpSGT, long, long, bool);
 BOP(lgte, CreateICmpSGE, long, long, bool);
 
+BOP(i16add, CreateAdd,  int128_t, int128_t, int128_t);
+BOP(i16sub, CreateSub,  int128_t, int128_t, int128_t);
+BOP(i16mul, CreateMul,  int128_t, int128_t, int128_t);
+BOP(i16div, CreateSDiv, int128_t, int128_t, int128_t);
+BOP(i16rem, CreateSRem, int128_t, int128_t, int128_t);
+
+BOP(i16eq,  CreateICmpEQ,  int128_t, int128_t, bool);
+BOP(i16neq, CreateICmpNE,  int128_t, int128_t, bool);
+BOP(i16lt,  CreateICmpSLT, int128_t, int128_t, bool);
+BOP(i16lte, CreateICmpSLE, int128_t, int128_t, bool);
+BOP(i16gt,  CreateICmpSGT, int128_t, int128_t, bool);
+BOP(i16gte, CreateICmpSGE, int128_t, int128_t, bool);
+
 BOP(fadd, CreateFAdd, float, float, float);
 BOP(fsub, CreateFSub, float, float, float);
 BOP(fmul, CreateFMul, float, float, float);
@@ -260,7 +275,7 @@ public:
 // array-length lookup
 class alenexp : public op {
 public:
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) {
     return c->builder()->CreateLoad(structOffset(c->builder(), c->compile(es[0]), 0), false, "at");
   }
 
@@ -292,7 +307,7 @@ public:
     llvm::Value* aclen = c->builder()->CreateAdd(c0, c1);
     llvm::Value* mlen  = c->builder()->CreateAdd(cvalue(static_cast<long>(sizeof(long))), c->builder()->CreateMul(aclen, cvalue(static_cast<long>(sizeOf(aty->type())))));
 
-    llvm::Value* cmdata = c->compileAllocStmt(mlen, toLLVM(tys[0]));
+    llvm::Value* cmdata = c->compileAllocStmt(mlen, cvalue(std::max<long>(sizeof(long), alignment(aty->type()))), toLLVM(tys[0]));
     c->builder()->CreateStore(aclen, structOffset(c->builder(), cmdata, 0));
 
     if (!isUnit(aty->type())) {
@@ -359,6 +374,12 @@ class saelem : public op {
     const FixedArray* aty = is<FixedArray>(tys[0]);
     if (!aty) { throw annotated_error(*es[0], "Cannot index element, not a fixed-length array: " + show(tys[0])); }
 
+    if (isUnit(rty)) {
+      c->compile(es[0]);
+      c->compile(es[1]);
+      return cvalue(true);
+    }
+
     llvm::Value* p = offset(c->builder(), c->compile(es[0]), 0, c->compile(es[1]));
 
     if (isLargeType(rty)) {
@@ -410,7 +431,7 @@ class saacopy : public op {
 // generic contextless function application
 class applyCFn : public op {
 public:
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr& rty, const Exprs& es) {
     if (const MkRecord* args = is<MkRecord>(es[1])) {
       return c->compile(fncall(es[0], exprs(args->fields()), es[0]->la()));
     } else {
@@ -451,7 +472,7 @@ public:
 // identity transform -- do nothing
 class idexp : public op {
 public:
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) {
     return c->compile(es[0]);
   }
 
@@ -465,7 +486,7 @@ public:
 // identity transform, with (unsafe) bit cast
 class castexp : public op {
 public:
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr& rty, const Exprs& es) {
     llvm::Value* r = c->compile(es[0]);
     if (isUnit(rty)) {
       return cvalue(true);
@@ -488,13 +509,13 @@ public:
   newPrimfn(bool zeroMem = false) : zeroMem(zeroMem) {
   }
 
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr& rty, const Exprs&) {
     if (isUnit(rty)) {
       return cvalue(true);
     } else if (!hasPointerRep(rty)) {
-      return c->builder()->CreateLoad(c->compileAllocStmt(sizeOf(rty), ptrType(toLLVM(rty, true)), this->zeroMem));
+      return c->builder()->CreateLoad(c->compileAllocStmt(sizeOf(rty), alignment(rty), ptrType(toLLVM(rty, true)), this->zeroMem));
     } else {
-      return c->compileAllocStmt(sizeOf(rty), toLLVM(rty, true), this->zeroMem);
+      return c->compileAllocStmt(sizeOf(rty), alignment(rty), toLLVM(rty, true), this->zeroMem);
     }
   }
 
@@ -509,7 +530,7 @@ private:
 
 class newArrayfn : public op {
 public:
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr& rty, const Exprs& es) {
     const Array* aty = is<Array>(rty);
     if (!aty) {
       throw annotated_error(*es[0], "Invalid usage, newArray called for non-array type");
@@ -517,7 +538,7 @@ public:
 
     llvm::Value* aclen  = c->compile(es[0]);
     llvm::Value* mlen   = c->builder()->CreateAdd(cvalue(static_cast<long>(sizeof(long))), c->builder()->CreateMul(aclen, cvalue(static_cast<long>(sizeOf(aty->type())))));
-    llvm::Value* cmdata = c->compileAllocStmt(mlen, toLLVM(rty));
+    llvm::Value* cmdata = c->compileAllocStmt(mlen, cvalue(std::max<long>(sizeof(long), alignment(aty->type()))), toLLVM(rty));
     c->builder()->CreateStore(aclen, structOffset(c->builder(), cmdata, 0));
 
     return cmdata;
@@ -534,7 +555,7 @@ public:
 // adjust a pointer, through a vtbl or not (this should only wind up being used for witnessing subclass relations)
 class adjptr : public op {
 public:
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) {
     llvm::Value* p = c->compile(es[0]);
     llvm::Value* o = c->compile(es[1]);
     return c->builder()->CreateGEP(p, o);
@@ -542,15 +563,16 @@ public:
 
   PolyTypePtr type(typedb&) const {
     static MonoTypePtr tg0(TGen::make(0));
+    static MonoTypePtr tg1(TGen::make(1));
     static MonoTypePtr tint(Prim::make("int"));
-    static PolyTypePtr fty(new PolyType(1, qualtype(Func::make(tuplety(list(tg0, tint)), tg0))));
+    static PolyTypePtr fty(new PolyType(2, qualtype(Func::make(tuplety(list(tg0, tint)), tg1))));
     return fty;
   }
 };
 
 class adjvtblptr : public op {
 public:
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) {
     llvm::Type* tppchar =
       llvm::PointerType::getUnqual(
         llvm::PointerType::getUnqual(llvm::Type::getInt8Ty(context()))
@@ -575,8 +597,9 @@ public:
 
   PolyTypePtr type(typedb&) const {
     static MonoTypePtr tg0(TGen::make(0));
+    static MonoTypePtr tg1(TGen::make(1));
     static MonoTypePtr tint(Prim::make("int"));
-    static PolyTypePtr fty(new PolyType(1, qualtype(Func::make(tuplety(list(tg0, tint)), tg0))));
+    static PolyTypePtr fty(new PolyType(2, qualtype(Func::make(tuplety(list(tg0, tint)), tg1))));
     return fty;
   }
 };
@@ -584,7 +607,7 @@ public:
 // compile-time record deconstruction
 class recHLabel : public op {
 public:
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs&) {
     if (tys.size() != 1) {
       throw std::runtime_error("Internal error, recordHeadLabel applied incorrectly");
     }
@@ -657,7 +680,7 @@ public:
 
 class varHLabel : public op {
 public:
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs&) {
     if (tys.size() != 1) {
       throw std::runtime_error("Internal error, varHLabel applied incorrectly");
     }
@@ -881,7 +904,7 @@ size_t stdstrsize(const std::string& x)           { return x.size(); }
 char   stdstrelem(const std::string& x, size_t i) { return x[i]; }
 
 class packLongF : public op {
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) {
     llvm::Value* c0 = c->builder()->CreateShl(c->builder()->CreateIntCast(c->compile(es[0]), longType(), false), 56);
     llvm::Value* c1 = c->builder()->CreateShl(c->builder()->CreateIntCast(c->compile(es[1]), longType(), false), 48);
     llvm::Value* c2 = c->builder()->CreateShl(c->builder()->CreateIntCast(c->compile(es[2]), longType(), false), 40);
@@ -902,7 +925,7 @@ class packLongF : public op {
 };
 
 class packIntF : public op {
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) {
     llvm::Value* c0 = c->builder()->CreateIntCast(c->compile(es[0]), intType(), false);
     llvm::Value* c1 = c->builder()->CreateIntCast(c->compile(es[1]), intType(), false);
     llvm::Value* c2 = c->builder()->CreateIntCast(c->compile(es[2]), intType(), false);
@@ -928,7 +951,7 @@ class packIntF : public op {
 };
 
 class packShortF : public op {
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) {
     llvm::Value* c0 = c->builder()->CreateIntCast(c->compile(es[0]), shortType(), false);
     llvm::Value* c1 = c->builder()->CreateIntCast(c->compile(es[1]), shortType(), false);
 
@@ -946,7 +969,7 @@ class packShortF : public op {
 };
 
 class cptrrefbyF : public op {
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) {
     return
       c->builder()->CreateLoad(
         offset(c->builder(), c->compile(es[0]), c->compile(es[1])),
@@ -965,33 +988,35 @@ void initDefOperators(cc* c) {
 
   DEC(not); DEC(bnot);
 
-  DEC(b2i); DEC(b2l); DEC(i2d); DEC(i2l);  DEC(l2d); DEC(l2f);
+  DEC(b2i); DEC(b2l); DEC(i2d); DEC(i2l); DEC(l2d); DEC(l2i16); DEC(l2f);
   DEC(s2i); DEC(i2f); DEC(f2d);
   
   DEC(tl2i); DEC(ti2s); DEC(ti2b); DEC(tl2b);
 
-  DEC(sneg); DEC(ineg); DEC(lneg); DEC(fneg); DEC(dneg);
+  DEC(sneg); DEC(ineg); DEC(lneg); DEC(i16neg); DEC(fneg); DEC(dneg);
 
-  DEC(ceq); DEC(cneq); DEC(clt); DEC(clte); DEC(cgt); DEC(cgte);
-  DEC(beq); DEC(bneq); DEC(blt); DEC(blte); DEC(bgt); DEC(bgte);
-  DEC(seq); DEC(sneq); DEC(slt); DEC(slte); DEC(sgt); DEC(sgte);
-  DEC(ieq); DEC(ineq); DEC(ilt); DEC(ilte); DEC(igt); DEC(igte);
-  DEC(leq); DEC(lneq); DEC(llt); DEC(llte); DEC(lgt); DEC(lgte);
-  DEC(feq); DEC(fneq); DEC(flt); DEC(flte); DEC(fgt); DEC(fgte);
-  DEC(deq); DEC(dneq); DEC(dlt); DEC(dlte); DEC(dgt); DEC(dgte);
+  DEC(ceq);   DEC(cneq);   DEC(clt);   DEC(clte);   DEC(cgt);   DEC(cgte);
+  DEC(beq);   DEC(bneq);   DEC(blt);   DEC(blte);   DEC(bgt);   DEC(bgte);
+  DEC(seq);   DEC(sneq);   DEC(slt);   DEC(slte);   DEC(sgt);   DEC(sgte);
+  DEC(ieq);   DEC(ineq);   DEC(ilt);   DEC(ilte);   DEC(igt);   DEC(igte);
+  DEC(leq);   DEC(lneq);   DEC(llt);   DEC(llte);   DEC(lgt);   DEC(lgte);
+  DEC(i16eq); DEC(i16neq); DEC(i16lt); DEC(i16lte); DEC(i16gt); DEC(i16gte);
+  DEC(feq);   DEC(fneq);   DEC(flt);   DEC(flte);   DEC(fgt);   DEC(fgte);
+  DEC(deq);   DEC(dneq);   DEC(dlt);   DEC(dlte);   DEC(dgt);   DEC(dgte);
 
   DEC(bshl); DEC(blshr); DEC(bashr); DEC(band); DEC(bor); DEC(bxor);
 
   DEC(ishl); DEC(ilshr); DEC(iashr); DEC(iand); DEC(ior); DEC(ixor);
   DEC(lshl); DEC(llshr); DEC(lashr); DEC(land); DEC(lor); DEC(lxor);
 
-  DEC(cadd); DEC(csub); DEC(cmul); DEC(cdiv); DEC(crem);
-  DEC(badd); DEC(bsub); DEC(bmul); DEC(bdiv); DEC(brem);
-  DEC(sadd); DEC(ssub); DEC(smul); DEC(sdiv); DEC(srem);
-  DEC(iadd); DEC(isub); DEC(imul); DEC(idiv); DEC(irem);
-  DEC(ladd); DEC(lsub); DEC(lmul); DEC(ldiv); DEC(lrem);
-  DEC(fadd); DEC(fsub); DEC(fmul); DEC(fdiv);
-  DEC(dadd); DEC(dsub); DEC(dmul); DEC(ddiv);
+  DEC(cadd);   DEC(csub);   DEC(cmul);   DEC(cdiv);   DEC(crem);
+  DEC(badd);   DEC(bsub);   DEC(bmul);   DEC(bdiv);   DEC(brem);
+  DEC(sadd);   DEC(ssub);   DEC(smul);   DEC(sdiv);   DEC(srem);
+  DEC(iadd);   DEC(isub);   DEC(imul);   DEC(idiv);   DEC(irem);
+  DEC(ladd);   DEC(lsub);   DEC(lmul);   DEC(ldiv);   DEC(lrem);
+  DEC(i16add); DEC(i16sub); DEC(i16mul); DEC(i16div); DEC(i16rem);
+  DEC(fadd);   DEC(fsub);   DEC(fmul);   DEC(fdiv);
+  DEC(dadd);   DEC(dsub);   DEC(dmul);   DEC(ddiv);
 
   BINDF("if",         new ifexp());
   BINDF("id",         new idexp());

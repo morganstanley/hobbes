@@ -43,12 +43,12 @@ struct findLabelsF : public switchType<unit> {
   unit with(const Exists*     v) const { return switchOf(v->absType(), *this); }
   unit with(const Recursive*  v) const { return switchOf(v->recType(), *this); }
   
-  unit with(const Prim*       v) const { return unit(); }
-  unit with(const OpaquePtr*  v) const { return unit(); }
-  unit with(const TVar*       v) const { return unit(); }
-  unit with(const TGen*       v) const { return unit(); }
-  unit with(const TLong*      v) const { return unit(); }
-  unit with(const TExpr*      v) const { return unit(); }
+  unit with(const Prim*        ) const { return unit(); }
+  unit with(const OpaquePtr*   ) const { return unit(); }
+  unit with(const TVar*        ) const { return unit(); }
+  unit with(const TGen*        ) const { return unit(); }
+  unit with(const TLong*       ) const { return unit(); }
+  unit with(const TExpr*       ) const { return unit(); }
 };
 static void accumLabels(std::set<std::string>* lbls, const MonoTypePtr& t) {
   switchOf(t, findLabelsF(lbls));

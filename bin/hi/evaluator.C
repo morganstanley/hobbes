@@ -59,7 +59,7 @@ void bindArguments(hobbes::cc& ctx, const Args::NameVals& args) {
 }
 
 // set up the evaluation environment for our cc
-evaluator::evaluator(const Args& args) : silent(args.silent), wwwd(0) {
+evaluator::evaluator(const Args& args) : silent(args.silent), wwwd(0), opts(args.opts) {
   using namespace hobbes;
 
   bindArguments(this->ctx, args.scriptNameVals);
@@ -124,7 +124,7 @@ void evaluator::loadModule(const std::string& mfile) {
 }
 
 void evaluator::evalExpr(const std::string& expr) {
-  std::pair<std::string, hobbes::ExprPtr> ed = this->ctx.readExprDefn(expr);
+  std::pair<std::string, hobbes::ExprPtr> ed = readExprDefn(expr);
 
   if (!ed.first.empty()) {
     this->ctx.define(ed.first, ed.second);
@@ -139,7 +139,7 @@ void evaluator::evalExpr(const std::string& expr) {
 
 void evaluator::printUnsweetenedExpr(const std::string& expr) {
   std::cout << setfgc(colors.unsweetfg)
-            << hobbes::showAnnotated(this->ctx.unsweetenExpression(this->ctx.readExpr(expr)))
+            << hobbes::showAnnotated(this->ctx.unsweetenExpression(readExpr(expr)))
             << std::endl;
 }
 
@@ -167,7 +167,7 @@ void printQualType(const hobbes::Constraints& cs, const hobbes::MonoTypePtr& ty)
 }
 
 void evaluator::printTypeOf(const std::string& expr, bool showHiddenTCs) {
-  hobbes::QualTypePtr t  = this->ctx.unsweetenExpression(this->ctx.readExpr(expr))->type();
+  hobbes::QualTypePtr t  = this->ctx.unsweetenExpression(readExpr(expr))->type();
   hobbes::Constraints cs = showHiddenTCs ? t->constraints() : hobbes::expandHiddenTCs(this->ctx.typeEnv(), t->constraints());
   hobbes::QualTypePtr st = hobbes::simplifyVarNames(hobbes::qualtype(cs, t->monoType()));
 
@@ -209,7 +209,7 @@ void evaluator::printAssembly(const std::string& expr, void (*f)(void*,size_t)) 
 
 void evaluator::perfTestExpr(const std::string& expr) {
   typedef void (*pvthunk)();
-  pvthunk f = this->ctx.compileFn<void()>(this->ctx.readExpr("let x = (" + expr + ") in ()"));
+  pvthunk f = this->ctx.compileFn<void()>(readExpr("let x = (" + expr + ") in ()"));
   f();
 
   const size_t numRuns = 1000;
@@ -237,12 +237,12 @@ void evaluator::breakdownEvalExpr(const std::string& expr) {
   long t0;
 
   t0 = hobbes::tick();
-  this->ctx.unsweetenExpression(this->ctx.readExpr(pexpr));
+  this->ctx.unsweetenExpression(readExpr(pexpr));
   long ust = hobbes::tick() - t0;
 
   t0 = hobbes::tick();
   typedef void (*pvthunk)();
-  pvthunk f = this->ctx.compileFn<void()>(this->ctx.readExpr(pexpr));
+  pvthunk f = this->ctx.compileFn<void()>(readExpr(pexpr));
   long ct = hobbes::tick() - t0;
 
   t0 = hobbes::tick();
@@ -259,7 +259,18 @@ void evaluator::resetREPLCycle() {
   hobbes::resetMemoryPool();
 }
 
-void showSearchResults(const std::string& expr, const hobbes::SearchEntries& ses) {
+bool evaluator::satisfied(const hobbes::ConstraintPtr& c) {
+  hobbes::Definitions ds;
+  bool result = false;
+  try {
+    result = hobbes::satisfied(this->ctx.typeEnv(), c, &ds);
+  } catch (std::exception&) {
+  }
+  this->ctx.drainUnqualifyDefs(ds);
+  return result;
+}
+
+void showSearchResults(const std::string&, const hobbes::SearchEntries& ses) {
   if (ses.size() > 0) {
     std::map<std::string, std::string> stbl;
     for (const auto& se : ses) {
@@ -287,6 +298,20 @@ void evaluator::searchDefs(const std::string& expr_to_type) {
   } else {
     showSearchResults(p.first, this->ctx.search(p.first, p.second));
   }
+}
+
+void evaluator::setOption(const std::string& o) {
+  this->opts.push_back(o);
+}
+
+hobbes::ExprPtr evaluator::readExpr(const std::string& x) {
+  return hobbes::translateExprWithOpts(this->opts, this->ctx.readExpr(x));
+}
+
+std::pair<std::string, hobbes::ExprPtr> evaluator::readExprDefn(const std::string& x) {
+  auto p = this->ctx.readExprDefn(x);
+  p.second = hobbes::translateExprWithOpts(this->opts, p.second);
+  return p;
 }
 
 }

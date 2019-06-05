@@ -347,7 +347,7 @@ struct bnamesF : public switchRegex<UnitV> {
   bnamesF(str::set* bnames) : bnames(bnames) { }
 
   UnitV with(const REps*) const { return unitv; }
-  UnitV with(const RCharRange* x) const { return unitv; }
+  UnitV with(const RCharRange*) const { return unitv; }
   UnitV with(const RStar* x) const { return switchOf(x->v, *this); }
 
   UnitV with(const REither* x) const {
@@ -1056,11 +1056,11 @@ DEFINE_STRUCT(
 );
 
 array<DFAStateRep>* makeDFARep(cc* c, const DFA& dfa) {
-  auto result = reinterpret_cast<array<DFAStateRep>*>(c->memalloc(sizeof(size_t) + dfa.size() * sizeof(DFAStateRep)));
+  auto result = c->makeArray<DFAStateRep>(dfa.size());
   for (size_t i = 0; i < dfa.size(); ++i) {
     DFAStateRep& s = result->data[i];
     auto ctnm = dfa[i].chars.mapping();
-    s.transitions = reinterpret_cast<CTransitions*>(c->memalloc(sizeof(size_t) + ctnm.size() * sizeof(CTransition)));
+    s.transitions = c->makeArray<CTransition>(ctnm.size());
     for (size_t j = 0; j < ctnm.size(); ++j) {
       s.transitions->data[j] = ctnm[j];
     }

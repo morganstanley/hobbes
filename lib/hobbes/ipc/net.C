@@ -180,6 +180,17 @@ std::string remoteHostname(int c) {
   }
 }
 
+// get the port on the other end of this socket
+int remotePort(int c) {
+  struct sockaddr_in sin;
+  socklen_t len = sizeof(sin);
+  if (getpeername(c, reinterpret_cast<struct sockaddr*>(&sin), &len) < 0) {
+    throw std::runtime_error("Couldn't get peer name for socket");
+  } else {
+    return ntohs(sin.sin_port);
+  }
+}
+
 void prepareStrExpr(Server* s, int c, exprid eid, const std::string& expr, const MonoTypes& intys, const MonoTypePtr& outty) {
   auto la = LexicalAnnotation::null();
 

@@ -72,16 +72,23 @@ std::string FinishExpr::stamp() {
   return ss.str();
 }
 
+// make a trivial state that performs a single action and continues
+MStatePtr actAndThen(const ExprPtr& e, stateidx_t s) {
+  LoadVars::Defs ds;
+  ds.push_back(LoadVars::Def(freshName(), e));
+  return MStatePtr(new LoadVars(ds, s));
+}
+
 // make a primitive value switch, validating exhaustiveness
 MStatePtr makeSwitch(const MDFA* dfa, const std::string& switchVar, const SwitchVal::Jumps& jmps, stateidx_t defState) {
   if (defState != nullState) {
     // if we've only got a default switch and no cases, just use the default case
-    // otherwise if this would be a 'switch' on unit, don't bother
+    // otherwise if this would be a 'switch' on unit, don't bother (just pass the type equality through)
     //  -- only the first option can match for unit (or default if there's only a default)
     if (jmps.size() == 0) {
       return dfa->states[defState];
     } else if (isUnit(jmps[0].first->primType())) {
-      return dfa->states[jmps[0].second];
+      return actAndThen(assume(var(switchVar, dfa->rootLA), primty("unit"), dfa->rootLA), jmps[0].second);
     } else {
       return MStatePtr(new SwitchVal(switchVar, jmps, defState));
     }
@@ -95,7 +102,7 @@ MStatePtr makeSwitch(const MDFA* dfa, const std::string& switchVar, const Switch
         } else if ((pty->name() == "char" || pty->name() == "byte") && jmps.size() == 256) {
           return MStatePtr(new SwitchVal(switchVar, SwitchVal::Jumps(jmps.begin(), jmps.end() - 1), jmps[jmps.size() - 1].second));
         } else if (pty->name() == "unit") {
-          return dfa->states[jmps[0].second];
+          return actAndThen(assume(var(switchVar, dfa->rootLA), primty("unit"), dfa->rootLA), jmps[0].second);
         }
       }
     }
@@ -310,15 +317,20 @@ template <
 >
 MStatePtr makeSplitState(MDFA* dfa, const PatternRows& ps, size_t c) {
   typedef std::map<SValue, PatternRows, SVLT> Branches;
+  typedef std::map<SValue, size_t>            BranchOrder;
 
   Branches    bs;
+  BranchOrder bos;
   Idxs        anys;
   PatternRows def;
 
   // accumulate branches for fixed cases
   for (size_t r = 0; r < ps.size(); ++r) {
     if (const MType* mt = is<MType>(ps[r].patterns[c])) {
-      SValue       sv    = svalueF(*mt);
+      SValue sv = svalueF(*mt);
+      if (bs.find(sv) == bs.end()) {
+        bos[sv] = bs.size(); // remember branch introduction order (this is important for variants)
+      }
       PatternRows& outrs = bs[sv];
 
       // the first time through this branch, we need to make sure that prior match-any rows are prepended
@@ -347,13 +359,14 @@ MStatePtr makeSplitState(MDFA* dfa, const PatternRows& ps, size_t c) {
     copyRowWithoutColumn(&def, ps[i], c);
   }
 
-  // finally, pull the branch and default jumps together and make the new state
+  // finally, pull the branch and default jumps together (in introduction order) and make the new state
   typedef std::pair<SValue, stateidx_t> Jump;
   typedef std::vector<Jump>             Jumps;
   Jumps jmps;
 
-  for (typename Branches::const_iterator b = bs.begin(); b != bs.end(); ++b) {
-    jmps.push_back(Jump(b->first, makeNextState(ps[0].patterns[c]->name(), b->first, dfa, b->second)));
+  jmps.resize(bs.size());
+  for (const auto& b : bs) {
+    jmps[bos[b.first]] = Jump(b.first, makeNextState(ps[0].patterns[c]->name(), b.first, dfa, b.second));
   }
 
   stateidx_t defState = def.size() > 0 ? makeDFAState(dfa, def) : nullState;
@@ -651,7 +664,7 @@ stateidx_t makeVSSuccState(const std::string&, std::string, MDFA* dfa, const Pat
   return makeDFAState(dfa, nps);
 }
 
-MStatePtr makeVSSwitch(const std::string& switchVar, MDFA* dfa, const SwitchVariant::CtorJumps& jmps, stateidx_t defState) {
+MStatePtr makeVSSwitch(const std::string& switchVar, MDFA*, const SwitchVariant::CtorJumps& jmps, stateidx_t defState) {
   return MStatePtr(new SwitchVariant(switchVar, jmps, defState));
 }
 
@@ -1499,11 +1512,11 @@ public:
     this->ftype = polytype(functy(atys, primty("int")));
   }
 
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) {
     return fncall(c->builder(), this->vfn, compileArgs(c, es));
   }
 
-  PolyTypePtr type(typedb& tenv) const {
+  PolyTypePtr type(typedb&) const {
     return this->ftype;
   }
 private:

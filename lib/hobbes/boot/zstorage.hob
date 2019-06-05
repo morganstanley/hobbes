@@ -1,0 +1,426 @@
+// generic
+instance (t/p::x) => SLookup t@f p x where
+  slookup t = (fieldValue::(t/p::x)=>t->x)(load(t))
+
+flMap f n = match unroll(load(n)) with | |1=(h,t)| -> cons(f(h), flMap(f,t)) | _ -> nil()
+
+fixedArrMap :: (Function f c a r) => (f, long, [:a|n:], [:r|n:]) -> [:r|n:]
+fixedArrMap f i xs rs =
+  if (i == salength(xs)) then
+    rs
+  else do {
+    saelem(rs,i) <- apply(f, saelem(xs,i));
+    return fixedArrMap(f, i+1L, xs, rs)
+  }
+
+instance SeqDesc [:t|n:] ("farr"*n) t
+
+instance Map f c a r ("farr"*n) [:t|n:] ("farr"*n) [:r|n:] where
+  fmap f xs = fixedArrMap(f, 0L, xs, newPrim()::[:r|n:])
+instance FilterMap p pc f c a r ("farr"*n) [:t|n:] "array" [r] where
+  ffilterMap p f xs = ffilterMap(p, f, xs[0:])
+instance FilterMMap f c a r ("farr"*n) [:t|n:] "array" [r] where
+  ffilterMMap f xs = ffilterMMap(f, xs[0:])
+
+initFixedRange :: ([:long|n:], long) -> [:long|n:]
+initFixedRange ns i =
+  if (i == salength(ns)) then
+    ns
+  else do {
+    saelem(ns,i) <- i;
+    return initFixedRange(ns, i+1L)
+  }
+
+class LowerLong n where
+  lowerLong :: long
+instance LowerLong n where
+  lowerLong = salength(newPrim()::[:int|n:]) // temporary awkward way to move 'n' binding down to the value level
+
+class FixedRange n where
+  fixedRange :: [:long|n:]
+instance FixedRange n where
+  fixedRange = initFixedRange(newPrim(), 0L)
+
+instance (ArrayView t a, Array a e, Print e) => Print t where
+  print x = print(openArrayView(x))
+
+// stored order-0 compressed sequences and I/O API
+data cseq t m n = (^x.(()+({initModel:m@?, scratchModel:m@?, low:int, high:int, roll:int, bitIndex:int, count:long, headBitBuffer:(^x.{bits:[:byte|4088:], nextRef:x@?})@?}@?*x@?)))@?
+
+class CSeqBatchSize t where
+  cseqBatchSize :: t -> long
+instance CSeqBatchSize (cseq t m n) where
+  cseqBatchSize _ = lowerLong::(LowerLong n)=>long
+
+class UCModel t sm dm | t -> sm, t -> dm where
+  ucAllocModel   :: ((file () ()), bool) -> dm
+  ucPrepModel    :: (sm, dm) -> ()
+  ucDeallocModel :: dm -> ()
+class (UCModel t sm dm) => UCModelTop t sm dm where
+  ucPrepModelTop :: (<hobbes.UCReader>, dm) -> ()
+instance UCModelTop t sm dm where
+  ucPrepModelTop r dm = (ucPrepModel::(UCModel t sm dm)=>(sm,dm)->())(pload(unsafeCast(ucReaderFileRef(r))::((file () ())), unsafeCast(ucReaderModel(r))::sm@?), dm)
+
+class (UCModel t sm dm) => UCRead t sm dm where
+  ucRead :: (<hobbes.UCReader>, dm) -> t
+class (UCModel t sm dm) => UCWrite t sm dm where
+  ucWrite :: (<hobbes.UCWriter>, dm, t) -> ()
+
+/****************
+ *
+ * compression models
+ *
+ ****************/
+
+// unit has an empty 'int' model because we can't make a 'void' value in C++
+instance UCModel () int () where
+  ucAllocModel   _ _ = ()
+  ucPrepModel    _ _ = ()
+  ucDeallocModel _   = ()
+instance UCRead () int () where
+  ucRead _ _ = ()
+instance UCWrite () int () where
+  ucWrite _ _ _ = ()
+
+// a simple frequency model of a byte (primitive for many types)
+type csmodel k = {freqs:[:int|k:], activeFreqs:[:int|k:], c:int}
+
+instance UCModel byte (csmodel 256) <hobbes.DynDModel0> where
+  ucAllocModel f input = ddmMake(unsafeCast(f), input, 0Xff)
+  ucPrepModel sm dm = ddmInit(dm, unsafeCast(sm))
+  ucDeallocModel = ddmDestroy
+
+instance UCRead byte (csmodel 256) <hobbes.DynDModel0> where
+  ucRead = ucReaderRead
+instance UCWrite byte (csmodel 256) <hobbes.DynDModel0> where
+  ucWrite = ucWriterWrite
+
+class UCMSized t n | t -> n
+instance UCMSized char   1
+instance UCMSized short  2
+instance UCMSized int    4
+instance UCMSized long   8
+instance UCMSized int128 16
+instance UCMSized float  4
+instance UCMSized double 8
+
+type pcsmodel n = { pmodels:[:(csmodel 256)|n:] }
+type pdmodel  n = [:<hobbes.DynDModel0>|n:]
+
+ucPrepModelSA sm dm i e =
+  if (i == e) then
+    ()
+  else do {
+    ddmInit(saelem(dm,i), unsafeCast(saelem(sm.pmodels,i)));
+    ucPrepModelSA(sm, dm, i+1L, e);
+  }
+
+ucDeallocModelSA dm i e =
+  if (i == e) then
+    ()
+  else do {
+    ddmDestroy(saelem(dm,i));
+    ucDeallocModelSA(dm, i+1L, e);
+  }
+
+instance (UCMSized t n) => UCModel t (pcsmodel n) (pdmodel n) where
+  ucAllocModel   f input = [ddmMake(unsafeCast(f), input, 0Xff) | _ <- newPrim()::[:int|n:]]
+  ucPrepModel    sm dm   = ucPrepModelSA(sm, dm, 0L, lowerLong::(LowerLong n)=>long)
+  ucDeallocModel dm      = ucDeallocModelSA(dm, 0L, lowerLong::(LowerLong n)=>long)
+
+instance (UCMSized t n) => UCRead t (pcsmodel n) (pdmodel n) where
+  ucRead r dm = (unsafeCast([(ucRead::(UCRead byte _ _)=>_)(r,saelem(dm,i)) | i <- (fixedRange::(FixedRange n)=>[:long|n:])])::{x:t}).x
+
+instance (UCMSized t n) => UCWrite t (pcsmodel n) (pdmodel n) where
+  ucWrite w dm x = do { bs=unsafeCast({x=x})::[:byte|n:]; [ucWrite(w, saelem(dm, i), saelem(bs, i)) | i <- (fixedRange::(FixedRange n)=>_)]; }
+
+// compression models for tuples
+class UCMTuple t tsm tdm | t -> tsm, t -> tdm
+instance UCMTuple () () ()
+instance (t=(l*r), UCModel l lsm ldm, UCMTuple r rsm rdm, (lsm*rsm)=tsm, (ldm*rdm)=tdm) => UCMTuple t tsm tdm
+
+class UCMTupModel t tsm tdm where
+  ucTupAllocModel   :: ((file () ()), bool, tdm) -> ()
+  ucTupPrepModel    :: (tsm, tdm) -> ()
+  ucTupDeallocModel :: tdm -> ()
+
+instance UCMTupModel () () () where
+  ucTupAllocModel   _ _ _ = ()
+  ucTupPrepModel    _ _   = ()
+  ucTupDeallocModel _     = ()
+instance (t=(l*r), tsm=(lsm*rsm), tdm=(ldm*rdm), UCModel l lsm ldm, UCMTupModel r rsm rdm) => UCMTupModel t tsm tdm where
+  ucTupAllocModel   f inp dm = do { dm.0 <- (ucAllocModel::(UCModel l lsm ldm)=>_)(f, inp); (ucTupAllocModel::(UCMTupModel r _ _)=>_)(f, inp, tupleTail(dm)); }
+  ucTupPrepModel       sm dm = do { (ucPrepModel::(UCModel l lsm ldm)=>(lsm,ldm)->())(sm.0, dm.0); (ucTupPrepModel::(UCMTupModel r _ _)=>(_,_)->())(tupleTail(sm), tupleTail(dm)); }
+  ucTupDeallocModel       dm = do { (ucDeallocModel::(UCModel l lsm ldm)=>ldm->())(dm.0); (ucTupDeallocModel::(UCMTupModel r _ _)=>_->())(tupleTail(dm)); }
+
+instance (UCMTuple t tsm tdm, UCMTupModel t tsm tdm) => UCModel t tsm tdm where
+  ucAllocModel   f input = do { r = newPrim(); (ucTupAllocModel::(UCMTupModel t tsm tdm)=>_)(f,input,r); return r }
+  ucPrepModel    sm dm   = (ucTupPrepModel::(UCMTupModel t tsm tdm)=>(tsm,tdm)->())(sm,dm)
+  ucDeallocModel dm      = (ucTupDeallocModel::(UCMTupModel t tsm tdm)=>tdm->())(dm)
+
+class (UCMTupModel t tsm tdm) => UCTupRead t tsm tdm where
+  ucTupRead :: (<hobbes.UCReader>, tdm, t) -> ()
+instance UCTupRead () () () where
+  ucTupRead _ _ _ = ()
+instance (t=(l*r), tsm=(lsm*rsm), tdm=(ldm*rdm), UCRead l lsm ldm, UCTupRead r rsm rdm) => UCTupRead t tsm tdm where
+  ucTupRead r dm t = do { t.0 <- (ucRead::(UCRead l lsm ldm)=>(_,ldm)->l)(r,dm.0); ucTupRead(r,tupleTail(dm),tupleTail(t)); }
+instance (UCMTuple t tsm tdm, UCTupRead t tsm tdm) => UCRead t tsm tdm where
+  ucRead r dm = do { x=newPrim(); (ucTupRead::(UCTupRead t tsm tdm)=>(_,tdm,t)->())(r,dm,x); return x }
+
+class (UCMTupModel t tsm tdm) => UCTupWrite t tsm tdm where
+  ucTupWrite :: (<hobbes.UCWriter>, tdm, t) -> ()
+instance UCTupWrite () () () where
+  ucTupWrite _ _ _ = ()
+instance (t=(l*r), tsm=(lsm*rsm), tdm=(ldm*rdm), UCWrite l lsm ldm, UCTupWrite r rsm rdm) => UCTupWrite t tsm tdm where
+  ucTupWrite w dm t = do { (ucWrite::(UCWrite l lsm ldm)=>(_,ldm,_)->_)(w,dm.0,t.0); ucTupWrite(w,tupleTail(dm),tupleTail(t)); }
+instance (UCMTuple t tsm tdm, UCTupWrite t tsm tdm) => UCWrite t tsm tdm where
+  ucWrite w dm t = (ucTupWrite::(UCTupWrite t tsm tdm)=>(_,tdm,t)->())(w,dm,t)
+
+// compression models for records (just piggyback on tuples)
+class UCMRecTuple r t | r -> t
+instance UCMRecTuple () ()
+instance (r={h*rt}, UCMRecTuple rt tt, (h*tt)=t) => UCMRecTuple r t
+
+instance (UCMRecTuple r t, UCModel t tsm tdm) => UCModel r tsm tdm where
+  ucAllocModel   = ucAllocModel  ::(UCModel t tsm tdm)=>_
+  ucPrepModel    = ucPrepModel   ::(UCModel t tsm tdm)=>_
+  ucDeallocModel = ucDeallocModel::(UCModel t tsm tdm)=>_
+
+instance (UCMRecTuple r t, UCRead t tsm tdm) => UCRead r tsm tdm where
+  ucRead r dm = unsafeCast((ucRead::(UCRead t tsm tdm)=>(_,_)->_)(r,dm))::r
+instance (UCMRecTuple r t, UCWrite t tsm tdm) => UCWrite r tsm tdm where
+  ucWrite w dm r = ucWrite(w, dm, unsafeCast(r)::t)
+
+// compression models for arrays (as if a dependent pair of a long and a single array element)
+instance (UCModel t tsm tdm) => UCModel [t] ((pcsmodel 8) * tsm) ((pdmodel 8) * tdm) where
+  ucAllocModel   f input = ((ucAllocModel::(UCModel long _ _)=>_)(f,input), (ucAllocModel::(UCModel t _ _)=>_)(f,input))
+  ucPrepModel    sm dm   = do { (ucPrepModel::(UCModel long _ _)=>(_,_)->_)(sm.0, dm.0); (ucPrepModel::(UCModel t _ _)=>(_,_)->_)(sm.1, dm.1); }
+  ucDeallocModel dm      = do { (ucDeallocModel::(UCModel long _ _)=>_->_)(dm.0); (ucDeallocModel::(UCModel t _ _)=>_->_)(dm.1); }
+
+ucTakeNStep :: (UCRead t sm dm) => (<hobbes.UCReader>, dm, long, [t], long) -> [t]
+ucTakeNStep r dm n x i =
+  if (ucReaderEOF(r) or i == n) then
+    do { unsafeSetLength(x, i); return (x::[t]) }
+  else
+    do {
+      x[i] <- ucRead(r, dm);
+      return ucTakeNStep(r, dm, n, x, i+1L)
+    }
+
+ucTakeN :: (UCRead t sm dm) => (<hobbes.UCReader>, dm, long) -> [t]
+ucTakeN r dm n = ucTakeNStep(r, dm, n, newArray(n), 0L)
+
+instance (UCModel t tsm tdm) => UCRead [t] ((pcsmodel 8) * tsm) ((pdmodel 8) * tdm) where
+  ucRead r dm = ucTakeN(r, dm.1, (ucRead::(UCRead long _ _)=>(_,_)->_)(r, dm.0))
+
+ucPutN :: (UCWrite t sm dm) => (<hobbes.UCWriter>, dm, [t], long, long) -> ()
+ucPutN w m xs i e =
+  if (i == e) then
+    ()
+  else do {
+    (ucWrite::(UCWrite t sm dm)=>(_,_,_)->_)(w, m, xs[i]);
+    ucPutN(w, m, xs, i+1L, e);
+  }
+
+instance (UCModel t tsm tdm) => UCWrite [t] ((pcsmodel 8) * tsm) ((pdmodel 8) * tdm) where
+  ucWrite w dm x = do { (ucWrite::(UCWrite long _ _)=>(_,_,_)->_)(w, dm.0, length(x)); ucPutN(w, dm.1, x, 0L, length(x)); }
+
+// compression models for enumerations (variants with only unit payloads)
+class UCMEnumCount t b | t -> b
+instance UCMEnumCount void ()
+instance (t=|()+s|, UCMEnumCount s x, (byte*x)=r) => UCMEnumCount t r
+
+class UCMEnumLen t n | t -> n
+instance (UCMEnumCount t b, SizeOf b n) => UCMEnumLen t n
+
+instance (UCMEnumLen t n) => UCModel t (csmodel n) <hobbes.DynDModel0> where
+  ucAllocModel   f input = ddmMake(unsafeCast(f), input, ti2b(tl2i(lowerLong::(LowerLong n)=>long)-1))
+  ucPrepModel    sm dm   = ddmInit(dm, unsafeCast(sm))
+  ucDeallocModel         = ddmDestroy
+
+instance (UCMEnumLen t n) => UCRead t (csmodel n) <hobbes.DynDModel0> where
+  ucRead r dm = unsafeCast({t=b2i(ucReaderRead(r, dm))})
+
+instance (UCMEnumLen t n) => UCWrite t (csmodel n) <hobbes.DynDModel0> where
+  ucWrite w dm x = ucWriterWrite(w, dm, ti2b((unsafeCast(x)::{t:int}).t))
+
+// compression models for general variants
+class UCDivideVariant t e p | t -> e, t -> p
+instance UCDivideVariant void void ()
+instance (t=|c:h+s|, UCDivideVariant s se sp, |c:()+se|=e, (h*sp)=p) => UCDivideVariant t e p
+
+instance (UCDivideVariant t e p, UCModel e esm edm, UCModel p psm pdm) => UCModel t (esm*psm) (edm*pdm) where
+  ucAllocModel   f input = ((ucAllocModel::(UCModel e _ _)=>_)(f,input), (ucAllocModel::(UCModel p _ _)=>_)(f,input))
+  ucPrepModel    sm dm   = do { (ucPrepModel::(UCModel e _ _)=>(_,_)->_)(sm.0,dm.0); (ucPrepModel::(UCModel p _ _)=>(_,_)->_)(sm.1,dm.1); }
+  ucDeallocModel dm      = do { (ucDeallocModel::(UCModel e _ _)=>_->_)(dm.0); (ucDeallocModel::(UCModel p _ _)=>_->_)(dm.1); }
+
+class UCPadVar v p | v -> p where
+  ucPadVar :: p
+instance (SizeOf v 4) => UCPadVar v () where
+  ucPadVar = ()
+instance (SizeOf v 8) => UCPadVar v () where
+  ucPadVar = ()
+instance UCPadVar _ int where
+  ucPadVar = 0
+
+class UCInitVarAppRF v p f m where
+  ucInitVarAppRF :: (int, <hobbes.UCReader>, f, m) -> ()
+instance UCInitVarAppRF _ () _ _ where
+  ucInitVarAppRF _ _ _ _ = ()
+instance (p=(h*pt), f={_*ft}, m=(hm*mt), UCInitVarAppRF v pt ft mt) => UCInitVarAppRF v p f m where
+  ucInitVarAppRF i r f dm = do { padV=ucPadVar::(UCPadVar v x)=>x; recordHeadValue(f) <- (\().unsafeCast((i,padV,(ucRead::(UCRead h _ _)=>(_,_)->_)(r, dm.0)::h))::v); (ucInitVarAppRF::(UCInitVarAppRF v pt lft lmt)=>(_,_,_,_)->_)(i+1, r, recordTail(f)::lft, tupleTail(dm)::lmt); }
+instance (p=(h*pt), f=(_*ft), m=(hm*mt), UCInitVarAppRF v pt ft mt) => UCInitVarAppRF v p f m where
+  ucInitVarAppRF i r f dm = do { padV=ucPadVar::(UCPadVar v x)=>x; f.0 <- (\().unsafeCast((i,padV,(ucRead::(UCRead h _ _)=>(_,_)->_)(r, dm.0)::h))::v); (ucInitVarAppRF::(UCInitVarAppRF v pt lft lmt)=>(_,_,_,_)->_)(i+1, r, tupleTail(f)::lft, tupleTail(dm)::lmt); } // a little annoying that we duplicate this logic for variants as "naked sums"
+
+instance (UCDivideVariant v e p, UCModel e esm edm, UCModel p psm pdm) => UCRead v (esm*psm) (edm*pdm) where
+  ucRead r dm = do { f=newPrim(); (ucInitVarAppRF::(UCInitVarAppRF v p _ _)=>(_,_,_,_)->_)(0, r, f, dm.1); return variantApp((ucRead::(UCRead e _ _)=>(_,_)->_)(r,dm.0), f) }
+
+class UCInitVarAppWF v p f m where
+  ucInitVarAppWF :: (<hobbes.UCWriter>, f, m) -> ()
+instance UCInitVarAppWF _ () _ _ where
+  ucInitVarAppWF _ _ _ = ()
+instance (p=(h*pt), f={_*ft}, m=(hm*mt), UCInitVarAppWF v pt ft mt) => UCInitVarAppWF v p f m where
+  ucInitVarAppWF w f dm = do { recordHeadValue(f) <- (\x.(ucWrite::(UCWrite h _ _)=>_)(w, dm.0, x)); (ucInitVarAppWF::(UCInitVarAppWF v pt lft lmt)=>_)(w, recordTail(f)::lft, tupleTail(dm)::lmt); }
+instance (p=(h*pt), f=(_*ft), m=(hm*mt), UCInitVarAppWF v pt ft mt) => UCInitVarAppWF v p f m where
+  ucInitVarAppWF w f dm = do { f.0 <- (\x.(ucWrite::(UCWrite h _ _)=>_)(w, dm.0, x)); (ucInitVarAppWF::(UCInitVarAppWF v pt lft lmt)=>_)(w, tupleTail(f)::lft, tupleTail(dm)::lmt); } // naked sums again
+
+instance (UCDivideVariant v e p, UCModel e esm edm, UCModel p psm pdm) => UCWrite v (esm*psm) (edm*pdm) where
+  ucWrite w dm v = do { ucWrite(w, dm.0, (unsafeCast(v)::{x:e}).x); f=newPrim(); (ucInitVarAppWF::(UCInitVarAppWF v p _ _)=>_)(w, f, dm.1); return variantApp(v, f) }
+
+// compression models for aliased types
+instance (UCModel long s d) => UCModel t@? s d where
+  ucAllocModel = ucAllocModel :: (UCModel long _ _)=>_
+  ucPrepModel = ucPrepModel :: (UCModel long _ _)=>_
+  ucDeallocModel = ucDeallocModel :: (UCModel long _ _)=>_
+instance (UCModel long s d) => UCModel t@f s d where
+  ucAllocModel = ucAllocModel :: (UCModel long _ _)=>_
+  ucPrepModel = ucPrepModel :: (UCModel long _ _)=>_
+  ucDeallocModel = ucDeallocModel :: (UCModel long _ _)=>_
+instance (UCRead long s d) => UCRead t@? s d where
+  ucRead r d = unsafeCast((ucRead::(UCRead long _ _)=>_)(r,d))
+instance (UCRead long s d) => UCRead t@f s d where
+  ucRead r d = unsafeCast((ucRead::(UCRead long _ _)=>_)(r,d))
+instance (UCWrite long s d) => UCWrite t@? s d where
+  ucWrite w dm x = (ucWrite::(UCWrite long _ _)=>_)(w, dm, unsafeCast(x)::long)
+instance (UCWrite long s d) => UCWrite t@f s d where
+  ucWrite w dm x = (ucWrite::(UCWrite long _ _)=>_)(w, dm, unsafeCast(x)::long)
+
+instance (Data d t, UCModel t sm dm) => UCModel d sm dm where
+  ucAllocModel = ucAllocModel :: (UCModel t _ _)=>_
+  ucPrepModel = ucPrepModel :: (UCModel t _ _)=>_
+  ucDeallocModel = ucDeallocModel :: (UCModel t _ _)=>_
+instance (Data d t, UCRead t sm dm) => UCRead d sm dm where
+  ucRead r d = unsafeCast((ucRead::(UCRead t _ _)=>_)(r,d))
+instance (Data d t, UCWrite t sm dm) => UCWrite d sm dm where
+  ucWrite w dm x = (ucWrite::(UCWrite t _ _)=>_)(w, dm, unsafeCast(x)::t)
+
+// an array view for stored sequences
+ucRootTakeNStep :: (UCRead t sm dm) => (<hobbes.UCReader>, dm, long, [t], long) -> [t]
+ucRootTakeNStep r dm n x i =
+  if (ucReaderEOF(r) or i == n) then
+    do { unsafeSetLength(x, i); return (x::[t]) }
+  else
+    do {
+      x[i] <- ucRead(r, dm);
+      if (ucReaderStep(r)) then
+        (ucPrepModelTop::(UCModelTop t sm dm)=>(_,dm)->())(r, dm)
+      else
+        ();
+      return ucRootTakeNStep(r, dm, n, x, i+1L)
+    }
+
+ucRootTakeN :: (UCRead t sm dm) => (<hobbes.UCReader>, dm, long) -> [t]
+ucRootTakeN r dm n = if (n==0) then [] else ucRootTakeNStep(r, dm, n, newArray(n), 0L)
+
+ucRootDropN :: (UCRead t sm dm) => (<hobbes.UCReader>, dm, long) -> [t]
+ucRootDropN r dm n =
+  if (ucReaderEOF(r) or n <= 0) then
+    ([]::[t])
+  else do {
+    ucRead(r,dm)::t;
+    if (ucReaderStep(r)) then
+      (ucPrepModelTop::(UCModelTop t sm dm)=>(_,dm)->())(r, dm)
+    else
+      ();
+    return ucRootDropN(r, dm, n-1L)
+  }
+
+cseqTakeN :: (UCRead t sm dm) => ((file () ()), (cseq t sm n), long) -> [t]
+cseqTakeN f s k = do {
+  r  = ucReaderMake(unsafeCast(f), unsafeCast(s), cseqBatchSize(s));
+  dm = (ucAllocModel::(UCModel t sm dm)=>_)(unsafeCast(f),true);
+  (ucPrepModelTop::(UCModelTop t sm dm)=>(_,dm)->())(r, dm);
+  x  = (ucRootTakeN::(UCRead t sm dm)=>(_,dm,_)->[t])(r, dm, k);
+  (ucDeallocModel::(UCModel t sm dm)=>dm->())(dm);
+  ucReaderDestroy(r);
+
+  return x
+}
+
+ucReaderSeek r n =
+  if (n <= 0) then
+    true
+  else
+    (ucReaderSkipPage(r) and ucReaderSeek(r, n-1))
+
+cseqReadFromTo :: (UCRead t sm dm) => ((file () ()), (cseq t sm n), long, long) -> [t]
+cseqReadFromTo f s i e = do {
+  n  = cseqBatchSize(s);
+  r  = ucReaderMake(unsafeCast(f), unsafeCast(s), n);
+  dm = (ucAllocModel::(UCModel t sm dm)=>_)(unsafeCast(f),true);
+
+  x =
+    if (not(ucReaderSeek(r, i/n))) then
+      []
+    else do {
+      (ucPrepModelTop::(UCModelTop t sm dm)=>(_,dm)->())(r, dm);
+      ucRootDropN(r, dm, i%n)::[t];
+      return ucRootTakeN(r, dm, e-i)
+    };
+
+  (ucDeallocModel::(UCModel t sm dm)=>_)(dm);
+  ucReaderDestroy(r);
+
+  return (x::[t])
+}
+
+class CSeqLength t where
+  cseqLength :: t -> long
+instance CSeqLength (cseq t sm n) where
+  cseqLength s = sum(toArray(flMap(\n.load(n).count, s.t)))
+
+instance (UCRead t sm dm) => Array (cseq t sm n) t where
+  size     s     = cseqLength(s)
+  element  s i   = cseqReadFromTo(unsafeCast(file(s.t)), s, i, i+1L)[0]
+  elements s i e = cseqReadFromTo(unsafeCast(file(s.t)), s, i, e)
+
+// put a sequence of values
+ucRootPutN :: (UCWrite t sm dm) => (<hobbes.UCWriter>, dm, [t], long) -> ()
+ucRootPutN w dm xs i =
+  if (i == size(xs)) then
+    ()
+  else do {
+    ucWrite(w, dm, xs[i]);
+    ucWriterStep(w);
+    ucRootPutN(w, dm, xs, i+1L);
+  }
+
+class CSeqPut s t | s -> t where
+  cseqPut :: (s, [t]) -> ()
+instance (UCWrite t sm dm) => CSeqPut (cseq t sm n) t where
+  cseqPut s xs = do { w=ucWriterMake(unsafeCast(file(s.t)), unsafeCast(s), cseqBatchSize(s), sizeOf::(SizeOf sm _)=>_); dm=(ucAllocModel::(UCModel t sm dm)=>_)(unsafeCast(file(s.t)),false); (ucPrepModel::(UCModel t sm dm)=>_)(unsafeCast(ucWriterModelData(w))::sm, dm); ucRootPutN(w, dm, xs, 0L); (ucDeallocModel::(UCModel t sm dm)=>_)(dm); ucWriterDestroy(w); }
+
+// initialize a stored compressed sequence of some type in a file
+initCSeq :: ((file 1 _)) -> (cseq t m n)
+initCSeq f = unsafeCast(pstore(f, nothing::(()+(long*long))))
+
+// basic list comprehension support for stored sequences
+instance SeqDesc (cseq t _ _) "cseq" t
+
+instance Map f c a r "cseq" (cseq a _ _) "array" [r] where
+  fmap f xs = fmap(f, xs[0:])
+instance FilterMap p pc f c a r "cseq" (cseq a _ _) "array" [r] where
+  ffilterMap p f xs = ffilterMap(p, f, xs[0:])
+instance FilterMMap f c a r "cseq" (cseq a _ _) "array" [r] where
+  ffilterMMap f xs = ffilterMMap(f, xs[0:])
+

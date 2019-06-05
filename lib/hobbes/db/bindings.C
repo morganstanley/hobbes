@@ -1,5 +1,6 @@
 
 #include <hobbes/db/bindings.H>
+#include <hobbes/db/cbindings.H>
 #include <hobbes/db/file.H>
 #include <hobbes/db/signals.H>
 #include <hobbes/eval/cc.H>
@@ -65,6 +66,10 @@ struct injFileReferencesF : public switchTyFn {
   ExprPtr f;
   injFileReferencesF(const ExprPtr& f) : f(f) { }
 
+  MonoTypePtr with(const Prim* t) const {
+    return Prim::make(t->name(), t->representation() ? switchOf(t->representation(), *this) : t->representation());
+  }
+
   MonoTypePtr with(const TApp* v) const {
     MonoTypePtr tf    = switchOf(v->fn(), *this);
     MonoTypes   targs = switchOf(v->args(), *this);
@@ -72,13 +77,12 @@ struct injFileReferencesF : public switchTyFn {
     if (const Prim* tfn = is<Prim>(tf)) {
       if (tfn->name() == "fileref") {
         if (targs.size() == 1) {
-          targs.resize(2);
-          targs[1] = texpr(this->f);
+          return fileRefTy(targs[0], texpr(this->f));
         }
       }
     }
 
-    return MonoTypePtr(TApp::make(tf, targs));
+    return TApp::make(tf, targs);
   }
 };
 
@@ -173,7 +177,7 @@ char* dbloadarr(long db, long offset, long esz) {
 
 // load/store root values in storage files
 class dbloadVF : public op {
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr& rty, const Exprs& es) {
     llvm::Value* db  = c->compile(es[0]);
     llvm::Value* off = c->compile(es[1]);
 
@@ -204,7 +208,7 @@ class dbloadVF : public op {
 };
 
 class dbstoreVF : public op {
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) {
     llvm::Value* db   = c->compile(es[0]);
     llvm::Value* off  = c->compile(es[1]);
     llvm::Value* outv = c->compile(es[2]);
@@ -284,13 +288,13 @@ struct dbloadF : public op {
   PolyTypePtr type(typedb&) const {
     static MonoTypePtr tg0(TGen::make(0));
     static MonoTypePtr tg1(TGen::make(1));
-    static PolyTypePtr npty(new PolyType(2, qualtype(Func::make(tuplety(list(tapp(primty("fileref"), list(tg0, tg1)))), tg0))));
+    static PolyTypePtr npty(new PolyType(2, qualtype(Func::make(tuplety(list(fileRefTy(tg0, tg1))), tg0))));
     return npty;
   }
 };
 
 struct dbloadPF : public op {
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr& rty, const Exprs& es) {
     llvm::Value* db  = c->compile(es[0]);
     llvm::Value* off = c->compile(es[1]);
 
@@ -328,7 +332,7 @@ struct dbloadPF : public op {
     static MonoTypePtr tg0(TGen::make(0));
     static MonoTypePtr tg1(TGen::make(1));
     static MonoTypePtr tg2(TGen::make(2));
-    static PolyTypePtr npty(new PolyType(3, qualtype(Func::make(tuplety(list(tapp(primty("file"), list(tg0, tg1)), tapp(primty("fileref"), list(tg2)))), tg2))));
+    static PolyTypePtr npty(new PolyType(3, qualtype(Func::make(tuplety(list(tapp(primty("file"), list(tg0, tg1)), fileRefTy(tg2))), tg2))));
     return npty;
   }
 };
@@ -341,7 +345,7 @@ struct dbloadPF : public op {
 //
 //  but this currently can't be expressed
 struct dbRefFileF : public op {
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) {
     FRefT frt = assumeFRefT(tys[0], es[0]->la());
     return c->compileAtGlobalScope(frt.second);
   }
@@ -351,7 +355,7 @@ struct dbRefFileF : public op {
     MonoTypePtr tg1(TGen::make(1));
     MonoTypePtr tg2(TGen::make(2));
     MonoTypePtr tg3(TGen::make(3));
-    PolyTypePtr npty(new PolyType(4, qualtype(Func::make(tuplety(list(tapp(primty("fileref"), list(tg0, tg1)))), tapp(primty("file"), list(tg2, tg3))))));
+    PolyTypePtr npty(new PolyType(4, qualtype(Func::make(tuplety(list(fileRefTy(tg0, tg1))), tapp(primty("file"), list(tg2, tg3))))));
     return npty;
   }
 };
@@ -370,7 +374,7 @@ void dbunloadarr(long db, long ptr, long sz) {
 }
 
 struct dbunloadF : public op {
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) {
     llvm::Value* db  = c->compile(es[0]);
     llvm::Value* val = c->builder()->CreatePtrToInt(c->compile(es[1]), toLLVM(primty("long"), true));
 
@@ -415,7 +419,7 @@ long dballoc(long db, long datasz, size_t align) {
 }
 
 struct dballocF : public op {
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr& rty, const Exprs&) {
     FRefT frt = assumeFRefT(rty, LexicalAnnotation::null());
 
     llvm::Value* db  = c->compileAtGlobalScope(frt.second);
@@ -428,7 +432,7 @@ struct dballocF : public op {
   }
 
   PolyTypePtr type(typedb&) const {
-    return PolyTypePtr(new PolyType(2, qualtype(Func::make(tuplety(list(primty("unit"))), tapp(primty("fileref"), list(tgen(0), tgen(1)))))));
+    return PolyTypePtr(new PolyType(2, qualtype(Func::make(tuplety(list(primty("unit"))), fileRefTy(tgen(0), tgen(1))))));
   }
 };
 
@@ -464,7 +468,7 @@ struct dbstoreF : public op {
   PolyTypePtr type(typedb&) const {
     static MonoTypePtr tg0(TGen::make(0));
     static MonoTypePtr tg1(TGen::make(1));
-    static PolyTypePtr npty(new PolyType(2, qualtype(Func::make(tuplety(list(tg0)), tapp(primty("fileref"), list(tg0, tg1))))));
+    static PolyTypePtr npty(new PolyType(2, qualtype(Func::make(tuplety(list(tg0)), fileRefTy(tg0, tg1)))));
     return npty;
   }
 };
@@ -498,7 +502,7 @@ struct dbstorePF : public op {
   PolyTypePtr type(typedb&) const {
     static MonoTypePtr tg0(TGen::make(0));
     static MonoTypePtr tg1(TGen::make(1));
-    static PolyTypePtr npty(new PolyType(2, qualtype(Func::make(tuplety(list(tapp(primty("file"), list(tlong(1), tg0)), tg1)), tapp(primty("fileref"), list(tg1))))));
+    static PolyTypePtr npty(new PolyType(2, qualtype(Func::make(tuplety(list(tapp(primty("file"), list(tlong(1), tg0)), tg1)), fileRefTy(tg1)))));
     return npty;
   }
 };
@@ -509,7 +513,7 @@ long dballocarr(long db, long elemsz, long len) {
 }
 
 struct dballocArrF : public op {
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr& rty, const Exprs& es) {
     FRefT frt = assumeFRefT(rty, es[0]->la());
 
     llvm::Value* db  = c->compileAtGlobalScope(frt.second);
@@ -525,13 +529,13 @@ struct dballocArrF : public op {
   PolyTypePtr type(typedb&) const {
     static MonoTypePtr tg0(TGen::make(0));
     static MonoTypePtr tg1(TGen::make(1));
-    static PolyTypePtr npty(new PolyType(2, qualtype(Func::make(tuplety(list(primty("long"))), tapp(primty("fileref"), list(arrayty(tg0), tg1))))));
+    static PolyTypePtr npty(new PolyType(2, qualtype(Func::make(tuplety(list(primty("long"))), fileRefTy(arrayty(tg0), tg1)))));
     return npty;
   }
 };
 
 struct dballocArrPF : public op {
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr& rty, const Exprs& es) {
     llvm::Value* db  = c->compile(es[0]);
     llvm::Value* len = c->compile(es[1]);
 
@@ -545,7 +549,7 @@ struct dballocArrPF : public op {
   PolyTypePtr type(typedb&) const {
     static MonoTypePtr tg0(TGen::make(0));
     static MonoTypePtr tg1(TGen::make(1));
-    static PolyTypePtr npty(new PolyType(2, qualtype(Func::make(tuplety(list(tapp(primty("file"), list(tlong(1), tg0)), primty("long"))), tapp(primty("fileref"), list(arrayty(tg1)))))));
+    static PolyTypePtr npty(new PolyType(2, qualtype(Func::make(tuplety(list(tapp(primty("file"), list(tlong(1), tg0)), primty("long"))), fileRefTy(arrayty(tg1))))));
     return npty;
   }
 };
@@ -572,7 +576,7 @@ struct dbarrCapacityF : public op {
   PolyTypePtr type(typedb&) const {
     static MonoTypePtr tg0(TGen::make(0));
     static MonoTypePtr tg1(TGen::make(1));
-    static PolyTypePtr npty(new PolyType(3, qualtype(Func::make(tuplety(list(tapp(primty("fileref"), list(darrayty(tg0), tg1)))), primty("long")))));
+    static PolyTypePtr npty(new PolyType(3, qualtype(Func::make(tuplety(list(fileRefTy(darrayty(tg0), tg1))), primty("long")))));
     return npty;
   }
 };
@@ -593,7 +597,7 @@ struct dbarrCapacityPF : public op {
     static MonoTypePtr tg0(TGen::make(0));
     static MonoTypePtr tg1(TGen::make(1));
     static MonoTypePtr tg2(TGen::make(2));
-    static PolyTypePtr npty(new PolyType(3, qualtype(Func::make(tuplety(list(tapp(primty("file"), list(tg0, tg1)), tapp(primty("fileref"), list(darrayty(tg2))))), primty("long")))));
+    static PolyTypePtr npty(new PolyType(3, qualtype(Func::make(tuplety(list(tapp(primty("file"), list(tg0, tg1)), fileRefTy(darrayty(tg2)))), primty("long")))));
     return npty;
   }
 };
@@ -625,7 +629,7 @@ void dbsignalupdate(long db) {
 }
 
 struct signalUpdateF : public op {
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) {
     llvm::Value* db  = c->compile(es[0]);
 
     llvm::Function* f = c->lookupFunction(".dbsignalupdate");
@@ -697,7 +701,7 @@ struct openFileF : public op {
     }
   }
 
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr& rty, const Exprs& es) {
     FileConfig fcfg;
 
     if (!isMonoSingular(rty)) {
@@ -710,7 +714,7 @@ struct openFileF : public op {
     return c->compile(fncall(wfrtfn, list(es[0], constant(encodeTypePtr(fcfg.second), es[0]->la())), es[0]->la()));
   }
 
-  PolyTypePtr type(typedb& tenv) const {
+  PolyTypePtr type(typedb&) const {
     // writeFile :: [char] -> file(1L, a)
     return polytype(1, qualtype(functy(list(arrayty(primty("char"))), fileType(this->writeable, tgen(0)))));
   }
@@ -727,12 +731,12 @@ struct printFileF : public op {
   printFileF(const std::string& showf) : showf(showf) {
   }
 
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) {
     ExprPtr wfrtfn = var(this->showf, functy(list(primty("long")), primty("unit")), es[0]->la());
     return c->compile(fncall(wfrtfn, list(es[0]), es[0]->la()));
   }
 
-  PolyTypePtr type(typedb& tenv) const {
+  PolyTypePtr type(typedb&) const {
     // showFile :: file(a, b) -> ()
     return polytype(2, qualtype(functy(list(tapp(primty("file"), list(tgen(0), tgen(1)))), primty("unit"))));
   }
@@ -748,7 +752,7 @@ public:
   std::string name() const;
 };
 
-bool DBFieldLookup::refine(const TEnvPtr& tenv, const HasField& hf, MonoTypeUnifier* u, Definitions* ds) {
+bool DBFieldLookup::refine(const TEnvPtr&, const HasField& hf, MonoTypeUnifier* u, Definitions*) {
   auto rty   = hf.recordType;
   auto fname = hf.fieldName;
   auto fty   = hf.fieldType;
@@ -772,7 +776,7 @@ bool DBFieldLookup::refine(const TEnvPtr& tenv, const HasField& hf, MonoTypeUnif
   return false;
 }
 
-bool DBFieldLookup::satisfied(const TEnvPtr& tenv, const HasField& hf, Definitions* ds) const {
+bool DBFieldLookup::satisfied(const TEnvPtr&, const HasField& hf, Definitions*) const {
   auto rty   = hf.recordType;
   auto fname = hf.fieldName;
   auto fty   = hf.fieldType;
@@ -792,7 +796,7 @@ bool DBFieldLookup::satisfied(const TEnvPtr& tenv, const HasField& hf, Definitio
   return false;
 }
 
-bool DBFieldLookup::satisfiable(const TEnvPtr& tenv, const HasField& hf, Definitions* ds) const {
+bool DBFieldLookup::satisfiable(const TEnvPtr& tenv, const HasField& hf, Definitions*) const {
   auto dir   = hf.direction;
   auto rty   = hf.recordType;
   auto fname = hf.fieldName;
@@ -984,7 +988,7 @@ public:
     throw std::runtime_error("Internal error, not loadable file load constraint: " + show(cst));
   }
 
-  bool refine(const TEnvPtr& tenv, const ConstraintPtr& cst, MonoTypeUnifier* u, Definitions* ds) {
+  bool refine(const TEnvPtr&, const ConstraintPtr& cst, MonoTypeUnifier* u, Definitions*) {
     MonoTypePtr fpath, ftype;
     if (decLF(cst, &fpath, &ftype)) {
       if (const TString* fp = is<TString>(fpath)) {
@@ -999,7 +1003,7 @@ public:
     return false;
   }
 
-  bool satisfied(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions* ds) const {
+  bool satisfied(const TEnvPtr&, const ConstraintPtr& cst, Definitions*) const {
     MonoTypePtr fpath, ftype;
     if (decLF(cst, &fpath, &ftype)) {
       if (const TString* fp = is<TString>(fpath)) {
@@ -1012,7 +1016,7 @@ public:
     return false;
   }
 
-  bool satisfiable(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions* ds) const {
+  bool satisfiable(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions*) const {
     MonoTypePtr fpath, ftype;
     if (decLF(cst, &fpath, &ftype)) {
       if (const TString* fp = is<TString>(fpath)) {
@@ -1027,7 +1031,7 @@ public:
     return false;
   }
 
-  void explain(const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPtr& e, Definitions* ds, annmsgs* msgs) {
+  void explain(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*, annmsgs*) {
   }
 
   struct insertLoadedFileF : public switchExprTyFn {
@@ -1051,7 +1055,7 @@ public:
     }
   };
 
-  ExprPtr unqualify(const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPtr& e, Definitions* ds) const {
+  ExprPtr unqualify(const TEnvPtr&, const ConstraintPtr& cst, const ExprPtr& e, Definitions*) const {
     return switchOf(e, insertLoadedFileF(cst, reinterpret_cast<long>(loadedFile(cst).file)));
   }
 
@@ -1079,9 +1083,22 @@ public:
   }
 };
 
-reader::PageEntries* pageEntries(reader* r) {
-  return r->pageEntries();
+reader::PageEntries* pageEntries(long f) {
+  return reinterpret_cast<reader*>(f)->pageEntries();
 }
+struct pageEntriesF : public op {
+  std::string f;
+
+  pageEntriesF(const std::string& f) : f(f) {
+  }
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) {
+    ExprPtr wfrtfn = var(this->f, functy(list(primty("long")), lift<reader::PageEntries*>::type(nulltdb)), es[0]->la());
+    return c->compile(fncall(wfrtfn, list(es[0]), es[0]->la()));
+  }
+  PolyTypePtr type(typedb&) const {
+    return polytype(2, qualtype(functy(list(tapp(primty("file"), list(tgen(0), tgen(1)))), lift<reader::PageEntries*>::type(nulltdb))));
+  }
+};
 
 // load definitions for working with storage files into a compiler context
 void initStorageFileDefs(FieldVerifier* fv, cc& c) {
@@ -1146,10 +1163,14 @@ void initStorageFileDefs(FieldVerifier* fv, cc& c) {
   c.bind(".printFile", &printFileUF);
   c.bindLLFunc("printFile", new printFileF(".printFile"));
 
-  c.bind("pageEntries", &pageEntries);
+  c.bind(".pageEntries", &pageEntries);
+  c.bindLLFunc("pageEntries", new pageEntriesF(".pageEntries"));
 
   // import signalling functions on files as well
   initSignalsDefs(fv, c);
+
+  // import compressed storage functions
+  initCStorageFileDefs(fv, c);
 }
 
 }

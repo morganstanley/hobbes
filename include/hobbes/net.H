@@ -12,8 +12,6 @@
 #ifndef HOBBES_HNET_H_INCLUDED
 #define HOBBES_HNET_H_INCLUDED
 
-#include <hobbes/reflect.H>
-
 #include <vector>
 #include <queue>
 #include <functional>
@@ -32,6 +30,9 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <string.h>
+
+// types with static reflection info (for reflective structs, variants, etc)
+#include "reflect.H"
 
 namespace hobbes { namespace net {
 
@@ -271,13 +272,13 @@ template <>
   struct io<unit> {
     static const bool can_memcpy = false;
 
-    static ty::desc type()                    { return ty::prim("unit"); }
-    static void     write(int s, const unit&) { }
-    static void     read (int s, unit*)       { }
+    static ty::desc type()                  { return ty::prim("unit"); }
+    static void     write(int, const unit&) { }
+    static void     read (int, unit*)       { }
 
     typedef uint8_t async_read_state;
-    static void prepare(uint8_t* o) {}
-    static bool accum(int s, uint8_t* o, unit* x) { return true; }
+    static void prepare(uint8_t*) {}
+    static bool accum(int, uint8_t*, unit*) { return true; }
   };
 
 // support enumerations
@@ -285,13 +286,13 @@ template <typename T>
   struct io<T, typename tbool<T::is_hmeta_enum>::type> {
     static const bool can_memcpy = true;
 
-    static ty::desc type()                   { return ty::enumdef(T::meta()); }
-    static void     write(int s, const T& x) { io<uint32_t>::write(s, static_cast<uint32_t>(x.value)); }
-    static void     read(int s, T* x)        { io<uint32_t>::read(s, reinterpret_cast<uint32_t*>(&x->value)); }
+    static ty::desc type()                   { return ty::enumdef(io<typename T::rep_t>::type(), T::meta()); }
+    static void     write(int s, const T& x) { io<typename T::rep_t>::write(s, static_cast<typename T::rep_t>(x.value)); }
+    static void     read(int s, T* x)        { io<typename T::rep_t>::read(s, reinterpret_cast<typename T::rep_t*>(&x->value)); }
 
     typedef uint8_t async_read_state;
     static void prepare(uint8_t* o) { *o = 0; }
-    static bool accum(int s, uint8_t* o, T* x) { *o += recvDataPartial(s, reinterpret_cast<uint8_t*>(x) + *o, sizeof(uint32_t) - *o); return *o == sizeof(uint32_t); }
+    static bool accum(int s, uint8_t* o, T* x) { *o += recvDataPartial(s, reinterpret_cast<uint8_t*>(x) + *o, sizeof(typename T::rep_t) - *o); return *o == sizeof(typename T::rep_t); }
   };
 
 // support variants
@@ -768,7 +769,7 @@ template <size_t i, size_t n, typename ... Fs>
   };
 template <size_t n, typename ... Fs>
   struct tupInd<n, n, Fs...> {
-    static void accFields(ty::Struct::Fields* fs) { }
+    static void accFields(ty::Struct::Fields*) { }
     static ty::desc type() { return ty::prim("unit"); }
 
     static void write(int, const tuple<Fs...>&) { }

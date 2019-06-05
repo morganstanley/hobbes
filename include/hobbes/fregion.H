@@ -37,8 +37,6 @@
 #ifndef HOBBES_HFREGION_H_INCLUDED
 #define HOBBES_HFREGION_H_INCLUDED
 
-#include <hobbes/reflect.H>
-
 #include <string>
 #include <vector>
 #include <map>
@@ -47,6 +45,8 @@
 #include <stack>
 #include <stdexcept>
 #include <sstream>
+#include <array>
+#include <type_traits>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -55,82 +55,11 @@
 #include <unistd.h>
 #include <string.h>
 #include <assert.h>
-#include <cxxabi.h>
+
+// types with static reflection info (for reflective structs, variants, etc)
+#include "reflect.H"
 
 namespace hobbes { namespace fregion {
-
-// basic string utilities used here
-namespace str {
-  template <typename T>
-    inline std::string from(const T& x) {
-      std::ostringstream ss;
-      ss << x;
-      return ss.str();
-    }
-
-  // pretty-print C++ type names
-  template <typename T>
-    inline std::string demangle() {
-      if (const char* tn = typeid(T).name()) {
-        int s = 0;
-        if (char* dmn = abi::__cxa_demangle(tn, 0, 0, &s)) {
-          std::string r(dmn);
-          free(dmn);
-          return r;
-        } else {
-          return std::string(tn);
-        }
-      } else {
-        return "";
-      }
-    }
-
-  // tokenize strings
-  typedef std::vector<std::string> seq;
-  inline seq csplit(const std::string& str, const std::string& pivot) {
-    typedef std::string::size_type size_type;
-  
-    seq       ret;
-    size_type mp = 0;
-  
-    while (mp != std::string::npos) {
-      size_type nmp = str.find(pivot, mp);
-  
-      if (nmp == std::string::npos) {
-        ret.push_back(str.substr(mp, str.size() - mp));
-        mp = nmp;
-      } else {
-        ret.push_back(str.substr(mp, nmp - mp));
-        mp = nmp + pivot.size();
-      }
-    }
-  
-    return ret;
-  }
-
-  typedef std::pair<std::string, std::string> pair;
-  inline pair rsplit(const std::string& s, const std::string& ss) {
-    size_t p = s.rfind(ss);
-    if (p == std::string::npos) {
-      return pair("", s);
-    } else {
-      return pair(s.substr(0, p), s.substr(p + ss.size(), s.size()));
-    }
-  }
-
-  inline std::string cdelim(const seq& ss, const std::string& d) {
-    if (ss.size() > 0) {
-      std::ostringstream x;
-      x << ss[0];
-      for (size_t i = 1; i < ss.size(); ++i) {
-        x << d << ss[i];
-      }
-      return x.str();
-    } else {
-      return "";
-    }
-  }
-}
 
 // the file header
 struct filehead {
@@ -160,12 +89,12 @@ struct pagetype {
 struct pagedata {
   uint16_t ptfd;
 
-  pagedata(pagetype::code ty = pagetype::toc, uint16_t sz = 0) : ptfd(encode(ty, sz)) { }
-  static uint16_t encode(pagetype::code ty, uint16_t sz) { return ((pagetype::encode(ty) & 3) << 14) | (sz & 0x3FFF); }
+  pagedata(pagetype::code ty = pagetype::toc, uint16_t availSz = 0) : ptfd(encode(ty, availSz)) { }
+  static uint16_t encode(pagetype::code ty, uint16_t availSz) { return ((pagetype::encode(ty) & 3) << 14) | (availSz & 0x3FFF); }
   pagetype::code type() const { return pagetype::decode(this->ptfd >> 14); }
-  uint16_t size() const { return this->ptfd & 0x3FFF; }
-  void type(pagetype::code x) { this->ptfd = encode(x, size()); }
-  void size(uint16_t x) { this->ptfd = encode(type(), x); }
+  uint16_t availBytes() const { return this->ptfd & 0x3FFF; }
+  void type(pagetype::code x) { this->ptfd = encode(x, availBytes()); }
+  void availBytes(uint16_t x) { this->ptfd = encode(type(), x); }
 };
 typedef std::vector<pagedata> pagetable;
 
@@ -271,7 +200,7 @@ inline bool loadFileSize(imagefile* f) {
 
 inline void seekAbs(const imagefile* f, size_t pos) {
   if (::lseek(f->fd, pos, SEEK_SET) == -1) {
-    raiseSysError("Can't seek to offset=" + str::from(pos) + " in file with size=" + str::from(f->file_size), f->path);
+    raiseSysError("Can't seek to offset=" + hobbes::string::from(pos) + " in file with size=" + hobbes::string::from(f->file_size), f->path);
   }
 }
 
@@ -284,11 +213,16 @@ inline off_t filePosition(const imagefile* f) {
 }
 
 inline void allocPages(imagefile* f, size_t pages) {
-  size_t nsz = f->file_size + pages * f->page_size;
-  if (::ftruncate(f->fd, nsz) == -1) {
-    raiseSysError("Can't resize file", f->path);
+  off_t dsz = pages * f->page_size;
+  int r = ::posix_fallocate(f->fd, f->file_size, dsz);
+  if (r != 0) {
+    if (r == ENOSPC) {
+      raiseSysError("Can't resize file, no space available", f->path);
+    } else {
+      raiseSysError("Can't resize file", f->path);
+    }
   }
-  f->file_size = nsz;
+  f->file_size += dsz;
 }
 
 inline void allocPage(imagefile* f) {
@@ -303,7 +237,7 @@ inline void fdwrite(imagefile* f, const char* x, size_t len) {
 
     if (di < 0) {
       if (errno != EINTR) {
-        raiseSysError("Failed to write " + str::from(len) + " bytes to file", f->path);
+        raiseSysError("Failed to write " + hobbes::string::from(len) + " bytes to file", f->path);
       }
     } else if (di == 0) {
       raiseSysError("Empty write error", f->path);
@@ -336,7 +270,7 @@ inline void fdread(const imagefile* f, char* x, size_t len) {
 
     if (di < 0) {
       if (errno != EINTR) {
-        raiseSysError("Failed to read " + str::from(len) + " bytes from file", f->path);
+        raiseSysError("Failed to read " + hobbes::string::from(len) + " bytes from file", f->path);
       }
     } else if (di == 0) {
       raiseSysError("Empty read error", f->path);
@@ -428,7 +362,7 @@ inline void updatePageSizeIndex(imagefile* f, file_pageindex_t page) {
   for (size_t k = 0; k < pord.size(); ++k) {
     if (pord[k] == page) {
       for (size_t i = k; i < pord.size() - 1; ++i) {
-        if (f->pages[pord[i]].size() < f->pages[pord[i+1]].size()) {
+        if (f->pages[pord[i]].availBytes() < f->pages[pord[i+1]].availBytes()) {
           std::swap(pord[i], pord[i+1]);
         } else {
           break;
@@ -446,14 +380,14 @@ inline void insertPageSizeIndex(imagefile* f, file_pageindex_t page) {
   static const size_t maxPageMemory = 200;
 
   const pagedata& pd = f->pages[page];
-  if (pd.size() < minPageSize) return;
+  if (pd.availBytes() < minPageSize) return;
 
   // figure out where to put this page
   pageseq& pord = f->freespace[pd.type()];
   size_t k = pord.size();
 
   for (size_t i = 0; i < pord.size(); ++i) {
-    if (pd.size() > f->pages[i].size()) {
+    if (pd.availBytes() > f->pages[i].availBytes()) {
       k = i;
       break;
     }
@@ -463,6 +397,16 @@ inline void insertPageSizeIndex(imagefile* f, file_pageindex_t page) {
   if (pord.size() > maxPageMemory) { pord.resize(maxPageMemory); }
 }
 
+// align a value to a boundary
+template <typename T>
+  inline T align(T x, T m) {
+    if (m == 0 || (x % m) == 0) {
+      return x;
+    } else {
+      return (1 + (x / m)) * m;
+    }
+  }
+
 // try to find a page with as much free space as requested
 inline bool findPageWithSpace(imagefile* f, pagetype::code pt, size_t datalen, size_t alignment, file_pageindex_t* idx) {
   const pageseq& pord = f->freespace[pt];
@@ -471,9 +415,8 @@ inline bool findPageWithSpace(imagefile* f, pagetype::code pt, size_t datalen, s
   }
 
   const auto& pd  = f->pages[pord[0]];
-  size_t      pad = (f->page_size - pd.size()) % alignment;
 
-  if ((datalen + pad) > pd.size()) {
+  if (align<size_t>(f->page_size - pd.availBytes(), alignment) + datalen > f->page_size) {
     return false;
   } else {
     *idx = pord[0];
@@ -485,7 +428,7 @@ inline bool findPageWithSpace(imagefile* f, pagetype::code pt, size_t datalen, s
 inline void updateTOCData(imagefile* f, file_pageindex_t page, const pagedata& pd) {
   // pages never suddenly get free space
   pagedata& opd = f->pages[page];
-  assert(pd.size() <= opd.size());
+  assert(pd.availBytes() <= opd.availBytes());
 
   // update the page table data in memory and on disk
   opd = pd;
@@ -573,11 +516,10 @@ inline size_t findSpace(imagefile* f, pagetype::code pt, size_t datalen, size_t 
   if (findPageWithSpace(f, pt, datalen, alignment, &fpage)) {
     pagedata& pd = f->pages[fpage];
 
-    uint64_t offset = f->page_size - pd.size();
-    uint64_t pad    = offset % alignment;
+    uint64_t offset = align<size_t>(f->page_size - pd.availBytes(), alignment);
 
-    updateTOCData(f, fpage, pagedata(pt, pd.size() - (datalen+pad)));
-    return position(f, fpage, offset+pad);
+    updateTOCData(f, fpage, pagedata(pt, f->page_size - (offset+datalen)));
+    return position(f, fpage, offset);
   }
 
   // if we got here, then we need to allocate one or more contiguous pages for this data
@@ -629,16 +571,6 @@ inline void addBinding(imagefile* f, const std::string& vname, const bytes& type
   f->bindings[vname] = binding(type, offset, boffset);
 }
 
-// align a value to a boundary
-template <typename T>
-  inline T align(T x, T m) {
-    if (m == 0 || (x % m) == 0) {
-      return x;
-    } else {
-      return (1 + (x / m)) * m;
-    }
-  }
-
 // mmap a region out of this file
 inline fregion& createFileRegionMap(imagefile* f, file_pageindex_t page, size_t pages) {
   // leave no gaps in page mappings
@@ -660,10 +592,10 @@ inline fregion& createFileRegionMap(imagefile* f, file_pageindex_t page, size_t 
   if (d == MAP_FAILED) {
     raiseSysError
     (
-      "Failed to map " + str::from(pages) +
-      " pages from page " + str::from(page) +
-      " out of " + str::from(f->file_size) +
-      " bytes with a page size of " + str::from(f->page_size) +
+      "Failed to map " + hobbes::string::from(pages) +
+      " pages from page " + hobbes::string::from(page) +
+      " out of " + hobbes::string::from(f->file_size) +
+      " bytes with a page size of " + hobbes::string::from(f->page_size) +
       " bytes",
       f->path
     );
@@ -680,7 +612,7 @@ inline fregion& createFileRegionMap(imagefile* f, file_pageindex_t page, size_t 
 // munmap a region out of this file
 inline void releaseFileRegionMap(imagefile* f, const fregion& fr) {
   if (munmap(fr.base, fr.pages * f->page_size) != 0) {
-    raiseSysError("Failed to unmap page " + str::from(fr.base_page) + " from file", f->path);
+    raiseSysError("Failed to unmap page " + hobbes::string::from(fr.base_page) + " from file", f->path);
   }
 }
 
@@ -771,11 +703,11 @@ inline void unmapFileData(imagefile* f, const void* p, size_t sz) {
 // we shouldn't ever work with files that have invalid page sizes
 inline uint16_t assertValidPageSize(const imagefile* f, size_t psize) {
   if (psize < HFREGION_MIN_PAGE_SIZE) {
-    throw std::runtime_error(f->path + ": System page size too small for db support (" + str::from(psize) + ")");
+    throw std::runtime_error(f->path + ": System page size too small for db support (" + hobbes::string::from(psize) + ")");
   } else if (psize > HFREGION_MAX_PAGE_SIZE) {
-    throw std::runtime_error(f->path + ": System page size too large for db support (" + str::from(psize) + ")");
+    throw std::runtime_error(f->path + ": System page size too large for db support (" + hobbes::string::from(psize) + ")");
   } else if ((psize % sizeof(pagedata)) != 0) {
-    throw std::runtime_error(f->path + ": System page size must be a multiple of " + str::from(sizeof(pagedata)) + " (" + str::from(psize) + ")");
+    throw std::runtime_error(f->path + ": System page size must be a multiple of " + hobbes::string::from(sizeof(pagedata)) + " (" + hobbes::string::from(psize) + ")");
   } else if ((sizeof(filehead) % sizeof(pagedata)) != 0) {
     // should be a static assert :T
     throw std::runtime_error("No page size is valid, file format internally inconsistent");
@@ -871,7 +803,7 @@ inline size_t readEnvironmentPage(imagefile* f, file_pageindex_t p) {
     file_pageindex_t tpage = file_pageindex_t(pos / f->page_size);
     uint16_t         rpos  = (pos % f->page_size) + 1;
 
-    if (rpos == (f->page_size - f->pages[tpage].size())) {
+    if (rpos == (f->page_size - f->pages[tpage].availBytes())) {
       break;
     }
   }
@@ -893,9 +825,9 @@ inline void readFile(imagefile* f, uint16_t minVersion, uint16_t maxVersion) {
     throw std::runtime_error("Not a valid structured data file: " + f->path);
   } else if (fh.version < minVersion || fh.version > maxVersion) {
     if (minVersion == maxVersion) {
-      throw std::runtime_error("Cannot read file format version=" + str::from(fh.version) + " (expected version=" + str::from(maxVersion) + ")");
+      throw std::runtime_error("Cannot read file format version=" + hobbes::string::from(fh.version) + " (expected version=" + hobbes::string::from(maxVersion) + ")");
     } else {
-      throw std::runtime_error("Cannot read file format version=" + str::from(fh.version) + " (expected version in [" + str::from(minVersion) + "," + str::from(maxVersion) + "])");
+      throw std::runtime_error("Cannot read file format version=" + hobbes::string::from(fh.version) + " (expected version in [" + hobbes::string::from(minVersion) + "," + hobbes::string::from(maxVersion) + "])");
     }
   }
   f->page_size = assertValidPageSize(f, fh.pagesize);
@@ -1002,7 +934,7 @@ inline bool isFRegion(const std::string& fname) {
 
 // create all implied directories in a path
 inline void ensureDirExists(const std::string& path) {
-  str::seq ps = str::csplit(path, "/");
+  hobbes::string::seq ps = hobbes::string::csplit(path, "/");
   std::ostringstream pfx;
 
   for (const auto& p : ps) {
@@ -1016,7 +948,7 @@ inline void ensureDirExists(const std::string& path) {
 // give the first unique filename with some prefix/suffix that satisfies some condition
 inline std::string withUniqueFilenameBy(const std::string& fprefix, const std::string& fsuffix, const std::function<bool(const std::string&)>& fileOp) {
   // the directory that this file is in can be created if necessary
-  ensureDirExists(str::rsplit(fprefix, "/").first);
+  ensureDirExists(hobbes::string::rsplit(fprefix, "/").first);
 
   // keep trying for new filenames until we get one that's distinct
   size_t inst = 0;
@@ -1059,6 +991,20 @@ inline std::string moveToUniqueFilename(const std::string& oldpath, const std::s
     }
   });
 }
+
+// a file reference is an index into a file where we can find a value of type T
+template <typename T>
+  struct fileref {
+    fileref(uint64_t index = 0) : index(index) { }
+    uint64_t index;
+    bool operator==(const fileref<T>& rhs) const { return this->index == rhs.index; }
+
+    fileref<T>& operator=(const fileref<T>& x) { this->index = x.index; return *this; }
+
+    T* load(imagefile* f) const {
+      return reinterpret_cast<T*>(mapFileData(f, this->index, sizeof(T)));
+    }
+  };
 
 /***********************
  *
@@ -1116,6 +1062,24 @@ inline ty::desc maybeNthProd(const ty::desc& t, size_t n) {
   return ty::desc();
 }
 
+inline ty::desc maybeStoredBatchType(const bytes& bs) {
+  ty::desc dty = ty::decode(bs);
+
+  if (ty::desc t = maybeDerefFileRef(maybeNthProd(maybeNthSum(maybeOpenRecursive(maybeDerefFileRef(dty)), 1), 0))) {
+    if (t->tid == PRIV_HPPF_TYCTOR_TAPP) {
+      const ty::App* buf = reinterpret_cast<const ty::App*>(t.get());
+      if (buf->f->tid == PRIV_HPPF_TYCTOR_PRIM) {
+        if (reinterpret_cast<ty::Prim*>(buf->f.get())->n == "carray") {
+          if (buf->args.size() >= 2) {
+            return buf->args[0];
+          }
+        }
+      }
+    }
+  }
+  return ty::desc();
+}
+
 inline size_t inferBatchSize(const bytes& bs) {
   ty::desc dty = ty::decode(bs);
 
@@ -1168,8 +1132,20 @@ PRIV_HFREGION_DEFINE_PRIMTYS(uint64_t, "long");
 #if defined(__APPLE__) && defined(__MACH__)
 PRIV_HFREGION_DEFINE_PRIMTYS(size_t, "long");
 #endif
+PRIV_HFREGION_DEFINE_PRIMTYS(__int128, "int128");
 PRIV_HFREGION_DEFINE_PRIMTYS(float,    "float");
 PRIV_HFREGION_DEFINE_PRIMTYS(double,   "double");
+
+// store unit
+template <>
+  struct store<unit> {
+    static ty::desc storeType() { return ty::prim("unit"); }
+    static const bool can_memcpy = false;
+    static size_t size() { return 0; }
+    static size_t alignment() { return 1; }
+    static void write(imagefile*, void*, const unit&) { }
+    static void read(imagefile*, const void*, unit*) { }
+  };
 
 // store fixed-length arrays
 template <typename T, size_t N>
@@ -1199,6 +1175,68 @@ template <typename T, size_t N>
     static void read (imagefile* f, const void* p, T (*x)[N]) {
       for (size_t i = 0; i < N; ++i) {
         store<T>::read(f, p, &(*x)[i]);
+        p = reinterpret_cast<const uint8_t*>(p) + store<T>::size();
+      }
+    }
+  };
+
+template <typename T, size_t N>
+  struct store<std::array<T, N>, typename tbool<store<T>::can_memcpy>::type> : public storeFixedArrayDef<T,N> {
+    static const bool can_memcpy = true;
+    static void write(imagefile*, void* p,       const std::array<T, N>& x) { memcpy(p, &x, N*sizeof(T)); }
+    static void read (imagefile*, const void* p, std::array<T, N>*       x) { memcpy(x,  p, N*sizeof(T)); }
+  };
+
+template <typename T, size_t N>
+  struct store<std::array<T, N>, typename tbool<!store<T>::can_memcpy>::type> : public storeFixedArrayDef<T,N> {
+    static const bool can_memcpy = false;
+    static void write(imagefile* f, void* p, const std::array<T, N>& x) {
+      for (size_t i = 0; i < N; ++i) {
+        store<T>::write(f, p, x[i]);
+        p = reinterpret_cast<uint8_t*>(p) + store<T>::size();
+      }
+    }
+    static void read(imagefile* f, const void* p, std::array<T, N>* x) {
+      for (size_t i = 0; i < N; ++i) {
+        store<T>::read(f, p, &(*x)[i]);
+        p = reinterpret_cast<const uint8_t*>(p) + store<T>::size();
+      }
+    }
+  };
+
+// store fixed-capacity variable-length arrays
+template <typename T, size_t N>
+  struct storeCArrayDef {
+    // data carray t n = {avail:long, buffer:[:t|n:]}
+    static ty::desc storeType() { return ty::app(prim("carray", ty::fn("t", "c", ty::rec("avail", 0, ty::prim("long"), "buffer", sizeof(size_t), ty::array(ty::var("t"), ty::var("c"))))), store<T>::storeType(), ty::nat(N)); }
+
+    static size_t size()      { static const size_t sz=align(align(sizeof(size_t), alignment())+store<T>::size()*N, alignment()); return sz; }
+    static size_t alignment() { static const size_t a =std::max<size_t>(sizeof(size_t), store<T>::alignment()); return a; }
+  };
+
+template <typename T, size_t N>
+  struct store<carray<T,N>, typename tbool<store<T>::can_memcpy>::type> : public storeCArrayDef<T,N> {
+    static const bool can_memcpy = true;
+    static void write(imagefile*, void*       p, const carray<T,N>& x) { memcpy(p, &x, storeCArrayDef<T,N>::alignment()+sizeof(T)*x.size); }
+    static void read(imagefile*,  const void* p, carray<T,N>*       x) { memcpy(x,  p, storeCArrayDef<T,N>::alignment()+sizeof(T)*(*reinterpret_cast<const size_t*>(p))); }
+  };
+
+template <typename T, size_t N>
+  struct store<carray<T,N>, typename tbool<!store<T>::can_memcpy>::type> : public storeCArrayDef<T,N> {
+    static const bool can_memcpy = false;
+    static void write(imagefile* f, void* p, const carray<T,N>& x) {
+      *reinterpret_cast<size_t*>(p) = x.size;
+      p = reinterpret_cast<uint8_t*>(p) + storeCArrayDef<T,N>::alignment();
+      for (size_t i = 0; i < x.size; ++i) {
+        store<T>::write(f, p, x.data[i]);
+        p = reinterpret_cast<uint8_t*>(p) + store<T>::size();
+      }
+    }
+    static void read(imagefile* f, const void* p, carray<T,N>* x) {
+      x->size = *reinterpret_cast<const size_t*>(p);
+      p = reinterpret_cast<const uint8_t*>(p) + storeCArrayDef<T,N>::alignment();
+      for (size_t i = 0; i < x->size; ++i) {
+        store<T>::read(f, p, &x->data[i]);
         p = reinterpret_cast<const uint8_t*>(p) + store<T>::size();
       }
     }
@@ -1280,21 +1318,25 @@ template <typename T>
   struct store<std::vector<T>, typename tbool<!store<T>::can_memcpy>::type> : public storeVectorDef<T> {
     static const bool can_memcpy = false;
     static void write(imagefile* f, void* p, const std::vector<T>& x) {
-      size_t tsz = store<T>::size();
-      auto   bc  = sizeof(size_t) + tsz*x.size();
+      if (x.size() > 0) {
+        size_t tsz = store<T>::size();
+        auto   bc  = sizeof(size_t) + tsz*x.size();
 
-      size_t dloc = findSpace(f, pagetype::data, bc, sizeof(size_t));
-      uint8_t* d = reinterpret_cast<uint8_t*>(mapFileData(f, dloc, bc));
-      *reinterpret_cast<size_t*>(d) = x.size();
+        size_t dloc = findSpace(f, pagetype::data, bc, sizeof(size_t));
+        uint8_t* d = reinterpret_cast<uint8_t*>(mapFileData(f, dloc, bc));
+        *reinterpret_cast<size_t*>(d) = x.size();
 
-      auto dc = d + sizeof(size_t);
-      for (const auto& xv : x) {
-        store<T>::write(f, dc, xv);
-        dc += tsz;
+        auto dc = d + sizeof(size_t);
+        for (const auto& xv : x) {
+          store<T>::write(f, dc, xv);
+          dc += tsz;
+        }
+        unmapFileData(f, d, bc);
+
+        *reinterpret_cast<size_t*>(p) = dloc;
+      } else {
+        *reinterpret_cast<size_t*>(p) = f->empty_array;
       }
-      unmapFileData(f, d, bc);
-
-      *reinterpret_cast<size_t*>(p) = dloc;
     }
     static void read(imagefile* f, const void* p, std::vector<T>* x) {
       size_t   tsz  = store<T>::size();
@@ -1307,6 +1349,49 @@ template <typename T>
       for (size_t i = 0; i < *c; ++i) {
         store<T>::read(f, dc, &(*x)[i]);
         dc += tsz;
+      }
+
+      unmapFileData(f, d, *c);
+      unmapFileData(f, c, sizeof(size_t));
+    }
+  };
+
+// bit vectors wind up being represented differently ...
+template <>
+  struct store<std::vector<bool>> : public storeVectorDef<bool> {
+    static const bool can_memcpy = false;
+    static void write(imagefile* f, void* p, const std::vector<bool>& x) {
+      if (x.size() > 0) {
+        auto   bc  = sizeof(size_t) + x.size();
+
+        size_t dloc = findSpace(f, pagetype::data, bc, sizeof(size_t));
+        uint8_t* d = reinterpret_cast<uint8_t*>(mapFileData(f, dloc, bc));
+        *reinterpret_cast<size_t*>(d) = x.size();
+
+        auto dc = d + sizeof(size_t);
+        for (const auto& xv : x) {
+          store<bool>::write(f, dc, xv);
+          dc += 1;
+        }
+        unmapFileData(f, d, bc);
+
+        *reinterpret_cast<size_t*>(p) = dloc;
+      } else {
+        *reinterpret_cast<size_t*>(p) = f->empty_array;
+      }
+    }
+    static void read(imagefile* f, const void* p, std::vector<bool>* x) {
+      auto     dloc = *reinterpret_cast<const size_t*>(p);
+      size_t*  c    = reinterpret_cast<size_t*>(mapFileData(f, dloc, sizeof(size_t)));
+      uint8_t* d    = reinterpret_cast<uint8_t*>(mapFileData(f, dloc+sizeof(size_t), *c));
+      uint8_t* dc   = d;
+
+      x->resize(*c);
+      for (size_t i = 0; i < *c; ++i) {
+        bool val=false;
+        store<bool>::read(f, dc, &val);
+        (*x)[i] = val;
+        dc += 1;
       }
 
       unmapFileData(f, d, *c);
@@ -1351,30 +1436,35 @@ template <size_t i, size_t n, typename ... Ts>
     typedef typename TT::offs            offs;
     typedef storeTupleDef<i+1, n, Ts...> Recurse;
 
-    static void fieldDefs(ty::Struct::Fields* fs) {
-      fs->push_back(ty::Struct::Field(".f" + str::from(i), static_cast<int>(offsetAt<i, offs>::value), store<H>::storeType()));
-      Recurse::fieldDefs(fs);
+    static void fieldDefs(size_t offset, ty::Struct::Fields* fs) {
+      offset = align(offset, store<H>::alignment());
+      fs->push_back(ty::Struct::Field(".f" + hobbes::string::from(i), offset, store<H>::storeType()));
+      Recurse::fieldDefs(offset + store<H>::size(), fs);
     }
-    static ty::desc storeType() { ty::Struct::Fields fs; fieldDefs(&fs); return ty::record(fs); }
+    static ty::desc storeType() { ty::Struct::Fields fs; fieldDefs(0, &fs); return ty::record(fs); }
 
-    static size_t alignment() { return TT::alignment; }
-    static size_t size()      { return TT::size;      }
+    static size_t alignment()                   { static size_t a=std::max<size_t>(store<H>::alignment(), Recurse::alignment()); return a; }
+    static size_t tailOffsetFrom(size_t offset) { return Recurse::tailOffsetFrom(align(offset, store<H>::alignment()) + store<H>::size()); }
+    static size_t size()                        { static size_t sz=align(tailOffsetFrom(0), alignment()); return sz; }
 
     static void incrWrite(imagefile* f, void* p, const tuple<Ts...>& x) {
+      p = reinterpret_cast<void*>(align(reinterpret_cast<size_t>(p), store<H>::alignment()));
       store<H>::write(f, p, x.template at<i>());
-      Recurse::incrWrite(f, p, x);
+      Recurse::incrWrite(f, reinterpret_cast<uint8_t*>(p) + store<H>::size(), x);
     }
     static void incrRead(imagefile* f, const void* p, tuple<Ts...>* x) {
+      p = reinterpret_cast<const void*>(align(reinterpret_cast<size_t>(p), store<H>::alignment()));
       store<H>::read(f, p, &x->template at<i>());
-      Recurse::incrRead(f, p, x);
+      Recurse::incrRead(f, reinterpret_cast<const uint8_t*>(p) + store<H>::size(), x);
     }
   };
 template <size_t n, typename ... Ts>
   struct storeTupleDef<n, n, Ts...> {
-    static void fieldDefs(ty::Struct::Fields*) { }
-    static ty::desc storeType()   { return ty::prim("unit"); }
-    static size_t alignment()     { return  0; }
-    static size_t size()          { return  0; }
+    static void fieldDefs(size_t, ty::Struct::Fields*) { }
+    static ty::desc storeType()                 { return ty::prim("unit"); }
+    static size_t alignment()                   { return  1; }
+    static size_t tailOffsetFrom(size_t offset) { return offset; }
+    static size_t size()                        { return  0; }
 
     static void incrWrite(imagefile*, void*, const tuple<Ts...>&) { }
     static void incrRead (imagefile*, const void*, tuple<Ts...>*) { }
@@ -1407,9 +1497,9 @@ struct defStructF {
 
   template <typename T>
     void visit(const char* fname) {
-      size_t i = align<size_t>(this->offset, store<T>::alignment());
-      this->fs->push_back(ty::Struct::Field(fname, i, store<T>::storeType()));
-      this->offset = i + store<T>::size();
+      this->offset = align<size_t>(this->offset, store<T>::alignment());
+      this->fs->push_back(ty::Struct::Field(fname, this->offset, store<T>::storeType()));
+      this->offset += store<T>::size();
     }
 };
 
@@ -1419,7 +1509,7 @@ struct calcSizeF {
   calcSizeF(size_t* sz, size_t* maxAlign) : sz(sz), maxAlign(maxAlign) { *this->sz = 0; }
 
   template <typename T>
-    void visit(const char* fname) {
+    void visit(const char*) {
       *this->sz       = align<size_t>(*this->sz, store<T>::alignment()) + store<T>::size();
       *this->maxAlign = std::max<size_t>(*this->maxAlign, store<T>::alignment());
     }
@@ -1465,7 +1555,7 @@ struct writeFieldF {
   writeFieldF(imagefile* f, uint8_t* o, const uint8_t* i) : f(f), o(o), i(i), ooffset(0), ioffset(0) { }
 
   template <typename T>
-    void visit(const char* fname) {
+    void visit(const char*) {
       size_t ooff = align<size_t>(this->ooffset, store<T>::alignment());
       size_t ioff = align<size_t>(this->ioffset, alignof(T));
 
@@ -1484,7 +1574,7 @@ struct readFieldF {
   readFieldF(imagefile* f, const uint8_t* i, uint8_t* o) : f(f), i(i), o(o), ooffset(0), ioffset(0) { }
 
   template <typename T>
-    void visit(const char* fname) {
+    void visit(const char*) {
       size_t ioff = align<size_t>(this->ioffset, store<T>::alignment());
       size_t ooff = align<size_t>(this->ooffset, alignof(T));
 
@@ -1514,14 +1604,14 @@ template <typename T>
     static const bool can_memcpy = true;
     
     static ty::desc storeType() {
-      return ty::enumdef(T::meta());
+      return ty::enumdef(store<typename T::rep_t>::storeType(), T::meta());
     }
 
-    static size_t size() { return sizeof(uint32_t); }
-    static size_t alignment() { return sizeof(uint32_t); }
+    static size_t size()      { return sizeof(typename T::rep_t); }
+    static size_t alignment() { return sizeof(typename T::rep_t); }
 
-    static void write(imagefile*, void* p,       const T& x) { memcpy(p, &x, sizeof(uint32_t)); }
-    static void read (imagefile*, const void* p, T*       x) { memcpy(x,  p, sizeof(uint32_t)); }
+    static void write(imagefile*, void* p,       const T& x) { memcpy(p, &x, sizeof(typename T::rep_t)); }
+    static void read (imagefile*, const void* p, T*       x) { memcpy(x,  p, sizeof(typename T::rep_t)); }
   };
 
 // store variants
@@ -1532,7 +1622,7 @@ template <size_t i, size_t n, typename ... Ts>
     typedef storeVariantDef<i+1, n, Ts...> Recurse;
 
     static void ctorDefs(ty::Variant::Ctors* cs) {
-      cs->push_back(ty::Variant::Ctor(".f" + str::from(i), static_cast<int>(i), store<H>::storeType()));
+      cs->push_back(ty::Variant::Ctor(".f" + hobbes::string::from(i), static_cast<int>(i), store<H>::storeType()));
       Recurse::ctorDefs(cs);
     }
     static ty::desc storeType() { ty::Variant::Ctors cs; ctorDefs(&cs); return ty::variant(cs); }
@@ -1696,8 +1786,12 @@ template <typename T>
         addBinding(this->f, this->seqname, ty::encoding(this->stdef), dloc);
       } else {
         // the sequence is already defined, make sure it has the right type def and then resume writing to it
-        if (b->second.type != ty::encoding(this->stdef)) {
-          throw std::runtime_error("File already defines series '" + this->seqname + "' with type inconsistent with " + ty::show(store<T>::storeType()));
+        if (!equivModOffset(ty::decode(b->second.type), this->stdef)) {
+          throw std::runtime_error(
+            "File defines series '" + seqname + "' with inconsistent type:\n" + 
+            "  Expected: " + ty::show(this->stdef) + "\n" +
+            "  Actual:   " + ty::show(ty::decode(b->second.type))
+          );
         } else {
           this->headNodeRef = reinterpret_cast<uint64_t*>(mapFileData(this->f, b->second.offset, sizeof(size_t)));
           restartFromBatchNode();
@@ -1861,10 +1955,101 @@ public:
       }
     }
 
+  template <typename T, typename P = typename std::enable_if<store<T>::can_memcpy>::type>
+    T* define(const std::string& n) {
+      // is this binding defined already?
+      auto b = this->f->bindings.find(n);
+      if (b == this->f->bindings.end()) {
+        // binding not defined, now is the time to do it
+        size_t dloc = findSpace(this->f, pagetype::data, sizeof(T), alignof(T));
+        addBinding(this->f, n, ty::encoding(store<T>::storeType()), dloc);
+        return reinterpret_cast<T*>(mapFileData(this->f, dloc, sizeof(T)));
+      } else {
+        // binding already defined, just make sure that the types match
+        if (b->second.type != ty::encoding(store<T>::storeType())) {
+          throw std::runtime_error(
+            "File already defines '" + n + "' but with an inconsistent type.\n" +
+            "  Expected: " + ty::show(store<T>::storeType()) + "\n"
+            "  Actual:   " + ty::show(ty::decode(b->second.type))
+          );
+        }
+        return reinterpret_cast<T*>(mapFileData(this->f, b->second.offset, sizeof(T)));
+      }
+    }
+
+  template <typename T>
+    void define(const std::string& n, const T& x) {
+      // is this binding defined already?
+      auto b = this->f->bindings.find(n);
+      if (b == this->f->bindings.end()) {
+        // binding not defined, now is the time to do it
+        size_t dloc = findSpace(this->f, pagetype::data, store<T>::size(), store<T>::alignment());
+        addBinding(this->f, n, ty::encoding(store<T>::storeType()), dloc);
+        auto* p = reinterpret_cast<uint8_t*>(mapFileData(this->f, dloc, store<T>::size()));
+        store<T>::write(this->f, p, x);
+        unmapFileData(this->f, p, store<T>::size());
+      } else {
+        // binding already defined, just make sure that the types match
+        if (b->second.type != ty::encoding(store<T>::storeType())) {
+          throw std::runtime_error(
+            "File already defines '" + n + "' but with an inconsistent type.\n" +
+            "  Expected: " + ty::show(store<T>::storeType()) + "\n"
+            "  Actual:   " + ty::show(ty::decode(b->second.type))
+          );
+        }
+        auto* p = reinterpret_cast<uint8_t*>(mapFileData(this->f, b->second.offset, store<T>::size()));
+        store<T>::write(this->f, p, x);
+        unmapFileData(this->f, p, store<T>::size());
+      }
+    }
+
+  template <typename T, typename P = typename std::enable_if<store<T>::can_memcpy>::type>
+    array<T>* defineArray(const std::string& n, size_t len) {
+      // is this binding defined already?
+      auto b = this->f->bindings.find(n);
+      if (b == this->f->bindings.end()) {
+        // binding not defined, now is the time to do it
+        size_t dloc = findSpace(this->f, pagetype::data, sizeof(size_t)+len*sizeof(T), std::max<size_t>(sizeof(size_t), alignof(T)));
+        addBinding(this->f, n, ty::encoding(ty::array(store<T>::storeType())), dloc);
+        
+        array<T>* result = reinterpret_cast<array<T>*>(mapFileData(this->f, dloc, sizeof(size_t)+len*sizeof(T)));
+        result->size = len;
+        return result;
+      } else {
+        // binding already defined, make sure that the types match
+        if (b->second.type != ty::encoding(ty::array(store<T>::storeType()))) {
+          throw std::runtime_error(
+            "File already defines '" + n + "' but with an inconsistent type.\n" +
+            "  Expected: " + ty::show(ty::array(store<T>::storeType())) + "\n"
+            "  Actual:   " + ty::show(ty::decode(b->second.type))
+          );
+        }
+
+        // optimistically map as much as needed for the requested array length
+        // but make sure that the array is stored with the expected length
+        array<T>* result = reinterpret_cast<array<T>*>(mapFileData(this->f, b->second.offset, sizeof(size_t)+len*sizeof(T)));
+
+        if (result->size != len) {
+          unmapFileData(this->f, result, sizeof(size_t)+len*sizeof(T));
+
+          throw std::runtime_error(
+            "File defines '" + n + "' with type " + ty::show(ty::array(store<T>::storeType())) +
+            " but with length=" + hobbes::string::from(result->size) +
+            " though expected length=" + hobbes::string::from(len)
+          );
+        }
+
+        return result;
+      }
+    }
+
   void signal() { 
     seekAbs(this->f, 0);
     write(this->f, static_cast<uint8_t>(0x0d));
   }
+
+  imagefile* fileData() { return this->f; }
+  const imagefile* fileData() const { return this->f; }
 private:
   typedef std::map<std::string, seriesi*> wseriess;
   imagefile* f;
@@ -1879,8 +2064,12 @@ template <typename T>
       // determine value and sequence types
       this->stdef = storedSeqType(this->tdef, this->batchSize);
 
-      if (b.type != encoding(this->stdef)) {
-        throw std::runtime_error("File defines series '" + seqname + "' with type inconsistent with " + ty::show(store<T>::storeType()));
+      if (!equivModOffset(ty::decode(b.type), this->stdef)) {
+        throw std::runtime_error(
+          "File defines series '" + seqname + "' with inconsistent type:\n" + 
+          "  Expected: " + ty::show(this->stdef) + "\n" +
+          "  Actual:   " + ty::show(ty::decode(b.type))
+        );
       }
 
       // load all nodes, prepare to walk in-order
@@ -1935,7 +2124,7 @@ template <typename T>
     void loadReadState(uint64_t root) {
       while (root != 0) {
         uint64_t* d = reinterpret_cast<uint64_t*>(mapFileData(this->f, root, 3*sizeof(uint64_t)));
-        if (d[0] == 0) {
+        if (static_cast<uint32_t>(d[0]) == 0) {
           root = 0;
         } else {
           this->batches.push(d[1]);
@@ -2073,6 +2262,96 @@ public:
     rordering ordering(const std::string& name) {
       return rordering(this->f, name);
     }
+
+  template <typename T, typename P = typename std::enable_if<store<T>::can_memcpy>::type>
+    const T* definition(const std::string& n) {
+      // is this binding defined?
+      auto b = this->f->bindings.find(n);
+      if (b == this->f->bindings.end()) {
+        // binding not defined
+        throw std::runtime_error(
+          "Expected definition of '" + n + "' in file, but none was found"
+        );
+      } else {
+        // binding defined, just make sure that the types match
+        if (b->second.type != ty::encoding(store<T>::storeType())) {
+          throw std::runtime_error(
+            "File defines '" + n + "' but with an inconsistent type.:\n" +
+            "  Expected: " + ty::show(store<T>::storeType()) + "\n"
+            "  Actual:   " + ty::show(ty::decode(b->second.type))
+          );
+        }
+        return reinterpret_cast<const T*>(mapFileData(this->f, b->second.offset, sizeof(T)));
+      }
+    }
+
+  template <typename T>
+    void definition(const std::string& n, T* x) {
+      // is this binding defined?
+      auto b = this->f->bindings.find(n);
+      if (b == this->f->bindings.end()) {
+        // binding not defined
+        throw std::runtime_error(
+          "Expected definition of '" + n + "' in file, but none was found"
+        );
+      } else {
+        // binding defined, just make sure that the types match
+        if (b->second.type != ty::encoding(store<T>::storeType())) {
+          throw std::runtime_error(
+            "File defines '" + n + "' but with an inconsistent type.:\n" +
+            "  Expected: " + ty::show(store<T>::storeType()) + "\n"
+            "  Actual:   " + ty::show(ty::decode(b->second.type))
+          );
+        }
+        const auto* p = reinterpret_cast<const uint8_t*>(mapFileData(this->f, b->second.offset, store<T>::size()));
+        store<T>::read(this->f, p, x);
+        unmapFileData(f, p, store<T>::size());
+      }
+    }
+
+  template <typename T, typename P = typename std::enable_if<store<T>::can_memcpy>::type>
+    const array<T>* arrayDefinition(const std::string& n) {
+      // is this binding defined?
+      auto b = this->f->bindings.find(n);
+      if (b == this->f->bindings.end()) {
+        // binding not defined
+        throw std::runtime_error(
+          "Expected definition of '" + n + "' in file, but none was found"
+        );
+      } else if (b->second.type == ty::encoding(ty::array(store<T>::storeType()))) {
+        // map the array length to determine how much to map for the array
+        const size_t* lenp = reinterpret_cast<const size_t*>(mapFileData(this->f, b->second.offset, sizeof(size_t)));
+        size_t        len  = *lenp;
+
+        // now that we know the stored length, we can map the array contents
+        const array<T>* result = reinterpret_cast<const array<T>*>(mapFileData(this->f, b->second.offset, sizeof(size_t)+len*sizeof(T)));
+
+        // and we can get rid of the map segment for the len
+        unmapFileData(this->f, lenp, sizeof(size_t));
+
+        return result;
+      } else if (b->second.type == ty::encoding(ty::fileRef(ty::array(store<T>::storeType())))) {
+        const size_t* offp = reinterpret_cast<const size_t*>(mapFileData(this->f, b->second.offset, sizeof(size_t)));
+        size_t off = *offp;
+        unmapFileData(this->f, offp, sizeof(size_t));
+
+        const size_t*   lenp   = reinterpret_cast<const size_t*>(mapFileData(this->f, off, sizeof(size_t)));
+        size_t          len    = *lenp;
+        const array<T>* result = reinterpret_cast<const array<T>*>(mapFileData(this->f, off, sizeof(size_t)+len*sizeof(T)));
+        unmapFileData(this->f, lenp, sizeof(size_t));
+        return result;
+      } else {
+        // binding defined, make sure that the types match
+        throw std::runtime_error(
+          "File defines '" + n + "' but with an inconsistent type.\n" +
+          "  Expected: " + ty::show(ty::array(store<T>::storeType())) + "\n"
+          "  Actual:   " + ty::show(ty::decode(b->second.type))
+        );
+      }
+    }
+
+  imagefile* fileData() { return this->f; }
+  const imagefile* fileData() const { return this->f; }
 private:
   typedef std::map<std::string, seriesi*> rseriess;
   imagefile* f;

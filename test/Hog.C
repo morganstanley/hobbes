@@ -2,6 +2,7 @@
 #include <hobbes/storage.H>
 #include <hobbes/db/file.H>
 #include <hobbes/ipc/net.H>
+#include <hobbes/util/codec.H>
 #include <hobbes/util/perf.H>
 #include <hobbes/util/str.H>
 #include "test.H"
@@ -12,6 +13,7 @@
 #include <cstdio>
 #include <climits>
 #include <thread>
+#include <utility>
 
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -19,6 +21,10 @@
 #include <signal.h>
 #include <glob.h>
 #include <ftw.h>
+
+void rmrf(const char* p) {
+  nftw(p, [](const char* fp, const struct stat*, int, struct FTW*) -> int { remove(fp); return 0; }, 64, FTW_DEPTH | FTW_PHYS);
+}
 
 std::string hogBinaryPath() {
   static char path[PATH_MAX];
@@ -32,7 +38,7 @@ std::string hogBinaryPath() {
   return path;
 }
 
-DEFINE_HSTORE_STRUCT(
+DEFINE_PACKED_HSTORE_STRUCT(
   Point3D,
   (int, x),
   (int, y),
@@ -50,6 +56,7 @@ struct RunMode {
   enum type { local, batchsend, batchrecv };
 
   type                     t;
+  char                     cwd[PATH_MAX];
 
   // batchsend
   std::vector<std::string> groups;
@@ -69,16 +76,31 @@ struct RunMode {
     batchsendsize(std::to_string(size)),
     batchsendtime(std::to_string(time)),
     program(hogBinaryPath()) {
-  }
+      setupWorkingDirectory();
+    }
 
   RunMode(int port, bool consolidate = false)
-    : t(batchrecv), port(std::to_string(port)), consolidate(consolidate), program(hogBinaryPath()) {}
+    : t(batchrecv), port(std::to_string(port)), consolidate(consolidate), program(hogBinaryPath()) {
+      setupWorkingDirectory();
+    }
 
   RunMode(const std::vector<std::string>& groups, bool consolidate = false)
-    : t(local), groups(groups), consolidate(consolidate), program(hogBinaryPath()) {}
+    : t(local), groups(groups), consolidate(consolidate), program(hogBinaryPath()) {
+      setupWorkingDirectory();
+    }
+
+  void setupWorkingDirectory() {
+    strcpy(cwd, "./.htest/hog/XXXXXX");
+    hobbes::ensureDirExists(hobbes::str::rsplit(cwd, "/").first);
+    if (mkdtemp(cwd) == NULL) {
+      throw std::runtime_error("error while mkdtemp('" + std::string(cwd) + "'): " + std::string(strerror(errno)));
+    }
+  }
 
   std::vector<const char*> argv() const {
     std::vector<const char*> args { program.c_str() };
+    args.push_back("-m");
+    args.push_back(".");
     switch (t) {
     case local:
       args.push_back("-g");
@@ -116,14 +138,7 @@ struct RunMode {
 
 class HogApp {
 public:
-  HogApp(const RunMode& mode)
-  : mode(mode), pid(-1) {
-    strcpy(cwd, "./.htest/hog/XXXXXX");
-    hobbes::ensureDirExists(hobbes::str::rsplit(cwd, "/").first);
-    if (mkdtemp(cwd) == NULL) {
-      throw std::runtime_error("error while mkdtemp('" + std::string(cwd) + "'): " + std::string(strerror(errno)));
-    }
-  }
+  HogApp(const RunMode& mode) : mode(mode), pid(-1) {}
 
   ~HogApp() {
     if (started()) {
@@ -136,7 +151,7 @@ public:
     if (pid == -1) {
       throw std::runtime_error("error while fork: " + std::string(strerror(errno)));
     } else if (pid == 0) {
-      chdir(cwd);
+      chdir(mode.cwd);
 
       // IO redirect
       int ofd  = dup(STDOUT_FILENO);
@@ -166,11 +181,11 @@ public:
   void stop() {
     if (started()) {
       if (kill(pid, SIGTERM) == -1) {
-        throw std::runtime_error("error while kill: " + std::string(strerror(errno)));
+        throw std::runtime_error("error while kill '" + std::to_string(pid) + "': " + std::string(strerror(errno)));
       }
       int ws;
       if (waitpid(pid, &ws, 0) == -1) {
-        throw std::runtime_error("error while waitpid: " + std::string(strerror(errno)));
+        throw std::runtime_error("error while waitpid on '" + std::to_string(pid) + "': " + std::string(strerror(errno)));
       }
       pid = -1;
     }
@@ -187,27 +202,31 @@ public:
   bool started() const { return pid != -1; }
 
   std::string name() const {
-    return hobbes::str::rsplit(cwd, "/").second;
+    return hobbes::str::rsplit(mode.cwd, "/").second;
   }
 
   std::string localport() const {
     return "localhost:" + mode.port;
   }
 
-  std::string basePath() const { return this->cwd; }
+  const char* cwd() const { return mode.cwd; }
 
-  std::vector<std::string> logpaths() const {
-    std::string group;
-    if (this->mode.groups.size() == 0) {
-      group = "Space"; // maybe refactor a little to avoid this (if we ever need a batchrecv test for a different group)
-    } else if (this->mode.groups.size() > 1) {
-      throw std::runtime_error("multi groups through logpaths nyi");
-    } else {
-      group = this->mode.groups[0];
+  std::string statFile() const { return std::string(mode.cwd) + "/hogstat.db"; }
+
+  std::vector<std::string> logpaths(const std::string& grp = "") const {
+    std::string group(grp);
+    if (group.empty()) {
+      if (this->mode.groups.size() == 0) {
+        group = "Space"; // maybe refactor a little to avoid this (if we ever need a batchrecv test for a different group)
+      } else if (this->mode.groups.size() > 1) {
+        throw std::runtime_error("multi groups through logpaths nyi");
+      } else {
+        group = this->mode.groups[0];
+      }
     }
 
     std::vector<std::string> paths;
-    std::string pattern(cwd);
+    std::string pattern(mode.cwd);
     pattern += "/" + group + "/*/*.log";
 
     glob_t g;
@@ -228,10 +247,55 @@ public:
     return paths;
   }
 
+  std::string pollLogFile(const char* group) {
+    assert(mode.t != RunMode::batchsend);
+    std::string log;
+    while (log.empty()) {
+      auto paths = logpaths(group);
+      if (!paths.empty()) {
+        log = paths[0];
+      } else {
+        sleep(1);
+      }
+    }
+    return log;
+  }
+
+  void waitSegFileGone() {
+    waitSegFileCount([](const int pathCount) { return pathCount == 0; });
+  }
+
+  void waitSegFileSome() {
+    waitSegFileCount([](const int pathCount) { return pathCount > 0; });
+  }
+
+  void waitSegFileCount(const std::function<bool(const int)> comparator) {
+    assert(mode.t == RunMode::batchsend);
+    std::string pattern(mode.cwd);
+    for (const auto & group : mode.groups) {
+      // workingdir/$group/$date/data/tmp_$procid-$threadid/$host:$port/segment-*.gz
+      const auto p = pattern + "/" + group + "/*/data/tmp_*-*/*:*/segment-*.gz";
+      while (!comparator(hobbes::str::paths(p).size())) {
+        sleep(1);
+      }
+    }
+  }
+
 private:
   const RunMode mode;
-  char cwd[PATH_MAX];
   pid_t pid;
+};
+
+struct EnvironmentGuard {
+  explicit EnvironmentGuard(const char* name, const char* value) : key(name) {
+    if (::setenv(name, value, /* overwrite */ 1) == -1) {
+      throw std::runtime_error("error while setenv: " + std::string(strerror(errno)));
+    }
+  }
+  ~EnvironmentGuard() {
+    ::unsetenv(key);
+  }
+  const char* key;
 };
 
 int availablePort(int low, int high) {
@@ -342,6 +406,7 @@ DEFINE_STORAGE_GROUP(
 TEST(Hog, KillAndResume) {
   HogApp local(RunMode{{"KillAndResume"}, true});
   local.start();
+  EnvironmentGuard _{"HOBBES_STORE_DIR", local.cwd()};
   sleep(5);
 
   HLOG(KillAndResume, seq, "seq $0", 0); KillAndResume.commit();
@@ -372,8 +437,7 @@ TEST(Hog, KillAndResume) {
   for (const auto& log : local.logpaths()) {
     c.define("f"+hobbes::str::from(i++), "inputFile::(LoadFile \""+log+"\" w)=>w");
   }
-  EXPECT_TRUE(c.compileFn<bool()>("f0.seq[0:] == [3,2,1,0]")());
-  EXPECT_TRUE(c.compileFn<bool()>("f1.seq[0:] == [14,13,12,11,10,9,8,7,6,5,4]")());
+  EXPECT_TRUE(c.compileFn<bool()>("f0.seq[0:] == [14,13,12,11,10,9,8,7,6,5,4,3,2,1,0]")());
 }
 
 DEFINE_STORAGE_GROUP(
@@ -387,6 +451,7 @@ DEFINE_STORAGE_GROUP(
 TEST(Hog, RestartEngine) {
   HogApp local(RunMode{{"RestartEngine"}, /* consolidate = */true});
   local.start();
+  EnvironmentGuard _{"HOBBES_STORE_DIR", local.cwd()};
   sleep(5);
 
   auto fn = [](){
@@ -422,6 +487,13 @@ DEFINE_STORAGE_GROUP(
   hobbes::storage::ManualCommit
 );
 
+DEFINE_VARIANT(
+  TestVariant,
+  (Car, int),
+  (House, double),
+  (Chicken, std::vector<std::string>)
+);
+
 struct SectTest {
   int x;
   double y() const { return 3.14159; }
@@ -429,21 +501,36 @@ struct SectTest {
   std::string w;
   hobbes::datetimeT dt;
   hobbes::timespanT ts;
+  const hobbes::array<char>* str;
+  hobbes::array<const hobbes::array<char>*>* strs;
+  hobbes::array<std::vector<int>>* ints;
+  TestVariant tv;
   void* q;
 };
-DEFINE_HSTORE_STRUCT_VIEW(SectTest, x, y, z, w, dt, ts);
+DEFINE_HSTORE_STRUCT_VIEW(SectTest, x, y, z, w, dt, ts, str, strs, ints, tv);
 
 TEST(Hog, SupportedTypes) {
   HogApp local(RunMode{{"TestRecTypes"}, /* consolidate = */ true});
   local.start();
+  EnvironmentGuard _{"HOBBES_STORE_DIR", local.cwd()};
   sleep(5);
 
   SectTest st;
   st.x = 42;
   for (size_t i = 0; i < 10; ++i) { st.z[i] = short(i); }
   st.w = "test";
-  st.dt.value = hobbes::now();
+  st.dt = hobbes::now();
   st.ts.value = 60*1000*1000;
+  st.str = hobbes::makeString(std::string(10000, '*')); // spanning three consecutive pages
+  st.strs = hobbes::makeArray<const hobbes::array<char>*>(2);
+  for (size_t i = 0; i < st.strs->size; ++i) {
+    st.strs->data[i] = hobbes::makeString(st.w);
+  }
+  st.ints = hobbes::makeArray<std::vector<int>>(2);
+  st.ints->data[0] = std::vector<int>{{0, 0}};
+  st.ints->data[1] = std::vector<int>{{1, 1}};
+  st.tv = TestVariant::Car(42);
+
   HLOG(TestRecTypes, sectView, "test sect view", st);
   TestRecTypes.commit();
 
@@ -454,7 +541,8 @@ TEST(Hog, SupportedTypes) {
   for (const auto& log : local.logpaths()) {
     c.define("f"+hobbes::str::from(i++), "inputFile::(LoadFile \""+log+"\" w)=>w");
   }
-  EXPECT_TRUE(c.compileFn<bool()>("all(\\x.x  matches {x=42,y=3.14159,z=[0S,1S,2S,3S,4S,5S,6S,7S,8S,9S],w=\"test\"},f0.sectView[0:])")());
+  EXPECT_TRUE(c.compileFn<bool()>("all(\\x.x matches {x=42,y=3.14159,z=[0S,1S,2S,3S,4S,5S,6S,7S,8S,9S],w=\"test\",strs=[\"test\",\"test\"],ints=[[0,0],[1,1]]},f0.sectView[0:])")());
+  EXPECT_TRUE(c.compileFn<bool()>("all(\\x.x.str==repeat('*',10000L),f0.sectView[0:])")());
 }
 
 DEFINE_STORAGE_GROUP(
@@ -465,11 +553,14 @@ DEFINE_STORAGE_GROUP(
 );
 
 TEST(Hog, UnreliableReconnect) {
+  const RunMode mode{{"TestUnrReconnect"}, /* consolidate = */ true};
+  EnvironmentGuard _{"HOBBES_STORE_DIR", mode.cwd};
+
   // no consumer running, produce until we fail
   while (HLOG(TestUnrReconnect, seq, "unreliable seq"));
 
   // now that we've failed to log once, start a hog process
-  HogApp local(RunMode{{"TestUnrReconnect"}, /* consolidate = */ true});
+  HogApp local(mode);
   local.start();
   sleep(10);
 
@@ -485,9 +576,256 @@ TEST(Hog, UnreliableReconnect) {
   EXPECT_TRUE(s && "reconnection failed");
 }
 
-void rmrf(const char* p) {
-  nftw(p, [](const char* fp, const struct stat*, int tf, struct FTW*) -> int { remove(fp); return 0; }, 64, FTW_DEPTH | FTW_PHYS);
+class ProducerApp {
+public:
+  ProducerApp(std::function<void(int)> producerFn, const char* servpath)
+    : pid(-1), cmdfd(-1), ackfd(-1), producerFn(producerFn), servpath(servpath) {}
+
+  void start() {
+    int cmdfd[2] = {0, 0};
+    int ackfd[2] = {0, 0};
+
+    if (pipe(cmdfd) < 0) {
+      throw std::runtime_error("error while pipe: " + std::string(strerror(errno)));
+    }
+
+    if (pipe(ackfd) < 0) {
+      throw std::runtime_error("error while pipe: " + std::string(strerror(errno)));
+    }
+
+    pid = fork();
+    if (pid == -1) {
+      throw std::runtime_error("error while fork: " + std::string(strerror(errno)));
+    } else if (pid) {
+      // parent process
+      this->cmdfd = cmdfd[1]; ::close(cmdfd[0]);
+      this->ackfd = ackfd[0]; ::close(ackfd[1]);
+
+      int started = 0;
+      hobbes::fdread(this->ackfd, &started);
+    } else {
+      // child process - the same image but reacts on parent's instruction
+      this->cmdfd = cmdfd[0]; ::close(cmdfd[1]);
+      this->ackfd = ackfd[1]; ::close(ackfd[0]);
+
+      run();
+    }
+  }
+
+  void stop() {
+    if (started()) {
+      if (kill(pid, SIGTERM) == -1) {
+        throw std::runtime_error("error while kill: " + std::string(strerror(errno)));
+      }
+      int ws;
+      if (waitpid(pid, &ws, 0) == -1) {
+        throw std::runtime_error("error while waitpid: " + std::string(strerror(errno)));
+      }
+
+      if (cmdfd != -1) ::close(cmdfd);
+      if (ackfd != -1) ::close(ackfd);
+
+      pid = -1;
+      cmdfd = -1;
+      ackfd = -1;
+    }
+  }
+
+  void restart() {
+    stop();
+    start();
+  }
+
+  bool started() const { return pid != -1; }
+
+  void execute(int id) {
+    assert(cmdfd != -1);
+    hobbes::fdwrite(cmdfd, id);
+
+    int done = 0;
+    hobbes::fdread(ackfd, &done);
+  }
+
+private:
+  void run() {
+    assert(pid == 0 && "only called in child process");
+    EnvironmentGuard _{"HOBBES_STORE_DIR", servpath};
+    hobbes::registerEventHandler(cmdfd, [this](int fd) {
+      int runid;
+      hobbes::fdread(fd, &runid);
+
+      producerFn(runid);
+
+      const int done = 1;
+      hobbes::fdwrite(this->ackfd, done);
+    });
+    const int started = 1;
+    hobbes::fdwrite(this->ackfd, started);
+    hobbes::runEventLoop();
+  }
+
+  pid_t pid;
+  int cmdfd;
+  int ackfd;
+  std::function<void(int)> producerFn;
+  const char* servpath;
+};
+
+DEFINE_STORAGE_GROUP(
+  TestOrderedRead,
+  1024,
+  hobbes::storage::Reliable,
+  hobbes::storage::ManualCommit
+);
+
+TEST(Hog, OrderedReader) {
+  HogApp local(RunMode{{"TestOrderedRead"}, /* consolidate = */ true});
+  auto producerFn = [](int runid) {
+    for (size_t seqno = 0; seqno < TestOrderedRead.mempages; ++seqno) {
+      HLOG(TestOrderedRead, seq, "runid: $0, seqno: $1", runid, seqno);
+      TestOrderedRead.commit();
+    }
+  };
+  ProducerApp proc1(producerFn, local.cwd());
+  ProducerApp proc2(producerFn, local.cwd());
+
+  local.start();
+
+  sleep(5);
+
+  proc1.start();
+  proc1.execute(0);
+
+  proc2.start();
+  proc2.execute(1); // batchsend reading data from proc1 & proc2 concurrently
+
+  proc2.restart();  // blocked until old data in proc2 drained in order
+  proc2.execute(2);
+
+  proc1.stop();
+
+  proc2.restart();  // blocked until old data drained in order
+  proc2.execute(3);
+
+  proc2.stop();
+
+  hobbes::cc cc;
+  auto log = local.pollLogFile("TestOrderedRead");
+  cc.define("f", "inputFile::(LoadFile \"" + log + "\" w)=>w");
+
+  const auto total = 4 * TestOrderedRead.mempages;
+  auto sizeFn = cc.compileFn<size_t()>("size(f.seq)");
+  while (sizeFn() != total) {
+    std::cout << "waiting slog to complete, expecting " << total << " records" << std::endl;
+    sleep(1);
+  }
+
+  // assert the ordering: 1 happens before 2, 0/1/2 happen before 3
+  EXPECT_TRUE(cc.compileFn<bool()>("[x.0|x<-f.seq, x.0 in [1,2]][:0] == concat([repeat(x, 1024L)|x<-[1,2]])")());
+  EXPECT_TRUE(cc.compileFn<bool()>("[x.0|x<-f.seq, x.0 in [0,3]][:0] == concat([repeat(x, 1024L)|x<-[0,3]])")());
+  EXPECT_TRUE(cc.compileFn<bool()>("[x.0|x<-f.seq, x.0 in [1,3]][:0] == concat([repeat(x, 1024L)|x<-[1,3]])")());
+  EXPECT_TRUE(cc.compileFn<bool()>("[x.0|x<-f.seq, x.0 in [2,3]][:0] == concat([repeat(x, 1024L)|x<-[2,3]])")());
 }
+
+DEFINE_STORAGE_GROUP(
+  TestOrderedSend,
+  1024,
+  hobbes::storage::Reliable,
+  hobbes::storage::ManualCommit
+);
+
+/// The same test sequence as above except for running hog as batchsend/batchrecv modes
+TEST(Hog, OrderedSender) {
+  HogApp batchrecv(RunMode(availablePort(10000, 10100), /* consolidate */ true));
+  HogApp batchsend(RunMode{{"TestOrderedSend"}, {batchrecv.localport()}, 1024, 1000000});
+  auto producerFn = [](int runid) {
+    for (size_t seqno = 0; seqno < TestOrderedSend.mempages; ++seqno) {
+      HLOG(TestOrderedSend, seq, "runid: $0, seqno: $1", runid, seqno);
+      TestOrderedSend.commit();
+    }
+  };
+  ProducerApp proc1(producerFn, batchsend.cwd());
+  ProducerApp proc2(producerFn, batchsend.cwd());
+
+  batchsend.start(); // just start batchsend first
+  sleep(5);
+
+  proc1.start();
+  proc1.execute(0);
+
+  proc2.start();
+  proc2.execute(1); // batchsend reading data from proc1 & proc2 concurrently
+
+  proc2.restart();  // blocked until old data drained in order
+  proc2.execute(2);
+
+  proc1.stop();
+
+  proc2.restart();  // blocked until old data drained in order
+  proc2.execute(3);
+
+  proc2.stop();
+
+  batchrecv.start(); // segfiles will be sent in order once connected
+
+  auto log = batchrecv.pollLogFile("TestOrderedSend");
+  batchsend.waitSegFileGone();
+
+  hobbes::cc cc;
+  cc.define("f", "inputFile::(LoadFile \"" + log + "\" w)=>w");
+
+  // assert the ordering: 1 happens before 2, 0/1/2 happen before 3
+  EXPECT_TRUE(cc.compileFn<bool()>("[x.0|x<-f.seq, x.0 in [1,2]][:0] == concat([repeat(x, 1024L)|x<-[1,2]])")());
+  EXPECT_TRUE(cc.compileFn<bool()>("[x.0|x<-f.seq, x.0 in [0,3]][:0] == concat([repeat(x, 1024L)|x<-[0,3]])")());
+  EXPECT_TRUE(cc.compileFn<bool()>("[x.0|x<-f.seq, x.0 in [1,3]][:0] == concat([repeat(x, 1024L)|x<-[1,3]])")());
+  EXPECT_TRUE(cc.compileFn<bool()>("[x.0|x<-f.seq, x.0 in [2,3]][:0] == concat([repeat(x, 1024L)|x<-[2,3]])")());
+}
+
+DEFINE_STORAGE_GROUP(
+  TestBatchSendRestart,
+  1024,
+  hobbes::storage::Reliable,
+  hobbes::storage::ManualCommit
+);
+
+/// The same test sequence as above except for running hog as batchsend/batchrecv modes
+TEST(Hog, BatchSendRestarter) {
+  HogApp batchrecv(RunMode(availablePort(10000, 10100), /* consolidate */ true));
+  HogApp batchsend(RunMode{{"TestBatchSendRestart"}, {batchrecv.localport()}, 1024, 1000000});
+  auto producerFn = [](int runid) {
+    for (size_t seqno = 0; seqno < TestBatchSendRestart.mempages; ++seqno) {
+      HLOG(TestBatchSendRestart, seq, "runid: $0, seqno: $1", runid, seqno);
+      TestBatchSendRestart.commit();
+    }
+  };
+  ProducerApp proc1(producerFn, batchsend.cwd());
+
+  batchsend.start();
+  sleep(2);
+
+  proc1.start();
+  sleep(1);
+  proc1.execute(0);
+  sleep(1);
+  proc1.stop();
+
+  batchsend.waitSegFileSome();
+  batchsend.restart();
+  sleep(1);
+
+  batchrecv.start();
+
+  auto log = batchrecv.pollLogFile("TestBatchSendRestart");
+  batchsend.waitSegFileGone();
+
+  hobbes::cc cc;
+  cc.define("f", "inputFile::(LoadFile \"" + log + "\" w)=>w");
+  cc.define("s", "inputFile::(LoadFile \"" + batchsend.statFile() + "\" w)=>w");
+
+  EXPECT_TRUE(cc.compileFn<bool()>("let n = 0 in [x | x <- f.seq[:0], x.0 == n] == [(n, y) | y <- [0..1023]]"));
+  EXPECT_TRUE(cc.compileFn<bool()>("let hs = [h.sessionHash | h <- s.SenderRegistration[:0]]; ps = [p.sessionHash | p <- s.ProcessEnvironment[:0]] in sort(unique(hs)) == sort(ps)"));
+}
+
 TEST(Hog, Cleanup) {
   rmrf("./.htest");
   rmrf("./Space");

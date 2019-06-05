@@ -138,7 +138,7 @@ struct SystemWatch {
 };
 
 SystemWatch* watcher() {
-  static SystemWatch w;
+  thread_local static SystemWatch w;
   return &w;
 }
 #elif defined(BUILD_OSX)
@@ -149,7 +149,7 @@ struct SystemWatch {
   }
 
   static SystemWatch* watcher() {
-    static SystemWatch w;
+    thread_local static SystemWatch w;
     return &w;
   }
 
@@ -272,7 +272,7 @@ struct addFileSignalF : public op {
   PolyTypePtr type(typedb&) const {
     MonoTypePtr tg0(TGen::make(0));
     MonoTypePtr tg1(TGen::make(1));
-    MonoTypePtr fr = tapp(primty("fileref"), list(tg0, tg1));
+    MonoTypePtr fr = fileRefTy(tg0, tg1);
     PolyTypePtr npty(new PolyType(3, qualtype(functy(list(fr, functy(list(fr), primty("bool"))), primty("unit")))));
     return npty;
   }
@@ -295,7 +295,7 @@ bool pullTypeArg(const std::string& fname, size_t idx, MonoTypePtr* p, const Mon
 
 // alias the file and 'signals' type as a way of getting at top-level file addresses
 class signalsF : public op {
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) {
     return c->compile(es[0]);
   }
 
@@ -347,7 +347,7 @@ MonoTypePtr sigFnType(const std::string& fn, const ExprPtr& db) {
   }
 }
 
-bool AddDBFieldSignal::refine(const TEnvPtr& tenv, const HasField& hf, MonoTypeUnifier* u, Definitions*) {
+bool AddDBFieldSignal::refine(const TEnvPtr&, const HasField& hf, MonoTypeUnifier* u, Definitions*) {
   auto dir   = hf.direction;
   auto rty   = hf.recordType;
   auto fname = hf.fieldName;
@@ -369,7 +369,7 @@ bool AddDBFieldSignal::refine(const TEnvPtr& tenv, const HasField& hf, MonoTypeU
   return false;
 }
 
-bool AddDBFieldSignal::satisfied(const TEnvPtr& tenv, const HasField& hf, Definitions*) const {
+bool AddDBFieldSignal::satisfied(const TEnvPtr&, const HasField& hf, Definitions*) const {
   auto dir   = hf.direction;
   auto rty   = hf.recordType;
   auto fname = hf.fieldName;
