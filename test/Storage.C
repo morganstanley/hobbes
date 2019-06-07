@@ -920,3 +920,61 @@ TEST(Storage, KeySeries) {
   }
 }
 
+// this test was added after some analysis found a case where "torn reads" could happen
+// (where a partial map is considered total for some value that we want to read, though it
+// actually is not and so an attempt to read the whole value causes a crash)
+//
+// this test was verified to reproduce the bug
+DEFINE_VARIANT(
+  Tick,
+  (bob,   int),
+  (frank, int),
+  (steve, std::string)
+);
+DEFINE_STRUCT(
+  TTick,
+  (Tick, t0),
+  (Tick, t1),
+  (Tick, t2)
+);
+TEST(Storage, AvoidTornRead) {
+  std::string fname = mkFName();
+  try {
+    hobbes::fregion::writer f(hobbes::fregion::openFile(fname, false, HFREGION_CURRENT_FILE_FORMAT_VERSION, HFREGION_CURRENT_FILE_FORMAT_VERSION, 1));
+    size_t batchsize = 1234;
+    auto& s = f.series<TTick>("tticks", batchsize);
+    f.recordOrdering("log", s);
+
+    // read now
+    std::ostringstream ss;
+
+    hobbes::fregion::reader rf(hobbes::fregion::openFile(fname, true, HFREGION_CURRENT_FILE_FORMAT_VERSION, HFREGION_CURRENT_FILE_FORMAT_VERSION, 1));
+    auto rlog = rf.ordering("log");
+    rlog.match<TTick>("tticks", [&](const TTick& tt) {
+      ss << tt << "\n";
+    });
+
+    // then dump two batches
+    for (size_t i = 0; i < 2; ++i) {
+      for (size_t i = 0; i < batchsize; ++i) {
+        TTick tt;
+        tt.t0 = Tick::bob(i);
+        tt.t1 = Tick::frank(i);
+        tt.t2 = Tick::bob(i);
+        s(tt);
+      }
+    }
+
+    // now try to read, with the torn read bug it will crash
+    while (rlog.next());
+
+    // if we get here, we are good
+    EXPECT_TRUE(ss.str().size() > 0);
+
+    unlink(fname.c_str());
+  } catch (...) {
+    unlink(fname.c_str());
+    throw;
+  }
+}
+

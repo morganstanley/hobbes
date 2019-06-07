@@ -28,18 +28,9 @@
 #include <fcntl.h>
 #include <unistd.h>
 
-// macOS doesn't support fallocate, simulate it
+// macOS doesn't support fallocate
 inline int posix_fallocate(int fd, off_t o, off_t dsz) {
-  fstore_t store = {F_ALLOCATECONTIG, F_PEOFPOSMODE, 0, o+dsz, 0};
-  int r = ::fcntl(fd, F_PREALLOCATE, &store);
-  if (r == -1) {
-    store.fst_flags = F_ALLOCATEALL;
-    r = fcntl(fd, F_PREALLOCATE, &store);
-  }
-  if (r != -1) {
-    r = ftruncate(fd, o+dsz);
-  }
-  return (r!=-1) ? 0 : -1;
+  return ftruncate(fd, o+dsz);
 }
 #endif
 
