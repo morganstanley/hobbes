@@ -6,6 +6,7 @@
 #include <hobbes/hobbes.H>
 #include <vector>
 #include <set>
+#include <atomic>
 #include <string.h>
 #include <errno.h>
 
@@ -51,6 +52,10 @@ struct FileWatch {
 };
 
 void sweepFileWatch(FileWatch& fw) {
+  // if we get a signal to read, we should be able to read everything up to the signal
+  std::atomic_thread_fence(std::memory_order_acquire);
+
+  // check whether any value updates signal changes
   for (auto brwi = fw.byteRangeWatches.begin(); brwi != fw.byteRangeWatches.end();) {
     auto&           brwp = *brwi;
     ByteRangeWatch& brw  = brwp.second;
