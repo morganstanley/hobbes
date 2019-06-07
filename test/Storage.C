@@ -762,6 +762,45 @@ TEST(Storage, CFRegion_H2C) {
   }
 }
 
+DEFINE_STRUCT(
+  CFTypeTest,
+  (datetimeT, t)
+);
+
+TEST(Storage, CFRegion_CTypes) {
+  std::string fname = mkFName();
+  try {
+    auto t = hobbes::now();
+
+    // write some compressed data
+    {
+      hobbes::fregion::cwriter w(fname);
+      auto& xs = w.series<CFTypeTest>("cts");
+      for (size_t i = 0; i < 100; ++i) {
+        CFTypeTest s;
+        s.t = t;
+        xs(s);
+      }
+    }
+
+    // verify that it reads back correctly
+    {
+      hobbes::fregion::creader r(fname);
+      auto& xs = r.series<CFTypeTest>("cts");
+      CFTypeTest s;
+      while (xs.next(&s)) {
+        EXPECT_TRUE(s.t.value == t.value);
+      }
+    }
+
+    unlink(fname.c_str());
+  } catch (...) {
+    unlink(fname.c_str());
+    throw;
+  }
+}
+
+
 TEST(Storage, FRegionCArrays) {
   std::string fname = mkFName();
   try {
@@ -873,6 +912,64 @@ TEST(Storage, KeySeries) {
     hobbes::cc c;
     c.define("db", "inputFile::(LoadFile \"" + fname + "\" w)=>w");
     EXPECT_TRUE(c.compileFn<bool()>("concat([[({k=k},t)|t<-v[0:10]]|(k,v)<-db.ticks])==[({k=\"bob\"},{bpx=3.14159,bsz=20,apx=6.282,asz=1})|_<-[0..9]]++[({k=\"jim\"},{bpx=4.2,bsz=90,apx=8.4,asz=1})|_<-[0..9]]")());
+
+    unlink(fname.c_str());
+  } catch (...) {
+    unlink(fname.c_str());
+    throw;
+  }
+}
+
+// this test was added after some analysis found a case where "torn reads" could happen
+// (where a partial map is considered total for some value that we want to read, though it
+// actually is not and so an attempt to read the whole value causes a crash)
+//
+// this test was verified to reproduce the bug
+DEFINE_VARIANT(
+  Tick,
+  (bob,   int),
+  (frank, int),
+  (steve, std::string)
+);
+DEFINE_STRUCT(
+  TTick,
+  (Tick, t0),
+  (Tick, t1),
+  (Tick, t2)
+);
+TEST(Storage, AvoidTornRead) {
+  std::string fname = mkFName();
+  try {
+    hobbes::fregion::writer f(hobbes::fregion::openFile(fname, false, HFREGION_CURRENT_FILE_FORMAT_VERSION, HFREGION_CURRENT_FILE_FORMAT_VERSION, 1));
+    size_t batchsize = 1234;
+    auto& s = f.series<TTick>("tticks", batchsize);
+    f.recordOrdering("log", s);
+
+    // read now
+    std::ostringstream ss;
+
+    hobbes::fregion::reader rf(hobbes::fregion::openFile(fname, true, HFREGION_CURRENT_FILE_FORMAT_VERSION, HFREGION_CURRENT_FILE_FORMAT_VERSION, 1));
+    auto rlog = rf.ordering("log");
+    rlog.match<TTick>("tticks", [&](const TTick& tt) {
+      ss << tt << "\n";
+    });
+
+    // then dump two batches
+    for (size_t i = 0; i < 2; ++i) {
+      for (size_t i = 0; i < batchsize; ++i) {
+        TTick tt;
+        tt.t0 = Tick::bob(i);
+        tt.t1 = Tick::frank(i);
+        tt.t2 = Tick::bob(i);
+        s(tt);
+      }
+    }
+
+    // now try to read, with the torn read bug it will crash
+    while (rlog.next());
+
+    // if we get here, we are good
+    EXPECT_TRUE(ss.str().size() > 0);
 
     unlink(fname.c_str());
   } catch (...) {
