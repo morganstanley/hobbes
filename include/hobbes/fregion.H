@@ -653,17 +653,19 @@ inline fregion& mappedFileRegion(imagefile* f, file_pageindex_t page, size_t pag
 
 // allocate a region of this file as mapped memory
 inline char* mapFileData(imagefile* f, size_t fpos, size_t sz) {
-  file_pageindex_t page   = fpos / f->page_size;
-  uint16_t         offset = fpos % f->page_size;
+  file_pageindex_t pagei  = fpos        / f->page_size;
+  file_pageindex_t pagef  = (fpos + sz) / f->page_size;
+  
+  assert(pagef >= pagei);
 
   // get the mapped region where this data lives
   // and increment its use count
-  fregion& r = mappedFileRegion(f, page, pageCount(f, sz));
+  fregion& r = mappedFileRegion(f, pagei, 1 + pagef - pagei);
   r.used += sz;
 
   // the result will be offset from the base of the mapped page
   // (plus any intervening pages from the base of the mapping to the page for this data)
-  char* result = r.base + (f->page_size * (page - r.base_page)) + offset;
+  char* result = r.base + (f->page_size * (pagei - r.base_page)) + (fpos % f->page_size);
 
   // remember where this allocated data came from (in case we want to release it later)
   falloc& fa = f->allocs[result];
@@ -855,11 +857,11 @@ inline void readFile(imagefile* f, uint16_t minVersion, uint16_t maxVersion) {
 }
 
 // open a file, or create it if necessary
-inline imagefile* openFile(const std::string& fname, bool readonly, uint16_t minVersion = HFREGION_CURRENT_FILE_FORMAT_VERSION, uint16_t maxVersion = HFREGION_CURRENT_FILE_FORMAT_VERSION) {
+inline imagefile* openFile(const std::string& fname, bool readonly, uint16_t minVersion = HFREGION_CURRENT_FILE_FORMAT_VERSION, uint16_t maxVersion = HFREGION_CURRENT_FILE_FORMAT_VERSION, size_t mmapPageMultiple = 262144 /* 1GB */) {
   imagefile* f        = new imagefile();
   f->path             = fname;
   f->readonly         = readonly;
-  f->mmapPageMultiple = 50*262144;    // map in 50GiB increments
+  f->mmapPageMultiple = mmapPageMultiple;
 
   try {
     // open the file
@@ -1884,7 +1886,7 @@ template <typename ... Wss>
 template <typename Ws, typename ... Wss>
   struct seqVar<Ws, Wss...> {
     static void stepEnc(ty::Variant::Ctors* cs, size_t* c, const Ws& s, const Wss& ... wss) {
-      cs->push_back(ty::Variant::Ctor(s.name(), *c, ty::fileRef(s.typeDefinition())));
+      cs->push_back(ty::Variant::Ctor(s.name(), *c, ty::fileRef(s.typeDef())));
       ++*c;
       seqVar<Wss...>::stepEnc(cs, c, wss...);
     }
@@ -1916,6 +1918,8 @@ template <typename ... Wss>
   };
 class writer {
 public:
+  writer(imagefile* f) : f(f) {
+  }
   writer(const std::string& fname) : f(openFile(fname, false)) {
   }
   ~writer() {
@@ -2168,8 +2172,12 @@ public:
       if (v == this->logDef.varDef.end()) {
         throw std::runtime_error("Constructor undefined in ordering: " + std::string(n));
       }
-      if (ty::encoding(v->second.second) != ty::encoding(store<T>::storeType())) {
-        throw std::runtime_error("Constructor '" + n + "' defined in ordering, but not with type " + ty::show(store<T>::storeType()));
+      if (ty::encoding(v->second.second) != ty::encoding(ty::fileRef(store<T>::storeType()))) {
+        throw std::runtime_error(
+          "Constructor '" + n + "' defined in ordering with inconsistent type.\n" + 
+          "  Expected: " + ty::show(store<T>::storeType()) + "\n" +
+          "  Actual:   " + ty::show(v->second.second)
+        );
       }
 
       // bind a function to process values out of this ordering
@@ -2217,8 +2225,12 @@ private:
     }
     
     LogDef r;
-    r.tdesc = ty::decode(b->second.type);
+    r.tdesc = maybeStoredBatchType(b->second.type);
     r.b     = &b->second;
+
+    if (!r.tdesc) {
+      throw std::runtime_error("File does not define '" + seqname + "' as a series.");
+    }
 
     if (r.tdesc->tid == PRIV_HPPF_TYCTOR_VARIANT) {
       for (const auto& ctor : reinterpret_cast<ty::Variant*>(r.tdesc.get())->ctors) {
@@ -2232,6 +2244,8 @@ private:
 };
 class reader {
 public:
+  reader(imagefile* f) : f(f) {
+  }
   reader(const std::string& fname) : f(openFile(fname, true)) {
   }
   ~reader() {
