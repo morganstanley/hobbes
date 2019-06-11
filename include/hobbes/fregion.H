@@ -1818,7 +1818,14 @@ template <typename T>
       }
     }
   public:
-    void setWriteCB(const std::function<void(uint64_t)>& f) { this->writeCB = f; }
+    void setWriteCB(const std::function<void(uint64_t)>& f) {
+      if (this->writeCB) {
+        auto tmpCB = this->writeCB;
+        this->writeCB = [=](uint64_t fpos) { tmpCB(fpos); f(fpos); };
+        return;
+      }
+      this->writeCB = f;
+    }
   private:
     ty::desc tdef;  // the type for a single sequence value
     ty::desc stdef; // the type for the whole sequence
