@@ -309,6 +309,7 @@ template <size_t i, size_t n, typename ... Ts>
     static ty::desc type() {
       ty::Variant::Ctors cs;
       ctorDefs(&cs);
+      Recurse::ctorDefs(&cs);
       return ty::variant(cs);
     }
   };
