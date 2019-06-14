@@ -11,8 +11,11 @@
 
 #include <llvm/Config/llvm-config.h>
 
-#if LLVM_VERSION_MAJOR != 3 && LLVM_VERSION_MAJOR != 4
+/* definition to expand macro then apply to pragma message */
+
+#if LLVM_VERSION_MAJOR < 3 
 #error "I don't know how to use this version of LLVM"
+#define LLVM_VERSION_MAJOR  LLVM_VERSION_MAJOR // cause the value to be displayed
 #endif
 
 #include <llvm/IR/DerivedTypes.h>
@@ -29,7 +32,7 @@
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/Support/TargetRegistry.h>
 #include <llvm/Support/Signals.h>
-#if LLVM_VERSION_MAJOR == 4
+#if LLVM_VERSION_MAJOR >= 4
 #include <llvm/Bitcode/BitstreamReader.h>
 #include <llvm/Bitcode/BitstreamWriter.h>
 #else
@@ -43,7 +46,7 @@
 #if LLVM_VERSION_MINOR == 3
 #include <llvm/Analysis/Verifier.h>
 #include <llvm/PassManager.h>
-#elif LLVM_VERSION_MINOR >= 5 || LLVM_VERSION_MAJOR == 4
+#elif LLVM_VERSION_MINOR >= 5 || LLVM_VERSION_MAJOR >= 4
 #include <llvm/IR/Verifier.h>
 #include <llvm/ExecutionEngine/SectionMemoryManager.h>
 #include <llvm/IR/LegacyPassManager.h>
@@ -471,14 +474,14 @@ inline llvm::Value* structOffset(llvm::IRBuilder<>* b, llvm::Value* p, unsigned 
 #if LLVM_VERSION_MINOR == 7
   // don't pass nullptr? (http://reviews.llvm.org/rL233938)
   return b->CreateStructGEP(nullptr, p, fieldOffset);
-#elif LLVM_VERSION_MINOR >= 8 || LLVM_VERSION_MAJOR == 4
+#elif LLVM_VERSION_MINOR >= 8 || LLVM_VERSION_MAJOR >= 4
   return b->CreateStructGEP(reinterpret_cast<llvm::PointerType*>(p->getType())->getElementType(), p, fieldOffset);
 #else
   return b->CreateStructGEP(p, fieldOffset);
 #endif
 }
 
-#if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR == 4
+#if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR >= 4
 inline llvm::ExecutionEngine* makeExecutionEngine(llvm::Module* m, llvm::SectionMemoryManager* smm) {
   std::string err;
   llvm::ExecutionEngine* ee =
@@ -547,7 +550,7 @@ inline llvm::Function* cloneFunction(llvm::Function *f, llvm::Module *targetMod)
 }
 
 inline llvm::Value* fncall(llvm::IRBuilder<>* b, llvm::Value* vfn, const Values& args) {
-#if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR == 4
+#if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR >= 4
   llvm::Module* thisMod = b->GetInsertBlock()->getParent()->getParent();
 
   llvm::Function* fn = llvm::dyn_cast<llvm::Function>(vfn);

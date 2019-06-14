@@ -14,11 +14,11 @@
 #include "llvm/ExecutionEngine/MCJIT.h"
 #endif
 
-#if LLVM_VERSION_MINOR >= 8 || LLVM_VERSION_MAJOR == 4
+#if LLVM_VERSION_MINOR >= 8 || LLVM_VERSION_MAJOR >= 4
 #include "llvm/Analysis/BasicAliasAnalysis.h"
 #endif
 
-#if LLVM_VERSION_MAJOR == 4
+#if LLVM_VERSION_MAJOR >= 4
 #include "llvm/Transforms/Scalar/GVN.h"
 #endif
 
@@ -32,7 +32,7 @@ namespace hobbes {
 // this should be moved out of here eventually
 bool isFileType(const MonoTypePtr&);
 
-#if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR == 4
+#if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR >= 4
 class jitmm : public llvm::SectionMemoryManager {
 public:
   jitmm(jitcc* jit) : jit(jit) { }
@@ -99,7 +99,7 @@ jitcc::jitcc(const TEnvPtr& tenv) :
   this->fpm->doInitialization();
 #endif
 
-#if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR == 4
+#if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR >= 4
   this->mpm = new llvm::legacy::PassManager();
   this->mpm->add(llvm::createFunctionInliningPass());
 #endif
@@ -112,7 +112,7 @@ jitcc::~jitcc() {
   }
 
   // release LLVM resources
-#if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR == 4
+#if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR >= 4
   for (auto ee : this->eengines) {
     delete ee;
   }
@@ -147,7 +147,7 @@ void* jitcc::getSymbolAddress(const std::string& vn) {
     return gd->second.value;
   }
 
-#if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR == 4
+#if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR >= 4
   // do we have a compiled function with this name?
   for (auto ee : this->eengines) {
     if (uint64_t faddr = ee->getFunctionAddress(vn)) {
@@ -162,12 +162,13 @@ void* jitcc::getSymbolAddress(const std::string& vn) {
 
 void jitcc::dump() const {
   for (auto m : this->modules) {
-    m->dump();
+    //m->dump();
+    m->print(llvm::errs(), nullptr);
   }
 }
 
 void* jitcc::getMachineCode(llvm::Function* f, llvm::JITEventListener* listener) {
-#if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR == 4
+#if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR >= 4
   // try to get the machine code for this function out of an existing compiled module
   for (auto ee : this->eengines) {
     if (void* pf = ee->getPointerToFunction(f)) {
@@ -233,7 +234,6 @@ void* jitcc::getMachineCode(llvm::Function* f, llvm::JITEventListener* listener)
     throw std::runtime_error("Internal error, failed to derive machine code from head module");
   }
 
-  return pf;
 #elif LLVM_VERSION_MINOR == 3 or LLVM_VERSION_MINOR == 5
   // apply module-level optimizations
   this->mpm->run(*this->currentModule);
@@ -254,9 +254,10 @@ void* jitcc::getMachineCode(llvm::Function* f, llvm::JITEventListener* listener)
     throw std::runtime_error("Internal error, failed to derive machine code for function");
   }
 #endif
+  return pf;
 }
 
-#if LLVM_VERSION_MINOR >= 7 || LLVM_VERSION_MAJOR == 4
+#if LLVM_VERSION_MINOR >= 7 || LLVM_VERSION_MAJOR >= 4
 // get the machine code produced for a given expression
 // (there must be a simpler way)
 class LenWatch : public llvm::JITEventListener {

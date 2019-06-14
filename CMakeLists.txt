@@ -15,7 +15,7 @@ else()
   set(jit_lib mcjit)
 endif()
 # 'x86' module should have covered 'x86asmparser' and 'x86codegen' already, but using 'x86' alone didn't work
-llvm_map_components_to_libnames(llvm_libs x86asmparser x86codegen x86 ipo ${jit_lib})
+llvm_map_components_to_libnames(llvm_libs X86asmparser X86codegen X86 ipo ${jit_lib})
 
 file(GLOB_RECURSE lib_headers lib/*.H)
 file(GLOB_RECURSE lib_source lib/*.C)

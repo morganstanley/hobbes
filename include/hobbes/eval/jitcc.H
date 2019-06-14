@@ -126,7 +126,7 @@ private:
   typedef std::vector<llvm::Module*> Modules;
   Modules modules;
 
-#if LLVM_VERSION_MINOR == 6 || LLVM_VERSION_MINOR == 7 || LLVM_VERSION_MINOR == 8 || LLVM_VERSION_MAJOR == 4
+#if LLVM_VERSION_MINOR == 6 || LLVM_VERSION_MINOR == 7 || LLVM_VERSION_MINOR == 8 || LLVM_VERSION_MAJOR >= 4
   llvm::legacy::PassManager* mpm;
 
   // the set of allocated execution engines (each will own a finalized module from the set of modules)
