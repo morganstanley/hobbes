@@ -1125,19 +1125,80 @@ void mergeCharRangesAndEqResults(DFA* dfa, const RStates& fstates, RStates* rsta
  * compress a DFA by merging equivalent states
  **************************/
 typedef std::map<state, state> EqStates;
+
+struct IndexedEquivSet {
+  explicit IndexedEquivSet(size_t n) : representative(n), classes(n) {
+    for (size_t i = 0; i < n; ++i) {
+      representative[i] = classes[i] = i;
+    }
+  }
+
+  /// returns a mapping from index of equivalent state to its representative's index
+  /// representatives are excluded
+  EqStates substitutions() const {
+    EqStates result;
+    for (state i = 0; i < representative.size(); ++i) {
+      if (representative[i] != i) {
+        result[i] = representative[i];
+      }
+    }
+    return result;
+  }
+
+  /// compress the set by removing all equivalent classes
+  /// returns a bool whether the current set has been compressed
+  bool compress() {
+    auto size = classes.size();
+    auto it = std::remove_if(classes.begin(), classes.end(), [this](size_t reprIdx) {
+      return this->representative[reprIdx] != reprIdx;
+    });
+    classes.erase(it, classes.end());
+    return classes.size() < size;
+  }
+
+  void markEquivalence(size_t x, size_t y) {
+    assert(x < representative.size());
+    assert(y < representative.size());
+    representative[repr(x)] = repr(y);
+  }
+
+  bool testEquivalence(size_t x, size_t y) {
+    assert(x < representative.size());
+    assert(y < representative.size());
+    return repr(x) == repr(y);
+  }
+
+  size_t size() const { return classes.size(); }
+
+  size_t operator[](size_t i) const { return representative[classes[i]]; }
+
+private:
+  /// get a representative from the array, update them if necessary
+  size_t repr(size_t x) {
+    assert(x < representative.size());
+    if (representative[x] != x) {
+      representative[x] = repr(representative[x]);
+    }
+    return representative[x];
+  }
+
+  std::vector<size_t> representative;
+  std::vector<size_t> classes; // representative's idx of an equivalence class
+};
+
 EqStates findEquivStates(const DFA& dfa) {
-  bit_table eqStates(dfa.size(), dfa.size(), false);
-  for (state s = 0; s < dfa.size(); ++s) { eqStates.set(s, s, true); }
+  IndexedEquivSet eqStates(dfa.size());
 
   // identify equivalent states to a fixed point
   // (probably this could be done more efficiently)
-  bool updatedEQ = true;
-  while (updatedEQ) {
-    updatedEQ = false;
-    for (size_t s0 = 0; s0 < dfa.size(); ++s0) {
-      for (size_t s1 = 0; s1 < s0; ++s1) {
+  do {
+    for (size_t i = 0; i < eqStates.size(); ++i) {
+      for (size_t j = 0; j < i; ++j) {
+        auto s0 = eqStates[i];
+        auto s1 = eqStates[j];
+
         // if we already know that two states are equivalent, they're still equivalent
-        if (eqStates(s0, s1)) continue;
+        if (eqStates.testEquivalence(s0, s1)) continue;
 
         // if two states have different accepting bits, they can't be equivalent
         if (dfa[s0].acc != dfa[s1].acc) continue;
@@ -1147,35 +1208,24 @@ EqStates findEquivStates(const DFA& dfa) {
         if (dfa[s0].ends   != dfa[s1].ends)   continue;
 
         // if the shape of mapping sets differs between states, they can't be equivalent
+        if (dfa[s0].chars.rangeSize() != dfa[s1].chars.rangeSize()) continue;
+
         auto m0 = dfa[s0].chars.mapping();
         auto m1 = dfa[s1].chars.mapping();
-        if (m0.size() != m1.size()) continue;
 
         // if there is a transition (c,q) in s0 and (c,q') in s1 and q != q', then s0 != s1 (in this cycle)
         bool tsEq = true;
         for (size_t i = 0; i < m0.size() && tsEq; ++i) {
-          tsEq = m0[i].first == m1[i].first && eqStates(m0[i].second, m1[i].second);
+          tsEq = m0[i].first == m1[i].first && eqStates.testEquivalence(m0[i].second, m1[i].second);
         }
         if (tsEq) {
-          eqStates.set(s0, s1, true);
-          updatedEQ = true;
+          eqStates.markEquivalence(s0, s1);
         }
       }
     }
-  }
+  } while (eqStates.compress());
 
-  // convert to a representation that makes state substitution explicit
-  //  (follow mapped-to states in case they are also mapped)
-  EqStates r;
-  for (size_t s0 = 0; s0 < dfa.size(); ++s0) {
-    for (size_t s1 = 0; s1 < s0; ++s1) {
-      if (eqStates(s0, s1)) {
-        auto s1t = r.find(s1);
-        r[s0] = s1t == r.end() ? s1 : s1t->second;
-      }
-    }
-  }
-  return r;
+  return eqStates.substitutions();
 }
 
 DFA removeEquivStates(const DFA& dfa, const EqStates& eqs) {
