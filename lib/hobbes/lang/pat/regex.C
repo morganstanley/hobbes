@@ -5,6 +5,8 @@
 #include <hobbes/util/str.H>
 #include <hobbes/util/rmap.H>
 
+#include <queue>
+
 namespace hobbes {
 
 /******************
@@ -1126,106 +1128,82 @@ void mergeCharRangesAndEqResults(DFA* dfa, const RStates& fstates, RStates* rsta
  **************************/
 typedef std::map<state, state> EqStates;
 
-struct IndexedEquivSet {
-  explicit IndexedEquivSet(size_t n) : representative(n), classes(n) {
-    for (size_t i = 0; i < n; ++i) {
-      representative[i] = classes[i] = i;
-    }
-  }
+void visitGraph(const std::vector<std::vector<state>>& g, state m, std::vector<bool>& visited, std::function<void(state)> visitFn) {
+  std::queue<state> q;
 
-  /// returns a mapping from index of equivalent state to its representative's index
-  /// representatives are excluded
-  EqStates substitutions() const {
-    EqStates result;
-    for (state i = 0; i < representative.size(); ++i) {
-      if (representative[i] != i) {
-        result[i] = representative[i];
+  q.push(m);
+  while (!q.empty()) {
+    auto s = q.front();
+    q.pop();
+
+    visited[s] = true;
+    visitFn(s);
+
+    for (auto t : g[s]) {
+      if (!visited[t]) {
+        q.push(t);
       }
     }
-    return result;
   }
-
-  /// compress the set by removing all equivalent classes
-  /// returns a bool whether the current set has been compressed
-  bool compress() {
-    auto size = classes.size();
-    auto it = std::remove_if(classes.begin(), classes.end(), [this](size_t reprIdx) {
-      return this->representative[reprIdx] != reprIdx;
-    });
-    classes.erase(it, classes.end());
-    return classes.size() < size;
-  }
-
-  void markEquivalence(size_t x, size_t y) {
-    assert(x < representative.size());
-    assert(y < representative.size());
-    representative[repr(x)] = repr(y);
-  }
-
-  bool testEquivalence(size_t x, size_t y) {
-    assert(x < representative.size());
-    assert(y < representative.size());
-    return repr(x) == repr(y);
-  }
-
-  size_t size() const { return classes.size(); }
-
-  size_t operator[](size_t i) const { return representative[classes[i]]; }
-
-private:
-  /// get a representative from the array, update them if necessary
-  size_t repr(size_t x) {
-    assert(x < representative.size());
-    if (representative[x] != x) {
-      representative[x] = repr(representative[x]);
-    }
-    return representative[x];
-  }
-
-  std::vector<size_t> representative;
-  std::vector<size_t> classes; // representative's idx of an equivalence class
-};
+}
 
 EqStates findEquivStates(const DFA& dfa) {
-  IndexedEquivSet eqStates(dfa.size());
+  bit_table eqStates(dfa.size(), dfa.size(), false); // a sparse simple matrix
+  std::vector<std::vector<state>> graph(dfa.size()); // an adjacency list of `eqStates`
+  std::vector<dtransitions::Mapping> mappings(dfa.size());
 
-  // identify equivalent states to a fixed point
-  // (probably this could be done more efficiently)
-  do {
-    for (size_t i = 0; i < eqStates.size(); ++i) {
-      for (size_t j = 0; j < i; ++j) {
-        auto s0 = eqStates[i];
-        auto s1 = eqStates[j];
+  for (size_t i = 0; i < dfa.size(); ++i) {
+    eqStates.set(i, i, true);
+    mappings[i] = dfa[i].chars.mapping();
+  }
 
-        // if we already know that two states are equivalent, they're still equivalent
-        if (eqStates.testEquivalence(s0, s1)) continue;
+  for (size_t s0 = 0; s0 < dfa.size(); ++s0) {
+    for (size_t s1 = 0; s1 < s0; ++s1) {
+      // if we already know that two states are equivalent, they're still equivalent
+      if (eqStates(s0, s1)) continue;
 
-        // if two states have different accepting bits, they can't be equivalent
-        if (dfa[s0].acc != dfa[s1].acc) continue;
+      // if two states have different accepting bits, they can't be equivalent
+      if (dfa[s0].acc != dfa[s1].acc) continue;
 
-        // if two states have different capture sets, they can't be equivalent
-        if (dfa[s0].begins != dfa[s1].begins) continue;
-        if (dfa[s0].ends   != dfa[s1].ends)   continue;
+      // if two states have different capture sets, they can't be equivalent
+      if (dfa[s0].begins != dfa[s1].begins) continue;
+      if (dfa[s0].ends   != dfa[s1].ends)   continue;
 
-        // if the shape of mapping sets differs between states, they can't be equivalent
-        if (dfa[s0].chars.rangeSize() != dfa[s1].chars.rangeSize()) continue;
+      const auto & m0 = mappings[s0];
+      const auto & m1 = mappings[s1];
 
-        auto m0 = dfa[s0].chars.mapping();
-        auto m1 = dfa[s1].chars.mapping();
+      // if the shape of mapping sets differs between states, they can't be equivalent
+      if (m0.size() != m1.size()) continue;
 
-        // if there is a transition (c,q) in s0 and (c,q') in s1 and q != q', then s0 != s1 (in this cycle)
-        bool tsEq = true;
-        for (size_t i = 0; i < m0.size() && tsEq; ++i) {
-          tsEq = m0[i].first == m1[i].first && eqStates.testEquivalence(m0[i].second, m1[i].second);
-        }
-        if (tsEq) {
-          eqStates.markEquivalence(s0, s1);
-        }
+      // if there is a transition (c,q) in s0 and (c,q') in s1 and q != q', then s0 != s1 (in this cycle)
+      bool tsEq = true;
+      for (size_t i = 0; i < m0.size() && tsEq; ++i) {
+        tsEq = m0[i].first == m1[i].first && eqStates(m0[i].second, m1[i].second);
+      }
+      if (tsEq) {
+        eqStates.set(s0, s1, true);
+        eqStates.set(s1, s0, true);
+        graph[s0].push_back(s1);
+        graph[s1].push_back(s0);
       }
     }
-  } while (eqStates.compress());
+  }
 
-  return eqStates.substitutions();
+  EqStates result;
+  std::vector<bool> visited(dfa.size(), false);
+  for (state i = 0; i < graph.size(); ++i) {
+    // the first non-visited node is considered as the representative of the
+    // current equivalence classes (connected component)
+    if (!visited[i]) {
+      visitGraph(graph, i, visited, [&result, i](state s) {
+        if (s != i) {
+          result[s] = i;
+        }
+      });
+    }
+  }
+
+  return result;
 }
 
 DFA removeEquivStates(const DFA& dfa, const EqStates& eqs) {

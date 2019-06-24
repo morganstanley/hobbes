@@ -239,8 +239,6 @@ template <typename K, typename V, typename Ord>
       }
     }
 
-    size_t rangeSize() const { return this->rs.size(); }
-
     typedef std::vector<std::pair<range, V>> Mapping;
     Mapping mapping() const {
       Mapping r;
