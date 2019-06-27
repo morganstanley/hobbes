@@ -5,6 +5,8 @@
 #include <hobbes/util/str.H>
 #include <hobbes/util/rmap.H>
 
+#include <queue>
+
 namespace hobbes {
 
 /******************
@@ -1125,57 +1127,83 @@ void mergeCharRangesAndEqResults(DFA* dfa, const RStates& fstates, RStates* rsta
  * compress a DFA by merging equivalent states
  **************************/
 typedef std::map<state, state> EqStates;
-EqStates findEquivStates(const DFA& dfa) {
-  bit_table eqStates(dfa.size(), dfa.size(), false);
-  for (state s = 0; s < dfa.size(); ++s) { eqStates.set(s, s, true); }
 
-  // identify equivalent states to a fixed point
-  // (probably this could be done more efficiently)
-  bool updatedEQ = true;
-  while (updatedEQ) {
-    updatedEQ = false;
-    for (size_t s0 = 0; s0 < dfa.size(); ++s0) {
-      for (size_t s1 = 0; s1 < s0; ++s1) {
-        // if we already know that two states are equivalent, they're still equivalent
-        if (eqStates(s0, s1)) continue;
+void visitGraph(const std::vector<std::vector<state>>& g, state m, std::vector<bool>& visited, std::function<void(state)> visitFn) {
+  std::queue<state> q;
 
-        // if two states have different accepting bits, they can't be equivalent
-        if (dfa[s0].acc != dfa[s1].acc) continue;
+  q.push(m);
+  while (!q.empty()) {
+    auto s = q.front();
+    q.pop();
 
-        // if two states have different capture sets, they can't be equivalent
-        if (dfa[s0].begins != dfa[s1].begins) continue;
-        if (dfa[s0].ends   != dfa[s1].ends)   continue;
+    visited[s] = true;
+    visitFn(s);
 
-        // if the shape of mapping sets differs between states, they can't be equivalent
-        auto m0 = dfa[s0].chars.mapping();
-        auto m1 = dfa[s1].chars.mapping();
-        if (m0.size() != m1.size()) continue;
-
-        // if there is a transition (c,q) in s0 and (c,q') in s1 and q != q', then s0 != s1 (in this cycle)
-        bool tsEq = true;
-        for (size_t i = 0; i < m0.size() && tsEq; ++i) {
-          tsEq = m0[i].first == m1[i].first && eqStates(m0[i].second, m1[i].second);
-        }
-        if (tsEq) {
-          eqStates.set(s0, s1, true);
-          updatedEQ = true;
-        }
+    for (auto t : g[s]) {
+      if (!visited[t]) {
+        q.push(t);
       }
     }
   }
+}
 
-  // convert to a representation that makes state substitution explicit
-  //  (follow mapped-to states in case they are also mapped)
-  EqStates r;
+EqStates findEquivStates(const DFA& dfa) {
+  bit_table eqStates(dfa.size(), dfa.size(), false); // a sparse simple matrix
+  std::vector<std::vector<state>> graph(dfa.size()); // an adjacency list of `eqStates`
+  std::vector<dtransitions::Mapping> mappings(dfa.size());
+
+  for (size_t i = 0; i < dfa.size(); ++i) {
+    eqStates.set(i, i, true);
+    mappings[i] = dfa[i].chars.mapping();
+  }
+
   for (size_t s0 = 0; s0 < dfa.size(); ++s0) {
     for (size_t s1 = 0; s1 < s0; ++s1) {
-      if (eqStates(s0, s1)) {
-        auto s1t = r.find(s1);
-        r[s0] = s1t == r.end() ? s1 : s1t->second;
+      // if we already know that two states are equivalent, they're still equivalent
+      if (eqStates(s0, s1)) continue;
+
+      // if two states have different accepting bits, they can't be equivalent
+      if (dfa[s0].acc != dfa[s1].acc) continue;
+
+      // if two states have different capture sets, they can't be equivalent
+      if (dfa[s0].begins != dfa[s1].begins) continue;
+      if (dfa[s0].ends   != dfa[s1].ends)   continue;
+
+      const auto & m0 = mappings[s0];
+      const auto & m1 = mappings[s1];
+
+      // if the shape of mapping sets differs between states, they can't be equivalent
+      if (m0.size() != m1.size()) continue;
+
+      // if there is a transition (c,q) in s0 and (c,q') in s1 and q != q', then s0 != s1 (in this cycle)
+      bool tsEq = true;
+      for (size_t i = 0; i < m0.size() && tsEq; ++i) {
+        tsEq = m0[i].first == m1[i].first && eqStates(m0[i].second, m1[i].second);
+      }
+      if (tsEq) {
+        eqStates.set(s0, s1, true);
+        eqStates.set(s1, s0, true);
+        graph[s0].push_back(s1);
+        graph[s1].push_back(s0);
       }
     }
   }
-  return r;
+
+  EqStates result;
+  std::vector<bool> visited(dfa.size(), false);
+  for (state i = 0; i < graph.size(); ++i) {
+    // the first non-visited node is considered as the representative of the
+    // current equivalence classes (connected component)
+    if (!visited[i]) {
+      visitGraph(graph, i, visited, [&result, i](state s) {
+        if (s != i) {
+          result[s] = i;
+        }
+      });
+    }
+  }
+
+  return result;
 }
 
 DFA removeEquivStates(const DFA& dfa, const EqStates& eqs) {
