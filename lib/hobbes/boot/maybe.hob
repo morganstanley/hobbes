@@ -40,6 +40,16 @@ mmap f x = case x of |0:_=|0=()|, 1:y=|1=f(y)||
 mmapC :: (exists E.(((E, a) -> b) * E), ()+a) -> (()+b)
 mmapC f x = case x of |0:_=|0=()|, 1:y=|1=apply(f,y)||
 
+instance SeqDesc (()+a) "maybe" a
+
+// [doc] Functor over a maybe
+instance Map f c a r "maybe" (()+a) "maybe" (()+r) where
+  fmap f mm = case mm of |0:_=|0=()|, 1:y=|1=apply(f,y)||
+
+// [doc] Functor over a maybe
+instance Map (exists E.(((E,a)->r) * E)) "closure" a r "maybe" (()+a) "maybe" (()+r) where
+  fmap f mm = case mm of |0:_=|0=()|, 1:y=|1=apply(f,y)||
+
 atm :: (Array as a, Convert i long) => (as, i) -> (()+a)
 atm xs i = let k=convert(i)::long in if (k < size(xs) and k >= 0) then just(element(xs, k)) else nothing
 
