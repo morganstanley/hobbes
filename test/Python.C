@@ -68,7 +68,7 @@ DEFINE_STRUCT(
 );
 
 DEFINE_VARIANT(
-  TestVariant,
+  TestPyVariant,
   (cars, int),
   (dogs, double),
   (chickens, IArr)
@@ -134,22 +134,22 @@ void makeTestData(const std::string& path) {
     }
   }
 
-  *w.define<TestVariant>("tv") = TestVariant::cars(42);
+  *w.define<TestPyVariant>("tv") = TestPyVariant::cars(42);
 
-  auto& tvs = *w.define<std::array<TestVariant, 10>>("tvs");
+  auto& tvs = *w.define<std::array<TestPyVariant, 10>>("tvs");
   for (size_t i = 0; i < 10; ++i) {
     switch (i%3) {
     case 0:
-      tvs[i] = TestVariant::cars(i);
+      tvs[i] = TestPyVariant::cars(i);
       break;
     case 1:
-      tvs[i] = TestVariant::dogs(i*3.14159);
+      tvs[i] = TestPyVariant::dogs(i*3.14159);
       break;
     case 2:
     default: {
       IArr cs;
       for (size_t i = 0; i < cs.size(); ++i) { cs[i] = i; }
-      tvs[i] = TestVariant::chickens(cs);
+      tvs[i] = TestPyVariant::chickens(cs);
       break;
     }}
   }
