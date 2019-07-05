@@ -40,6 +40,18 @@ mmap f x = case x of |0:_=|0=()|, 1:y=|1=f(y)||
 mmapC :: (exists E.(((E, a) -> b) * E), ()+a) -> (()+b)
 mmapC f x = case x of |0:_=|0=()|, 1:y=|1=apply(f,y)||
 
+instance SeqDesc (l+r) "either" r
+
+// [doc] Functor over a Either (with potential default on the left type)
+instance Map f c a b "either" (l+a) "either" (l+b) where
+  fmap f la = case la of |0:l=|0=l|, 1:a=|1=apply(f,a)||
+
+instance (HasDef l) => FilterMap p pc f c a b "either" (l+a) "either" (l+b) where
+  ffilterMap p f la = case la of |0:l=|0=l|, 1:a=if (apply(p,a)) then |1=apply(f,a)| else |0=def||
+
+instance (HasDef l) => FilterMMap f c a b "either" (l+a) "either" (l+b) where
+  ffilterMMap f la = case la of |0:l=|0=l|, 1:a=case apply(f,a) of |0:_=|0=def|,1:b=|1=b|||
+
 atm :: (Array as a, Convert i long) => (as, i) -> (()+a)
 atm xs i = let k=convert(i)::long in if (k < size(xs) and k >= 0) then just(element(xs, k)) else nothing
 
