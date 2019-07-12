@@ -97,6 +97,18 @@ private:
       throw std::runtime_error(__errmsg.str()); \
     } \
   }
+#define EXPECT_ALMOST_EQ(p,x,eps) \
+  { \
+    auto v    = (p); \
+    auto z    = (x); \
+    auto d    = v - z; \
+    auto absd = (d < 0.0 ? -1.0 : 1.0) * d; \
+    if (absd > eps) { \
+      std::ostringstream __errmsg; \
+      __errmsg << "Expression '" #p "' == " << v << ", but expected " << z << " " << FILEINFO(__FILE__, __LINE__); \
+      throw std::runtime_error(__errmsg.str()); \
+    } \
+  }
 
 #define EXPECT_EXCEPTION(p) \
   { \

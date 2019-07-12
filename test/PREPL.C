@@ -50,6 +50,9 @@ TEST(PREPL, EvalBasicExprs) {
 TEST(PREPL, Typeof) {
   EXPECT_EQ(exprTypeof("1+1"), "int");
   EXPECT_EQ(exprTypeof("[x|x<-[0..10],x%2==0]"), "[int]");
+  EXPECT_EQ(exprTypeof("[i|i<-just(3)|z<-just(\"chicken\")]"), "(() + int)");
+  EXPECT_EQ(exprTypeof("[z|i<-just(3)|z<-just(\"chicken\")]"), "(() + [char])");
+  EXPECT_EQ(exprTypeof("fmap(size,[z|i<-just(3)|z<-just(\"chicken\")])"), "(() + long)");
 }
 
 TEST(PREPL, TEnvWithoutHiddenTCs) {

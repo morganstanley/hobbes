@@ -1,0 +1,19 @@
+/*
+ * default
+ */
+
+class HasDef a where
+  def :: a
+
+instance HasDef () where
+  def = ()
+
+instance (HasZero a) => HasDef a where
+  def = zero
+
+instance HasDef [a] where
+  def = []
+
+instance (HasDef r) => HasDef (l+r) where
+  def = |1=def|
+
