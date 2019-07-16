@@ -1499,7 +1499,6 @@ inline void bootEncodingTable(EncodingTable& t) {
   typedef const Reg<X86Reg>& R;
   typedef const RM&          RM;
   typedef const Immediate&   I;
-  typedef const LabelRef&    LBL;
 
   t["add"] = Match({
     Rule(P::reg("al"),  P::imm8(),  [](O o, I ib){o(        ui8(0x04), ui8(ib));}),
