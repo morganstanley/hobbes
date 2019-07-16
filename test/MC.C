@@ -37,3 +37,18 @@ TEST(MC, BasicDoubleFn) {
   EXPECT_ALMOST_EQ(f(3.14159), 6.28318, 0.0001);
 }
 
+int twentyOne() { return 21; }
+int twiceInt(int x) { return x+x; }
+
+TEST(MC, BasicCalls) {
+  auto f = assemble<int(*)(int(*)())>({
+    mc::MInst::make("sub", "rsp", mc::ui32(8)),
+    mc::MInst::make("call", "rdi"),              // on Windows, std arg0 is in rcx/ecx instead of rdi/edi
+    mc::MInst::make("mov", "edi", "eax"),
+    mc::MInst::make("call", mc::ui64(reinterpret_cast<int64_t>(&twiceInt))),
+    mc::MInst::make("add", "rsp", mc::ui32(8)),
+    mc::MInst::make("ret")
+  });
+  EXPECT_EQ(f(&twentyOne), 42);
+}
+

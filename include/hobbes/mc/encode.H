@@ -184,6 +184,7 @@ public:
         // no we're clear, so write this patch and remember it for the future
         memcpy(rip, &b[0], n);
         this->ripPatches[rip] = Patch(pfn, n);
+        break;
       }
     }
   }
@@ -1450,7 +1451,7 @@ public:
   void call(const void* faddr) {
     this->b->patchWithRIP(
       [faddr](const uint8_t* rip, buffer::PatchBuffer* b, uint32_t* len) {
-        int64_t diff = reinterpret_cast<uint64_t>(rip) - reinterpret_cast<uint64_t>(rip + 5);
+        int64_t diff = reinterpret_cast<uint64_t>(faddr) - reinterpret_cast<uint64_t>(rip + 5);
 
         if (canLowerTo<int32_t>(diff)) {
           int32_t diff32 = static_cast<int32_t>(diff);
@@ -1463,7 +1464,7 @@ public:
           // mov rax, faddr
           (*b)[0] = REXW().byte;
           (*b)[1] = 0xb8;
-          memcpy(&(*b)[2], &faddr, 8);
+          *reinterpret_cast<const void**>(&(*b)[2]) = faddr;
 
           // call rax
           Reg<X86Reg> rax;
@@ -1498,6 +1499,7 @@ inline void bootEncodingTable(EncodingTable& t) {
   typedef const Reg<X86Reg>& R;
   typedef const RM&          RM;
   typedef const Immediate&   I;
+  typedef const LabelRef&    LBL;
 
   t["add"] = Match({
     Rule(P::reg("al"),  P::imm8(),  [](O o, I ib){o(        ui8(0x04), ui8(ib));}),
@@ -1531,6 +1533,37 @@ inline void bootEncodingTable(EncodingTable& t) {
     Rule(P::rf32(), P::rmf32(), [](O o, R r, RM rm){o(ui8(0xf3), REX(r, rm), ui8(0x0f), ui8(0x58), MODRM(r, rm));})
   });
 
+  t["and"] = Match({
+    Rule(P::reg("al"),   P::imm8(), [](O o, I ib){o(        ui8(0x24),  ui8(ib));}),
+    Rule(P::reg("ax"),  P::imm16(), [](O o, I iw){o(S16(),  ui8(0x25), ui16(iw));}),
+    Rule(P::reg("eax"), P::imm32(), [](O o, I id){o(        ui8(0x25), ui32(id));}),
+    Rule(P::reg("rax"), P::imm32(), [](O o, I id){o(REXW(), ui8(0x25), ui32(id));}),
+
+    Rule( P::rm8(),  P::imm8(), [](O o, RM rm, I ib){o(        REX(rm), ui8(0x80), MODRM(4, rm),  ui8(ib));}),
+    Rule(P::rm16(), P::imm16(), [](O o, RM rm, I iw){o(S16(),  REX(rm), ui8(0x81), MODRM(4, rm), ui16(iw));}),
+    Rule(P::rm32(), P::imm32(), [](O o, RM rm, I id){o(        REX(rm), ui8(0x81), MODRM(4, rm), ui32(id));}),
+    Rule(P::rm64(), P::imm32(), [](O o, RM rm, I id){o(       REXW(rm), ui8(0x81), MODRM(4, rm), ui32(id));}),
+
+    Rule(P::rm16(), P::imm8(), [](O o, RM rm, I ib){o(S16(),  REX(rm), ui8(0x83), MODRM(4, rm), ui8(ib));}),
+    Rule(P::rm32(), P::imm8(), [](O o, RM rm, I ib){o(        REX(rm), ui8(0x83), MODRM(4, rm), ui8(ib));}),
+    Rule(P::rm64(), P::imm8(), [](O o, RM rm, I ib){o(       REXW(rm), ui8(0x83), MODRM(4, rm), ui8(ib));}),
+
+    Rule( P::rm8(),  P::r8(), [](O o, RM rm, R r){o(        REX(r, rm), ui8(0x20), MODRM(r, rm));}),
+    Rule(P::rm16(), P::r16(), [](O o, RM rm, R r){o(S16(),  REX(r, rm), ui8(0x21), MODRM(r, rm));}),
+    Rule(P::rm32(), P::r32(), [](O o, RM rm, R r){o(        REX(r, rm), ui8(0x21), MODRM(r, rm));}),
+    Rule(P::rm64(), P::r64(), [](O o, RM rm, R r){o(       REXW(r, rm), ui8(0x21), MODRM(r, rm));}),
+
+    Rule( P::r8(),  P::rm8(), [](O o, R r, RM rm){o(        REX(r, rm), ui8(0x22), MODRM(r, rm));}),
+    Rule(P::r16(), P::rm16(), [](O o, R r, RM rm){o(S16(),  REX(r, rm), ui8(0x23), MODRM(r, rm));}),
+    Rule(P::r32(), P::rm32(), [](O o, R r, RM rm){o(        REX(r, rm), ui8(0x23), MODRM(r, rm));}),
+    Rule(P::r64(), P::rm64(), [](O o, R r, RM rm){o(       REXW(r, rm), ui8(0x23), MODRM(r, rm));})
+  });
+
+  t["call"] = Match({
+    Rule(P::imm64(), [](O o, I    iq){o.call(reinterpret_cast<void*>(ui64(iq)));}),
+    Rule(P::rm64(),  [](O o, RM   rm){o(REX(rm), ui8(0xff), MODRM(2, rm));})
+  });
+
   t["mov"] = Match({
     Rule( P::rm8(),  P::r8(), [](O o, RM rm, R r){o(        REX(r,rm), ui8(0x88), MODRM(r,rm));}),
     Rule(P::rm16(), P::r16(), [](O o, RM rm, R r){o(S16(),  REX(r,rm), ui8(0x89), MODRM(r,rm));}),
@@ -1555,6 +1588,32 @@ inline void bootEncodingTable(EncodingTable& t) {
 
   t["ret"] = Match({
     Rule([](O o) { o(ui8(0xc3)); })
+  });
+
+  t["sub"] = Match({
+    Rule(P::reg("al"),  P::imm8(),  [](O o, I ib){o(        ui8(0x2c), ui8(ib));}),
+    Rule(P::reg("ax"),  P::imm16(), [](O o, I iw){o(S16(),  ui8(0x2d), ui16(iw));}),
+    Rule(P::reg("eax"), P::imm32(), [](O o, I id){o(        ui8(0x2d), ui32(id));}),
+    Rule(P::reg("rax"), P::imm32(), [](O o, I id){o(REXW(), ui8(0x2d), ui32(id));}),
+
+    Rule( P::rm8(),  P::imm8(), [](O o, RM rm, I ib){o(        REX(rm), ui8(0x80), MODRM(5, rm), ui8(ib));}),
+    Rule(P::rm16(), P::imm16(), [](O o, RM rm, I iw){o(S16(),  REX(rm), ui8(0x81), MODRM(5, rm), ui16(iw));}),
+    Rule(P::rm32(), P::imm32(), [](O o, RM rm, I id){o(        REX(rm), ui8(0x81), MODRM(5, rm), ui32(id));}),
+    Rule(P::rm64(), P::imm32(), [](O o, RM rm, I id){o(       REXW(rm), ui8(0x81), MODRM(5, rm), ui32(id));}),
+
+    Rule(P::rm16(), P::imm8(), [](O o, RM rm, I ib){o(S16(),  REX(rm), ui8(0x83), MODRM(5, rm), ui8(ib));}),
+    Rule(P::rm32(), P::imm8(), [](O o, RM rm, I ib){o(        REX(rm), ui8(0x83), MODRM(5, rm), ui8(ib));}),
+    Rule(P::rm64(), P::imm8(), [](O o, RM rm, I ib){o(       REXW(rm), ui8(0x83), MODRM(5, rm), ui8(ib));}),
+
+    Rule( P::rm8(),  P::r8(), [](O o, RM rm, R r){o(        REX(r, rm), ui8(0x28), MODRM(r, rm));}),
+    Rule(P::rm16(), P::r16(), [](O o, RM rm, R r){o(S16(),  REX(r, rm), ui8(0x29), MODRM(r, rm));}),
+    Rule(P::rm32(), P::r32(), [](O o, RM rm, R r){o(        REX(r, rm), ui8(0x29), MODRM(r, rm));}),
+    Rule(P::rm64(), P::r64(), [](O o, RM rm, R r){o(       REXW(r, rm), ui8(0x29), MODRM(r, rm));}),
+
+    Rule( P::r8(), P::rm8(),  [](O o, R r, RM rm){o(        REX(r, rm), ui8(0x2a), MODRM(r, rm));}),
+    Rule(P::r16(), P::rm16(), [](O o, R r, RM rm){o(S16(),  REX(r, rm), ui8(0x2b), MODRM(r, rm));}),
+    Rule(P::r32(), P::rm32(), [](O o, R r, RM rm){o(        REX(r, rm), ui8(0x2b), MODRM(r, rm));}),
+    Rule(P::r64(), P::rm64(), [](O o, R r, RM rm){o(       REXW(r, rm), ui8(0x2b), MODRM(r, rm));})
   });
 }
 
