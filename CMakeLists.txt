@@ -153,7 +153,6 @@ set_property(TARGET hobbes-pic PROPERTY POSITION_INDEPENDENT_CODE TRUE)
 
 file(GLOB hi_files bin/hi/*.C)
 add_executable(hi ${hi_files})
-
 with_llvm_config(hi hobbes ncurses readline ${sys_libs})
 
 file(GLOB_RECURSE hog_files bin/hog/*.C)
