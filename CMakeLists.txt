@@ -8,7 +8,7 @@ set (CMAKE_CXX_STANDARD 11)
 find_package(ZLIB REQUIRED)
 include_directories(${ZLIB_INCLUDE_DIRS})
 
-find_package(LLVM REQUIRED CONFIG)
+find_package(LLVM 8.0 REQUIRED CONFIG)
 include_directories(${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
 message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
