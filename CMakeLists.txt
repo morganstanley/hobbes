@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 3.4.1)
 project(hobbes)
+
+enable_language(CXX)
+
 set (CMAKE_CXX_STANDARD 11)
 
 find_package(ZLIB REQUIRED)
@@ -8,30 +11,89 @@ include_directories(${ZLIB_INCLUDE_DIRS})
 find_package(LLVM REQUIRED CONFIG)
 include_directories(${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
+message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
+message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
+message(STATUS "LLVM_INCLUDE_DIRS=${LLVM_INCLUDE_DIRS}")
+message(STATUS "LLVM_DEFINITIONS=${LLVM_DEFINITIONS}")
 
-if (${LLVM_PACKAGE_VERSION} VERSION_LESS "3.6")
-  set(jit_lib jit)
-else()
-  set(jit_lib mcjit)
+message(STATUS "SYSTEM_PROCESSOR ${CMAKE_SYSTEM_PROCESSOR}")
+if (CMAKE_SYSTEM_PROCESSOR MATCHES "(x86)|(X86)|(amd64)|(AMD64)")
+  set(llvm_libs_processor
+    x86
+    x86codegen
+    x86asmparser
+    x86disassembler
+    x86asmprinter
+    x86desc
+    x86info
+    x86utils
+  )
+elseif (CMAKE_SYSTEM_PROCESSOR MATCHES "arm")
+  set(llvm_libs_processor
+    armcodegen
+    armasmparser
+    armdisassembler
+    armasmprinter
+    armdesc
+    arminfo
+  )
 endif()
-# 'x86' module should have covered 'x86asmparser' and 'x86codegen' already, but using 'x86' alone didn't work
-llvm_map_components_to_libnames(llvm_libs x86asmparser x86codegen x86 ipo ${jit_lib})
 
-file(GLOB_RECURSE lib_headers lib/*.H)
-file(GLOB_RECURSE lib_source lib/*.C)
-set(lib_files ${lib_headers} ${lib_source})
-include_directories(include)
+function(with_llvm_config trget)
+  if (${LLVM_PACKAGE_VERSION} VERSION_LESS "3.6")
+    set(llvm_jit_lib jit)
+  else()
+    set(llvm_jit_lib mcjit)
+    set(llvm_passes_lib passes)
+  endif()
 
-add_library(hobbes STATIC ${lib_files})
-llvm_config(hobbes x86)
-target_link_libraries(hobbes ${llvm_libs} ${ZLIB_LIBRARIES})
-add_library(hobbes-pic STATIC ${lib_files})
-target_link_libraries(hobbes-pic ${llvm_libs} ${ZLIB_LIBRARIES})
-set_property(TARGET hobbes-pic PROPERTY POSITION_INDEPENDENT_CODE TRUE)
+  if (${LLVM_PACKAGE_VERSION} VERSION_LESS "3.8")
+    set(llvm_extra_libs ipa)
+  else()
+  endif()
 
-file(GLOB test_files test/*.C)
-file(GLOB hi_files bin/hi/*.C)
-file(GLOB_RECURSE hog_files bin/hog/*.C)
+  if (${LLVM_PACKAGE_VERSION} VERSION_LESS "5.0.0")
+  else()
+    set(llvm_extra_libs orcjit)
+  endif()
+
+  set(llvm_libs
+    analysis
+    asmparser
+    asmprinter
+    bitreader
+    core
+    codegen
+    executionengine
+    instcombine
+    ${llvm_extra_libs}
+    ipo
+    ${llvm_jit_lib}
+    mcparser
+    object
+    ${llvm_passes_lib}
+    runtimedyld
+    scalaropts
+    support
+    target
+    transformutils
+    ${llvm_libs_processor}
+  )
+  set(local_libs ${ARGN})
+  llvm_map_components_to_libnames(local_llvm_libs ${llvm_libs})
+  message(STATUS "target : ${trget}")
+  message(STATUS "target_libs : ${local_libs}")
+  message(STATUS "llvm_libs : ${local_llvm_libs}")
+
+  get_target_property(t ${trget} TYPE)
+  if ("x${t}" STREQUAL "xSTATIC_LIBRARY")
+    target_link_libraries(${trget} INTERFACE ${local_libs} ${local_llvm_libs})
+  elseif("x${t}" STREQUAL "xSHARED_LIBRARY" OR "x${t}" STREQUAL "xMODULE_LIBRARY")
+    target_link_libraries(${trget} PRIVATE ${local_libs} ${local_llvm_libs})
+  else()
+    target_link_libraries(${trget} ${local_libs} ${local_llvm_libs})
+  endif()
+endfunction(with_llvm_config)
 
 if(UNIX AND NOT APPLE)
   set(LINUX TRUE)
@@ -49,33 +111,58 @@ if(LINUX)
 endif()
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${cxx_flags}")
-set(CMAKE_CXX_FLAGS_DEBUG "-g")
-set(CMAKE_CXX_FLAGS_RELEASE "-O2")
 
+if (MSVC)
+  message(STATUS "MSVC compiler isn't supported yet")
+elseif ((CMAKE_C_COMPILER_ID MATCHES "GNU" OR CMAKE_C_COMPILER_ID MATCHES "Clang") AND NOT APPLE)
+  if (NOT WIN32)
+      # assume Linux
+  endif ()
+  message(STATUS "Compiling on GNU or Clang platform")
+  # set(SANITIZER_FLAGS "-fsanitize=address")
+  set(CMAKE_CXX_FLAGS "-frtti -O2 -fomit-frame-pointer -Wall -Wno-sign-compare -Winline -Wno-delete-non-virtual-dtor -std=c++11 -fexceptions")
+  set(CMAKE_CXX_FLAGS_DEBUG "${SANITIZER_FLAGS} -fno-omit-frame-pointer -frtti -O0 -g3 -Wall -Wno-sign-compare -Wno-delete-non-virtual-dtor -std=c++11 -fexceptions")
+  set(CMAKE_CXX_FLAGS_RELEASE "-frtti -DNDEBUG -O2 -fomit-frame-pointer -Wall -Wno-sign-compare -Winline -Wno-delete-non-virtual-dtor -std=c++11 -fexceptions")
+  set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${SANITIZER_FLAGS} -DNDEBUG -frtti -O2 -g3 -Wall -Wno-sign-compare -Wno-delete-non-virtual-dtor -std=c++11 -fexceptions")
+elseif (APPLE)
+  message(STATUS "Compiling on APPLE platform")
+  set(CMAKE_CXX_FLAGS "-O3 -DNDEBUG -Wall -frtti -Wno-sign-compare -Wno-delete-non-virtual-dtor -fexceptions")
+  set(CMAKE_CXX_FLAGS_DEBUG "-frtti -O0 -g3 -Wall -Wno-sign-compare -Wno-delete-non-virtual-dtor -fexceptions")
+  set(CMAKE_CXX_FLAGS_RELEASE "-frtti -DNDEBUG -O2 -Wall -Wno-sign-compare -Wno-delete-non-virtual-dtor -fexceptions")
+  set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-frtti -DNDEBUG -O2 -g3 -Wall -Wno-sign-compare -Wno-delete-non-virtual-dtor -fexceptions")
+else()
+  message(FATAL_ERROR "Unsupported platform")
+endif ()
+
+message(STATUS "CMAKE_CXX_FLAGS=${CMAKE_CXX_FLAGS}")
+message(STATUS "CMAKE_CXX_FLAGS_DEBUG=${CMAKE_CXX_FLAGS_DEBUG}")
+message(STATUS "CMAKE_CXX_FLAGS_RELEASE=${CMAKE_CXX_FLAGS_RELEASE}")
+message(STATUS "CMAKE_CXX_FLAGS_RELWITHDEBINFO=${CMAKE_CXX_FLAGS_RELWITHDEBINFO}")
+
+file(GLOB_RECURSE lib_headers lib/*.H)
+file(GLOB_RECURSE lib_source lib/*.C)
+set(lib_files ${lib_headers} ${lib_source})
+include_directories(include)
+
+add_library(hobbes STATIC ${lib_files})
+with_llvm_config(hobbes ${ZLIB_LIBRARIES})
+
+add_library(hobbes-pic STATIC ${lib_files})
+with_llvm_config(hobbes-pic ${ZLIB_LIBRARIES})
+set_property(TARGET hobbes-pic PROPERTY POSITION_INDEPENDENT_CODE TRUE)
+
+file(GLOB hi_files bin/hi/*.C)
 add_executable(hi ${hi_files})
-if (${LLVM_PACKAGE_VERSION} VERSION_LESS "3.6")
-  llvm_config(hi codegen core executionengine instcombine ipo lto mc mcdisassembler mcjit runtimedyld scalaropts support target transformutils x86 x86asmparser x86asmprinter x86codegen x86desc x86disassembler x86info x86utils)
-else()
-  llvm_config(hi codegen core executionengine instcombine ipo lto mc mcdisassembler mcjit passes runtimedyld scalaropts support target transformutils x86 x86asmparser x86asmprinter x86codegen x86desc x86disassembler x86info x86utils)
-endif()
+with_llvm_config(hi hobbes ncurses readline ${sys_libs})
 
-target_link_libraries(hi hobbes ncurses readline ${sys_libs})
+file(GLOB_RECURSE hog_files bin/hog/*.C)
 add_executable(hog ${hog_files})
-if (${LLVM_PACKAGE_VERSION} VERSION_LESS "3.6")
-  llvm_config(hog codegen core executionengine instcombine ipo lto mc mcdisassembler mcjit runtimedyld scalaropts support target transformutils x86 x86asmparser x86asmprinter x86codegen x86desc x86disassembler x86info x86utils)
-else()
-  llvm_config(hog codegen core executionengine instcombine ipo lto mc mcdisassembler mcjit passes runtimedyld scalaropts support target transformutils x86 x86asmparser x86asmprinter x86codegen x86desc x86disassembler x86info x86utils)
-endif()
-target_link_libraries(hog hobbes ncurses ${sys_libs})
+with_llvm_config(hog hobbes ncurses ${sys_libs})
 
 enable_testing()
+file(GLOB test_files test/*.C)
 add_executable(hobbes-test ${test_files})
-if (${LLVM_PACKAGE_VERSION} VERSION_LESS "3.6")
-  llvm_config(hobbes-test codegen core executionengine instcombine ipo lto mc mcdisassembler mcjit runtimedyld scalaropts support target transformutils x86 x86asmparser x86asmprinter x86codegen x86desc x86disassembler x86info x86utils)
-else()
-  llvm_config(hobbes-test codegen core executionengine instcombine ipo lto mc mcdisassembler mcjit passes runtimedyld scalaropts support target transformutils x86 x86asmparser x86asmprinter x86codegen x86desc x86disassembler x86info x86utils)
-endif()
-target_link_libraries(hobbes-test hobbes ncurses ${sys_libs})
+with_llvm_config(hobbes-test hobbes ncurses ${sys_libs})
 add_test(hobbes-test hobbes-test)
 include(FindPythonInterp)
 set_property(TARGET hobbes-test PROPERTY COMPILE_FLAGS "-DPYTHON_EXECUTABLE=\"${PYTHON_EXECUTABLE}\" -DSCRIPT_DIR=\"${CMAKE_SOURCE_DIR}/scripts/\"")
