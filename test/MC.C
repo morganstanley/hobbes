@@ -52,3 +52,15 @@ TEST(MC, BasicCalls) {
   EXPECT_EQ(f(&twentyOne), 42);
 }
 
+TEST(MC, CmpSetcc) {
+    auto f = assemble<bool(*)(int)>({
+      mc::MInst::make("sub", "rsp", mc::ui32(8)),
+      mc::MInst::make("cmp", "edi", mc::ui32(40)),
+      mc::MInst::make("setl", "al"),
+      mc::MInst::make("add", "rsp", mc::ui32(8)),
+      mc::MInst::make("ret")
+    });
+    EXPECT_EQ(f(21), true);
+    EXPECT_EQ(f(42), false);
+}
+

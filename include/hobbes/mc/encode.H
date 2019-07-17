@@ -1563,6 +1563,32 @@ inline void bootEncodingTable(EncodingTable& t) {
     Rule(P::rm64(),  [](O o, RM   rm){o(REX(rm), ui8(0xff), MODRM(2, rm));})
   });
 
+  t["cmp"] = Match({
+    Rule(P::reg("al"),   P::imm8(), [](O o, I ib){o(        ui8(0x3c),  ui8(ib));}),
+    Rule(P::reg("ax"),  P::imm16(), [](O o, I iw){o(S16(),  ui8(0x3d), ui16(iw));}),
+    Rule(P::reg("eax"), P::imm32(), [](O o, I id){o(        ui8(0x3d), ui32(id));}),
+    Rule(P::reg("rax"), P::imm32(), [](O o, I id){o(REXW(), ui8(0x3d), ui32(id));}),
+
+    Rule( P::rm8(),  P::imm8(), [](O o, RM rm, I ib){o(        REX(rm), ui8(0x80), MODRM(7, rm), ui8(ib));}),
+    Rule(P::rm16(), P::imm16(), [](O o, RM rm, I iw){o(S16(),  REX(rm), ui8(0x81), MODRM(7, rm), ui16(iw));}),
+    Rule(P::rm32(), P::imm32(), [](O o, RM rm, I id){o(        REX(rm), ui8(0x81), MODRM(7, rm), ui32(id));}),
+    Rule(P::rm64(), P::imm32(), [](O o, RM rm, I id){o(       REXW(rm), ui8(0x81), MODRM(7, rm), ui32(id));}),
+
+    Rule(P::rm16(), P::imm8(), [](O o, RM rm, I ib){o(S16(),  REX(rm), ui8(0x83), MODRM(7, rm), ui8(ib));}),
+    Rule(P::rm32(), P::imm8(), [](O o, RM rm, I ib){o(        REX(rm), ui8(0x83), MODRM(7, rm), ui8(ib));}),
+    Rule(P::rm64(), P::imm8(), [](O o, RM rm, I ib){o(       REXW(rm), ui8(0x83), MODRM(7, rm), ui8(ib));}),
+
+    Rule( P::rm8(),  P::r8(), [](O o, RM rm, R r){o(        REX(r, rm), ui8(0x38), MODRM(r, rm));}),
+    Rule(P::rm16(), P::r16(), [](O o, RM rm, R r){o(S16(),  REX(r, rm), ui8(0x39), MODRM(r, rm));}),
+    Rule(P::rm32(), P::r32(), [](O o, RM rm, R r){o(        REX(r, rm), ui8(0x39), MODRM(r, rm));}),
+    Rule(P::rm64(), P::r64(), [](O o, RM rm, R r){o(       REXW(r, rm), ui8(0x39), MODRM(r, rm));}),
+
+    Rule( P::r8(),  P::rm8(), [](O o, R r, RM rm){o(        REX(r, rm), ui8(0x3a), MODRM(r, rm));}),
+    Rule(P::r16(), P::rm16(), [](O o, R r, RM rm){o(S16(),  REX(r, rm), ui8(0x3b), MODRM(r, rm));}),
+    Rule(P::r32(), P::rm32(), [](O o, R r, RM rm){o(        REX(r, rm), ui8(0x3b), MODRM(r, rm));}),
+    Rule(P::r64(), P::rm64(), [](O o, R r, RM rm){o(       REXW(r, rm), ui8(0x3b), MODRM(r, rm));})
+  });
+
   t["mov"] = Match({
     Rule( P::rm8(),  P::r8(), [](O o, RM rm, R r){o(        REX(r,rm), ui8(0x88), MODRM(r,rm));}),
     Rule(P::rm16(), P::r16(), [](O o, RM rm, R r){o(S16(),  REX(r,rm), ui8(0x89), MODRM(r,rm));}),
