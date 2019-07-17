@@ -1589,6 +1589,49 @@ inline void bootEncodingTable(EncodingTable& t) {
     Rule([](O o) { o(ui8(0xc3)); })
   });
 
+  t["seta"]   = Match({Rule(P::rm8(), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x97),MODRM(0,rm));})});
+  t["setae"]  = Match({Rule(P::rm8(), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x93),MODRM(0,rm));})});
+  t["setb"]   = Match({Rule(P::rm8(), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x92),MODRM(0,rm));})});
+  t["setbe"]  = Match({Rule(P::rm8(), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x96),MODRM(0,rm));})});
+  t["setc"]   = Match({Rule(P::rm8(), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x92),MODRM(0,rm));})});
+  t["sete"]   = Match({Rule(P::rm8(), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x94),MODRM(0,rm));})});
+  t["setg"]   = Match({Rule(P::rm8(), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x9f),MODRM(0,rm));})});
+  t["setge"]  = Match({Rule(P::rm8(), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x9d),MODRM(0,rm));})});
+  t["setl"]   = Match({Rule(P::rm8(), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x9c),MODRM(0,rm));})});
+  t["setle"]  = Match({Rule(P::rm8(), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x9e),MODRM(0,rm));})});
+  t["setna"]  = Match({Rule(P::rm8(), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x96),MODRM(0,rm));})});
+  t["setnae"] = Match({Rule(P::rm8(), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x92),MODRM(0,rm));})});
+  t["setnb"]  = Match({Rule(P::rm8(), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x93),MODRM(0,rm));})});
+  t["setnbe"] = Match({Rule(P::rm8(), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x97),MODRM(0,rm));})});
+  t["setnc"]  = Match({Rule(P::rm8(), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x93),MODRM(0,rm));})});
+  t["setne"]  = Match({Rule(P::rm8(), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x95),MODRM(0,rm));})});
+  t["setng"]  = Match({Rule(P::rm8(), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x9e),MODRM(0,rm));})});
+  t["setnge"] = Match({Rule(P::rm8(), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x9c),MODRM(0,rm));})});
+  t["setnl"]  = Match({Rule(P::rm8(), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x9d),MODRM(0,rm));})});
+  t["setnle"] = Match({Rule(P::rm8(), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x9f),MODRM(0,rm));})});
+
+  t["sfence"] = Match({
+    Rule([](O o){o(ui8(0x0f), ui8(0xae), ui8(0xf8));})
+  });
+
+  t["shld"] = Match({
+    Rule(P::rm16(), P::r16(), P::imm8(),    [](O o, RM rm, R r, I ib){o(S16(),  REX(r,rm), ui8(0x0f), ui8(0xa4), MODRM(r,rm), ui8(ib));}),
+    Rule(P::rm16(), P::r16(), P::reg("cl"), [](O o, RM rm, R r)      {o(S16(),  REX(r,rm), ui8(0x0f), ui8(0xa5), MODRM(r,rm));}),
+    Rule(P::rm32(), P::r32(), P::imm8(),    [](O o, RM rm, R r, I ib){o(        REX(r,rm), ui8(0x0f), ui8(0xa4), MODRM(r,rm), ui8(ib));}),
+    Rule(P::rm32(), P::r32(), P::reg("cl"), [](O o, RM rm, R r)      {o(        REX(r,rm), ui8(0x0f), ui8(0xa5), MODRM(r,rm));}),
+    Rule(P::rm64(), P::r64(), P::imm8(),    [](O o, RM rm, R r, I ib){o(       REXW(r,rm), ui8(0x0f), ui8(0xa4), MODRM(r,rm), ui8(ib));}),
+    Rule(P::rm64(), P::r64(), P::reg("cl"), [](O o, RM rm, R r)      {o(       REXW(r,rm), ui8(0x0f), ui8(0xa5), MODRM(r,rm));})
+  });
+
+  t["shrd"] = Match({
+    Rule(P::rm16(), P::r16(), P::imm8(),    [](O o, RM rm, R r, I ib){o(S16(),  REX(r,rm), ui8(0x0f), ui8(0xac), MODRM(r,rm), ui8(ib));}),
+    Rule(P::rm16(), P::r16(), P::reg("cl"), [](O o, RM rm, R r)      {o(S16(),  REX(r,rm), ui8(0x0f), ui8(0xad), MODRM(r,rm));}),
+    Rule(P::rm32(), P::r32(), P::imm8(),    [](O o, RM rm, R r, I ib){o(        REX(r,rm), ui8(0x0f), ui8(0xac), MODRM(r,rm), ui8(ib));}),
+    Rule(P::rm32(), P::r32(), P::reg("cl"), [](O o, RM rm, R r)      {o(        REX(r,rm), ui8(0x0f), ui8(0xad), MODRM(r,rm));}),
+    Rule(P::rm64(), P::r64(), P::imm8(),    [](O o, RM rm, R r, I ib){o(       REXW(r,rm), ui8(0x0f), ui8(0xac), MODRM(r,rm), ui8(ib));}),
+    Rule(P::rm64(), P::r64(), P::reg("cl"), [](O o, RM rm, R r)      {o(       REXW(r,rm), ui8(0x0f), ui8(0xad), MODRM(r,rm));})
+  });
+
   t["sub"] = Match({
     Rule(P::reg("al"),  P::imm8(),  [](O o, I ib){o(        ui8(0x2c), ui8(ib));}),
     Rule(P::reg("ax"),  P::imm16(), [](O o, I iw){o(S16(),  ui8(0x2d), ui16(iw));}),
