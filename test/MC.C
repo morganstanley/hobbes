@@ -64,3 +64,20 @@ TEST(MC, CmpSetcc) {
     EXPECT_EQ(f(42), false);
 }
 
+TEST(MC, CmpJcc) {
+    auto f = assemble<bool(*)(int)>({
+      mc::MInst::make("sub", "rsp", mc::ui32(8)),
+      mc::MInst::make("cmp", "edi", mc::ui32(42)),
+      mc::MInst::make("je", mc::MArg::labelRef("is_42")),
+      mc::MInst::make("mov", "al", mc::ui8(0)),
+      mc::MInst::make("add", "rsp", mc::ui32(8)),
+      mc::MInst::make("ret"),
+      mc::MInst::defineLabel("is_42"),
+      mc::MInst::make("mov", "al", mc::ui8(1)),
+      mc::MInst::make("add", "rsp", mc::ui32(8)),
+      mc::MInst::make("ret"),
+    });
+    EXPECT_EQ(f(21), false);
+    EXPECT_EQ(f(42), true);
+}
+

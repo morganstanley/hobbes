@@ -1499,6 +1499,7 @@ inline void bootEncodingTable(EncodingTable& t) {
   typedef const Reg<X86Reg>& R;
   typedef const RM&          RM;
   typedef const Immediate&   I;
+  typedef const LabelRef&    LR;
 
   t["add"] = Match({
     Rule(P::reg("al"),  P::imm8(),  [](O o, I ib){o(        ui8(0x04), ui8(ib));}),
@@ -1588,6 +1589,45 @@ inline void bootEncodingTable(EncodingTable& t) {
     Rule(P::r32(), P::rm32(), [](O o, R r, RM rm){o(        REX(r, rm), ui8(0x3b), MODRM(r, rm));}),
     Rule(P::r64(), P::rm64(), [](O o, R r, RM rm){o(       REXW(r, rm), ui8(0x3b), MODRM(r, rm));})
   });
+
+  t["deflbl"] = Match({
+    Rule(P::lbl(), [](O o, LR lbl){o.labelDef(lbl.label);})
+  });
+
+  t["jmp"] = Match({
+    Rule(P::lbl(),  [](O o, LR lbl){o(ui8(0xe9)); o.labelRef(lbl.label);}),
+    Rule(P::rm64(), [](O o, RM  rm){o(REXW(rm), ui8(0xff), MODRM(4, rm));})
+  });
+  t["ja"]   = Match({Rule(P::lbl(), [](O o, LR lbl){o(ui8(0x0f),ui8(0x87));o.labelRef(lbl.label);})});
+  t["jae"]  = Match({Rule(P::lbl(), [](O o, LR lbl){o(ui8(0x0f),ui8(0x83));o.labelRef(lbl.label);})});
+  t["jb"]   = Match({Rule(P::lbl(), [](O o, LR lbl){o(ui8(0x0f),ui8(0x82));o.labelRef(lbl.label);})});
+  t["jbe"]  = Match({Rule(P::lbl(), [](O o, LR lbl){o(ui8(0x0f),ui8(0x86));o.labelRef(lbl.label);})});
+  t["jc"]   = t["jb"];
+  t["je"]   = Match({Rule(P::lbl(), [](O o, LR lbl){o(ui8(0x0f),ui8(0x84));o.labelRef(lbl.label);})});
+  t["jg"]   = Match({Rule(P::lbl(), [](O o, LR lbl){o(ui8(0x0f),ui8(0x8f));o.labelRef(lbl.label);})});
+  t["jge"]  = Match({Rule(P::lbl(), [](O o, LR lbl){o(ui8(0x0f),ui8(0x8d));o.labelRef(lbl.label);})});
+  t["jl"]   = Match({Rule(P::lbl(), [](O o, LR lbl){o(ui8(0x0f),ui8(0x8c));o.labelRef(lbl.label);})});
+  t["jle"]  = Match({Rule(P::lbl(), [](O o, LR lbl){o(ui8(0x0f),ui8(0x8e));o.labelRef(lbl.label);})});
+  t["jna"]  = t["jbe"];
+  t["jnae"] = t["jb"];
+  t["jnb"]  = t["jae"];
+  t["jnbe"] = t["ja"];
+  t["jnc"]  = t["jae"];
+  t["jne"]  = Match({Rule(P::lbl(), [](O o, LR lbl){o(ui8(0x0f),ui8(0x85));o.labelRef(lbl.label);})});
+  t["jng"]  = t["jle"];
+  t["jnge"] = t["jl"];
+  t["jnl"]  = t["jge"];
+  t["jnle"] = t["jg"];
+  t["jno"]  = Match({Rule(P::lbl(), [](O o, LR lbl){o(ui8(0x0f),ui8(0x81));o.labelRef(lbl.label);})});
+  t["jnp"]  = Match({Rule(P::lbl(), [](O o, LR lbl){o(ui8(0x0f),ui8(0x8b));o.labelRef(lbl.label);})});
+  t["jns"]  = Match({Rule(P::lbl(), [](O o, LR lbl){o(ui8(0x0f),ui8(0x89));o.labelRef(lbl.label);})});
+  t["jnz"]  = t["jne"];
+  t["jo"]   = Match({Rule(P::lbl(), [](O o, LR lbl){o(ui8(0x0f),ui8(0x80));o.labelRef(lbl.label);})});
+  t["jp"]   = Match({Rule(P::lbl(), [](O o, LR lbl){o(ui8(0x0f),ui8(0x8a));o.labelRef(lbl.label);})});
+  t["jpe"]  = t["jp"];
+  t["jpo"]  = t["jnp"];
+  t["js"]   = Match({Rule(P::lbl(), [](O o, LR lbl){o(ui8(0x0f),ui8(0x88));o.labelRef(lbl.label);})});
+  t["jz"]   = t["je"];
 
   t["mov"] = Match({
     Rule( P::rm8(),  P::r8(), [](O o, RM rm, R r){o(        REX(r,rm), ui8(0x88), MODRM(r,rm));}),
