@@ -8,15 +8,8 @@ matrix:
       compiler: clang
       osx_image: xcode8.3
       env:
-        - DEPS="${DEPS} readline llvm@4"
-        - LLVM_DIR=/usr/local/opt/llvm@4/lib/cmake/llvm/
-        - ARGS=-V
-    - os: osx
-      compiler: clang
-      osx_image: xcode8.3
-      env:
         - DEPS="${DEPS} readline llvm@8"
-        - LLVM_DIR=/usr/local/opt/llvm@8/lib/cmake/llvm/
+        - LLVM_DIR=/usr/local/opt/llvm/lib/cmake/llvm/
         - ARGS=-V
 #    - os: osx
 #      compiler: clang
@@ -45,19 +38,9 @@ matrix:
       env:
         - DIST=xllvm4
         - ARGS=-V
-    - os: linux
-      compiler: g++
-      root: required
-      dist: trusty
-      group: deprecated-2017Q4
-      services:
-        - docker
-      env:
-        - DIST=xllvm8
-        - ARGS=-V
 
 install:
-  - if [ $TRAVIS_OS_NAME = osx   ]; then brew update && brew install -v ${DEPS} && find /usr/local/opt/llvm@4/ | grep cmake; fi
+  - if [ $TRAVIS_OS_NAME = osx   ]; then brew update && brew install -v ${DEPS} && find /usr/local/opt/llvm@8/ | grep cmake; fi
   - if [ $TRAVIS_OS_NAME = linux ]; then cd docker/build &&  docker build . -f ./${DIST}.Dockerfile -t hobbes:build; cd -; fi
 
 script:
