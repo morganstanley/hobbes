@@ -11,6 +11,13 @@ matrix:
         - DEPS="${DEPS} readline llvm@4"
         - LLVM_DIR=/usr/local/opt/llvm@4/lib/cmake/llvm/
         - ARGS=-V
+    - os: osx
+      compiler: clang
+      osx_image: xcode8.3
+      env:
+        - DEPS="${DEPS} readline llvm@8"
+        - LLVM_DIR=/usr/local/opt/llvm@8/lib/cmake/llvm/
+        - ARGS=-V
 #    - os: osx
 #      compiler: clang
 #      osx_image: xcode8
@@ -37,6 +44,16 @@ matrix:
         - docker
       env:
         - DIST=xllvm4
+        - ARGS=-V
+    - os: linux
+      compiler: g++
+      root: required
+      dist: trusty
+      group: deprecated-2017Q4
+      services:
+        - docker
+      env:
+        - DIST=xllvm8
         - ARGS=-V
 
 install:
