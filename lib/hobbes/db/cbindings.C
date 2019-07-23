@@ -264,7 +264,6 @@ public:
   }
 private:
   size_t     fileRefVal;
-  size_t     batchSize;
 
   std::queue<uint64_t> batches;
   crbitstream readState;
