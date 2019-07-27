@@ -11,44 +11,7 @@
 
 #include <llvm/Config/llvm-config.h>
 
-#if LLVM_VERSION_MAJOR != 3 && LLVM_VERSION_MAJOR != 4
-#error "I don't know how to use this version of LLVM"
-#endif
-
-#include <llvm/IR/DerivedTypes.h>
-#include <llvm/IR/IRBuilder.h>
-#include <llvm/IR/LLVMContext.h>
-#include <llvm/IR/Module.h>
-#include <llvm/IR/DataLayout.h>
-#include <llvm/IR/InstIterator.h>
-#include <llvm/Analysis/Passes.h>
-#include <llvm/Transforms/Scalar.h>
-#include <llvm/Transforms/Vectorize.h>
-#include <llvm/Transforms/IPO.h>
-#include <llvm/Transforms/Utils/Cloning.h>
-#include <llvm/Support/TargetSelect.h>
-#include <llvm/Support/TargetRegistry.h>
-#include <llvm/Support/Signals.h>
-#if LLVM_VERSION_MAJOR == 4
-#include <llvm/Bitcode/BitstreamReader.h>
-#include <llvm/Bitcode/BitstreamWriter.h>
-#else
-#include <llvm/Bitcode/ReaderWriter.h>
-#endif
-#include <llvm/Support/raw_os_ostream.h>
-#include <llvm/ExecutionEngine/ExecutionEngine.h>
-#include <llvm/ExecutionEngine/JITEventListener.h>
-#include <llvm/ExecutionEngine/SectionMemoryManager.h>
-
-#if LLVM_VERSION_MINOR == 3
-#include <llvm/Analysis/Verifier.h>
-#include <llvm/PassManager.h>
-#elif LLVM_VERSION_MINOR >= 5 || LLVM_VERSION_MAJOR == 4
-#include <llvm/IR/Verifier.h>
-#include <llvm/ExecutionEngine/SectionMemoryManager.h>
-#include <llvm/IR/LegacyPassManager.h>
-#include <llvm/Object/ELFObjectFile.h>
-#endif
+#include <LLVMCompat.H>
 
 #pragma GCC diagnostic pop
 
@@ -64,10 +27,6 @@ inline llvm::LLVMContext& context() {
   static llvm::LLVMContext ctx;
   return ctx;
 }
-
-typedef std::vector<llvm::Type*>     Types;
-typedef std::vector<llvm::Constant*> Constants;
-typedef std::vector<llvm::Value*>    Values;
 
 // type utilities
 inline llvm::Type* voidType() {
@@ -245,6 +204,10 @@ inline llvm::ConstantInt* civalue(long x) {
 
 inline llvm::ConstantInt* civalue(int128_t x) {
   return llvm::ConstantInt::get(llvm::IntegerType::get(context(), 128), x); //static_cast<uint64_t>(x));
+}
+
+inline llvm::Value* memCopy(llvm::IRBuilder<>* b, llvm::Value* dst, uint32_t dstAlign, llvm::Value* src, uint32_t srcAlign, unsigned int sz) {
+  return memCopy(b, dst, dstAlign, src, srcAlign, civalue(sz));
 }
 
 // an intermediate representation for records
@@ -467,46 +430,6 @@ inline llvm::Value* offset(llvm::IRBuilder<>* b, llvm::Value* p, int o0, llvm::V
   return b->CreateGEP(p, idxs);
 }
 
-inline llvm::Value* structOffset(llvm::IRBuilder<>* b, llvm::Value* p, unsigned int fieldOffset) {
-#if LLVM_VERSION_MINOR == 7
-  // don't pass nullptr? (http://reviews.llvm.org/rL233938)
-  return b->CreateStructGEP(nullptr, p, fieldOffset);
-#elif LLVM_VERSION_MINOR >= 8 || LLVM_VERSION_MAJOR == 4
-  return b->CreateStructGEP(reinterpret_cast<llvm::PointerType*>(p->getType())->getElementType(), p, fieldOffset);
-#else
-  return b->CreateStructGEP(p, fieldOffset);
-#endif
-}
-
-#if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR == 4
-inline llvm::ExecutionEngine* makeExecutionEngine(llvm::Module* m, llvm::SectionMemoryManager* smm) {
-  std::string err;
-  llvm::ExecutionEngine* ee =
-    llvm::EngineBuilder(std::unique_ptr<llvm::Module>(m))
-      .setErrorStr(&err)
-      .setMCJITMemoryManager(std::unique_ptr<llvm::SectionMemoryManager>(smm))
-      .create();
-
-  if (!ee) {
-    throw std::runtime_error("Internal error, failed to allocate execution engine with error: " + err);
-  }
-  return ee;
-}
-#elif LLVM_VERSION_MINOR == 3 or LLVM_VERSION_MINOR == 5
-inline llvm::ExecutionEngine* makeExecutionEngine(llvm::Module* m, llvm::SectionMemoryManager*) {
-  std::string err;
-  llvm::ExecutionEngine* ee =
-    llvm::EngineBuilder(m)
-      .setErrorStr(&err)
-      .create();
-
-  if (!ee) {
-    throw std::runtime_error("Internal error, failed to allocate execution engine with error: " + err);
-  }
-  return ee;
-}
-#endif
-
 inline llvm::Function* externDecl(llvm::Function* remoteFn, llvm::Module* thisModule) {
   if (llvm::Function* ef = thisModule->getFunction(remoteFn->getName())) {
     return ef;
@@ -544,25 +467,6 @@ inline llvm::Function* cloneFunction(llvm::Function *f, llvm::Module *targetMod)
 
   CloneFunctionInto(newF, f, vmap, false, returns);
   return newF;
-}
-
-inline llvm::Value* fncall(llvm::IRBuilder<>* b, llvm::Value* vfn, const Values& args) {
-#if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR == 4
-  llvm::Module* thisMod = b->GetInsertBlock()->getParent()->getParent();
-
-  llvm::Function* fn = llvm::dyn_cast<llvm::Function>(vfn);
-  if (!fn || fn->getParent() == thisMod) {
-    // same module or local variable, all is well
-    return b->CreateCall(vfn, args);
-  } else {
-    // looks like we're trying to make a call to a function in another module
-    if (auto newF = cloneFunction(fn, thisMod))
-      return b->CreateCall(newF, args);
-    return b->CreateCall(externDecl(fn, thisMod), args);
-  }
-#else
-  return b->CreateCall(vfn, args);
-#endif
 }
 
 inline llvm::Value* fncall(llvm::IRBuilder<>* b, llvm::Value* fn, llvm::Value* arg) {
