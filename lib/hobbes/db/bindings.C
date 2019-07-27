@@ -232,7 +232,7 @@ class dbstoreVF : public op {
     }
 
     if (isLargeType(sty)) {
-      return c->builder()->CreateMemCpy(allocv, outv, sizeOf(sty), 8);
+      return memCopy(c->builder(), allocv, 8, outv, 8, sizeOf(sty));
     } else {
       return c->builder()->CreateStore(outv, allocv);
     }
@@ -458,7 +458,7 @@ struct dbstoreF : public op {
 
       if (!isUnit(tys[0])) {
         llvm::Value* p = fncall(c->builder(), dblf, list<llvm::Value*>(db, id, cvalue(static_cast<long>(sz))));
-        c->builder()->CreateMemCpy(p, c->builder()->CreateBitCast(v, ptrType(charType())), sz, 8);
+        memCopy(c->builder(), p, 8, c->builder()->CreateBitCast(v, ptrType(charType())), 8, sz);
       }
 
       return id;
@@ -492,7 +492,7 @@ struct dbstorePF : public op {
 
       if (!isUnit(tys[1])) {
         llvm::Value* p = fncall(c->builder(), dblf, list<llvm::Value*>(db, id, cvalue(static_cast<long>(sz))));
-        c->builder()->CreateMemCpy(p, c->builder()->CreateBitCast(v, ptrType(charType())), sz, 8);
+        memCopy(c->builder(), p, 8, c->builder()->CreateBitCast(v, ptrType(charType())), 8, sz);
       }
 
       return id;

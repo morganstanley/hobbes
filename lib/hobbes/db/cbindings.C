@@ -204,7 +204,7 @@ static void destroyDynDModel0(DynDModel0* m) {
 // read a compressed series of values
 class UCReader {
 public:
-  UCReader(size_t fileRefVal, size_t node, size_t batchSize) : fileRefVal(fileRefVal), batchSize(batchSize), readState(reinterpret_cast<reader*>(fileRefVal)->fileData()) {
+  UCReader(size_t fileRefVal, size_t node, size_t) : fileRefVal(fileRefVal), readState(reinterpret_cast<reader*>(fileRefVal)->fileData()) {
     loadReadState(node);
   }
 
