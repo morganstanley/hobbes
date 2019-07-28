@@ -1,3 +1,4 @@
+#include <orc/Jit.H>
 
 #include <hobbes/hobbes.H>
 #include <hobbes/ipc/net.H>
@@ -664,6 +665,8 @@ void initHI(evaluator* eval, bool useDefColors) {
 
 int main(int argc, char** argv) {
   try {
+    hobbes::orc::Jit::init();
+
     // read command-line arguments
     Args args = processCommandLine(argc, argv);
 
