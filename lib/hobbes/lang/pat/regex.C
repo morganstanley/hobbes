@@ -1091,7 +1091,7 @@ void makeInterpDFAFunc(cc* c, const std::string& fname, const MonoTypePtr& captu
 }
 
 void makeDFAFunc(cc* c, const std::string& fname, const MonoTypePtr& captureTy, const DFA& dfa, const LexicalAnnotation& rootLA) {
-  if (dfa.size() < 1000 || !isUnit(captureTy)) {
+  if (dfa.size() < c->regexMaxExprDFASize() || !isUnit(captureTy)) {
     makeExprDFAFunc(c, fname, captureTy, dfa, rootLA);
   } else {
     makeInterpDFAFunc(c, fname, captureTy, dfa, rootLA);
