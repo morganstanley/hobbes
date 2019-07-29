@@ -32,7 +32,7 @@ namespace hobbes {
 // this should be moved out of here eventually
 bool isFileType(const MonoTypePtr&);
 
-#if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 5 || LLVM_VERSION_MAJOR == 8
+#if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 5 || LLVM_VERSION_MAJOR == 6 || LLVM_VERSION_MAJOR == 8
 class jitmm : public llvm::SectionMemoryManager {
 public:
   jitmm(jitcc* jit) : jit(jit) { }
@@ -99,7 +99,7 @@ jitcc::jitcc(const TEnvPtr& tenv) :
   this->fpm->doInitialization();
 #endif
 
-#if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 5 || LLVM_VERSION_MAJOR == 8
+#if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 5 || LLVM_VERSION_MAJOR == 6 || LLVM_VERSION_MAJOR == 8
   this->mpm = new llvm::legacy::PassManager();
   this->mpm->add(llvm::createFunctionInliningPass());
 #endif
@@ -112,7 +112,7 @@ jitcc::~jitcc() {
   }
 
   // release LLVM resources
-#if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 5 || LLVM_VERSION_MAJOR == 8
+#if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 5 || LLVM_VERSION_MAJOR == 6 || LLVM_VERSION_MAJOR == 8
   for (auto ee : this->eengines) {
     delete ee;
   }
@@ -147,7 +147,7 @@ void* jitcc::getSymbolAddress(const std::string& vn) {
     return gd->second.value;
   }
 
-#if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 5 || LLVM_VERSION_MAJOR == 8
+#if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 5 || LLVM_VERSION_MAJOR == 6 || LLVM_VERSION_MAJOR == 8
   // do we have a compiled function with this name?
   for (auto ee : this->eengines) {
     if (uint64_t faddr = ee->getFunctionAddress(vn)) {
@@ -160,7 +160,7 @@ void* jitcc::getSymbolAddress(const std::string& vn) {
   return 0;
 }
 
-#if LLVM_VERSION_MAJOR == 5 or LLVM_VERSION_MAJOR == 8
+#if LLVM_VERSION_MAJOR == 5 or LLVM_VERSION_MAJOR == 6 or  LLVM_VERSION_MAJOR == 8
   void jitcc::dump() const {
     std::cout << "nyi module dump for this version of LLVM" << std::endl;
   }
@@ -173,7 +173,7 @@ void jitcc::dump() const {
 #endif
 
 void* jitcc::getMachineCode(llvm::Function* f, llvm::JITEventListener* listener) {
-#if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 5 || LLVM_VERSION_MAJOR == 8
+#if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 5 || LLVM_VERSION_MAJOR == 6 || LLVM_VERSION_MAJOR == 8
   // try to get the machine code for this function out of an existing compiled module
   for (auto ee : this->eengines) {
     if (void* pf = ee->getPointerToFunction(f)) {
@@ -212,7 +212,7 @@ void* jitcc::getMachineCode(llvm::Function* f, llvm::JITEventListener* listener)
   fpm.add(llvm::createInstructionCombiningPass());
 #endif
   fpm.add(llvm::createReassociatePass());
-#if LLVM_VERSION_MAJOR == 5 or LLVM_VERSION_MAJOR == 8
+#if LLVM_VERSION_MAJOR == 5 or LLVM_VERSION_MAJOR == 6 or LLVM_VERSION_MAJOR == 8
   fpm.add(llvm::createNewGVNPass());
 #else
   fpm.add(llvm::createGVNPass());
@@ -270,7 +270,7 @@ void* jitcc::getMachineCode(llvm::Function* f, llvm::JITEventListener* listener)
 #endif
 }
 
-#if LLVM_VERSION_MINOR >= 7 || LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 5 || LLVM_VERSION_MAJOR == 8
+#if LLVM_VERSION_MINOR >= 7 || LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 5 || LLVM_VERSION_MAJOR == 6 || LLVM_VERSION_MAJOR == 8
 // get the machine code produced for a given expression
 // (there must be a simpler way)
 class LenWatch : public llvm::JITEventListener {

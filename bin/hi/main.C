@@ -1,4 +1,3 @@
-
 #include <hobbes/hobbes.H>
 #include <hobbes/ipc/net.H>
 #include <hobbes/util/array.H>
