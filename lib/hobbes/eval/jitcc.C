@@ -1,5 +1,7 @@
 
 #include <hobbes/hobbes.H>
+#include <hobbes/db/bindings.H>
+#include <hobbes/eval/probes.H>
 #include <hobbes/eval/jitcc.H>
 #include <hobbes/eval/cexpr.H>
 
@@ -52,6 +54,19 @@ public:
       throw std::runtime_error("Internal error, can't resolve symbol: " + n);
     }
   }
+
+#if LLVM_VERSION_MAJOR >= 6
+  // Locate stackmaps
+  uint8_t* allocateDataSection(uintptr_t Size, unsigned Alignment, unsigned SectionID, llvm::StringRef SectionName, bool isReadOnly) override {
+    uint8_t* location = llvm::SectionMemoryManager::allocateDataSection(Size, Alignment, SectionID, SectionName, isReadOnly);
+    if (SectionName == ".llvm.stackmap" || SectionName == "__llvm_stackmap" || SectionName == "_llvm_stackmap" || SectionName == ".llvm_stackmaps") {
+      jit->updateStackMapLocations(reinterpret_cast<const unsigned char*>(location), Size);
+    }
+
+    return location;
+  }
+#endif
+
 private:
   jitcc* jit;
 };
@@ -230,6 +245,7 @@ void* jitcc::getMachineCode(llvm::Function* f, llvm::JITEventListener* listener)
   // but we can still get at it through its execution engine
   this->eengines.push_back(ee);
   ee->finalizeObject();
+  updateProbeLocations();
 
   // now we can't touch this module again
   this->currentModule = 0;
@@ -846,5 +862,74 @@ ExprPtr jitcc::inlineGlobals(const ExprPtr& e) {
 }
 
 op::~op() { }
+
+void jitcc::addProbeMapping(const InjectedProbeMetadata& pm) {
+  this->probes.push_back(pm);
+}
+
+void jitcc::updateStackMapLocations(const unsigned char* stackMapBytes, const size_t size) {
+  this->stackMaps.insert(std::pair<const unsigned char*, const size_t>(stackMapBytes, size));
+}
+
+void jitcc::updateProbeLocations() {
+  struct CallSiteInfo { void* callSite; void* returnSite; };
+  struct RecordInfo { uint64_t id; uint64_t offset; };
+  struct FunctionInfo { uint64_t baseAddress; std::vector<RecordInfo> records; };
+  std::map<size_t, CallSiteInfo> idToInfo;
+  std::vector<FunctionInfo> functionInfos;
+#define HOBBES_UNUSED(e) static_cast<void>(e)
+  HOBBES_UNUSED(idToInfo);
+  HOBBES_UNUSED(functionInfos);
+  for (auto& sm : stackMaps) {
+    HOBBES_UNUSED(sm);
+#undef HOBBES_UNUSED
+#if LLVM_VERSION_MAJOR >= 6
+    // need to find all function entry locations, all records with offsets into functions with probe id tag
+    // combine information to get call site, add 5 bytes for the nop space to get return site. add to map
+    const auto parser = hobbes::StackMapV3Parser<llvm::support::native>(llvm::ArrayRef<unsigned char>(sm.first, sm.second));
+    functionInfos.reserve(parser.functions().size());
+
+    // group functions and records
+    size_t usedRecords = 0;
+    for (const auto& f : parser.functions()) {
+      FunctionInfo fi;
+      fi.baseAddress = f.address();
+      for (size_t i = 0; i < f.recordCount() && usedRecords + i < parser.records().size(); ++i) {
+        const auto& r = parser.records()[usedRecords + i];
+        fi.records.emplace_back(RecordInfo{ r.patchpointID(), r.instructionOffset() });
+      }
+      functionInfos.emplace_back(std::move(fi));
+      usedRecords += f.recordCount();
+    }
+#endif
+  }
+  // check if record is for probe (forward compatibility with other uses of stackmap)
+  for (const auto& fi : functionInfos) {
+    for (const auto ri: fi.records) {
+      constexpr uint64_t probeTypeTag = InjectedProbeMetadata::typeTag;
+      constexpr auto caveSize = InjectedProbeMetadata::caveSize;
+      if ((probeTypeTag & ri.id) == probeTypeTag) {
+        const auto probeAddress = fi.baseAddress + ri.offset;
+        idToInfo.insert(
+          std::pair<size_t, CallSiteInfo>{
+            ri.id,
+            CallSiteInfo{
+              reinterpret_cast<void*>(probeAddress),
+              reinterpret_cast<void*>(probeAddress + caveSize)
+            }
+          }
+        );
+      }
+    }
+  }
+
+  for (auto& p : this->probes) {
+    auto infoIter = idToInfo.find(p.id);
+    if (infoIter != idToInfo.end()) {
+      p.callSite = infoIter->second.callSite;
+      p.returnSite = infoIter->second.returnSite;
+    }
+  }
+}
 
 }

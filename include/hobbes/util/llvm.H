@@ -21,6 +21,8 @@
 #include <llvm/IR/Module.h>
 #include <llvm/IR/DataLayout.h>
 #include <llvm/IR/InstIterator.h>
+#include <llvm/IR/Intrinsics.h>
+#include <llvm/IR/InlineAsm.h>
 #include <llvm/Analysis/Passes.h>
 #include <llvm/Transforms/Scalar.h>
 #include <llvm/Transforms/Vectorize.h>
@@ -568,6 +570,210 @@ inline llvm::Value* fncall(llvm::IRBuilder<>* b, llvm::Value* vfn, const Values&
 inline llvm::Value* fncall(llvm::IRBuilder<>* b, llvm::Value* fn, llvm::Value* arg) {
   return fncall(b, fn, list(arg));
 }
+
+
+// LLVM version [5, 9) don't support parsing the version of stackmaps emitted
+// by that same version. Implement just enough parsing to read stackmaps
+template <llvm::support::endianness Endianness = llvm::support::native>
+class StackMapV3Parser {
+  class Function {
+  public:
+    Function(const uint8_t* const data) : data(data) {}
+    ~Function() = default;
+    Function(const Function&) = default;
+    Function(Function&&) = default;
+    Function& operator=(const Function&) = default;
+    Function& operator=(Function&&) = default;
+
+    uint64_t address() const {
+      return read<uint64_t>(data + addressOffset);
+    }
+
+    uint64_t stackSize() const {
+      return read<uint64_t>(data + stackSizeOffset);
+    }
+
+    uint64_t recordCount() const {
+      return read<uint64_t>(data + recordCountOffset);
+    }
+
+    size_t byteSize() const {
+      return sizeof(uint64_t) * 3;
+    }
+
+    const uint8_t* getBase() const {
+      return data;
+    }
+
+    const uint8_t* next() const {
+      return data + byteSize();
+    }
+
+  private:
+    static constexpr size_t addressOffset = 0;
+    static constexpr size_t stackSizeOffset = addressOffset + sizeof(uint64_t);
+    static constexpr size_t recordCountOffset = stackSizeOffset + sizeof(uint64_t);
+
+    const uint8_t* const data;
+  };
+
+  class Constant {
+  public:
+    Constant(const uint8_t* const data) : data(data) {}
+    ~Constant() = default;
+    Constant(const Constant&) = default;
+    Constant(Constant&&) = default;
+    Constant& operator=(const Constant&) = default;
+    Constant& operator=(Constant&&) = default;
+
+    uint64_t largeConstant() const {
+      return read<uint64_t>(data + largeConstantOffset);
+    }
+
+    size_t byteSize() const {
+      return sizeof(uint64_t);
+    }
+
+    const uint8_t* getBase() const {
+      return data;
+    }
+
+    const uint8_t* next() const {
+      return data + byteSize();
+    }
+
+  private:
+    static constexpr size_t largeConstantOffset = 0;
+
+    const uint8_t* const data;
+  };
+
+  class Record {
+  public:
+    Record(const uint8_t* const data) : data(data) {}
+    ~Record() = default;
+    Record(const Record&) = default;
+    Record(Record&&) = default;
+    Record& operator=(const Record&) = default;
+    Record& operator=(Record&&) = default;
+
+    uint64_t patchpointID() const {
+      return read<uint64_t>(data + patchpointIDOffset);
+    }
+
+    uint64_t instructionOffset() const {
+      return read<uint64_t>(data + instructionOffsetOffset);
+    }
+
+    uint16_t locationCount() const {
+      return read<uint16_t>(data + numLocationsOffset);
+    }
+
+    uint16_t liveOutCount() const {
+      return read<uint16_t>(data + numLiveOutsOffset(locationCount()));
+    }
+
+    const uint8_t* getBase() const {
+      return data;
+    }
+
+    size_t byteSize() const {
+      const size_t numLiveOutsOffsetV = numLiveOutsOffset(locationCount());
+      const size_t liveOutSize = sizeof(uint16_t) + sizeof(uint8_t)*2;
+      const size_t numLiveOuts = liveOutCount();
+      const size_t liveOutsEndOffset = numLiveOutsOffsetV + sizeof(uint16_t) + liveOutSize*numLiveOuts;
+      // Record size must be aligned to 8 bytes
+      return alignOffset(liveOutsEndOffset, 8);
+    }
+
+    const uint8_t* next() const {
+      return data + byteSize();
+    }
+  private:
+    static constexpr size_t patchpointIDOffset = 0;
+    static constexpr size_t instructionOffsetOffset = patchpointIDOffset + sizeof(uint64_t);
+    static constexpr size_t numLocationsOffset = instructionOffsetOffset + sizeof(uint32_t) + sizeof(uint16_t);
+
+    static size_t numLiveOutsOffset(const size_t numLocations) {
+      const size_t locationsBaseOffset = numLocationsOffset + sizeof(uint16_t);
+      const size_t locationSize = sizeof(uint8_t)*2 + sizeof(uint16_t)*3 + sizeof(int32_t);
+      // Offset of numLiveOuts needs to be aligned to 8, so there may be padding
+      const size_t paddingOffset = locationsBaseOffset + locationSize*numLocations;
+      const size_t paddingSize = alignOffset(paddingOffset, 8) - paddingOffset;
+      return paddingOffset + paddingSize;
+    }
+
+    const uint8_t* const data;
+  };
+
+public:
+  StackMapV3Parser(llvm::ArrayRef<uint8_t> section) : section(section) {
+    size_t constantsListOffset = functionListOffset + functionCount() * functionSize;
+    if (read<uint32_t>(&section[0]) != 3) {
+      // We can't handle this version so don't bother finishing parse
+      return;
+    }
+    populate<Function>(&functionRefs, functionCount(), functionListOffset);
+    populate<Constant>(&constantRefs, constantCount(), constantsListOffset);
+    populate<Record>(&recordRefs, recordCount(), constantsListOffset + constantCount()*constantSize);
+  }
+  ~StackMapV3Parser() = default;
+  StackMapV3Parser(const StackMapV3Parser&) = default;
+  StackMapV3Parser(StackMapV3Parser&&) = default;
+  StackMapV3Parser& operator=(const StackMapV3Parser&) = default;
+  StackMapV3Parser& operator=(StackMapV3Parser&&) = default;
+
+  const std::vector<Function>& functions() const { return functionRefs; }
+  const std::vector<Constant>& constants() const { return constantRefs; }
+  const std::vector<Record>& records() const { return recordRefs; }
+
+private:
+  uint32_t functionCount() const {
+    return read<uint32_t>(&section[numFunctionsOffset]);
+  }
+
+  uint32_t constantCount() const {
+    return read<uint32_t>(&section[numConstantsOffset]);
+  }
+
+  uint32_t recordCount() const {
+    return read<uint32_t>(&section[numRecordsOffset]);
+  }
+
+  template<typename EntryType>
+  void populate(std::vector<EntryType>* const collection, const uint32_t count, const size_t baseOffset) {
+    const uint8_t* currentBase = &section[0] + baseOffset;
+    collection->reserve(count);
+    for (uint32_t i = 0; i < count; ++i) {
+      const auto currentEntry = EntryType(currentBase);
+      currentBase = currentEntry.next();
+      collection->push_back(currentEntry);
+    }
+  }
+
+  template <typename T>
+  static T read(const uint8_t* const data) {
+    return llvm::support::endian::read<T, Endianness>(data);
+  }
+
+  static constexpr size_t alignOffset(const size_t offset, const size_t alignment) {
+    return (offset + (alignment - 1)) & ~(alignment - 1);
+  }
+
+  static constexpr size_t headerOffset = 0;
+  static constexpr size_t numFunctionsOffset = headerOffset + sizeof(uint8_t)*2 + sizeof(uint16_t);
+  static constexpr size_t numConstantsOffset = numFunctionsOffset + sizeof(uint32_t);
+  static constexpr size_t numRecordsOffset = numConstantsOffset + sizeof(uint32_t);
+  static constexpr size_t functionListOffset = numRecordsOffset + sizeof(uint32_t);
+
+  static constexpr size_t functionSize = sizeof(uint64_t)*3;
+  static constexpr size_t constantSize = sizeof(uint64_t);
+
+  llvm::ArrayRef<uint8_t> section;
+  std::vector<Function> functionRefs;
+  std::vector<Constant> constantRefs;
+  std::vector<Record> recordRefs;
+};
 
 }
 

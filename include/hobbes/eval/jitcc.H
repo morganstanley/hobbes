@@ -16,6 +16,8 @@
 
 namespace hobbes {
 
+struct InjectedProbeMetadata;
+
 // an operation, which can emit some specialized assembly code
 class jitcc;
 struct op {
@@ -111,6 +113,14 @@ public:
 
   // allocate some global data attached to this JIT
   void* memalloc(size_t, size_t);
+
+  // register a performance probe's metadata with the compiler
+  void addProbeMapping(const InjectedProbeMetadata&);
+  // register an emitted stackmap with the compiler
+  void updateStackMapLocations(const unsigned char* stackMapBytes, const size_t size);
+  // adjust the locations of all registered probes via all registered stackmaps
+  void updateProbeLocations();
+
 private:
   TEnvPtr tenv;
 
@@ -216,6 +226,13 @@ private:
   // (in case we want to inline them later)
   typedef std::map<std::string, ExprPtr> GlobalExprs;
   GlobalExprs globalExprs;
+
+  // keep track of compiled probe information for later usage
+  typedef std::vector<InjectedProbeMetadata> Probes;
+  Probes probes;
+
+  typedef std::map<const unsigned char*, const size_t> StackMaps;
+  StackMaps stackMaps;
 };
 
 // shorthand for compilation over a sequence of expressions

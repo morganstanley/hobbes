@@ -16,6 +16,9 @@
 // structured file support
 #include <hobbes/db/bindings.H>
 
+// probe support
+#include <hobbes/eval/probes.H>
+
 // network IPC
 #include <hobbes/ipc/nbindings.H>
 
@@ -130,6 +133,9 @@ cc::cc() :
 
   // initialize structured storage support
   initStorageFileDefs(fv, *this);
+
+  // initialize xpedite probe injection support
+  initProbeDefs(*this);
 
   // boot
   compileBootCode(*this);
