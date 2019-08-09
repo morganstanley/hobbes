@@ -14,11 +14,11 @@
 #include "llvm/ExecutionEngine/MCJIT.h"
 #endif
 
-#if LLVM_VERSION_MINOR >= 8 || LLVM_VERSION_MAJOR == 4
+#if LLVM_VERSION_MINOR >= 8 || LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 6
 #include "llvm/Analysis/BasicAliasAnalysis.h"
 #endif
 
-#if LLVM_VERSION_MAJOR == 4
+#if LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 6
 #include "llvm/Transforms/Scalar/GVN.h"
 #endif
 
@@ -32,7 +32,7 @@ namespace hobbes {
 // this should be moved out of here eventually
 bool isFileType(const MonoTypePtr&);
 
-#if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR == 4
+#if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 6
 class jitmm : public llvm::SectionMemoryManager {
 public:
   jitmm(jitcc* jit) : jit(jit) { }
@@ -99,7 +99,7 @@ jitcc::jitcc(const TEnvPtr& tenv) :
   this->fpm->doInitialization();
 #endif
 
-#if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR == 4
+#if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 6
   this->mpm = new llvm::legacy::PassManager();
   this->mpm->add(llvm::createFunctionInliningPass());
 #endif
@@ -112,7 +112,7 @@ jitcc::~jitcc() {
   }
 
   // release LLVM resources
-#if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR == 4
+#if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 6
   for (auto ee : this->eengines) {
     delete ee;
   }
@@ -147,8 +147,16 @@ void* jitcc::getSymbolAddress(const std::string& vn) {
     return gd->second.value;
   }
 
-#if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR == 4
   // do we have a compiled function with this name?
+#if LLVM_VERSION_MAJOR == 6
+  for (auto ee : this->eengines) {
+    if (ee->FindFunctionNamed(vn) || ee->FindGlobalVariableNamed(vn)) {
+      if (uint64_t faddr = ee->getFunctionAddress(vn)) {
+        return reinterpret_cast<void*>(faddr);
+      }
+    }
+  }
+#elif LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR == 4
   for (auto ee : this->eengines) {
     if (uint64_t faddr = ee->getFunctionAddress(vn)) {
       return reinterpret_cast<void*>(faddr);
@@ -162,12 +170,16 @@ void* jitcc::getSymbolAddress(const std::string& vn) {
 
 void jitcc::dump() const {
   for (auto m : this->modules) {
+#if LLVM_VERSION_MAJOR == 6
+    m->print(llvm::dbgs(), nullptr, /*ShouldPreserveUseListOrder=*/false, /*IsForDebug=*/true);
+#else
     m->dump();
+#endif
   }
 }
 
 void* jitcc::getMachineCode(llvm::Function* f, llvm::JITEventListener* listener) {
-#if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR == 4
+#if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 6
   // try to get the machine code for this function out of an existing compiled module
   for (auto ee : this->eengines) {
     if (void* pf = ee->getPointerToFunction(f)) {
@@ -256,7 +268,7 @@ void* jitcc::getMachineCode(llvm::Function* f, llvm::JITEventListener* listener)
 #endif
 }
 
-#if LLVM_VERSION_MINOR >= 7 || LLVM_VERSION_MAJOR == 4
+#if LLVM_VERSION_MINOR >= 7 || LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 6
 // get the machine code produced for a given expression
 // (there must be a simpler way)
 class LenWatch : public llvm::JITEventListener {
@@ -504,7 +516,7 @@ void jitcc::defineGlobal(const std::string& vn, const ExprPtr& ue) {
       // functions are loaded by name rather than by constant value
       cv.ref = 0;
     } else {
-      cv.ref = new llvm::GlobalVariable(*module(), cv.type, true, llvm::GlobalVariable::InternalLinkage, c, vname);
+      cv.ref = new llvm::GlobalVariable(*module(), cv.type, true, llvm::GlobalVariable::ExternalLinkage, c, vname);
     }
   } else {
     // make some space for this global data ...
