@@ -11,13 +11,6 @@ matrix:
         - DEPS="${DEPS} readline llvm@4"
         - LLVM_DIR=/usr/local/opt/llvm@4/lib/cmake/llvm/
         - ARGS=-V
-#    - os: osx
-#      compiler: clang
-#      osx_image: xcode8
-#      env:
-#        - DEPS="${DEPS} llvm@4"
-#        - LLVM_DIR=/usr/local/opt/llvm@4/lib/cmake/llvm/
-#        - ARGS=-V
     - os: linux
       compiler: g++
       root: required
@@ -27,6 +20,7 @@ matrix:
         - docker
       env:
         - DIST=xenial
+        - DEPS="llvm-3.7-dev cmake libedit-dev g++ libncurses5-dev zlib1g-dev libreadline-dev python2.7"
         - ARGS=-V
     - os: linux
       compiler: g++
@@ -36,12 +30,13 @@ matrix:
       services:
         - docker
       env:
-        - DIST=xllvm4
+        - DIST=xenial
+        - DEPS="llvm-4.0-dev cmake libedit-dev g++ libncurses5-dev zlib1g-dev libreadline-dev python2.7"
         - ARGS=-V
 
 install:
   - if [ $TRAVIS_OS_NAME = osx   ]; then brew update && brew install -v ${DEPS} && find /usr/local/opt/llvm@4/ | grep cmake; fi
-  - if [ $TRAVIS_OS_NAME = linux ]; then cd docker/build &&  docker build . -f ./${DIST}.Dockerfile -t hobbes:build; cd -; fi
+  - if [ $TRAVIS_OS_NAME = linux ]; then cd docker/build &&  docker build . -f ./${DIST}.Dockerfile -t hobbes:build --build-arg DEPS; cd -; fi
 
 script:
   - if [ $TRAVIS_OS_NAME = osx   ]; then mkdir build && cd build/ && cmake .. && make && make test; fi
