@@ -1095,8 +1095,6 @@ public:
     return true;
   }
 private:
-  VDir vdir;
-
   enum Tag {
     MLitReg = 0,
     MLitImm,
@@ -1110,6 +1108,7 @@ private:
   int8_t   immc;   // literal match value (if MLitImm)
   RegSize  rsize;  // size (in bytes) of expected argument
   RegClass rclass; // type of expected argument (int or float)
+  VDir     vdir;   // track whether an arg is in/out/inout
 
   P(Tag t, int8_t c, RegSize rsz, RegClass rc) : tag(t), immc(c), rsize(rsz), rclass(rc), vdir(In) { }
   P(Tag t, X86Reg rname, RegSize rsz, RegClass rc) : tag(t), rname(rname), rsize(rsz), rclass(rc), vdir(In) { }
@@ -1222,6 +1221,8 @@ public:
         case P::Out:
           ds->push_back(a);
           break;
+        default:
+          break;
         }
       }
     );
@@ -1233,6 +1234,8 @@ public:
         case P::InOut:
         case P::In:
           ds->push_back(a);
+          break;
+        default:
           break;
         }
       }

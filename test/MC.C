@@ -91,7 +91,7 @@ TEST(MC, EasyRegCoalesce) {
     RInst::make("mov", RArg::reg("a0", 8, RegClass::Int), RArg::reg("rdi", 8, RegClass::Int)),
   };
   for (size_t i = 1; i < 100; ++i) {
-    p.push_back(RInst::make("mov", RArg::reg("a"+str(i), 8, RegClass::Int), RArg::reg("a"+str(i-1), 8, RegClass::Int)));
+    p.push_back(RInst::make("mov", RArg::reg("a"+mc::str(i), 8, RegClass::Int), RArg::reg("a"+mc::str(i-1), 8, RegClass::Int)));
   }
   p.push_back(RInst::make("mov", RArg::reg("rax", 8, RegClass::Int), RArg::reg("a99", 8, RegClass::Int)));
   p.push_back(RInst::make("add", RArg::reg("rax", 8, RegClass::Int), RArg::reg("rax", 8, RegClass::Int)));

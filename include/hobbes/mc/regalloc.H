@@ -1107,7 +1107,7 @@ typedef std::map<std::string, std::string> RRSubst;
 inline RInst subst(const RRSubst& s, const RInst& i) {
   return
     i.mapRegs<std::string>(
-      [&](const std::string& rname, RegSize, RegClass rc) -> std::string {
+      [&](const std::string& rname, RegSize, RegClass) -> std::string {
         if (maybeMReg(rname)) {
           return rname;
         } else {
