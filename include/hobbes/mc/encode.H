@@ -556,6 +556,38 @@ public:
   inline bool operator!=(const Arg<RegisterID>& rhs) const {
     return !(*this == rhs);
   }
+
+  // structure-preserving register translation
+  template <typename TRegisterID>
+    Arg<TRegisterID> mapRegs(const std::function<TRegisterID(RegisterID,RegSize,RegClass)>& f) const {
+      switch (this->vtag) {
+      case TReg:
+        return
+          Arg<TRegisterID>::reg(
+            f(this->variant.vreg->name, this->variant.vreg->rsize, this->variant.vreg->rclass),
+            this->variant.vreg->rsize,
+            this->variant.vreg->rclass
+          );
+      case TRegDeref:
+        return
+          Arg<TRegisterID>::regDeref(
+            this->variant.vregderef->useBase ? f(this->variant.vregderef->base, 8, RegClass::Int) : TRegisterID(),
+            this->variant.vregderef->useBase,
+            this->variant.vregderef->scale > 0 ? f(this->variant.vregderef->index, 8, RegClass::Int) : TRegisterID(),
+            this->variant.vregderef->scale,
+            this->variant.vregderef->offset,
+            this->variant.vregderef->rsize,
+            this->variant.vregderef->rclass
+          );
+      case TLabelRef:
+        return Arg<TRegisterID>::labelRef(this->variant.vlabelref->label);
+      case TImmediate:
+        return Arg<TRegisterID>::immediate(this->variant.vimmediate->value, this->variant.vimmediate->sig, this->variant.vimmediate->rsize);
+      default:
+        // should not be possible
+        return Arg<TRegisterID>();
+      }
+    }
 private:
   Tag vtag;
   union {
@@ -598,7 +630,7 @@ private:
 
 // x86 machines have 16 general-purpose int registers, and 16 general-purpose float registers
 enum X86Reg : uint8_t {
-  R0 = 0, R1, R2, R3, R4, R5, R6, R7, R8, R9, R10, R11, R12, R13, R14, R15
+  R0 = 0, R1, R2, R3, R4, R5, R6, R7, R8, R9, R10, R11, R12, R13, R14, R15, COUNT
 };
 
 // an instruction argument using x86 machine register IDs is a 'machine arg'
@@ -632,10 +664,11 @@ inline std::string regName(X86Reg r, RegSize sz, RegClass rc) {
   }
   throw std::runtime_error("Invalid register designation (not a machine register)");
 }
-inline std::string regName(const Reg<X86Reg>& r) {
+template <typename RegisterID>
+inline std::string regName(const Reg<RegisterID>& r) {
   return regName(r.name, r.rsize, r.rclass);
 }
-inline const Reg<X86Reg>& mreg(const std::string& name) {
+inline const Reg<X86Reg>* maybeMReg(const std::string& name) {
   thread_local std::map<std::string, Reg<X86Reg>> mregs;
   if (mregs.empty()) {
     // integer registers can be named for sizes 1/2/4/8
@@ -660,10 +693,17 @@ inline const Reg<X86Reg>& mreg(const std::string& name) {
     }
   }
   auto r = mregs.find(name);
-  if (r != mregs.end()) return r->second;
-  throw std::runtime_error("Undefined machine register: " + name);
+  return (r != mregs.end()) ? &r->second : 0;
 }
-inline void printReg(std::ostream& out, const Reg<X86Reg>& r) {
+inline const Reg<X86Reg>& mreg(const std::string& name) {
+  if (const auto* p = maybeMReg(name)) {
+    return *p;
+  } else {
+    throw std::runtime_error("Undefined machine register: " + name);
+  }
+}
+template <typename RegisterID>
+inline void printReg(std::ostream& out, const Reg<RegisterID>& r) {
   out << regName(r);
 }
 template <typename RegisterID>
@@ -754,6 +794,17 @@ struct Instruction {
     toArgv<RegisterID>(&r.args, 0, args...);
     return r;
   }
+  
+  template <typename TRegisterID>
+    Instruction<TRegisterID> mapRegs(const std::function<TRegisterID(RegisterID,RegSize,RegClass)>& f) const {
+      Instruction<TRegisterID> r;
+      r.op   = this->op;
+      r.argc = this->argc;
+      for (uint8_t k = 0; k < this->argc; ++k) {
+        r.args[k] = this->args[k].mapRegs(f);
+      }
+      return r;
+    }
 
   static Instruction defineLabel(const std::string& lbl) {
     Instruction r;
@@ -764,6 +815,17 @@ struct Instruction {
   }
   const LabelRef* labelDef() const {
     return this->op=="deflbl" && this->argc==1 ? this->args[0].labelRef() : 0;
+  }
+  const LabelRef* jumpTarget() const {
+    // jump instructions start with "j" by convention, should be good enough
+    if (this->op.size() > 0 && this->op[0] == 'j' && this->argc == 1) {
+      return this->args[0].labelRef();
+    } else {
+      return 0;
+    }
+  }
+  bool controlFollows() const {
+    return this->op != "ret" && this->op != "jmp";
   }
 
   inline bool operator==(const Instruction& rhs) const {
@@ -916,7 +978,19 @@ private:
 // a match pattern covers a single cell in a match table
 class P {
 public:
-  P() : tag(MImm), rsize(0) { } // invalid pattern
+  P() : tag(MImm), rsize(0), vdir(In) { } // invalid pattern
+
+  // does the pattern imply an input, output, or input/output argument?
+  enum VDir {
+    In = 0, Out, InOut
+  };
+  VDir dir() const { return this->vdir; }
+
+  static P withDir(const P& p, VDir vd) {
+    P r(p);
+    r.vdir = vd;
+    return r;
+  }
 
   // exact register matching with a common name
   // we use these patterns for instructions that have specializations to work with a specific register (usually r0 aka "rax")
@@ -1021,6 +1095,8 @@ public:
     return true;
   }
 private:
+  VDir vdir;
+
   enum Tag {
     MLitReg = 0,
     MLitImm,
@@ -1035,9 +1111,9 @@ private:
   RegSize  rsize;  // size (in bytes) of expected argument
   RegClass rclass; // type of expected argument (int or float)
 
-  P(Tag t, int8_t c, RegSize rsz, RegClass rc) : tag(t), immc(c), rsize(rsz), rclass(rc) { }
-  P(Tag t, X86Reg rname, RegSize rsz, RegClass rc) : tag(t), rname(rname), rsize(rsz), rclass(rc) { }
-  P(Tag t, RegSize rsz, RegClass rc) : tag(t), rsize(rsz), rclass(rc) { }
+  P(Tag t, int8_t c, RegSize rsz, RegClass rc) : tag(t), immc(c), rsize(rsz), rclass(rc), vdir(In) { }
+  P(Tag t, X86Reg rname, RegSize rsz, RegClass rc) : tag(t), rname(rname), rsize(rsz), rclass(rc), vdir(In) { }
+  P(Tag t, RegSize rsz, RegClass rc) : tag(t), rsize(rsz), rclass(rc), vdir(In) { }
 
   // hacky pattern dispatching logic, there might be a better way to expand these cases
   static void disp1(Output& o, int i, const std::array<P,3>& ps, const std::array<MArg,3>& args, const MatchFunction& f) {
@@ -1105,6 +1181,9 @@ private:
   }
 };
 
+inline P io(const P& p) { return P::withDir(p, P::InOut); }
+inline P  o(const P& p) { return P::withDir(p, P::Out); }
+
 // we will want to specify our encoding rules as inline lambda functions (as shorthand)
 // but MatchFunction wants a C-style function, so we have to make sure that we decay lambdas
 template <typename C, typename R, typename ... Args>
@@ -1133,19 +1212,64 @@ public:
       return P::invoke(o, argc, this->patterns, args, this->consequence);
     }
   }
+
+  // try to match this rule to infer "defs" and "uses" (arguments that will be updated or read by execution)
+  bool defs(uint8_t argc, const std::array<MArg,3>& args, std::vector<MArg>* ds) const {
+    return matchDataflow(argc, args,
+      [ds](const P& p, const MArg& a) {
+        switch (p.dir()) {
+        case P::InOut:
+        case P::Out:
+          ds->push_back(a);
+          break;
+        }
+      }
+    );
+  }
+  bool uses(uint8_t argc, const std::array<MArg,3>& args, std::vector<MArg>* ds) const {
+    return matchDataflow(argc, args,
+      [ds](const P& p, const MArg& a) {
+        switch (p.dir()) {
+        case P::InOut:
+        case P::In:
+          ds->push_back(a);
+          break;
+        }
+      }
+    );
+  }
 private:
   uint8_t         marity;
   std::array<P,3> patterns;
   MatchFunction   consequence;
+
+  template <typename F>
+  bool matchDataflow(uint8_t argc, const std::array<MArg,3>& args, F f) const {
+    // early exit if the rule doesn't match
+    if (argc != this->marity) {
+      return false;
+    } else {
+      for (uint8_t i = 0; i < argc; ++i) {
+        if (!this->patterns[i].matches(args[i])) {
+          return false;
+        }
+      }
+    }
+    for (uint8_t i = 0; i < argc; ++i) {
+      f(this->patterns[i], args[i]);
+    }
+    return true;
+  }
 };
 
 // a match table here works just like a pattern match table in general, priority-ordered rules applied to an input data structure (x86 instruction)
+// we should also be able to infer which arguments are in/out/inout here
 class Match {
 public:
   typedef std::vector<Rule> RuleSeq;
+  typedef std::vector<int>  VarRefs;
 
-  Match() { } // an invalid match table, will match nothing
-
+  Match() { /* invalid */ }
   Match(const RuleSeq& rules) {
     // allow for arity-overloaded instructions by internally using multiple match tables (indexed by arity)
     for (const auto& rule : rules) {
@@ -1154,11 +1278,7 @@ public:
   }
 
   void encode(Output& o, const MInst& i) const {
-    auto ri = this->rules.find(i.argc);
-    if (ri == this->rules.end()) {
-      throw std::runtime_error("Can't encode instruction with no matching arity rules: " + str(i));
-    }
-    for (const auto& rule : ri->second) {
+    for (const auto& rule : rulesForArity(i)) {
       if (rule.invoke(o, i.argc, i.args)) {
         // done!
         return;
@@ -1166,8 +1286,34 @@ public:
     }
     throw std::runtime_error("Failed to find a matching encoding rule for instruction: " + str(i));
   }
+
+  // infer defs/uses from an instruction
+  void defs(const MInst& i, std::vector<MArg>* ds) const {
+    for (const auto& rule : rulesForArity(i)) {
+      if (rule.defs(i.argc, i.args, ds)) {
+        return;
+      }
+    }
+    throw std::runtime_error("Failed to find a matching rule for def inference: " + str(i));
+  }
+  void uses(const MInst& i, std::vector<MArg>* ds) const {
+    for (const auto& rule : rulesForArity(i)) {
+      if (rule.uses(i.argc, i.args, ds)) {
+        return;
+      }
+    }
+    throw std::runtime_error("Failed to find a matching rule for use inference: " + str(i));
+  }
 private:
   std::map<int, RuleSeq> rules;
+
+  const RuleSeq& rulesForArity(const MInst& i) const {
+    auto ri = this->rules.find(i.argc);
+    if (ri == this->rules.end()) {
+      throw std::runtime_error("Arity mismatch in instruction: " + str(i));
+    }
+    return ri->second;
+  }
 };
 
 /**************************************************************************************
@@ -1178,6 +1324,16 @@ private:
 
 // set 16-bit mode on an instruction
 inline uint8_t S16() { return 0x66; }
+
+// optionally rewrite memory dereferences to minimize space
+void normalize(RegDeref<X86Reg>* m) {
+  if (m->scale == 1 && uint8_t(m->index) == 4) {
+    // SP can't be an index, but just if scale=1 then we can swap base and index
+    std::swap(m->base, m->index);
+    m->scale = m->useBase ? 1 : 0;
+    m->useBase = true;
+  }
+}
 
 // the REX prefix byte holds 4 control bits and must be present (even with all control bits off) in order
 // to address the low byte of most integer registers (a few can be addressed without it)
@@ -1218,8 +1374,10 @@ inline bool lowByteRef(const Reg<X86Reg>& r) {
 inline REXByte REX(bool needed, bool W, bool R, const RM& rm) {
   if (const auto* reg = rm.reg()) {
     return needIf(needed || lowByteRef(*reg), REX(W, R, false, int(reg->name) >= 8));
-  } else if (const auto* rd = rm.regDeref()) {
-    return needIf(needed, REX(W, R, rd->scale > 0 && int(rd->index) >= 8, int(rd->base) >= 8));
+  } else if (const auto* d = rm.regDeref()) {
+    auto rd = *d;
+    normalize(&rd);
+    return needIf(needed, REX(W, R, rd.scale > 0 && int(rd.index) >= 8, int(rd.base) >= 8));
   } else {
     throw std::runtime_error("Internal inconsistency in RM type");
   }
@@ -1300,13 +1458,9 @@ inline MODRMCode MODRM(uint8_t r, const Reg<X86Reg>& rm) {
 inline MODRMCode MODRM(const Reg<X86Reg>& r0, const Reg<X86Reg>& r1) {
   return MODRM(lowRegCode(r0), r1);
 }
-inline MODRMCode MODRM(uint8_t r, RegDeref<X86Reg> m) {
-  if (m.scale == 1 && uint8_t(m.index) == 4) {
-    // SP can't be an index, but just if scale=1 then we can swap base and index
-    std::swap(m.base, m.index);
-    m.scale = m.useBase ? 1 : 0;
-    m.useBase = true;
-  }
+inline MODRMCode MODRM(uint8_t r, const RegDeref<X86Reg>& dm) {
+  RegDeref<X86Reg> m = dm;
+  normalize(&m);
   if (m.scale > 0 && uint8_t(m.index) == 4) {
     throw std::runtime_error("Can't use 'RSP' register as index in memory dereference");
   }
@@ -1502,61 +1656,61 @@ inline void bootEncodingTable(EncodingTable& t) {
   typedef const LabelRef&    LR;
 
   t["add"] = Match({
-    Rule(P::reg("al"),  P::imm8(),  [](O o, I ib){o(        ui8(0x04), ui8(ib));}),
-    Rule(P::reg("ax"),  P::imm16(), [](O o, I iw){o(S16(),  ui8(0x05), ui16(iw));}),
-    Rule(P::reg("eax"), P::imm32(), [](O o, I id){o(        ui8(0x05), ui32(id));}),
-    Rule(P::reg("rax"), P::imm32(), [](O o, I id){o(REXW(), ui8(0x05), ui32(id));}),
+    Rule(io(P::reg("al")),  P::imm8(),  [](O o, I ib){o(        ui8(0x04), ui8(ib));}),
+    Rule(io(P::reg("ax")),  P::imm16(), [](O o, I iw){o(S16(),  ui8(0x05), ui16(iw));}),
+    Rule(io(P::reg("eax")), P::imm32(), [](O o, I id){o(        ui8(0x05), ui32(id));}),
+    Rule(io(P::reg("rax")), P::imm32(), [](O o, I id){o(REXW(), ui8(0x05), ui32(id));}),
 
-    Rule( P::rm8(),  P::imm8(), [](O o, RM rm, I ib){o(        REX(rm), ui8(0x80), MODRM(0, rm), ui8(ib));}),
-    Rule(P::rm16(), P::imm16(), [](O o, RM rm, I iw){o(S16(),  REX(rm), ui8(0x81), MODRM(0, rm), ui16(iw));}),
-    Rule(P::rm32(), P::imm32(), [](O o, RM rm, I id){o(        REX(rm), ui8(0x81), MODRM(0, rm), ui32(id));}),
-    Rule(P::rm64(), P::imm32(), [](O o, RM rm, I id){o(       REXW(rm), ui8(0x81), MODRM(0, rm), ui32(id));}),
+    Rule(io( P::rm8()),  P::imm8(), [](O o, RM rm, I ib){o(        REX(rm), ui8(0x80), MODRM(0, rm), ui8(ib));}),
+    Rule(io(P::rm16()), P::imm16(), [](O o, RM rm, I iw){o(S16(),  REX(rm), ui8(0x81), MODRM(0, rm), ui16(iw));}),
+    Rule(io(P::rm32()), P::imm32(), [](O o, RM rm, I id){o(        REX(rm), ui8(0x81), MODRM(0, rm), ui32(id));}),
+    Rule(io(P::rm64()), P::imm32(), [](O o, RM rm, I id){o(       REXW(rm), ui8(0x81), MODRM(0, rm), ui32(id));}),
 
-    Rule(P::rm16(), P::imm8(), [](O o, RM rm, I ib){o(S16(),  REX(rm), ui8(0x83), MODRM(0, rm), ui8(ib));}),
-    Rule(P::rm32(), P::imm8(), [](O o, RM rm, I ib){o(        REX(rm), ui8(0x83), MODRM(0, rm), ui8(ib));}),
-    Rule(P::rm64(), P::imm8(), [](O o, RM rm, I ib){o(       REXW(rm), ui8(0x83), MODRM(0, rm), ui8(ib));}),
+    Rule(io(P::rm16()), P::imm8(), [](O o, RM rm, I ib){o(S16(),  REX(rm), ui8(0x83), MODRM(0, rm), ui8(ib));}),
+    Rule(io(P::rm32()), P::imm8(), [](O o, RM rm, I ib){o(        REX(rm), ui8(0x83), MODRM(0, rm), ui8(ib));}),
+    Rule(io(P::rm64()), P::imm8(), [](O o, RM rm, I ib){o(       REXW(rm), ui8(0x83), MODRM(0, rm), ui8(ib));}),
 
-    Rule( P::rm8(),  P::r8(), [](O o, RM rm, R r){o(        REX(r, rm), ui8(0x00), MODRM(r, rm));}),
-    Rule(P::rm16(), P::r16(), [](O o, RM rm, R r){o(S16(),  REX(r, rm), ui8(0x01), MODRM(r, rm));}),
-    Rule(P::rm32(), P::r32(), [](O o, RM rm, R r){o(        REX(r, rm), ui8(0x01), MODRM(r, rm));}),
-    Rule(P::rm64(), P::r64(), [](O o, RM rm, R r){o(       REXW(r, rm), ui8(0x01), MODRM(r, rm));}),
+    Rule(io( P::rm8()),  P::r8(), [](O o, RM rm, R r){o(        REX(r, rm), ui8(0x00), MODRM(r, rm));}),
+    Rule(io(P::rm16()), P::r16(), [](O o, RM rm, R r){o(S16(),  REX(r, rm), ui8(0x01), MODRM(r, rm));}),
+    Rule(io(P::rm32()), P::r32(), [](O o, RM rm, R r){o(        REX(r, rm), ui8(0x01), MODRM(r, rm));}),
+    Rule(io(P::rm64()), P::r64(), [](O o, RM rm, R r){o(       REXW(r, rm), ui8(0x01), MODRM(r, rm));}),
 
-    Rule( P::r8(), P::rm8(),  [](O o, R r, RM rm){o(        REX(r, rm), ui8(0x02), MODRM(r, rm));}),
-    Rule(P::r16(), P::rm16(), [](O o, R r, RM rm){o(S16(),  REX(r, rm), ui8(0x03), MODRM(r, rm));}),
-    Rule(P::r32(), P::rm32(), [](O o, R r, RM rm){o(        REX(r, rm), ui8(0x03), MODRM(r, rm));}),
-    Rule(P::r64(), P::rm64(), [](O o, R r, RM rm){o(       REXW(r, rm), ui8(0x03), MODRM(r, rm));})
+    Rule(io( P::r8()), P::rm8(),  [](O o, R r, RM rm){o(        REX(r, rm), ui8(0x02), MODRM(r, rm));}),
+    Rule(io(P::r16()), P::rm16(), [](O o, R r, RM rm){o(S16(),  REX(r, rm), ui8(0x03), MODRM(r, rm));}),
+    Rule(io(P::r32()), P::rm32(), [](O o, R r, RM rm){o(        REX(r, rm), ui8(0x03), MODRM(r, rm));}),
+    Rule(io(P::r64()), P::rm64(), [](O o, R r, RM rm){o(       REXW(r, rm), ui8(0x03), MODRM(r, rm));})
   });
   t["addsd"] = Match({
-    Rule(P::rf64(), P::rmf64(), [](O o, R r, RM rm){o(ui8(0xf2), REX(r, rm), ui8(0x0f), ui8(0x58), MODRM(r, rm));})
+    Rule(io(P::rf64()), P::rmf64(), [](O o, R r, RM rm){o(ui8(0xf2), REX(r, rm), ui8(0x0f), ui8(0x58), MODRM(r, rm));})
   });
   t["addss"] = Match({
-    Rule(P::rf32(), P::rmf32(), [](O o, R r, RM rm){o(ui8(0xf3), REX(r, rm), ui8(0x0f), ui8(0x58), MODRM(r, rm));})
+    Rule(io(P::rf32()), P::rmf32(), [](O o, R r, RM rm){o(ui8(0xf3), REX(r, rm), ui8(0x0f), ui8(0x58), MODRM(r, rm));})
   });
 
   t["and"] = Match({
-    Rule(P::reg("al"),   P::imm8(), [](O o, I ib){o(        ui8(0x24),  ui8(ib));}),
-    Rule(P::reg("ax"),  P::imm16(), [](O o, I iw){o(S16(),  ui8(0x25), ui16(iw));}),
-    Rule(P::reg("eax"), P::imm32(), [](O o, I id){o(        ui8(0x25), ui32(id));}),
-    Rule(P::reg("rax"), P::imm32(), [](O o, I id){o(REXW(), ui8(0x25), ui32(id));}),
+    Rule(io(P::reg("al")),   P::imm8(), [](O o, I ib){o(        ui8(0x24),  ui8(ib));}),
+    Rule(io(P::reg("ax")),  P::imm16(), [](O o, I iw){o(S16(),  ui8(0x25), ui16(iw));}),
+    Rule(io(P::reg("eax")), P::imm32(), [](O o, I id){o(        ui8(0x25), ui32(id));}),
+    Rule(io(P::reg("rax")), P::imm32(), [](O o, I id){o(REXW(), ui8(0x25), ui32(id));}),
 
-    Rule( P::rm8(),  P::imm8(), [](O o, RM rm, I ib){o(        REX(rm), ui8(0x80), MODRM(4, rm),  ui8(ib));}),
-    Rule(P::rm16(), P::imm16(), [](O o, RM rm, I iw){o(S16(),  REX(rm), ui8(0x81), MODRM(4, rm), ui16(iw));}),
-    Rule(P::rm32(), P::imm32(), [](O o, RM rm, I id){o(        REX(rm), ui8(0x81), MODRM(4, rm), ui32(id));}),
-    Rule(P::rm64(), P::imm32(), [](O o, RM rm, I id){o(       REXW(rm), ui8(0x81), MODRM(4, rm), ui32(id));}),
+    Rule(io( P::rm8()),  P::imm8(), [](O o, RM rm, I ib){o(        REX(rm), ui8(0x80), MODRM(4, rm),  ui8(ib));}),
+    Rule(io(P::rm16()), P::imm16(), [](O o, RM rm, I iw){o(S16(),  REX(rm), ui8(0x81), MODRM(4, rm), ui16(iw));}),
+    Rule(io(P::rm32()), P::imm32(), [](O o, RM rm, I id){o(        REX(rm), ui8(0x81), MODRM(4, rm), ui32(id));}),
+    Rule(io(P::rm64()), P::imm32(), [](O o, RM rm, I id){o(       REXW(rm), ui8(0x81), MODRM(4, rm), ui32(id));}),
 
-    Rule(P::rm16(), P::imm8(), [](O o, RM rm, I ib){o(S16(),  REX(rm), ui8(0x83), MODRM(4, rm), ui8(ib));}),
-    Rule(P::rm32(), P::imm8(), [](O o, RM rm, I ib){o(        REX(rm), ui8(0x83), MODRM(4, rm), ui8(ib));}),
-    Rule(P::rm64(), P::imm8(), [](O o, RM rm, I ib){o(       REXW(rm), ui8(0x83), MODRM(4, rm), ui8(ib));}),
+    Rule(io(P::rm16()), P::imm8(), [](O o, RM rm, I ib){o(S16(),  REX(rm), ui8(0x83), MODRM(4, rm), ui8(ib));}),
+    Rule(io(P::rm32()), P::imm8(), [](O o, RM rm, I ib){o(        REX(rm), ui8(0x83), MODRM(4, rm), ui8(ib));}),
+    Rule(io(P::rm64()), P::imm8(), [](O o, RM rm, I ib){o(       REXW(rm), ui8(0x83), MODRM(4, rm), ui8(ib));}),
 
-    Rule( P::rm8(),  P::r8(), [](O o, RM rm, R r){o(        REX(r, rm), ui8(0x20), MODRM(r, rm));}),
-    Rule(P::rm16(), P::r16(), [](O o, RM rm, R r){o(S16(),  REX(r, rm), ui8(0x21), MODRM(r, rm));}),
-    Rule(P::rm32(), P::r32(), [](O o, RM rm, R r){o(        REX(r, rm), ui8(0x21), MODRM(r, rm));}),
-    Rule(P::rm64(), P::r64(), [](O o, RM rm, R r){o(       REXW(r, rm), ui8(0x21), MODRM(r, rm));}),
+    Rule(io( P::rm8()),  P::r8(), [](O o, RM rm, R r){o(        REX(r, rm), ui8(0x20), MODRM(r, rm));}),
+    Rule(io(P::rm16()), P::r16(), [](O o, RM rm, R r){o(S16(),  REX(r, rm), ui8(0x21), MODRM(r, rm));}),
+    Rule(io(P::rm32()), P::r32(), [](O o, RM rm, R r){o(        REX(r, rm), ui8(0x21), MODRM(r, rm));}),
+    Rule(io(P::rm64()), P::r64(), [](O o, RM rm, R r){o(       REXW(r, rm), ui8(0x21), MODRM(r, rm));}),
 
-    Rule( P::r8(),  P::rm8(), [](O o, R r, RM rm){o(        REX(r, rm), ui8(0x22), MODRM(r, rm));}),
-    Rule(P::r16(), P::rm16(), [](O o, R r, RM rm){o(S16(),  REX(r, rm), ui8(0x23), MODRM(r, rm));}),
-    Rule(P::r32(), P::rm32(), [](O o, R r, RM rm){o(        REX(r, rm), ui8(0x23), MODRM(r, rm));}),
-    Rule(P::r64(), P::rm64(), [](O o, R r, RM rm){o(       REXW(r, rm), ui8(0x23), MODRM(r, rm));})
+    Rule(io( P::r8()),  P::rm8(), [](O o, R r, RM rm){o(        REX(r, rm), ui8(0x22), MODRM(r, rm));}),
+    Rule(io(P::r16()), P::rm16(), [](O o, R r, RM rm){o(S16(),  REX(r, rm), ui8(0x23), MODRM(r, rm));}),
+    Rule(io(P::r32()), P::rm32(), [](O o, R r, RM rm){o(        REX(r, rm), ui8(0x23), MODRM(r, rm));}),
+    Rule(io(P::r64()), P::rm64(), [](O o, R r, RM rm){o(       REXW(r, rm), ui8(0x23), MODRM(r, rm));})
   });
 
   t["call"] = Match({
@@ -1630,98 +1784,98 @@ inline void bootEncodingTable(EncodingTable& t) {
   t["jz"]   = t["je"];
 
   t["mov"] = Match({
-    Rule( P::rm8(),  P::r8(), [](O o, RM rm, R r){o(        REX(r,rm), ui8(0x88), MODRM(r,rm));}),
-    Rule(P::rm16(), P::r16(), [](O o, RM rm, R r){o(S16(),  REX(r,rm), ui8(0x89), MODRM(r,rm));}),
-    Rule(P::rm32(), P::r32(), [](O o, RM rm, R r){o(        REX(r,rm), ui8(0x89), MODRM(r,rm));}),
-    Rule(P::rm64(), P::r64(), [](O o, RM rm, R r){o(       REXW(r,rm), ui8(0x89), MODRM(r,rm));}),
+    Rule(o( P::rm8()),  P::r8(), [](O o, RM rm, R r){o(        REX(r,rm), ui8(0x88), MODRM(r,rm));}),
+    Rule(o(P::rm16()), P::r16(), [](O o, RM rm, R r){o(S16(),  REX(r,rm), ui8(0x89), MODRM(r,rm));}),
+    Rule(o(P::rm32()), P::r32(), [](O o, RM rm, R r){o(        REX(r,rm), ui8(0x89), MODRM(r,rm));}),
+    Rule(o(P::rm64()), P::r64(), [](O o, RM rm, R r){o(       REXW(r,rm), ui8(0x89), MODRM(r,rm));}),
 
-    Rule( P::r8(),  P::rm8(), [](O o, R r, RM rm){o(        REX(r,rm), ui8(0x8a), MODRM(r,rm));}),
-    Rule(P::r16(), P::rm16(), [](O o, R r, RM rm){o(S16(),  REX(r,rm), ui8(0x8b), MODRM(r,rm));}),
-    Rule(P::r32(), P::rm32(), [](O o, R r, RM rm){o(        REX(r,rm), ui8(0x8b), MODRM(r,rm));}),
-    Rule(P::r64(), P::rm64(), [](O o, R r, RM rm){o(       REXW(r,rm), ui8(0x8b), MODRM(r,rm));}),
+    Rule(o( P::r8()),  P::rm8(), [](O o, R r, RM rm){o(        REX(r,rm), ui8(0x8a), MODRM(r,rm));}),
+    Rule(o(P::r16()), P::rm16(), [](O o, R r, RM rm){o(S16(),  REX(r,rm), ui8(0x8b), MODRM(r,rm));}),
+    Rule(o(P::r32()), P::rm32(), [](O o, R r, RM rm){o(        REX(r,rm), ui8(0x8b), MODRM(r,rm));}),
+    Rule(o(P::r64()), P::rm64(), [](O o, R r, RM rm){o(       REXW(r,rm), ui8(0x8b), MODRM(r,rm));}),
 
-    Rule( P::r8(),  P::imm8(), [](O o, R r, I ib){o(        REX(r), ui8(0xb0+lowRegCode(r)), ui8(ib));}),
-    Rule(P::r16(), P::imm16(), [](O o, R r, I iw){o(S16(),  REX(r), ui8(0xb8+lowRegCode(r)), ui16(iw));}),
-    Rule(P::r32(), P::imm32(), [](O o, R r, I id){o(        REX(r), ui8(0xb8+lowRegCode(r)), ui32(id));}),
-    Rule(P::r64(), P::imm64(), [](O o, R r, I iq){o(       REXW(r), ui8(0xb8+lowRegCode(r)), ui64(iq));}),
+    Rule(o( P::r8()),  P::imm8(), [](O o, R r, I ib){o(        REX(r), ui8(0xb0+lowRegCode(r)), ui8(ib));}),
+    Rule(o(P::r16()), P::imm16(), [](O o, R r, I iw){o(S16(),  REX(r), ui8(0xb8+lowRegCode(r)), ui16(iw));}),
+    Rule(o(P::r32()), P::imm32(), [](O o, R r, I id){o(        REX(r), ui8(0xb8+lowRegCode(r)), ui32(id));}),
+    Rule(o(P::r64()), P::imm64(), [](O o, R r, I iq){o(       REXW(r), ui8(0xb8+lowRegCode(r)), ui64(iq));}),
 
-    Rule( P::rm8(),  P::imm8(), [](O o, RM rm, I ib){o(        REX(rm), ui8(0xc6), MODRM(0, rm), ui8(ib));}),
-    Rule(P::rm16(), P::imm16(), [](O o, RM rm, I iw){o(S16(),  REX(rm), ui8(0xc7), MODRM(0, rm), ui16(iw));}),
-    Rule(P::rm32(), P::imm32(), [](O o, RM rm, I id){o(        REX(rm), ui8(0xc7), MODRM(0, rm), ui32(id));}),
-    Rule(P::rm64(), P::imm64(), [](O o, RM rm, I iq){o(       REXW(rm), ui8(0xc7), MODRM(0, rm), ui64(iq));})
+    Rule(o( P::rm8()),  P::imm8(), [](O o, RM rm, I ib){o(        REX(rm), ui8(0xc6), MODRM(0, rm), ui8(ib));}),
+    Rule(o(P::rm16()), P::imm16(), [](O o, RM rm, I iw){o(S16(),  REX(rm), ui8(0xc7), MODRM(0, rm), ui16(iw));}),
+    Rule(o(P::rm32()), P::imm32(), [](O o, RM rm, I id){o(        REX(rm), ui8(0xc7), MODRM(0, rm), ui32(id));}),
+    Rule(o(P::rm64()), P::imm64(), [](O o, RM rm, I iq){o(       REXW(rm), ui8(0xc7), MODRM(0, rm), ui64(iq));})
   });
 
   t["ret"] = Match({
     Rule([](O o) { o(ui8(0xc3)); })
   });
 
-  t["seta"]   = Match({Rule(P::rm8(), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x97),MODRM(0,rm));})});
-  t["setae"]  = Match({Rule(P::rm8(), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x93),MODRM(0,rm));})});
-  t["setb"]   = Match({Rule(P::rm8(), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x92),MODRM(0,rm));})});
-  t["setbe"]  = Match({Rule(P::rm8(), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x96),MODRM(0,rm));})});
-  t["setc"]   = Match({Rule(P::rm8(), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x92),MODRM(0,rm));})});
-  t["sete"]   = Match({Rule(P::rm8(), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x94),MODRM(0,rm));})});
-  t["setg"]   = Match({Rule(P::rm8(), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x9f),MODRM(0,rm));})});
-  t["setge"]  = Match({Rule(P::rm8(), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x9d),MODRM(0,rm));})});
-  t["setl"]   = Match({Rule(P::rm8(), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x9c),MODRM(0,rm));})});
-  t["setle"]  = Match({Rule(P::rm8(), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x9e),MODRM(0,rm));})});
-  t["setna"]  = Match({Rule(P::rm8(), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x96),MODRM(0,rm));})});
-  t["setnae"] = Match({Rule(P::rm8(), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x92),MODRM(0,rm));})});
-  t["setnb"]  = Match({Rule(P::rm8(), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x93),MODRM(0,rm));})});
-  t["setnbe"] = Match({Rule(P::rm8(), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x97),MODRM(0,rm));})});
-  t["setnc"]  = Match({Rule(P::rm8(), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x93),MODRM(0,rm));})});
-  t["setne"]  = Match({Rule(P::rm8(), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x95),MODRM(0,rm));})});
-  t["setng"]  = Match({Rule(P::rm8(), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x9e),MODRM(0,rm));})});
-  t["setnge"] = Match({Rule(P::rm8(), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x9c),MODRM(0,rm));})});
-  t["setnl"]  = Match({Rule(P::rm8(), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x9d),MODRM(0,rm));})});
-  t["setnle"] = Match({Rule(P::rm8(), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x9f),MODRM(0,rm));})});
+  t["seta"]   = Match({Rule(o(P::rm8()), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x97),MODRM(0,rm));})});
+  t["setae"]  = Match({Rule(o(P::rm8()), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x93),MODRM(0,rm));})});
+  t["setb"]   = Match({Rule(o(P::rm8()), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x92),MODRM(0,rm));})});
+  t["setbe"]  = Match({Rule(o(P::rm8()), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x96),MODRM(0,rm));})});
+  t["setc"]   = Match({Rule(o(P::rm8()), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x92),MODRM(0,rm));})});
+  t["sete"]   = Match({Rule(o(P::rm8()), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x94),MODRM(0,rm));})});
+  t["setg"]   = Match({Rule(o(P::rm8()), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x9f),MODRM(0,rm));})});
+  t["setge"]  = Match({Rule(o(P::rm8()), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x9d),MODRM(0,rm));})});
+  t["setl"]   = Match({Rule(o(P::rm8()), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x9c),MODRM(0,rm));})});
+  t["setle"]  = Match({Rule(o(P::rm8()), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x9e),MODRM(0,rm));})});
+  t["setna"]  = Match({Rule(o(P::rm8()), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x96),MODRM(0,rm));})});
+  t["setnae"] = Match({Rule(o(P::rm8()), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x92),MODRM(0,rm));})});
+  t["setnb"]  = Match({Rule(o(P::rm8()), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x93),MODRM(0,rm));})});
+  t["setnbe"] = Match({Rule(o(P::rm8()), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x97),MODRM(0,rm));})});
+  t["setnc"]  = Match({Rule(o(P::rm8()), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x93),MODRM(0,rm));})});
+  t["setne"]  = Match({Rule(o(P::rm8()), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x95),MODRM(0,rm));})});
+  t["setng"]  = Match({Rule(o(P::rm8()), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x9e),MODRM(0,rm));})});
+  t["setnge"] = Match({Rule(o(P::rm8()), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x9c),MODRM(0,rm));})});
+  t["setnl"]  = Match({Rule(o(P::rm8()), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x9d),MODRM(0,rm));})});
+  t["setnle"] = Match({Rule(o(P::rm8()), [](O o, RM rm){o(REX(rm),ui8(0x0f),ui8(0x9f),MODRM(0,rm));})});
 
   t["sfence"] = Match({
     Rule([](O o){o(ui8(0x0f), ui8(0xae), ui8(0xf8));})
   });
 
   t["shld"] = Match({
-    Rule(P::rm16(), P::r16(), P::imm8(),    [](O o, RM rm, R r, I ib){o(S16(),  REX(r,rm), ui8(0x0f), ui8(0xa4), MODRM(r,rm), ui8(ib));}),
-    Rule(P::rm16(), P::r16(), P::reg("cl"), [](O o, RM rm, R r)      {o(S16(),  REX(r,rm), ui8(0x0f), ui8(0xa5), MODRM(r,rm));}),
-    Rule(P::rm32(), P::r32(), P::imm8(),    [](O o, RM rm, R r, I ib){o(        REX(r,rm), ui8(0x0f), ui8(0xa4), MODRM(r,rm), ui8(ib));}),
-    Rule(P::rm32(), P::r32(), P::reg("cl"), [](O o, RM rm, R r)      {o(        REX(r,rm), ui8(0x0f), ui8(0xa5), MODRM(r,rm));}),
-    Rule(P::rm64(), P::r64(), P::imm8(),    [](O o, RM rm, R r, I ib){o(       REXW(r,rm), ui8(0x0f), ui8(0xa4), MODRM(r,rm), ui8(ib));}),
-    Rule(P::rm64(), P::r64(), P::reg("cl"), [](O o, RM rm, R r)      {o(       REXW(r,rm), ui8(0x0f), ui8(0xa5), MODRM(r,rm));})
+    Rule(io(P::rm16()), P::r16(), P::imm8(),    [](O o, RM rm, R r, I ib){o(S16(),  REX(r,rm), ui8(0x0f), ui8(0xa4), MODRM(r,rm), ui8(ib));}),
+    Rule(io(P::rm16()), P::r16(), P::reg("cl"), [](O o, RM rm, R r)      {o(S16(),  REX(r,rm), ui8(0x0f), ui8(0xa5), MODRM(r,rm));}),
+    Rule(io(P::rm32()), P::r32(), P::imm8(),    [](O o, RM rm, R r, I ib){o(        REX(r,rm), ui8(0x0f), ui8(0xa4), MODRM(r,rm), ui8(ib));}),
+    Rule(io(P::rm32()), P::r32(), P::reg("cl"), [](O o, RM rm, R r)      {o(        REX(r,rm), ui8(0x0f), ui8(0xa5), MODRM(r,rm));}),
+    Rule(io(P::rm64()), P::r64(), P::imm8(),    [](O o, RM rm, R r, I ib){o(       REXW(r,rm), ui8(0x0f), ui8(0xa4), MODRM(r,rm), ui8(ib));}),
+    Rule(io(P::rm64()), P::r64(), P::reg("cl"), [](O o, RM rm, R r)      {o(       REXW(r,rm), ui8(0x0f), ui8(0xa5), MODRM(r,rm));})
   });
 
   t["shrd"] = Match({
-    Rule(P::rm16(), P::r16(), P::imm8(),    [](O o, RM rm, R r, I ib){o(S16(),  REX(r,rm), ui8(0x0f), ui8(0xac), MODRM(r,rm), ui8(ib));}),
-    Rule(P::rm16(), P::r16(), P::reg("cl"), [](O o, RM rm, R r)      {o(S16(),  REX(r,rm), ui8(0x0f), ui8(0xad), MODRM(r,rm));}),
-    Rule(P::rm32(), P::r32(), P::imm8(),    [](O o, RM rm, R r, I ib){o(        REX(r,rm), ui8(0x0f), ui8(0xac), MODRM(r,rm), ui8(ib));}),
-    Rule(P::rm32(), P::r32(), P::reg("cl"), [](O o, RM rm, R r)      {o(        REX(r,rm), ui8(0x0f), ui8(0xad), MODRM(r,rm));}),
-    Rule(P::rm64(), P::r64(), P::imm8(),    [](O o, RM rm, R r, I ib){o(       REXW(r,rm), ui8(0x0f), ui8(0xac), MODRM(r,rm), ui8(ib));}),
-    Rule(P::rm64(), P::r64(), P::reg("cl"), [](O o, RM rm, R r)      {o(       REXW(r,rm), ui8(0x0f), ui8(0xad), MODRM(r,rm));})
+    Rule(io(P::rm16()), P::r16(), P::imm8(),    [](O o, RM rm, R r, I ib){o(S16(),  REX(r,rm), ui8(0x0f), ui8(0xac), MODRM(r,rm), ui8(ib));}),
+    Rule(io(P::rm16()), P::r16(), P::reg("cl"), [](O o, RM rm, R r)      {o(S16(),  REX(r,rm), ui8(0x0f), ui8(0xad), MODRM(r,rm));}),
+    Rule(io(P::rm32()), P::r32(), P::imm8(),    [](O o, RM rm, R r, I ib){o(        REX(r,rm), ui8(0x0f), ui8(0xac), MODRM(r,rm), ui8(ib));}),
+    Rule(io(P::rm32()), P::r32(), P::reg("cl"), [](O o, RM rm, R r)      {o(        REX(r,rm), ui8(0x0f), ui8(0xad), MODRM(r,rm));}),
+    Rule(io(P::rm64()), P::r64(), P::imm8(),    [](O o, RM rm, R r, I ib){o(       REXW(r,rm), ui8(0x0f), ui8(0xac), MODRM(r,rm), ui8(ib));}),
+    Rule(io(P::rm64()), P::r64(), P::reg("cl"), [](O o, RM rm, R r)      {o(       REXW(r,rm), ui8(0x0f), ui8(0xad), MODRM(r,rm));})
   });
 
   t["sub"] = Match({
-    Rule(P::reg("al"),  P::imm8(),  [](O o, I ib){o(        ui8(0x2c), ui8(ib));}),
-    Rule(P::reg("ax"),  P::imm16(), [](O o, I iw){o(S16(),  ui8(0x2d), ui16(iw));}),
-    Rule(P::reg("eax"), P::imm32(), [](O o, I id){o(        ui8(0x2d), ui32(id));}),
-    Rule(P::reg("rax"), P::imm32(), [](O o, I id){o(REXW(), ui8(0x2d), ui32(id));}),
+    Rule(io(P::reg("al")),  P::imm8(),  [](O o, I ib){o(        ui8(0x2c), ui8(ib));}),
+    Rule(io(P::reg("ax")),  P::imm16(), [](O o, I iw){o(S16(),  ui8(0x2d), ui16(iw));}),
+    Rule(io(P::reg("eax")), P::imm32(), [](O o, I id){o(        ui8(0x2d), ui32(id));}),
+    Rule(io(P::reg("rax")), P::imm32(), [](O o, I id){o(REXW(), ui8(0x2d), ui32(id));}),
 
-    Rule( P::rm8(),  P::imm8(), [](O o, RM rm, I ib){o(        REX(rm), ui8(0x80), MODRM(5, rm), ui8(ib));}),
-    Rule(P::rm16(), P::imm16(), [](O o, RM rm, I iw){o(S16(),  REX(rm), ui8(0x81), MODRM(5, rm), ui16(iw));}),
-    Rule(P::rm32(), P::imm32(), [](O o, RM rm, I id){o(        REX(rm), ui8(0x81), MODRM(5, rm), ui32(id));}),
-    Rule(P::rm64(), P::imm32(), [](O o, RM rm, I id){o(       REXW(rm), ui8(0x81), MODRM(5, rm), ui32(id));}),
+    Rule(io( P::rm8()),  P::imm8(), [](O o, RM rm, I ib){o(        REX(rm), ui8(0x80), MODRM(5, rm), ui8(ib));}),
+    Rule(io(P::rm16()), P::imm16(), [](O o, RM rm, I iw){o(S16(),  REX(rm), ui8(0x81), MODRM(5, rm), ui16(iw));}),
+    Rule(io(P::rm32()), P::imm32(), [](O o, RM rm, I id){o(        REX(rm), ui8(0x81), MODRM(5, rm), ui32(id));}),
+    Rule(io(P::rm64()), P::imm32(), [](O o, RM rm, I id){o(       REXW(rm), ui8(0x81), MODRM(5, rm), ui32(id));}),
 
-    Rule(P::rm16(), P::imm8(), [](O o, RM rm, I ib){o(S16(),  REX(rm), ui8(0x83), MODRM(5, rm), ui8(ib));}),
-    Rule(P::rm32(), P::imm8(), [](O o, RM rm, I ib){o(        REX(rm), ui8(0x83), MODRM(5, rm), ui8(ib));}),
-    Rule(P::rm64(), P::imm8(), [](O o, RM rm, I ib){o(       REXW(rm), ui8(0x83), MODRM(5, rm), ui8(ib));}),
+    Rule(io(P::rm16()), P::imm8(), [](O o, RM rm, I ib){o(S16(),  REX(rm), ui8(0x83), MODRM(5, rm), ui8(ib));}),
+    Rule(io(P::rm32()), P::imm8(), [](O o, RM rm, I ib){o(        REX(rm), ui8(0x83), MODRM(5, rm), ui8(ib));}),
+    Rule(io(P::rm64()), P::imm8(), [](O o, RM rm, I ib){o(       REXW(rm), ui8(0x83), MODRM(5, rm), ui8(ib));}),
 
-    Rule( P::rm8(),  P::r8(), [](O o, RM rm, R r){o(        REX(r, rm), ui8(0x28), MODRM(r, rm));}),
-    Rule(P::rm16(), P::r16(), [](O o, RM rm, R r){o(S16(),  REX(r, rm), ui8(0x29), MODRM(r, rm));}),
-    Rule(P::rm32(), P::r32(), [](O o, RM rm, R r){o(        REX(r, rm), ui8(0x29), MODRM(r, rm));}),
-    Rule(P::rm64(), P::r64(), [](O o, RM rm, R r){o(       REXW(r, rm), ui8(0x29), MODRM(r, rm));}),
+    Rule(io( P::rm8()),  P::r8(), [](O o, RM rm, R r){o(        REX(r, rm), ui8(0x28), MODRM(r, rm));}),
+    Rule(io(P::rm16()), P::r16(), [](O o, RM rm, R r){o(S16(),  REX(r, rm), ui8(0x29), MODRM(r, rm));}),
+    Rule(io(P::rm32()), P::r32(), [](O o, RM rm, R r){o(        REX(r, rm), ui8(0x29), MODRM(r, rm));}),
+    Rule(io(P::rm64()), P::r64(), [](O o, RM rm, R r){o(       REXW(r, rm), ui8(0x29), MODRM(r, rm));}),
 
-    Rule( P::r8(), P::rm8(),  [](O o, R r, RM rm){o(        REX(r, rm), ui8(0x2a), MODRM(r, rm));}),
-    Rule(P::r16(), P::rm16(), [](O o, R r, RM rm){o(S16(),  REX(r, rm), ui8(0x2b), MODRM(r, rm));}),
-    Rule(P::r32(), P::rm32(), [](O o, R r, RM rm){o(        REX(r, rm), ui8(0x2b), MODRM(r, rm));}),
-    Rule(P::r64(), P::rm64(), [](O o, R r, RM rm){o(       REXW(r, rm), ui8(0x2b), MODRM(r, rm));})
+    Rule(io( P::r8()), P::rm8(),  [](O o, R r, RM rm){o(        REX(r, rm), ui8(0x2a), MODRM(r, rm));}),
+    Rule(io(P::r16()), P::rm16(), [](O o, R r, RM rm){o(S16(),  REX(r, rm), ui8(0x2b), MODRM(r, rm));}),
+    Rule(io(P::r32()), P::rm32(), [](O o, R r, RM rm){o(        REX(r, rm), ui8(0x2b), MODRM(r, rm));}),
+    Rule(io(P::r64()), P::rm64(), [](O o, R r, RM rm){o(       REXW(r, rm), ui8(0x2b), MODRM(r, rm));})
   });
 }
 
@@ -1733,12 +1887,16 @@ inline const EncodingTable& encodingTable() {
   return t;
 }
 
-inline void encode(const EncodingTable& t, Output& o, const MInst& inst) {
+inline const Match& instDef(const EncodingTable& t, const MInst& inst) {
   auto i = t.find(inst.op);
   if (i == t.end()) {
     throw std::runtime_error("Undefined instruction: " + inst.op);
   }
-  i->second.encode(o, inst);
+  return i->second;
+}
+
+inline void encode(const EncodingTable& t, Output& o, const MInst& inst) {
+  instDef(t, inst).encode(o, inst);
 }
 
 inline void encode(buffer* b, const MInsts& insts) {
@@ -1747,6 +1905,17 @@ inline void encode(buffer* b, const MInsts& insts) {
   for (const auto& inst : insts) {
     encode(t, o, inst);
   }
+}
+
+inline std::vector<MArg> defs(const MInst& inst) {
+  std::vector<MArg> r;
+  instDef(encodingTable(), inst).defs(inst, &r);
+  return r;
+}
+inline std::vector<MArg> uses(const MInst& inst) {
+  std::vector<MArg> r;
+  instDef(encodingTable(), inst).uses(inst, &r);
+  return r;
 }
 
 #endif

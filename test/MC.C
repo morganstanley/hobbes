@@ -1,6 +1,7 @@
 
 #include <hobbes/hobbes.H>
 #include <hobbes/mc/encode.H>
+#include <hobbes/mc/regalloc.H>
 #include "test.H"
 
 using namespace hobbes;
@@ -79,5 +80,28 @@ TEST(MC, CmpJcc) {
     });
     EXPECT_EQ(f(21), false);
     EXPECT_EQ(f(42), true);
+}
+
+TEST(MC, EasyRegCoalesce) {
+  using namespace hobbes::mc;
+
+  // make sure that easy coalesce decisions are always made in register allocation
+  // this verifies that large sets of copied variables merge down to just the minimal set
+  RInsts p = {
+    RInst::make("mov", RArg::reg("a0", 8, RegClass::Int), RArg::reg("rdi", 8, RegClass::Int)),
+  };
+  for (size_t i = 1; i < 100; ++i) {
+    p.push_back(RInst::make("mov", RArg::reg("a"+str(i), 8, RegClass::Int), RArg::reg("a"+str(i-1), 8, RegClass::Int)));
+  }
+  p.push_back(RInst::make("mov", RArg::reg("rax", 8, RegClass::Int), RArg::reg("a99", 8, RegClass::Int)));
+  p.push_back(RInst::make("add", RArg::reg("rax", 8, RegClass::Int), RArg::reg("rax", 8, RegClass::Int)));
+  p.push_back(RInst::make("ret"));
+
+  MInsts expect = {
+    MInst::make("mov", "rax", "rdi"),
+    MInst::make("add", "rax", "rax"),
+    MInst::make("ret")
+  };
+  EXPECT_EQ(assignRegisters(p) == expect, true);
 }
 
