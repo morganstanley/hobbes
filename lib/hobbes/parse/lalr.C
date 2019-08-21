@@ -581,7 +581,7 @@ parserdef lalr1parser(const grammar& g, terminal* s) {
   parserdef     p  = lr0parser(g, s);
   transitionset ts = transitions(p);
 
-  apply(Follow(p, ts), &p);
+  hobbes::apply(Follow(p, ts), &p);
   return p;
 }
 
