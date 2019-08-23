@@ -703,8 +703,9 @@ inline const Reg<X86Reg>& mreg(const std::string& name) {
   }
 }
 template <typename RegisterID>
-inline void printReg(std::ostream& out, const Reg<RegisterID>& r) {
+inline std::ostream& operator<<(std::ostream& out, const Reg<RegisterID>& r) {
   out << regName(r);
+  return out;
 }
 template <typename RegisterID>
 inline void printArg(std::ostream& out, const RegDeref<RegisterID>& rd) {
@@ -732,10 +733,10 @@ inline void printArg(std::ostream& out, const RegDeref<RegisterID>& rd) {
 template <typename RegisterID>
 inline std::ostream& operator<<(std::ostream& out, const Arg<RegisterID>& arg) {
   switch (arg.tag()) {
-  case Arg<RegisterID>::TReg:       printReg(out, *arg.reg());      break;
+  case Arg<RegisterID>::TReg:       out << *arg.reg();              break;
   case Arg<RegisterID>::TRegDeref:  printArg(out, *arg.regDeref()); break;
-  case Arg<RegisterID>::TLabelRef:  out << arg.labelRef()->label;  break;
-  case Arg<RegisterID>::TImmediate: out << arg.immediate()->value; break;
+  case Arg<RegisterID>::TLabelRef:  out << arg.labelRef()->label;   break;
+  case Arg<RegisterID>::TImmediate: out << arg.immediate()->value;  break;
   }
   return out;
 }

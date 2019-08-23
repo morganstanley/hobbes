@@ -247,6 +247,55 @@ inline std::string regName(const std::string& r, RegSize sz, RegClass rc) {
   return r + (rc==RegClass::Float?":float:":":int:") + str(sz);
 }
 
+// calleeSaveRegs : registers that must be preserved by functions (platform specific)
+inline const std::set<Reg<X86Reg>>& calleeSaveRegs() {
+  thread_local std::set<Reg<X86Reg>> regs;
+  if (regs.empty()) {
+    // xmm regs are trashed on all platforms
+    // for whatever reason, Windows wants to preserve different registers than everyone else
+#   if defined(_WIN64) || defined(__CYGWIN__)
+    for (auto x : { X86Reg::R3, X86Reg::R5, X86Reg::R6, X86Reg::R7, X86Reg::R12, X86Reg::R13, X86Reg::R14, X86Reg::R15 }) {
+#   else
+    for (auto x : { X86Reg::R3, X86Reg::R5, X86Reg::R12, X86Reg::R13, X86Reg::R14, X86Reg::R15 }) {
+#   endif
+      Reg<X86Reg> r;
+      r.name = x;
+      r.rsize = 8;
+      r.rclass = RegClass::Int;
+      regs.insert(r);
+    }
+  }
+  return regs;
+}
+
+// callerSaveRegs : registers that may be trashed by functions
+inline const std::set<Reg<X86Reg>>& callerSaveRegs() {
+  thread_local std::set<Reg<X86Reg>> regs;
+  if (regs.empty()) {
+    // all regs that aren't callee-save can be trashed
+    auto saved = calleeSaveRegs();
+
+    for (uint8_t r = 0; r < X86Reg::COUNT; ++r) {
+      Reg<X86Reg> i;
+      i.name   = static_cast<X86Reg>(r);
+      i.rsize  = 8;
+      i.rclass = RegClass::Int;
+      if (r != 4 && !saved.count(i)) {
+        regs.insert(i);
+      }
+
+      Reg<X86Reg> f;
+      f.name   = static_cast<X86Reg>(r);
+      f.rsize  = 8;
+      f.rclass = RegClass::Float;
+      if (!saved.count(f)) {
+        regs.insert(f);
+      }
+    }
+  }
+  return regs;
+}
+
 // map into a machine instruction (giving a local mapping of pretend register IDs to names)
 // this is useful to lift machine instruction use/def calculations to instructions with free register names
 inline const std::map<X86Reg, std::string>& asMachineInst(const RInst& ri, MInst* mi) {
@@ -305,13 +354,19 @@ inline void rmapInto(const std::map<X86Reg, std::string>& m, std::set<std::strin
 // for our purposes here, register defs are just args defined by an instruction that are registers
 // (if an instruction defs into a memory location then it doesn't count as a reg def)
 inline std::set<std::string> regDefs(const RInst& ri) {
-  MInst mi;
-  const auto& lm = asMachineInst(ri, &mi);
-
   std::set<std::string> r;
-  for (const auto& ma : defs(mi)) {
-    if (const auto* reg = ma.reg()) {
-      r.insert(rmap(lm, reg->name, reg->rclass));
+  if (ri.op == "call") {
+    for (const auto& csreg : callerSaveRegs()) {
+      r.insert(stdRegName(csreg.name, csreg.rclass));
+    }
+  } else {
+    MInst mi;
+    const auto& lm = asMachineInst(ri, &mi);
+
+    for (const auto& ma : defs(mi)) {
+      if (const auto* reg = ma.reg()) {
+        r.insert(rmap(lm, reg->name, reg->rclass));
+      }
     }
   }
   return r;
@@ -1191,27 +1246,6 @@ inline MInsts withStackAllocation(const MInsts& insts, uint32_t ssize) {
     result.push_back(inst);
   }
   return result;
-}
-
-// calleeSaveRegs : platform specific
-inline const std::set<Reg<X86Reg>>& calleeSaveRegs() {
-  thread_local std::set<Reg<X86Reg>> regs;
-  if (regs.empty()) {
-    // xmm regs are trashed on all platforms
-    // for whatever reason, Windows wants to preserve different registers than everyone else
-#   if defined(_WIN64) || defined(__CYGWIN__)
-    for (auto x : { X86Reg::R3, X86Reg::R5, X86Reg::R6, X86Reg::R7, X86Reg::R12, X86Reg::R13, X86Reg::R14, X86Reg::R15 }) {
-#   else
-    for (auto x : { X86Reg::R3, X86Reg::R5, X86Reg::R12, X86Reg::R13, X86Reg::R14, X86Reg::R15 }) {
-#   endif
-      Reg<X86Reg> r;
-      r.name = x;
-      r.rsize = 8;
-      r.rclass = RegClass::Int;
-      regs.insert(r);
-    }
-  }
-  return regs;
 }
 
 // saveCalleeSaveRegs : add instructions to save and restore callee-save registers
