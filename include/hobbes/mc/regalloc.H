@@ -694,7 +694,7 @@ public:
           addMoveEdge(d, sv);
 
           for (auto o : v.out.setIndexes()) {
-            if (o != sv) {
+            if (o != sv && live.rclass(d) == live.rclass(o)) {
               addInterfereEdge(d, o);
             }
           }
@@ -704,7 +704,9 @@ public:
         // add interference edges for all vars live out here
         for (auto d : v.defs.setIndexes()) {
           for (auto o : v.out.setIndexes()) {
-            addInterfereEdge(d, o);
+            if (live.rclass(d) == live.rclass(o)) {
+              addInterfereEdge(d, o);
+            }
           }
         }
       }
