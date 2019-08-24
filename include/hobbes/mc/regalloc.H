@@ -244,7 +244,7 @@ inline std::string stdRegName(X86Reg r, RegClass rc) {
   return regName(r, 8, rc);
 }
 inline std::string regName(const std::string& r, RegSize sz, RegClass rc) {
-  return r + (rc==RegClass::Float?":float:":":int:") + str(sz);
+  return r + (rc==RegClass::Float?":f":":i") + str(int(sz));
 }
 
 // calleeSaveRegs : registers that must be preserved by functions (platform specific)
@@ -1195,7 +1195,12 @@ inline std::vector<Instruction<R>> subst(const std::map<std::string, R>& s, cons
 //                  how much stack space to allocate
 inline uint32_t inferFrameSize(const RInsts& insts) {
   thread_local std::string spname = stdRegName(X86Reg::R4, RegClass::Int); // sp
+# if defined(_WIN64) || defined(__CYGWIN__)
+  uint32_t allocd = 32; // Windows requires a 32 byte stack frame prefix
+# else
   uint32_t allocd = 0;
+# endif
+
   for (const RInst& inst : insts) {
     for (uint8_t arg = 0; arg < inst.argc; ++arg) {
       if (const auto* rd = inst.args[arg].regDeref()) {
