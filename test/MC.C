@@ -82,19 +82,26 @@ TEST(MC, CmpJcc) {
     EXPECT_EQ(f(42), true);
 }
 
+hobbes::mc::RArg ir(const std::string& n, uint8_t sz) { return hobbes::mc::RArg::reg(n, sz, hobbes::mc::RegClass::Int); }
+hobbes::mc::RArg fr(const std::string& n, uint8_t sz) { return hobbes::mc::RArg::reg(n, sz, hobbes::mc::RegClass::Float); }
+hobbes::mc::RArg ir32(const std::string& n) { return ir(n, 4); }
+hobbes::mc::RArg fr32(const std::string& n) { return fr(n, 4); }
+hobbes::mc::RArg ir64(const std::string& n) { return ir(n, 8); }
+hobbes::mc::RArg fr64(const std::string& n) { return fr(n, 8); }
+
 TEST(MC, EasyRegCoalesce) {
   using namespace hobbes::mc;
 
   // make sure that easy coalesce decisions are always made in register allocation
   // this verifies that large sets of copied variables merge down to just the minimal set
   RInsts p = {
-    RInst::make("mov", RArg::reg("a0", 8, RegClass::Int), RArg::reg("rdi", 8, RegClass::Int)),
+    RInst::make("mov", ir64("a0"), ir64("rdi")),
   };
   for (size_t i = 1; i < 100; ++i) {
-    p.push_back(RInst::make("mov", RArg::reg("a"+mc::str(i), 8, RegClass::Int), RArg::reg("a"+mc::str(i-1), 8, RegClass::Int)));
+    p.push_back(RInst::make("mov", ir64("a"+mc::str(i)), ir64("a"+mc::str(i-1))));
   }
-  p.push_back(RInst::make("mov", RArg::reg("rax", 8, RegClass::Int), RArg::reg("a99", 8, RegClass::Int)));
-  p.push_back(RInst::make("add", RArg::reg("rax", 8, RegClass::Int), RArg::reg("rax", 8, RegClass::Int)));
+  p.push_back(RInst::make("mov", ir64("rax"), ir64("a99")));
+  p.push_back(RInst::make("add", ir64("rax"), ir64("rax")));
   p.push_back(RInst::make("ret"));
 
   MInsts expect = {
@@ -103,5 +110,22 @@ TEST(MC, EasyRegCoalesce) {
     MInst::make("ret")
   };
   EXPECT_EQ(assignRegisters(p) == expect, true);
+}
+
+float FloatSaveAroundCallFn(float x) {
+  return x*x+x;
+}
+TEST(MC, FloatSaveAroundCall) {
+  using namespace hobbes::mc;
+
+  // make sure that float registers are saved around calls
+  auto f = assemble<float(*)(float)>(assignRegisters({
+    RInst::make("mov", fr32("r"), fr32("xmm0")),
+    RInst::make("call", RArg::i64(reinterpret_cast<int64_t>(&FloatSaveAroundCallFn))),
+    RInst::make("mov", fr32("xmm0"), fr32("r")),
+    RInst::make("ret")
+  }));
+
+  EXPECT_ALMOST_EQ(f(3.14159), 3.14159, 0.0001);
 }
 

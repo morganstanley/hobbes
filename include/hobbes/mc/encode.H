@@ -1788,6 +1788,7 @@ inline void bootEncodingTable(EncodingTable& t) {
   t["jz"]   = t["je"];
 
   t["mov"] = Match({
+    // standard integer mov
     Rule(o( P::rm8()),  P::r8(), [](O o, RM rm, R r){o(        REX(r,rm), ui8(0x88), MODRM(r,rm));}),
     Rule(o(P::rm16()), P::r16(), [](O o, RM rm, R r){o(S16(),  REX(r,rm), ui8(0x89), MODRM(r,rm));}),
     Rule(o(P::rm32()), P::r32(), [](O o, RM rm, R r){o(        REX(r,rm), ui8(0x89), MODRM(r,rm));}),
@@ -1806,7 +1807,14 @@ inline void bootEncodingTable(EncodingTable& t) {
     Rule(o( P::rm8()),  P::imm8(), [](O o, RM rm, I ib){o(        REX(rm), ui8(0xc6), MODRM(0, rm), ui8(ib));}),
     Rule(o(P::rm16()), P::imm16(), [](O o, RM rm, I iw){o(S16(),  REX(rm), ui8(0xc7), MODRM(0, rm), ui16(iw));}),
     Rule(o(P::rm32()), P::imm32(), [](O o, RM rm, I id){o(        REX(rm), ui8(0xc7), MODRM(0, rm), ui32(id));}),
-    Rule(o(P::rm64()), P::imm64(), [](O o, RM rm, I iq){o(       REXW(rm), ui8(0xc7), MODRM(0, rm), ui64(iq));})
+    Rule(o(P::rm64()), P::imm64(), [](O o, RM rm, I iq){o(       REXW(rm), ui8(0xc7), MODRM(0, rm), ui64(iq));}),
+
+    // floating point register copies (movsd/movss)
+    Rule(o(P::rf64()),  P::rmf64(), [](O o, R  r,  RM rm){o(ui8(0xf2), REX(r, rm), ui8(0x0f), ui8(0x10), MODRM(r, rm));}),
+    Rule(o(P::rmf64()), P::rf64(),  [](O o, RM rm, R  r) {o(ui8(0xf2), REX(r, rm), ui8(0x0f), ui8(0x11), MODRM(r, rm));}),
+
+    Rule(o(P::rf32()),  P::rmf32(), [](O o, R  r,  RM rm){o(ui8(0xf3), REX(r, rm), ui8(0x0f), ui8(0x10), MODRM(r, rm));}),
+    Rule(o(P::rmf32()), P::rf32(),  [](O o, RM rm, R  r) {o(ui8(0xf3), REX(r, rm), ui8(0x0f), ui8(0x11), MODRM(r, rm));})
   });
 
   t["ret"] = Match({
