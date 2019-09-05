@@ -1,9 +1,18 @@
 cmake_minimum_required(VERSION 3.4.1)
 project(hobbes)
-set (CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 11)
+
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
 find_package(ZLIB REQUIRED)
 include_directories(${ZLIB_INCLUDE_DIRS})
+
+find_package(Readline REQUIRED)
+include_directories(${Readline_INCLUDE_DIRS})
+
+set(CURSES_NEED_NCURSES TRUE)
+find_package(Curses REQUIRED)
+include_directories(${CURSES_INCLUDE_DIRS})
 
 find_package(LLVM REQUIRED CONFIG)
 include_directories(${LLVM_INCLUDE_DIRS})
@@ -58,8 +67,6 @@ endif()
 if(APPLE)
   set(sys_libs ${sys_libs} pthread dl)
   set(cxx_flags "-Wreorder")
-  include_directories(/usr/local/opt/readline/include)
-  link_directories(/usr/local/opt/readline/lib)
 endif()
 if(LINUX)
   set(sys_libs ${sys_libs} pthread dl rt)
@@ -71,13 +78,13 @@ set(CMAKE_CXX_FLAGS_DEBUG "-g")
 set(CMAKE_CXX_FLAGS_RELEASE "-O2")
 
 add_library(hobbes STATIC ${lib_files})
-target_link_libraries(hobbes PUBLIC ${llvm_ldflags} ${llvm_libs} ${ZLIB_LIBRARIES} ncurses ${sys_libs})
+target_link_libraries(hobbes PUBLIC ${llvm_ldflags} ${llvm_libs} ${ZLIB_LIBRARIES} ${CURSES_LIBRARIES} ${sys_libs})
 add_library(hobbes-pic STATIC ${lib_files})
-target_link_libraries(hobbes-pic PUBLIC ${llvm_ldflags} ${llvm_libs} ${ZLIB_LIBRARIES} ncurses ${sys_libs})
+target_link_libraries(hobbes-pic PUBLIC ${llvm_ldflags} ${llvm_libs} ${ZLIB_LIBRARIES} ${CURSES_LIBRARIES} ${sys_libs})
 set_property(TARGET hobbes-pic PROPERTY POSITION_INDEPENDENT_CODE TRUE)
 
 add_executable(hi ${hi_files})
-target_link_libraries(hi PRIVATE hobbes readline)
+target_link_libraries(hi PRIVATE hobbes ${Readline_LIBRARIES})
 add_executable(hog ${hog_files})
 target_link_libraries(hog PRIVATE hobbes)
 
