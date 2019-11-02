@@ -141,8 +141,8 @@ TEST(MC, StructUsage) {
 
   // f s = s.x + s.z
   auto f = assemble<int(*)(const SUTest&)>(assignRegisters({
-    RInst::make("mov", ir32("s_x"), RArg::regDeref("di", offsetof(SUTest, x), 4, RegClass::Int)), // s_x = arg.x
-    RInst::make("mov", ir32("s_z"), RArg::regDeref("di", offsetof(SUTest, z), 4, RegClass::Int)), // s_z = arg.z
+    RInst::make("mov", ir32("s_x"), RArg::regDeref("di", offsetof(SUTest, x), sizeof(int), RegClass::Int)), // s_x = arg.x
+    RInst::make("mov", ir32("s_z"), RArg::regDeref("di", offsetof(SUTest, z), sizeof(int), RegClass::Int)), // s_z = arg.z
 
     RInst::make("mov", ir32("result"), ir32("s_x")), // result = s_x+s_z
     RInst::make("add", ir32("result"), ir32("s_z")),
