@@ -129,3 +129,35 @@ TEST(MC, FloatSaveAroundCall) {
   EXPECT_ALMOST_EQ(f(3.14159), 3.14159, 0.0001);
 }
 
+DEFINE_STRUCT(
+  SUTest,
+  (int,    x),
+  (char,   c),
+  (double, y),
+  (int,    z)
+);
+TEST(MC, StructUsage) {
+  using namespace hobbes::mc;
+
+  // f s = s.x + s.z
+  auto f = assemble<int(*)(const SUTest&)>(assignRegisters({
+    RInst::make("mov", ir32("s_x"), RArg::regDeref("di", offsetof(SUTest, x), sizeof(int), RegClass::Int)), // s_x = arg.x
+    RInst::make("mov", ir32("s_z"), RArg::regDeref("di", offsetof(SUTest, z), sizeof(int), RegClass::Int)), // s_z = arg.z
+
+    RInst::make("mov", ir32("result"), ir32("s_x")), // result = s_x+s_z
+    RInst::make("add", ir32("result"), ir32("s_z")),
+
+    RInst::make("mov", ir32("ax"), ir32("result")),
+
+    RInst::make("ret")
+  }));
+
+  SUTest s;
+  s.x = 7;
+  s.c = 'a';
+  s.y = 31337;
+  s.z = 35;
+
+  EXPECT_EQ(f(s), 42);
+}
+
