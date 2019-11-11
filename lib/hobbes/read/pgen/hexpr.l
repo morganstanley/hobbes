@@ -1,7 +1,6 @@
 %{
-#ifdef __clang__
-#pragma clang diagnostic ignored "-Wdeprecated-register"
-#endif
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wold-style-cast"
 
 int yycolumn = 1;
 
@@ -187,6 +186,8 @@ std::string* identifier(const char* b, const char* e) {
 [0-9]{4}\-[0-9]{2}\-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3} { SAVE_STR; return TDATETIME; }
 [0-9]{4}\-[0-9]{2}\-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{6} { SAVE_STR; return TDATETIME; }
 
-. { yyVexpLexError = "Unknown character: " + std::string(yytext); yyterminate(); if (false) { yy_flex_realloc(0, 0); yyunput(0, 0); } }
+. { yyVexpLexError = "Unknown character: " + std::string(yytext); yyterminate(); if (false) { yyrealloc(0, 0); yyunput(0, 0); } }
 
 %%
+#pragma GCC diagnostic pop
+

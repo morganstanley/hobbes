@@ -1,4 +1,7 @@
 %{
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wold-style-cast"
+
 typedef struct YYLTYPE {
   int first_line;
   int first_column;
@@ -953,4 +956,5 @@ mvarlist: mvarlist "," id ":" l0mtype { $$ = $1;                                
 id: TIDENT;
 
 %%
+#pragma GCC diagnostic pop
 
