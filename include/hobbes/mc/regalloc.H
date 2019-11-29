@@ -41,10 +41,10 @@
 #define HMC_REGALLOC_H_INCLUDED
 
 #include "encode.H"
+#include "liveness.H"
 #include <set>
 #include <stack>
 #include <map>
-#include <unordered_map>
 #include <stdexcept>
 #include <assert.h>
 
@@ -54,184 +54,6 @@ namespace hobbes { namespace mc {
 // and 16 general-purpose float registers
 // the two sets of registers are distinct and their interference is handled by class distinction (ie: not the interference graph)
 static const uint32_t MaxRegisters = 16;
-
-// a dynamic bitset, used to represent a set of variables (assuming a mapping of variable name to 0-N index)
-class VarSet {
-public:
-  VarSet() : varc(0), bcount(0), bits(0) {
-  }
-  VarSet(uint32_t vc) : varc(0), bcount(0), bits(0) {
-    resize(vc);
-  }
-  VarSet(const VarSet& s) { copyBuffer(s); }
-  ~VarSet() { releaseBuffer(); }
-  VarSet& operator=(const VarSet& s) {
-    if (&s != this) {
-      releaseBuffer();
-      copyBuffer(s);
-    }
-    return *this;
-  }
-
-  void clear() {
-    if (this->bits) {
-      memset(this->bits, 0, this->bcount * sizeof(uint64_t));
-    }
-  }
-
-  void resize(uint32_t sz) {
-    uint32_t  asz   = align<uint32_t>(sz, 64);
-    uint32_t  bc    = asz / 64;
-    uint64_t* nbits = new uint64_t[bc];
-
-    if (bc <= this->bcount) {
-      memcpy(nbits, this->bits, bc * sizeof(uint64_t));
-    } else if (this->bcount == 0) {
-      memset(nbits, 0, bc * sizeof(uint64_t));
-    } else {
-      memcpy(nbits,                this->bits, this->bcount * sizeof(uint64_t));
-      memset(nbits + this->bcount, 0,          (bc - this->bcount) * sizeof(uint64_t));
-    }
-
-    releaseBuffer();
-
-    this->varc   = sz;
-    this->bcount = bc;
-    this->bits   = nbits;
-  }
-
-  bool set(uint32_t v) const {
-    uint32_t i = v / 64;
-    uint32_t k = v % 64;
-    uint64_t m = static_cast<uint64_t>(1) << static_cast<uint64_t>(k);
-
-    return (this->bits[i] & m) != 0;
-  }
-  void set(uint32_t v, bool f) {
-    uint32_t i = v / 64;
-    uint32_t k = v % 64;
-    uint64_t m = static_cast<uint64_t>(1) << static_cast<uint64_t>(k);
-
-    if (f) {
-      this->bits[i] |= m;
-    } else {
-      this->bits[i] &= ~m;
-    }
-  }
-	static uint64_t b64RangeMask(uint32_t low, uint64_t high) {
-	  return (static_cast<uint64_t>(-1) >> (64-(high+1-low))) << low;
-	}
-
-  // bulk set bits low to high (inclusive)
-  void setRange(uint32_t low, uint32_t high, bool s) {
-    uint32_t low_i  = low / 64;
-    uint32_t low_k  = low % 64;
-    uint32_t high_i = high / 64;
-    uint32_t high_k = high % 64;
-  
-    if (low_i == high_i) {
-      // low/high in same block
-      // make the mask for this limited range as if setting all 1s
-      uint64_t mask = b64RangeMask(low_k, high_k);
-      if (s) {
-        this->bits[low_i] |= mask;
-      } else {
-        this->bits[low_i] &= ~mask;
-      }
-    } else if (s) {
-      // low/high in different blocks and setting bits on
-      // mask the low block, bulk mask all blocks in between, mask the high block
-      this->bits[low_i] |= b64RangeMask(low_k, 64);
-      for (uint32_t i = low_i+1; i < high_i; ++i) {
-        this->bits[i] = static_cast<uint64_t>(-1);
-      }
-      this->bits[high_i] |= b64RangeMask(0, high_k);
-    } else {
-      // low/high in different blocks and setting bits off
-      this->bits[low_i] &= ~b64RangeMask(low_k, 64);
-      for (uint32_t i = low_i+1; i < high_i; ++i) {
-        this->bits[i] = 0;
-      }
-      this->bits[high_i] &= ~b64RangeMask(0, high_k);
-    }
-  }
-
-  std::set<uint32_t> setIndexes() const {
-    std::set<uint32_t> r;
-    uint32_t b = 0;
-    for (uint32_t i = 0; i < this->bcount; ++i) {
-      uint64_t v = this->bits[i];
-      uint32_t k = b;
-
-      // gather members in 4-bit steps
-      while (v) {
-        switch (v & 0x0f) {
-        default: 
-        case 0:                                                            break; // 0000
-        case 1:  r.insert(k);                                              break; // 1000
-        case 2:               r.insert(k+1);                               break; // 0100
-        case 3:  r.insert(k); r.insert(k+1);                               break; // 1100
-        case 4:                              r.insert(k+2);                break; // 0010
-        case 5:  r.insert(k);                r.insert(k+2);                break; // 1010
-        case 6:               r.insert(k+1); r.insert(k+2);                break; // 0110
-        case 7:  r.insert(k); r.insert(k+1); r.insert(k+2);                break; // 1110
-        case 8:                                             r.insert(k+3); break; // 0001
-        case 9:  r.insert(k);                               r.insert(k+3); break; // 1001
-        case 10:              r.insert(k+1);                r.insert(k+3); break; // 0101
-        case 11: r.insert(k); r.insert(k+1);                r.insert(k+3); break; // 1101
-        case 12:                             r.insert(k+2); r.insert(k+3); break; // 0011
-        case 13: r.insert(k);                r.insert(k+2); r.insert(k+3); break; // 1011
-        case 14:              r.insert(k+1); r.insert(k+2); r.insert(k+3); break; // 0111
-        case 15: r.insert(k); r.insert(k+1); r.insert(k+2); r.insert(k+3); break; // 1111
-        }
-        v  = v >> 4;
-        k += 4;
-      }
-      b += 64;
-    }
-    return r;
-  }
-
-  void unionWith(const VarSet& rhs) {
-    assert(this->varc == rhs.varc);
-    for (uint32_t i = 0; i < this->bcount; ++i) {
-      this->bits[i] |= rhs.bits[i];
-    }
-  }
-  void intersectWith(const VarSet& rhs) {
-    assert(this->varc == rhs.varc);
-    for (uint32_t i = 0; i < this->bcount; ++i) {
-      this->bits[i] &= rhs.bits[i];
-    }
-  }
-  void subtract(const VarSet& rhs) {
-    assert(this->varc == rhs.varc);
-    for (uint32_t i = 0; i < this->bcount; ++i) {
-      this->bits[i] &= ~rhs.bits[i];
-    }
-  }
-
-  bool operator==(const VarSet& rhs) const {
-    return this->bcount == rhs.bcount && memcmp(this->bits, rhs.bits, this->bcount * sizeof(uint64_t)) == 0;
-  }
-  bool operator!=(const VarSet& rhs) const {
-    return !(*this == rhs);
-  }
-private:
-  uint32_t  varc;   // how many variables are there?
-  uint32_t  bcount; // how many 64-bit blocks have we allocated?
-  uint64_t* bits;   // by variable position, bit set iff corresponding variable is in the set
-
-  void copyBuffer(const VarSet& s) {
-    this->varc   = s.varc;
-    this->bcount = s.bcount;
-    this->bits   = new uint64_t[s.bcount];
-    memcpy(this->bits, s.bits, sizeof(uint64_t) * s.bcount);
-  }
-  void releaseBuffer() {
-    delete[] this->bits;
-  }
-};
 
 // instructions subject to register allocation have free register names (as strings)
 typedef Instructions<std::string> RInsts;
@@ -390,49 +212,59 @@ inline std::set<std::string> regUses(const RInst& ri) {
   return r;
 }
 
-// Liveness : keep track of which variables are alive at each program point
-//            each instruction will have a set of variable 'defs' (the variables updated by that instruction)
-//            as well as 'in' (all variables alive going into the instruction) and 'out' (all variables alive
-//            after execution of the instruction) so that 'in' represents all variables needed by the instruction
-//            plus all other instructions that follow, and 'out' represents the same information after the instruction
-//            executes (and possibly with the instruction's defs included).
-//
-//            a simple way to compute liveness is by backward program analysis (evaluating from the last instruction
-//            to the first instruction), updating sets at each program point 'n' (until there are no changes) by the
-//            following rules:
-//            
-//              in[n]  = uses[n] + (out[n] - defs[n])
-//              out[n] = union({ in[s] | s <- succ(n) })
-//
-struct InstLiveness {
-  VarSet defs;
-  VarSet in, out;
-};
-typedef uint32_t VarID;
-
-class Liveness {
+// a liveness module for instruction sequences with infinite named registers
+class RInstM {
 public:
-  Liveness(const RInsts& insts) {
-    // first import machine register definitions
-    // vid=0..15 will be the int registers
+  typedef RInst       Instruction;
+  typedef std::string Var;
+
+  RInstM(const RInsts& insts) {
+    for (size_t pc = 0; pc < insts.size(); ++pc) {
+      if (const auto* lbl = insts[pc].labelDef()) {
+        this->labels[lbl->label] = pc;
+      }
+    }
+  }
+  static std::string key (const std::string& x) { return x; }
+  static std::string desc(const std::string& x) { return x; }
+
+  std::set<std::string> uses(const RInsts& insts, size_t pc) const {
+    return regUses(insts[pc]);
+  }
+  std::set<std::string> defs(const RInsts& insts, size_t pc) const {
+    return regDefs(insts[pc]);
+  }
+
+  bool follows(const RInsts& insts, size_t pc) const {
+    return insts[pc].controlFollows() && pc < insts.size();
+  }
+  bool jumpsTo(const RInsts& insts, size_t pc, size_t* n) const {
+    if (const auto* lbl = insts[pc].jumpTarget()) {
+      auto t = this->labels.find(lbl->label);
+      if (t == this->labels.end()) {
+        throw std::runtime_error("Internal error, label reference without definition: " + lbl->label);
+      }
+      *n = t->second;
+      return true;
+    }
+    return false;
+  }
+private:
+  std::unordered_map<std::string, size_t> labels;
+};
+
+// ProgramLiveness : keep track of which variables are alive across a program for the purpose of interference graph construction
+//
+class ProgramLiveness {
+public:
+  ProgramLiveness(const RInsts& insts) : instM(insts), liveness(machineRegs(), insts, instM) {
+    // internalize extra variable information (types, sizes, ref counts)
     for (uint8_t r = 0; r < X86Reg::COUNT; ++r) {
       defineVariable(stdRegName(X86Reg(r), RegClass::Int), 8, RegClass::Int, true);
     }
-    // vid=16..31 will be the float registers
     for (uint8_t r = 0; r < X86Reg::COUNT; ++r) {
       defineVariable(stdRegName(X86Reg(r), RegClass::Float), 8, RegClass::Float, true);
     }
-
-    // keep track of label definitions (we will need these to push liveness along jump edges)
-    std::map<std::string, size_t> lblDefs;
-    for (size_t pc = 0; pc != insts.size(); ++pc) {
-      const auto& i = insts[pc];
-      if (const auto* ld = i.labelDef()) {
-        lblDefs[ld->label] = pc;
-      }
-    }
-
-    // now import variable definitions across instructions
     for (const RInst& inst : insts) {
       for (int i = 0; i < inst.argc; ++i) {
         if (const RReg* reg = inst.args[i].reg()) {
@@ -443,81 +275,11 @@ public:
         }
       }
     }
-
-    // set the initial state of var liveness, defs
-    //    in[n] = uses[n]
-    this->pcLiveness.resize(insts.size());
-    for (size_t pc = 0; pc != insts.size(); ++pc) {
-      const auto& i = insts[pc];
-
-      auto& pcv = this->pcLiveness[pc];
-      pcv.defs.resize(varCount());
-      pcv.in.resize(varCount());
-      pcv.out.resize(varCount());
-
-      for (const auto& v : regDefs(i)) {
-        pcv.defs.set(id(v), true);
-      }
-      for (const auto& v : regUses(i)) {
-        pcv.in.set(id(v), true);
-      }
-    }
-
-    // iterate backward to a fixed point:
-    //   out[n] =  union({ in[s] | s <- succ(n) })
-    //   in[n]  += out[n] - defs[n]
-    bool done = false;
-    
-    VarSet out_n;
-    out_n.resize(varCount());
-
-    while (!done) {
-      done = true; // assume we will finish this cycle
-
-      for (size_t spc = insts.size(); spc != 0; --spc) {
-        size_t      pc  = spc - 1;
-        const auto& i   = insts[pc];
-        auto&       pcv = this->pcLiveness[pc];
-
-        // out[n] = union({ in[s] | s <- succ(n) })
-        out_n.clear();
-        if (const auto* lbl = i.jumpTarget()) {
-          auto t = lblDefs.find(lbl->label);
-          if (t == lblDefs.end()) {
-            throw std::runtime_error("Internal error, label reference without definition: " + lbl->label);
-          }
-          out_n.unionWith(this->pcLiveness[t->second].in);
-        }
-        if (i.controlFollows() && spc < insts.size()) {
-          out_n.unionWith(this->pcLiveness[spc].in);
-        }
-
-        // did we update anything?
-        if (out_n != pcv.out) {
-          pcv.out = out_n;
-          out_n.subtract(pcv.defs);
-          pcv.in.unionWith(out_n);
-
-          // we need at least one more cycle to possibly move updated liveness through the graph
-          done = false;
-        }
-      }
-    }
-  }
-
-  const InstLiveness& livenessAt(uint32_t pc) const {
-    if (pc < this->pcLiveness.size()) {
-      return this->pcLiveness[pc];
-    } else {
-      throw std::runtime_error("Internal error, request for liveness at invalid program point");
-    }
   }
 
   // access variable properties (id : 0-N, name, mreg, refc)
   VarID id(const std::string& vn) const {
-    auto k = this->nameToVarID.find(vn);
-    if (k == this->nameToVarID.end()) throw std::runtime_error("Internal error, not a valid variable name for register allocation: " + vn);
-    return k->second;
+    return this->liveness.variables().id(vn);
   }
   VarID id(const RReg& r) const { return id(r.name); }
 
@@ -543,15 +305,27 @@ public:
   void refCount(VarID v, uint32_t rc) { varInfo(v).refc = rc; }
 
   size_t varCount() const { return this->idToVarInfo.size(); }
+
+  // efficiently iterate over program liveness information (for interference graph construction)
+  Liveness<RInstM>::iterator iterate() const { return this->liveness.iterate(); }
 private:
-  // keep track of variable liveness at each program point
-  typedef std::vector<InstLiveness> PCLiveness;
-  PCLiveness pcLiveness;
+  RInstM           instM;
+  Liveness<RInstM> liveness;
+
+  static const std::set<std::string>& machineRegs() {
+    static thread_local std::set<std::string> mregs;
+    if (mregs.empty()) {
+      for (uint8_t r = 0; r < X86Reg::COUNT; ++r) {
+        mregs.insert(stdRegName(X86Reg(r), RegClass::Int));
+      }
+      for (uint8_t r = 0; r < X86Reg::COUNT; ++r) {
+        mregs.insert(stdRegName(X86Reg(r), RegClass::Float));
+      }
+    }
+    return mregs;
+  }
 
   // keep track of variable information
-  typedef std::unordered_map<std::string, VarID> NameToVarID;
-  NameToVarID nameToVarID;
-
   struct VarInfo {
     std::string name;  // the variable name
     uint32_t    refc;  // how many times is this variable used?
@@ -566,30 +340,31 @@ private:
 
   // import variable definitions (should be done at init only)
   void defineVariable(const std::string& vn, uint32_t sz, RegClass rc, bool mreg = false) {
-    if (this->nameToVarID.count(vn)) return; // already imported
+    VarID id = this->liveness.variables().id(vn);
+    if (this->idToVarInfo.size() <= id) {
+      this->idToVarInfo.resize(id+1);
+    }
 
-    VarID id = static_cast<VarID>(this->idToVarInfo.size());
-    this->idToVarInfo.resize(id+1);
     VarInfo& vi = this->idToVarInfo[id];
-    vi.name = vn;
-    vi.refc = 0;
-    vi.sz   = sz;
-    vi.rc   = rc;
-    vi.mreg = mreg;
-
-    this->nameToVarID[vn] = id;
+    if (vi.name.empty()) {
+      vi.name = vn;
+      vi.refc = 0;
+      vi.sz   = sz;
+      vi.rc   = rc;
+      vi.mreg = mreg;
+    }
   }
 };
 
 // forget interned names (expand var names back out of liveness)
-inline std::set<std::string> toNames(const Liveness& live, const std::set<VarID>& m) {
+inline std::set<std::string> toNames(const ProgramLiveness& live, const std::set<VarID>& m) {
   std::set<std::string> r;
   for (const auto& p : m) {
     r.insert(live.name(p));
   }
   return r;
 }
-inline std::map<std::string, std::string> toNames(const Liveness& live, const std::map<VarID, VarID>& m) {
+inline std::map<std::string, std::string> toNames(const ProgramLiveness& live, const std::map<VarID, VarID>& m) {
   std::map<std::string, std::string> r;
   for (const auto& p : m) {
     r[live.name(p.first)] = live.name(p.second);
@@ -658,11 +433,11 @@ private:
   VarSet    vtest;
   VarIDSets vadj;
 
-  VarID vtid(VarID v0, VarID v1) const {
+  uint64_t vtid(VarID v0, VarID v1) const {
     if (v0 < v1) {
-      return (v0*this->varc)+v1;
+      return (static_cast<uint64_t>(v0)*this->varc)+static_cast<uint64_t>(v1);
     } else {
-      return (v1*this->varc)+v0;
+      return (static_cast<uint64_t>(v1)*this->varc)+static_cast<uint64_t>(v0);
     }
   }
 };
@@ -670,7 +445,7 @@ private:
 // Interference : keep track of variable interference and coalescability over a given code sequence
 class Interference {
 public:
-  Interference(const Liveness& live, const RInsts& insts) : ifR(live.varCount()), moveR(live.varCount()) {
+  Interference(const ProgramLiveness& live, const RInsts& insts) : ifR(live.varCount()), moveR(live.varCount()) {
     // int vars can't go in the SP register
     VarID spv = live.id(stdRegName(X86Reg::R4, RegClass::Int));
 
@@ -683,17 +458,19 @@ public:
     }
 
     // now for each instruction, add interferences between def vars and all simultaneously live vars
-    for (size_t pc = 0; pc < insts.size(); ++pc) {
-      const auto& v = live.livenessAt(pc);
+    auto i = live.iterate();
+    while (!i.end()) {
+      const auto& inst = insts[i.pc()];
 
-      if (const auto* src = isRegMove(insts[pc])) {
+      if (const auto* src = isRegMove(inst)) {
         // in the case of a reg move, remember that we can coalesce the two vars involved
         // add interference edges for all _other_ vars live out here
         VarID sv = live.id(src->name);
-        for (auto d : v.defs.setIndexes()) {
-          addMoveEdge(d, sv);
+        for (auto rd : regDefs(inst)) {
+          VarID d = live.id(rd);
 
-          for (auto o : v.out.setIndexes()) {
+          addMoveEdge(d, sv);
+          for (auto o : i.liveOut()) {
             if (o != sv && live.rclass(d) == live.rclass(o)) {
               addInterfereEdge(d, o);
             }
@@ -702,14 +479,18 @@ public:
       } else {
         // generic instruction,
         // add interference edges for all vars live out here
-        for (auto d : v.defs.setIndexes()) {
-          for (auto o : v.out.setIndexes()) {
+        for (auto rd : regDefs(inst)) {
+          VarID d = live.id(rd);
+
+          for (auto o : i.liveOut()) {
             if (live.rclass(d) == live.rclass(o)) {
               addInterfereEdge(d, o);
             }
           }
         }
       }
+
+      i.step();
     }
   }
 
@@ -795,7 +576,7 @@ private:
 //                 some variables to memory.  Also identifies worthwhile coalesce opportunities to take (and which others to avoid).
 class FindAssignSeq {
 public:
-  FindAssignSeq(const Liveness& live, Interference* ig) : live(&live), ig(ig), assignedVars(live.varCount()) {
+  FindAssignSeq(const ProgramLiveness& live, Interference* ig) : live(&live), ig(ig), assignedVars(live.varCount()) {
     initClassification();
   }
 
@@ -816,9 +597,9 @@ public:
     return this->preSpillCoalescedVars;
   }
 private:
-  const Liveness*   live;
-  Interference*     ig;
-  std::stack<VarID> assignSeq;
+  const ProgramLiveness* live;
+  Interference*          ig;
+  std::stack<VarID>      assignSeq;
 
   // shorthand for common queries on variables
   bool     isMReg     (VarID v) const { return this->live->isMachineRegister(v); }
@@ -1293,7 +1074,7 @@ struct VarFrameSlot {
   RegClass        rc;
   std::set<VarID> vs;
 };
-size_t firstFit(const Liveness& live, const Interference& ig, const std::vector<VarFrameSlot>& slots, VarID v) {
+size_t firstFit(const ProgramLiveness& live, const Interference& ig, const std::vector<VarFrameSlot>& slots, VarID v) {
   RegClass vrc = live.rclass(v);
   for (size_t i = 0; i < slots.size(); ++i) {
     const VarFrameSlot& s = slots[i];
@@ -1318,7 +1099,7 @@ size_t firstFit(const Liveness& live, const Interference& ig, const std::vector<
 //              computed offsets will be relative to a given frame size (and the frame size will be updated on exit)
 typedef std::map<VarID, uint32_t> SpillFrame;
 
-inline SpillFrame spillFrame(const Liveness& live, const Interference& ig, uint32_t* sframe, const std::set<VarID>& spillVars) {
+inline SpillFrame spillFrame(const ProgramLiveness& live, const Interference& ig, uint32_t* sframe, const std::set<VarID>& spillVars) {
   // find a slot for each spilled var (creating as few as necessary)
   std::vector<VarFrameSlot> varFrameSlots;
   for (VarID sv : spillVars) {
@@ -1354,7 +1135,7 @@ inline SpillFrame spillFrame(const Liveness& live, const Interference& ig, uint3
 // spillVarInsts : insert instructions to read or write spilled variables
 enum SpillVarDir { Read=0, Write };
 
-void spillVarInsts(SpillVarDir dir, RInsts* result, const Liveness& live, const SpillFrame& lframe, const RRSubst& spillSubst) {
+void spillVarInsts(SpillVarDir dir, RInsts* result, const ProgramLiveness& live, const SpillFrame& lframe, const RRSubst& spillSubst) {
   // spill var references will be '[SP+D]' for some offset D
   std::string sp = stdRegName(X86Reg::R4, RegClass::Int);
 
@@ -1381,7 +1162,7 @@ void spillVarInsts(SpillVarDir dir, RInsts* result, const Liveness& live, const 
 }
 
 // spillSubst : decide a renaming substitution for spilled variables at a program point
-inline RRSubst spillSubst(size_t pc, const std::set<VarID>& spillVars, const Liveness& live, const std::set<std::string>& vs) {
+inline RRSubst spillSubst(size_t pc, const std::set<VarID>& spillVars, const ProgramLiveness& live, const std::set<std::string>& vs) {
   RRSubst r;
   for (const std::string& v : vs) {
     VarID vid = live.id(v);
@@ -1395,7 +1176,7 @@ inline RRSubst spillSubst(size_t pc, const std::set<VarID>& spillVars, const Liv
 }
 
 // rewriteWithSpills : rewrite a program to eliminate usage of a set of vars so that they are stored in a local stack frame
-inline RInsts rewriteWithSpills(const Liveness& live, const Interference& ig, uint32_t* sframe, const std::set<VarID>& spillVars, const RInsts& insts) {
+inline RInsts rewriteWithSpills(const ProgramLiveness& live, const Interference& ig, uint32_t* sframe, const std::set<VarID>& spillVars, const RInsts& insts) {
   SpillFrame lframe = spillFrame(live, ig, sframe, spillVars);
 
   RInsts result;
@@ -1438,7 +1219,7 @@ inline MInsts assignRegisters(const RInsts& insts, uint32_t sframe) {
 
   while (true) {
     // find a good order for register assignment based on variable liveness in this program
-    Liveness              live(result);
+    ProgramLiveness       live(result);
     Interference          ig(live, result);
     Interference          og = ig;
     FindAssignSeq         fseq(live, &ig);
