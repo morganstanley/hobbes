@@ -4,13 +4,13 @@ env:
     - DEPS=""
 matrix:
   include:
-#    - os: osx
-#      compiler: clang
-#      osx_image: xcode8.3
-#      env:
-#        - DEPS="${DEPS} readline llvm@6"
-#        - LLVM_DIR=/usr/local/opt/llvm@6/lib/cmake/llvm/
-#        - ARGS=-V
+    - os: osx
+      compiler: clang
+      osx_image: xcode9.4
+      env:
+        - DEPS="${DEPS} readline llvm@6"
+        - LLVM_DIR=/usr/local/opt/llvm@6/lib/cmake/llvm/
+        - ARGS=-V
     - os: linux
       compiler: g++
       root: required
