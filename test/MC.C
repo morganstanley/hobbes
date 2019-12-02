@@ -1,11 +1,121 @@
 
 #include <hobbes/hobbes.H>
 #include <hobbes/mc/encode.H>
+#include <hobbes/mc/liveness.H>
 #include <hobbes/mc/regalloc.H>
 #include "test.H"
 
 using namespace hobbes;
 
+// generate some random programs up to a reasonable size
+// verify that the basic liveness view (simple, expensive) is the same as the block liveness view (complex, cheap)
+mc::RInsts genLivenessProgram(size_t n) {
+  using namespace hobbes::mc;
+
+  std::string genLabel;
+
+  RInsts r;
+  r.push_back(RInst::make("mov", RArg::ireg("save_bp",8), RArg::ireg("rbp", 8)));
+
+  for (size_t i = 0; i < n; ++i) {
+    std::ostringstream ss;
+    ss << "v" << i;
+    auto vn = ss.str();
+
+    r.push_back(RInst::make("mov", RArg::ireg(vn, 4), int32_t(8675309)));
+
+    if (i > 0) {
+      std::ostringstream pss;
+      pss << "v" << i-1;
+
+      r.push_back(RInst::make("add", RArg::ireg(vn, 4), RArg::ireg(pss.str(), 4)));
+    }
+
+    if (rand() % 7 == 0) {
+      if (genLabel.empty()) {
+        std::ostringstream lss;
+        lss << "label_at_" << i;
+        genLabel = lss.str();
+
+        r.push_back(RInst::make("cmp", RArg::ireg(vn, 4), int32_t(0)));
+        r.push_back(RInst::make("jne", RArg::labelRef(genLabel)));
+      } else {
+        r.push_back(RInst::defineLabel(genLabel));
+        genLabel = "";
+      }
+    }
+  }
+  if (!genLabel.empty()) {
+    r.push_back(RInst::defineLabel(genLabel));
+  }
+
+  r.push_back(RInst::make("mov", RArg::ireg("rbp", 8), RArg::ireg("save_bp",8)));
+  r.push_back(RInst::make("ret"));
+  return r;
+}
+
+std::set<std::string> varNames(const mc::VarUniverse<mc::RInstM>& vu, const std::set<mc::VarID>& vs) {
+  std::set<std::string> r;
+  for (auto v : vs) {
+    r.insert(vu.var(v));
+  }
+  return r;
+}
+
+std::string show(const std::set<std::string>& xs) {
+  std::ostringstream ss;
+  ss << "{";
+  if (xs.size() > 0) {
+    auto x = xs.begin();
+    ss << "\"" << *x << "\"";
+    ++x;
+    for (; x != xs.end(); ++x) {
+      ss << ", \"" << *x << "\"";
+    }
+  }
+  ss << "}";
+  return ss.str();
+}
+
+TEST(MC, BlockLivenessEqualsBasicLiveness) {
+  for (size_t n = 0; n < 100; ++n) {
+    auto insts = genLivenessProgram(n);
+    mc::RInstM m(insts);
+    mc::BasicLiveness<mc::RInstM> basic(insts, m);
+    mc::BlockLiveness<mc::RInstM> block(insts, m);
+
+    EXPECT_EQ(basic.variables().size(), block.variables().size());
+
+    auto basic_i = basic.iterate();
+    auto block_i = block.iterate();
+
+    while (true) {
+      EXPECT_EQ(basic_i.end(), block_i.end());
+      if (basic_i.end()) break;
+      EXPECT_EQ(basic_i.pc(), block_i.pc());
+
+      auto basic_in  = varNames(basic.variables(), basic_i.liveIn());
+      auto basic_out = varNames(basic.variables(), basic_i.liveOut());
+      auto block_in  = varNames(block.variables(), block_i.liveIn());
+      auto block_out = varNames(block.variables(), block_i.liveOut());
+
+      if (basic_in != block_in || basic_out != block_out) {
+        std::ostringstream ss;
+        ss << "block/basic liveness disagreement in program at pc=" << basic_i.pc() << "\n"
+           << "  basic_in  = " << show(basic_in)  << "\n"
+           << "  basic_out = " << show(basic_out) << "\n"
+           << "  block_in  = " << show(block_in)  << "\n"
+           << "  block_out = " << show(block_out) << "\n";
+        throw std::runtime_error(ss.str());
+      }
+
+      basic_i.step();
+      block_i.step();
+    }
+  }
+}
+
+// test some encoded assembly programs
 template <typename T>
 T assemble(const mc::MInsts& insts) {
   auto* b = new mc::buffer(); // leak just for convenience in tests
@@ -141,13 +251,13 @@ TEST(MC, StructUsage) {
 
   // f s = s.x + s.z
   auto f = assemble<int(*)(const SUTest&)>(assignRegisters({
-    RInst::make("mov", ir32("s_x"), RArg::regDeref("di", offsetof(SUTest, x), sizeof(int), RegClass::Int)), // s_x = arg.x
-    RInst::make("mov", ir32("s_z"), RArg::regDeref("di", offsetof(SUTest, z), sizeof(int), RegClass::Int)), // s_z = arg.z
+    RInst::make("mov", ir32("s_x"), RArg::regDeref("rdi", offsetof(SUTest, x), sizeof(int), RegClass::Int)), // s_x = arg.x
+    RInst::make("mov", ir32("s_z"), RArg::regDeref("rdi", offsetof(SUTest, z), sizeof(int), RegClass::Int)), // s_z = arg.z
 
     RInst::make("mov", ir32("result"), ir32("s_x")), // result = s_x+s_z
     RInst::make("add", ir32("result"), ir32("s_z")),
 
-    RInst::make("mov", ir32("ax"), ir32("result")),
+    RInst::make("mov", ir32("rax"), ir32("result")),
 
     RInst::make("ret")
   }));
