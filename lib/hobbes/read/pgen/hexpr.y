@@ -170,6 +170,21 @@ Expr* makeProjSeq(Expr* rec, const str::seq& fields, const LexicalAnnotation& la
   return rec;
 }
 
+Expr* mkAIndex(const ExprPtr& arr, const ExprPtr& idx, const LexicalAnnotation& la) {
+  return new AIndex(arr, fncall(var("arrayIndexFrom", la), list(idx), la), la);
+}
+
+Expr* maybeArraySliceWithTime(const ExprPtr& e, const std::string& t, const LexicalAnnotation& la) {
+  auto cs = str::csplit(t, ":");
+  if (cs.size() == 2) {
+    auto i = str::to<int>(cs[0]);
+    auto f = str::to<int>(cs[1]);
+    return new App(var("slice", la), list(e, constant(i, la), constant(f, la)), la);
+  } else {
+    return mkAIndex(e, ExprPtr(mkTimeExpr(t, la)), la);
+  }
+}
+
 MonoTypePtr monoTypeByName(const std::string& tn) {
   if (isPrimName(tn) || yyParseCC->isTypeAliasName(tn)) {
     return yyParseCC->replaceTypeAliases(Prim::make(tn));
@@ -680,7 +695,8 @@ l6expr: l6expr "(" cargs ")"    { $$ = new App(ExprPtr($1), *$3, m(@1, @4)); }
       | "[" l0expr ".." "]"                               { $$ = new App(var("iterateS", m(@3)), list(ExprPtr($2), fn(str::strings(".x"), fncall(var("+", m(@3)), list(var(".x", m(@3)), ExprPtr(new Int(1, m(@3)))), m(@3)), m(@3))), m(@1, @4)); }
       | "[" l0expr "|" cselections "]"                    { $$ = desugarComprehension(yyParseCC, ExprPtr($2), *$4, m(@1, @5)); }
       | "[" cargs "]"                                     { $$ = new MkArray(*$2, m(@1, @3)); }
-      | l6expr "[" l0expr "]"                             { $$ = new AIndex(ExprPtr($1), ExprPtr($3), m(@1, @4)); }
+      | l6expr "[" "timeV" "]"                            { $$ = maybeArraySliceWithTime(ExprPtr($1), *$3, m(@1, @4)); } /* odd case for slicing through lexical ambiguity with time literal indexes (which aren't valid indexes anyway) */
+      | l6expr "[" l0expr "]"                             { $$ = mkAIndex(ExprPtr($1), ExprPtr($3), m(@1, @4)); }
       | l6expr "[" l0expr ":" l0expr "]"                  { $$ = new App(var("slice", m(@4)), list(ExprPtr($1), ExprPtr($3), ExprPtr($5)), m(@1, @6)); }
       | l6expr "[" l0expr ":" "]"                         { std::string vn = freshName(); $$ = new Let(vn, ExprPtr($1), fncall(var("slice",m(@4)), list(var(vn,m(@1)), ExprPtr($3), fncall(var("size",m(@4)), list(var(vn,m(@1))),m(@1))),m(@1,@5)), m(@1, @5)); }
       | l6expr "[" ":" l0expr "]"                         { std::string vn = freshName(); $$ = new Let(vn, ExprPtr($1), fncall(var("slice",m(@3)), list(var(vn,m(@1)), fncall(var("size",m(@3)), list(var(vn,m(@3))),m(@1)), ExprPtr($4)), m(@1,@5)), m(@1, @5)); }
