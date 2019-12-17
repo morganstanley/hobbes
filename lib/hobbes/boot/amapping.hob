@@ -1,3 +1,18 @@
+
+/*
+  Basic overloading for array indexing (parsed indexing rewrites into calls through this function)
+*/
+class ArrayIndex t where
+  arrayIndexFrom :: t -> long
+instance ArrayIndex long where
+  arrayIndexFrom = id
+instance ArrayIndex int where
+  arrayIndexFrom = i2l
+instance ArrayIndex short where
+  arrayIndexFrom x = i2l(s2i(x))
+instance ArrayIndex byte where
+  arrayIndexFrom = b2l
+
 /*
   abstract over kinds of mappings
 */
