@@ -552,7 +552,8 @@ void runProcess(const std::string& cmd, std::ostream& out) {
     throw std::runtime_error("Unable to bind local pipe to STDOUT.");
   }
 
-  system(cmd.c_str());
+  auto rc = system(cmd.c_str());
+  assert(rc == rc); // avoid a compile error if we ignore this return value
 
   dup2(ostdo, STDOUT_FILENO);
   close(pio[1]);

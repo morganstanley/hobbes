@@ -30,6 +30,9 @@ TEST(Arrays, Slices) {
   EXPECT_TRUE((c().compileFn<bool(std::string*)>("x", "x[:-10] == \"zyxwvutsrq\"")(&x)));
   EXPECT_TRUE((c().compileFn<bool(std::string*)>("x", "x[0:0] == \"\"")(&x)));
   EXPECT_TRUE((c().compileFn<bool(std::string*)>("x", "length(x[:-10]) == 10L")(&x)));
+
+  // slice through lexed time (resolve lexical ambiguity in a way that makes the most sense)
+  EXPECT_TRUE((c().compileFn<bool(std::string*)>("x", "x[10:20] == \"klmnopqrst\"")(&x)));
 }
 
 TEST(Arrays, Comprehensions) {

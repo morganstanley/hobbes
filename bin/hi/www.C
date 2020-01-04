@@ -20,8 +20,8 @@ ssize_t sendfile(int toFD, int fromFD, off_t* o, size_t sz) {
 namespace hi {
 
 // blocking non-blocking write shorthand
-void write(int fd, const char* s)        { ::write(fd, s, strlen(s)); }
-void write(int fd, const std::string& s) { ::write(fd, s.c_str(), s.size()); }
+void write(int fd, const char* s)        { auto rc = ::write(fd, s, strlen(s)); assert(rc > 0); }
+void write(int fd, const std::string& s) { auto rc = ::write(fd, s.c_str(), s.size()); assert(rc > 0); }
 
 // determine whether a file can be opened and read
 bool fileExists(const std::string& x) {

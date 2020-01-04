@@ -102,9 +102,9 @@ struct SystemWatch {
       [](int fd, void* self) {
         char buf[sizeof(inotify_event) + NAME_MAX + 1];
         inotify_event* event = reinterpret_cast<inotify_event*>(buf);
-        read(fd, event, sizeof(inotify_event));
-        if (event->len > 0 ) {
-          read(fd, event->name, event->len);
+        auto rc = read(fd, event, sizeof(inotify_event));
+        if (rc > 0 && event->len > 0 ) {
+          rc = read(fd, event->name, event->len);
         }
         sweepFileWatch(reinterpret_cast<SystemWatch*>(self)->fileWatches[event->wd]);
       },

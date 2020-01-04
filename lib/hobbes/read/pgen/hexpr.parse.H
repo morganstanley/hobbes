@@ -147,7 +147,7 @@ extern int yydebug;
 
 union YYSTYPE
 {
-#line 247 "hexpr.y" /* yacc.c:1921  */
+#line 262 "hexpr.y" /* yacc.c:1927  */
 
   hobbes::Module*              module;
   hobbes::ModuleDefs*          mdefs;
@@ -207,7 +207,7 @@ union YYSTYPE
   hobbes::BoundGrammarValue*   pbelem;
   hobbes::GrammarValue*        pvalue;
 
-#line 211 "hexpr.parse.H" /* yacc.c:1921  */
+#line 211 "hexpr.parse.H" /* yacc.c:1927  */
 };
 
 typedef union YYSTYPE YYSTYPE;
