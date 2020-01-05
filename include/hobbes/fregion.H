@@ -1162,7 +1162,7 @@ template <typename T, size_t N>
   struct store<T[N], typename tbool<store<T>::can_memcpy>::type> : public storeFixedArrayDef<T,N> {
     static const bool can_memcpy = true;
     static void write(imagefile*, void* p,       const T (&x)[N]) { memcpy(p, x, N*sizeof(T)); }
-    static void read (imagefile*, const void* p, T       (*x)[N]) { memcpy(x, p, N*sizeof(T)); }
+    static void read (imagefile*, const void* p, T       (*x)[N]) { memcpy(reinterpret_cast<void*>(x), p, N*sizeof(T)); }
   };
 
 template <typename T, size_t N>
@@ -1186,7 +1186,7 @@ template <typename T, size_t N>
   struct store<std::array<T, N>, typename tbool<store<T>::can_memcpy>::type> : public storeFixedArrayDef<T,N> {
     static const bool can_memcpy = true;
     static void write(imagefile*, void* p,       const std::array<T, N>& x) { memcpy(p, &x, N*sizeof(T)); }
-    static void read (imagefile*, const void* p, std::array<T, N>*       x) { memcpy(x,  p, N*sizeof(T)); }
+    static void read (imagefile*, const void* p, std::array<T, N>*       x) { memcpy(reinterpret_cast<void*>(x),  p, N*sizeof(T)); }
   };
 
 template <typename T, size_t N>
@@ -1220,7 +1220,7 @@ template <typename T, size_t N>
   struct store<carray<T,N>, typename tbool<store<T>::can_memcpy>::type> : public storeCArrayDef<T,N> {
     static const bool can_memcpy = true;
     static void write(imagefile*, void*       p, const carray<T,N>& x) { memcpy(p, &x, storeCArrayDef<T,N>::alignment()+sizeof(T)*x.size); }
-    static void read(imagefile*,  const void* p, carray<T,N>*       x) { memcpy(x,  p, storeCArrayDef<T,N>::alignment()+sizeof(T)*(*reinterpret_cast<const size_t*>(p))); }
+    static void read(imagefile*,  const void* p, carray<T,N>*       x) { memcpy(reinterpret_cast<void*>(x),  p, storeCArrayDef<T,N>::alignment()+sizeof(T)*(*reinterpret_cast<const size_t*>(p))); }
   };
 
 template <typename T, size_t N>
@@ -1310,7 +1310,7 @@ template <typename T>
       uint8_t* d    = reinterpret_cast<uint8_t*>(mapFileData(f, dloc+sizeof(size_t), *c * sizeof(T)));
 
       x->resize(*c);
-      memcpy(&(*x)[0], d, *c * sizeof(T));
+      memcpy(reinterpret_cast<void*>(&(*x)[0]), d, *c * sizeof(T));
 
       unmapFileData(f, d, *c);
       unmapFileData(f, c, sizeof(size_t));
@@ -1415,7 +1415,7 @@ template <typename U, typename V>
   struct store<std::pair<U,V>, typename tbool<all_memcpyable<U, V>::value>::type> : public storePairDef<U,V> {
     static const bool can_memcpy = true;
     static void write(imagefile*, void* p,       const std::pair<U,V>& x) { memcpy(p, &x, sizeof(x)); }
-    static void read (imagefile*, const void* p, std::pair<U,V>* x)       { memcpy(x, p, sizeof(*x)); }
+    static void read (imagefile*, const void* p, std::pair<U,V>* x)       { memcpy(reinterpret_cast<void*>(x), p, sizeof(*x)); }
   };
 template <typename U, typename V>
   struct store<std::pair<U,V>, typename tbool<!all_memcpyable<U, V>::value>::type> : public storePairDef<U,V> {
@@ -1476,7 +1476,7 @@ template <typename ... Ts>
   struct store<tuple<Ts...>, typename tbool<all_memcpyable<Ts...>::value>::type> : public storeTupleDef<0, sizeof...(Ts), Ts...> {
     static const bool can_memcpy = true;
     static void write(imagefile*, void* p,       const tuple<Ts...>& x) { memcpy(p, &x, sizeof( x)); }
-    static void read (imagefile*, const void* p, tuple<Ts...>* x)       { memcpy(x,  p, sizeof(*x)); }
+    static void read (imagefile*, const void* p, tuple<Ts...>* x)       { memcpy(reinterpret_cast<void*>(x),  p, sizeof(*x)); }
   };
 template <typename ... Ts>
   struct store<tuple<Ts...>, typename tbool<!all_memcpyable<Ts...>::value>::type> : public storeTupleDef<0, sizeof...(Ts), Ts...> {
@@ -1546,7 +1546,7 @@ template <typename T>
   struct store<T, typename tbool<T::is_hmeta_struct && store<typename T::as_tuple_type>::can_memcpy>::type> : public storeStructDef<T> {
     static const bool can_memcpy = true;
     static void write(imagefile*, void* p,       const T& x) { memcpy(p, &x, sizeof(T)); }
-    static void read (imagefile*, const void* p, T*       x) { memcpy(x,  p, sizeof(T)); }
+    static void read (imagefile*, const void* p, T*       x) { memcpy(reinterpret_cast<void*>(x),  p, sizeof(T)); }
   };
 
 struct writeFieldF {
@@ -1613,7 +1613,7 @@ template <typename T>
     static size_t alignment() { return sizeof(typename T::rep_t); }
 
     static void write(imagefile*, void* p,       const T& x) { memcpy(p, &x, sizeof(typename T::rep_t)); }
-    static void read (imagefile*, const void* p, T*       x) { memcpy(x,  p, sizeof(typename T::rep_t)); }
+    static void read (imagefile*, const void* p, T*       x) { memcpy(reinterpret_cast<void*>(x),  p, sizeof(typename T::rep_t)); }
   };
 
 // store variants
@@ -1648,7 +1648,7 @@ template <typename ... Ts>
   struct store<variant<Ts...>, typename tbool<all_memcpyable<Ts...>::value>::type> : public storeVariantDef<0, sizeof...(Ts), Ts...> {
     static const bool can_memcpy = true;
     static void write(imagefile*, void* p,       const variant<Ts...>& x) { memcpy(p, &x, sizeof( x)); }
-    static void read (imagefile*, const void* p, variant<Ts...>* x)       { memcpy(x,  p, sizeof(*x)); }
+    static void read (imagefile*, const void* p, variant<Ts...>* x)       { memcpy(reinterpret_cast<void*>(x),  p, sizeof(*x)); }
   };
 
 template <size_t tag, typename T, typename M>
