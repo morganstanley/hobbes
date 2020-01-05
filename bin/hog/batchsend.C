@@ -316,7 +316,7 @@ struct BatchSendSession {
         // we should save the init message to a special file, else pick a generic segment file name
         std::string pubfilename = destination.localdir + "/" + ((this->c == 0) ? "init.gz" : segmentFileName(this->c));
         auto rc = link(this->tempfilename.c_str(), pubfilename.c_str());
-	      assert(rc == rc); // avoid an error if this return value is ignored
+        assert(rc == rc); // avoid an error if this return value is ignored
       }
       unlink(this->tempfilename.c_str());
       ++this->c;
