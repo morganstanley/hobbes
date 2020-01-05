@@ -44,6 +44,8 @@ matrix:
         - DIST=xenial
         - DEPS="llvm-6.0-dev cmake libedit-dev g++ libncurses5-dev zlib1g-dev libreadline-dev python2.7"
         - ARGS=-V
+    - os: linux
+      language: nix
 
 install:
   - if [ $TRAVIS_OS_NAME = osx   ]; then brew update && brew install -v ${DEPS} && find /usr/local/opt/llvm@6/ | grep cmake; fi
