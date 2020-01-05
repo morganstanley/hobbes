@@ -13,4 +13,7 @@ pkgs.stdenv.mkDerivation {
     readline
     zlib
   ];
+
+  doCheck = true;
+  checkTarget = "test";
 }
