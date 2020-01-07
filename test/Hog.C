@@ -33,8 +33,9 @@ std::string hogBinaryPath() {
     return p;
   }
   // assuming hog and hobbes-test are in the same folder
-  getcwd(path, sizeof(path));
-  strcat(path, "/hog");
+  if (getcwd(path, sizeof(path))) {
+    strcat(path, "/hog");
+  }
   return path;
 }
 
@@ -151,7 +152,8 @@ public:
     if (pid == -1) {
       throw std::runtime_error("error while fork: " + std::string(strerror(errno)));
     } else if (pid == 0) {
-      chdir(mode.cwd);
+      auto rc = chdir(mode.cwd);
+      assert(rc == 0);
 
       // IO redirect
       int ofd  = dup(STDOUT_FILENO);

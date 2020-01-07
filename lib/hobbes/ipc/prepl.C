@@ -58,7 +58,8 @@ void spawn(const std::string& cmd, proc* p) {
   
       execProcess(cmd);
       int fail = 0;
-      write(STDOUT_FILENO, &fail, sizeof(fail));
+      auto rc = write(STDOUT_FILENO, &fail, sizeof(fail));
+      assert(rc > 0);
       std::cout << "Terminating process after exec failure." << std::endl;
       exit(0);
     } else {
@@ -79,8 +80,8 @@ void spawn(const std::string& cmd, proc* p) {
 
       if (FD_ISSET(c2p[0], &fds)) {
         int success = 0;
-        read(c2p[0], &success, sizeof(success));
-        if (success != 1) {
+        auto rc = read(c2p[0], &success, sizeof(success));
+        if (rc > 0 && success != 1) {
           std::ostringstream ss;
           ss << std::string(reinterpret_cast<const char*>(&success), sizeof(success));
           while (true) {
@@ -140,7 +141,8 @@ void dbglog(const std::string& msg) {
     strftime(buf, sizeof(buf), "%H:%M:%S", localtime(reinterpret_cast<time_t*>(&t)));
 
     std::string logmsg = std::string(buf) + ": " + msg + "\n";
-    write(machineREPLLogFD, logmsg.c_str(), logmsg.size());
+    auto rc = write(machineREPLLogFD, logmsg.c_str(), logmsg.size());
+    assert(rc > 0);
   }
 }
 
@@ -442,18 +444,19 @@ static Signames rsignames;
 static void deadlySignal(int sig, siginfo_t*, void*) {
   if (machineREPLLogFD > 0) {
     static const char* msg = "RECEIVED DEADLY SIGNAL: ";
-    write(machineREPLLogFD, msg, strlen(msg));
+    auto rc = write(machineREPLLogFD, msg, strlen(msg));
 
     auto s = rsignames.find(sig);
     if (s != rsignames.end()) {
-      write(machineREPLLogFD, s->second, strlen(s->second));
+      rc = write(machineREPLLogFD, s->second, strlen(s->second));
     } else {
       static const char* unk = "UNKNOWN SIGNAL";
-      write(machineREPLLogFD, unk, strlen(unk));
+      rc = write(machineREPLLogFD, unk, strlen(unk));
     }
 
     static const char* eol = "\n";
-    write(machineREPLLogFD, eol, strlen(eol));
+    rc = write(machineREPLLogFD, eol, strlen(eol));
+    assert(rc > 0);
   }
   exit(-1);
 }
@@ -461,7 +464,8 @@ static void deadlySignal(int sig, siginfo_t*, void*) {
 void runMachineREPL(cc* c) {
   // send the startup message
   int success = 1;
-  write(STDOUT_FILENO, &success, sizeof(success));
+  auto rc = write(STDOUT_FILENO, &success, sizeof(success));
+  assert(rc > 0);
   
   // for now, create a log for all processes run in machine mode
   // this will help us to diagnose errors that cause the process to die
