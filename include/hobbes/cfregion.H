@@ -574,7 +574,7 @@ template <uint8_t maxSymbol = 0xff>
 
     static void add(PModel* pm, CModel* cm, symbol s) {
       if (PRIV_HCFREGION_UNLIKELY(pm->c == arithn::fmax)) {
-        memcpy(pm->activeFreqs, pm->freqs, sizeof(pm->freqs));
+        memcpy(reinterpret_cast<void*>(pm->activeFreqs), pm->freqs, sizeof(pm->freqs));
         init(*pm, cm);
         pm->c = 0;
         memset(pm->freqs, 0, sizeof(pm->freqs));
@@ -1103,7 +1103,7 @@ template <typename T>
         // allocate/initialize the model for this bitstream segment (from the terminal state of the scratch model for the previous segment)
         uint64_t newScratchModelRef = findSpace(this->f, pagetype::data, sizeof(PModel), sizeof(size_t));
         PModel*  newScratchModel    = reinterpret_cast<PModel*>(mapFileData(this->f, newScratchModelRef, sizeof(PModel)));
-        memcpy(newScratchModel, this->scratchModel, sizeof(PModel));
+        memcpy(reinterpret_cast<void*>(newScratchModel), this->scratchModel, sizeof(PModel));
         unmapFileData(this->f, this->scratchModel, sizeof(PModel));
 
         this->scratchModel = newScratchModel;
@@ -1259,7 +1259,7 @@ template <typename T>
 
         // initialize the model for this batch
         const uint8_t* modelState = reinterpret_cast<const uint8_t*>(mapFileData(this->f, this->readState.buffer->initModel, sizeof(PModel)));
-        memcpy(&this->scratchModel, modelState, sizeof(PModel));
+        memcpy(reinterpret_cast<void*>(&this->scratchModel), modelState, sizeof(PModel));
         unmapFileData(this->f, reinterpret_cast<const void*>(modelState), sizeof(PModel));
         compress<T>::init(this->scratchModel, &this->scratchModelState);
 
