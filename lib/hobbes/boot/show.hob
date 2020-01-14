@@ -72,7 +72,7 @@ instance (t=(a*tt), Show a, ShowT tt) => ShowT t where
   showtup x = [show(x.0)] ++ showtup(tupleTail(x))
 
 instance (ShowT t) => Show t where
-  show x = "(" ++ cdelim(showtup(x), ", ") ++ ")"
+  show x = concat(["(", cdelim(showtup(x), ", "), ")"])
 
 // serialization for records
 class ShowR a where
@@ -85,7 +85,7 @@ instance (r={a*rr}, Show a, ShowR rr) => ShowR r where
   showrec r = [recordHeadLabel(r) ++ "=" ++ show(recordHeadValue(r))] ++ showrec(recordTail(r))
 
 instance (ShowR r) => Show r where
-  show x = "{" ++ cdelim(showrec(x), ", ") ++ "}"
+  show x = concat(["{", cdelim(showrec(x), ", "), "}"])
 
 // serialization for variants
 class ShowVarValue a where
@@ -125,7 +125,7 @@ instance (Array cs char) => Show cs where
 instance (Array bs byte) => Show bs where
   show bs = show(bs[0:])
 instance (Show a) => Show [a] where
-  show xs = "[" ++ cdelim(map(show,xs), ", ") ++ "]"
+  show xs = concat(["[", cdelim(map(show,xs), ", "), "]"])
 instance (Array as a, Show a) => Show as where
   show xs = show(xs[0:])
 
@@ -161,7 +161,7 @@ instance ShowFixedArrOf byte n where
   showFA bs i e = "0x" ++ concat(showSARange(showByteV, bs, i, e, newArray(e)))
 
 instance (Show a) => ShowFixedArrOf a n where
-  showFA cs i e = "[:" ++ cdelim(showSARange(show, cs, i, e, newArray(e)), ", ") ++ ":]"
+  showFA cs i e = concat(["[:", cdelim(showSARange(show, cs, i, e, newArray(e)), ", "), ":]"])
 
 instance (ShowFixedArrOf a n) => Show [:a|n:] where
   show xs = showFA(xs, 0L, salength(xs))
