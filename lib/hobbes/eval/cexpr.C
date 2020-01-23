@@ -642,7 +642,7 @@ public:
   llvm::Constant* with(const Double* v) const { return cvalue(v->value()); }
 
   llvm::Constant* with(const Var* v) const {
-    return this->c->lookupFunction(v->value());
+    return llvm::dyn_cast<llvm::Constant>(this->c->lookupVar(v->value(), requireMonotype(v->type())));
   }
 
   llvm::Constant* with(const Let*) const {
