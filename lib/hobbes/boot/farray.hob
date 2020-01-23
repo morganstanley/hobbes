@@ -235,19 +235,6 @@ count s xs = counts(s, 0L, xs, 0L)
 sum :: (HasZero a, Add a a a) => [a] -> a
 sum xs = foldl((+), zero, xs)
 
-// join an array of strings with a delimiter
-cdelimi :: ([[char]], [char], [char], long) -> [char]
-cdelimi ss d a i =
-  if (i == length(ss)) then
-    a
-  else if (i == 0L) then
-    cdelimi(ss, d, ss[0L], 1L)
-  else
-    cdelimi(ss, d, a ++ d ++ ss[i], i+1L)
-
-cdelim :: ([[char]], [char]) -> [char]
-cdelim ss d = cdelimi(ss,d,"",0L)
-
 // generate a range of values in an enumerable type
 rangeInto :: (Ord a a, Add a int a) => (a, a, [a], long) -> [a]
 rangeInto lo hi r i =
@@ -389,6 +376,14 @@ slice xs i j =
       elements(xs, ni, nj)
     else
       reverse(elements(xs, nj, ni))
+
+// join an array of strings with a delimiter
+cdelim :: ([[char]], [char]) -> [char]
+cdelim ss d =
+  if (length(ss) == 0L) then
+    ""
+  else
+    concat([ss[0]]++concat(mapC(\s.[d,s], ss[1:])))
 
 // [doc] takes two arrays and returns an array of corresponding pairs
 //  [eg] zip([1,3,5], [2,4,6]) == [(1,2), (3,4), (5,6)]
