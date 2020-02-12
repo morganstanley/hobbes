@@ -29,9 +29,9 @@ void registerEventHandler(int fd, eventhandler fn, void* ud, bool f) {
 }
 
 #ifdef BUILD_LINUX
-__thread bool           epInitialized = false;
-__thread int            epFD          = 0;
-__thread EventClosures* epClosures    = 0;
+thread_local bool           epInitialized = false;
+thread_local int            epFD          = 0;
+thread_local EventClosures* epClosures    = 0;
 
 struct timer {
   timerfunc func;
@@ -91,18 +91,17 @@ void registerInterruptHandler(const std::function<void()>& fn) {
   (*epClosures)[-1] = c;
 }
 
-bool stepEventLoop() {
+bool stepEventLoop(int timeoutMS) {
   while (true) {
-    int timeout = -1;
     if (!timers.empty()) {
       auto next = timers.top().callTime;
       auto timeUntilNext = next - std::chrono::high_resolution_clock::now();
       int millis = std::chrono::duration_cast<std::chrono::milliseconds>(timeUntilNext).count();
-      timeout = std::max(1, millis);
+      timeoutMS = std::max(1, millis);
     }
 
     struct epoll_event evts[64];
-    int fds = epoll_wait(threadEPollFD(), evts, sizeof(evts)/sizeof(evts[0]), timeout);
+    int fds = epoll_wait(threadEPollFD(), evts, sizeof(evts)/sizeof(evts[0]), timeoutMS);
     bool status = true;
     if (fds > 0) {
       for (int fd = 0; fd < fds; ++fd) {
@@ -186,9 +185,9 @@ void runEventLoop(int microsecondDuration) {
 
 #elif defined(BUILD_OSX)
 
-__thread bool           kqInitialized = false;
-__thread int            kqFD          = 0;
-__thread EventClosures* kqClosures    = 0;
+thread_local bool           kqInitialized = false;
+thread_local int            kqFD          = 0;
+thread_local EventClosures* kqClosures    = 0;
 
 int threadKQFD() {
   if (!kqInitialized) {
@@ -237,10 +236,14 @@ void registerInterruptHandler(const std::function<void()>& fn) {
   (*kqClosures)[-1] = c;
 }
 
-bool stepEventLoop() {
+bool stepEventLoop(int timeoutMS) {
   while (true) {
+    struct timespec timeout;
+    timeout.tv_sec  = timeoutMS / 1000;
+    timeout.tv_nsec = (timeoutMS % 1000) * 1000000UL;
+
     struct kevent evts[64];
-    int fds = kevent(threadKQFD(), 0, 0, evts, sizeof(evts)/sizeof(evts[0]), 0);
+    int fds = kevent(threadKQFD(), 0, 0, evts, sizeof(evts)/sizeof(evts[0]), timeoutMS > 0 ? &timeout : 0);
     if (fds > 0) {
       for (size_t fd = 0; fd < fds; ++fd) {
         eventcbclosure* c = (eventcbclosure*)evts[fd].udata;
