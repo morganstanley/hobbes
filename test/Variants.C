@@ -105,3 +105,7 @@ TEST(Variants, Generic) {
   EXPECT_TRUE(c().compileFn<bool()>("variantApp(|car=6L|::|car:long,house:[char],dog:double|,{car=toClosure(\\x.x+x*x),house=toClosure(length),dog=toClosure(\\_.0L)}) == 42")());
 }
 
+TEST(Variants, Trunc) {
+  EXPECT_TRUE(c().compileFn<bool()>("trunc(|Red=42|::|Blue:[char],Red:int,Green:(double*double)|)===|Red|")());
+}
+

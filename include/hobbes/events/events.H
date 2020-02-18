@@ -23,7 +23,7 @@ void unregisterEventHandler(int fd);
 void registerInterruptHandler(const std::function<void()>& fn);
 
 // run a single-step or indefinite event loop
-bool stepEventLoop();
+bool stepEventLoop(int timeoutMS = -1);
 void runEventLoop();
 
 // run the event loop for some number of microseconds
