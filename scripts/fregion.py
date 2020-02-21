@@ -8,15 +8,8 @@
 #      f = fregion.FRegion(P)
 #
 #    to read the stored field 'x' out of f:
-#      f.x       
-#    If x is recursive  type, it is lazy loaded, and it supports the interface as following:
-#      stream = RecStream(f.x)
+#      f.x
 #
-#      1) for d in steam.iter()
-#      2) [] operator: stream[0] 
-#      3) len(f.x)       
-
-#      
 #    to read the 'metadata' for the field 'x' (type and offset details):
 #      meta(f).x
 #
@@ -677,7 +670,7 @@ class FREnvelope:
 
     # if reading the old format, we need to reinterpret recorded types
     if (self.version == 1):
-      for vn, b in self.env.iteritems():
+      for vn, b in self.env.items():
         b.ty = V1toV2Type(b.ty)
 
   # read page data entries into the 'pages' argument
@@ -703,7 +696,7 @@ class FREnvelope:
       offset = self.readEnvRecord(env, offset)
 
       pos   = offset - 1
-      tpage = pos / 4096
+      tpage = int(pos / 4096)
       rpos  = (pos % 4096) + 1
       if (rpos == (4096 - availBytes(self.pages[tpage]))):
         break
@@ -1071,7 +1064,7 @@ class FRegion:
   def __init__(self, fpath):
     self.rep = FREnvelope(fpath)
 
-    for vn, bind in self.rep.env.iteritems():
+    for vn, bind in self.rep.env.items():
       bind.reader = makeReader({}, bind.ty)
 
   @staticmethod
@@ -1084,7 +1077,7 @@ class FRegion:
     vns = []
     hts = []
     tds = []
-    for vn, bind in self.rep.env.iteritems():
+    for vn, bind in self.rep.env.items():
       vns.append(vn)
       hts.append(' :: ')
       tds.append(str(bind.ty))
@@ -1233,10 +1226,9 @@ class UuidReader:
     bs = self.nr.read(m,o)
     return HobUUID(bytes=''.join(chr(e) for e in bs)) 
 
-
 #######
 #
-# RecSteam interface to structured data
+# Stored sequences (fseq T n) with representation (^x.(()+((carray T n) * x@?)))@?
 #
 #######
 class RecStream:
@@ -1281,3 +1273,11 @@ class RecStream:
         return nd[i-c]
   
     raise StopIteration
+
+@RegReader("fseq")
+class FSeqReader:
+  def __init__(self, renv, repty, ty):
+    self.rr = makeReader(renv, ty)
+  def read(self, m, o):
+    return RecStream(self.rr.read(m,o))
+

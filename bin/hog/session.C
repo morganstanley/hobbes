@@ -198,9 +198,11 @@ private:
       auto lgdefn = f->fileData()->bindings.find("log");
 
       if (lgdefn != f->fileData()->bindings.end()) {
-        auto lgty = ty::elimFileRefs(fregion::maybeStoredBatchType(lgdefn->second.type));
-        if (lgty->tid == PRIV_HPPF_TYCTOR_VARIANT) {
-          return variantSpaceMatches(*reinterpret_cast<const ty::Variant*>(lgty.get()), stmts);
+	if (auto bty = fregion::maybeStoredBatchType(lgdefn->second.type)) {
+          auto lgty = ty::elimFileRefs(bty);
+          if (lgty->tid == PRIV_HPPF_TYCTOR_VARIANT) {
+            return variantSpaceMatches(*reinterpret_cast<const ty::Variant*>(lgty.get()), stmts);
+          }
         }
       }
     } else {
@@ -209,14 +211,16 @@ private:
 
       if (txndefn != f->fileData()->bindings.end()) {
         // match txnty with | {time:_, entries:[t]} -> t
-        auto txnty = ty::elimFileRefs(fregion::maybeStoredBatchType(txndefn->second.type));
-        if (txnty->tid == PRIV_HPPF_TYCTOR_STRUCT) {
-          const auto* txnr = reinterpret_cast<const ty::Struct*>(txnty.get());
-          if (txnr->fields.size() == 2 && txnr->fields[0].at<0>() == "time" && txnr->fields[1].at<0>() == "entries") {
-            if (txnr->fields[1].at<2>()->tid == PRIV_HPPF_TYCTOR_ARR) {
-              const auto* txner = reinterpret_cast<const ty::Arr*>(txnr->fields[1].at<2>().get());
-              if (txner->t->tid == PRIV_HPPF_TYCTOR_VARIANT) {
-                return variantSpaceMatches(*reinterpret_cast<const ty::Variant*>(txner->t.get()), stmts);
+	if (auto bty = fregion::maybeStoredBatchType(txndefn->second.type)) {
+          auto txnty = ty::elimFileRefs(bty);
+          if (txnty->tid == PRIV_HPPF_TYCTOR_STRUCT) {
+            const auto* txnr = reinterpret_cast<const ty::Struct*>(txnty.get());
+            if (txnr->fields.size() == 2 && txnr->fields[0].at<0>() == "time" && txnr->fields[1].at<0>() == "entries") {
+              if (txnr->fields[1].at<2>()->tid == PRIV_HPPF_TYCTOR_ARR) {
+                const auto* txner = reinterpret_cast<const ty::Arr*>(txnr->fields[1].at<2>().get());
+                if (txner->t->tid == PRIV_HPPF_TYCTOR_VARIANT) {
+                  return variantSpaceMatches(*reinterpret_cast<const ty::Variant*>(txner->t.get()), stmts);
+                }
               }
             }
           }

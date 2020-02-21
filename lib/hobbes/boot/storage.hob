@@ -149,6 +149,30 @@ flFMapRev        r f xs = case unroll(load(xs)) of |0:_=r, 1:p=flFMapRev(cons(fm
 flFFiltMapRev  r p f xs = case unroll(load(xs)) of |0:_=r, 1:c=flFFiltMapRev(cons(ffilterMap(p, f, load(c.0))::[_], r), p, f, c.1)|
 flFFiltMMapRev   r f xs = case unroll(load(xs)) of |0:_=r, 1:p=flFFiltMMapRev(cons(ffilterMMap(f, load(p.0))::[_], r), f, p.1)|
 
+// array comprehension support for nominal stored sequences
+data carray a n = {avail:long, buffer:[:a|n:]}
+data fseq a n = (^x.(()+((carray a n)*x@z)))@z
+data mseq a = ^x.(()+([a]*x))
+
+toMSeq :: (^x.(()+([a]*x))) -> (mseq a)
+toMSeq = unsafeCast
+
+instance SeqDesc (carray a n) "carray" a
+instance SeqDesc (fseq a n) "fseq" a
+instance SeqDesc (mseq a) "mseq" a
+
+instance Map f c a r "fseq" (fseq a n) "mseq" (mseq r) where
+  fmap f xs = toMSeq(lreverse(flFMapRev(nil(), f, xs.t)))
+instance FilterMap p pc f c a r "fseq" (fseq a n) "mseq" (mseq r) where
+  ffilterMap p f xs = toMSeq(lreverse(flFFiltMapRev(nil(), p, f, xs.t)))
+instance FilterMMap f c a r "fseq" (fseq a n) "mseq" (mseq r) where
+  ffilterMMap f xs = toMSeq(lreverse(flFFiltMMapRev(nil(), f, xs.t)))
+
+instance Array (mseq a) a where
+  size     xs     = lfoldl(\s vs.s + length(vs), 0L, xs.t)
+  element  xs i   = match lfindS(i, \j vs.j-length(vs), \j vs.j < length(vs), xs.t) with | |1=(j, vs)| -> vs[length(vs) - (j+1)] | _ -> newPrim()
+  elements xs i e = concat(toArray(lfindSliceSpan(xs.t, 0L, i, e)))
+
 // array comprehension support for stored sequences
 instance SeqDesc (^x.(()+([a]@f*x@f)))@f ("fseq"*f) a
 
@@ -160,14 +184,10 @@ instance FilterMMap f c a r ("fseq"*g) (^x.(()+([a]@g*x@g)))@g "mrope" (^x.(()+(
   ffilterMMap f xs = lreverse(flFFiltMMapRev(nil(), f, xs))
 
 // array comprehension support for sequences stored with compile-time buffer lengths
-data carray a n = {avail:long, buffer:[:a|n:]}
-
 instance Array (carray a n) a where
   size     c     = c.t.avail
   element  c i   = element(c.t.buffer, i)
   elements c i e = elements(c.t.buffer, i, e)
-
-instance SeqDesc (carray a n) "carray" a
 
 instance Map f c a r "carray" (carray a n) "array" [r] where
   fmap f xs = fmapArrStep(f, xs, 0L, newArray(size(xs)))
@@ -250,7 +270,7 @@ flfindSliceSpan n k i e =
       if (nk < i) then
         flfindSliceSpan(load(t), nk, i, e)
       else
-        cons(xs[size(xs)-max(0L,i-k):size(xs)-min(size(xs),e-k)], flfindSliceSpan(load(t), nk, i, e))
+        cons(xs[max(0L,i-k):min(size(xs),e-k)], flfindSliceSpan(load(t), nk, i, e))
   | _ -> nil()
 
 instance (Array as a) => Array (^x.(()+(as@f*x@f))) a where
@@ -262,4 +282,9 @@ instance (Array as a) => Array (^x.(()+(as@f*x@f)))@f a where
   size     xs     = size(load(xs))
   element  xs i   = element(load(xs), i)
   elements xs i e = elements(load(xs), i, e)
+
+instance Array (fseq a _) a where
+  size     xs     = flfoldl(\s vs.s + size(load(vs)), 0L, load(xs.t))
+  element  xs i   = match flfindS(i, \j vs.j-size(load(vs)), \j vs.j < size(load(vs)), load(xs.t)) with | |1=(j, vs)| -> let lvs = load(vs) in element(lvs,j) | _ -> newPrim()
+  elements xs i e = concat(toArray(flfindSliceSpan(load(xs.t), 0L, i, e)))
 

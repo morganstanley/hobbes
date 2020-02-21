@@ -161,11 +161,11 @@ static MonoTypePtr entuple(const MonoTypePtr& ty) {
 }
 
 // A N -> carray A N
-static MonoTypePtr carrayty(const MonoTypePtr& ty, size_t n) {
+static MonoTypePtr carrayty(const MonoTypePtr& ty, const MonoTypePtr& n) {
   Record::Members ms;
   ms.push_back(Record::Member("avail", primty("long")));
   ms.push_back(Record::Member("buffer", FixedArray::make(tvar("t"), tvar("c"))));
-  return tapp(primty("carray", tabs(str::strings("t","c"), Record::make(ms))), list(ty, tlong(n)));
+  return tapp(primty("carray", tabs(str::strings("t","c"), Record::make(ms))), list(ty, n));
 }
 
 // A -> ^x.(()+(A*x@?))
@@ -181,9 +181,9 @@ static MonoTypePtr storedListOf(const MonoTypePtr& ty) {
   return MonoTypePtr(Recursive::make("x", MonoTypePtr(Variant::make(ms))));
 }
 
-// A -> ^x.(()+([A]@?*x@?))@?
+// A N -> fseq A N
 static MonoTypePtr storedStreamOf(const MonoTypePtr& ty, size_t n) {
-  return fileRefTy(storedListOf(fileRefTy(carrayty(ty, n))));
+  return tapp(primty("fseq", tabs(str::strings("t", "c"), fileRefTy(storedListOf(fileRefTy(carrayty(tvar("t"), tvar("c"))))))), list(ty, tlong(n)));
 }
 
 // A -- StoredAs A B --> B
@@ -252,7 +252,7 @@ RawStoredSeries::RawStoredSeries(cc* c, writer* outputFile, const std::string& f
   // determine the type of this stored stream in the file
   this->storedType       = storeAs(c, ty);
   this->storageSize      = storageSizeOf(this->storedType);
-  this->batchType        = carrayty(this->storedType, this->batchSize);
+  this->batchType        = carrayty(this->storedType, tlong(this->batchSize));
   this->batchStorageSize = storageSizeOf(this->batchType);
   this->storeFn          = reinterpret_cast<StoreFn>(storageFunction(c, ty, this->storedType, LexicalAnnotation::null()));
 
@@ -277,7 +277,7 @@ RawStoredSeries::RawStoredSeries(cc* c, writer* outputFile, ufileref root, const
   // determine the type of this stored stream in the file
   this->storedType       = storeAs(c, ty);
   this->storageSize      = storageSizeOf(this->storedType);
-  this->batchType        = carrayty(this->storedType, this->batchSize);
+  this->batchType        = carrayty(this->storedType, tlong(this->batchSize));
   this->batchStorageSize = storageSizeOf(this->batchType);
   this->storeFn          = reinterpret_cast<StoreFn>(storageFunction(c, ty, this->storedType, LexicalAnnotation::null()));
 
