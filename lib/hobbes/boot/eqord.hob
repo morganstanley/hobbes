@@ -125,7 +125,14 @@ instance (Ord b c) => Ord (a+b) c where
   x >  y = case x of |0:xv=false, 1:xv=xv >  y|
   x >= y = case x of |0:xv=false, 1:xv=xv >= y|
 
-// we should do this more efficiently ...
+// enum-like variants can be ordered inexpensively
+instance (VariantTrunc v v) => Ord v v where
+  x <  y = (unsafeCast(x)::(int*long)).0 <  (unsafeCast(y)::(int*long)).0
+  x <= y = (unsafeCast(x)::(int*long)).0 <= (unsafeCast(y)::(int*long)).0
+  x >  y = (unsafeCast(x)::(int*long)).0 >  (unsafeCast(y)::(int*long)).0
+  x >= y = (unsafeCast(x)::(int*long)).0 >= (unsafeCast(y)::(int*long)).0
+
+// we can do this more efficiently (rewrite 'variantSplit' to 'variantApp') ...
 class VariantCtorIndex v where
   variantCtorIndexFrom :: (v,int) -> int
 
@@ -145,9 +152,9 @@ instance Ord 0 0 where
 
 instance (v=|a+t|, Ord a a, Ord t t) => Ord v v where
   x <  y = variantSplit(x, \hx.variantSplit(y, \hy.hx <  hy, \_.variantCtorIndex(x) <  variantCtorIndex(y)), \tx.variantSplit(y, \_.variantCtorIndex(x) <  variantCtorIndex(y), \ty.tx <  ty))
-  x <= y = variantSplit(x, \hx.variantSplit(y, \hy.hx <= hy, \_.variantCtorIndex(x) <= variantCtorIndex(y)), \tx.variantSplit(y, \_.variantCtorIndex(x) <= variantCtorIndex(y), \ty.tx <  ty))
-  x >  y = variantSplit(x, \hx.variantSplit(y, \hy.hx >  hy, \_.variantCtorIndex(x) >  variantCtorIndex(y)), \tx.variantSplit(y, \_.variantCtorIndex(x) >  variantCtorIndex(y), \ty.tx <  ty))
-  x >= y = variantSplit(x, \hx.variantSplit(y, \hy.hx >= hy, \_.variantCtorIndex(x) >= variantCtorIndex(y)), \tx.variantSplit(y, \_.variantCtorIndex(x) >= variantCtorIndex(y), \ty.tx <  ty))
+  x <= y = variantSplit(x, \hx.variantSplit(y, \hy.hx <= hy, \_.variantCtorIndex(x) <= variantCtorIndex(y)), \tx.variantSplit(y, \_.variantCtorIndex(x) <= variantCtorIndex(y), \ty.tx <= ty))
+  x >  y = variantSplit(x, \hx.variantSplit(y, \hy.hx >  hy, \_.variantCtorIndex(x) >  variantCtorIndex(y)), \tx.variantSplit(y, \_.variantCtorIndex(x) >  variantCtorIndex(y), \ty.tx >  ty))
+  x >= y = variantSplit(x, \hx.variantSplit(y, \hy.hx >= hy, \_.variantCtorIndex(x) >= variantCtorIndex(y)), \tx.variantSplit(y, \_.variantCtorIndex(x) >= variantCtorIndex(y), \ty.tx >=  ty))
 
 // lexicographic ordering for arrays
 arrCmp :: (Array c a, Array d b, Ord a b) => (bool, c, d, long, long) -> bool
