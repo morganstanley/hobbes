@@ -233,16 +233,16 @@ void evaluator::perfTestExpr(const std::string& expr) {
 }
 
 void evaluator::breakdownEvalExpr(const std::string& expr) {
-  std::string pexpr = "print(" + expr + ")";
+  auto e = readExpr("print(" + expr + ")");
   long t0;
 
   t0 = hobbes::tick();
-  this->ctx.unsweetenExpression(readExpr(pexpr));
+  this->ctx.unsweetenExpression(e);
   long ust = hobbes::tick() - t0;
 
   t0 = hobbes::tick();
   typedef void (*pvthunk)();
-  pvthunk f = this->ctx.compileFn<void()>(readExpr(pexpr));
+  pvthunk f = this->ctx.compileFn<void()>(e);
   long ct = hobbes::tick() - t0;
 
   t0 = hobbes::tick();
@@ -250,9 +250,9 @@ void evaluator::breakdownEvalExpr(const std::string& expr) {
   long evalt = hobbes::tick() - t0;
 
   std::cout << std::endl
-            << "unsweeten: " << hobbes::describeNanoTime(ust)      << std::endl
-            << "compile:   " << hobbes::describeNanoTime(ct - ust) << std::endl
-            << "evaluate:  " << hobbes::describeNanoTime(evalt)    << std::endl;
+            << "unsweeten: " << hobbes::describeNanoTime(ust)   << std::endl
+            << "compile:   " << hobbes::describeNanoTime(ct)    << std::endl
+            << "evaluate:  " << hobbes::describeNanoTime(evalt) << std::endl;
 }
 
 void evaluator::resetREPLCycle() {
