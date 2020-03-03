@@ -437,9 +437,9 @@ TEST(Hog, KillAndResume) {
   hobbes::cc c;
   size_t i = 0;
   for (const auto& log : local.logpaths()) {
-    c.define("f"+hobbes::str::from(i++), "inputFile::(LoadFile \""+log+"\" w)=>w");
+    c.define("f"+hobbes::str::from(i++), "inputFile::(LoadFile \""+log+"\" _)=>_");
   }
-  EXPECT_TRUE(c.compileFn<bool()>("f0.seq[0:] == [14,13,12,11,10,9,8,7,6,5,4,3,2,1,0]")());
+  EXPECT_EQ(hobbes::makeStdString(c.compileFn<const hobbes::array<char>*()>("show(f0.seq[:0])")()), "[14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0]");
 }
 
 DEFINE_STORAGE_GROUP(

@@ -225,18 +225,7 @@ if (sum([sum(x.value) for x in f.tvs if x.cn=='chickens']) != 135):
   print("Expected chickens matched out of f.tvs to sum to 135 but failed: "+str(f.tvs))
   sys.exit(-1)
 
-def smapInto(r,f,x):
-  if (x == None):
-    return r
-  else:
-    r.append(f(x[0]()))
-    return smapInto(r,f,x[1])
-def smap(f,x):
-  r=[]
-  smapInto(r,f,x)
-  return r
-
-if (sum(smap(lambda vs: sum(map(lambda v:v.x, vs)),f.stss)) != 207900):
+if (sum(map(lambda v:v.x, f.stss)) != 207900):
   print("Expected .x over f.stss to sum to 207900 but failed: "+str(f.stss))
   sys.exit(-1)
 

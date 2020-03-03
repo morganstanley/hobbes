@@ -7,6 +7,8 @@
 #include <hobbes/cfregion.H>
 #include "test.H"
 
+#include <thread>
+
 using namespace hobbes;
 static cc& c() { static cc x; return x; }
 
@@ -439,7 +441,7 @@ TEST(Storage, ScriptSignals) {
     wc.define("f", "writeFile(\"" + fname + "\") :: ((file _ {vs:[int]@?}))");
     wc.compileFn<void()>("do{f.vs <- allocateArray(1000L);unsafeSetLength(load(f.vs),0L);}")();
     
-    wc.define("pushv", "\\f vs v.do { lvs = load(vs); lvs[length(lvs)] <- v; unsafeSetLength(lvs, length(lvs) + 1); putStrLn(\"push value into '" + fname + "': \"++show(vs)); signalUpdate(f); }");
+    wc.define("pushv", "\\f vs v.do { lvs = load(vs); lvs[length(lvs)] <- v; unsafeSetLength(lvs, length(lvs) + 1); signalUpdate(f); }");
     auto pushv = wc.compileFn<void(int)>("x", "pushv(f, f.vs, x)");
 
     // start a reader with a watch on the writer's array set to increment a couple of local values
@@ -592,6 +594,31 @@ TEST(Storage, FRegionCompatibility) {
       EXPECT_EQ(t.x, static_cast<int>(j));
       ++j;
     }
+    unlink(fname.c_str());
+  } catch (...) {
+    unlink(fname.c_str());
+    throw;
+  }
+}
+
+TEST(Storage, FRegion_FSeq_Write_Resume_After_Restart) {
+  std::string fname = mkFName();
+  try {
+    // initial write transaction
+    { fregion::writer w0(fname); auto& s = w0.series<int>("s"); s(1); }
+
+    // second write transaction
+    { fregion::writer w1(fname); auto& s = w1.series<int>("s"); s(2); }
+
+    // expect to read back [1,2]
+    fregion::reader r(fname);
+    auto& s = r.series<int>("s");
+    int x;
+    EXPECT_TRUE(s.next(&x));
+    EXPECT_EQ(x, 1);
+    EXPECT_TRUE(s.next(&x));
+    EXPECT_EQ(x, 2);
+
     unlink(fname.c_str());
   } catch (...) {
     unlink(fname.c_str());
@@ -772,6 +799,48 @@ TEST(Storage, CFRegion_H2C) {
   }
 }
 
+// disable inotify tests due to travis-ci/docker bug that breaks it
+// this code does actually work on Linux outside of travis-ci
+#ifndef BUILD_LINUX
+TEST(Storage, FRegion_CPPAPI_BlockingRead) {
+  std::string fname = mkFName();
+  try {
+    hobbes::fregion::writer w(fname);
+    auto& wws = w.series<int>("ws");
+
+    hobbes::fregion::reader r(fname);
+    auto& rws = r.series<int>("ws");
+    int x;
+
+    // initially we don't expect to read any values
+    EXPECT_EQ(rws.next(&x), false);
+
+    // but if we spawn a thread to write a few values, then the reader should be able to block to read them
+    std::thread([&]() { sleep(2); wws(42); w.signal(); }).detach();
+
+    EXPECT_EQ(rws.next(&x, 30000), true);
+    EXPECT_EQ(x, 42);
+
+    // start a fresh reader, verify the same blocking read behavior with a new value after reading the previous one
+    hobbes::fregion::reader nr(fname);
+    auto& nrws = nr.series<int>("ws");
+
+    EXPECT_EQ(nrws.next(&x), true);
+    EXPECT_EQ(x, 42);
+
+    std::thread([&]() { sleep(2); wws(8675309); w.signal(); }).detach();
+
+    EXPECT_EQ(rws.next(&x, 30000), true);
+    EXPECT_EQ(x, 8675309);
+
+    unlink(fname.c_str());
+  } catch (...) {
+    unlink(fname.c_str());
+    throw;
+  }
+}
+#endif
+
 DEFINE_STRUCT(
   CFTypeTest,
   (datetimeT, t)
@@ -809,7 +878,6 @@ TEST(Storage, CFRegion_CTypes) {
     throw;
   }
 }
-
 
 TEST(Storage, FRegionCArrays) {
   std::string fname = mkFName();
