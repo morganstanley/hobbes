@@ -56,6 +56,16 @@
 #include <string.h>
 #include <assert.h>
 
+// filesystem waits depend on platform details
+#include <sys/time.h>
+
+#if defined(__APPLE__) && defined(__MACH__)
+#include <sys/event.h>
+#else
+#include <sys/inotify.h>
+#include <sys/epoll.h>
+#endif
+
 // types with static reflection info (for reflective structs, variants, etc)
 #include "reflect.H"
 
@@ -1022,59 +1032,19 @@ inline ty::desc batchSeqType(const ty::desc& t, size_t batchSize) {
 }
 
 inline ty::desc storedSeqType(const ty::desc& t, size_t batchSize) {
-  return ty::fileRef(storedListType(ty::fileRef(batchSeqType(t, batchSize)), sizeof(size_t)));
-}
-
-inline ty::desc maybeDerefFileRef(const ty::desc& t) {
-  if (t && t->tid == PRIV_HPPF_TYCTOR_TAPP) {
-    const ty::App* ap = reinterpret_cast<const ty::App*>(t.get());
-    if (ap->f->tid == PRIV_HPPF_TYCTOR_PRIM && reinterpret_cast<const ty::Prim*>(ap->f.get())->n == "fileref") {
-      if (ap->args.size() >= 1) {
-        return ap->args[0];
-      }
-    }
-  }
-  return ty::desc();
-}
-
-inline ty::desc maybeOpenRecursive(const ty::desc& t) {
-  if (t && t->tid == PRIV_HPPF_TYCTOR_RECURSIVE) {
-    return reinterpret_cast<const ty::Recursive*>(t.get())->t;
-  }
-  return ty::desc();
-}
-
-inline ty::desc maybeNthSum(const ty::desc& t, size_t n) {
-  if (t && t->tid == PRIV_HPPF_TYCTOR_VARIANT) {
-    const ty::Variant::Ctors& cs = reinterpret_cast<ty::Variant*>(t.get())->ctors;
-    if (n < cs.size() && cs[0].at<0>() == ".f0") {
-      return cs[n].at<2>();
-    }
-  }
-  return ty::desc();
-}
-
-inline ty::desc maybeNthProd(const ty::desc& t, size_t n) {
-  if (t && t->tid == PRIV_HPPF_TYCTOR_STRUCT) {
-    const ty::Struct::Fields& fs = reinterpret_cast<ty::Struct*>(t.get())->fields;
-    if (n < fs.size() && fs[0].at<0>() == ".f0") {
-      return fs[n].at<2>();
-    }
-  }
-  return ty::desc();
+  // data fseq t c = (^x.(()+((carray t c)@?*x@?)))@?
+  return ty::app(prim("fseq", ty::fn("t", "c", ty::fileRef(storedListType(ty::fileRef(batchSeqType(t, batchSize)), sizeof(size_t))))), t, ty::nat(batchSize));
 }
 
 inline ty::desc maybeStoredBatchType(const bytes& bs) {
   ty::desc dty = ty::decode(bs);
 
-  if (ty::desc t = maybeDerefFileRef(maybeNthProd(maybeNthSum(maybeOpenRecursive(maybeDerefFileRef(dty)), 1), 0))) {
-    if (t->tid == PRIV_HPPF_TYCTOR_TAPP) {
-      const ty::App* buf = reinterpret_cast<const ty::App*>(t.get());
-      if (buf->f->tid == PRIV_HPPF_TYCTOR_PRIM) {
-        if (reinterpret_cast<ty::Prim*>(buf->f.get())->n == "carray") {
-          if (buf->args.size() >= 2) {
-            return buf->args[0];
-          }
+  if (dty->tid == PRIV_HPPF_TYCTOR_TAPP) {
+    const auto* p = reinterpret_cast<const ty::App*>(dty.get());
+    if (p->f->tid == PRIV_HPPF_TYCTOR_PRIM) {
+      if (reinterpret_cast<const ty::Prim*>(p->f.get())->n == "fseq") {
+        if (p->args.size() >= 2) {
+          return p->args[0];
         }
       }
     }
@@ -1085,14 +1055,12 @@ inline ty::desc maybeStoredBatchType(const bytes& bs) {
 inline size_t inferBatchSize(const bytes& bs) {
   ty::desc dty = ty::decode(bs);
 
-  if (ty::desc t = maybeDerefFileRef(maybeNthProd(maybeNthSum(maybeOpenRecursive(maybeDerefFileRef(dty)), 1), 0))) {
-    if (t->tid == PRIV_HPPF_TYCTOR_TAPP) {
-      const ty::App* buf = reinterpret_cast<const ty::App*>(t.get());
-      if (buf->f->tid == PRIV_HPPF_TYCTOR_PRIM) {
-        if (reinterpret_cast<ty::Prim*>(buf->f.get())->n == "carray") {
-          if (buf->args.size() >= 2 && buf->args[1]->tid == PRIV_HPPF_TYCTOR_SIZE) {
-            return reinterpret_cast<ty::Nat*>(buf->args[1].get())->x;
-          }
+  if (dty->tid == PRIV_HPPF_TYCTOR_TAPP) {
+    const auto* p = reinterpret_cast<const ty::App*>(dty.get());
+    if (p->f->tid == PRIV_HPPF_TYCTOR_PRIM) {
+      if (reinterpret_cast<const ty::Prim*>(p->f.get())->n == "fseq") {
+        if (p->args.size() >= 2 && p->args[1]->tid == PRIV_HPPF_TYCTOR_SIZE) {
+          return reinterpret_cast<const ty::Nat*>(p->args[1].get())->x;
         }
       }
     }
@@ -1770,7 +1738,7 @@ template <typename T>
     return sizeof(size_t) + align<size_t>(store<T>::size()*batchSize, sizeof(size_t));
   }
 
-// a structured data file opened for output
+// interface to incrementally write into a stored series
 template <typename T>
   class wseries : public seriesi {
   public:
@@ -1781,10 +1749,15 @@ template <typename T>
       // allocate space for this sequence and prepare to write
       auto b = this->f->bindings.find(this->seqname);
       if (b == this->f->bindings.end()) {
-        // this sequence is not yet defined, so define it and begin writing to it
+        // this sequence is not yet defined
+
+        // allocate the root node with a fresh batch
         size_t dloc = findSpace(this->f, pagetype::data, sizeof(size_t), sizeof(size_t));
-        this->headNodeRef = reinterpret_cast<uint64_t*>(mapFileData(this->f, dloc, sizeof(size_t)));
-        consBatchNode(allocBatchNode());
+        auto* rootRef = reinterpret_cast<uint64_t*>(mapFileData(this->f, dloc, sizeof(uint64_t)));
+        *rootRef = initSeqNode();
+        unmapFileData(this->f, rootRef, sizeof(uint64_t));
+
+        // define the sequence variable with this type/location
         addBinding(this->f, this->seqname, ty::encoding(this->stdef), dloc);
       } else {
         // the sequence is already defined, make sure it has the right type def and then resume writing to it
@@ -1795,8 +1768,9 @@ template <typename T>
             "  Actual:   " + ty::show(ty::decode(b->second.type))
           );
         } else {
-          this->headNodeRef = reinterpret_cast<uint64_t*>(mapFileData(this->f, b->second.offset, sizeof(size_t)));
-          restartFromBatchNode();
+          const auto* rootRef = reinterpret_cast<const uint64_t*>(mapFileData(this->f, b->second.offset, sizeof(uint64_t)));
+          initFromSeqNode(*rootRef);
+          unmapFileData(this->f, rootRef, sizeof(uint64_t));
         }
       }
     }
@@ -1809,12 +1783,11 @@ template <typename T>
 
     void operator()(const T& x) {
       store<T>::write(this->f, this->batchHead, x);
-      this->writeCB(this->batchDataRef+(this->batchHead-reinterpret_cast<uint8_t*>(this->batchData)));
+      this->writeCB(this->batchDataRef+(this->batchHead-reinterpret_cast<uint8_t*>(this->batchCount)));
       this->batchHead += store<T>::size();
-      if (++(*reinterpret_cast<size_t*>(this->batchData)) == this->batchSize) {
-        void* oldBatchData = this->batchData;
-        consBatchNode(this->batchNode);
-        unmapFileData(this->f, oldBatchData, batchByteCount<T>(this->batchSize));
+      if (++(*this->batchCount) == this->batchSize) {
+        unmapFileData(this->f, this->batchCount, batchByteCount<T>(this->batchSize));
+        promoteNullNode(this->batchNextRef);
       }
     }
   public:
@@ -1835,53 +1808,93 @@ template <typename T>
     size_t                        batchSize;  // the size of each batch of values within a node
     std::function<void(uint64_t)> writeCB;    // post-write logic (e.g. for sequencing writes across multiple series)
 
-    uint64_t  batchDataRef;
-    void*     batchData;
-    uint8_t*  batchHead;
-    uint64_t  batchNode;
-    uint64_t* headNodeRef;
+    struct batchdef {
+      uint64_t varCtor;  // the 'variant tag' for this batch, by the earlier type description: 0=null, 1=batch*link pair
+      uint64_t batchRef; // ref to batch array data
+      uint64_t nextRef;  // link to next batchdef
+    };
 
-    void consBatchNode(uint64_t nextPtr) {
-      auto bsz = batchByteCount<T>(this->batchSize);
+    uint64_t  batchDataRef; // file-pointer to batch array start
+    uint64_t* batchCount;   // the count of values written in the current batch
+    uint8_t*  batchHead;    // pointer to the next location to write a value
+    uint64_t  batchNextRef; // file-pointer to the next batch node (should always point to a null node in the writer)
 
-      this->batchDataRef = findSpace(this->f, pagetype::data, bsz, sizeof(size_t));
-      this->batchData    = mapFileData(this->f, this->batchDataRef, bsz);
-      this->batchHead    = reinterpret_cast<uint8_t*>(this->batchData) + sizeof(size_t);
-      this->batchNode    = allocBatchNode(this->batchDataRef, nextPtr);
-
-      *this->headNodeRef = this->batchNode;
+    // allocate an initial node (just used when defining a sequence variable for the first time)
+    uint64_t initSeqNode() {
+      auto r = allocNullNode();
+      promoteNullNode(r);
+      return r;
     }
 
-    void restartFromBatchNode() {
-      size_t* d = reinterpret_cast<size_t*>(mapFileData(this->f, *this->headNodeRef, 3*sizeof(size_t)));
-      
-      // if we somehow get a root node representing the empty list, we're free to start a fresh list
-      if (d[0] == 0) {
-        consBatchNode(allocBatchNode());
-        return;
+    // does a node ref designate a null (uninitialized) node?
+    bool isNullNode(uint64_t r) {
+      auto* n   = reinterpret_cast<batchdef*>(mapFileData(this->f, r, sizeof(batchdef)));
+      bool  ret = n->varCtor == 0;
+      unmapFileData(this->f, n, sizeof(batchdef));
+      return ret;
+    }
+
+    // what node follows another?
+    uint64_t nextNodeRef(uint64_t r) {
+      auto* n   = reinterpret_cast<batchdef*>(mapFileData(this->f, r, sizeof(batchdef)));
+      auto  ret = n->nextRef;
+      unmapFileData(this->f, n, sizeof(batchdef));
+      return ret;
+    }
+
+    // load initial state from existing persisted sequence
+    void initFromSeqNode(uint64_t r) {
+      while (!isNullNode(r)) {
+        auto s = nextNodeRef(r);
+        if (!isNullNode(s)) {
+          r = s;
+        } else {
+          // now 'r' must be the last node with data
+          // initialize local state from it
+          auto* n = reinterpret_cast<batchdef*>(mapFileData(this->f, r, sizeof(batchdef)));
+
+          this->batchDataRef = n->batchRef;
+          this->batchCount   = reinterpret_cast<uint64_t*>(mapFileData(this->f, this->batchDataRef, batchByteCount<T>(this->batchSize)));
+          this->batchHead    = reinterpret_cast<uint8_t*>(this->batchCount) + sizeof(uint64_t);
+          this->batchNextRef = n->nextRef;
+
+          unmapFileData(this->f, n, sizeof(batchdef));
+
+          // just if this local state leaves us at a full batch, then we'd need to jump to the next batch
+          if (*this->batchCount < this->batchSize) {
+            this->batchHead += *this->batchCount * store<T>::size();
+            return;
+          } else {
+            unmapFileData(this->f, this->batchCount, batchByteCount<T>(this->batchSize));
+            r = s;
+            break;
+          }
+        }
       }
 
-      this->batchDataRef = d[1];
-      this->batchData    = mapFileData(this->f, this->batchDataRef, batchByteCount<T>(this->batchSize));
-      this->batchHead    = reinterpret_cast<uint8_t*>(this->batchData) + sizeof(size_t) + ((*reinterpret_cast<size_t*>(this->batchData))*store<T>::size());
-      this->batchNode    = *this->headNodeRef;
+      promoteNullNode(r);
     }
 
-    uint64_t allocBatchNode() {
-      return findSpace(this->f, pagetype::data, sizeof(size_t) + sizeof(size_t) + sizeof(size_t), sizeof(size_t));
+    // initially allocate a '()+((carray T n)*x@?)' node with the null '()' case
+    uint64_t allocNullNode() {
+      return findSpace(this->f, pagetype::data, sizeof(batchdef), alignof(uint64_t));
     }
 
-    uint64_t allocBatchNode(uint64_t batchOffset, uint64_t nextNodeOffset) {
-      size_t  dsize = 3 * sizeof(size_t);
-      size_t  dloc  = findSpace(this->f, pagetype::data, dsize, sizeof(size_t));
-      size_t* d     = reinterpret_cast<size_t*>(mapFileData(this->f, dloc, dsize));
+    // mutate a stored '()+((carray T n)*x@?)' value from the left '()' case to the right '(carray T n)*x@?' case
+    void promoteNullNode(uint64_t nodeRef) {
+      auto bsz = batchByteCount<T>(this->batchSize);
 
-      d[0] = 1;
-      d[1] = batchOffset;
-      d[2] = nextNodeOffset;
-      unmapFileData(this->f, d, dsize);
+      auto* n = reinterpret_cast<batchdef*>(mapFileData(this->f, nodeRef, sizeof(batchdef)));
+      n->batchRef = findSpace(this->f, pagetype::data, bsz, alignof(uint64_t));
+      n->nextRef  = allocNullNode();
+      n->varCtor  = 1;
 
-      return dloc;
+      this->batchDataRef = n->batchRef;
+      this->batchCount   = reinterpret_cast<uint64_t*>(mapFileData(this->f, this->batchDataRef, bsz));
+      this->batchHead    = reinterpret_cast<uint8_t*>(this->batchCount) + sizeof(uint64_t);
+      this->batchNextRef = n->nextRef;
+
+      unmapFileData(this->f, n, sizeof(batchdef));
     }
   };
 template <typename ... Wss>
@@ -1923,6 +1936,8 @@ template <typename ... Wss>
   private:
     wseries<std::pair<uint32_t,size_t>> log;
   };
+
+// a structured data file opened for output
 class writer {
 public:
   writer(imagefile* f) : f(f) {
@@ -2067,11 +2082,129 @@ private:
   wseriess   ss;
 };
 
-// a structured data file opened for input
+// utility to wait for updates to a file (per platform)
+inline long fsWaitTickMS() {
+  struct timeval t;
+  if (gettimeofday(&t, 0) == 0) {
+    return (t.tv_sec*1000)+(t.tv_usec/1000);
+  } else {
+    return 0;
+  }
+}
+
+#if defined(__APPLE__) && defined(__MACH__)
+
+// macOS uses 'kqueue' to wait for filesystem events
+
+class file_watch {
+public:
+  file_watch(const std::string&, int wfd) {
+    this->kq = kqueue();
+    if (this->kq < 0) {
+      throw std::runtime_error("Failed to allocate kqueue: " + std::string(strerror(errno)));
+    }
+
+    struct kevent ke;
+    EV_SET(&ke, wfd, EVFILT_VNODE, EV_ADD, NOTE_DELETE | NOTE_WRITE, 0, 0);
+    if (kevent(this->kq, &ke, 1, 0, 0, 0) == -1) {
+      throw std::runtime_error("Failed to add FD to kqueue: " + std::string(strerror(errno)));
+    }
+  }
+  ~file_watch() {
+    close(this->kq);
+  }
+
+  int wait(int maxWaitMS) {
+    if (maxWaitMS == 0) {
+      return 0;
+    } else if (maxWaitMS < 0) {
+      struct kevent evts[64];
+      kevent(this->kq, 0, 0, evts, sizeof(evts)/sizeof(evts[0]), 0);
+      return maxWaitMS;
+    } else {
+      auto t0 = fsWaitTickMS();
+
+      struct timespec timeout;
+      timeout.tv_sec  = maxWaitMS / 1000;
+      timeout.tv_nsec = (maxWaitMS % 1000) * 1000000UL;
+
+      struct kevent evts[64];
+      kevent(this->kq, 0, 0, evts, sizeof(evts)/sizeof(evts[0]), &timeout);
+
+      int r = maxWaitMS - (fsWaitTickMS() - t0);
+      return r > 0 ? r : 0;
+    }
+  }
+private:
+  int kq;
+};
+
+#else
+
+// Linux uses inotify to signal filesystem events and e.g. epoll to wait for updates
+
+class file_watch {
+public:
+  file_watch(const std::string& path, int) {
+    this->ifd = inotify_init();
+    if (this->ifd < 0) {
+      throw std::runtime_error("Failed to initialize inotify (" + std::string(strerror(errno)) + ")");
+    }
+    if (inotify_add_watch(this->ifd, path.c_str(), IN_MODIFY | IN_CREATE | IN_DELETE) < 0) {
+      throw std::runtime_error("failed to watch file: " + path + " (" + strerror(errno) + ")");
+    }
+
+    this->ep = epoll_create(1);
+    if (this->ep < 0) {
+      throw std::runtime_error("Failed to allocate epoll FD: " + std::string(strerror(errno)));
+    }
+
+    struct epoll_event evt;
+    memset(&evt, 0, sizeof(evt));
+    evt.events   = EPOLLIN | EPOLLPRI | EPOLLERR;
+    evt.data.fd  = this->ifd;
+    evt.data.ptr = 0;
+
+    if (epoll_ctl(this->ep, EPOLL_CTL_ADD, this->ifd, &evt) != 0) {
+      throw std::runtime_error("Failed to add inotify FD to epoll set: " + std::string(strerror(errno)));
+    }
+  }
+  ~file_watch() {
+    close(this->ep);
+    close(this->ifd);
+  }
+
+  int wait(int maxWaitMS) {
+    if (maxWaitMS == 0) {
+      return 0;
+    } else if (maxWaitMS < 0) {
+      struct epoll_event evts[64];
+      epoll_wait(this->ep, evts, sizeof(evts)/sizeof(evts[0]), -1);
+      return maxWaitMS;
+    } else {
+      auto t0 = fsWaitTickMS();
+
+      struct epoll_event evts[64];
+      int fds = epoll_wait(this->ep, evts, sizeof(evts)/sizeof(evts[0]), maxWaitMS);
+      if (fds < 0) {
+        return 0;
+      }
+
+      int r = maxWaitMS - (fsWaitTickMS() - t0);
+      return r > 0 ? r : 0;
+    }
+  }
+private:
+  int ep;
+  int ifd;
+};
+#endif
+
+// interface to incrementally read a stored series
 template <typename T>
   class rseries : public seriesi {
   public:
-    rseries(imagefile* f, const std::string& seqname, const ty::desc& tdef, const binding& b) : tdef(tdef), f(f), batchSize(inferBatchSize(b.type)) {
+    rseries(imagefile* f, const std::string& seqname, const ty::desc& tdef, const binding& b) : tdef(tdef), f(f), fwatch(f->path, f->fd), batchSize(inferBatchSize(b.type)) {
       // determine value and sequence types
       this->stdef = storedSeqType(this->tdef, this->batchSize);
 
@@ -2083,7 +2216,7 @@ template <typename T>
         );
       }
 
-      // load all nodes, prepare to walk in-order
+      // load the initial batch
       auto* n = reinterpret_cast<uint64_t*>(mapFileData(this->f, b.offset, sizeof(size_t)));
       loadReadState(*n);
       unmapFileData(this->f, n, sizeof(size_t));
@@ -2096,33 +2229,30 @@ template <typename T>
     const ty::desc& typeDef() const { return this->tdef; }
     imagefile*      file()    const { return this->f; }
 
-    bool next(T* x) {
-      if (this->headLen) {
-        while (this->headIndex >= *this->headLen) {
-          if (!loadNextNode()) {
-            return false;
-          }
-        }
-
-        store<T>::read(this->f, this->head, x);
-        this->head += store<T>::size();
-        ++this->headIndex;
-        return true;
-      } else {
+    bool next(T* x, int maxWaitMS = 0 /* <0 : infinite wait, 0 : no wait, >0 : wait up to milliseconds */) {
+      if (!ensureReadability(maxWaitMS)) {
         return false;
       }
+
+      store<T>::read(this->f, this->head, x);
+      this->head += store<T>::size();
+      ++this->headIndex;
+      return true;
     }
   private:
     ty::desc tdef;  // the type for a single sequence value
     ty::desc stdef; // the type for the whole sequence
 
     imagefile* f;
+    file_watch fwatch;
     size_t     batchSize;
 
-    std::stack<uint64_t> batches;
-    size_t*              headLen;
-    uint8_t*             head;
-    size_t               headIndex;
+    const uint64_t* headLen;   // the mapped array count
+    const uint8_t*  head;      // pointer into mapped array data (advanced as we read)
+    size_t          headIndex; // read index into mapped array
+
+    uint64_t curNodeRef;  // the batch node we're currently reading
+    uint64_t nextNodeRef; // the next batch node after this one
 
     static const binding& loadBinding(imagefile* f, const std::string& seqname) {
       auto b = f->bindings.find(seqname);
@@ -2132,41 +2262,83 @@ template <typename T>
       return b->second;
     }
 
-    void loadReadState(uint64_t root) {
-      while (root != 0) {
-        uint64_t* d = reinterpret_cast<uint64_t*>(mapFileData(this->f, root, 3*sizeof(uint64_t)));
-        if (static_cast<uint32_t>(d[0]) == 0) {
-          root = 0;
-        } else {
-          this->batches.push(d[1]);
-          root = d[2];
-        }
-        unmapFileData(this->f, d, 3*sizeof(size_t));
-      }
-
-      this->headLen = 0;
-      this->head    = 0;
-      loadNextNode();
-    }
-
-    bool loadNextNode() {
+    void loadReadState(uint64_t n) {
+      // unload the current batch if necessary
       auto bsz = batchByteCount<T>(this->batchSize);
-
-      this->headIndex = 0;
       if (this->headLen) {
         unmapFileData(this->f, this->headLen, bsz);
       }
 
-      if (this->batches.size() == 0) {
-        this->headLen = 0;
-        this->head    = 0;
-        return false;
+      // reset the read position to 0 for this batch
+      this->curNodeRef = n;
+      this->headIndex  = 0;
+
+      // load the node data
+      // each node looks like '()+((carray T n) * x@?)'
+      const auto* d = reinterpret_cast<const uint64_t*>(mapFileData(this->f, n, 3*sizeof(uint64_t)));
+
+      // if we're in the left '()' case, our state is "null"
+      // else our state can be set to load the 'carray T n' batch in this node
+      if (d[0]) {
+        this->headLen     = reinterpret_cast<const uint64_t*>(mapFileData(this->f, d[1], bsz));
+        this->head        = reinterpret_cast<const uint8_t*>(this->headLen) + sizeof(uint64_t);
+        this->nextNodeRef = d[2];
       } else {
-        this->headLen = reinterpret_cast<size_t*>(mapFileData(this->f, this->batches.top(), bsz));
-        this->head    = reinterpret_cast<uint8_t*>(this->headLen) + sizeof(size_t);
-        this->batches.pop();
-        return true;
+        this->headLen     = nullptr;
+        this->head        = nullptr;
+        this->nextNodeRef = 0;
       }
+
+      unmapFileData(this->f, d, 3*sizeof(uint64_t));
+    }
+
+    // is a stored node the left '()' case of '()+((carray T n) * x@?)'?
+    bool isNullNode(uint64_t n) {
+      const auto* d = reinterpret_cast<const uint64_t*>(mapFileData(this->f, n, 3*sizeof(uint64_t)));
+      bool r = d[0] == 0;
+      unmapFileData(this->f, d, 3*sizeof(uint64_t));
+      return r;
+    }
+
+    // easy check to determine if we're in a state to read at least one value
+    bool canRead() const {
+      return this->headLen && this->headIndex < *this->headLen;
+    }
+
+    // ensure that the current state allows reading a value from the underlying stored sequence
+    // this is 'true' when the current head index hasn't advanced past the current batch length
+    // if we're at the end of the current batch, try to move to the next batch
+    // if at the end of sequence, we may try to wait until the writer advances
+    bool ensureReadability(int maxWaitMS) {
+      do {
+        // easy exit
+        if (canRead()) {
+          return true;
+        }
+        
+        // if we're in a null node (ie: the root node is null), try to reload it
+        if (!this->headLen) {
+          loadReadState(this->curNodeRef);
+          if (canRead()) {
+            return true;
+          }
+        } else {
+          // we can't advance in the current batch
+          // so load the next batch if possible
+          // then ensure readability in this successor batch
+          // (followed indefinitely for the unlikely edge case of a succession of empty batches)
+          while (this->nextNodeRef && !isNullNode(this->nextNodeRef)) {
+            loadReadState(this->nextNodeRef);
+            if (canRead()) {
+              return true;
+            }
+          }
+        }
+      }
+      while ((maxWaitMS = fwatch.wait(maxWaitMS)));
+
+      // we just couldn't get there
+      return false;
     }
   };
 class rordering {
@@ -2249,6 +2421,8 @@ private:
 
   rseries<std::pair<uint32_t, uint64_t>> log;
 };
+
+// a structured data file opened for input
 class reader {
 public:
   reader(imagefile* f) : f(f) {
