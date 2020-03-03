@@ -82,7 +82,11 @@ instance (r={a*rr}, Eq a, Eq rr) => Eq r where
 instance (a={ah*at}, b={bh*bt}, Equiv ah bh, Equiv at bt) => Equiv a b where
   x == y = recordHeadValue(x) == recordHeadValue(y) and recordTail(x) == recordTail(y)
 
-// equality on variants
+// enum-like variants can be compared inexpensively
+instance (VariantTrunc v v) => Eq v where
+  x === y = (unsafeCast(x)::(int*long)).0 === (unsafeCast(y)::(int*long)).0
+
+// we can do this more efficiently (rewrite 'variantSplit' to 'variantApp') ...
 instance (v=|a+vt|, Eq a, Eq vt) => Eq v where
   x === y = variantSplit(x, \xv.variantSplit(y, \yv.xv === yv, toClosure(\_.false)), \xt.variantSplit(y, toClosure(\_.false), \yt.xt === yt))
 
