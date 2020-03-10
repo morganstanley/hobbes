@@ -104,10 +104,19 @@ template <typename K, typename V, typename KVLift, typename VPlus>
     nodes_t nodes;
 
     static node_t* findRepresentative(node_t* n) {
-      if (n != n->representative) {
-        n->representative = findRepresentative(n->representative);
+      // first find the root
+      auto* root = n;
+      while (root != root->representative) {
+        root = root->representative;
       }
-      return n->representative;
+
+      // then update all nodes along the way (they all have the same representative)
+      while (n != root) {
+        auto* s = n->representative;
+        n->representative = root;
+        n = s;
+      }
+      return root;
     }
 
     node_t* findNode(const K& k) {
