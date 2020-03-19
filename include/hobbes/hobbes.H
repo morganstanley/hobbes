@@ -2,7 +2,7 @@
 #ifndef HOBBES_MAIN_HPP_INCLUDED
 #define HOBBES_MAIN_HPP_INCLUDED
 
-#include <hobbes/reflect.H>
+#include <hobbes/storage.H>
 #include <hobbes/eval/cc.H>
 #include <hobbes/eval/cmodule.H>
 #include <hobbes/lang/tylift.H>

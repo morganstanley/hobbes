@@ -469,7 +469,7 @@ void runMachineREPL(cc* c) {
   
   // for now, create a log for all processes run in machine mode
   // this will help us to diagnose errors that cause the process to die
-  machineREPLLogFD = open(("./.hproc." + str::from(getpid()) + ".log").c_str(), O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
+  machineREPLLogFD = open((defaultStoreDir() + "/.hproc." + str::from(getpid()) + ".log").c_str(), O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
   dbglog("Started machine-controlled process");
 
 #ifdef BUILD_LINUX
