@@ -111,7 +111,7 @@ inline long readTime(const std::string& x) {
   int h = h_msu.first.empty() ? 0 : str::to<int>(h_msu.first);
   int m = m_su.first.empty()  ? 0 : str::to<int>(m_su.first);
   int s = s_u.first.empty()   ? 0 : str::to<int>(s_u.first);
-  int u = s_u.second.empty()  ? 0 : str::to<int>(s_u.second);
+  int u = s_u.second.empty()  ? 0 : (str::to<int>(s_u.second) * (s_u.second.size()==3?1000:1));
 
   return mkTime(h,m,s,u);
 }
@@ -119,6 +119,10 @@ inline long readTime(const std::string& x) {
 inline std::string showTime(long x) {
   int64_t s  = x / (1000 * 1000);
   int64_t us = x % (1000 * 1000);
+  if (us < 0) {
+    s -= 1;
+    us += 1000L * 1000L;
+  }
 
   static char buf[256];
   strftime(buf, sizeof(buf), "%H:%M:%S", localtime(reinterpret_cast<time_t*>(&s)));
@@ -194,7 +198,7 @@ inline long readDateTime(const std::string& x) {
   int h   = h_msu.first.empty() ? 0 : str::to<int>(h_msu.first);
   int min = m_su.first.empty()  ? 0 : str::to<int>(m_su.first);
   int s   = s_u.first.empty()   ? 0 : str::to<int>(s_u.first);
-  int u   = s_u.second.empty()  ? 0 : str::to<int>(s_u.second);
+  int u   = s_u.second.empty()  ? 0 : (str::to<int>(s_u.second) * (s_u.second.size()==3?1000:1));
 
   return mkDateTime(y, mon, d, h, min, s, u);
 }
@@ -202,6 +206,10 @@ inline long readDateTime(const std::string& x) {
 inline std::string showDateTime(long x) {
   int64_t s  = x / (1000L * 1000L);
   int64_t us = x % (1000L * 1000L);
+  if (us < 0) {
+    s -= 1;
+    us += 1000L * 1000L;
+  }
 
   static char buf[256];
   strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S", localtime(reinterpret_cast<time_t*>(&s)));
