@@ -1988,7 +1988,7 @@ template <size_t N>
                        :                   maxVarRefS(fmt, i+1, 0, 0,   maxvr))
            :           ((fmt[i] >= '0' && fmt[i] <= '9') ?
                            maxVarRefS(fmt, i+1, 1, vri, maxvr)
-                         : maxVarRefS(fmt, i+1, 0, 0,   maxV(maxvr, 1+readInt(fmt, vri, i, 0))));
+                         : maxVarRefS(fmt, i,   0, 0,   maxV(maxvr, 1+readInt(fmt, vri, i, 0))));
   }
 
 template <size_t N>
