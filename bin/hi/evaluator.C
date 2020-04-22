@@ -115,6 +115,10 @@ void evaluator::showInstances(const std::string& cname) {
   }
 }
 
+void evaluator::showConstraintRefinement(bool f) {
+  this->ctx.typeEnv()->debugConstraintRefine(f);
+}
+
 void evaluator::loadModule(const std::string& mfile) {
   hobbes::compile(&this->ctx, this->ctx.readModuleFile(mfile));
   
