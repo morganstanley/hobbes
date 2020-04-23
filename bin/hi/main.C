@@ -159,25 +159,27 @@ void showShellHelp(const CmdDescs& cds) {
 }
 
 void showShellHelp() {
-  CmdDescs cds;
-  cds.push_back(CmdDesc(":h",     "Show this help"));
-  cds.push_back(CmdDesc(":q",     "Quit the hi shell"));
-  cds.push_back(CmdDesc(":s E T", "Search for paths from the expression E to the type T"));
-  cds.push_back(CmdDesc(":a",     "Print the active LLVM module"));
-  cds.push_back(CmdDesc(":t",     "Print all global variable::type bindings"));
-  cds.push_back(CmdDesc(":d S",   "Print the docs for a symbol"));
-  cds.push_back(CmdDesc(":t E",   "Show the type of the expression E"));
-  cds.push_back(CmdDesc(":p E",   "Show the type of E with hidden type classes left intact"));
-  cds.push_back(CmdDesc(":l F",   "Load the hobbes script or image file F"));
-  cds.push_back(CmdDesc(":u E",   "Show the 'unsweeten' transform of E"));
-  cds.push_back(CmdDesc(":x E",   "Show the x86 assembly code produced by compiling E"));
-  cds.push_back(CmdDesc(":e E",   "Find the average run-time of E (in CPU cycles)"));
-  cds.push_back(CmdDesc(":z E",   "Evaluate E and show a breakdown of compilation/evaluation time"));
-  cds.push_back(CmdDesc(":c N",   "Describe the type class named N"));
-  cds.push_back(CmdDesc(":i N",   "Show instances and instance generators for the type class N"));
-  cds.push_back(CmdDesc(":o K",   "Enable language option K"));
-  cds.push_back(CmdDesc(":^",     "Echo back the command history"));
-  showShellHelp(cds);
+  showShellHelp({
+    {":h",     "Show this help"},
+    {":q",     "Quit the hi shell"},
+    {":s E T", "Search for paths from the expression E to the type T"},
+    {":a",     "Print the active LLVM module"},
+    {":t",     "Print all global variable::type bindings"},
+    {":d S",   "Print the docs for a symbol"},
+    {":t E",   "Show the type of the expression E"},
+    {":p E",   "Show the type of E with hidden type classes left intact"},
+    {":l F",   "Load the hobbes script or image file F"},
+    {":u E",   "Show the 'unsweeten' transform of E"},
+    {":x E",   "Show the x86 assembly code produced by compiling E"},
+    {":e E",   "Find the average run-time of E (in CPU cycles)"},
+    {":z E",   "Evaluate E and show a breakdown of compilation/evaluation time"},
+    {":c N",   "Describe the type class named N"},
+    {":i N",   "Show instances and instance generators for the type class N"},
+    {":o K",   "Enable language option K"},
+    {":^",     "Echo back the command history"},
+    {":r",     "Start printing debug traces as type constraints are refined"},
+    {":nr",    "Stop printing debug traces as type constraints are refined"}
+  });
 }
 
 void echoCommandHistory() {
@@ -298,29 +300,27 @@ void evalLine(char* x) {
     if (line == ":q") {
       std::cout << resetfmt() << std::flush;
       exit(0);
-    }
-
-    if (line == "") {
+    } else if (line == "") {
       return;
-    }
-
-    if (line == ":^") {
+    } else if (line == ":^") {
       echoCommandHistory();
       return;
-    }
-
-    if (line == ":a") {
+    } else if (line == ":a") {
       eval->printLLVMModule();
       return;
-    }
-
-    if (line == ":t") {
+    } else if (line == ":t") {
       eval->printTypeEnv();
       return;
-    }
-
-    if (line == ":h") {
+    } else if (line == ":h") {
       showShellHelp();
+      return;
+    } else if (line == ":r" || line == ":debug-refine") {
+      eval->showConstraintRefinement(true);
+      std::cout << "Type constraint refinement debugging ON" << std::endl;
+      return;
+    } else if (line == ":nr" || line == ":no-debug-refine") {
+      eval->showConstraintRefinement(false);
+      std::cout << "Type constraint refinement debugging OFF" << std::endl;
       return;
     }
 

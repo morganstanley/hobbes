@@ -131,6 +131,14 @@ public:
 private:
   typedef std::map<std::string, MonoTypePtr> TypeAliases;
   TypeAliases typeAliases;
+
+public:
+  // debug/trace type constraint resolution
+  // (normally this isn't needed, but it can help explain cases where resolution diverges)
+  bool debugConstraintRefine() const;
+  void debugConstraintRefine(bool);
+private:
+  bool dbgCstRefine;
 };
 
 TEnvPtr fnFrame(const TEnvPtr&, const str::seq&, const MonoTypes&);
