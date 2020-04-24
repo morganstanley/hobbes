@@ -1077,11 +1077,12 @@ Record::Members consMember(const std::string& lbl, const MonoTypePtr& hty, const
   if (slot < 0) {
     r.push_back(Record::Member(lbl, hty));
     r.insert(r.end(), tty.begin(), tty.end());
-    resetFieldOffsets(&r);
   } else {
     r = tty;
     r[slot].field = lbl;
+    r[slot].type  = hty;
   }
+  resetFieldOffsets(&r);
   return r;
 }
 
