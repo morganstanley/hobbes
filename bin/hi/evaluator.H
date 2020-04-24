@@ -36,9 +36,10 @@ public:
 
   void runMachineREPL();
 
-  // support the 'evaluator' interface on a local compiler context
+  // inspect type class, instance, and constraint resolution behavior
   void showClass(const std::string& cname);
   void showInstances(const std::string& cname);
+  void showConstraintRefinement(bool);
 
   void loadModule(const std::string& mfile);
 

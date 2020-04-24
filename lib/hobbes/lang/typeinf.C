@@ -486,6 +486,10 @@ bool refine(const TEnvPtr& tenv, const ConstraintPtr& c, MonoTypeUnifier* s, Def
   if (c->state != Constraint::Unresolved) {
     return false;
   } else {
+    if (tenv->debugConstraintRefine()) {
+      std::cout << "  == refine ==> " << c << std::endl;
+    }
+
     c->update(s);
     if (tenv->lookupUnqualifier(c)->refine(tenv, c, s, ds)) {
       c->update(s);

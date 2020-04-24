@@ -85,11 +85,13 @@ str::seq showNoSimpl(const Constraints& cs) {
 }
 
 // type environments
-TEnv::TEnv(const TEnvPtr& parent) : parent(parent) {
+TEnv::TEnv(const TEnvPtr& parent) : parent(parent), dbgCstRefine(false) {
 }
 
-TEnv::TEnv() : parent(), unquals(new UnqualifierSet()) {
+TEnv::TEnv() : parent(), unquals(new UnqualifierSet()), dbgCstRefine(false)  {
 }
+bool TEnv::debugConstraintRefine() const { return this->dbgCstRefine || (parent && parent->debugConstraintRefine()); }
+void TEnv::debugConstraintRefine(bool f) { this->dbgCstRefine = f; }
 
 bool TEnv::hasBinding(const std::string& vname) const {
   return hasImmediateBinding(vname) || (this->parent && this->parent->hasBinding(vname));
