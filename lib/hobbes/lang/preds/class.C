@@ -106,6 +106,30 @@ void TClass::insert(const TCInstanceFnPtr& ifp) {
     ss << "Arity mismatch between instance generator definition (" << ifp->arity() << ") and type class definition (" << this->tvs << ").";
     throw annotated_error(*ifp, ss.str());
   } else {
+    // make sure that this instance generator covers all required members
+    auto mm = ifp->members(MonoTypeSubst());
+
+    std::ostringstream ss;
+    size_t errors = 0;
+    for (const auto& tcm : this->tcmembers) {
+      if (!mm.count(tcm.first)) {
+        ss << (errors?", ":"") << "expected definition of '" << tcm.first << "'";
+        ++errors;
+      }
+    }
+    for (const auto& m : mm) {
+      if (!this->tcmembers.count(m.first)) {
+        ss << (errors?", ":"") << "unexpected definition of '" << m.first << "'";
+        ++errors;
+      }
+    }
+    if (errors) {
+      std::ostringstream ess;
+      ess << "Can't introduce instance generator for '" << this->tcname << "': " << ss.str();
+      throw annotated_error(*ifp, ess.str());
+    }
+
+    // insert the instance generator
     ifp->order = this->tcinstancefns.size();
     this->tcinstancefns.push_back(ifp);
 
