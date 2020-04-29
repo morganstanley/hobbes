@@ -332,6 +332,8 @@ void compile(const ModulePtr& m, cc* e, const InstanceDef* id) {
     } else {
       c->insert(TCInstanceFnPtr(new TCInstanceFn(id->className(), id->constraints(), targs, ms, id->la())));
     }
+  } catch (annotated_error&) {
+    throw;
   } catch (std::exception& ex) {
     throw annotated_error(*id, ex.what());
   }
