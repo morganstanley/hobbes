@@ -42,6 +42,18 @@ void wantIndent(bool f) {
 }
 bool wantIndent() { return yyWantIndent > 0; }
 
+std::vector<int> yyIndentStack;
+void pushIndent() {
+  yyIndentStack.push_back(yyWantIndent);
+  yyWantIndent = 0;
+}
+void popIndent() {
+  if(!yyIndentStack.empty()){
+    yyWantIndent = *--yyIndentStack.end();
+    yyIndentStack.pop_back();
+  }
+}
+
 std::string* identifier(const char* b, const char* e) {
   if ((b+1) == e && *b == '_') {
     return hobbes::autorelease(new std::string(hobbes::freshName()));
@@ -66,13 +78,15 @@ std::string* identifier(const char* b, const char* e) {
   }
 %}
 
-\n                     { yycolumn = 1; }
-[ \t\r\f]              { }
-"\n "                  { yycolumn = 2; if (wantIndent()) { return TINDENT; } }
-"\r "                  {               if (wantIndent()) { return TINDENT; } }
-"\n\t"                 { yycolumn = 2; if (wantIndent()) { return TINDENT; } }
-"\r\t"                 {               if (wantIndent()) { return TINDENT; } }
-"//"[^\n]*\n           { yycolumn = 1; }
+\n                              { yycolumn = 1; }
+[ \t\r\f]                       { }
+"\n"[ \t]+/([^ \t\n/]|"/"[^*/]) { yycolumn = 2; if (wantIndent()) { return TINDENT; } }
+"\n "                           { yycolumn = 2; if (wantIndent()) { return TINDENT; } }
+"\r "                           {               if (wantIndent()) { return TINDENT; } }
+"\n\t"                          { yycolumn = 2; if (wantIndent()) { return TINDENT; } }
+"\r\t"                          {               if (wantIndent()) { return TINDENT; } }
+"//"[^\n]*\n                    { yycolumn = 1; }
+
 "/*"                   { BEGIN(BLOCK_COMMENT); }
 <BLOCK_COMMENT>"*/"    { BEGIN(INITIAL); }
 <BLOCK_COMMENT>\n      { yycolumn = 1; }
@@ -125,12 +139,14 @@ std::string* identifier(const char* b, const char* e) {
 "unpack"               { return TUNPACK; }
 "do"                   { return TDO; }
 "return"               { return TRETURN; }
-"("                    { return TLPAREN; }
-")"                    { return TRPAREN; }
-"["                    { return TLBRACKET; }
-"]"                    { return TRBRACKET; }
-"{"                    { return TLBRACE; }
-"}"                    { return TRBRACE; }
+
+"("                    { pushIndent(); return TLPAREN; }
+")"                    { popIndent();  return TRPAREN; }
+"["                    { pushIndent(); return TLBRACKET; }
+"]"                    { popIndent();  return TRBRACKET; }
+"{"                    { pushIndent(); return TLBRACE; }
+"}"                    { popIndent();  return TRBRACE; }
+
 "|"                    { return TBAR; }
 ","                    { return TCOMMA; }
 ";"                    { return TSEMICOLON; }
