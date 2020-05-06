@@ -120,6 +120,12 @@ instance (r={lbl:h*t}, s/lbl :: x, ConvertInto x h, ConvertInto s t) => ConvertI
 instance (r={lbl:h*t}, s/lbl :: x, Convert x h, ConvertInto s t) => ConvertInto s r where
   convertInto s r = do{recordHeadValue(r) <- convert(fieldValue(s) :: (s/lbl :: x) => x); convertInto(s, recordTail(r));}
 
+instance (s=(sh*st), r=(rh*rt), ConvertInto sh rh, ConvertInto st rt) => ConvertInto s r where
+  convertInto s r = do{convertInto(s.0,r.0); convertInto(tupleTail(s),tupleTail(r));}
+
+instance (s=(sh*st), r=(rh*rt), Convert sh rh, ConvertInto st rt) => ConvertInto s r where
+  convertInto s r = do{r.0 <- convert(s.0); convertInto(tupleTail(s),tupleTail(r));}
+
 instance (ConvertInto a b, b != ()) => Convert a b where
   convert s = do{r = newPrim(); convertInto(s, r); return r}
 
