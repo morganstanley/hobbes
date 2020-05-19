@@ -863,6 +863,7 @@ recfieldname: id         { $$ = $1; }
             | "return"   { $$ = autorelease(new std::string("return")); }
             | "fn"       { $$ = autorelease(new std::string("fn")); }
             | "intV"     { $$ = autorelease(new std::string(".f" + str::from($1))); }
+            | "stringV"  { $$ = autorelease(new std::string(str::unescape(str::trimq(*$1)))); }
 
 recfieldpath: recfieldpath "." recfieldname { $$ = $1; $$->push_back(*$3); }
             | recfieldpath "tupSection"     { $$ = $1; str::seq x = tupSectionFields(*$2); $$->insert($$->end(), x.begin(), x.end()); }
