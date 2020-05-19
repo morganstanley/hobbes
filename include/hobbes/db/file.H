@@ -33,6 +33,8 @@ template <typename T>
 
     fileref(uint64_t index = 0) : index(index) {
     }
+    fileref(const fileref<T>& x) : index(x.index) {
+    }
 
     bool operator==(const fileref<T>& rhs) const {
       return this->index == rhs.index;
