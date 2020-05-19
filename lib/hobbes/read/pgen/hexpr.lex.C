@@ -1,6 +1,6 @@
-#line 1 "hexpr.lex.C"
+#line 2 "hexpr.lex.C"
 
-#line 3 "hexpr.lex.C"
+#line 4 "hexpr.lex.C"
 
 #define  YY_INT_ALIGNED short int
 
@@ -779,9 +779,9 @@ std::string* identifier(const char* b, const char* e) {
     return hobbes::autorelease(new std::string(b, e));
   }
 }
-#line 782 "hexpr.lex.C"
+#line 783 "hexpr.lex.C"
 
-#line 784 "hexpr.lex.C"
+#line 785 "hexpr.lex.C"
 
 #define INITIAL 0
 #define BLOCK_COMMENT 1
@@ -1018,7 +1018,7 @@ YY_DECL
   }
 
 
-#line 1021 "hexpr.lex.C"
+#line 1022 "hexpr.lex.C"
 
 	while ( /*CONSTCOND*/1 )		/* loops until end-of-file is reached */
 		{
@@ -1700,7 +1700,7 @@ YY_RULE_SETUP
 #line 208 "hexpr.l"
 ECHO;
 	YY_BREAK
-#line 1703 "hexpr.lex.C"
+#line 1704 "hexpr.lex.C"
 			case YY_STATE_EOF(INITIAL):
 			case YY_STATE_EOF(BLOCK_COMMENT):
 				yyterminate();
