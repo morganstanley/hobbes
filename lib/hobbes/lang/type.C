@@ -767,6 +767,13 @@ static void resetCtorIDs(Variant::Members* ms) {
   }
 }
 
+inline bool isHiddenCtorName(const std::string& n) {
+  return n.substr(0,2) == ".p";
+}
+inline bool isHiddenCtor(const Variant::Member& m) {
+  return isHiddenCtorName(m.selector);
+}
+
 int findHiddenMember(int i, const std::string& lbl, const Variant::Members& ms) {
   std::string hlbl = ".p" + lbl;
   while (i >= 0 && ms[i].selector != hlbl) {
@@ -791,14 +798,10 @@ Variant::Members consMember(const std::string& lbl, const MonoTypePtr& hty, cons
   return r;
 }
 
-static bool hiddenCtor(const Variant::Member& m) {
-  return m.selector.size() > 2 && m.selector[0] == '.' && m.selector[1] == 'p';
-}
-
 static void normalizeSumFields(Variant::Members* ms) {
   size_t i = 0;
   for (auto& m : *ms) {
-    if (!hiddenCtor(m)) {
+    if (!isHiddenCtor(m)) {
       m.selector = ".f" + str::from(i++);
     }
   }
@@ -835,15 +838,8 @@ bool Variant::Member::operator<(const Variant::Member& rhs) const {
   }
 }
 
-Variant::Variant(const Members& ms) : payloadSizeM(-1), ms(ms) {
-  for (const Member& m : ms) {
-    this->freeTVars = setUnion(this->freeTVars, m.type->freeTVars);
-    this->tgenCount = std::max<int>(this->tgenCount, m.type->tgenCount);
-  }
-}
-
 size_t nextVisibleMember(size_t i, const Variant::Members& ms) {
-  while (i < ms.size() && hiddenCtor(ms[i])) {
+  while (i < ms.size() && isHiddenCtor(ms[i])) {
     ++i;
   }
   return i;
@@ -898,6 +894,21 @@ bool looksLikeSum(const Variant::Members& ms) {
 
 bool Variant::isSum() const {
   return looksLikeSum(this->ms);
+}
+
+Variant::Variant(const Members& ms) : payloadSizeM(-1), ms(ms) {
+  std::set<std::string> cnames;
+
+  for (const Member& m : ms) {
+    this->freeTVars = setUnion(this->freeTVars, m.type->freeTVars);
+    this->tgenCount = std::max<int>(this->tgenCount, m.type->tgenCount);
+    
+    if (!isHiddenCtorName(m.selector) && !cnames.insert(m.selector).second) {
+      std::ostringstream ss;
+      showFull(ms, ss);
+      throw std::runtime_error("Can't construct variant with duplicate constructor name '" + m.selector + "': " + ss.str());
+    }
+  }
 }
 
 void Variant::show(std::ostream& out) const {
@@ -1033,12 +1044,22 @@ inline Record::Member addoffset(const Record::Member& m, int o) {
   return Record::Member(m.field, m.type, o);
 }
 
+inline bool isHiddenFieldName(const std::string& fn) {
+  return fn.substr(0,2) == ".p";
+}
+
 MonoTypePtr Record::make(const Members& ms) {
   return makeType<RecordMem, Record>(Record::withResolvedMemoryLayout(ms));
 }
 
 Record::Record(const Record::Members& tms) : ms(tms), maxFieldAlignmentM(-1) {
+  std::set<std::string> fnames;
+
   for (const Member& m : ms) {
+    if (!isHiddenFieldName(m.field) && !fnames.insert(m.field).second) {
+      throw std::runtime_error("Can't construct record with duplicate field name '" + m.field + "': " + showRecord(tms));
+    }
+
     this->freeTVars = setUnion(this->freeTVars, m.type->freeTVars);
     this->tgenCount = std::max<int>(this->tgenCount, m.type->tgenCount);
   }
@@ -1049,7 +1070,7 @@ Record::Record(const Record::Members& tms) : ms(tms), maxFieldAlignmentM(-1) {
 }
 
 unsigned int nextVisibleMember(unsigned int i, const Record::Members& ms) {
-  while (i < ms.size() && ms[i].field.substr(0, 2) == ".p") {
+  while (i < ms.size() && isHiddenFieldName(ms[i].field)) {
     ++i;
   }
   return i;
