@@ -268,7 +268,7 @@ inline llvm::Constant* constant(llvm::Value* v, bool globalPtrRefs) {
       if (globalPtrRefs) {
         return gv;
       } else {
-        return gv->getInitializer();
+        return gv->hasInitializer() ? gv->getInitializer() : 0;
       }
     } else {
       return 0;
