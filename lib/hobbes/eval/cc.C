@@ -12,7 +12,7 @@
 #include <hobbes/util/codec.H>
 
 #include <hobbes/util/perf.H>
-
+#include <hobbes/lang/preds/dependent.H>
 // structured file support
 #include <hobbes/db/bindings.H>
 
@@ -131,6 +131,10 @@ cc::cc() :
 
   // initialize structured storage support
   initStorageFileDefs(fv, *this);
+ 
+  // initialize dependent types
+  this->tenv->bind(TypeValueLower::constraintName(), UnqualifierPtr(new TypeValueLower()));
+  this->tenv->bind(TypeApply::constraintName(), UnqualifierPtr(new TypeApply(this)));
 
   // boot
   compileBootCode(*this);

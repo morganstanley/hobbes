@@ -503,6 +503,34 @@ public:
   }
 };
 
+class tvlower : public op {
+public:
+  llvm::Value* apply(jitcc* c, const MonoTypes& ts, const MonoTypePtr&, const Exprs& es) {
+    if (TString* tstr = is<TString>(ts[0])) {
+	    return c->compile(ExprPtr(mkarray(tstr->value(), LexicalAnnotation())));
+    } 
+    if (TLong* tlong = is<TLong>(ts[0])) {
+	    return c->compile(constant(tlong->value(), LexicalAnnotation()));
+    }
+    if (TApp *tapp = is<TApp>(ts[0])) {
+	if (*tapp->fn() == *primty("quote")) {
+		if (TExpr* e = is<TExpr>(tapp->args()[0])) {
+			return c->compile(e->expr());
+		}
+	}
+    }
+
+      throw annotated_error(*es[0], "Invalid usage of .TypeValueLower");
+  }
+
+  PolyTypePtr type(typedb&) const {
+    static MonoTypePtr tg0(TGen::make(0));
+    static MonoTypePtr tg1(TGen::make(1));
+    static PolyTypePtr idty(new PolyType(2, qualtype(Func::make(tuplety(list(tg0)), tg1))));
+    return idty;
+  }
+};
+
 // allocate fresh values / primitives
 class newPrimfn : public op {
 public:
@@ -1022,6 +1050,7 @@ void initDefOperators(cc* c) {
   BINDF("id",         new idexp());
   BINDF(".cast",      new castexp());
   BINDF("unsafeCast", new castexp()); // perhaps qualify this so that 'memory-representation equivalence' can be decided safely at compile-time?
+  BINDF(".typeValueLower", new tvlower());
 
   // allocate space for some type
   BINDF("newPrim",  new newPrimfn(false));  // <-- don't 0-fill memory
