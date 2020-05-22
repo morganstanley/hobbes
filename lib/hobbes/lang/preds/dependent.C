@@ -66,8 +66,8 @@ struct MonoTypePtrToExpr : public switchType<ExprPtr> {
     }
 
     MkRecord::FieldDefs fs;
-    fs.push_back(MkRecord::FieldDef(".f0", name));
-    fs.push_back(MkRecord::FieldDef(".f1", rep));
+    fs.push_back(MkRecord::FieldDef(std::make_pair(".f0", name)));
+    fs.push_back(MkRecord::FieldDef(std::make_pair(".f1", rep)));
     return ret("Prim", mkrecord(fs, la));
   } 
 
@@ -75,8 +75,8 @@ struct MonoTypePtrToExpr : public switchType<ExprPtr> {
     Exprs entries;
     for(auto m : r->members()) {
       MkRecord::FieldDefs fs;
-      fs.push_back(MkRecord::FieldDef(".f0", mkarray(m.field, la)));
-      fs.push_back(MkRecord::FieldDef(".f1", switchOf(m.type, *this)));
+      fs.push_back(MkRecord::FieldDef(std::make_pair(".f0", mkarray(m.field, la))));
+      fs.push_back(MkRecord::FieldDef(std::make_pair(".f1", switchOf(m.type, *this))));
       entries.push_back(mkrecord(fs, la));
     }
     return ret("Record", ExprPtr(new MkArray(entries, la)));
@@ -86,9 +86,9 @@ struct MonoTypePtrToExpr : public switchType<ExprPtr> {
     Exprs entries;
     for(auto m : v->members()) {
       MkRecord::FieldDefs fs;
-      fs.push_back(MkRecord::FieldDef(".f0", mkarray(m.selector, la)));
-      fs.push_back(MkRecord::FieldDef(".f1", switchOf(m.type, *this)));
-      fs.push_back(MkRecord::FieldDef(".f2", constant(static_cast<int>(m.id), la)));
+      fs.push_back(MkRecord::FieldDef(std::make_pair(".f0", mkarray(m.selector, la))));
+      fs.push_back(MkRecord::FieldDef(std::make_pair(".f1", switchOf(m.type, *this))));
+      fs.push_back(MkRecord::FieldDef(std::make_pair(".f2", constant(static_cast<int>(m.id), la))));
       entries.push_back(mkrecord(fs, la));
     }
     return ret("Variant", ExprPtr(new MkArray(entries, la)));
@@ -96,9 +96,9 @@ struct MonoTypePtrToExpr : public switchType<ExprPtr> {
 
   ExprPtr with(const OpaquePtr* op) const {
     MkRecord::FieldDefs fs;
-    fs.push_back(MkRecord::FieldDef(".f0", mkarray(op->name(), la)));
-    fs.push_back(MkRecord::FieldDef(".f1", constant(static_cast<int>(op->size()), la)));
-    fs.push_back(MkRecord::FieldDef(".f2", constant(op->storedContiguously(), la)));
+    fs.push_back(MkRecord::FieldDef(std::make_pair(".f0", mkarray(op->name(), la))));
+    fs.push_back(MkRecord::FieldDef(std::make_pair(".f1", constant(static_cast<int>(op->size()), la))));
+    fs.push_back(MkRecord::FieldDef(std::make_pair(".f2", constant(op->storedContiguously(), la))));
     return ret("OpaquePtr", mkrecord(fs, la));
   }
 
@@ -106,8 +106,8 @@ struct MonoTypePtrToExpr : public switchType<ExprPtr> {
     ExprPtr name = ExprPtr(mkarray(e->absTypeName(), la));
     ExprPtr type = switchOf(e->absType(), *this);
     MkRecord::FieldDefs fs;
-    fs.push_back(MkRecord::FieldDef(".f0", name));
-    fs.push_back(MkRecord::FieldDef(".f1", type));
+    fs.push_back(MkRecord::FieldDef(std::make_pair(".f0", name)));
+    fs.push_back(MkRecord::FieldDef(std::make_pair(".f1", type)));
     return ret("Exists", mkrecord(fs, la));
   }
 
@@ -115,8 +115,8 @@ struct MonoTypePtrToExpr : public switchType<ExprPtr> {
     ExprPtr name = ExprPtr(mkarray(e->recTypeName(), la));
     ExprPtr type = switchOf(e->recType(), *this);
     MkRecord::FieldDefs fs;
-    fs.push_back(MkRecord::FieldDef(".f0", name));
-    fs.push_back(MkRecord::FieldDef(".f1", type));
+    fs.push_back(MkRecord::FieldDef(std::make_pair(".f0", name)));
+    fs.push_back(MkRecord::FieldDef(std::make_pair(".f1", type)));
     return ret("Recursive", mkrecord(fs, la));
   }
 
@@ -129,8 +129,8 @@ struct MonoTypePtrToExpr : public switchType<ExprPtr> {
     ExprPtr arge(new MkArray(args, la));
     ExprPtr body = switchOf(tabs->body(), *this);
     MkRecord::FieldDefs fs;
-    fs.push_back(MkRecord::FieldDef(".f0", arge));
-    fs.push_back(MkRecord::FieldDef(".f1", body));
+    fs.push_back(MkRecord::FieldDef(std::make_pair(".f0", arge)));
+    fs.push_back(MkRecord::FieldDef(std::make_pair(".f1", body)));
     return ret("TAbs", mkrecord(fs, la));
   }
 
@@ -142,8 +142,8 @@ struct MonoTypePtrToExpr : public switchType<ExprPtr> {
       args.push_back(switchOf(t, *this));
     }
     MkRecord::FieldDefs fs;
-    fs.push_back(MkRecord::FieldDef(".f0", fn));
-    fs.push_back(MkRecord::FieldDef(".f1", ExprPtr(new MkArray(args, la))));
+    fs.push_back(MkRecord::FieldDef(std::make_pair(".f0", fn)));
+    fs.push_back(MkRecord::FieldDef(std::make_pair(".f1", ExprPtr(new MkArray(args, la)))));
     return ret("TApp", mkrecord(fs, la));
   }
 
@@ -154,8 +154,8 @@ struct MonoTypePtrToExpr : public switchType<ExprPtr> {
     }
     ExprPtr r = switchOf(v->result(), *this);
     MkRecord::FieldDefs fs;
-    fs.push_back(MkRecord::FieldDef(".f0", ExprPtr(new MkArray(ps, la))));
-    fs.push_back(MkRecord::FieldDef(".f1", r));
+    fs.push_back(MkRecord::FieldDef(std::make_pair(".f0", ExprPtr(new MkArray(ps, la)))));
+    fs.push_back(MkRecord::FieldDef(std::make_pair(".f1", r)));
     return ret("Func", mkrecord(fs, la));
   }
 
@@ -167,8 +167,8 @@ struct MonoTypePtrToExpr : public switchType<ExprPtr> {
     ExprPtr l = switchOf(ar->length(), *this);
     ExprPtr t = switchOf(ar->type(), *this);
     MkRecord::FieldDefs fs;
-    fs.push_back(MkRecord::FieldDef(".f0", t));
-    fs.push_back(MkRecord::FieldDef(".f1", l));
+    fs.push_back(MkRecord::FieldDef(std::make_pair(".f0", t)));
+    fs.push_back(MkRecord::FieldDef(std::make_pair(".f1", l)));
     return ret("FixedArray", mkrecord(fs, la));
 
   }
