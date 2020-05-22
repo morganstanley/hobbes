@@ -28,7 +28,7 @@ static bool tvalueToMonoTypePtr(const TEnvPtr& tenv, Definitions* ds, const Mono
 
 struct MonoTypePtrToExpr : public switchType<ExprPtr> {
   TEnvPtr tenv;
-  MonoTypePtr(type);
+  MonoTypePtr type;
   LexicalAnnotation la;
   MonoTypePtrToExpr(const TEnvPtr tenv, const MonoTypePtr& type) : tenv(tenv), type(type) {}
 
