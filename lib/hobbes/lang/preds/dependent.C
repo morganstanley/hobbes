@@ -41,19 +41,18 @@ struct MonoTypePtrToExpr : public switchType<ExprPtr> {
     return ExprPtr(new Assump(o, qualtype(type), la));;
   }
 
-  ExprPtr with(const TVar*) const {
-    // We only want to see actual types
-    return ExprPtr();
+  ExprPtr with(const TVar* tv) const {
+    return ret("TVar", ExprPtr(mkarray(tv->name(), la)));
   }
 
   ExprPtr with(const TGen*) const {
     // I don't think we can get one of these here, and we don't want it.
-    return ExprPtr(); 
+    throw std::runtime_error("TGen in TypeApply");
   }
 
   ExprPtr with(const TExpr *) const {
     // We can't put an arbitrary value in a Type, can we do something else?
-    return ExprPtr();
+    throw std::runtime_error("TExpr in TypeApply");
   }
 
   ExprPtr with(const Prim* prim) const {
@@ -174,11 +173,11 @@ struct MonoTypePtrToExpr : public switchType<ExprPtr> {
   }
 
   ExprPtr with(const TString* tstr) const {
-    return ExprPtr(mkarray(tstr->value(), la));
+    return ret("TString", ExprPtr(mkarray(tstr->value(), la)));
   }
 
   ExprPtr with(const TLong* tlong) const {
-    return constant(tlong->value(), la);
+    return ret("TLong", constant(tlong->value(), la));
   }
 
 };
@@ -288,8 +287,29 @@ struct _FixedArray {
   }
 };
 
+struct _TString {
+  typedef array<char>* type;
+  static MonoTypePtr build(_TString::type& str) {
+    return TString::make(std::string(str->data, str->data + str->size));
+  }
+};
+
+struct _TLong {
+  typedef long type;
+  static MonoTypePtr build(_TLong::type& l) {
+    return TLong::make(l);
+  }
+};
+
+struct _TVar {
+  typedef array<char>* type;
+  static MonoTypePtr build(_TString::type& str) {
+    return TVar::make(std::string(str->data, str->data + str->size));
+  }
+};
+
 struct Type {
-  typedef variant<_Prim::type, _Record::type, _Variant::type, _OpaquePtr::type, _Exists::type, _Recursive::type, _TAbs::type, _TApp::type, _Func::type, _Array::type, _FixedArray::type> def;
+  typedef variant<_Prim::type, _Record::type, _Variant::type, _OpaquePtr::type, _Exists::type, _Recursive::type, _TAbs::type, _TApp::type, _Func::type, _Array::type, _FixedArray::type, _TString, _TLong, _TVar> def;
   def data;
 };
 
@@ -318,6 +338,12 @@ MonoTypePtr typeExprToMonoTypePtr(Type* t){
       return BUILD(_Array);
     case 10:
       return BUILD(_FixedArray);
+    case 11:
+      return BUILD(_TString);
+    case 12:
+      return BUILD(_TLong);
+    case 13:
+      return BUILD(_TVar);
   }
   return MonoTypePtr();
 }
@@ -360,6 +386,7 @@ bool evalType(cc* ctx, const TEnvPtr& tenv, Definitions* ds, MonoTypePtr& tptr, 
 bool decodeTAConstraint(cc*ctx, const TEnvPtr tenv, Definitions* ds, const ConstraintPtr& c, MonoTypePtr& l, MonoTypePtr& r) {
   MonoTypePtr tptr = ctx->replaceTypeAliases(primty("Type"));
   type_ = tptr;
+  LexicalAnnotation la;
   if (c->name() == TypeApply::constraintName() && c->arguments().size() > 1) {
     l = c->arguments()[0];
     if (TApp * tapp = is<TApp>(c->arguments()[1])) {
@@ -370,14 +397,22 @@ bool decodeTAConstraint(cc*ctx, const TEnvPtr tenv, Definitions* ds, const Const
 
           for(unsigned int i = 2; i < c->arguments().size(); ++i) {
             ExprPtr arg;
-            if (TApp* tapp = is<TApp>(c->arguments()[i])) {
+	    MonoTypePtr targ = c->arguments()[i];
+            if (TApp* tapp = is<TApp>(targ)) {
               if (*tapp->fn() == *primty("quote")) {
                 if (TExpr* e = is<TExpr>(tapp->args()[0])) {
                   arg = e->expr();
                 }
               }
             }
-            if(!arg) {arg = switchOf(c->arguments()[i], MonoTypePtrToExpr(tenv, tptr));}
+	    if (TString* tstr = is<TString>(targ)) {
+              arg = ExprPtr(mkarray(tstr->value(), la));
+            }
+            if (TLong* tlong = is<TLong>(targ)) {
+              arg = constant(tlong->value(), la);
+            }
+
+            if(!arg) {arg = switchOf(targ, MonoTypePtrToExpr(tenv, tptr));}
             if (arg) {
               args.push_back(arg);
             } else {
@@ -385,12 +420,12 @@ bool decodeTAConstraint(cc*ctx, const TEnvPtr tenv, Definitions* ds, const Const
             }
           }
 
-          if(evalType(ctx, tenv, ds, tptr, fncall(f, args, LexicalAnnotation()), r)) {
+          if(evalType(ctx, tenv, ds, tptr, fncall(f, args, la), r)) {
             return true;
           }
           // This doesn't seem to work how I'd hoped, closures don't get eval'ed
           // properly.
-          if(evalType(ctx, tenv, ds, tptr, closcall(f, args, LexicalAnnotation()), r)) {
+          if(evalType(ctx, tenv, ds, tptr, closcall(f, args, la), r)) {
             return true;
           }
           return false;
