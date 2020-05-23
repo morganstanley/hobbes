@@ -398,6 +398,9 @@ bool decodeTAConstraint(cc*ctx, const TEnvPtr tenv, Definitions* ds, const Const
           for(unsigned int i = 2; i < c->arguments().size(); ++i) {
             ExprPtr arg;
 	    MonoTypePtr targ = c->arguments()[i];
+	    if (is<TVar>(targ)) {
+              return false;
+	    }
             if (TApp* tapp = is<TApp>(targ)) {
               if (*tapp->fn() == *primty("quote")) {
                 if (TExpr* e = is<TExpr>(tapp->args()[0])) {
