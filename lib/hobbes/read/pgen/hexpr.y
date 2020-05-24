@@ -863,7 +863,11 @@ recfieldname: id         { $$ = $1; }
             | "return"   { $$ = autorelease(new std::string("return")); }
             | "fn"       { $$ = autorelease(new std::string("fn")); }
             | "intV"     { $$ = autorelease(new std::string(".f" + str::from($1))); }
-            | "stringV"  { $$ = autorelease(new std::string(str::unescape(str::trimq(*$1)))); }
+            | "stringV"  { std::string stringField = str::unescape(str::trimq(*$1));
+                           if (stringField.size() > 0 && stringField[0] == '.' ) {
+                             throw annotated_error(m(@1), "Cannot define record string label with leading '.'");
+                           }
+                           $$ = autorelease(new std::string(str::unescape(str::trimq(*$1)))); }
 
 recfieldpath: recfieldpath "." recfieldname { $$ = $1; $$->push_back(*$3); }
             | recfieldpath "tupSection"     { $$ = $1; str::seq x = tupSectionFields(*$2); $$->insert($$->end(), x.begin(), x.end()); }
