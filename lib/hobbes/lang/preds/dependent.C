@@ -74,7 +74,7 @@ struct MonoTypePtrToExpr : public switchType<ExprPtr> {
     Exprs entries;
     for(auto m : r->members()) {
       MkRecord::FieldDefs fs;
-      fs.push_back(MkRecord::FieldDef(".f0", mkarray(m.field, la)));
+      fs.push_back(MkRecord::FieldDef(".f0", ExprPtr(mkarray(m.field, la))));
       fs.push_back(MkRecord::FieldDef(".f1", switchOf(m.type, *this)));
       entries.push_back(mkrecord(fs, la));
     }
@@ -85,7 +85,7 @@ struct MonoTypePtrToExpr : public switchType<ExprPtr> {
     Exprs entries;
     for(auto m : v->members()) {
       MkRecord::FieldDefs fs;
-      fs.push_back(MkRecord::FieldDef(".f0", mkarray(m.selector, la)));
+      fs.push_back(MkRecord::FieldDef(".f0", ExprPtr(mkarray(m.selector, la))));
       fs.push_back(MkRecord::FieldDef(".f1", switchOf(m.type, *this)));
       fs.push_back(MkRecord::FieldDef(".f2", constant(static_cast<int>(m.id), la)));
       entries.push_back(mkrecord(fs, la));
@@ -95,7 +95,7 @@ struct MonoTypePtrToExpr : public switchType<ExprPtr> {
 
   ExprPtr with(const OpaquePtr* op) const {
     MkRecord::FieldDefs fs;
-    fs.push_back(MkRecord::FieldDef(".f0", mkarray(op->name(), la)));
+    fs.push_back(MkRecord::FieldDef(".f0", ExprPtr(mkarray(op->name(), la))));
     fs.push_back(MkRecord::FieldDef(".f1", constant(static_cast<int>(op->size()), la)));
     fs.push_back(MkRecord::FieldDef(".f2", constant(op->storedContiguously(), la)));
     return ret("OpaquePtr", mkrecord(fs, la));
