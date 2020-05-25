@@ -349,20 +349,15 @@ MonoTypePtr typeExprToMonoTypePtr(Type* t){
 }
 
 
-MonoTypePtr type_; // Filthy hack since I can't seem to get type def from typedb
-
-struct liftType {
-  static MonoTypePtr type(typedb&) {
-    return type_;
-  }
-};
-
 template <>
-  struct lift<Type*, false> : public liftType { };
+  struct lift<Type*, false> {
+    static MonoTypePtr type(typedb& tenv) {
+      return tenv.replaceTypeAliases(primty("Type"));
+    }
+  };
 
 bool evalType(cc* ctx, const TEnvPtr& tenv, Definitions* ds, MonoTypePtr& tptr, ExprPtr ex, MonoTypePtr &r) {
   try{
-
     ExprPtr e = validateType(tenv, ex, ds);
     if (!e) return false;
     if (*e->type()->monoType() == *primty("long")) {
@@ -383,9 +378,8 @@ bool evalType(cc* ctx, const TEnvPtr& tenv, Definitions* ds, MonoTypePtr& tptr, 
 }
 
 
-bool decodeTAConstraint(cc*ctx, const TEnvPtr tenv, Definitions* ds, const ConstraintPtr& c, MonoTypePtr& l, MonoTypePtr& r) {
+bool decodeTAConstraint(cc* ctx, const TEnvPtr tenv, Definitions* ds, const ConstraintPtr& c, MonoTypePtr& l, MonoTypePtr& r) {
   MonoTypePtr tptr = ctx->replaceTypeAliases(primty("Type"));
-  type_ = tptr;
   LexicalAnnotation la;
   if (c->name() == TypeApply::constraintName() && c->arguments().size() > 1) {
     l = c->arguments()[0];
@@ -397,10 +391,10 @@ bool decodeTAConstraint(cc*ctx, const TEnvPtr tenv, Definitions* ds, const Const
 
           for(unsigned int i = 2; i < c->arguments().size(); ++i) {
             ExprPtr arg;
-	    MonoTypePtr targ = c->arguments()[i];
-	    if (is<TVar>(targ)) {
+            MonoTypePtr targ = c->arguments()[i];
+            if (is<TVar>(targ)) {
               return false;
-	    }
+            }
             if (TApp* tapp = is<TApp>(targ)) {
               if (*tapp->fn() == *primty("quote")) {
                 if (TExpr* e = is<TExpr>(tapp->args()[0])) {
@@ -408,7 +402,7 @@ bool decodeTAConstraint(cc*ctx, const TEnvPtr tenv, Definitions* ds, const Const
                 }
               }
             }
-	    if (TString* tstr = is<TString>(targ)) {
+	          if (TString* tstr = is<TString>(targ)) {
               arg = ExprPtr(mkarray(tstr->value(), la));
             }
             if (TLong* tlong = is<TLong>(targ)) {
