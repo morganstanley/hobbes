@@ -1,4 +1,4 @@
-
+#include <hobbes/reflect.H>
 #include <hobbes/lang/expr.H>
 #include <hobbes/lang/preds/dependent.H>
 #include <hobbes/eval/funcdefs.H>
@@ -65,8 +65,8 @@ struct MonoTypePtrToExpr : public switchType<ExprPtr> {
     }
 
     MkRecord::FieldDefs fs;
-    fs.push_back(MkRecord::FieldDef(std::make_pair(".f0", name)));
-    fs.push_back(MkRecord::FieldDef(std::make_pair(".f1", rep)));
+    fs.push_back(MkRecord::FieldDef(".f0", name));
+    fs.push_back(MkRecord::FieldDef(".f1", rep));
     return ret("Prim", mkrecord(fs, la));
   } 
 
@@ -74,8 +74,8 @@ struct MonoTypePtrToExpr : public switchType<ExprPtr> {
     Exprs entries;
     for(auto m : r->members()) {
       MkRecord::FieldDefs fs;
-      fs.push_back(MkRecord::FieldDef(std::make_pair(".f0", mkarray(m.field, la))));
-      fs.push_back(MkRecord::FieldDef(std::make_pair(".f1", switchOf(m.type, *this))));
+      fs.push_back(MkRecord::FieldDef(".f0", ExprPtr(mkarray(m.field, la))));
+      fs.push_back(MkRecord::FieldDef(".f1", switchOf(m.type, *this)));
       entries.push_back(mkrecord(fs, la));
     }
     return ret("Record", ExprPtr(new MkArray(entries, la)));
@@ -85,9 +85,9 @@ struct MonoTypePtrToExpr : public switchType<ExprPtr> {
     Exprs entries;
     for(auto m : v->members()) {
       MkRecord::FieldDefs fs;
-      fs.push_back(MkRecord::FieldDef(std::make_pair(".f0", mkarray(m.selector, la))));
-      fs.push_back(MkRecord::FieldDef(std::make_pair(".f1", switchOf(m.type, *this))));
-      fs.push_back(MkRecord::FieldDef(std::make_pair(".f2", constant(static_cast<int>(m.id), la))));
+      fs.push_back(MkRecord::FieldDef(".f0", ExprPtr(mkarray(m.selector, la))));
+      fs.push_back(MkRecord::FieldDef(".f1", switchOf(m.type, *this)));
+      fs.push_back(MkRecord::FieldDef(".f2", constant(static_cast<int>(m.id), la)));
       entries.push_back(mkrecord(fs, la));
     }
     return ret("Variant", ExprPtr(new MkArray(entries, la)));
@@ -95,9 +95,9 @@ struct MonoTypePtrToExpr : public switchType<ExprPtr> {
 
   ExprPtr with(const OpaquePtr* op) const {
     MkRecord::FieldDefs fs;
-    fs.push_back(MkRecord::FieldDef(std::make_pair(".f0", mkarray(op->name(), la))));
-    fs.push_back(MkRecord::FieldDef(std::make_pair(".f1", constant(static_cast<int>(op->size()), la))));
-    fs.push_back(MkRecord::FieldDef(std::make_pair(".f2", constant(op->storedContiguously(), la))));
+    fs.push_back(MkRecord::FieldDef(".f0", ExprPtr(mkarray(op->name(), la))));
+    fs.push_back(MkRecord::FieldDef(".f1", constant(static_cast<int>(op->size()), la)));
+    fs.push_back(MkRecord::FieldDef(".f2", constant(op->storedContiguously(), la)));
     return ret("OpaquePtr", mkrecord(fs, la));
   }
 
@@ -105,8 +105,8 @@ struct MonoTypePtrToExpr : public switchType<ExprPtr> {
     ExprPtr name = ExprPtr(mkarray(e->absTypeName(), la));
     ExprPtr type = switchOf(e->absType(), *this);
     MkRecord::FieldDefs fs;
-    fs.push_back(MkRecord::FieldDef(std::make_pair(".f0", name)));
-    fs.push_back(MkRecord::FieldDef(std::make_pair(".f1", type)));
+    fs.push_back(MkRecord::FieldDef(".f0", name));
+    fs.push_back(MkRecord::FieldDef(".f1", type));
     return ret("Exists", mkrecord(fs, la));
   }
 
@@ -114,8 +114,8 @@ struct MonoTypePtrToExpr : public switchType<ExprPtr> {
     ExprPtr name = ExprPtr(mkarray(e->recTypeName(), la));
     ExprPtr type = switchOf(e->recType(), *this);
     MkRecord::FieldDefs fs;
-    fs.push_back(MkRecord::FieldDef(std::make_pair(".f0", name)));
-    fs.push_back(MkRecord::FieldDef(std::make_pair(".f1", type)));
+    fs.push_back(MkRecord::FieldDef(".f0", name));
+    fs.push_back(MkRecord::FieldDef(".f1", type));
     return ret("Recursive", mkrecord(fs, la));
   }
 
@@ -128,8 +128,8 @@ struct MonoTypePtrToExpr : public switchType<ExprPtr> {
     ExprPtr arge(new MkArray(args, la));
     ExprPtr body = switchOf(tabs->body(), *this);
     MkRecord::FieldDefs fs;
-    fs.push_back(MkRecord::FieldDef(std::make_pair(".f0", arge)));
-    fs.push_back(MkRecord::FieldDef(std::make_pair(".f1", body)));
+    fs.push_back(MkRecord::FieldDef(".f0", arge));
+    fs.push_back(MkRecord::FieldDef(".f1", body));
     return ret("TAbs", mkrecord(fs, la));
   }
 
@@ -141,8 +141,8 @@ struct MonoTypePtrToExpr : public switchType<ExprPtr> {
       args.push_back(switchOf(t, *this));
     }
     MkRecord::FieldDefs fs;
-    fs.push_back(MkRecord::FieldDef(std::make_pair(".f0", fn)));
-    fs.push_back(MkRecord::FieldDef(std::make_pair(".f1", ExprPtr(new MkArray(args, la)))));
+    fs.push_back(MkRecord::FieldDef(".f0", fn));
+    fs.push_back(MkRecord::FieldDef(".f1", ExprPtr(new MkArray(args, la))));
     return ret("TApp", mkrecord(fs, la));
   }
 
@@ -153,8 +153,8 @@ struct MonoTypePtrToExpr : public switchType<ExprPtr> {
     }
     ExprPtr r = switchOf(v->result(), *this);
     MkRecord::FieldDefs fs;
-    fs.push_back(MkRecord::FieldDef(std::make_pair(".f0", ExprPtr(new MkArray(ps, la)))));
-    fs.push_back(MkRecord::FieldDef(std::make_pair(".f1", r)));
+    fs.push_back(MkRecord::FieldDef(".f0", ExprPtr(new MkArray(ps, la))));
+    fs.push_back(MkRecord::FieldDef(".f1", r));
     return ret("Func", mkrecord(fs, la));
   }
 
@@ -166,8 +166,8 @@ struct MonoTypePtrToExpr : public switchType<ExprPtr> {
     ExprPtr l = switchOf(ar->length(), *this);
     ExprPtr t = switchOf(ar->type(), *this);
     MkRecord::FieldDefs fs;
-    fs.push_back(MkRecord::FieldDef(std::make_pair(".f0", t)));
-    fs.push_back(MkRecord::FieldDef(std::make_pair(".f1", l)));
+    fs.push_back(MkRecord::FieldDef(".f0", t));
+    fs.push_back(MkRecord::FieldDef(".f1", l));
     return ret("FixedArray", mkrecord(fs, la));
 
   }
@@ -209,34 +209,34 @@ struct _Record {
 };
 
 struct _Variant {
-  typedef array<std::tuple<array<char>*, Type*, int>>* type;
+  typedef array<tuple<array<char>*, Type*, unsigned int>>* type;
   static MonoTypePtr build(_Variant::type& rec) {
     Variant::Members mems;
     for(unsigned int i = 0; i < rec->size; ++i) {
-      mems.push_back(Variant::Member(makeStdString(std::get<0>(rec->data[i])), typeExprToMonoTypePtr(std::get<1>(rec->data[i])), std::get<2>(rec->data[i])));
+      mems.push_back(Variant::Member(makeStdString(rec->data[i].at<0>()), typeExprToMonoTypePtr(rec->data[i].at<1>()), rec->data[i].at<2>()));
     }
     return Variant::make(mems);
   }
 };
 
 struct _OpaquePtr {
-  typedef std::tuple<array<char>*, int, bool> type;
+  typedef tuple<array<char>*, int, bool> type;
   static MonoTypePtr build(_OpaquePtr::type& op) {
-    return OpaquePtr::make(makeStdString(std::get<0>(op)), std::get<1>(op), std::get<2>(op));
+    return OpaquePtr::make(makeStdString(op.at<0>()), op.at<1>(), op.at<2>());
   }
 };
 
 struct _Exists {
   typedef std::pair<array<char>*, Type*> type;
   static MonoTypePtr build(_Exists::type& ex) {
-    return Exists::make(makeStdString(std::get<0>(ex)), typeExprToMonoTypePtr(std::get<1>(ex)));
+    return Exists::make(makeStdString(ex.first), typeExprToMonoTypePtr(ex.second));
   }
 };
 
 struct _Recursive {
   typedef std::pair<array<char>*, Type*> type;
   static MonoTypePtr build(_Recursive::type& ex) {
-    return Recursive::make(makeStdString(std::get<0>(ex)), typeExprToMonoTypePtr(std::get<1>(ex)));
+    return Recursive::make(makeStdString(ex.first), typeExprToMonoTypePtr(ex.second));
   }
 };
 
@@ -349,20 +349,15 @@ MonoTypePtr typeExprToMonoTypePtr(Type* t){
 }
 
 
-MonoTypePtr type_; // Filthy hack since I can't seem to get type def from typedb
-
-struct liftType {
-  static MonoTypePtr type(typedb&) {
-    return type_;
-  }
-};
-
 template <>
-  struct lift<Type*, false> : public liftType { };
+  struct lift<Type*, false> {
+    static MonoTypePtr type(typedb& tenv) {
+      return tenv.replaceTypeAliases(primty("Type"));
+    }
+  };
 
 bool evalType(cc* ctx, const TEnvPtr& tenv, Definitions* ds, MonoTypePtr& tptr, ExprPtr ex, MonoTypePtr &r) {
   try{
-
     ExprPtr e = validateType(tenv, ex, ds);
     if (!e) return false;
     if (*e->type()->monoType() == *primty("long")) {
@@ -383,9 +378,8 @@ bool evalType(cc* ctx, const TEnvPtr& tenv, Definitions* ds, MonoTypePtr& tptr, 
 }
 
 
-bool decodeTAConstraint(cc*ctx, const TEnvPtr tenv, Definitions* ds, const ConstraintPtr& c, MonoTypePtr& l, MonoTypePtr& r) {
+bool decodeTAConstraint(cc* ctx, const TEnvPtr tenv, Definitions* ds, const ConstraintPtr& c, MonoTypePtr& l, MonoTypePtr& r) {
   MonoTypePtr tptr = ctx->replaceTypeAliases(primty("Type"));
-  type_ = tptr;
   LexicalAnnotation la;
   if (c->name() == TypeApply::constraintName() && c->arguments().size() > 1) {
     l = c->arguments()[0];
@@ -397,10 +391,10 @@ bool decodeTAConstraint(cc*ctx, const TEnvPtr tenv, Definitions* ds, const Const
 
           for(unsigned int i = 2; i < c->arguments().size(); ++i) {
             ExprPtr arg;
-	    MonoTypePtr targ = c->arguments()[i];
-	    if (is<TVar>(targ)) {
+            MonoTypePtr targ = c->arguments()[i];
+            if (is<TVar>(targ)) {
               return false;
-	    }
+            }
             if (TApp* tapp = is<TApp>(targ)) {
               if (*tapp->fn() == *primty("quote")) {
                 if (TExpr* e = is<TExpr>(tapp->args()[0])) {
@@ -408,7 +402,7 @@ bool decodeTAConstraint(cc*ctx, const TEnvPtr tenv, Definitions* ds, const Const
                 }
               }
             }
-	    if (TString* tstr = is<TString>(targ)) {
+            if (TString* tstr = is<TString>(targ)) {
               arg = ExprPtr(mkarray(tstr->value(), la));
             }
             if (TLong* tlong = is<TLong>(targ)) {
