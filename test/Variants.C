@@ -46,6 +46,16 @@ TEST(Variants, Basic) {
   EXPECT_EQ(c().compileFn<int()>("(\\v.(case v of |0:x=x| default 2))(|1='c'|::int+char)")(), 2);
 }
 
+TEST(Variants, NoDuplicateConstructorNames) {
+  bool introExn = false;
+  try {
+    c().compileFn<void()>("print(|foo=1|::|foo:int,foo:[char]|)");
+  } catch (std::exception&) {
+    introExn = true;
+  }
+  EXPECT_TRUE( introExn && "Expected rejection of variant introduction with duplicate constructor names" );
+}
+
 TEST(Variants, Destruct) {
   EXPECT_TRUE(c().compileFn<bool()>("show(|foo=9|::|foo:int,bar:double,baz:short|) == \"|foo=9|\"")());
 }

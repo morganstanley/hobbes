@@ -15,6 +15,8 @@
 #include <hobbes/util/stream.H>
 
 struct Args final {
+  Args() : report("test_report.json") {}
+
   std::set<std::string> tests;
   const char* report;
 };
