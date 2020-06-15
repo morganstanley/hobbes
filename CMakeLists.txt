@@ -84,7 +84,7 @@ target_link_libraries(hobbes-pic PUBLIC ${llvm_ldflags} ${llvm_libs} ${ZLIB_LIBR
 set_property(TARGET hobbes-pic PROPERTY POSITION_INDEPENDENT_CODE TRUE)
 
 add_executable(hi ${hi_files})
-target_link_libraries(hi PRIVATE hobbes ${Readline_LIBRARIES})
+target_link_libraries(hi PUBLIC "-rdynamic" PRIVATE hobbes ${Readline_LIBRARIES})
 add_executable(hog ${hog_files})
 target_link_libraries(hog PRIVATE hobbes)
 
