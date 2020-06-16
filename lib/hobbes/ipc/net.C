@@ -325,7 +325,7 @@ int installNetREPL(const std::string& filepath, Server* svr) {
 
 class CCServer : public Server {
 public:
-  CCServer(cc* c) : c(c) {
+  CCServer(cc* c, ReWriteExprFn const& wrExprFn) : c(c), wrExprFn(wrExprFn) {
   }
   
   void connect(int) { }
@@ -341,7 +341,7 @@ public:
     MonoTypePtr rty = requireMonotype(
       this->c->unsweetenExpression(
         fncall(
-          expr,
+          wrExprFn(expr),
           list(assume(fncall(var("readFrom", la), list(constant(static_cast<int>(0), la)), la), inty, la)),
           la
         )
@@ -354,7 +354,7 @@ public:
       (
         ".c",
         let(".in", assume(fncall(var("readFrom", la), list(var(".c", la)), la), inty, la), fncall(var("writeTo", la), list(var(".c", la),
-          fncall(expr, list(var(".in", la)), la)), la), la)
+          fncall(wrExprFn(expr), list(var(".in", la)), la)), la), la)
       );
 
     return rty;
@@ -383,13 +383,14 @@ private:
   typedef std::map<exprid, NetFn> NetFns;
   typedef std::map<int, NetFns> ConnNetFns;
   ConnNetFns cnetFns;
+  ReWriteExprFn wrExprFn;
 };
 
-int installNetREPL(int port, cc* c) {
-  return installNetREPL(port, new CCServer(c));
+int installNetREPL(int port, cc* c, ReWriteExprFn const& wrExprFn) {
+  return installNetREPL(port, new CCServer(c, wrExprFn));
 }
-int installNetREPL(const std::string& filepath, cc* c) {
-  return installNetREPL(filepath, new CCServer(c));
+int installNetREPL(const std::string& filepath, cc* c, ReWriteExprFn const& wrExprFn) {
+  return installNetREPL(filepath, new CCServer(c, wrExprFn));
 }
 
 // connect to a running net REPL

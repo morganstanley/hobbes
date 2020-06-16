@@ -67,7 +67,7 @@ evaluator::evaluator(const Args& args) : silent(args.silent), wwwd(0), opts(args
 
   // start alternate input services if necessary
   if (args.replPort > 0) {
-    installNetREPL(args.replPort, &this->ctx);
+    installNetREPL(args.replPort, &this->ctx, [this](ExprPtr const& e) -> ExprPtr { return hobbes::translateExprWithOpts(this->opts, e); });
   }
   
   if (args.httpdPort > 0) {
