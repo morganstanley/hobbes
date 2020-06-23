@@ -25,6 +25,11 @@ Perhaps most surprisingly, Hobbes is a variant of the pure-functional programmin
 
 Read on to discover more about the Hobbes language - its design and purpose, and how you can use it in your systems!
 
+Note on Hobbes Usage
+====================
+
+Hobbes is built for high performance integration with C/C++ applications. While Hobbes is a strongly typed language that offers compile-time checks, it doesn't have a sandboxed runtime environment or runtime safety features. By design, Hobbes gives direct access to memory and does not have array bounds checks. Additionally, Hobbes supports compilation and execution of native code remotely over a network (RPC). This feature is meant for use within your trusted internal network only. If you choose to utilize such functionality, you need to be aware of these design choices and understand the security implications.
+
 Contribution
 ============
 
@@ -54,7 +59,7 @@ License information `here <https://github.com/Morgan-Stanley/hobbes/blob/master/
 .. toctree::
   :hidden:
   :caption: Embedding
-  
+
   embedding/compiler
 
 .. toctree::
@@ -86,7 +91,7 @@ License information `here <https://github.com/Morgan-Stanley/hobbes/blob/master/
   :hidden:
   :maxdepth: 2
   :caption: Examples
-  
+
   examples/simplerepl
   examples/raindrop_logger
 
@@ -94,6 +99,5 @@ License information `here <https://github.com/Morgan-Stanley/hobbes/blob/master/
   :hidden:
   :maxdepth: 2
   :caption: About
-  
-  about
 
+  about
