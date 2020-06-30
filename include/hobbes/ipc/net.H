@@ -35,6 +35,7 @@ int remotePort(int socket);
 // run a REPL server at some port, either indirectly or directly with a compiler
 typedef std::vector<uint8_t> RawData;
 typedef uint32_t             exprid;
+typedef std::function<ExprPtr(ExprPtr const&)> ReWriteExprFn;
 
 struct Server {
   virtual void        connect   (int conn) = 0;
@@ -49,9 +50,9 @@ int installNetREPL(int port, Server*);
 int installNetREPL(const std::string& /*filepath*/, Server*);
 
 class cc;
-int installNetREPL(int port, cc*);
+int installNetREPL(int port, cc*, ReWriteExprFn const& = [](ExprPtr const& e) -> ExprPtr { return e; });
 // install a net repl on a unix domain socket (using file paths)
-int installNetREPL(const std::string& /*filepath*/, cc*);
+int installNetREPL(const std::string& /*filepath*/, cc*, ReWriteExprFn const& = [](ExprPtr const& e) -> ExprPtr { return e; });
 
 // connect to a running net REPL somewhere
 class Client {
