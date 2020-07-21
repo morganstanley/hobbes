@@ -1,5 +1,6 @@
 #include <hobbes/hobbes.H>
 #include <hobbes/lang/tylift.H>
+#include <hobbes/db/file.H>
 #include <thread>
 #include "test.H"
 
@@ -137,5 +138,12 @@ std::ostream& operator<<(std::ostream& out, ctimespanT dt) {
 TEST(Compiler, liftChronoTimespan) {
   EXPECT_EQ(c().compileFn<ctimespanT()>("20ms")(), std::chrono::milliseconds(20));
   EXPECT_TRUE(c().compileFn<bool(ctimespanT)>("x", "x==20ms")(std::chrono::milliseconds(20)));
+}
+
+// verify that types are lifted as expected for values without "return value optimization" (or "copy elision")
+TEST(Compiler, liftWithoutRVO) {
+  typedef hobbes::fileref<const hobbes::array<char>*> strref;
+
+  EXPECT_EQ(c().compileFn<strref(int)>("x", "unsafeCast(42L)")(0).index, 42);
 }
 
