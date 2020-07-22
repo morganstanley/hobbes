@@ -144,6 +144,6 @@ TEST(Compiler, liftChronoTimespan) {
 TEST(Compiler, liftWithoutRVO) {
   typedef hobbes::fileref<const hobbes::array<char>*> strref;
 
-  EXPECT_EQ(c().compileFn<strref(int)>("x", "unsafeCast(42L)")(0).index, 42);
+  EXPECT_EQ(c().compileFn<strref(int)>("x", "unsafeCast(42L)")(0).index, strref(42UL).index);
 }
 
