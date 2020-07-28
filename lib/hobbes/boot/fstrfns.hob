@@ -7,9 +7,11 @@ findSubseqStep s ss i j =
     findSubseqStep(s, ss, i+1, j+1)
   else
     findSubseqStep(s, ss, (i-j)+1, 0L)
+{-# UNSAFE findSubseqStep #-}
 
 findSubseq :: (Equiv a b) => ([a], [b]) -> long
 findSubseq s ss = findSubseqStep(s, ss, 0L, 0L)
+{-# SAFE findSubseq #-}
 
 lsplit :: (Equiv a b) => ([a], [b]) -> ([a]*[a])
 lsplit s ss =

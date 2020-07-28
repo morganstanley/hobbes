@@ -151,6 +151,30 @@ private:
 typedef std::shared_ptr<InstanceDef> InstanceDefPtr;
 typedef std::vector<InstanceDefPtr>  InstanceDefs;
 
+class MUnsafePragmaDef : public ModuleDefCase<MUnsafePragmaDef> {
+public:
+  MUnsafePragmaDef(const std::string& symbol, const LexicalAnnotation& la) : Base(la), symbol(symbol) {}
+  void show(std::ostream& out) const { out << "{-# UNSAFE " << symbol << " #-}"; } ; 
+
+  const std::string& symbolValue() const { return symbol; }
+  static const int type_case_id = 6;
+
+private:
+  std::string symbol;
+};
+
+class MSafePragmaDef : public ModuleDefCase<MSafePragmaDef> {
+public:
+  MSafePragmaDef(const std::string& symbol, const LexicalAnnotation& la) : Base(la), symbol(symbol) {}
+  void show(std::ostream& out) const { out << "{-# SAFE " << symbol << " #-}"; } ; 
+
+  const std::string& symbolValue() const { return symbol; }
+  static const int type_case_id = 7;
+
+private:
+  std::string symbol;
+};
+
 template <typename Case>
   ModuleDefCase<Case>::ModuleDefCase(const LexicalAnnotation& la) : ModuleDef(Case::type_case_id, la) {
   }
@@ -164,6 +188,8 @@ template <typename T>
     virtual T with(const MVarDef*)     const = 0;
     virtual T with(const ClassDef*)    const = 0;
     virtual T with(const InstanceDef*) const = 0;
+    virtual T with(const MUnsafePragmaDef*)  const = 0;
+    virtual T with(const MSafePragmaDef*)    const = 0;
   };
 
 template <typename T>
@@ -181,6 +207,10 @@ template <typename T>
       return f.with(reinterpret_cast<const ClassDef*>(p.get()));
     case InstanceDef::type_case_id:
       return f.with(reinterpret_cast<const InstanceDef*>(p.get()));
+    case MUnsafePragmaDef::type_case_id:
+      return f.with(reinterpret_cast<const MUnsafePragmaDef*>(p.get()));
+    case MSafePragmaDef::type_case_id:
+      return f.with(reinterpret_cast<const MSafePragmaDef*>(p.get())); 
     default:
       {
         std::ostringstream ss;
@@ -200,6 +230,9 @@ struct switchMDefTyFn : switchMDef<ModuleDefPtr> {
   ModuleDefPtr with(const MVarDef*)     const;
   ModuleDefPtr with(const ClassDef*)    const;
   ModuleDefPtr with(const InstanceDef*) const;
+  ModuleDefPtr with(const MUnsafePragmaDef*)  const;
+  ModuleDefPtr with(const MSafePragmaDef*)  const;
+
 };
 
 // a module is a collection of module definitions

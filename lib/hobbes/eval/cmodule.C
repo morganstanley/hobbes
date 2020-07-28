@@ -407,6 +407,248 @@ void compile(const ModulePtr&, cc* e, const MVarTypeDef* vtd) {
   }
 }
 
+// keep unsafe function symbols
+struct SafeExpr {
+  using Status = SafeSet::Status;
+  struct UnsafeDefs {
+    UnsafeDefs() = default;
+    UnsafeDefs(std::string const& var, std::string const& fn_) : var(var), fn(fn_), status(Status::UnSafe) {}
+
+    const std::string& varName() const { return var; }
+    const std::string& safeFn() const { return fn; }
+    const std::set<std::string>& unSafeRefs() const { return closure; } 
+    const Status& varStatus() const { return status; }
+    const LexicalAnnotation& la() const { return lexAnno; }
+    const std::string& type() const { return typeDesc; }
+
+    std::string& varName() { return var; }
+    std::set<std::string>& unSafeRefs() { return closure; }
+    Status& varStatus() { return status; }
+    LexicalAnnotation& la() { return lexAnno; }
+    std::string& type() { return typeDesc; }
+
+    friend std::ostream& operator<<(std::ostream& os, const UnsafeDefs& s) {
+      os << s.var << "  " << s.status << "  " << str::show(s.closure) << ". " << s.typeDesc;
+      return os;
+    }
+
+    std::string desc() const {
+      std::stringstream ss;
+      ss << *this;
+      return ss.str();
+    }
+
+  private:
+    std::string fn;
+    std::string var;
+    Status status { Status::Undefined };
+    std::set<std::string> closure;
+    LexicalAnnotation lexAnno;
+    std::string typeDesc;
+  };
+
+  using Map = std::map<std::string, UnsafeDefs>;
+
+  static auto with(std::function<void (Map&)> const& mapModifier) -> void {
+    instance()._with(mapModifier);
+  };
+
+  template<class R>
+  static auto with(std::string const& n, std::function<R(const SafeExpr::UnsafeDefs&)> const& hit, std::function<R(void)> const& miss) -> R {
+    return instance().template _with(n, hit, miss);
+  }
+
+private:
+  auto _with(std::function<void (Map&)> const& mapModifier) -> void {
+    mapModifier(map);
+  }
+
+  template<class R>
+  auto _with(std::string const& n, std::function<R(const SafeExpr::UnsafeDefs&)> const& hit, std::function<R(void)> const& miss) -> R {
+    auto it = map.find(n);
+    if (it != std::end(map) && it->second.varStatus() != SafeExpr::Status::Safe)
+      return hit(it->second);
+    else
+      return miss();
+  }
+
+  static auto instance() -> SafeExpr& {
+    thread_local SafeExpr ms { Map { {"element", {"element", "elementM"} }, { "elements", {"elements", "elementsM"} }, {"newPrim", {"newPrim",""} }, { "newPrimZ", {"newPrimZ",""} }, { "unsafeCast", {"unsafeCast", ""} } } };
+    return ms;
+  }
+
+  SafeExpr() = default;
+  SafeExpr(Map const &map) : map(map) {}
+  Map map;
+};
+
+struct UnsafeRefs : public SafeExpr::UnsafeDefs {
+  friend auto operator< (SafeExpr::UnsafeDefs const& l, SafeExpr::UnsafeDefs const& r) -> bool {
+    return l.varName() < r.varName();
+  }
+
+  auto stepFn(std::pair<std::deque<std::string>, std::set<std::string>&>& v) -> void {
+    if (v.first.empty())
+      return;
+    auto e = v.first.front();
+    SafeExpr::template with<void>(e, [&](const SafeExpr::UnsafeDefs& unsafeDef) {
+      for (auto &f: unsafeDef.unSafeRefs()) {
+        if (v.second.find(f) == v.second.end()) {
+          v.first.push_back(f);
+        }
+      }
+    }, []() {});
+
+    v.first.pop_front();
+    v.second.insert(e);
+  }
+
+  void stepAll() {
+    auto& var = varName();
+    std::pair<std::deque<std::string>, std::set<std::string>&> r = { { var }, unSafeRefs() };
+    while (not r.first.empty())
+      stepFn(r);
+    unSafeRefs().erase(var);
+    SafeExpr::template with<void>(var, [&](const SafeExpr::UnsafeDefs& unsafeDef) {
+      la() = unsafeDef.la();
+      type() = unsafeDef.type();
+    }, []() {});
+  }
+
+  auto show(std::ostream& os) -> void {
+    os << la().filename() << ", " << la().lineDesc() << ": " << varName() << " is not allowed";
+    if (unSafeRefs().size()>0)
+      os << ", its transitive closure has disabled expressions: " << str::show(unSafeRefs()) ;
+    os << "." << type() << std::endl;
+  }
+};
+
+void SafeSet::setUnsafeFn(std::string const& varName) {
+  SafeExpr::with([varName](SafeExpr::Map& m) {
+    auto& v = m[varName];
+    v.varName() = varName;
+    v.varStatus() = SafeExpr::Status::UnSafe;
+  });
+}
+
+void SafeSet::setSafeFn(std::string const& varName) {
+  SafeExpr::with([varName](SafeExpr::Map& m) {
+    auto& v = m[varName];
+    v.varName() = varName;
+    v.varStatus() = SafeExpr::Status::Safe;
+  });
+}
+
+void SafeSet::forEach(std::function<void (std::string const& /*var*/, Status const& /*status*/, std::string const& /*desc*/)> const& fn) {
+  SafeExpr::with([&](SafeExpr::Map& m) {
+    for (auto& d : m) {
+      fn(d.second.varName(), d.second.varStatus(), d.second.desc());
+    }
+  });
+}
+
+struct buildTransitiveUnsafePragmaClosure : public switchExprC<bool> {
+  buildTransitiveUnsafePragmaClosure(MVarDef const& mvd) : mvd(mvd) { }
+
+  ~buildTransitiveUnsafePragmaClosure() {
+    SafeExpr::with([&](SafeExpr::Map& m) {
+      auto iter = m.find(mvd.varWithArgs()[0]);
+      if (iter != m.end()) {
+        auto& var = iter->second;
+        std::stringstream ss;
+        mvd.show(ss);
+        var.type() = ss.str();
+      }
+    });  
+  }
+  MVarDef const& mvd;
+
+  virtual bool withConst(const Expr* v)      const { return true; };
+  virtual bool with(const Var* v)            const {
+    return SafeExpr::with<bool>(v->value(), [&](const SafeExpr::UnsafeDefs&) {
+        SafeExpr::with([&](SafeExpr::Map& m) {
+          auto varName=mvd.varWithArgs()[0];
+          auto r = m.insert({varName, {}});
+          auto& var = r.first->second;
+          if (r.second) {
+            var.varName() = varName;
+            var.la() = mvd.la();
+          }
+          auto &status = var.varStatus();
+          if (status != SafeExpr::Status::Safe) {
+            status = SafeExpr::Status::UnSafe;
+            var.unSafeRefs().insert(v->value());
+          }
+    });
+        return true; 
+      }, 
+      []() { return false; });
+  }
+  virtual bool with     (const Let* v)       const { switchOf(v->varExpr(), *this); switchOf(v->bodyExpr(), *this); return true; }
+  virtual bool with     (const LetRec* v)    const {
+    str::set vns = toSet(v->varNames());
+    LetRec::Bindings bs;
+    for (const auto& b : v->bindings()) {
+      switchOf(b.second, *this);
+    }
+    switchOf(v->bodyExpr(), *this);
+    return true;
+  }
+  virtual bool with     (const Fn* v)        const { switchOf(v->body(), *this); return true; }
+  virtual bool with     (const App* v)       const { switchOf(v->fn(), *this); switchOf(v->args(), *this); return true; }
+  virtual bool with     (const Assign* v)    const { switchOf(v->left(), *this); switchOf(v->right(), *this); return true; }
+  virtual bool with     (const MkArray* v)   const { switchOf(v->values(), *this); return true; }
+  virtual bool with     (const MkVariant* v) const { switchOf(v->value(), *this); return true; }
+  virtual bool with     (const MkRecord* v)  const { switchOf(v->fields(), *this); return true; }
+  virtual bool with     (const AIndex* v)    const { return true; }
+  virtual bool with     (const Case* v)      const {
+    const Case::Bindings& cbs = v->bindings();
+    Case::Bindings rcbs;
+    for (Case::Bindings::const_iterator cb = cbs.begin(); cb != cbs.end(); ++cb) {
+      switchOf(cb->exp, *this);
+    }
+    ExprPtr de = v->defaultExpr();
+    if (de.get()) {
+      switchOf(de, *this);
+    }
+    switchOf(v->variant(), *this);
+    return true;
+  }
+  virtual bool with     (const Switch* v)    const {
+    Switch::Bindings rsbs;
+    for (auto sb : v->bindings()) {
+      switchOf(sb.exp, *this);
+    }
+    ExprPtr de = v->defaultExpr();
+    if (de) {
+      switchOf(de, *this);
+    }
+    switchOf(v->expr(), *this);
+    return true;
+  }
+  virtual bool with     (const Proj* v)      const { switchOf(v->record(), *this); return true; }
+  virtual bool with     (const Assump* v)    const { switchOf(v->expr(), *this); return true; }
+  virtual bool with     (const Pack* v)      const { switchOf(v->expr(), *this); return true; }
+  virtual bool with     (const Unpack* v)    const { switchOf(v->package(), *this); switchOf(v->expr(), *this); return true; }
+};
+
+// compile pragma defines
+void compile(const ModulePtr& md, cc*, const MUnsafePragmaDef* mpd) {
+  SafeSet::setUnsafeFn(mpd->symbolValue());
+  SafeExpr::with([&](SafeExpr::Map& m){
+    auto& v = m[mpd->symbolValue()];
+    v.la() = mpd->la();
+  });
+}
+
+void compile(const ModulePtr& md, cc*, const MSafePragmaDef* mpd) {
+  SafeSet::setSafeFn(mpd->symbolValue());
+  SafeExpr::with([&](SafeExpr::Map& m){
+    auto& v = m[mpd->symbolValue()];
+    v.la() = mpd->la();
+  });
+}
+
 // for now, just treat each definition independently and stick it in the input environment
 //   (this disallows things like mutual recursion)
 void compile(cc* e, const ModulePtr& m) {
@@ -425,8 +667,33 @@ void compile(cc* e, const ModulePtr& m) {
       compile(m, e, vd);
     } else if (const MVarTypeDef* vtd = is<MVarTypeDef>(md)) {
       compile(m, e, vtd);
+    } else if (const MUnsafePragmaDef* vpd = is<MUnsafePragmaDef>(md)) {
+      
+    } else if (const MSafePragmaDef* vpd = is<MSafePragmaDef>(md)) {
+       
     } else {
       throw std::runtime_error("Cannot compile module definition: " + show(md));
+    }
+  }
+
+  // compile unsafe pragma
+  for (auto tmd : m->definitions()) {
+    if (const MUnsafePragmaDef* vpd = is<MUnsafePragmaDef>(tmd)) {
+      compile(m, e, vpd); 
+    }
+  }
+
+  // compile safe pragma
+  for (auto tmd : m->definitions()) {
+    if (const MSafePragmaDef* vpd = is<MSafePragmaDef>(tmd)) {
+      compile(m, e, vpd); 
+    }
+  }
+
+  // generate unsafe transitive closure
+  for (auto tmd : m->definitions()) {
+    if (const MVarDef* vd = is<MVarDef>(tmd)) {
+      switchOf(vd->varExpr(), buildTransitiveUnsafePragmaClosure(*vd));
     }
   }
 }
@@ -435,23 +702,39 @@ std::vector<std::string> getDefaultOptions() {
   return str::strings();
 }
 
-OptDescs getAllOptions() {
-  OptDescs d;
-  d["SafeArrays"] = "Interpret array indexing 'safely' (always bounds-checked and mapped to an optional type in case of out-of-bounds access)";
-  return d;
-}
+// make hobbes run in "safe" mode
+struct makeSafe : public switchExprC<ExprPtr> {
+  std::map<std::string, UnsafeRefs> collectUnsafes;
 
-ExprPtr translateExprWithOpts(const ModulePtr& m, const ExprPtr& e) {
-  return translateExprWithOpts(m->options(), e);
-}
+  makeSafe() { }
 
-// make array indexing "safe"
-struct makeSafeAIndex : public switchExprC<ExprPtr> {
-  makeSafeAIndex() { }
+  auto show() -> std::string {
+    std::stringstream ss;
+    for (auto& kv : collectUnsafes) {
+      kv.second.show(ss);
+    }
+    return ss.str();
+  }
 
   ExprPtr withConst(const Expr* v) const { return ExprPtr(v->clone()); }
 
-  ExprPtr with(const Var* v) const { return ExprPtr(v->clone()); }
+  ExprPtr with(const Var* v) const {
+    return SafeExpr::template with<ExprPtr>(v->value(), [&, this](const SafeExpr::UnsafeDefs& unsafeDef) {
+      ExprPtr vc(v->clone());
+      if (auto vcc = is<Var>(vc.get())) {
+        if (not unsafeDef.safeFn().empty()) {
+          const_cast<Var *>(vcc)->value(unsafeDef.safeFn());
+        } else {
+          auto& entry = const_cast<makeSafe*>(this)->collectUnsafes[v->value()];
+          if (not v->value().empty()) {
+            entry.varName() = v->value();
+            entry.stepAll();
+          }
+         }
+      }
+      return vc;
+    }, [&]() { return ExprPtr(v->clone()); });
+  }
 
   ExprPtr with(const Let* v) const {
     return ExprPtr(new Let(v->var(), switchOf(v->varExpr(), *this), switchOf(v->bodyExpr(), *this), v->la()));
@@ -536,12 +819,58 @@ struct makeSafeAIndex : public switchExprC<ExprPtr> {
   }
 };
 
+struct makeSafeArrays : public makeSafe {
+  struct SafeArray {
+    using Map = SafeExpr::Map;
+
+    static auto with(const Var *v) -> ExprPtr {
+      thread_local Map safeArrayTable{ Map{ { {"element", {"element", "elementM"} }, { "elements", {"elements", "elementsM" } } } } };
+      ExprPtr vc(v->clone());
+      if (auto vcc = is<Var>(vc.get())) {
+        auto iter = safeArrayTable.find(v->value());
+        if (iter != std::end(safeArrayTable)) {
+          const_cast<Var *>(vcc)->value(iter->second.safeFn());
+        }
+      }
+      return vc;
+    }
+  };
+
+  ExprPtr with(const Var* v) const { return SafeArray::with(v); }
+};
+
+OptDescs getAllOptions() {
+  OptDescs d;
+  d["Safe"]       = "Interpret hobbes in safe mode";
+  d["SafeArrays"] = "Interpret array indexing 'safely' (always bounds-checked and mapped to an optional type in case of out-of-bounds access)";
+  return d;
+}
+
+ExprPtr translateExprWithOpts(const ModulePtr& m, const ExprPtr& e) {
+  return translateExprWithOpts(m->options(), e);
+}
+
 ExprPtr translateExprWithOpts(const std::vector<std::string>& opts, const ExprPtr& e) {
+  thread_local auto dispatch = std::map<std::string, std::function<ExprPtr(std::string const&, const ExprPtr&)>> {
+    { 
+      "Safe", [](std::string const&, const ExprPtr& e) -> ExprPtr {
+        auto ms = makeSafe();
+        auto r = switchOf(e, ms);
+        if (ms.collectUnsafes.size() != 0) {
+          throw std::runtime_error(ms.show());
+        };
+        return r; 
+      }
+    },
+    { "SafeArrays", [](std::string const&, const ExprPtr& e) -> ExprPtr { return switchOf(e, makeSafeArrays()); } },
+  };
+  thread_local auto ignoreFn = [](std::string const& optName, const ExprPtr& e) -> ExprPtr { 
+    throw std::runtime_error("unsupported option, " + optName); return e; 
+  };
+
   ExprPtr r = e;
   for (const auto& opt : opts) {
-    if (opt == "SafeArrays") {
-      r = switchOf(r, makeSafeAIndex());
-    }
+    r = dispatch.insert(std::make_pair(opt, ignoreFn)).first->second(opt, r);
   }
   return r;
 }

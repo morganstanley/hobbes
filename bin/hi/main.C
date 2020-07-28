@@ -4,6 +4,7 @@
 #include <hobbes/util/array.H>
 #include <hobbes/util/str.H>
 #include <hobbes/util/os.H>
+#include <hobbes/eval/cmodule.H>
 
 #include <iostream>
 #include <fstream>
@@ -178,7 +179,14 @@ void showShellHelp() {
     {":o K",   "Enable language option K"},
     {":^",     "Echo back the command history"},
     {":r",     "Start printing debug traces as type constraints are refined"},
-    {":nr",    "Stop printing debug traces as type constraints are refined"}
+    {":nr",    "Stop printing debug traces as type constraints are refined"},
+    {":g",     "show unsafe functions"}
+  });
+}
+
+void showUnsafeSymbols() {
+  hobbes::SafeSet::forEach([](std::string const&, hobbes::SafeSet::Status const&, std::string const& desc){
+    std::cout << desc << std::endl;
   });
 }
 
@@ -322,7 +330,10 @@ void evalLine(char* x) {
       eval->showConstraintRefinement(false);
       std::cout << "Type constraint refinement debugging OFF" << std::endl;
       return;
-    }
+    } else if (line == ":g") {
+      showUnsafeSymbols();
+      return;
+    } 
 
     if (line.size() > 2) {
       std::string cmd = line.substr(0, 2);

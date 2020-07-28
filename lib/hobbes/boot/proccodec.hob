@@ -62,6 +62,7 @@ readFromIntoArr fd xs i =
     ()
   else
     do{xs[i] <- readFrom(fd); readFromIntoArr(fd, xs, i+1);}
+{-# UNSAFE readFromIntoArr #-}
 
 writeToArr :: (BlockCodec a) => (int, [a], long) -> ()
 writeToArr fd xs i =
@@ -69,6 +70,7 @@ writeToArr fd xs i =
     ()
   else
     (let _ = writeTo(fd, xs[i]) in writeToArr(fd, xs, i+1))
+{-# UNSAFE writeToArr #-}
 
 instance (BlockCodec a) => BlockCodec [a] where
   readFrom fd = let r = newArray(readFrom(fd) :: long); _ = readFromIntoArr(fd, r, 0L) in r
@@ -81,6 +83,7 @@ readFromIntoSA fd xs i end =
     ()
   else
     do{saelem(xs, i) <- readFrom(fd); readFromIntoSA(fd, xs, i+1, end);}
+{-# UNSAFE readFromIntoSA #-}
 
 writeToSA :: (BlockCodec a) => (int, [:a|n:], long, long) -> ()
 writeToSA fd xs i end =
@@ -88,6 +91,7 @@ writeToSA fd xs i end =
     ()
   else
     (let _ = writeTo(fd, saelem(xs, i)) in writeToSA(fd, xs, i+1, end))
+{-# UNSAFE writeToSA #-}
 
 instance (BlockCodec a) => BlockCodec [:a|n:] where
   readFrom fd = let r = newPrim(); _ = readFromIntoSA(fd, r, 0L, salength(r)) in r

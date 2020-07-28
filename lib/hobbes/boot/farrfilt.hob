@@ -10,6 +10,7 @@ bvInit bs i x =
     ()
   else
     do{bs[i] <- x; bvInit(bs, i+1, x);}
+{-# UNSAFE bvInit #-}
 
 newBitvec :: long -> bitvec
 newBitvec n = do {
@@ -35,6 +36,7 @@ bvIsSet bv i =
     bj = tl2b(i % 8)
   in
     (band(bashr(bs[bi], bj), 0X01) == 0X01)
+{-# UNSAFE bvIsSet #-}
 
 bvSet :: (bitvec, long, bool) -> ()
 bvSet bv i x =
@@ -46,6 +48,7 @@ bvSet bv i x =
     _  = (if x then (bs[bi] <- bor(ob, bshl(0X01, bj))) else (bs[bi] <- band(ob, bnot(bshl(0X01, bj)))))
   in
     ()
+{-# UNSAFE bvSet #-}
 
 bvPrintT :: (bitvec, long, long) -> ()
 bvPrintT bs i e =
@@ -55,6 +58,7 @@ bvPrintT bs i e =
     in
      bvPrintT(bs, i+1, e)
    )
+{-# UNSAFE bvPrintT #-}
 
 wherePs :: (a -> bool, [a], long, bitvec) -> bitvec
 wherePs p xs i bv =
@@ -62,9 +66,11 @@ wherePs p xs i bv =
     bv
   else
     (let _ = bvSet(bv, i, p(xs[i])) in wherePs(p, xs, i+1, bv))
+{-# UNSAFE wherePs #-}
 
 whereP :: (a -> bool, [a]) -> bitvec
 whereP p xs = wherePs(p, xs, 0L, newBitvec(length(xs)))
+{-# SAFE whereP #-}
 
 nybBCounts = 0x0112122312232334122323342334344512232334233434452334344534454556122323342334344523343445344545562334344534454556344545564556566712232334233434452334344534454556233434453445455634454556455656672334344534454556344545564556566734454556455656674556566756676778
 
@@ -84,9 +90,11 @@ whereBs bv i e ns j =
     do{ns[j] <- i; return whereBs(bv, i+1, e, ns, j+1)}
   else
     whereBs(bv, i+1, e, ns, j)
+{-# UNSAFE whereBs #-}
 
 whereB :: bitvec -> [long]
 whereB bv = whereBs(bv, 0L, bvLength(bv), newArray(counts(bvCount8, 0L, convert(bv) :: [byte], 1L)), 0L)
+{-# SAFE whereB #-}
 
 // select from an array according to an index sequence
 selectStep :: ([a], [long], [a], long) -> ()
@@ -95,6 +103,7 @@ selectStep xs idxs r i =
     ()
   else
     do{r[i] <- xs[idxs[i]]; selectStep(xs, idxs, r, i+1);}
+{-# UNSAFE selectStep #-}
 
 select :: ([a], [long]) -> [a]
 select xs idxs =
@@ -103,6 +112,7 @@ select xs idxs =
     _  = selectStep(xs, idxs, r, 0L)
   in
     r
+{-# SAFE select #-}
 
 selectBStep :: (Array as a) => (as, bitvec, long, long, [a], long) -> [a]
 selectBStep xs idxs i e r j =
@@ -112,6 +122,7 @@ selectBStep xs idxs i e r j =
     do{r[j] <- element(xs,i); return selectBStep(xs, idxs, i+1, e, r, j+1)}
   else
     selectBStep(xs, idxs, i+1, e, r, j)
+{-# UNSAFE selectBStep #-}
 
 selectB :: (Array as a) => (as, bitvec) -> [a]
 selectB xs idxs =
@@ -123,6 +134,7 @@ selectB xs idxs =
     newArray(counts(bvCount8, 0L, convert(idxs) :: [byte], 1L)),
     0L
   )
+{-# SAFE selectB #-}
 
 selectRStep :: ([a], [a], long, long, long) -> ()
 selectRStep xs r k i e =
@@ -130,6 +142,7 @@ selectRStep xs r k i e =
     ()
   else
     do{r[k] <- xs[i]; selectRStep(xs, r, k+1, i+1, e);}
+{-# UNSAFE selectRStep #-}
 
 selectRange :: ([a], long, long) -> [a]
 selectRange xs lo hi = do {
@@ -150,6 +163,7 @@ selectKeyStep kvs i ks j r w =
     selectKeyStep(kvs, i, ks, j+1L, r, w)
   else
     do { r[w] <- kvs[i]; return selectKeyStep(kvs, i+1L, ks, j+1L, r, w+1L) }
+{-# UNSAFE selectKeyStep #-}
 
 // [doc] select key:value pairs out of a sorted array of pairs for a sorted array of keys
 selectKeys :: (Ord k k) => ([k*v], [k]) -> [k*v]
@@ -158,6 +172,7 @@ selectKeys kvs ks = do {
   selectKeyStep(kvs, 0L, ks, 0L, r, 0L);
   return r
 }
+{-# SAFE selectKeys #-}
 
 // [doc] select key:value pairs out of a sorted array of pairs for a sorted array of keys from a key-set offset returning the last 'unconsumed' key
 selectKeysFrom :: (Ord k k) => ([k*v], [k], long) -> (long*[k*v])
@@ -166,6 +181,7 @@ selectKeysFrom kvs ks i = do {
   n = selectKeyStep(kvs, 0L, ks, i, r, 0L);
   return (n,r)
 }
+{-# UNSAFE selectKeysFrom #-}
 
 // [doc] returns an array of the elements that satisfy the predicate
 //  [eg] filter(\x. x > 5, [1..10]) == [6,7,8,9,10]
@@ -182,6 +198,7 @@ filterMapStep f xs i mys j =
     mys[i] <- y;
     return filterMapStep(f, xs, i+1, mys, case y of |0:_=j,1:_=j+1|)
   }
+{-# UNSAFE filterMapStep #-}
 
 selectJust :: ([()+a], long, [a], long) -> [a]
 selectJust xs i ys j =
@@ -189,6 +206,7 @@ selectJust xs i ys j =
     ys
   else
     case xs[i] of |0:_=selectJust(xs, i+1, ys, j), 1:y=do{ys[j] <- y; return selectJust(xs, i+1, ys, j+1)}|
+{-# UNSAFE selectJust #-}
 
 filterMap :: (a -> (()+b), [a]) -> [b]
 filterMap f xs =
@@ -197,6 +215,7 @@ filterMap f xs =
     n   = filterMapStep(f, xs, 0L, mys, 0L)
   in
     selectJust(mys, 0L, newArray(n), 0L)
+{-# SAFE filterMap #-}
 
 /*****
  * generic map and filter (these will be used by comprehension expressions, but they might as well become the canonical definitions)
@@ -212,6 +231,7 @@ fmapArrStep f xs i rs =
     rs
   else
     do{rs[i] <- apply(f, element(xs,i)); return fmapArrStep(f, xs, i+1, rs)}
+{-# UNSAFE fmapArrStep #-}
 
 instance SeqDesc [a] "array" a
 
@@ -256,9 +276,11 @@ takeUntilStep p xs i =
     (selectRange(xs,0L,i), selectRange(xs,i+1,length(xs)))
   else
     takeUntilStep(p, xs, i + 1)
+{-# UNSAFE takeUntilStep #-}
 
 takeUntil :: (a -> bool, [a]) -> ([a]*[a])
 takeUntil p xs = takeUntilStep(p, xs, 0L)
+{-# SAFE takeUntil #-}
 
 takeUntilRStep :: (a -> bool, [a], long) -> ([a]*[a])
 takeUntilRStep p xs i =
@@ -268,7 +290,9 @@ takeUntilRStep p xs i =
     (selectRange(xs,0L,i), selectRange(xs,i+1,length(xs)))
   else
     takeUntilRStep(p, xs, i - 1)
+{-# UNSAFE takeUntilRStep #-}
 
 takeUntilR :: (a -> bool, [a]) -> ([a]*[a])
 takeUntilR p xs = takeUntilRStep(p, xs, length(xs) - 1)
+{-# SAFE takeUntilR #-}
 

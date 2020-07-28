@@ -52,7 +52,9 @@ instance (p++s=a, Function f p rf, Function rf s r) => Function f a r where
 class Array xs x | xs -> x where
   size     :: xs -> long
   element  :: (xs, long) -> x
+  elementM  :: (xs, long) -> (()+x)
   elements :: (xs, long, long) -> [x]
+  elementsM :: (xs, long, long) -> [x]
 
 // a default implementation of 'elements' in terms of 'element' (good enough if indexing is fast)
 instance Convert long long where
@@ -64,56 +66,94 @@ selectElementsInto xs lkup i e ss j step =
     ss
   else
     do { ss[j] <- lkup(xs, i); return selectElementsInto(xs, lkup, ladd(i,1L), e, ss, ladd(j,step), step) }
+{-# UNSAFE selectElementsInto #-}
 
 defElementsWith :: (xs, (xs, long) -> x, long, long) -> [x]
 defElementsWith xs lkup i e = selectElementsInto(xs, lkup, i, e, newArray(lsub(e,i)), 0L, 1L)
 
+verifybound :: (xs, long, long, long) -> (()+(xs*long*long))
+verifybound xs l i e = if(llt(i, 0L) or llt(l, e)) 
+    then
+        |0=()|
+    else if(llt(e, i)) then 
+        |0=()|
+    else
+       |1=(xs,i,e)|
+
+getElementByIndex ::(xs, (xs, long) -> x, long, long) -> (()+x)
+getElementByIndex xs fun i len = if(lgte(i, 0L) and llt(i, len)) then |1=fun(xs, i)| else |0=()|  
+
+safeDefElementsWith :: (xs, long, (xs, long) -> x, long, long) -> [x]
+safeDefElementsWith xs l lkup i e = 
+    match verifybound(xs, l, i, e) with 
+        | |1=(_, xb, xe)| -> selectElementsInto(xs, lkup, xb, xe, newArray(lsub(xe, xb)), 0L, 1L)
+        | _ -> []  
+
 instance Array [a] a where
   size = length
   element x i = x[i]
+  elementM x i = getElementByIndex(x, \x i.x[i], i, size(x))
   elements xs i e = defElementsWith(xs, \x i.x[i], i, e)
+  elementsM xs i e = safeDefElementsWith(xs, length(xs), \x i.x[i], i, e) 
 
 fstrlen cs i = if (leq(i,salength(cs))) then i else if (ceq(saelem(cs,i),'\0')) then i else fstrlen(cs,ladd(i,1L))
 instance Array [:char|n:] char where
   size cs = fstrlen(cs,0L)
   element = saelem
+  elementM x i =  getElementByIndex(x, saelem, i, size(x))
   elements cs i e = defElementsWith(cs, saelem, i, e)
+  elementsM cs i e = safeDefElementsWith(cs, fstrlen(cs,0L), saelem, i, e)
 
 instance Array [:a|n:] a where
   size = salength
   element = saelem
+  elementM x i = getElementByIndex(x, saelem, i, size(x)) 
   elements xs i e = defElementsWith(xs, saelem, i, e)
+  elementsM xs i e = safeDefElementsWith(xs, salength(xs), saelem, i, e)
 
 instance Array <std.string> char where
   size = stdstrsize
   element = stdstrelem
+  elementM x i = getElementByIndex(x, stdstrelem, i, stdstrsize(x))  
   elements xs i e = defElementsWith(xs, stdstrelem, i, e)
+  elementsM xs i e = safeDefElementsWith(xs, stdstrsize(xs), stdstrelem, i, e)
+
 
 instance Array <char> char where
   size = cstrlen
   element = cstrelem
+  elementM x i = getElementByIndex(x,cstrelem, i, cstrlen(x))
   elements xs i e = defElementsWith(xs, cstrelem, i, e)
+  elementsM xs i e = safeDefElementsWith(xs, cstrlen(xs), cstrelem, i, e)
 
 instance Array (<char> * long) char where
   size    p   = p.1
   element p i = cptrrefby(p.0, i)
+  elementM p i = getElementByIndex(p,\x i.cptrrefby(x.0,i), i, p.1)
   elements xs i e = defElementsWith(xs, \(p,_) i.cptrrefby(p,i), i, e)
+  elementsM xs i e = safeDefElementsWith(xs, xs.1, \(p,_) i.cptrrefby(p,i), i, e) 
 
 instance Array (long * <char>) char where
   size    p   = p.0
   element p i = cptrrefby(p.1, i)
+  elementM p i = getElementByIndex(p,\x i.cptrrefby(x.1,i), i, p.0)  
   elements xs i e = defElementsWith(xs, \(_,p) i.cptrrefby(p,i), i, e)
+  elementsM xs i e = safeDefElementsWith(xs, xs.0, \(_,p) i.cptrrefby(p,i), i, e)
 
 instance (Array a e) => Array a@f e where
   size xs = size(load(xs))
   element xs i = element(load(xs), i)
+  elementM xs i  = elementM(load(xs), i) 
   elements xs i e = elements(load(xs), i, e)
+  elementsM xs i e = elementsM(load(xs), i, e)
 
 data vector t s n = [:byte|n:]
 instance Array (vector t s n) t where
   size     v     = vectorSize(unsafeCast(v), salength(newPrim()::[:char|s:]))
   element  v i   = element(unsafeCast(vectorData(unsafeCast(v)))::[:t|1:], i)
-  elements v i e = elements(unsafeCast(vectorData(unsafeCast(v)))::[:t|1:], i, e)
+  elementM v i  = elementM(unsafeCast(vectorData(unsafeCast(v)))::[:t|n:], i)
+  elements v i e = elements(unsafeCast(vectorData(unsafeCast(v)))::[:t|n:], i, e)
+  elementsM v i e = elementsM(unsafeCast(vectorData(unsafeCast(v)))::[:t|n:], i, e)
 
 reverse :: [a] -> [a]
 reverse xs = selectElementsInto(xs, element, 0L, size(xs), newArray(size(xs)), lsub(size(xs),1L), lneg(1L))
@@ -127,5 +167,3 @@ instance (Array a e) => ArrayView a a where
 
 instance (Array a e) => ArrayView a@f a where
   openArrayView = load
-
-

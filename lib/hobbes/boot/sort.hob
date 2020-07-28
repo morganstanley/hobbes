@@ -21,6 +21,7 @@ sibrPartition lt xs idxs pivot b e i =
     return sibrPartition(lt, xs, idxs, if (i == pivot) then b else pivot, b+1, e, i+1)
   } else
     sibrPartition(lt, xs, idxs, pivot, b+1, e, i)
+{-# UNSAFE sibrPartition #-}
 
 sortiByRange :: ((a,a) -> bool, [a], [long], long, long) -> ()
 sortiByRange lt xs idxs b e =
@@ -34,6 +35,7 @@ sortiByRange lt xs idxs b e =
       sortiByRange(lt, xs, idxs, b,   j);
       sortiByRange(lt, xs, idxs, j+1, e);
     }
+{-# UNSAFE sortiByRange #-}
 
 sortiBy :: ((a,a) -> bool, [a]) -> [long]
 sortiBy lt xs = do {
@@ -41,6 +43,7 @@ sortiBy lt xs = do {
   sortiByRange(lt, xs, idxs, 0L, length(xs));
   return idxs
 }
+{-# SAFE sortiBy #-}
 
 // sort with a user projection
 siwrPartition :: (Ord b b) => (a -> b, [a], [long], long, long, long, long) -> long
@@ -53,6 +56,7 @@ siwrPartition p xs idxs pivot b e i =
     return siwrPartition(p, xs, idxs, if (i == pivot) then b else pivot, b+1, e, i+1)
   } else
     siwrPartition(p, xs, idxs, pivot, b+1, e, i)
+{-# UNSAFE siwrPartition #-}
 
 sortiWithRange :: (Ord b b) => (a -> b, [a], [long], long, long) -> ()
 sortiWithRange p xs idxs b e =
@@ -66,6 +70,7 @@ sortiWithRange p xs idxs b e =
       sortiWithRange(p, xs, idxs, b,   j);
       sortiWithRange(p, xs, idxs, j+1, e);
     }
+{-# UNSAFE sortiWithRange #-}
 
 sortiWith :: (Ord b b) => (a -> b, [a]) -> [long]
 sortiWith p xs = do {
@@ -73,6 +78,7 @@ sortiWith p xs = do {
   sortiWithRange(p, xs, idxs, 0L, length(xs));
   return idxs
 }
+{-# SAFE sortiWith #-}
 
 // sort with default ordering for a type
 //   note: the more general definition above COULD be used for this -- i.e.: sorti = sortiBy (<)
@@ -88,6 +94,7 @@ sirPartition xs idxs pivot b e i =
     return sirPartition(xs, idxs, if (i == pivot) then b else pivot, b+1, e, i+1)
   } else
     sirPartition(xs, idxs, pivot, b+1, e, i)
+{-# UNSAFE sirPartition #-}
 
 sortiRange :: (Ord a a) => (int, [a], [long], long, long) -> ()
 sortiRange lvl xs idxs b e =
@@ -105,6 +112,7 @@ sortiRange lvl xs idxs b e =
       sortiRange(lvl+1, xs, idxs, b,   j);
       sortiRange(lvl+1, xs, idxs, j+1, e);
     }
+{-# UNSAFE sortiRange #-}
 
 sorti :: (Ord a a) => [a] -> [long]
 sorti xs = do {
@@ -112,6 +120,7 @@ sorti xs = do {
   sortiRange(0, xs, idxs, 0L, length(xs));
   return idxs
 }
+{-# SAFE sorti #-}
 
 // sort by a user predicate or default ordering for a type
 sortBy :: ((a,a) -> bool, [a]) -> [a]
@@ -134,4 +143,5 @@ sortedSubRange p b e xs =
       []
     else
       selectRange(xs, bi, ei)
+{-# SAFE sortedSubRange #-}
 

@@ -8,10 +8,12 @@ alli f i xs =
     false
   else
     (alli(f,i+1L,xs))
+{-# UNSAFE alli #-}
 
 // [doc] determines whether all elements of the array satisfy the predicate
 all :: (a -> bool, [a]) -> bool
 all f xs = alli(f,0L,xs)
+{-# SAFE all #-}
 
 anyi :: (a->bool,long,[a]) -> bool
 anyi f i xs =
@@ -21,10 +23,12 @@ anyi f i xs =
     true
   else
     (anyi(f,i+1L,xs))
+{-# UNSAFE anyi #-}
 
 // [doc] determines whether any element of the array satisfied the predicate
 any :: (a -> bool, [a]) -> bool
 any f xs = anyi(f,0L,xs)
+{-# SAFE any #-}
 
 anyiC :: (exists E.(((E,a)->bool)*E), long, [a]) -> bool
 anyiC f i xs =
@@ -34,9 +38,11 @@ anyiC f i xs =
     true
   else
     (anyiC(f,i+1L,xs))
+{-# UNSAFE  anyiC #-}
 
 anyC :: (exists E.(((E,a)->bool)*E), [a]) -> bool
 anyC f xs = anyiC(f,0L,xs)
+{-# SAFE anyC #-}
 
 somei :: (a -> bool, [a], long) -> (()+a)
 somei p xs i =
@@ -46,9 +52,11 @@ somei p xs i =
     |1=xs[i]|
   else
     somei(p, xs, i+1)
+{-# UNSAFE  somei #-}
 
 some :: (a -> bool, [a]) -> (()+a)
 some p xs = somei(p, xs, 0L)
+{-# SAFE some #-}
 
 someiC :: (exists E.(((E,a) -> bool)*E), [a], long) -> (()+a)
 someiC p xs i =
@@ -58,9 +66,11 @@ someiC p xs i =
     |1=xs[i]|
   else
     someiC(p, xs, i+1)
+{-# UNSAFE  someiC #-}
 
 someC :: (exists E.(((E,a) -> bool)*E), [a]) -> (()+a)
 someC p xs = someiC(p, xs, 0L)
+{-# SAFE someC #-}
 
 amap :: (a->b, long, [b], [a]) -> [b]
 amap f i ys xs =
@@ -71,11 +81,13 @@ amap f i ys xs =
       ys[i] <- f(xs[i]);
       return amap(f, i+1L, ys, xs)
     }
+{-# UNSAFE amap #-}
 
 // [doc] map(f, xs) is the list obtained by applying f to each element of xs
 //  [eg] map(f,[x1, x2, ..., xn] == [f(x1), f(x2), ..., f(xn)]
 map :: (a -> b, [a]) -> [b]
 map f xs = amap(f, 0L, newArray(length(xs)), xs)
+{-# SAFE map #-}
 
 mapiC :: (exists E.(((E,a)->b)*E), long, [b], [a]) -> [b]
 mapiC f i ys xs =
@@ -86,9 +98,11 @@ mapiC f i ys xs =
       ys[i] <- apply(f, xs[i]);
       return mapiC(f, i+1L, ys, xs)
     }
+{-# UNSAFE  mapiC #-}
 
 mapC :: (exists E.(((E,a)->b)*E), [a]) -> [b]
 mapC f xs = mapiC(f, 0L, newArray(length(xs)), xs)
+{-# SAFE mapC #-}
 
 mapIdxStep :: (([a],long)->b, [a], long, [b]) -> [b]
 mapIdxStep f xs i ys =
@@ -99,9 +113,11 @@ mapIdxStep f xs i ys =
       ys[i] <- f(xs, i);
       return mapIdxStep(f, xs, i+1, ys)
     }
+{-# UNSAFE mapIdxStep  #-}
 
 mapIdx :: (([a],long)->b, [a]) -> [b]
 mapIdx f xs = mapIdxStep(f, xs, 0L, newArray(length(xs)))
+{-# SAFE mapIdx #-}
 
 eachStep :: (Function f c a r, Array as a) => (f, as, long, long) -> ()
 eachStep f xs i e =
@@ -109,10 +125,12 @@ eachStep f xs i e =
     ()
   else
     do{apply(f,element(xs,i)); return eachStep(f, xs, i+1, e)}
+{-# UNSAFE eachStep  #-}
 
 // [doc] each(f, xs) applies f to each element of xs
 each :: (Function f c a r, Array as a) => (f, as) -> ()
 each f xs = eachStep(f, xs, 0L, size(xs))
+{-# SAFE each #-}
 
 eachRange :: (Ord a a, Add a int a) => (a -> b, a, a) -> ()
 eachRange f i e =
@@ -120,6 +138,7 @@ eachRange f i e =
     (let _ = f(i) in eachRange(f, i+1, e))
   else
     ()
+{-# UNSAFE eachRange  #-}
 
 eachiC :: (exists E.(((E, a) -> b) * E), [a], long) -> ()
 eachiC f xs i =
@@ -127,9 +146,11 @@ eachiC f xs i =
     ()
   else
     (let _ = (apply(f :: exists E.(((E, a) -> b) * E), xs[i] :: a) :: b) in eachiC(f, xs, i+1))
+{-# UNSAFE eachiC  #-}
 
 eachC :: (exists E.(((E, a) -> b) * E), [a]) -> ()
 eachC f xs = eachiC(f, xs, 0L)
+{-# SAFE eachC #-}
 
 eachRangeC :: (Ord a a, Add a int a) => (exists E.(((E, a) -> b) * E), a, a) -> ()
 eachRangeC f i e =
@@ -137,6 +158,7 @@ eachRangeC f i e =
     (let _ = apply(f,i) in eachRangeC(f, i+1, e))
   else
     ()
+{-# UNSAFE eachRangeC  #-}
 
 foldli :: ((b,a)->b,b,long,[a])->b
 foldli f s i xs =
@@ -144,10 +166,12 @@ foldli f s i xs =
     s
   else
     (foldli(f,f(s,xs[i]),i+1L,xs))
+{-# UNSAFE foldli  #-}
 
 // [doc] left-associative fold of an array
 foldl :: ((b,a)->b,b,[a]) -> b
 foldl f s xs = foldli(f,s,0L,xs)
+{-# SAFE foldl #-}
 
 foldri :: ((a,b)->b,b,long,[a]) -> b
 foldri f s i xs =
@@ -155,20 +179,24 @@ foldri f s i xs =
     s
   else
     (let j = i - 1 in foldri(f, f(xs[j], s), j, xs))
+{-# UNSAFE foldri  #-}
 
 // [doc] right-associative fold of an array
 foldr :: ((a,b)->b,b,[a]) -> b
 foldr f s xs = foldri(f,s,length(xs),xs)
+{-# SAFE foldr #-}
 
 scanlStep :: ((b,a)->b, b, [a], long, [b]) -> [b]
 scanlStep f s xs i rs =
   let _ = (rs[i] <- s) in
   if (i == length(xs)) then rs
   else scanlStep(f, f(s,xs[i]), xs, i+1L, rs)
+{-# UNSAFE scanlStep  #-}
 
 // [doc] left-associative fold with history
 scanl :: ((b,a)->b,b,[a]) -> [b]
 scanl f s xs = scanlStep(f, s, xs, 0L, newArray(length(xs)+1L))
+{-# SAFE scanl #-}
 
 // folds over tuples, with closures ...
 foldlT2Step :: ((s,a,b) -> s, s, [a*b], long) -> s
@@ -177,10 +205,12 @@ foldlT2Step f s ps i =
     s
   else
     (let p = ps[i] in foldlT2Step(f, f(s, p.0, p.1), ps, i+1))
+{-# UNSAFE foldlT2Step  #-}
 
 // [doc] fold a function over an array of pairs (avoids tupling arguments)
 foldlT2 :: ((s,a,b) -> s, s, [a*b]) -> s
 foldlT2 f s ps = foldlT2Step(f, s, ps, 0L)
+{-# SAFE foldlT2 #-}
 
 foldlCT2Step :: (exists E.(((E, (s*k*v)) -> s)*E), s, [a*b], long) -> s
 foldlCT2Step f s ps i =
@@ -188,10 +218,12 @@ foldlCT2Step f s ps i =
     s
   else
     (let p = ps[i] in foldlCT2Step(f, apply(f, (s, p.0, p.1)), ps, i+1))
+{-# UNSAFE foldlCT2Step  #-}
 
 // [doc] fold a closure over an array of pairs (avoids tupling arguments)
 foldlCT2 :: (exists E.(((E, (s*k*v)) -> s)*E), s, [a*b]) -> s
 foldlCT2 f s ps = foldlCT2Step(f, s, ps, 0L)
+{-# SAFE foldlCT2 #-}
 
 // find something in an array
 findIter :: (a -> bool, [a], long) -> (()+a)
@@ -202,10 +234,12 @@ findIter p xs i =
     |1=xs[i]|
   else
     findIter(p, xs, i+1)
+{-# UNSAFE findIter  #-}
 
 // [doc] returns the leftmost element of the array matching the predicate, or nothing if there is no such element
 find :: (a -> bool, [a]) -> (()+a)
 find p xs = findIter(p,xs,0L)
+{-# SAFE find #-}
 
 // count how many values in an array satisfy a predicate
 countTrues :: (a -> bool, long, [a], long) -> long
@@ -216,10 +250,12 @@ countTrues p c xs i =
     countTrues(p, c+1, xs, i+1)
   else
     countTrues(p, c, xs, i+1)
+{-# UNSAFE countTrues  #-}
 
 // [doc] returns the number of elements which satisfy the predicate in the array
 countTrue :: (a -> bool, [a]) -> long
 countTrue p xs = countTrues(p, 0L, xs, 0L)
+{-# SAFE countTrue #-}
 
 counts :: (a -> long, long, [a], long) -> long
 counts s c xs i =
@@ -227,9 +263,11 @@ counts s c xs i =
     c
   else
     counts(s, c + s(xs[i]), xs, i+1)
+{-# UNSAFE counts  #-}
 
 count :: (a -> long, [a]) -> long
 count s xs = counts(s, 0L, xs, 0L)
+{-# SAFE count #-}
 
 // [doc] computes the sum of the numbers in an array
 sum :: (HasZero a, Add a a a) => [a] -> a
@@ -245,6 +283,7 @@ rangeInto lo hi r i =
       r[i] <- lo;
       return rangeInto(lo+1, hi, r, i+1)
     }
+{-# UNSAFE rangeInto  #-}
 
 range :: (Subtract a a a, Convert a long, Ord a a, Add a int a) => (a, a) -> [a]
 range lo hi =
@@ -253,6 +292,7 @@ range lo hi =
       rangeInto(lo, hi, newArray(n), 0L)
     else
       []
+{-# SAFE range #-}
 
 // generate an array of a given length initialized with a given value
 arepeat :: (a, long, [a]) -> [a]
@@ -264,11 +304,13 @@ arepeat x i r =
       r[i] <- x;
       return arepeat(x, i+1L, r)
     }
+{-# UNSAFE arepeat  #-}
 
 // [doc] repeat(n, x) is an array of length n with every element being x
 //  [eg] repeat(42, 5) == [42,42,42,42,42]
 repeat :: (a, long) -> [a]
 repeat x n = arepeat(x, 0L, newArray(n))
+{-# SAFE repeat #-}
 
 // [doc] max(x, y) returns the largest of x and y
 max :: (Ord a a) => (a, a) -> a
@@ -294,6 +336,7 @@ amapRange f xs i e ys j =
       ys[j] <- f(xs[i]);
       return amapRange(f, xs, i+1L, e, ys, j+1L)
     }
+{-# UNSAFE amapRange  #-}
 
 mapRange :: (a -> b, long, long, [a]) -> [b]
 mapRange f i e xs =
@@ -302,6 +345,7 @@ mapRange f i e xs =
     ne = min(e, length(xs))
   in
     amapRange(f, xs, ni, ne, newArray(ne - ni), 0L)
+{-# UNSAFE mapRange #-}
 
 foldliRange :: ((b,a)->b,b,long,long,[a])->b
 foldliRange f s i e xs =
@@ -309,9 +353,11 @@ foldliRange f s i e xs =
     s
   else
     (foldliRange(f,f(s,xs[i]),i+1L,e,xs))
+{-# UNSAFE foldliRange #-}
 
 foldlRange :: ((b,a)->b,b,long,long,[a]) -> b
 foldlRange f s i e xs = foldliRange(f,s,i,e,xs)
+{-# UNSAFE foldlRange  #-}
 
 // array copying
 
@@ -325,14 +371,17 @@ copyRange dst i src srcI srcE =
       dst[i] <- src[srcI];
       copyRange(dst, i+1L, src, srcI+1L, srcE);
     }
+{-# UNSAFE copyRange  #-}
 
 // [doc] copyFrom(dst, dstStartIdx, src, srcStartIdx)
 copyFrom :: ([a], long, [a], long) -> ()
 copyFrom dst i src j = copyRange(dst, i, src, j, length(src))
+{-# UNSAFE copyFrom  #-}
 
 // [doc] copy(dest, dest_start_idx, src)
 copy :: ([a], long, [a]) -> ()
 copy dst i src = copyFrom(dst, i, src, 0L)
+{-# UNSAFE copy  #-}
 
 // copy out of a sequence of arrays into a new array
 concatInto :: ([[a]], long, [a], long) -> [a]
@@ -346,11 +395,13 @@ concatInto xss i xs j =
     copyRange(xs, j, xsi, 0L, n);
     return concatInto(xss, i+1L, xs, j+n)
   }
+{-# UNSAFE concatInto  #-}
 
 // [doc] the concatenation of all the elements of an array of arrays
 //  [eg] concat([[1,2], [3,4], [5,6]]) == [1,2,3,4,5,6]
 concat :: [[a]] -> [a]
 concat xs = concatInto(xs, 0L, newArray(sum(map(length, xs))), 0L)
+{-# SAFE concat #-}
 
 // convert arrays of convertible values
 instance (Convert a b) => Convert [a] [b] where
@@ -376,6 +427,7 @@ slice xs i j =
       elements(xs, ni, nj)
     else
       reverse(elements(xs, nj, ni))
+{-# SAFE slice  #-}
 
 // join an array of strings with a delimiter
 cdelim :: ([[char]], [char]) -> [char]
@@ -394,6 +446,7 @@ zip xs ys = do {
   eachRangeC(\i.do{r[i].0 <- element(xs, i); r[i].1 <- element(ys, i);}, 0L, n);
   return r
 }
+{-# SAFE zip #-}
 
 // [doc] map a two-argument function over a pair of arrays
 zipWith :: (Array xs x, Array ys y) => ((x, y) -> z, xs, ys) -> [z]
@@ -403,6 +456,7 @@ zipWith f xs ys = do {
   eachRangeC(\i.r[i] <- f(element(xs, i), element(ys, i)), 0L, n);
   return r
 }
+{-# SAFE zipWith #-}
 
 // unzip an array of pairs
 unzipStep :: ([a*b], [a], [b], long, long) -> ()
@@ -415,6 +469,7 @@ unzipStep ps xs ys i e =
       ys[i] <- ps[i].1;
       return unzipStep(ps, xs, ys, i+1, e)
     }
+{-# UNSAFE unzipStep  #-}
 
 // [doc] transforms an array of pairs into an array of first components and an array of second components
 //  [eg] unzip([(1,2), (3,4), (5,6)]) == ([1,3,5], [2,4,5])
@@ -426,4 +481,5 @@ unzip ps = do {
   unzipStep(ps, xs, ys, 0L, n);
   return (xs, ys)
 }
+{-# SAFE unzip #-}
 

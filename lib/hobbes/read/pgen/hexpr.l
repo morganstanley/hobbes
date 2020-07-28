@@ -101,6 +101,8 @@ std::string* identifier(const char* b, const char* e) {
 "class"                { wantIndent(true); return TCLASS; }
 "instance"             { wantIndent(true); return TINST; }
 "exists"               { return TEXISTS; }
+"UNSAFE"               { return TUNSAFE; }
+"SAFE"                 { return TSAFE; } 
 
 "<-"                   { return TASSIGN; }
 "="                    { return TEQUALS; }
@@ -139,6 +141,9 @@ std::string* identifier(const char* b, const char* e) {
 "unpack"               { return TUNPACK; }
 "do"                   { return TDO; }
 "return"               { return TRETURN; }
+
+"{-#"                  { return TLPRAGMA; }
+"#-}"                  { return TRPRAGMA; }   
 
 "("                    { pushIndent(); return TLPAREN; }
 ")"                    { popIndent();  return TRPAREN; }
