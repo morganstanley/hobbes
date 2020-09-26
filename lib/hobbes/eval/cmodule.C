@@ -439,8 +439,8 @@ struct SafeExpr {
     }
 
   private:
-    std::string fn;
     std::string var;
+    std::string fn;
     Status status { Status::Undefined };
     std::set<std::string> closure;
     LexicalAnnotation lexAnno;
@@ -563,8 +563,8 @@ struct buildTransitiveUnsafePragmaClosure : public switchExprC<bool> {
   }
   MVarDef const& mvd;
 
-  virtual bool withConst(const Expr* v)      const { return true; };
-  virtual bool with(const Var* v)            const {
+  virtual bool withConst(const Expr*) const { return true; };
+  virtual bool with(const Var* v) const {
     return SafeExpr::with<bool>(v->value(), [&](const SafeExpr::UnsafeDefs&) {
         SafeExpr::with([&](SafeExpr::Map& m) {
           auto varName=mvd.varWithArgs()[0];
@@ -600,8 +600,8 @@ struct buildTransitiveUnsafePragmaClosure : public switchExprC<bool> {
   virtual bool with     (const MkArray* v)   const { switchOf(v->values(), *this); return true; }
   virtual bool with     (const MkVariant* v) const { switchOf(v->value(), *this); return true; }
   virtual bool with     (const MkRecord* v)  const { switchOf(v->fields(), *this); return true; }
-  virtual bool with     (const AIndex* v)    const { return true; }
-  virtual bool with     (const Case* v)      const {
+  virtual bool with     (const AIndex*) const { return true; }
+  virtual bool with     (const Case* v) const {
     const Case::Bindings& cbs = v->bindings();
     Case::Bindings rcbs;
     for (Case::Bindings::const_iterator cb = cbs.begin(); cb != cbs.end(); ++cb) {
@@ -633,7 +633,7 @@ struct buildTransitiveUnsafePragmaClosure : public switchExprC<bool> {
 };
 
 // compile pragma defines
-void compile(const ModulePtr& md, cc*, const MUnsafePragmaDef* mpd) {
+void compile(const ModulePtr&, cc*, const MUnsafePragmaDef* mpd) {
   SafeSet::setUnsafeFn(mpd->symbolValue());
   SafeExpr::with([&](SafeExpr::Map& m){
     auto& v = m[mpd->symbolValue()];
@@ -641,7 +641,7 @@ void compile(const ModulePtr& md, cc*, const MUnsafePragmaDef* mpd) {
   });
 }
 
-void compile(const ModulePtr& md, cc*, const MSafePragmaDef* mpd) {
+void compile(const ModulePtr&, cc*, const MSafePragmaDef* mpd) {
   SafeSet::setSafeFn(mpd->symbolValue());
   SafeExpr::with([&](SafeExpr::Map& m){
     auto& v = m[mpd->symbolValue()];
@@ -668,9 +668,9 @@ void compile(cc* e, const ModulePtr& m) {
     } else if (const MVarTypeDef* vtd = is<MVarTypeDef>(md)) {
       compile(m, e, vtd);
     } else if (const MUnsafePragmaDef* vpd = is<MUnsafePragmaDef>(md)) {
-      
+      (void)vpd;
     } else if (const MSafePragmaDef* vpd = is<MSafePragmaDef>(md)) {
-       
+      (void)vpd;
     } else {
       throw std::runtime_error("Cannot compile module definition: " + show(md));
     }
