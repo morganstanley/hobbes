@@ -24,7 +24,7 @@ typedef std::map<std::string, std::string> OptDescs;
 OptDescs getAllOptions();
 
 ExprPtr translateExprWithOpts(const ModulePtr&, const ExprPtr&);
-ExprPtr translateExprWithOpts(const std::vector<std::string>&, const ExprPtr&);
+ExprPtr translateExprWithOpts(const std::vector<std::string>&, const ExprPtr&, std::function<void(std::string const&)> const& = [](std::string const& err) -> void { throw std::runtime_error(err); });
 
 // change set of safe/unsafe expressions allowed in Safe mode
 class SafeSet {

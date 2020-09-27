@@ -419,13 +419,13 @@ struct SafeExpr {
     const std::set<std::string>& unSafeRefs() const { return closure; } 
     const Status& varStatus() const { return status; }
     const LexicalAnnotation& la() const { return lexAnno; }
-    const std::string& type() const { return typeDesc; }
+    const std::string& exprDef() const { return typeDesc; }
 
     std::string& varName() { return var; }
     std::set<std::string>& unSafeRefs() { return closure; }
     Status& varStatus() { return status; }
     LexicalAnnotation& la() { return lexAnno; }
-    std::string& type() { return typeDesc; }
+    std::string& exprDef() { return typeDesc; }
 
     friend std::ostream& operator<<(std::ostream& os, const UnsafeDefs& s) {
       os << s.var << "  " << s.status << "  " << str::show(s.closure) << ". " << s.typeDesc;
@@ -511,7 +511,7 @@ struct UnsafeRefs : public SafeExpr::UnsafeDefs {
     unSafeRefs().erase(var);
     SafeExpr::template with<void>(var, [&](const SafeExpr::UnsafeDefs& unsafeDef) {
       la() = unsafeDef.la();
-      type() = unsafeDef.type();
+      exprDef() = unsafeDef.exprDef();
     }, []() {});
   }
 
@@ -519,7 +519,7 @@ struct UnsafeRefs : public SafeExpr::UnsafeDefs {
     os << la().filename() << ", " << la().lineDesc() << ": " << varName() << " is not allowed";
     if (unSafeRefs().size()>0)
       os << ", its transitive closure has disabled expressions: " << str::show(unSafeRefs()) ;
-    os << "." << type() << std::endl;
+    os << "." << exprDef() << std::endl;
   }
 };
 
@@ -557,7 +557,7 @@ struct buildTransitiveUnsafePragmaClosure : public switchExprC<bool> {
         auto& var = iter->second;
         std::stringstream ss;
         mvd.show(ss);
-        var.type() = ss.str();
+        var.exprDef() = ss.str();
       }
     });  
   }
@@ -850,14 +850,14 @@ ExprPtr translateExprWithOpts(const ModulePtr& m, const ExprPtr& e) {
   return translateExprWithOpts(m->options(), e);
 }
 
-ExprPtr translateExprWithOpts(const std::vector<std::string>& opts, const ExprPtr& e) {
-  thread_local auto dispatch = std::map<std::string, std::function<ExprPtr(std::string const&, const ExprPtr&)>> {
+ExprPtr translateExprWithOpts(const std::vector<std::string>& opts, const ExprPtr& e, std::function<void(std::string const&)> const& exceptionFn) {
+  auto dispatch = std::map<std::string, std::function<ExprPtr(std::string const&, const ExprPtr&)>> {
     { 
-      "Safe", [](std::string const&, const ExprPtr& e) -> ExprPtr {
+      "Safe", [&exceptionFn](std::string const&, const ExprPtr& e) -> ExprPtr {
         auto ms = makeSafe();
         auto r = switchOf(e, ms);
         if (ms.collectUnsafes.size() != 0) {
-          throw std::runtime_error(ms.show());
+          exceptionFn(ms.show());
         };
         return r; 
       }
