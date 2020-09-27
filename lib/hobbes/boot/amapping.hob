@@ -160,7 +160,7 @@ reverse :: [a] -> [a]
 reverse xs = selectElementsInto(xs, element, 0L, size(xs), newArray(size(xs)), lsub(size(xs),1L), lneg(1L))
 {-# SAFE reverse #-}
 
-// sometimes it's a trivial/obvious single-step to array-nessß
+// sometimes it's a trivial/obvious single-step to array-ness
 class ArrayView t a | t -> a where
   openArrayView :: t -> a
 
