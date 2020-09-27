@@ -11,6 +11,7 @@ floatFormatConfig = do {
   c.doublePrecision <- -1;
   return c
 }
+{-# SAFE floatFormatConfig #-}
 
 // primitive serialization
 instance Show () where

@@ -87,7 +87,8 @@ safeDefElementsWith :: (xs, long, (xs, long) -> x, long, long) -> [x]
 safeDefElementsWith xs l lkup i e = 
     match verifybound(xs, l, i, e) with 
         | |1=(_, xb, xe)| -> selectElementsInto(xs, lkup, xb, xe, newArray(lsub(xe, xb)), 0L, 1L)
-        | _ -> []  
+        | _ -> []
+{-# SAFE safeDefElementsWith #-}
 
 instance Array [a] a where
   size = length

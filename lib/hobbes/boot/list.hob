@@ -62,6 +62,7 @@ alflatten xss =
     _  = lfoldlC(\i nxs.let _ = copy(xs, i, nxs) in (i+length(nxs)), 0L, xss)
   in
     xs
+{-# SAFE alflatten #-}
 
 lreverse xs = lfoldl(\r x.cons(x,r), nil(), xs)
 

@@ -12,6 +12,7 @@ class FlipInto a b where
 // [eg]  [{a:int, b:bool}] -> {a:[int], b:[bool]}
 flip :: (FlipType a b) => [a] -> b
 flip xs = let r = newPrim(); _ = flipInto(xs, r) in r
+{-# SAFE flip #-}
 
 instance (a={lbl:h*()}, b={lbl:[h]*()}) => FlipInto a b where
   flipInto xs y = recordHeadValue(y) <- map(recordHeadValue, xs)

@@ -87,6 +87,7 @@ partition p xs =
   | [(false, fs)]             -> (fs, [])
   | [(true,  ts)]             -> ([], ts)
   | _                         -> ([], [])
+{-# SAFE partition #-}
 
 // [doc] split a sequence in two according to a (closure) predicate
 partitionC :: (exists E.(((E,a)->bool)*E), [a]) -> ([a]*[a])
@@ -96,6 +97,7 @@ partitionC p xs =
   | [(false, fs)]             -> (fs, [])
   | [(true,  ts)]             -> ([], ts)
   | _                         -> ([], [])
+{-# SAFE partitionC #-}
 
 // join two sequences on some common key
 almapRange :: (a -> b, [a], long, long) -> ^x.(()+(b*x))
