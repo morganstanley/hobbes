@@ -475,6 +475,7 @@ private:
   static auto instance() -> SafeExpr& {
     thread_local SafeExpr ms {Map{{"element"    , {"element", "elementM"}},
                                   {"elements"   , {"elements", "elementsM"}},
+                                  {"newArray"   , {"newArray", {}}},
                                   {"newPrim"    , {"newPrim", {}}},
                                   {"newPrimZ"   , {"newPrimZ", {}}},
                                   {"unsafeCast" , {"unsafeCast", {}}
