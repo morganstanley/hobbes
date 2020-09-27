@@ -26,6 +26,7 @@ struct Args {
   strs                     opts;
 
   Args() : useDefColors(false), silent(false), replPort(-1), httpdPort(-1), exitAfterEval(false), machineREPL(false) {
+    opts.push_back("Safe");
   }
 };
 
