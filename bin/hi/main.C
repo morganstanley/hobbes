@@ -186,7 +186,7 @@ void showShellHelp() {
 
 void showUnsafeSymbols() {
   hobbes::SafeSet::forEach([](std::string const&, hobbes::SafeSet::Status const& status, std::string const& desc) {
-    if (hobbes::SafeSet::Status::Unsafe == status)
+    if (hobbes::SafeSet::Status::UnSafe == status)
       std::cout << desc << std::endl;
   });
 }
