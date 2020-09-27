@@ -473,7 +473,12 @@ private:
   }
 
   static auto instance() -> SafeExpr& {
-    thread_local SafeExpr ms { Map { {"element", {"element", "elementM"} }, { "elements", {"elements", "elementsM"} }, {"newPrim", {"newPrim",""} }, { "newPrimZ", {"newPrimZ",""} }, { "unsafeCast", {"unsafeCast", ""} } } };
+    thread_local SafeExpr ms {Map{{"element"    , {"element", "elementM"}},
+                                  {"elements"   , {"elements", "elementsM"}},
+                                  {"newPrim"    , {"newPrim", {}}},
+                                  {"newPrimZ"   , {"newPrimZ", {}}},
+                                  {"unsafeCast" , {"unsafeCast", {}}
+                                }}};
     return ms;
   }
 
@@ -545,6 +550,15 @@ void SafeSet::forEach(std::function<void (std::string const& /*var*/, Status con
       fn(d.second.varName(), d.second.varStatus(), d.second.desc());
     }
   });
+}
+std::string const& SafeSet::get(std::string const& binding) {
+  return SafeExpr::with<std::string const&>(binding,
+                                            [&binding](SafeExpr::UnsafeDefs const& udefs) -> std::string const& {
+                                              return udefs.safeFn().empty() ? binding : udefs.safeFn();
+                                            },
+                                            [&binding]() -> std::string const& {
+                                              return binding;
+                                            });
 }
 
 struct buildTransitiveUnsafePragmaClosure : public switchExprC<bool> {

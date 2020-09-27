@@ -182,6 +182,12 @@ void evaluator::printTypeOf(const std::string& expr, bool showHiddenTCs) {
 
 void evaluator::printTypeEnv() {
   std::cout << setfgc(colors.typefg);
+  if (std::find(opts.begin(), opts.end(), "Safe") != std::end(opts)) {
+    this->ctx.dumpTypeEnv([this](std::string const& binding) -> std::string const& {
+      return hobbes::SafeSet::get(binding);
+    });
+    return; 
+  } 
   this->ctx.dumpTypeEnv();
 }
 

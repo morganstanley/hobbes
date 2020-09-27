@@ -519,12 +519,12 @@ llvm::Module* cc::module() const {
   return const_cast<cc*>(this)->jit->module();
 }
 
-void cc::dumpTypeEnv() const {
-  std::cout << showTypeEnv() << std::endl;
+void cc::dumpTypeEnv(std::function<std::string const&(std::string const&)> const& rewriteFn) const {
+  std::cout << showTypeEnv(rewriteFn) << std::endl;
 }
 
-void cc::dumpTypeEnv(str::seq* syms, str::seq* types) const {
-  for (auto te : this->tenv->typeEnvTable()) {
+void cc::dumpTypeEnv(str::seq* syms, str::seq* types, std::function<std::string const&(std::string const&)> const& rewriteFn) const {
+  for (auto te : this->tenv->typeEnvTable(rewriteFn)) {
     // don't show hidden symbols since they're not meant for users
     if (te.first.size() > 0 && te.first[0] != '.') {
       syms->push_back(te.first);
@@ -536,7 +536,7 @@ void cc::dumpTypeEnv(str::seq* syms, str::seq* types) const {
   }
 }
 
-std::string cc::showTypeEnv() const {
+std::string cc::showTypeEnv(std::function<std::string const&(std::string const&)> const& rewriteFn) const {
   str::seqs table;
   table.resize(3);
 
@@ -544,7 +544,7 @@ std::string cc::showTypeEnv() const {
   table[1].push_back("");
   table[2].push_back("Type");
   
-  dumpTypeEnv(&table[0], &table[2]);
+  dumpTypeEnv(&table[0], &table[2], rewriteFn);
   str::repeat(table[0].size() - 1, " :: ", &table[1]);
 
   return str::showLeftAlignedTable(table);

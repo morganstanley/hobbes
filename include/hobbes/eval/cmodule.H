@@ -45,6 +45,7 @@ public:
     return os;
   }
 
+  static std::string const& get(std::string const& /*binding*/);
   static void setUnsafeFn(std::string const& /*var*/);
   static void setSafeFn(std::string const& /*var*/);
   static void forEach(std::function<void (std::string const& /*var*/, Status const& /*status*/, std::string const& /*desc*/)> const&);
