@@ -180,13 +180,14 @@ void showShellHelp() {
     {":^",     "Echo back the command history"},
     {":r",     "Start printing debug traces as type constraints are refined"},
     {":nr",    "Stop printing debug traces as type constraints are refined"},
-    {":g",     "show unsafe functions"}
+    {":showUnsafe",     "show unsafe functions"}
   });
 }
 
 void showUnsafeSymbols() {
-  hobbes::SafeSet::forEach([](std::string const&, hobbes::SafeSet::Status const&, std::string const& desc){
-    std::cout << desc << std::endl;
+  hobbes::SafeSet::forEach([](std::string const&, hobbes::SafeSet::Status const& status, std::string const& desc) {
+    if (hobbes::SafeSet::Status::Unsafe == status)
+      std::cout << desc << std::endl;
   });
 }
 
@@ -330,7 +331,7 @@ void evalLine(char* x) {
       eval->showConstraintRefinement(false);
       std::cout << "Type constraint refinement debugging OFF" << std::endl;
       return;
-    } else if (line == ":g") {
+    } else if (line == ":showUnsafe") {
       showUnsafeSymbols();
       return;
     } 

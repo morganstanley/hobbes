@@ -171,7 +171,7 @@ void printQualType(const hobbes::Constraints& cs, const hobbes::MonoTypePtr& ty)
 }
 
 void evaluator::printTypeOf(const std::string& expr, bool showHiddenTCs) {
-  hobbes::QualTypePtr t  = this->ctx.unsweetenExpression(readExpr(expr))->type();
+  hobbes::QualTypePtr t  = this->ctx.unsweetenExpression(hobbes::translateExprWithOpts({}, this->ctx.readExpr(expr)))->type();
   hobbes::Constraints cs = showHiddenTCs ? t->constraints() : hobbes::expandHiddenTCs(this->ctx.typeEnv(), t->constraints());
   hobbes::QualTypePtr st = hobbes::simplifyVarNames(hobbes::qualtype(cs, t->monoType()));
 
