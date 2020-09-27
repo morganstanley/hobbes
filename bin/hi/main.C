@@ -653,7 +653,12 @@ Args processCommandLine(int argc, char** argv) {
         break;
         }
       case 5:
-        r.opts.push_back(arg);
+        if (0 == arg.rfind("no-", 0)) {
+          r.opts.erase(std::remove(r.opts.begin(), r.opts.end(), arg.substr(3)), r.opts.end());
+        }
+        else {
+          r.opts.push_back(arg);
+        }
         m = 0;
         break;
       }
