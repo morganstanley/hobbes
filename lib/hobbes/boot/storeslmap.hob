@@ -25,7 +25,6 @@ instance Array (slmap k v) (k*v) where
   element m i = toArray(slmselect(m.t.root,i+1,i+2))[0]
   elementM m i = getElementByIndex(m, \x i.element(x, i), i, size(m))
   elements m i e = toArray(slmselect(m.t.root,i+1,e+1))
-  elementsM = elements
 
 instance SeqDesc (slmap k v) "slmap" (k*v)
 

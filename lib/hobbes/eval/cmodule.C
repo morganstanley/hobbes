@@ -474,7 +474,6 @@ private:
 
   static auto instance() -> SafeExpr& {
     thread_local SafeExpr ms {Map{{"element"    , {"element", "elementM"}},
-                                  {"elements"   , {"elements", "elementsM"}},
                                   {"newArray"   , {"newArray", {}}},
                                   {"newPrim"    , {"newPrim", {}}},
                                   {"newPrimZ"   , {"newPrimZ", {}}},
@@ -839,7 +838,7 @@ struct makeSafeArrays : public makeSafe {
     using Map = SafeExpr::Map;
 
     static auto with(const Var *v) -> ExprPtr {
-      thread_local Map safeArrayTable{ Map{ { {"element", {"element", "elementM"} }, { "elements", {"elements", "elementsM" } } } } };
+      thread_local Map safeArrayTable{ Map{ { {"element", {"element", "elementM"} } } } };
       ExprPtr vc(v->clone());
       if (auto vcc = is<Var>(vc.get())) {
         auto iter = safeArrayTable.find(v->value());
