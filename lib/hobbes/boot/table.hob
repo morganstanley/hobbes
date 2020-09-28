@@ -50,6 +50,7 @@ printTableConfig = do {
   c.maxRows <- 20L;
   return c
 }
+{-# SAFE printTableConfig #-}
 
 printTableRows :: ([[[char]]], long, long, [char]) -> ()
 printTableRows cvs c r eor =

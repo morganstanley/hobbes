@@ -24,7 +24,32 @@ typedef std::map<std::string, std::string> OptDescs;
 OptDescs getAllOptions();
 
 ExprPtr translateExprWithOpts(const ModulePtr&, const ExprPtr&);
-ExprPtr translateExprWithOpts(const std::vector<std::string>&, const ExprPtr&);
+ExprPtr translateExprWithOpts(const std::vector<std::string>&, const ExprPtr&, std::function<void(std::string const&)> const& = [](std::string const& err) -> void { throw std::runtime_error(err); });
+
+// change set of safe/unsafe expressions allowed in Safe mode
+class SafeSet {
+public:
+  enum class Status {
+    UnSafe = 1,
+    Safe = 2,
+    Undefined
+  };
+  friend std::ostream& operator<<(std::ostream& os, const Status& s) {
+    if (s == Status::UnSafe) {
+      os << "UnSafe";
+    } else if(s == Status::Safe) {
+      os << "Safe";
+    } else {
+      os << "Undefined";
+    }
+    return os;
+  }
+
+  static std::string const& get(std::string const& /*binding*/);
+  static void setUnsafeFn(std::string const& /*var*/);
+  static void setSafeFn(std::string const& /*var*/);
+  static void forEach(std::function<void (std::string const& /*var*/, Status const& /*status*/, std::string const& /*desc*/)> const&);
+};
 
 }
 

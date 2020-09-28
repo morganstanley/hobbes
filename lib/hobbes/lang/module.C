@@ -20,7 +20,7 @@ void Module::show(std::ostream& out) const {
 }
 
 bool isValidOption(const std::string& o) {
-  return o == "SafeArrays";
+  return o == "Safe" || o == "SafeArrays";
 }
 
 void Module::setOption(const std::string& o, const LexicalAnnotation& la) {
@@ -207,6 +207,8 @@ MVarDefs substitute(const MonoTypeSubst& s, const MVarDefs& vds) {
 ModuleDefPtr switchMDefTyFn::with(const MImport*     x) const { return ModuleDefPtr(new MImport(x->path(), x->name(), x->la())); }
 ModuleDefPtr switchMDefTyFn::with(const MTypeDef*    x) const { return ModuleDefPtr(new MTypeDef(x->visibility(), x->name(), x->arguments(), withTy(x->type()), x->la())); }
 ModuleDefPtr switchMDefTyFn::with(const MVarTypeDef* x) const { return ModuleDefPtr(new MVarTypeDef(x->varName(), withTy(x->varType()), x->la())); }
+ModuleDefPtr switchMDefTyFn::with(const MUnsafePragmaDef* x)  const { return ModuleDefPtr(new MUnsafePragmaDef(x->symbolValue(), x->la())); }  
+ModuleDefPtr switchMDefTyFn::with(const MSafePragmaDef* x) const { return ModuleDefPtr(new MSafePragmaDef(x->symbolValue(), x->la()));; }
 
 struct appMTySwitchF : public switchExprTyFn {
   const switchMDefTyFn* f;

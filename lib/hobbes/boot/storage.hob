@@ -171,7 +171,9 @@ instance FilterMMap f c a r "fseq" (fseq a n) "mseq" (mseq r) where
 instance Array (mseq a) a where
   size     xs     = lfoldl(\s vs.s + length(vs), 0L, xs.t)
   element  xs i   = match lfindS(i, \j vs.j-length(vs), \j vs.j < length(vs), xs.t) with | |1=(j, vs)| -> vs[length(vs) - (j+1)] | _ -> newPrim()
+  elementM xs i = match lfindS(i, \j vs.j-length(vs), \j vs.j < length(vs), xs.t) with | |1=(j, vs)| -> elementM(vs, length(vs) - (j+1)) | _ -> nothing
   elements xs i e = concat(toArray(lfindSliceSpan(xs.t, 0L, i, e)))
+  elementsM = elements
 
 // array comprehension support for stored sequences
 instance SeqDesc (^x.(()+([a]@f*x@f)))@f ("fseq"*f) a
@@ -187,7 +189,9 @@ instance FilterMMap f c a r ("fseq"*g) (^x.(()+([a]@g*x@g)))@g "mrope" (^x.(()+(
 instance Array (carray a n) a where
   size     c     = c.t.avail
   element  c i   = element(c.t.buffer, i)
+  elementM c i  = getElementByIndex(c, \x i.element(x, i), i, size(c))
   elements c i e = elements(c.t.buffer, i, e)
+  elementsM c i e = elementsM(c.t.buffer, i, e)
 
 instance Map f c a r "carray" (carray a n) "array" [r] where
   fmap f xs = fmapArrStep(f, xs, 0L, newArray(size(xs)))
@@ -217,7 +221,9 @@ instance Convert (darray a) [a] where
 instance Array (darray a) a where
   size     d     = size(darr(d))
   element  d i   = element(darr(d), i)
+  elementM d i  = getElementByIndex(d, \x i.element(x, i), i, size(d))
   elements d i e = elements(darr(d), i, e)
+  elementsM d i e = elementsM(darr(d), i, e)
 
 instance SeqDesc (darray a) "darray" a
 
@@ -272,19 +278,26 @@ flfindSliceSpan n k i e =
       else
         cons(xs[max(0L,i-k):min(size(xs),e-k)], flfindSliceSpan(load(t), nk, i, e))
   | _ -> nil()
+{-# UNSAFE flfindSliceSpan #-}
 
 instance (Array as a) => Array (^x.(()+(as@f*x@f))) a where
   size     xs     = flfoldl(\s vs.s + size(load(vs)), 0L, xs)
   element  xs i   = match flfindS(i, \j vs.j-size(load(vs)), \j vs.j < size(load(vs)), xs) with | |1=(j, vs)| -> let lvs = load(vs) in element(lvs,size(lvs) - (j+1)) | _ -> newPrim()
+  elementM  xs i = match flfindS(i, \j vs.j-size(load(vs)), \j vs.j < size(load(vs)), xs) with | |1=(j, vs)| -> let lvs = load(vs) in elementM(lvs,size(lvs) - (j+1)) | _ -> nothing
   elements xs i e = concat(toArray(flfindSliceSpan(xs, 0L, i, e)))
+  elementsM = elements
 
 instance (Array as a) => Array (^x.(()+(as@f*x@f)))@f a where
   size     xs     = size(load(xs))
   element  xs i   = element(load(xs), i)
+  elementM xs i =  elementM(load(xs), i)
   elements xs i e = elements(load(xs), i, e)
+  elementsM xs i e = elementsM(load(xs), i, e)
 
 instance Array (fseq a _) a where
   size     xs     = flfoldl(\s vs.s + size(load(vs)), 0L, load(xs.t))
   element  xs i   = match flfindS(i, \j vs.j-size(load(vs)), \j vs.j < size(load(vs)), load(xs.t)) with | |1=(j, vs)| -> let lvs = load(vs) in element(lvs,j) | _ -> newPrim()
+  elementM xs i  = match flfindS(i, \j vs.j-size(load(vs)), \j vs.j < size(load(vs)), load(xs.t)) with | |1=(j, vs)| -> let lvs = load(vs) in elementM(lvs,j) | _ -> nothing
   elements xs i e = concat(toArray(flfindSliceSpan(load(xs.t), 0L, i, e)))
+  elementsM = elements
 

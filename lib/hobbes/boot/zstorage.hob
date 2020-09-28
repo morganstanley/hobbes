@@ -12,6 +12,7 @@ fixedArrMap f i xs rs =
     saelem(rs,i) <- apply(f, saelem(xs,i));
     return fixedArrMap(f, i+1L, xs, rs)
   }
+{-# UNSAFE fixedArrMap #-}
 
 instance SeqDesc [:t|n:] ("farr"*n) t
 
@@ -30,6 +31,7 @@ initFixedRange ns i =
     saelem(ns,i) <- i;
     return initFixedRange(ns, i+1L)
   }
+{-# UNSAFE initFixedRange #-}
 
 class LowerLong n where
   lowerLong :: long
@@ -114,6 +116,7 @@ ucPrepModelSA sm dm i e =
     ddmInit(saelem(dm,i), unsafeCast(saelem(sm.pmodels,i)));
     ucPrepModelSA(sm, dm, i+1L, e);
   }
+{-# UNSAFE ucPrepModelSA #-}
 
 ucDeallocModelSA dm i e =
   if (i == e) then
@@ -122,6 +125,7 @@ ucDeallocModelSA dm i e =
     ddmDestroy(saelem(dm,i));
     ucDeallocModelSA(dm, i+1L, e);
   }
+{-# UNSAFE ucDeallocModelSA #-}
 
 instance (UCMSized t n) => UCModel t (pcsmodel n) (pdmodel n) where
   ucAllocModel   f input = [ddmMake(unsafeCast(f), input, 0Xff) | _ <- newPrim()::[:int|n:]]
@@ -206,6 +210,7 @@ ucTakeNStep r dm n x i =
       x[i] <- ucRead(r, dm);
       return ucTakeNStep(r, dm, n, x, i+1L)
     }
+{-# UNSAFE ucTakeNStep #-}
 
 ucTakeN :: (UCRead t sm dm) => (<hobbes.UCReader>, dm, long) -> [t]
 ucTakeN r dm n = ucTakeNStep(r, dm, n, newArray(n), 0L)
@@ -221,6 +226,7 @@ ucPutN w m xs i e =
     (ucWrite::(UCWrite t sm dm)=>(_,_,_)->_)(w, m, xs[i]);
     ucPutN(w, m, xs, i+1L, e);
   }
+{-# UNSAFE ucPutN #-}
 
 instance (UCModel t tsm tdm) => UCWrite [t] ((pcsmodel 8) * tsm) ((pdmodel 8) * tdm) where
   ucWrite w dm x = do { (ucWrite::(UCWrite long _ _)=>(_,_,_)->_)(w, dm.0, length(x)); ucPutN(w, dm.1, x, 0L, length(x)); }
@@ -328,6 +334,7 @@ ucRootTakeNStep r dm n x i =
         ();
       return ucRootTakeNStep(r, dm, n, x, i+1L)
     }
+{-# UNSAFE ucRootTakeN #-}
 
 ucRootTakeN :: (UCRead t sm dm) => (<hobbes.UCReader>, dm, long) -> [t]
 ucRootTakeN r dm n = if (n==0) then [] else ucRootTakeNStep(r, dm, n, newArray(n), 0L)
@@ -392,7 +399,9 @@ instance CSeqLength (cseq t sm n) where
 instance (UCRead t sm dm) => Array (cseq t sm n) t where
   size     s     = cseqLength(s)
   element  s i   = cseqReadFromTo(unsafeCast(file(s.t)), s, i, i+1L)[0]
+  elementM s i = just(cseqReadFromTo(unsafeCast(file(s.t)), s, i, i+1L)[0])
   elements s i e = cseqReadFromTo(unsafeCast(file(s.t)), s, i, e)
+  elementsM = elements 
 
 // put a sequence of values
 ucRootPutN :: (UCWrite t sm dm) => (<hobbes.UCWriter>, dm, [t], long) -> ()

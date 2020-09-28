@@ -4,6 +4,7 @@
 #include <hobbes/util/array.H>
 #include <hobbes/util/str.H>
 #include <hobbes/util/os.H>
+#include <hobbes/eval/cmodule.H>
 
 #include <iostream>
 #include <fstream>
@@ -178,7 +179,15 @@ void showShellHelp() {
     {":o K",   "Enable language option K"},
     {":^",     "Echo back the command history"},
     {":r",     "Start printing debug traces as type constraints are refined"},
-    {":nr",    "Stop printing debug traces as type constraints are refined"}
+    {":nr",    "Stop printing debug traces as type constraints are refined"},
+    {":showUnsafe",     "show unsafe functions"}
+  });
+}
+
+void showUnsafeSymbols() {
+  hobbes::SafeSet::forEach([](std::string const&, hobbes::SafeSet::Status const& status, std::string const& desc) {
+    if (hobbes::SafeSet::Status::UnSafe == status)
+      std::cout << desc << std::endl;
   });
 }
 
@@ -322,7 +331,10 @@ void evalLine(char* x) {
       eval->showConstraintRefinement(false);
       std::cout << "Type constraint refinement debugging OFF" << std::endl;
       return;
-    }
+    } else if (line == ":showUnsafe") {
+      showUnsafeSymbols();
+      return;
+    } 
 
     if (line.size() > 2) {
       std::string cmd = line.substr(0, 2);
@@ -641,7 +653,12 @@ Args processCommandLine(int argc, char** argv) {
         break;
         }
       case 5:
-        r.opts.push_back(arg);
+        if (0 == arg.rfind("no-", 0)) {
+          r.opts.erase(std::remove(r.opts.begin(), r.opts.end(), arg.substr(3)), r.opts.end());
+        }
+        else {
+          r.opts.push_back(arg);
+        }
         m = 0;
         break;
       }

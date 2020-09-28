@@ -413,11 +413,15 @@ extern PatVarCtorFn patVarCtorFn;
 %token TQUESTION  "?"
 %token TSQUOTE    "'"
 %token TEQUOTE    "`"
+%token TUNSAFE    "UNSAFE"
+%token TSAFE      "SAFE"
+%token TLPRAGMA  "{-#"
+%token TRPRAGMA  "#-}"
 
 /* nonterminal node types */
 %type <module>       module
 %type <mdefs>        defs
-%type <mdef>         def importdef tydef classdef instdef
+%type <mdef>         def importdef tydef classdef instdef pragmadef pragmaty
 %type <fundep>       fundep
 %type <fundeps>      fundeps
 %type <mvtydefs>     cmembers
@@ -500,6 +504,7 @@ def: importdef { $$ = $1; }
    | vartybind { $$ = $1; }
    | classdef  { $$ = $1; }
    | instdef   { $$ = $1; }
+   | pragmadef { $$ = $1; }
 
    | id "=" l0expr { $$ = new MVarDef(list(*$1), ExprPtr($3), m(@1, @3)); }
    | id id "=" l0expr { $$ = new MVarDef(list(*$1, *$2), ExprPtr($4), m(@1, @4)); }
@@ -519,6 +524,11 @@ def: importdef { $$ = $1; }
 
 /* import an external 'module' */
 importdef: "import" cppid { $$ = new MImport(yyModulePath, *$2, m(@1, @2)); }
+
+/* pragma definitions */
+pragmadef: "{-#" pragmaty "#-}" { $$ = $2; }
+pragmaty: "UNSAFE" id { $$ = new MUnsafePragmaDef(*$2, m(@1, @2)); }
+        | "SAFE" id { $$ = new MSafePragmaDef(*$2, m(@1, @2)); } 
 
 /* abbreviate type names */
 tydef: "type" nameseq "=" qtype { $$ = new MTypeDef(MTypeDef::Transparent, hobbes::select(*$2, 0), hobbes::select(*$2, 1, (int)$2->size()), QualTypePtr($4), m(@1, @4)); }

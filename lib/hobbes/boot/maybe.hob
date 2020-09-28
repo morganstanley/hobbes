@@ -53,7 +53,7 @@ instance (HasDef l) => FilterMMap f c a b "either" (l+a) "either" (l+b) where
   ffilterMMap f la = case la of |0:l=|0=l|, 1:a=case apply(f,a) of |0:_=|0=def|,1:b=|1=b|||
 
 atm :: (Array as a, Convert i long) => (as, i) -> (()+a)
-atm xs i = let k=convert(i)::long in if (k < size(xs) and k >= 0) then just(element(xs, k)) else nothing
+atm xs i = elementM(xs, i)
 
 atMay :: (Convert b long) => ([a],b) -> (()+a)
 atMay = atm 

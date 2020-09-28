@@ -11,6 +11,7 @@ floatFormatConfig = do {
   c.doublePrecision <- -1;
   return c
 }
+{-# SAFE floatFormatConfig #-}
 
 // primitive serialization
 instance Show () where
@@ -144,6 +145,7 @@ fixedCAToStr cs i e r =
     r[i] <- saelem(cs, i);
     return fixedCAToStr(cs, i+1, e, r)
   }
+{-# UNSAFE fixedCAToStr #-}
 
 instance ShowFixedArrOf char n where
   showFA cs i e = "\"" ++ fixedCAToStr(cs, i, e, newArray(e)) ++ "\""
@@ -156,6 +158,7 @@ showSARange showf xs i e r =
     r[i] <- showf(saelem(xs, i));
     return showSARange(showf, xs, i+1, e, r)
   }
+{-# UNSAFE showSARange #-}
 
 instance ShowFixedArrOf byte n where
   showFA bs i e = "0x" ++ concat(showSARange(showByteV, bs, i, e, newArray(e)))
@@ -212,6 +215,7 @@ printArray xs i =
     ()
   else
     do { putStr(", "); print(xs[i]); printArray(xs, i+1L); }
+{-# UNSAFE printArray #-}
 
 instance (Array as a, Print a) => Print as where
   print xs = let n=size(xs) in if (n==0) then putStr("[]") else do { putStr("["); axs=elements(xs, 0L, n); print(axs[0]); printArray(axs, 1L); putStr("]"); }

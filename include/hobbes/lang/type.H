@@ -113,7 +113,7 @@ public:
   // get access to the internal type environment map (should only be used for debugging)
   typedef std::map<std::string, PolyTypePtr> PolyTypeEnv;
 
-  PolyTypeEnv typeEnvTable() const;
+  PolyTypeEnv typeEnvTable(std::function<std::string const&(std::string const&)> const& = [](std::string const& binding) -> std::string const& { return binding; }) const;
   str::set boundVariables() const;
 
   typedef std::map<std::string, UnqualifierPtr> Unqualifiers;

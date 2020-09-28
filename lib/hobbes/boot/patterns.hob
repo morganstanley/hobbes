@@ -16,6 +16,7 @@ lowerBoundFi vs vtx x i c =
         lowerBoundFi(vs, vtx, x, ii+1L, c - (s + 1L))
       else
         lowerBoundFi(vs, vtx, x, i, s)
+{-# UNSAFE lowerBoundFi #-}
 
 bsearch :: (Ord b b) => ([a], a -> b, b) -> long
 bsearch vs vtx x =
@@ -26,6 +27,7 @@ bsearch vs vtx x =
       i
     else
       length(vs)
+{-# SAFE bsearch #-}
 
 runLongDFA :: ([{reads:long, transitions:[long * |done:int, step:long|], def:|done:int, step:long|}], long, [long]) -> int
 runLongDFA dfa s vs =
@@ -59,6 +61,7 @@ packCArrLong cs i =
        packLong(element(cs,i), element(cs,ladd(i,1L)), element(cs,ladd(i,2L)), element(cs,ladd(i,3L)), element(cs,ladd(i,4L)), element(cs,ladd(i,5L)), element(cs,ladd(i,6L)), '\0')
      else
        packLong(element(cs,i), element(cs,ladd(i,1L)), element(cs,ladd(i,2L)), element(cs,ladd(i,3L)), element(cs,ladd(i,4L)), element(cs,ladd(i,5L)), element(cs,ladd(i,6L)), element(cs,ladd(i,7L))))
+{-# UNSAFE packCArrLong #-}
 
 packCArrInt :: (Array a char) => (a, long) -> int
 packCArrInt cs i =
@@ -73,6 +76,7 @@ packCArrInt cs i =
        packInt(element(cs,i), element(cs,ladd(i,1L)), element(cs,ladd(i,2L)), '\0')
      else
        packInt(element(cs,i), element(cs,ladd(i,1L)), element(cs,ladd(i,2L)), element(cs,ladd(i,3L))))
+{-# UNSAFE packCArrInt #-}
 
 packCArrShort :: (Array a char) => (a, long) -> short
 packCArrShort cs i =
@@ -83,6 +87,7 @@ packCArrShort cs i =
        packShort(element(cs,i), '\0')
      else
        packShort(element(cs,i), element(cs,ladd(i,1L))))
+{-# UNSAFE packCArrShort #-}
 
 packCArrChar :: (Array a char) => (a, long) -> char
 packCArrChar cs i =
@@ -90,6 +95,7 @@ packCArrChar cs i =
     '\0'
   else
     (element(cs, i))
+{-# UNSAFE packCArrChar #-}
 
 // DFA interpretation specifically for large regular expressions
 nextRegexDFAState c cps i =
@@ -101,6 +107,7 @@ nextRegexDFAState c cps i =
     i
   else
     nextRegexDFAState(c, cps, i+1)
+{-# UNSAFE nextRegexDFAState #-}
 
 runRegexDFA cs i e s dfa =
   if (i == e) then
@@ -114,6 +121,7 @@ runRegexDFA cs i e s dfa =
         runRegexDFA(cs, i+1, e, st[ns].1, dfa)
       else
         (-1)
+{-# UNSAFE runRegexDFA #-}
 
 // auto-flatten nested list comprehensions
 class MFlatten ts t | ts -> t where

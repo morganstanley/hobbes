@@ -11,6 +11,7 @@ pushDownFromTo xs i e =
     pushDownFromTo(xs, i+1, e);
     xs[i+1] <- xs[i];
   }
+{-# UNSAFE pushDownFromTo #-}
 
 // find the unique groups across a set of values
 foldGroupsInt :: (Ord k k) => (a -> k, (a,b) -> b, [a], long, b, [k*b], long) -> [k*b]
@@ -30,9 +31,11 @@ foldGroupsInt gby f xs i z gs ge =
       else
         do { pushDownFromTo(gs, j, ge); gv = gs[j]; gv.0 <- g; gv.1 <- f(x, z); return foldGroupsInt(gby, f, xs, i+1L, z, gs, ge+1L) }
   )
+{-# UNSAFE foldGroupsInt #-}
 
 foldGroups :: (Ord k k) => (a -> k, (a,b) -> b, [a], b) -> [k*b]
 foldGroups gby f xs z = foldGroupsInt(gby, f, xs, 0L, z, newArray(length(xs)), 0L)
+{-# SAFE foldGroups #-}
 
 foldGroupsCInt :: (Ord k k) => (exists E.(((E,a)->k)*E), (a,b) -> b, [a], long, b, [k*b], long) -> [k*b]
 foldGroupsCInt gby f xs i z gs ge =
@@ -51,9 +54,11 @@ foldGroupsCInt gby f xs i z gs ge =
       else
         do { pushDownFromTo(gs, j, ge); gv = gs[j]; gv.0 <- g; gv.1 <- f(x, z); return foldGroupsCInt(gby, f, xs, i+1L, z, gs, ge+1L) }
   )
+{-# UNSAFE foldGroupsCInt #-}
 
 foldGroupsC :: (Ord k k) => (exists E.(((E,a)->k)*E), (a,b) -> b, [a], b) -> [k*b]
 foldGroupsC gby f xs z = foldGroupsCInt(gby, f, xs, 0L, z, newArray(length(xs)), 0L)
+{-# SAFE foldGroupsC #-}
 
 // group a sequence according to some group projection
 groupBy :: (Ord k k) => (a -> k, [a]) -> [k*[a]]
@@ -72,6 +77,7 @@ countByC gby xs = foldGroupsC(gby, \_ c.c+1L, xs, 0L)
 // find the unique groups across a set of values
 unique :: (Ord a a) => [a] -> [a]
 unique xs = unsafeCast(foldGroups(id, \_ _.(), xs, ()))
+{-# SAFE unique #-}
 
 // [doc] split a sequence in two according to a predicate
 partition :: (a -> bool, [a]) -> ([a]*[a])
@@ -81,6 +87,7 @@ partition p xs =
   | [(false, fs)]             -> (fs, [])
   | [(true,  ts)]             -> ([], ts)
   | _                         -> ([], [])
+{-# SAFE partition #-}
 
 // [doc] split a sequence in two according to a (closure) predicate
 partitionC :: (exists E.(((E,a)->bool)*E), [a]) -> ([a]*[a])
@@ -90,12 +97,14 @@ partitionC p xs =
   | [(false, fs)]             -> (fs, [])
   | [(true,  ts)]             -> ([], ts)
   | _                         -> ([], [])
+{-# SAFE partitionC #-}
 
 // join two sequences on some common key
 almapRange :: (a -> b, [a], long, long) -> ^x.(()+(b*x))
 almapRange f xs i e =
   if (i == e) then nil()
   else             cons(f(xs[i]), almapRange(f, xs, i+1, e))
+{-# UNSAFE almapRange #-}
 
 productWith :: ((a, b) -> c, [a], [b]) -> [c]
 productWith f xs ys = concat([[f(x,y) | y <- ys] | x <- xs])
@@ -107,9 +116,11 @@ mergeGroups gxs i gys j =
   else if (gxs[i].0 < gys[j].0) then cons((gxs[i].0, gxs[i].1, []),       mergeGroups(gxs, i+1, gys, j))
   else if (gys[j].0 < gxs[i].0) then cons((gys[j].0, [], gys[j].1),       mergeGroups(gxs, i,   gys, j+1))
   else                               cons((gxs[i].0, gxs[i].1, gys[j].1), mergeGroups(gxs, i+1, gys, j+1))
+{-# UNSAFE mergeGroups #-}
 
 preJoinBy :: (Ord k k) => (a -> k, [a], b -> k, [b]) -> [k*[a]*[b]]
 preJoinBy xp xs yp ys = toArray(mergeGroups(groupBy(xp, xs), 0L, groupBy(yp, ys), 0L))
+{-# SAFE preJoinBy #-}
 
 joinBy :: (Ord k k) => (a -> k, [a], b -> k, [b]) -> [a*b]
 joinBy xp xs yp ys = concat([productWith(\x y.(x,y), gxs, gys) | (_, gxs, gys) <- preJoinBy(xp, xs, yp, ys)])
@@ -153,10 +164,12 @@ mergeWithStep p xs xi ys yi r ri =
          r[ri] <- ys[yi]; // right-biased merge
          return mergeWithStep(p, xs, xi+1L, ys, yi+1L, r, ri+1L)
        })
+{-# UNSAFE mergeWithStep #-}
 
 // [doc] merge two sorted sequences with an ordering projection
 mergeWith :: (Ord k k) => (a -> k, [a], [a]) -> [a]
 mergeWith p xs ys = mergeWithStep(p, xs, 0L, ys, 0L, newArray(length(xs)+length(ys)), 0L)
+{-# SAFE mergeWith #-}
 
 // merge two sorted sequences with a continuous key (the recursive step)
 cmergeWithStep :: (Ord k0 k1) => (a -> k0, [a], long, (()+a), b -> k1, [b], long, (()+b), [(()+a)*(()+b)], long) -> [(()+a)*(()+b)]
@@ -192,10 +205,12 @@ cmergeWithStep ak as ai la bk bs bi lb rs ri =
           rs[ri] <- (nla,nlb);
           return cmergeWithStep(ak, as, ai+1L, nla, bk, bs, bi+1L, nlb, rs, ri+1L)
         })
+{-# UNSAFE cmergeWithStep #-}
 
 // [doc] merge two sorted sequences with a continuous key (having one supercede the other as necessary)
 cmergeWith :: (Ord k0 k1) => (a -> k0, [a], b -> k1, [b]) -> [(()+a)*(()+b)]
 cmergeWith ak as bk bs = cmergeWithStep(ak, as, 0L, nothing, bk, bs, 0L, nothing, newArray(length(as)+length(bs)), 0L)
+{-# SAFE cmergeWith #-}
 
 // [doc] split an ordered association list on a key (left values are < key, right are >= key)
 splitAssocl :: (Ord k k) => ([k*v], k) -> ([k*v]*[k*v])
@@ -204,6 +219,7 @@ splitAssocl kvs k =
     i = lowerBoundFi(kvs, .0, k, 0L, length(kvs))
   in
     (selectRange(kvs, 0L, i), selectRange(kvs, i, length(kvs)))
+{-# SAFE splitAssocl #-}
 
 // [doc] select a range of key/value pairs from an array of pairs ordered on .0
 selectAssoclRange :: (Ord k k) => ([k*v], k, k) -> [k*v]
@@ -212,4 +228,5 @@ selectAssoclRange kvs k0 k1 =
     i = lowerBoundFi(kvs, .0, k0, 0L, length(kvs))
   in
     selectRange(kvs, i, lowerBoundFi(kvs, .0, k1, i, length(kvs)-i))
+{-# SAFE selectAssoclRange #-}
 

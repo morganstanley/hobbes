@@ -196,14 +196,14 @@ SymSet TEnv::boundVariables() const {
   return r;
 }
 
-TEnv::PolyTypeEnv TEnv::typeEnvTable() const {
+TEnv::PolyTypeEnv TEnv::typeEnvTable(std::function<std::string const&(std::string const&)> const& reWriteFn) const {
   if (this->parent) {
-    return this->parent->typeEnvTable();
+    return this->parent->typeEnvTable(reWriteFn);
   } else {
     PolyTypeEnv pte       = this->ptenv;
     SymSet      overloads = this->unquals->bindings();
     for (SymSet::const_iterator s = overloads.begin(); s != overloads.end(); ++s) {
-      pte[*s] = this->unquals->lookup(*s);
+      pte[*s] = this->unquals->lookup(reWriteFn(*s));
     }
     return pte;
   }

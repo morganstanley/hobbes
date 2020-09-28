@@ -16,6 +16,7 @@ takeSInto n s o i =
     o[i] <- p.0;
     return takeSInto(n-1, p.1, o, i+1L)
   }
+{-# UNSAFE takeSInto #-}
 
 takeS :: (int, (stream a)) -> [a]
 takeS n s = takeSInto(n, s, newArray(convert(n)), 0L)

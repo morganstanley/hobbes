@@ -41,9 +41,11 @@ lappend x y = lfoldr(cons, y, x)
 
 toArrayStep :: ([a], long, ^x.(()+(a*x))) -> [a]
 toArrayStep axs i xs = case unroll(xs) of |0:_=axs, 1:p=do{axs[i] <- p.0; return toArrayStep(axs, i+1, p.1)}|
+{-# UNSAFE toArrayStep #-}
 
 toArray :: (^x.(()+(a*x))) -> [a]
 toArray xs = toArrayStep(newArray(llength(xs)), 0L, xs)
+{-# SAFE toArray #-}
 
 unfold :: (a -> bool, a -> b, a -> a, a) -> (^x.(()+(b*x)))
 unfold stop val step x =
@@ -60,6 +62,7 @@ alflatten xss =
     _  = lfoldlC(\i nxs.let _ = copy(xs, i, nxs) in (i+length(nxs)), 0L, xss)
   in
     xs
+{-# SAFE alflatten #-}
 
 lreverse xs = lfoldl(\r x.cons(x,r), nil(), xs)
 
@@ -115,9 +118,12 @@ lfindSliceSpan n k i e =
       else
         cons(xs[length(xs)-max(0L,i-k):length(xs)-min(length(xs),e-k)], lfindSliceSpan(t, nk, i, e))
   | _ -> nil()
+{-# UNSAFE lfindSliceSpan #-}
 
 instance Array (^x.(()+([a]*x))) a where
   size     xs     = lfoldl(\s vs.s + length(vs), 0L, xs)
   element  xs i   = match lfindS(i, \j vs.j-length(vs), \j vs.j < length(vs), xs) with | |1=(j, vs)| -> vs[length(vs) - (j+1)] | _ -> newPrim()
+  elementM xs i  = match lfindS(i, \j vs.j-length(vs), \j vs.j < length(vs), xs) with | |1=(j, vs)| -> elementM(vs, length(vs) - (j+1)) | _ -> nothing
   elements xs i e = concat(toArray(lfindSliceSpan(xs, 0L, i, e)))
+  elementsM = elements 
 

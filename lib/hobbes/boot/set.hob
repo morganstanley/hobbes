@@ -13,6 +13,7 @@ isInArr i x xs =
     true
   else
     isInArr(i+1L, x, xs)
+{-# UNSAFE isInArr #-}
 
 instance (Equiv a b, Array u b) => Set a u where
   x in xs = isInArr(0L, x, xs)
@@ -28,6 +29,7 @@ equivAt u i v j =
     equivAt(u, i+1, v, j+1)
   else
     false
+{-# UNSAFE equivAt #-}
 
 subSeqInAt :: (Equiv a b, Array v a, Array u b) => (u, v, long) -> bool
 subSeqInAt u v i =
@@ -37,6 +39,7 @@ subSeqInAt u v i =
     true
   else
     subSeqInAt(u, v, i+1)
+{-# UNSAFE subSeqInAt  #-}
 
 instance (Equiv a b, Array v a, Array u b) => Set u v where
   x in xs = subSeqInAt(x, xs, 0L)

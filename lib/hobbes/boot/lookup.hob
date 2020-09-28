@@ -23,6 +23,7 @@ lookupAssoci x vs i =
     |1=vs[i].1|
   else
     lookupAssoci(x, vs, i+1)
+{-# UNSAFE lookupAssoci #-}
 
 instance (Equiv a b) => Lookup a [b*c] (()+c) where
   lookup k vs = lookupAssoci(k, vs, 0L)
@@ -36,6 +37,7 @@ lookupElemi k xs i =
     i
   else
     lookupElemi(k, xs, i+1)
+{-# UNSAFE lookupElemi #-}
 
 instance (Eq a) => Lookup a [a] long where
   lookup k vs = lookupElemi(k, vs, 0L)

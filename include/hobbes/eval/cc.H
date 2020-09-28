@@ -139,9 +139,9 @@ public:
   llvm::Module*          module()  const;
 
   // dump the contents of the active type environment (useful for debugging)
-  void dumpTypeEnv() const;
-  void dumpTypeEnv(str::seq* syms, str::seq* types) const;
-  std::string showTypeEnv() const;
+  void dumpTypeEnv(std::function<std::string const&(std::string const&)> const& = [](std::string const& binding) -> std::string const& { return binding; }) const;
+  void dumpTypeEnv(str::seq* syms, str::seq* types, std::function<std::string const&(std::string const&)> const& = [](std::string const& binding) -> std::string const& { return binding; }) const;
+  std::string showTypeEnv(std::function<std::string const&(std::string const&)> const& = [](std::string const& binding) -> std::string const& { return binding; }) const;
 
   const TEnvPtr& typeEnv() const;
 
