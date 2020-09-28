@@ -7,6 +7,8 @@ pkgs.stdenv.mkDerivation {
   nativeBuildInputs = with pkgs; [
     ccls
     cmake
+    ninja
+    meson
     gcc8
     llvm_6
     ncurses

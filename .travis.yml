@@ -47,7 +47,7 @@ matrix:
     - os: linux
       compiler: g++
       language: nix
-      nix: 2.0.4
+      nix: 2.3.6
       group: deprecated-2017Q4
       script: nix-build
 
