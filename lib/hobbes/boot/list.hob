@@ -125,5 +125,3 @@ instance Array (^x.(()+([a]*x))) a where
   element  xs i   = match lfindS(i, \j vs.j-length(vs), \j vs.j < length(vs), xs) with | |1=(j, vs)| -> vs[length(vs) - (j+1)] | _ -> newPrim()
   elementM xs i  = match lfindS(i, \j vs.j-length(vs), \j vs.j < length(vs), xs) with | |1=(j, vs)| -> elementM(vs, length(vs) - (j+1)) | _ -> nothing
   elements xs i e = concat(toArray(lfindSliceSpan(xs, 0L, i, e)))
-  elementsM = elements 
-

@@ -74,3 +74,12 @@ TEST(Arrays, Alignment) {
   EXPECT_EQ(reinterpret_cast<size_t>(a)%sizeof(size_t), size_t(0));
 }
 
+TEST(Arrays, Elements) {
+  std::string x = "ab";
+
+  EXPECT_TRUE((c().compileFn<bool(std::string*)>("x", "elements(x, 0L, 2L) == \"ab\"")(&x)));
+  EXPECT_TRUE((c().compileFn<bool(std::string*)>("x", "elements(x, -1L, 2L) == \"\"")(&x)));
+  EXPECT_TRUE((c().compileFn<bool(std::string*)>("x", "elements(x, 0L, 3L) == \"\"")(&x))); 
+  EXPECT_TRUE((c().compileFn<bool(std::string*)>("x", "elements(x, 2L, 1L) == \"\"")(&x)));
+}
+

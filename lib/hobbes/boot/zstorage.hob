@@ -401,7 +401,6 @@ instance (UCRead t sm dm) => Array (cseq t sm n) t where
   element  s i   = cseqReadFromTo(unsafeCast(file(s.t)), s, i, i+1L)[0]
   elementM s i = just(cseqReadFromTo(unsafeCast(file(s.t)), s, i, i+1L)[0])
   elements s i e = cseqReadFromTo(unsafeCast(file(s.t)), s, i, e)
-  elementsM = elements 
 
 // put a sequence of values
 ucRootPutN :: (UCWrite t sm dm) => (<hobbes.UCWriter>, dm, [t], long) -> ()
