@@ -14,7 +14,7 @@
               src = self;
               nativeBuildInputs = [ cmake ninja ];
               buildInputs = [ llvm_6 ncurses readline zlib ];
-              doCheck = false;
+              doCheck = true;
               doTarget = "test";
               meta = with stdenv.lib; {
                 description = "A language and an embedded JIT compiler";
