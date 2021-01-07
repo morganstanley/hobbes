@@ -29,12 +29,13 @@
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/Support/TargetRegistry.h>
 #include <llvm/Support/Signals.h>
-#if LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 6
+#if LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 6 || LLVM_VERSION_MAJOR == 8
 #include <llvm/Bitcode/BitstreamReader.h>
 #include <llvm/Bitcode/BitstreamWriter.h>
 #else
 #include <llvm/Bitcode/ReaderWriter.h>
 #endif
+
 #include <llvm/Support/raw_os_ostream.h>
 #include <llvm/ExecutionEngine/ExecutionEngine.h>
 #include <llvm/ExecutionEngine/JITEventListener.h>
@@ -43,7 +44,7 @@
 #if LLVM_VERSION_MINOR == 3
 #include <llvm/Analysis/Verifier.h>
 #include <llvm/PassManager.h>
-#elif LLVM_VERSION_MINOR >= 5 || LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 6
+#elif LLVM_VERSION_MINOR >= 5 || LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 6 || LLVM_VERSION_MAJOR == 8
 #include <llvm/IR/Verifier.h>
 #include <llvm/ExecutionEngine/SectionMemoryManager.h>
 #include <llvm/IR/LegacyPassManager.h>
@@ -358,6 +359,19 @@ inline llvm::Constant* padding(size_t len) {
   return llvm::ConstantArray::get(arrayType(byteType(), len), pad);
 }
 
+inline llvm::Value* memCopy(llvm::IRBuilder<>* b, llvm::Value* dst, uint32_t dstAlign, llvm::Value* src, uint32_t srcAlign, llvm::Value* sz) {
+#if LLVM_VERSION_MAJOR == 3 || LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 5 || LLVM_VERSION_MAJOR == 6
+  (void)dstAlign;
+  return b->CreateMemCpy(dst, src, sz, srcAlign);
+#elif LLVM_VERSION_MAJOR == 8
+  return b->CreateMemCpy(dst, dstAlign, src, srcAlign, sz);
+#endif
+}
+
+inline llvm::Value* memCopy(llvm::IRBuilder<>* b, llvm::Value* dst, uint32_t dstAlign, llvm::Value* src, uint32_t srcAlign, unsigned int sz) {
+  return memCopy(b, dst, dstAlign, src, srcAlign, civalue(sz));
+}
+
 inline Constants mergePadding(const Constants& cs, const Record::Members& ms) {
   Constants r;
   size_t i = 0;
@@ -478,7 +492,7 @@ inline llvm::Value* structOffset(llvm::IRBuilder<>* b, llvm::Value* p, unsigned 
 #endif
 }
 
-#if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 6
+#if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 6 || LLVM_VERSION_MAJOR == 8
 inline llvm::ExecutionEngine* makeExecutionEngine(llvm::Module* m, llvm::SectionMemoryManager* smm) {
   std::string err;
   llvm::ExecutionEngine* ee =

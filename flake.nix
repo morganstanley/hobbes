@@ -1,45 +1,50 @@
 {
-  description = "Hobbes Compiler";
-
-  outputs = { self, nixpkgs }:
-    let
-      system = "x86_64-linux";
-      version = "${nixpkgs.lib.substring 0 8 self.lastModifiedDate}.${self.shortRev or "dirty"}";
-      overlays = [
-        (final: prev: {
-          hobbes-master =
+  description = "A language and an embedded JIT compiler";
+  
+  inputs.flake-utils.url = "github:numtide/flake-utils";
+  
+  outputs = { self, nixpkgs, flake-utils }:
+    flake-utils.lib.eachSystem [ "x86_64-linux" "x86_64-darwin" ] (system:
+      let
+        version = "${nixpkgs.lib.substring 0 8 self.lastModifiedDate}.${self.shortRev or "dirty"}";
+        overlays = [
+          (final: prev:
             with final;
-            stdenv.mkDerivation {
-              name = "hobbes-master-${version}";
-              src = ./.;
+            let
+              src = self;
               nativeBuildInputs = [ cmake ninja ];
               buildInputs = [ llvm_6 ncurses readline zlib ];
               doCheck = false;
               doTarget = "test";
-            };
-          hobbes-compat =
-            with final;
-            stdenv.mkDerivation {
-              name = "hobbes-compat-${version}";
-              src = fetchFromGitHub { owner="smunix";
-                                      repo="hobbes";
-                                      rev="046ad1f631c90b8d70b3f14675dbe702f6343434";
-                                      sha256="0zhd0v2gjj67r69qwvn6fbjhmnbnaikshdvq53q9vqvfipi42lqz";
-                                    };
-              nativeBuildInputs = [ cmake ninja ];
-              buildInputs = [ llvm_6 ncurses readline zlib ];
-              doCheck = false;
-              doTarget = "test";
-            };
-        })
-      ];
-    in
-      {
-        packages.x86_64-linux = import nixpkgs {
+              meta = with stdenv.lib; {
+                description = "A language and an embedded JIT compiler";
+                longDescription = ''
+                  Hobbes is a language, embedded compiler, and runtime for efficient
+                  dynamic expression evalution, data storage and analysis.
+                '';
+                license = licenses.asl20;
+                maintainers = with maintainers; [ kthielen thmzlt smunix ];
+              };
+            in {
+              hobbes-llvm-6 = stdenv.mkDerivation {
+                name = "hobbes-llvm-6-${version}";
+                inherit src nativeBuildInputs buildInputs doCheck doTarget;
+              };
+              hobbes-llvm-8 = stdenv.mkDerivation {
+                name = "hobbes-llvm-8-${version}";
+                inherit src nativeBuildInputs buildInputs doCheck doTarget;
+              };
+            })
+        ];
+        pkgs = import nixpkgs {
           inherit system overlays;
         };
-        defaultPackage.x86_64-linux = (import nixpkgs {
-          inherit system overlays;
-        }).hobbes-master;
-    };
+      in
+        rec {
+          packages = flake-utils.lib.flattenTree {
+            inherit (pkgs) hobbes-llvm-6;
+            inherit (pkgs) hobbes-llvm-8;
+          };
+          defaultPackage = packages.hobbes-llvm-6;
+        });
 }

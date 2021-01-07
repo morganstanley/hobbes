@@ -156,7 +156,7 @@ public:
       llvm::Value* rhs = compile(v->right());
 
       if (isLargeType(rty)) {
-        builder()->CreateMemCpy(lhs, rhs, sizeOf(rty), 8);
+        memCopy(builder(), lhs, 8, rhs, 8, sizeOf(rty));
       } else {
         builder()->CreateStore(rhs, lhs);
       }
@@ -197,7 +197,7 @@ public:
 
           // we only memcopy into an array if the data is large and isn't an opaque pointer (always write opaque pointers as pointers)
           if (!isStoredPtr && isLargeType(aty->type())) {
-            builder()->CreateMemCpy(ap, ev, sizeOf(aty->type()), 8);
+            memCopy(builder(), ap, 8, ev, 8, sizeOf(aty->type()));
           } else {
             builder()->CreateStore(ev, ap);
           }
@@ -225,7 +225,7 @@ public:
     llvm::Value* pp    = offset(builder(), p, vty->payloadOffset());
 
     if (isLargeType(valty)) {
-      builder()->CreateMemCpy(pp, tv, sizeOf(valty), 8);
+      memCopy(builder(), pp, 8, tv, 8, sizeOf(valty));
     } else if (isUnit(valty)) {
       // don't store unit values
     } else {
@@ -260,7 +260,7 @@ public:
         MonoTypePtr  fty = rty->member(rv->first);
 
         if (isLargeType(fty)) {
-          builder()->CreateMemCpy(fp, fv, sizeOf(fty), 8);
+          memCopy(builder(), fp, 8, fv, 8, sizeOf(fty));
         } else {
           builder()->CreateStore(fv, fp);
         }

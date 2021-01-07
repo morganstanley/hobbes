@@ -32,7 +32,7 @@ namespace hobbes {
 // this should be moved out of here eventually
 bool isFileType(const MonoTypePtr&);
 
-#if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 6
+#if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 6 || LLVM_VERSION_MAJOR == 8
 class jitmm : public llvm::SectionMemoryManager {
 public:
   jitmm(jitcc* jit) : jit(jit) { }
@@ -99,7 +99,7 @@ jitcc::jitcc(const TEnvPtr& tenv) :
   this->fpm->doInitialization();
 #endif
 
-#if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 6
+#if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 6 || LLVM_VERSION_MAJOR == 8
   this->mpm = new llvm::legacy::PassManager();
   this->mpm->add(llvm::createFunctionInliningPass());
 #endif
@@ -112,7 +112,7 @@ jitcc::~jitcc() {
   }
 
   // release LLVM resources
-#if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 6
+#if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 6 || LLVM_VERSION_MAJOR == 8
   for (auto ee : this->eengines) {
     delete ee;
   }
@@ -148,7 +148,7 @@ void* jitcc::getSymbolAddress(const std::string& vn) {
   }
 
   // do we have a compiled function with this name?
-#if LLVM_VERSION_MAJOR == 6
+#if LLVM_VERSION_MAJOR == 6 || LLVM_VERSION_MAJOR == 8
   for (auto ee : this->eengines) {
     if (ee->FindFunctionNamed(vn) || ee->FindGlobalVariableNamed(vn)) {
       if (uint64_t faddr = ee->getFunctionAddress(vn)) {
@@ -156,7 +156,7 @@ void* jitcc::getSymbolAddress(const std::string& vn) {
       }
     }
   }
-#elif LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR == 4
+#elif LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR == 4 
   for (auto ee : this->eengines) {
     if (uint64_t faddr = ee->getFunctionAddress(vn)) {
       return reinterpret_cast<void*>(faddr);
@@ -170,7 +170,7 @@ void* jitcc::getSymbolAddress(const std::string& vn) {
 
 void jitcc::dump() const {
   for (auto m : this->modules) {
-#if LLVM_VERSION_MAJOR == 6
+#if LLVM_VERSION_MAJOR == 6 || LLVM_VERSION_MAJOR == 8
     m->print(llvm::dbgs(), nullptr, /*ShouldPreserveUseListOrder=*/false, /*IsForDebug=*/true);
 #else
     m->dump();
@@ -179,7 +179,7 @@ void jitcc::dump() const {
 }
 
 void* jitcc::getMachineCode(llvm::Function* f, llvm::JITEventListener* listener) {
-#if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 6
+#if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 6 || LLVM_VERSION_MAJOR == 8
   // try to get the machine code for this function out of an existing compiled module
   for (auto ee : this->eengines) {
     if (void* pf = ee->getPointerToFunction(f)) {
@@ -212,9 +212,17 @@ void* jitcc::getMachineCode(llvm::Function* f, llvm::JITEventListener* listener)
 #else // LLVM_VERSION_MINOR >= 8
   this->currentModule->setDataLayout(ee->getDataLayout());
 #endif
+#if LLVM_VERSION_MAJOR == 8
+  // todo: smunix: what do we substitute this with?
+#else
   fpm.add(llvm::createInstructionCombiningPass());
+#endif
   fpm.add(llvm::createReassociatePass());
+#if LLVM_VERSION_MAJOR == 6 || LLVM_VERSION_MAJOR == 8  
+  fpm.add(llvm::createNewGVNPass());
+#else
   fpm.add(llvm::createGVNPass());
+#endif
   fpm.add(llvm::createCFGSimplificationPass());
   fpm.add(llvm::createTailCallEliminationPass());
   fpm.doInitialization();
