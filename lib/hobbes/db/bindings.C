@@ -189,7 +189,7 @@ class dbloadVF : public op {
     llvm::Function* f = c->lookupFunction(".dbloado");
     if (!f) { throw std::runtime_error("Expected 'dbloado' function as call"); }
 
-    llvm::Value* allocv = fncall(c->builder(), f, list<llvm::Value*>(db, off));
+    llvm::Value* allocv = fncall(c->builder(), f, f->getFunctionType(), list<llvm::Value*>(db, off));
 
     if (hasPointerRep(rty)) {
       return c->builder()->CreateBitCast(allocv, toLLVM(rty, true));
@@ -223,7 +223,7 @@ class dbstoreVF : public op {
     llvm::Function* f = c->lookupFunction(".dbloado");
     if (!f) { throw std::runtime_error("Expected 'dbloado' function as call"); }
 
-    llvm::Value* allocv = fncall(c->builder(), f, list<llvm::Value*>(db, off));
+    llvm::Value* allocv = fncall(c->builder(), f, f->getFunctionType(), list<llvm::Value*>(db, off));
 
     if (hasPointerRep(sty)) {
       allocv = c->builder()->CreateBitCast(allocv, toLLVM(sty, true));
@@ -232,7 +232,7 @@ class dbstoreVF : public op {
     }
 
     if (isLargeType(sty)) {
-      return c->builder()->CreateMemCpy(allocv, outv, sizeOf(sty), 8);
+      return memCopy(c->builder(), allocv, 8, outv, 8, sizeOf(sty));
     } else {
       return c->builder()->CreateStore(outv, allocv);
     }
@@ -265,17 +265,17 @@ struct dbloadF : public op {
       llvm::Function* f = c->lookupFunction(".dbloaddarr");
       if (!f) { throw std::runtime_error("Expected 'dbloaddarr' function as call"); }
 
-      return c->builder()->CreateBitCast(fncall(c->builder(), f, list<llvm::Value*>(db, off)), toLLVM(rty, true));
+      return c->builder()->CreateBitCast(fncall(c->builder(), f, f->getFunctionType(), list<llvm::Value*>(db, off)), toLLVM(rty, true));
     } else if (const Array* t = storedAsArray(rty)) {
       llvm::Function* f = c->lookupFunction(".dbloadarr");
       if (!f) { throw std::runtime_error("Expected 'dbloadarr' function as call"); }
 
-      return c->builder()->CreateBitCast(fncall(c->builder(), f, list<llvm::Value*>(db, off, cvalue(static_cast<long>(storageSizeOf(t->type()))))), toLLVM(rty, true));
+      return c->builder()->CreateBitCast(fncall(c->builder(), f, f->getFunctionType(), list<llvm::Value*>(db, off, cvalue(static_cast<long>(storageSizeOf(t->type()))))), toLLVM(rty, true));
     } else {
       llvm::Function* f = c->lookupFunction(".dbloadv");
       if (!f) { throw std::runtime_error("Expected 'dbloadv' function as call"); }
 
-      llvm::Value* allocv = fncall(c->builder(), f, list<llvm::Value*>(db, off, cvalue(static_cast<long>(storageSizeOf(rty)))));
+      llvm::Value* allocv = fncall(c->builder(), f, f->getFunctionType(), list<llvm::Value*>(db, off, cvalue(static_cast<long>(storageSizeOf(rty)))));
 
       if (hasPointerRep(rty)) {
         return c->builder()->CreateBitCast(allocv, toLLVM(rty, true));
@@ -308,17 +308,17 @@ struct dbloadPF : public op {
       llvm::Function* f = c->lookupFunction(".dbloaddarr");
       if (!f) { throw std::runtime_error("Expected 'dbloaddarr' function as call"); }
 
-      return c->builder()->CreateBitCast(fncall(c->builder(), f, list<llvm::Value*>(db, off)), toLLVM(rty, true));
+      return c->builder()->CreateBitCast(fncall(c->builder(), f, f->getFunctionType(), list<llvm::Value*>(db, off)), toLLVM(rty, true));
     } else if (const Array* a = storedAsArray(rty)) {
       llvm::Function* f = c->lookupFunction(".dbloadarr");
       if (!f) { throw std::runtime_error("Expected 'dbloadarr' function as call"); }
 
-      return c->builder()->CreateBitCast(fncall(c->builder(), f, list<llvm::Value*>(db, off, cvalue(static_cast<long>(storageSizeOf(a->type()))))), toLLVM(rty, true));
+      return c->builder()->CreateBitCast(fncall(c->builder(), f, f->getFunctionType(), list<llvm::Value*>(db, off, cvalue(static_cast<long>(storageSizeOf(a->type()))))), toLLVM(rty, true));
     } else {
       llvm::Function* f = c->lookupFunction(".dbloadv");
       if (!f) { throw std::runtime_error("Expected 'dbloadv' function as call"); }
 
-      llvm::Value* allocv = fncall(c->builder(), f, list<llvm::Value*>(db, off, cvalue(static_cast<long>(storageSizeOf(rty)))));
+      llvm::Value* allocv = fncall(c->builder(), f, f->getFunctionType(), list<llvm::Value*>(db, off, cvalue(static_cast<long>(storageSizeOf(rty)))));
 
       if (hasPointerRep(rty)) {
         return c->builder()->CreateBitCast(allocv, toLLVM(rty, true));
@@ -388,19 +388,19 @@ struct dbunloadF : public op {
       llvm::Function* f = c->lookupFunction(".dbunloaddarr");
       if (!f) { throw std::runtime_error("Expected 'dbunloaddarr' function as call"); }
 
-      return fncall(c->builder(), f, list<llvm::Value*>(db, val));
+      return fncall(c->builder(), f, f->getFunctionType(), list<llvm::Value*>(db, val));
     } else if (const Array* a = storedAsArray(tys[1])) {
       llvm::Function* f = c->lookupFunction(".dbunloadarr");
       if (!f) { throw std::runtime_error("Expected 'dbunloadarr' function as call"); }
 
-      return fncall(c->builder(), f, list<llvm::Value*>(db, val, cvalue(static_cast<long>(storageSizeOf(a->type())))));
+      return fncall(c->builder(), f, f->getFunctionType(), list<llvm::Value*>(db, val, cvalue(static_cast<long>(storageSizeOf(a->type())))));
     } else if (!hasPointerRep(tys[1])) {
       return cvalue(true);
     } else {
       llvm::Function* f = c->lookupFunction(".dbunloadv");
       if (!f) { throw std::runtime_error("Expected 'dbunloadv' function as call"); }
 
-      return fncall(c->builder(), f, list<llvm::Value*>(db, val, cvalue(static_cast<long>(storageSizeOf(tys[1])))));
+      return fncall(c->builder(), f, f->getFunctionType(), list<llvm::Value*>(db, val, cvalue(static_cast<long>(storageSizeOf(tys[1])))));
     }
   }
 
@@ -428,7 +428,7 @@ struct dballocF : public op {
     if (!f) { throw std::runtime_error("Expected 'dballoc' function as call"); }
 
     size_t sz = storageSizeOf(frefType(rty));
-    return fncall(c->builder(), f, list<llvm::Value*>(db, cvalue(static_cast<long>(sz)), cvalue(static_cast<long>(alignment(frefType(rty))))));
+    return fncall(c->builder(), f, f->getFunctionType(), list<llvm::Value*>(db, cvalue(static_cast<long>(sz)), cvalue(static_cast<long>(alignment(frefType(rty))))));
   }
 
   PolyTypePtr type(typedb&) const {
@@ -454,11 +454,11 @@ struct dbstoreF : public op {
       if (!dblf) { throw std::runtime_error("Expected 'dbloadv' function as call"); }
 
       size_t sz = storageSizeOf(frefType(rty));
-      llvm::Value* id = fncall(c->builder(), f, list<llvm::Value*>(db, cvalue(static_cast<long>(sz)), cvalue(static_cast<long>(alignment(frefType(rty))))));
+      llvm::Value* id = fncall(c->builder(), f, f->getFunctionType(), list<llvm::Value*>(db, cvalue(static_cast<long>(sz)), cvalue(static_cast<long>(alignment(frefType(rty))))));
 
       if (!isUnit(tys[0])) {
-        llvm::Value* p = fncall(c->builder(), dblf, list<llvm::Value*>(db, id, cvalue(static_cast<long>(sz))));
-        c->builder()->CreateMemCpy(p, c->builder()->CreateBitCast(v, ptrType(charType())), sz, 8);
+        llvm::Value* p = fncall(c->builder(), dblf, dblf->getFunctionType(), list<llvm::Value*>(db, id, cvalue(static_cast<long>(sz))));
+        memCopy(c->builder(), p, 8, c->builder()->CreateBitCast(v, ptrType(charType())), 8, sz);
       }
 
       return id;
@@ -488,11 +488,11 @@ struct dbstorePF : public op {
       if (!dblf) { throw std::runtime_error("Expected 'dbloadv' function as call"); }
 
       size_t sz = storageSizeOf(frefType(rty));
-      llvm::Value* id = fncall(c->builder(), f, list<llvm::Value*>(db, cvalue(static_cast<long>(sz)), cvalue(static_cast<long>(alignment(frefType(rty))))));
+      llvm::Value* id = fncall(c->builder(), f, f->getFunctionType(), list<llvm::Value*>(db, cvalue(static_cast<long>(sz)), cvalue(static_cast<long>(alignment(frefType(rty))))));
 
       if (!isUnit(tys[1])) {
-        llvm::Value* p = fncall(c->builder(), dblf, list<llvm::Value*>(db, id, cvalue(static_cast<long>(sz))));
-        c->builder()->CreateMemCpy(p, c->builder()->CreateBitCast(v, ptrType(charType())), sz, 8);
+        llvm::Value* p = fncall(c->builder(), dblf, dblf->getFunctionType(), list<llvm::Value*>(db, id, cvalue(static_cast<long>(sz))));
+        memCopy(c->builder(), p, 8, c->builder()->CreateBitCast(v, ptrType(charType())), 8, sz);
       }
 
       return id;
@@ -523,7 +523,7 @@ struct dballocArrF : public op {
     if (!f) { throw std::runtime_error("Expected 'dballocarr' function as call"); }
 
     size_t elemsz = storageSizeOf(arrType(frt.first));
-    return fncall(c->builder(), f, list<llvm::Value*>(db, cvalue(static_cast<long>(elemsz)), len));
+    return fncall(c->builder(), f, f->getFunctionType(), list<llvm::Value*>(db, cvalue(static_cast<long>(elemsz)), len));
   }
 
   PolyTypePtr type(typedb&) const {
@@ -543,7 +543,7 @@ struct dballocArrPF : public op {
     if (!f) { throw std::runtime_error("Expected 'dballocarr' function as call"); }
 
     size_t elemsz = storageSizeOf(arrType(frefType(rty)));
-    return fncall(c->builder(), f, list<llvm::Value*>(db, cvalue(static_cast<long>(elemsz)), len));
+    return fncall(c->builder(), f, f->getFunctionType(), list<llvm::Value*>(db, cvalue(static_cast<long>(elemsz)), len));
   }
 
   PolyTypePtr type(typedb&) const {
@@ -570,7 +570,7 @@ struct dbarrCapacityF : public op {
     if (!f) { throw std::runtime_error("Expected 'dbdarrcapacity' function as call"); }
 
     size_t elemsz = storageSizeOf(darrType(frt.first));
-    return fncall(c->builder(), f, list<llvm::Value*>(db, cvalue(static_cast<long>(elemsz)), off));
+    return fncall(c->builder(), f, f->getFunctionType(), list<llvm::Value*>(db, cvalue(static_cast<long>(elemsz)), off));
   }
 
   PolyTypePtr type(typedb&) const {
@@ -590,7 +590,7 @@ struct dbarrCapacityPF : public op {
     if (!f) { throw std::runtime_error("Expected 'dbdarrcapacity' function as call"); }
 
     size_t elemsz = storageSizeOf(darrType(frefType(tys[1])));
-    return fncall(c->builder(), f, list<llvm::Value*>(db, cvalue(static_cast<long>(elemsz)), off));
+    return fncall(c->builder(), f, f->getFunctionType(), list<llvm::Value*>(db, cvalue(static_cast<long>(elemsz)), off));
   }
 
   PolyTypePtr type(typedb&) const {
@@ -635,7 +635,7 @@ struct signalUpdateF : public op {
     llvm::Function* f = c->lookupFunction(".dbsignalupdate");
     if (!f) { throw std::runtime_error("Expected 'dbsignalupdate' function as call"); }
 
-    return fncall(c->builder(), f, list<llvm::Value*>(db));
+    return fncall(c->builder(), f, f->getFunctionType(), list<llvm::Value*>(db));
   }
 
   PolyTypePtr type(typedb&) const {

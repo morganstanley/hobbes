@@ -4,53 +4,104 @@ env:
     - DEPS=""
 matrix:
   include:
-    - os: osx
-      compiler: clang
-      osx_image: xcode9.4
-      env:
-        - DEPS="${DEPS} readline llvm@6"
-        - LLVM_DIR=/usr/local/opt/llvm@6/lib/cmake/llvm/
-        - ARGS=-V
-    - os: linux
-      compiler: g++
-      root: required
-      dist: trusty
-      group: deprecated-2017Q4
-      services:
-        - docker
-      env:
-        - DIST=xenial
-        - DEPS="llvm-3.7-dev cmake libedit-dev g++ libncurses5-dev zlib1g-dev libreadline-dev python2.7"
-        - ARGS=-V
-    - os: linux
-      compiler: g++
-      root: required
-      dist: trusty
-      group: deprecated-2017Q4
-      services:
-        - docker
-      env:
-        - DIST=xenial
-        - DEPS="llvm-4.0-dev cmake libedit-dev g++ libncurses5-dev zlib1g-dev libreadline-dev python2.7"
-        - ARGS=-V
-    - os: linux
-      compiler: g++
-      root: required
-      dist: trusty
-      group: deprecated-2017Q4
-      services:
-        - docker
-      env:
-        - DIST=xenial
-        - DEPS="llvm-6.0-dev cmake libedit-dev g++ libncurses5-dev zlib1g-dev libreadline-dev python2.7"
-        - ARGS=-V
     - os: linux
       compiler: g++
       language: nix
       nix: 2.3.6
       group: deprecated-2017Q4
-      script: nix-build
+      name: hobbesPackages.llvm-6.hobbes
+      env:
+        - HOBBES_DRV=hobbesPackages.llvm-6.hobbes
+      script: nix-build -A $HOBBES_DRV
 
+    - os: linux
+      compiler: g++
+      language: nix
+      nix: 2.3.6
+      group: deprecated-2017Q4
+      name: hobbesPackages.llvm-8.hobbes
+      env:
+        - HOBBES_DRV=hobbesPackages.llvm-8.hobbes
+      script: nix-build -A $HOBBES_DRV
+
+    - os: linux
+      compiler: g++
+      language: nix
+      nix: 2.3.6
+      group: deprecated-2017Q4
+      name: hobbesPackages.llvm-9.hobbes
+      env:
+        - HOBBES_DRV=hobbesPackages.llvm-9.hobbes
+      script: nix-build -A $HOBBES_DRV
+
+    - os: linux
+      compiler: g++
+      language: nix
+      nix: 2.3.6
+      group: deprecated-2017Q4
+      name: hobbesPackages.llvm-10.hobbes
+      env:
+        - HOBBES_DRV=hobbesPackages.llvm-10.hobbes
+      script: nix-build -A $HOBBES_DRV
+
+    - os: linux
+      compiler: g++
+      language: nix
+      nix: 2.3.6
+      group: deprecated-2017Q4
+      name: hobbesPackages.llvm-11.hobbes
+      env:
+        - HOBBES_DRV=hobbesPackages.llvm-11.hobbes
+      script: nix-build -A $HOBBES_DRV
+
+    # Temporarilly disable osx => https://git.io/JLp7U
+    # - os: osx
+    #   compiler: clang
+    #   osx_image: xcode9.4
+    #   env:
+    #     - DEPS="${DEPS} readline llvm@6"
+    #     - LLVM_DIR=/usr/local/opt/llvm@6/lib/cmake/llvm/
+    #     - ARGS=-V
+        
+    - os: linux
+      compiler: g++
+      root: required
+      dist: trusty
+      group: deprecated-2017Q4
+      services:
+        - docker
+      name: hobbes-llvm-6.0-dev
+      env:
+        - DIST=xenial
+        - DEPS="llvm-6.0-dev cmake libedit-dev g++ libncurses5-dev zlib1g-dev libreadline-dev python2.7"
+        - ARGS=-V
+        
+    - os: linux
+      compiler: g++
+      root: required
+      dist: trusty
+      group: deprecated-2017Q4
+      services:
+        - docker
+      name: hobbes-llvm-4.0-dev
+      env:
+        - DIST=xenial
+        - DEPS="llvm-4.0-dev cmake libedit-dev g++ libncurses5-dev zlib1g-dev libreadline-dev python2.7"
+        - ARGS=-V
+    
+    - os: linux
+      compiler: g++
+      root: required
+      dist: trusty
+      group: deprecated-2017Q4
+      services:
+        - docker
+      name: hobbes-llvm-3.7-dev
+      env:
+        - DIST=xenial
+        - DEPS="llvm-3.7-dev cmake libedit-dev g++ libncurses5-dev zlib1g-dev libreadline-dev python2.7"
+        - ARGS=-V
+        
 install:
   - if [ $TRAVIS_OS_NAME = osx   ]; then brew update && brew install -v ${DEPS} && find /usr/local/opt/llvm@6/ | grep cmake; fi
   - if [ $TRAVIS_OS_NAME = linux ]; then cd docker/build && docker build . -f ./${DIST}.Dockerfile -t hobbes:build --build-arg DEPS; cd -; fi

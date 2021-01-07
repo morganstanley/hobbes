@@ -9,11 +9,13 @@ static proc* hiSession() {
   static proc p;
   static bool init = false;
   if (!init) {
-    try {
-      spawn("./hi -z", &p);
-    } catch (std::exception&) {
-      spawn("./hi-g -z", &p);
-    }
+    execPath([&](std::string const& ep) -> void {
+      try {
+        spawn(ep + "/hi -z", &p);
+      } catch (std::exception&) {
+        spawn(ep + "/hi-g -z", &p);
+      }
+    });
   }
   return &p;
 }
