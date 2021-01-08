@@ -13,7 +13,7 @@
             let
               src = self;
               nativeBuildInputs = [ cmake ninja ];
-              buildInputs = [ llvm_6 ncurses readline zlib ];
+              buildInputs = [ ncurses readline zlib ];
               doCheck = true;
               doTarget = "test";
               meta = with stdenv.lib; {
@@ -26,13 +26,20 @@
                 maintainers = with maintainers; [ kthielen thmzlt smunix ];
               };
             in {
+              hobbes-llvm-x = stdenv.mkDerivation {
+                name = "hobbes-llvm-x-${version}";
+                inherit src nativeBuildInputs doCheck doTarget;
+                buildInputs = buildInputs;
+              };
               hobbes-llvm-6 = stdenv.mkDerivation {
                 name = "hobbes-llvm-6-${version}";
-                inherit src nativeBuildInputs buildInputs doCheck doTarget;
+                inherit src nativeBuildInputs doCheck doTarget;
+                buildInputs = buildInputs ++ [ llvm_6 ];
               };
               hobbes-llvm-8 = stdenv.mkDerivation {
                 name = "hobbes-llvm-8-${version}";
-                inherit src nativeBuildInputs buildInputs doCheck doTarget;
+                inherit src nativeBuildInputs doCheck doTarget;
+                buildInputs = buildInputs ++ [ llvm_8 ];
               };
             })
         ];
@@ -42,6 +49,7 @@
       in
         rec {
           packages = flake-utils.lib.flattenTree {
+            inherit (pkgs) hobbes-llvm-x;
             inherit (pkgs) hobbes-llvm-6;
             inherit (pkgs) hobbes-llvm-8;
           };
