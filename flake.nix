@@ -2,10 +2,11 @@
   description = "A language and an embedded JIT compiler";
   
   inputs.flake-utils.url = "github:numtide/flake-utils";
-  
+
   outputs = { self, nixpkgs, flake-utils }:
     flake-utils.lib.eachSystem [ "x86_64-linux" "x86_64-darwin" ] (system:
       let
+        LLVMs = [ 6 8 9 10 11 ];
         version = "${nixpkgs.lib.substring 0 8 self.lastModifiedDate}.${self.shortRev or "dirty"}";
         overlays = [
           (final: prev:
@@ -14,8 +15,10 @@
               src = self;
               nativeBuildInputs = [ cmake ninja ];
               buildInputs = [ ncurses readline zlib ];
-              doCheck = true;
+              doCheck = false;
               doTarget = "test";
+              dontStrip = true;
+              separateDebugInfo = true;
               meta = with stdenv.lib; {
                 description = "A language and an embedded JIT compiler";
                 longDescription = ''
@@ -25,34 +28,32 @@
                 license = licenses.asl20;
                 maintainers = with maintainers; [ kthielen thmzlt smunix ];
               };
-            in {
-              hobbes-llvm-x = stdenv.mkDerivation {
-                name = "hobbes-llvm-x-${version}";
-                inherit src nativeBuildInputs doCheck doTarget;
-                buildInputs = buildInputs;
+              withLLVM = v : stdenv.mkDerivation {
+                pname = "hobbes-llvm-" + (toString v);
+                inherit version src nativeBuildInputs meta doCheck doTarget dontStrip;
+                buildInputs = buildInputs ++ [ (builtins.getAttr ("llvm_" + (toString v)) final) ];
               };
-              hobbes-llvm-6 = stdenv.mkDerivation {
-                name = "hobbes-llvm-6-${version}";
-                inherit src nativeBuildInputs doCheck doTarget;
-                buildInputs = buildInputs ++ [ llvm_6 ];
-              };
-              hobbes-llvm-8 = stdenv.mkDerivation {
-                name = "hobbes-llvm-8-${version}";
-                inherit src nativeBuildInputs doCheck doTarget;
-                buildInputs = buildInputs ++ [ llvm_8 ];
-              };
-            })
+            in
+              builtins.listToAttrs (
+                builtins.map
+                  (v: { name="hobbes-llvm-" + toString v;
+                        value = withLLVM v;
+                      })
+                  LLVMs))
         ];
         pkgs = import nixpkgs {
           inherit system overlays;
         };
       in
         rec {
-          packages = flake-utils.lib.flattenTree {
-            inherit (pkgs) hobbes-llvm-x;
-            inherit (pkgs) hobbes-llvm-6;
-            inherit (pkgs) hobbes-llvm-8;
-          };
+          packages = flake-utils.lib.flattenTree
+            (builtins.listToAttrs (
+              builtins.map (v: rec {
+                name="hobbes-llvm-" + toString v;
+                value=(builtins.getAttr name pkgs);
+              })
+                LLVMs)
+            );
           defaultPackage = packages.hobbes-llvm-6;
         });
 }

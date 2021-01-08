@@ -11,7 +11,7 @@
 
 #include <llvm/Config/llvm-config.h>
 
-#if LLVM_VERSION_MAJOR != 3 && LLVM_VERSION_MAJOR != 4 && LLVM_VERSION_MAJOR != 6 && LLVM_VERSION_MAJOR != 8
+#if LLVM_VERSION_MAJOR != 3 && LLVM_VERSION_MAJOR != 4 && LLVM_VERSION_MAJOR != 6 && LLVM_VERSION_MAJOR != 8 && LLVM_VERSION_MAJOR != 9 && LLVM_VERSION_MAJOR != 10 && LLVM_VERSION_MAJOR != 11
 #error "I don't know how to use this version of LLVM"
 #endif
 
@@ -29,11 +29,14 @@
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/Support/TargetRegistry.h>
 #include <llvm/Support/Signals.h>
-#if LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 6 || LLVM_VERSION_MAJOR == 8
-#include <llvm/Bitcode/BitstreamReader.h>
-#include <llvm/Bitcode/BitstreamWriter.h>
+#if LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 6 || LLVM_VERSION_MAJOR <= 8 
+#  include <llvm/Bitcode/BitstreamReader.h>
+#  include <llvm/Bitcode/BitstreamWriter.h>
+#elif  LLVM_VERSION_MAJOR <= 11
+#  include <llvm/Bitstream/BitstreamReader.h>
+#  include <llvm/Bitstream/BitstreamWriter.h>
 #else
-#include <llvm/Bitcode/ReaderWriter.h>
+#  include <llvm/Bitcode/ReaderWriter.h>
 #endif
 
 #include <llvm/Support/raw_os_ostream.h>
@@ -42,13 +45,13 @@
 #include <llvm/ExecutionEngine/SectionMemoryManager.h>
 
 #if LLVM_VERSION_MINOR == 3
-#include <llvm/Analysis/Verifier.h>
-#include <llvm/PassManager.h>
-#elif LLVM_VERSION_MINOR >= 5 || LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 6 || LLVM_VERSION_MAJOR == 8
-#include <llvm/IR/Verifier.h>
-#include <llvm/ExecutionEngine/SectionMemoryManager.h>
-#include <llvm/IR/LegacyPassManager.h>
-#include <llvm/Object/ELFObjectFile.h>
+#  include <llvm/Analysis/Verifier.h>
+#  include <llvm/PassManager.h>
+#elif LLVM_VERSION_MINOR >= 5 || LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 6 || LLVM_VERSION_MAJOR >= 8
+#  include <llvm/IR/Verifier.h>
+#  include <llvm/ExecutionEngine/SectionMemoryManager.h>
+#  include <llvm/IR/LegacyPassManager.h>
+#  include <llvm/Object/ELFObjectFile.h>
 #endif
 
 #pragma GCC diagnostic pop
@@ -257,7 +260,11 @@ typedef std::vector<ConstFieldValue>            ConstRecordValue;
 
 // add any standard settings to global variables that we need
 inline llvm::GlobalVariable* prepgv(llvm::GlobalVariable* gv, unsigned int align = sizeof(void*)) {
+#if LLVM_VERSION_MAJOR >= 10
+  gv->setAlignment(llvm::MaybeAlign(align));
+#else  
   gv->setAlignment(align);
+#endif
   return gv;
 }
 
@@ -360,11 +367,13 @@ inline llvm::Constant* padding(size_t len) {
 }
 
 inline llvm::Value* memCopy(llvm::IRBuilder<>* b, llvm::Value* dst, uint32_t dstAlign, llvm::Value* src, uint32_t srcAlign, llvm::Value* sz) {
-#if LLVM_VERSION_MAJOR == 3 || LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 5 || LLVM_VERSION_MAJOR == 6
+#if LLVM_VERSION_MAJOR == 3 || LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 5 || LLVM_VERSION_MAJOR <= 6
   (void)dstAlign;
   return b->CreateMemCpy(dst, src, sz, srcAlign);
-#elif LLVM_VERSION_MAJOR == 8
+#elif LLVM_VERSION_MAJOR <= 9
   return b->CreateMemCpy(dst, dstAlign, src, srcAlign, sz);
+#elif LLVM_VERSION_MAJOR <= 11
+  return b->CreateMemCpy(dst, llvm::MaybeAlign(dstAlign), src, llvm::MaybeAlign(srcAlign), sz);
 #endif
 }
 
@@ -492,7 +501,7 @@ inline llvm::Value* structOffset(llvm::IRBuilder<>* b, llvm::Value* p, unsigned 
 #endif
 }
 
-#if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 6 || LLVM_VERSION_MAJOR == 8
+#if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 6 || LLVM_VERSION_MAJOR >= 8
 inline llvm::ExecutionEngine* makeExecutionEngine(llvm::Module* m, llvm::SectionMemoryManager* smm) {
   std::string err;
   llvm::ExecutionEngine* ee =
@@ -561,7 +570,7 @@ inline llvm::Function* cloneFunction(llvm::Function *f, llvm::Module *targetMod)
 }
 
 inline llvm::Value* fncall(llvm::IRBuilder<>* b, llvm::Value* vfn, const Values& args) {
-#if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 6
+#if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR <= 6
   llvm::Module* thisMod = b->GetInsertBlock()->getParent()->getParent();
 
   llvm::Function* fn = llvm::dyn_cast<llvm::Function>(vfn);
@@ -574,8 +583,15 @@ inline llvm::Value* fncall(llvm::IRBuilder<>* b, llvm::Value* vfn, const Values&
       return b->CreateCall(newF, args);
     return b->CreateCall(externDecl(fn, thisMod), args);
   }
-#else
+#elif LLVM_VERSION_MAJOR <= 10
   return b->CreateCall(vfn, args);
+#elif LLVM_VERSION_MAJOR <= 11
+  if (auto *fn = llvm::dyn_cast<llvm::Function>(vfn)) {
+      return b->CreateCall(fn->getFunctionType(), fn, args);
+  } else {
+    throw std::runtime_error("fncall(...) invoked on non-function type (internal error)");
+  }
+  return nullptr;
 #endif
 }
 

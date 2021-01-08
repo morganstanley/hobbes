@@ -8,6 +8,7 @@
 #include <hobbes/util/str.H>
 #include <hobbes/util/array.H>
 #include <stdexcept>
+#include <deque>
 #include <dlfcn.h>
 #include <glob.h>
 

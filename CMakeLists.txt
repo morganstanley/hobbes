@@ -1,6 +1,5 @@
 cmake_minimum_required(VERSION 3.4.1)
 project(hobbes)
-set(CMAKE_CXX_STANDARD 11)
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
@@ -17,6 +16,12 @@ include_directories(${CURSES_INCLUDE_DIRS})
 find_package(LLVM REQUIRED CONFIG)
 include_directories(${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
+
+if (${LLVM_PACKAGE_VERSION} VERSION_LESS "10.0")
+  set(CMAKE_CXX_STANDARD 11)
+else()
+  set(CMAKE_CXX_STANDARD 14)
+endif()
 
 if (${LLVM_PACKAGE_VERSION} VERSION_LESS "3.6")
   set(jit_lib jit)
@@ -96,7 +101,7 @@ include(FindPythonInterp)
 set_property(TARGET hobbes-test PROPERTY COMPILE_FLAGS "-DPYTHON_EXECUTABLE=\"${PYTHON_EXECUTABLE}\" -DSCRIPT_DIR=\"${CMAKE_SOURCE_DIR}/scripts/\"")
 
 install(TARGETS hobbes hobbes-pic DESTINATION "lib")
-install(TARGETS hi hog DESTINATION "bin")
+install(TARGETS hi hog hobbes-test DESTINATION "bin")
 install(DIRECTORY "include/hobbes" DESTINATION "include")
 install(DIRECTORY "scripts" DESTINATION "scripts")
 

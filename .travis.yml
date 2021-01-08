@@ -4,13 +4,14 @@ env:
     - DEPS=""
 matrix:
   include:
-    - os: osx
-      compiler: clang
-      osx_image: xcode9.4
-      env:
-        - DEPS="${DEPS} readline llvm@6"
-        - LLVM_DIR=/usr/local/opt/llvm@6/lib/cmake/llvm/
-        - ARGS=-V
+    # Temporarilly disable osx => https://git.io/JLp7U
+    # - os: osx
+    #   compiler: clang
+    #   osx_image: xcode9.4
+    #   env:
+    #     - DEPS="${DEPS} readline llvm@6"
+    #     - LLVM_DIR=/usr/local/opt/llvm@6/lib/cmake/llvm/
+    #     - ARGS=-V
     - os: linux
       compiler: g++
       root: required
@@ -43,6 +44,39 @@ matrix:
       env:
         - DIST=xenial
         - DEPS="llvm-6.0-dev cmake libedit-dev g++ libncurses5-dev zlib1g-dev libreadline-dev python2.7"
+        - ARGS=-V
+    - os: linux
+      compiler: g++
+      root: required
+      dist: trusty
+      group: deprecated-2017Q4
+      services:
+        - docker
+      env:
+        - DIST=xenial
+        - DEPS="llvm-8.0-dev cmake libedit-dev g++ libncurses5-dev zlib1g-dev libreadline-dev python2.7"
+        - ARGS=-V
+    - os: linux
+      compiler: g++
+      root: required
+      dist: trusty
+      group: deprecated-2017Q4
+      services:
+        - docker
+      env:
+        - DIST=xenial
+        - DEPS="llvm-9.0-dev cmake libedit-dev g++ libncurses5-dev zlib1g-dev libreadline-dev python2.7"
+        - ARGS=-V
+    - os: linux
+      compiler: g++
+      root: required
+      dist: trusty
+      group: deprecated-2017Q4
+      services:
+        - docker
+      env:
+        - DIST=xenial
+        - DEPS="llvm-10.0-dev cmake libedit-dev g++ libncurses5-dev zlib1g-dev libreadline-dev python2.7"
         - ARGS=-V
     - os: linux
       compiler: g++
