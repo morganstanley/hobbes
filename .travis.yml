@@ -53,13 +53,19 @@ matrix:
       language: nix
       nix: 2.3.6
       group: deprecated-2017Q4
-      name: $HOBBES_DRV
+      name: hobbes-llvm-6
       env:
         - HOBBES_DRV=hobbes-llvm-6
+      script: nix-build -A $HOBBES_DRV
+
+    - os: linux
+      compiler: g++
+      language: nix
+      nix: 2.3.6
+      group: deprecated-2017Q4
+      name: hobbes-llvm-8
+      env:
         - HOBBES_DRV=hobbes-llvm-8
-        # - HOBBES_DRV=hobbes-llvm-9
-        # - HOBBES_DRV=hobbes-llvm-10
-      fast_finish: true
       script: nix-build -A $HOBBES_DRV
 
     # - os: linux
@@ -67,21 +73,20 @@ matrix:
     #   language: nix
     #   nix: 2.3.6
     #   group: deprecated-2017Q4
-    #   script: nix-build -A hobbes-llvm-8 
+    #   name: hobbes-llvm-9
+    #   env:
+    #     - HOBBES_DRV=hobbes-llvm-9
+    #   script: nix-build -A $HOBBES_DRV
 
     # - os: linux
     #   compiler: g++
     #   language: nix
     #   nix: 2.3.6
     #   group: deprecated-2017Q4
-    #   script: nix-build -A hobbes-llvm-9 
-
-    # - os: linux
-    #   compiler: g++
-    #   language: nix
-    #   nix: 2.3.6
-    #   group: deprecated-2017Q4
-    #   script: nix-build -A hobbes-llvm-10 
+    #   name: hobbes-llvm-10
+    #   env:
+    #     - HOBBES_DRV=hobbes-llvm-10
+    #   script: nix-build -A $HOBBES_DRV
 
 install:
   - if [ $TRAVIS_OS_NAME = osx   ]; then brew update && brew install -v ${DEPS} && find /usr/local/opt/llvm@6/ | grep cmake; fi
