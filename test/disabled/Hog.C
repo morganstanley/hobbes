@@ -737,7 +737,6 @@ DEFINE_STORAGE_GROUP(
 );
 
 /// The same test sequence as above except for running hog as batchsend/batchrecv modes
-#if 1 // issues -> https://git.io/JLpCq
 TEST(Hog, OrderedSender) {
   HogApp batchrecv(RunMode(availablePort(10000, 10100), /* consolidate */ true));
   HogApp batchsend(RunMode{{"TestOrderedSend"}, {batchrecv.localport()}, 1024, 1000000});
@@ -783,7 +782,6 @@ TEST(Hog, OrderedSender) {
   EXPECT_TRUE(cc.compileFn<bool()>("[x.0|x<-f.seq, x.0 in [1,3]][:0] == concat([repeat(x, 1024L)|x<-[1,3]])")());
   EXPECT_TRUE(cc.compileFn<bool()>("[x.0|x<-f.seq, x.0 in [2,3]][:0] == concat([repeat(x, 1024L)|x<-[2,3]])")());
 }
-#endif // https://git.io/JLpCq
 
 DEFINE_STORAGE_GROUP(
   TestBatchSendRestart,

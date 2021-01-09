@@ -6,7 +6,7 @@
   outputs = { self, nixpkgs, flake-utils }:
     flake-utils.lib.eachSystem [ "x86_64-linux" "x86_64-darwin" ] (system:
       let
-        LLVMs = [ 6 8 9 10 11 ];
+        LLVMs = [ 6 8 9 10 ];
         version = "${nixpkgs.lib.substring 0 8 self.lastModifiedDate}.${self.shortRev or "dirty"}";
         overlays = [
           (final: prev:
@@ -15,7 +15,7 @@
               src = self;
               nativeBuildInputs = [ cmake ninja ];
               buildInputs = [ ncurses readline zlib ];
-              doCheck = false;
+              doCheck = true;
               doTarget = "test";
               dontStrip = true;
               separateDebugInfo = true;
