@@ -53,14 +53,26 @@ matrix:
       language: nix
       nix: 2.3.6
       group: deprecated-2017Q4
-      script: nix-build -A hobbes-llvm-6
+      env:
+        - HOBBES_DRV=hobbes-llvm-6
+        - HOBBES_DRV=hobbes-llvm-8
+        - HOBBES_DRV=hobbes-llvm-9
+        - HOBBES_DRV=hobbes-llvm-10
+      jobs:
+        fast_finish: true
+        include:
+          - name: $HOBBES_DRV
+          - env: HOBBES_DRV=hobbes-llvm-6 HOBBES_DRV=hobbes-llvm-8
+        exclude:
+          - env: HOBBES_DRV=hobbes-llvm-9 HOBBES_DRV=hobbes-llvm-10
+      script: nix-build -A $HOBBES_DRV
 
-    - os: linux
-      compiler: g++
-      language: nix
-      nix: 2.3.6
-      group: deprecated-2017Q4
-      script: nix-build -A hobbes-llvm-8 
+    # - os: linux
+    #   compiler: g++
+    #   language: nix
+    #   nix: 2.3.6
+    #   group: deprecated-2017Q4
+    #   script: nix-build -A hobbes-llvm-8 
 
     # - os: linux
     #   compiler: g++
