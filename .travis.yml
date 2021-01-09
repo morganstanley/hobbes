@@ -53,7 +53,6 @@ matrix:
       language: nix
       nix: 2.3.6
       group: deprecated-2017Q4
-      script: nix-build
       script: nix-build --expr 'with import (fetchTarball { url="https://github.com/NixOs/nixpkgs/archive/a3ab47ec9067b5f9fccda506fc8641484c3d8e73.tar.gz"; sha256="1f1q89ka73ksvl5hgbrf624x0niwm2rg3dzxiscir0bji6zvjy15"; }) {}; stdenv.mkDerivation { name="hobbes"; src=./.; nativeBuildInputs=[ llvm_6 cmake ninja python27 readline zlib gcc10 ]; doCheck=true; checkTarget="test"; }' 
 
     - os: linux
@@ -61,7 +60,6 @@ matrix:
       language: nix
       nix: 2.3.6
       group: deprecated-2017Q4
-      script: nix-build
       script: nix-build --expr 'with import (fetchTarball { url="https://github.com/NixOs/nixpkgs/archive/a3ab47ec9067b5f9fccda506fc8641484c3d8e73.tar.gz"; sha256="1f1q89ka73ksvl5hgbrf624x0niwm2rg3dzxiscir0bji6zvjy15"; }) {}; stdenv.mkDerivation { name="hobbes"; src=./.; nativeBuildInputs=[ llvm_8 cmake ninja python27 readline zlib gcc10 ]; doCheck=true; checkTarget="test"; }' 
 
     - os: linux
@@ -69,7 +67,6 @@ matrix:
       language: nix
       nix: 2.3.6
       group: deprecated-2017Q4
-      script: nix-build
       script: nix-build --expr 'with import (fetchTarball { url="https://github.com/NixOs/nixpkgs/archive/a3ab47ec9067b5f9fccda506fc8641484c3d8e73.tar.gz"; sha256="1f1q89ka73ksvl5hgbrf624x0niwm2rg3dzxiscir0bji6zvjy15"; }) {}; stdenv.mkDerivation { name="hobbes"; src=./.; nativeBuildInputs=[ llvm_9 cmake ninja python27 readline zlib gcc10 ]; doCheck=true; checkTarget="test"; }' 
 
     - os: linux
@@ -77,7 +74,6 @@ matrix:
       language: nix
       nix: 2.3.6
       group: deprecated-2017Q4
-      script: nix-build
       script: nix-build --expr 'with import (fetchTarball { url="https://github.com/NixOs/nixpkgs/archive/a3ab47ec9067b5f9fccda506fc8641484c3d8e73.tar.gz"; sha256="1f1q89ka73ksvl5hgbrf624x0niwm2rg3dzxiscir0bji6zvjy15"; }) {}; stdenv.mkDerivation { name="hobbes"; src=./.; nativeBuildInputs=[ llvm_10 cmake ninja python27 readline zlib gcc10 ]; doCheck=true; checkTarget="test"; }' 
 
 install:
