@@ -14,7 +14,7 @@
             let
               src = self;
               nativeBuildInputs = [ cmake ninja ];
-              buildInputs = [ ncurses readline zlib ];
+              buildInputs = [ ncurses readline zlib python27 readline zlib ];
               doCheck = true;
               doTarget = "test";
               dontStrip = true;
