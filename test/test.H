@@ -14,6 +14,21 @@
 #include <hobbes/util/str.H>
 #include <hobbes/util/stream.H>
 
+#include <unistd.h> // readlink
+#include <libgen.h> // direname, basename
+#include <linux/limits.h> // PATH_MAX
+
+template<class Fn>
+auto execPath(Fn && fn) -> void {
+  std::string r(PATH_MAX, 0);
+  auto count = ::readlink("/proc/self/exe", const_cast<char*>(r.data()), r.size());
+  if (count != -1) {
+    fn(std::string(dirname(const_cast<char*>(r.data()))));
+  } else {
+    throw std::runtime_error("failed to readlink(\"/proc/self/exe\") ...");
+  }
+}
+
 struct Args final {
   Args() : report("test_report.json") {}
 

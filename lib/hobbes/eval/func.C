@@ -315,8 +315,8 @@ public:
       long elemSize = is<OpaquePtr>(aty->type()) ? sizeof(void*) : static_cast<long>(sizeOf(aty->type()));
 
       llvm::Value* od = structOffset(c->builder(), cmdata, 1);
-      c->builder()->CreateMemCpy(offset(c->builder(), od, 0),  d0, c->builder()->CreateMul(c0, cvalue(elemSize)), 8);
-      c->builder()->CreateMemCpy(offset(c->builder(), od, c0), d1, c->builder()->CreateMul(c1, cvalue(elemSize)), 8);
+      memCopy(c->builder(), offset(c->builder(), od, 0), 8, d0, 8, c->builder()->CreateMul(c0, cvalue(elemSize)));
+      memCopy(c->builder(), offset(c->builder(), od, c0), 8, d1, 8, c->builder()->CreateMul(c1, cvalue(elemSize)));
     }
     return cmdata;
   }
@@ -412,7 +412,7 @@ class saacopy : public op {
     llvm::Value* len  = c->compile(es[2]);
     llvm::Value* lenb = c->builder()->CreateMul(len, cvalue(static_cast<long>(sizeOf(aty->type()))));
 
-    c->builder()->CreateMemCpy(farr, vard, lenb, 8);
+    memCopy(c->builder(), farr, 8, vard, 8, lenb);
     return cvalue(true);
   }
 

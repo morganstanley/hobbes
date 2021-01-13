@@ -1513,7 +1513,7 @@ public:
   }
 
   llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) {
-    return fncall(c->builder(), this->vfn, compileArgs(c, es));
+    return fncall(c->builder(), this->vfn, this->vfn->getFunctionType(), compileArgs(c, es));
   }
 
   PolyTypePtr type(typedb&) const {
