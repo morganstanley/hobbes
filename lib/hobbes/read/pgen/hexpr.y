@@ -155,7 +155,7 @@ Expr* makeIrrefutablePatternFn(const Patterns& ps, const ExprPtr& e, const Lexic
 }
 
 Expr* makePatternFn(const Patterns& ps, const ExprPtr& e, const LexicalAnnotation& la) {
-  for (const auto p : ps) {
+  for (const auto& p : ps) {
     if (refutable(p)) {
       return makeRefutablePatternFn(ps, e, la);
     }

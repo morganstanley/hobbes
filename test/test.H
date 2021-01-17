@@ -14,15 +14,28 @@
 #include <hobbes/util/str.H>
 #include <hobbes/util/stream.H>
 
-#include <unistd.h> // readlink
-#include <libgen.h> // direname, basename
-#include <linux/limits.h> // PATH_MAX
+#include <unistd.h>
+#include <libgen.h>
+
+#if defined(__APPLE__) && defined(__MACH__)
+#  include <libproc.h>
+#  include <mach-o/dyld.h>
+#elif __linux__
+#  include <linux/limits.h>
+#else
+#  error "platform is not supported"
+#endif
 
 template<class Fn>
 auto execPath(Fn && fn) -> void {
+#if defined(__APPLE__) && defined(__MACH__)
+  std::string r(PROC_PIDPATHINFO_MAXSIZE, 0);
+  uint32_t count = PROC_PIDPATHINFO_MAXSIZE;
+  if (-1 != _NSGetExecutablePath(const_cast<char*>(r.data()), &count)) {
+#elif __linux__  
   std::string r(PATH_MAX, 0);
-  auto count = ::readlink("/proc/self/exe", const_cast<char*>(r.data()), r.size());
-  if (count != -1) {
+  if (-1 != ::readlink("/proc/self/exe", const_cast<char*>(r.data()), r.size())) {
+#endif
     fn(std::string(dirname(const_cast<char*>(r.data()))));
   } else {
     throw std::runtime_error("failed to readlink(\"/proc/self/exe\") ...");

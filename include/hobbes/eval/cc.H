@@ -326,7 +326,7 @@ private:
 
 template <typename T>
   struct rccF {
-    static T compile(cc* c, const str::seq& vns, const std::string& expr) {
+    static T compile(cc*, const str::seq&, const std::string&) {
       throw std::runtime_error("Internal error, unsupported compilation target type");
     }
   };

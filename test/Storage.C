@@ -312,7 +312,7 @@ TEST(Storage, FRegionAlignment) {
     std::array<int, 42> someInts;
     FRALIGN_TEST(someInts);
 
-    int oneInt;
+    int oneInt{};
     FRALIGN_TEST(oneInt);
 
     std::pair<int,double> intAndDouble;
@@ -629,8 +629,6 @@ TEST(Storage, FRegion_FSeq_Write_Resume_After_Restart) {
 TEST(Storage, DArrayMemLayout) {
   EXPECT_TRUE(c().compileFn<bool()>("show([unsafeCast(\"jimmy\")::((darray char)),unsafeCast(\"chicken\")]) == \"[\\\"jimmy\\\", \\\"chicken\\\"]\"")());
 }
-
-static const size_t recordCount = 100;
 
 DEFINE_VARIANT(
   MyVariant,

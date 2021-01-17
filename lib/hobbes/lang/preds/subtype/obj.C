@@ -12,7 +12,7 @@ void appendPath(PtrAdjustmentPath* p, const PtrAdjustmentPath& sfx);
 
 #ifdef __clang__
 // TODO -- figure out how to get class type info from clang
-bool Objs::add(const std::type_info* ti) {
+bool Objs::add(const std::type_info*) {
   return false;
 }
 

@@ -19,7 +19,7 @@ public:
   ExprPtr unqualify(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*) const;
   std::string name() const;
 private:
-  friend class ProcManUnqualify;
+  friend struct ProcManUnqualify;
 
   typedef std::map<std::string, proc> SpawnedProcs;
   SpawnedProcs procs;
