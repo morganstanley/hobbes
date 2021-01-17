@@ -46,6 +46,7 @@ std::string show(const PtrAdjustmentPath& p);
 //  (this implementation only works with GCC)
 class Objs : public SubtypeEliminator {
 public:
+  virtual ~Objs(void) = default;
 #ifndef __clang__
   typedef __cxxabiv1::__class_type_info     class_type;
   typedef __cxxabiv1::__si_class_type_info  si_class_type;

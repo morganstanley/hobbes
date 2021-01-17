@@ -5,8 +5,6 @@
 
 namespace hobbes {
 
-const bool unit = true;
-
 // map char sequence positions to line numbers
 linedb::linedb(nat stype, const std::string& sdesc) : stype(stype), sdesc(sdesc), c(0) {
 }

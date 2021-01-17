@@ -112,7 +112,6 @@ private:
   UCWriter    w;
   uint8_t*    dynModel;
   region      dynModelMem;
-  size_t      regionID;
 
   CWriteFn    writeFn;
   CAllocM     allocMFn;

@@ -379,7 +379,6 @@ str::seq bindingNames(const RegexPtr& rgx) {
  ******************************/
 typedef uint32_t state;
 typedef std::set<state> stateset;
-static const state nullState = static_cast<state>(-1);
 
 typedef uint32_t result;
 static const result nullResult = static_cast<result>(-1);

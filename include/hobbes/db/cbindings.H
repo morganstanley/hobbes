@@ -11,7 +11,7 @@
 
 namespace hobbes {
 
-class DynDModel0;
+struct DynDModel0;
 
 class UCWriter {
 public:

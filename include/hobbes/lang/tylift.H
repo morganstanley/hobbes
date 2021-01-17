@@ -426,7 +426,7 @@ template <typename T>
 template <typename ... Fields>
   struct liftTuple {
     static void addFields(size_t, Record::Members*, typedb&) { }
-    static MonoTypePtr type(typedb& tenv) { return Prim::make("unit"); }
+    static MonoTypePtr type(typedb&) { return Prim::make("unit"); }
   };
 template <typename Field, typename ... Fields>
   struct liftTuple<Field, Fields...> {

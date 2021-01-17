@@ -112,7 +112,7 @@ typedef std::vector<pagedata> pagetable;
 typedef uint64_t file_pageindex_t;
 
 // convenience for raising errors out of errno
-inline void raiseSysError(const std::string& msg, const std::string& fname) {
+inline void raiseSysError [[noreturn]] (const std::string& msg, const std::string& fname) {
   std::ostringstream ss;
   ss << fname << ": " << msg << " (" << strerror(errno) << ")" << std::flush;
   throw std::runtime_error(ss.str());
@@ -1011,7 +1011,7 @@ template <typename T>
     uint64_t index;
     bool operator==(const fileref<T>& rhs) const { return this->index == rhs.index; }
 
-    fileref<T>& operator=(const fileref<T>& x) { this->index = x.index; return *this; }
+    fileref<T>& operator=(const fileref<T>&) = default;
 
     T* load(imagefile* f) const {
       return reinterpret_cast<T*>(mapFileData(f, this->index, sizeof(T)));
@@ -1652,9 +1652,9 @@ struct printVF {
   std::ostringstream* ss;
   printVF(std::ostringstream* ss) : ss(ss) { }
   template <typename T>
-    void visit(const char* n, int, const T& x) {
-      *this->ss << n << "=" << x;
-    }
+  void visit(const char* n, int, const T& x) {
+    *this->ss << n << "=" << x;
+  }
 };
 template <typename T>
   inline std::string showV(const T& x) {
@@ -1671,9 +1671,9 @@ struct descVariantF {
   descVariantF(ty::Variant::Ctors* ctors) : ctors(ctors) { }
 
   template <typename T>
-    void ctor(const char* n, int id) {
-      this->ctors->push_back(ty::Variant::Ctor(n, id, store<T>::storeType()));
-    }
+  void ctor(const char* n, int id) {
+    this->ctors->push_back(ty::Variant::Ctor(n, id, store<T>::storeType()));
+  }
 };
 
 struct calcVSizeF {
@@ -1682,10 +1682,10 @@ struct calcVSizeF {
   calcVSizeF(size_t* maxSize, size_t* maxAlign) : maxSize(maxSize), maxAlign(maxAlign) { *this->maxSize = 0; *this->maxAlign = sizeof(uint32_t); }
 
   template <typename T>
-    void ctor(const char* n, int id) {
-      *this->maxSize  = std::max<size_t>(*this->maxSize,  store<T>::size());
-      *this->maxAlign = std::max<size_t>(*this->maxAlign, store<T>::alignment());
-    }
+  void ctor(const char*, int) {
+    *this->maxSize  = std::max<size_t>(*this->maxSize,  store<T>::size());
+    *this->maxAlign = std::max<size_t>(*this->maxAlign, store<T>::alignment());
+  }
 };
 
 template <typename T>
@@ -1901,7 +1901,7 @@ template <typename ... Wss>
   struct seqVar {
     static void stepEnc(ty::Variant::Ctors*, size_t*, const Wss& ...) { }
     static ty::desc storeType(imagefile*, const Wss& ...) { return ty::prim("unit"); }
-    static void setWriteCBs(uint32_t, const std::function<void(uint32_t,uint64_t)>&, Wss& ... wss) { }
+    static void setWriteCBs(uint32_t, const std::function<void(uint32_t,uint64_t)>&, Wss& ...) { }
   };
 template <typename Ws, typename ... Wss>
   struct seqVar<Ws, Wss...> {

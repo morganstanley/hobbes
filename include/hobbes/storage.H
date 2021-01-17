@@ -1064,7 +1064,7 @@ template <typename T, size_t N>
 template <typename T, size_t N>
   struct store<T[N], typename tbool<store<T>::can_memcpy>::type> : public fixedArrTyDesc<T,N> {
     static const bool can_memcpy = true;
-    static size_t size (const T (&v)[N])           { return sizeof(T)*N; }
+    static size_t size (const T (&)[N])           { return sizeof(T)*N; }
     static bool   write(wpipe& p, const T (&v)[N]) { return p.write(reinterpret_cast<const uint8_t*>(v), sizeof(T)*N); }
   };
 template <typename T, size_t N>
@@ -1520,7 +1520,7 @@ template <>
 
 template <typename T>
   struct store<recursive<T>> {
-    static void encode(bytes* out) {
+    static void encode(bytes*) {
       return ty::recursive("x", store<T>::type());
     }
     static size_t recSize(const recursion& x) {

@@ -441,7 +441,7 @@ void runMachineREPLStep(cc* c) {
 
 typedef std::map<int,const char*> Signames;
 static Signames rsignames;
-static void deadlySignal(int sig, siginfo_t*, void*) {
+static void deadlySignal [[noreturn]] (int sig, siginfo_t*, void*) {
   if (machineREPLLogFD > 0) {
     static const char* msg = "RECEIVED DEADLY SIGNAL: ";
     auto rc = write(machineREPLLogFD, msg, strlen(msg));

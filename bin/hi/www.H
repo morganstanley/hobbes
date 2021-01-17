@@ -13,7 +13,6 @@ public:
   WWWServer(int port, hobbes::cc*);
   ~WWWServer();
 private:
-  int         port;
   hobbes::cc* c;
 
   void printDefaultPage(int);

@@ -335,7 +335,7 @@ struct BatchSendSession {
   }
 
   bool completed() const {
-    return std::all_of(destinations.begin(), destinations.end(), [this](const Destination& d) {
+    return std::all_of(destinations.begin(), destinations.end(), [](const Destination& d) {
       glob_t g;
       auto ret = glob((d.localdir + "/segment-*.gz").c_str(), GLOB_NOSORT, 0, &g);
       if (ret == 0) {

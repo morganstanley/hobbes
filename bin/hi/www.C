@@ -263,7 +263,7 @@ const cstr* jsEscape(const cstr* x) {
 }
 
 // the basic hi web server
-WWWServer::WWWServer(int port, hobbes::cc* c) : port(port), c(c) {
+WWWServer::WWWServer(int port, hobbes::cc* c) : c(c) {
   // add a few bindings that are convenient for web servers
   c->bind("linkTarget",   &linkTarget);
   c->bind("csplit",       &csplit);

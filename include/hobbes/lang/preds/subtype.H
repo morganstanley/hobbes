@@ -15,6 +15,7 @@ bool dec(const ConstraintPtr&, Subtype*);
 
 // a "subtype eliminator" knows how to resolve a "Subtype" constraint at a particular (category of) type
 struct SubtypeEliminator {
+   virtual ~SubtypeEliminator(void) = default;
   // is this instance eliminable?
   virtual bool satisfied(const TEnvPtr& tenv, const MonoTypePtr& lhs, const MonoTypePtr& rhs) const = 0;
 
