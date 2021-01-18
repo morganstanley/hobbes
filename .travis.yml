@@ -155,7 +155,7 @@ matrix:
       group: edge
       name: hobbesPackages.clang-11.hobbes
       env:
-        - HOBBES_DRV=hobbesPackages.clang-11.hobbes
+        - HOBBES_DRV=hobbesPackages.clang-8.hobbes
       script: travis_wait 40 nix-build -A $HOBBES_DRV
         
 branches:
