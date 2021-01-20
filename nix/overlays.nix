@@ -32,6 +32,8 @@ let
     maintainers = with maintainers; [ kthielen thmzlt smunix ];
   };
   
+  when = c: m: if c then m else {};
+  
   withGCC = { gccVersion ? 10 }:
     let gccPkgs = { gccVersion }: builtins.getAttr ("gcc" + (toString gccVersion) + "Stdenv") final;
         llvmPkgs = { llvmVersion }: builtins.getAttr ("llvmPackages_" + (toString llvmVersion)) final;                    
@@ -58,13 +60,13 @@ let
                      --replace "\''${CMAKE_SOURCE_DIR}" "${src}"
                 '';
     });
-in { hobbesPackages = recurseIntoAttrs (builtins.listToAttrs (builtins.map (gccConstraint: {
+in { hobbesPackages = when stdenv.isLinux (recurseIntoAttrs (builtins.listToAttrs (builtins.map (gccConstraint: {
        name = "gcc-" + toString gccConstraint.gccVersion;
        value = recurseIntoAttrs (builtins.listToAttrs (builtins.map (llvmVersion: {
          name = "llvm-" + toString llvmVersion;
          value = recurseIntoAttrs ({ hobbes = dbg (callPackage (withGCC { inherit (gccConstraint) gccVersion; }) { inherit llvmVersion; }); });
        }) gccConstraint.llvmVersions));
-     }) gccConstraints))
+     }) gccConstraints)))
      // recurseIntoAttrs (builtins.listToAttrs (
        builtins.map
          (llvmVersion: { name="clang-" + toString llvmVersion;
