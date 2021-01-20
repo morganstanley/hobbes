@@ -18,7 +18,6 @@
 #include <libgen.h>
 
 #if defined(__APPLE__) && defined(__MACH__)
-#  include <libproc.h>
 #  include <mach-o/dyld.h>
 #elif __linux__
 #  include <linux/limits.h>
@@ -28,9 +27,15 @@
 
 template<class Fn>
 auto execPath(Fn && fn) -> void {
+
 #if defined(__APPLE__) && defined(__MACH__)
-  std::string r(PROC_PIDPATHINFO_MAXSIZE, 0);
-  uint32_t count = PROC_PIDPATHINFO_MAXSIZE;
+#  if !defined(PROC_PIDPATHINFO_MAXSIZE) && !defined(PROC_PIDPATHINFO_MAXSIZE_HOBBES_FEATURED)
+#    define PROC_PIDPATHINFO_MAXSIZE_HOBBES_FEATURED 2048
+#  elif defined(PROC_PIDPATHINFO_MAXSIZE)
+#    define PROC_PIDPATHINFO_MAXSIZE_HOBBES_FEATURED = PROC_PIDPATHINFO_MAXSIZE
+#  endif
+  std::string r(PROC_PIDPATHINFO_MAXSIZE_HOBBES_FEATURED, 0);
+  uint32_t count = PROC_PIDPATHINFO_MAXSIZE_HOBBES_FEATURED;
   if (-1 != _NSGetExecutablePath(const_cast<char*>(r.data()), &count)) {
 #elif __linux__  
   std::string r(PATH_MAX, 0);

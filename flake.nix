@@ -8,6 +8,7 @@
       let
         overlays = [
           (import ./nix/overlays.nix {
+            inherit system;
             version = "${nixpkgs.lib.substring 0 8 self.lastModifiedDate}.${self.shortRev or "dirty"}";
             src = self;
             llvmVersions = [ 6 8 9 10 11 ];
