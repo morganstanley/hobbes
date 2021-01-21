@@ -6,6 +6,7 @@ let
   overlays = [
     (import ./nix/overlays.nix {
       version = "unstable";
+      system = builtins.currentSystem;
       src = ./.;
       llvmVersions = [ 6 8 9 10 11 ];
       gccConstraints = [

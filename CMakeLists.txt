@@ -101,7 +101,7 @@ include(FindPythonInterp)
 set_property(TARGET hobbes-test PROPERTY COMPILE_FLAGS "-DPYTHON_EXECUTABLE=\"${PYTHON_EXECUTABLE}\" -DSCRIPT_DIR=\"${CMAKE_SOURCE_DIR}/scripts/\"")
 
 install(TARGETS hobbes hobbes-pic DESTINATION "lib")
-install(TARGETS hi hog DESTINATION "bin")
+install(TARGETS hi hog hobbes-test DESTINATION "bin")
 install(DIRECTORY "include/hobbes" DESTINATION "include")
 install(DIRECTORY "scripts" DESTINATION "scripts")
 
