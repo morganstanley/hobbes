@@ -1315,4 +1315,3 @@ For example, we've seen earlier that hobbes has a `LoadFile` constraint that tak
 Another example we've seen earlier is the hobbes `Connect` constraint.  This also takes a compile-time string and produces a unique type representing the connection made at compile-time.  This is used further (and with other supporting constraints/unqualifiers) to negotiate a protocol and derive efficient code to communicate with a remote process.
 
 These are just some examples of extensions to hobbes through the `Unqualifier` interface, but there are undoubtedly many other ways that this option can be useful to applications using hobbes.
-
