@@ -2,6 +2,7 @@
   version,
   llvmVersions,
   gccConstraints,
+  system,
   debug ? false,
 }: final: prev:
 with final;
@@ -31,6 +32,10 @@ let
     license = licenses.asl20;
     maintainers = with maintainers; [ kthielen thmzlt smunix ];
   };
+
+  darwinOnly = v : if system == "x86_64-darwin" then v else {};
+
+  linuxOnly = v : if system == "x86_64-linux" then v else {};
   
   when = c: m: if c then m else {};
   
@@ -60,6 +65,7 @@ let
                      --replace "\''${CMAKE_SOURCE_DIR}" "${src}"
                 '';
     });
+
 in { hobbesPackages = when stdenv.isLinux (recurseIntoAttrs (builtins.listToAttrs (builtins.map (gccConstraint: {
        name = "gcc-" + toString gccConstraint.gccVersion;
        value = recurseIntoAttrs (builtins.listToAttrs (builtins.map (llvmVersion: {
