@@ -161,4 +161,3 @@ matrix:
 branches:
   only:
     - master
-    - travis
