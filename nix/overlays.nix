@@ -37,6 +37,8 @@ let
 
   linuxOnly = v : if system == "x86_64-linux" then v else {};
   
+  when = c: m: if c then m else {};
+  
   withGCC = { gccVersion ? 10 }:
     let gccPkgs = { gccVersion }: builtins.getAttr ("gcc" + (toString gccVersion) + "Stdenv") final;
         llvmPkgs = { llvmVersion }: builtins.getAttr ("llvmPackages_" + (toString llvmVersion)) final;                    
@@ -63,7 +65,8 @@ let
                      --replace "\''${CMAKE_SOURCE_DIR}" "${src}"
                 '';
     });
-in { hobbesPackages = linuxOnly (recurseIntoAttrs (builtins.listToAttrs (builtins.map (gccConstraint: {
+
+in { hobbesPackages = when stdenv.isLinux (recurseIntoAttrs (builtins.listToAttrs (builtins.map (gccConstraint: {
        name = "gcc-" + toString gccConstraint.gccVersion;
        value = recurseIntoAttrs (builtins.listToAttrs (builtins.map (llvmVersion: {
          name = "llvm-" + toString llvmVersion;
