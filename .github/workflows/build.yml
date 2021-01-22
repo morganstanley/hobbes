@@ -7,6 +7,9 @@ jobs:
       matrix:
         os: [ubuntu-20.04, macos-latest]
         clang: [6, 8, 10, 11]
+        include:
+          - os: macos-latest
+            experimental: true
     steps:
       - uses: actions/checkout@v2
         with:
