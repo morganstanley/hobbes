@@ -7,9 +7,8 @@ jobs:
       matrix:
         os: [ubuntu-20.04, macos-latest]
         clang: [6, 8, 10, 11]
-        include:
+        exclude:
           - os: macos-latest
-            experimental: true
     steps:
       - uses: actions/checkout@v2
         with:
@@ -23,7 +22,7 @@ jobs:
       - name: nix build hobbesPackages/clang-${{ matrix.clang }}/hobbes
         run: |
           nix build .#hobbesPackages/clang-${{ matrix.clang }}/hobbes
-          nix log  .#hobbesPackages/clang-${{ matrix.clang }}/hobbes &> clang-${{ matrix.clang }}-hobbes.log
+          nix log  .#hobbesPackages/clang-${{ matrix.clang }}/hobbes &> ${{ matrix.os }}-clang-${{ matrix.clang }}-hobbes.log
       - name: upload log hobbesPackages/clang-${{ matrix.clang }}/hobbes
         uses: actions/upload-artifact@v1
         with:
