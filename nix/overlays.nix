@@ -11,9 +11,11 @@ let
         then enableDebugging
         else (x: x);
   
-  nativeBuildInputs = [ cmake ninja python27 ];
+  nativeBuildInputs = [ cmake ninja shake python27 ];
   
   buildInputs = [ ncurses readline zlib python27 ];
+
+  cmakeFlags="-GNinja";
   
   doCheck = true;
   
@@ -33,10 +35,6 @@ let
     maintainers = with maintainers; [ kthielen thmzlt smunix ];
   };
 
-  darwinOnly = v : if system == "x86_64-darwin" then v else {};
-
-  linuxOnly = v : if system == "x86_64-linux" then v else {};
-  
   when = c: m: if c then m else {};
   
   withGCC = { gccVersion ? 10 }:
@@ -57,13 +55,16 @@ let
     let llvmPkgs = { llvmVersion }: builtins.getAttr ("llvmPackages_" + (toString llvmVersion)) final;
     in makeOverridable ({ llvmVersion, stdenv ? (llvmPkgs { inherit llvmVersion; }).stdenv } : stdenv.mkDerivation {
       pname = "hobbes-clang-" + (toString llvmVersion);
-      inherit version src meta doCheck doTarget dontStrip;
+      inherit version src meta doCheck doTarget dontStrip cmakeFlags;
       nativeBuildInputs = nativeBuildInputs;
       buildInputs = buildInputs ++ [ (llvmPkgs { inherit llvmVersion; }).llvm ];
       postPatch = ''
                   substituteInPlace CMakeLists.txt \
                      --replace "\''${CMAKE_SOURCE_DIR}" "${src}"
                 '';
+      buildPhase = ''
+                   ${shake}/bin/shake --color --report --timings -j -f build.ninja 
+                  '';
     });
 
 in { hobbesPackages = when stdenv.isLinux (recurseIntoAttrs (builtins.listToAttrs (builtins.map (gccConstraint: {
