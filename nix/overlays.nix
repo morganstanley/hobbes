@@ -4,15 +4,21 @@ with final;
 let
   dbg = if debug == true then enableDebugging else (x: x);
 
-  nativeBuildInputs = [ cmake ninja shake python27 ];
+  nativeBuildInputs = [ cmake ninja shake python27 ghc ];
 
-  buildInputs = [ ncurses readline zlib python27 ];
+  buildInputs = [ ncurses readline zlib python27 ]
+                ++ (with haskellPackages; [ clock random shake heaps splitmix
+                                            filepattern utf8-string
+                                            js-dgtable js-jquery js-flot
+                                          ]);
 
-  cmakeFlags = "-GNinja";
+  cmakeFlags = [ "-GNinja" ];
 
   dontUseNinjaBuild = true;
 
   dontUseNinjaInstall = true;
+
+  dontUseNinjaCheck = true;
 
   doCheck = true;
 
@@ -46,7 +52,7 @@ let
         pname = "hobbes-gcc-" + toString gccVersion + "-llvm-"
           + toString llvmVersion;
         inherit version src meta doCheck doTarget dontStrip cmakeFlags
-          dontUseNinjaBuild dontUseNinjaInstall;
+          dontUseNinjaBuild dontUseNinjaInstall dontUseNinjaCheck;
         nativeBuildInputs = nativeBuildInputs;
         buildInputs = buildInputs
           ++ [ (llvmPkgs { inherit llvmVersion; }).llvm ];
@@ -67,7 +73,7 @@ let
     stdenv.mkDerivation {
       pname = "hobbes-clang-" + (toString llvmVersion);
       inherit version src meta doCheck doTarget dontStrip cmakeFlags
-        dontUseNinjaBuild dontUseNinjaInstall;
+        dontUseNinjaBuild dontUseNinjaInstall dontUseNinjaCheck;
       nativeBuildInputs = nativeBuildInputs;
       buildInputs = buildInputs ++ [ (llvmPkgs { inherit llvmVersion; }).llvm ];
       postPatch = ''
@@ -76,6 +82,14 @@ let
       '';
       buildPhase = ''
         ${shake}/bin/shake --color --report --timings -j -f build.ninja
+      '';
+      checkPhase = ''
+        echo $(pwd)
+        ls $(echo $(pwd))
+        ./hobbes-test
+      '';
+      installPhase = ''
+        make install
       '';
     });
 

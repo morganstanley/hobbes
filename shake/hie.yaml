@@ -1,0 +1,4 @@
+cradle:
+  cabal:
+    - path: "./Shakefile"
+      component: "hobbes:exe:hobbes"
