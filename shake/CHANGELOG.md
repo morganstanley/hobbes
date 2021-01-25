@@ -1,4 +1,4 @@
-# Revision history for hobbes
+# Revision history for hobbesbuild
 
 ## 0.1.0.0 -- YYYY-mm-dd
 

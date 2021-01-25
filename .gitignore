@@ -7,3 +7,5 @@ CMakeFiles/
 /doc/building.txt
 .vscode/
 .gitmessage
+/dist-newstyle/
+/**/dist-newstyle/

@@ -4,13 +4,9 @@ with final;
 let
   dbg = if debug == true then enableDebugging else (x: x);
 
-  nativeBuildInputs = [ cmake ninja shake python27 ghc ];
+  nativeBuildInputs = [ cmake ninja python27 ];
 
-  buildInputs = [ ncurses readline zlib python27 ]
-                ++ (with haskellPackages; [ clock random shake heaps splitmix
-                                            filepattern utf8-string
-                                            js-dgtable js-jquery js-flot
-                                          ]);
+  buildInputs = [ ncurses readline zlib python27 ];
 
   cmakeFlags = [ "-GNinja" ];
 
@@ -92,8 +88,24 @@ let
         make install
       '';
     });
+  
+  hobbesbuild = with haskellPackages; when stdenv.isDarwin (callCabal2nix "hobbesbuild" "${src}/shake" { inherit shake shake-language-c; });
 
-in {
+  build = makeOverridable ({pkg, zlib, ncurses, readline, llvm ? llvm_8, clang ? clang_8, pkgconfig }: stdenv.mkDerivation {
+    pname = "build";
+    inherit version;
+    src = "${pkg.src}";
+    propagatedBuildInputs = [ hobbesbuild cabal-install xcbuild zlib ncurses readline llvm clang pkgconfig ];
+    buildPhase = ''
+    echo $(pwd)
+    ls .
+    ${hobbesbuild}/bin/hobbesbuild
+    '';
+    installPhase = ''
+      mkdir -p "$out"
+    '';
+  });
+in rec {
   hobbesPackages = when stdenv.isLinux (recurseIntoAttrs (builtins.listToAttrs
     (builtins.map (gccConstraint: {
       name = "gcc-" + toString gccConstraint.gccVersion;
@@ -113,5 +125,19 @@ in {
         value = recurseIntoAttrs ({
           hobbes = dbg (callPackage withCLANG { inherit llvmVersion; });
         });
-      }) llvmVersions));
+      }) llvmVersions)) // recurseIntoAttrs {
+        inherit
+          zlib
+          ncurses
+          readline
+          llvm_8
+          clang_8
+        ;
+        inherit (haskellPackages)
+          shake
+          shake-language-c
+        ;
+        # build = with haskellPackages; when stdenv.isDarwin (callCabal2nix "hobbesbuild" "${src}/shake" { inherit shake shake-language-c; });
+        build = callPackage build { pkg = hobbesPackages.clang-8.hobbes; inherit zlib ncurses readline pkgconfig; };
+      };
 }
