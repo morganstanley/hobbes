@@ -1,5 +1,8 @@
+{-# LANGUAGE BlockArguments #-}
+
 import Control.Applicative
 import Control.Arrow
+import qualified Control.Concurrent as Conc
 import Data.Char (toLower)
 import Data.List
 import Data.List (intercalate, isPrefixOf)
@@ -138,177 +141,184 @@ llvmConfig options pkg = do
 buildDir = "build"
 
 main :: IO ()
-main = shakeArgs shakeOptions {shakeFiles = buildDir, shakeThreads = 4} $ do
-  let target = OSX.target OSX.macOSX (X86 X86_64)
-      toolChain =
-        OSX.toolChain
-          <$> OSX.getSDKRoot
-          <*> (maximum <$> OSX.getPlatformVersions (targetPlatform target))
-          <*> pure target
-      flags :: Action (BuildFlags -> BuildFlags)
-      flags =
-        ( return $
-            append compilerFlags [(Just Cpp, ["-std=c++11"])]
-              >>> append compilerFlags [(Nothing, ["-O3"])]
-              >>> append userIncludes ["include"]
-              >>> append systemIncludes ["/nix/store/4hy9pysnlf8s1jhqiqwxhd501x78kaa2-llvm-8.0.1/include"]
+main =
+  Conc.getNumCapabilities >>= \jobsN -> shakeArgs shakeOptions {shakeFiles = buildDir, shakeThreads = jobsN} do
+    let target = OSX.target OSX.macOSX (X86 X86_64)
+        toolChain =
+          OSX.toolChain
+            <$> OSX.getSDKRoot
+            <*> (maximum <$> OSX.getPlatformVersions (targetPlatform target))
+            <*> pure target
+        flags :: Action (BuildFlags -> BuildFlags)
+        flags =
+          ( return $
+              append compilerFlags [(Just Cpp, ["-std=c++11"])]
+                >>> append compilerFlags [(Nothing, ["-O3"])]
+                >>> append userIncludes ["include"]
+                >>> append
+                  systemIncludes
+                  [ "${llvm-dev}",
+                    "${libcxx-dev}",
+                    "${zlib-dev}",
+                    "${ncurses-dev}"
+                  ]
+          )
+            >>>= (llvmConfig defaultOptions "mcjit")
+            >>>= (llvmConfig defaultOptions "x86")
+            >>>= (llvmConfig defaultOptions "ipo")
+            >>>= (PkgConfig.pkgConfig PkgConfig.defaultOptions "zlib")
+            >>>= (PkgConfig.pkgConfig PkgConfig.defaultOptions "ncurses")
+
+    libHobbesA <-
+      staticLibrary
+        toolChain
+        (buildDir </> toBuildPrefix target </> "libHobbes.a")
+        flags
+        (getDirectoryFiles "" ["lib//*.C"])
+
+    libHobbesD <-
+      sharedLibrary
+        toolChain
+        (buildDir </> toBuildPrefix target </> "libHobbes.dylib")
+        flags
+        (getDirectoryFiles "" ["lib//*.C"])
+
+    hogD <-
+      executable
+        toolChain
+        (buildDir </> toBuildPrefix target </> "hog-D" <.> exe)
+        ( flags
+            >>>= ( return $
+                     append
+                       localLibraries
+                       [ libHobbesD
+                       ]
+                 )
         )
-          >>>= (llvmConfig defaultOptions "mcjit")
-          >>>= (llvmConfig defaultOptions "x86")
-          >>>= (llvmConfig defaultOptions "ipo")
-          >>>= (PkgConfig.pkgConfig PkgConfig.defaultOptions "zlib")
-          >>>= (PkgConfig.pkgConfig PkgConfig.defaultOptions "ncurses")
+        ( getDirectoryFiles
+            ""
+            [ "bin/hog//*.C"
+            ]
+        )
 
-  libHobbesA <-
-    staticLibrary
-      toolChain
-      (buildDir </> toBuildPrefix target </> "libHobbes.a")
-      flags
-      (getDirectoryFiles "" ["lib//*.C"])
-
-  libHobbesD <-
-    sharedLibrary
-      toolChain
-      (buildDir </> toBuildPrefix target </> "libHobbes.dylib")
-      flags
-      (getDirectoryFiles "" ["lib//*.C"])
-
-  hogD <-
-    executable
-      toolChain
-      (buildDir </> toBuildPrefix target </> "hog-D" <.> exe)
-      ( flags
-          >>>= ( return $
-                   append
-                     localLibraries
-                     [ libHobbesD
-                     ]
-               )
-      )
-      ( getDirectoryFiles
-          ""
-          [ "bin/hog//*.C"
-          ]
-      )
-
-  hogA <-
-    executable
-      toolChain
-      (buildDir </> toBuildPrefix target </> "hog-A" <.> exe)
-      ( flags
-          >>>= ( return $
-                   append
-                     localLibraries
-                     [ libHobbesA
-                     ]
-               )
-      )
-      ( getDirectoryFiles
-          ""
-          [ "bin/hog//*.C"
-          ]
-      )
-
-  hiD <-
-    executable
-      toolChain
-      (buildDir </> toBuildPrefix target </> "hi-D" <.> exe)
-      ( flags
-          >>>= ( return $
-                   append
-                     localLibraries
-                     [ libHobbesD
-                     ]
-                     >>> append
-                       libraries
-                       [ "history",
-                         "readline"
+    hogA <-
+      executable
+        toolChain
+        (buildDir </> toBuildPrefix target </> "hog-A" <.> exe)
+        ( flags
+            >>>= ( return $
+                     append
+                       localLibraries
+                       [ libHobbesA
                        ]
-                     >>> append
-                       libraryPath
-                       [ "/nix/store/rihqkdm9897gx0j6f4fb32ld4yd4p6d0-readline-6.3p08/lib"
-                       ]
-                     >>> append
-                       systemIncludes
-                       [ "/nix/store/n6yi72k3ymwhlplr169577j60gla1r49-readline-6.3p08-dev/include/"
-                       ]
-               )
-      )
-      ( getDirectoryFiles
-          ""
-          [ "bin/hi//*.C"
-          ]
-      )
+                 )
+        )
+        ( getDirectoryFiles
+            ""
+            [ "bin/hog//*.C"
+            ]
+        )
 
-  hiA <-
-    executable
-      toolChain
-      (buildDir </> toBuildPrefix target </> "hi-A" <.> exe)
-      ( flags
-          >>>= ( return $
-                   append
-                     localLibraries
-                     [ libHobbesA
-                     ]
-                     >>> append
-                       libraries
-                       [ "history",
-                         "readline"
+    hiD <-
+      executable
+        toolChain
+        (buildDir </> toBuildPrefix target </> "hi-D" <.> exe)
+        ( flags
+            >>>= ( return $
+                     append
+                       localLibraries
+                       [ libHobbesD
                        ]
-                     >>> append
-                       libraryPath
-                       [ "/nix/store/rihqkdm9897gx0j6f4fb32ld4yd4p6d0-readline-6.3p08/lib"
-                       ]
-                     >>> append
-                       systemIncludes
-                       [ "/nix/store/n6yi72k3ymwhlplr169577j60gla1r49-readline-6.3p08-dev/include/"
-                       ]
-               )
-      )
-      (getDirectoryFiles "" ["bin/hi//*.C"])
+                       >>> append
+                         libraries
+                         [ "history",
+                           "readline"
+                         ]
+                       >>> append
+                         libraryPath
+                         [ "${readline-lib}"
+                         ]
+                       >>> append
+                         systemIncludes
+                         [ "${readline-dev}"
+                         ]
+                 )
+        )
+        ( getDirectoryFiles
+            ""
+            [ "bin/hi//*.C"
+            ]
+        )
 
-  hobbes_testD <-
-    executable
-      toolChain
-      (buildDir </> toBuildPrefix target </> "hobbes-test-D" <.> exe)
-      ( flags
-          >>>= ( return $
-                   append
-                     localLibraries
-                     [ libHobbesD
-                     ]
-                     >>> append
-                       userIncludes
-                       [ "test"
+    hiA <-
+      executable
+        toolChain
+        (buildDir </> toBuildPrefix target </> "hi-A" <.> exe)
+        ( flags
+            >>>= ( return $
+                     append
+                       localLibraries
+                       [ libHobbesA
                        ]
-               )
-      )
-      ( getDirectoryFiles
-          ""
-          [ "test//*.C"
-          ]
-      )
+                       >>> append
+                         libraries
+                         [ "history",
+                           "readline"
+                         ]
+                       >>> append
+                         libraryPath
+                         [ "${readline-lib}"
+                         ]
+                       >>> append
+                         systemIncludes
+                         [ "${readline-dev}"
+                         ]
+                 )
+        )
+        (getDirectoryFiles "" ["bin/hi//*.C"])
 
-  hobbes_testA <-
-    executable
-      toolChain
-      (buildDir </> toBuildPrefix target </> "hobbes-test-A" <.> exe)
-      ( flags
-          >>>= ( return $
-                   append
-                     localLibraries
-                     [ libHobbesA
-                     ]
-                     >>> append
-                       userIncludes
-                       [ "test"
+    hobbes_testD <-
+      executable
+        toolChain
+        (buildDir </> toBuildPrefix target </> "hobbes-test-D" <.> exe)
+        ( flags
+            >>>= ( return $
+                     append
+                       localLibraries
+                       [ libHobbesD
                        ]
-               )
-      )
-      ( getDirectoryFiles
-          ""
-          [ "test//*.C"
-          ]
-      )
+                       >>> append
+                         userIncludes
+                         [ "test"
+                         ]
+                 )
+        )
+        ( getDirectoryFiles
+            ""
+            [ "test//*.C"
+            ]
+        )
 
-  want [hobbes_testA, hogA, hiA]
+    hobbes_testA <-
+      executable
+        toolChain
+        (buildDir </> toBuildPrefix target </> "hobbes-test-A" <.> exe)
+        ( flags
+            >>>= ( return $
+                     append
+                       localLibraries
+                       [ libHobbesA
+                       ]
+                       >>> append
+                         userIncludes
+                         [ "test"
+                         ]
+                 )
+        )
+        ( getDirectoryFiles
+            ""
+            [ "test//*.C"
+            ]
+        )
+
+    want [hobbes_testA, hogA, hiA]

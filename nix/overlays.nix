@@ -8,14 +8,6 @@ let
 
   buildInputs = [ ncurses readline zlib python27 ];
 
-  cmakeFlags = [ "-GNinja" ];
-
-  dontUseNinjaBuild = true;
-
-  dontUseNinjaInstall = true;
-
-  dontUseNinjaCheck = true;
-
   doCheck = true;
 
   doTarget = "test";
@@ -47,64 +39,85 @@ let
       stdenv.mkDerivation {
         pname = "hobbes-gcc-" + toString gccVersion + "-llvm-"
           + toString llvmVersion;
-        inherit version src meta doCheck doTarget dontStrip cmakeFlags
-          dontUseNinjaBuild dontUseNinjaInstall dontUseNinjaCheck;
+        inherit version src meta doCheck doTarget dontStrip;
         nativeBuildInputs = nativeBuildInputs;
         buildInputs = buildInputs
-          ++ [ (llvmPkgs { inherit llvmVersion; }).llvm ];
+                      ++ [ (llvmPkgs { inherit llvmVersion; }).llvm ];
         postPatch = ''
           substituteInPlace CMakeLists.txt \
              --replace "\''${CMAKE_SOURCE_DIR}" "${src}"
         '';
-        buildPhase = ''
-          ${shake}/bin/shake --color --report --timings -j -f build.ninja
-        '';
       });
 
   withCLANG = let
-    llvmPkgs = { llvmVersion }:
-      builtins.getAttr ("llvmPackages_" + (toString llvmVersion)) final;
+    llvmPkgs = { llvmVersion }: final."llvmPackages_${toString llvmVersion}";
   in makeOverridable
   ({ llvmVersion, stdenv ? (llvmPkgs { inherit llvmVersion; }).stdenv }:
     stdenv.mkDerivation {
-      pname = "hobbes-clang-" + (toString llvmVersion);
-      inherit version src meta doCheck doTarget dontStrip cmakeFlags
-        dontUseNinjaBuild dontUseNinjaInstall dontUseNinjaCheck;
+      pname = "hobbes-clang-" + toString llvmVersion;
+      inherit version src meta doCheck doTarget dontStrip;
       nativeBuildInputs = nativeBuildInputs;
-      buildInputs = buildInputs ++ [ (llvmPkgs { inherit llvmVersion; }).llvm ];
+      buildInputs = buildInputs
+                    ++ [ (llvmPkgs { inherit llvmVersion; }).llvm ];
       postPatch = ''
         substituteInPlace CMakeLists.txt \
            --replace "\''${CMAKE_SOURCE_DIR}" "${src}"
       '';
-      buildPhase = ''
-        ${shake}/bin/shake --color --report --timings -j -f build.ninja
-      '';
-      checkPhase = ''
-        echo $(pwd)
-        ls $(echo $(pwd))
-        ./hobbes-test
-      '';
-      installPhase = ''
-        make install
-      '';
     });
   
-  hobbesbuild = with haskellPackages; when stdenv.isDarwin (callCabal2nix "hobbesbuild" "${src}/shake" { inherit shake shake-language-c; });
-
-  build = makeOverridable ({pkg, zlib, ncurses, readline, llvm ? llvm_8, clang ? clang_8, pkgconfig }: stdenv.mkDerivation {
-    pname = "build";
-    inherit version;
-    src = "${pkg.src}";
-    propagatedBuildInputs = [ hobbesbuild cabal-install xcbuild zlib ncurses readline llvm clang pkgconfig ];
-    buildPhase = ''
-    echo $(pwd)
-    ls .
-    ${hobbesbuild}/bin/hobbesbuild
-    '';
-    installPhase = ''
-      mkdir -p "$out"
-    '';
-  });
+  withSHAKE = let
+    llvmPkgs = { llvmVersion }: final."llvmPackages_${toString llvmVersion}";
+  in makeOverridable
+    ({ llvmVersion
+     , ncurses ? final.ncurses
+     , zlib ? final.zlib
+     , readline ? final.readline
+     , xcbuild ? final.xcbuild
+     , libcxxStdenv ? final.libcxxStdenv
+     , cabal-install ? final.cabal-install
+     , stdenv ? (llvmPkgs { inherit llvmVersion; }).stdenv
+     }:
+       stdenv.mkDerivation rec {
+         pname = "hobbes-shake-" + toString llvmVersion;
+         inherit version src meta;
+         shakeBuild = (with haskellPackages; with (llvmPkgs { inherit llvmVersion; });
+           haskell.lib.overrideCabal (callCabal2nix "shakeBuild" "${src}/shake" {
+             inherit shake shake-language-c;
+           }) (old: {
+             postPatch = ''
+             substituteInPlace Shakefile.hs \
+               --replace "\''${zlib-dev}" "${zlib}/include" \
+               --replace "\''${ncurses-dev}" "${ncurses}/include" \
+               --replace "\''${libcxx-dev}" "${llvmPackages.libcxx}/include/c++/v1" \
+               --replace "\''${llvm-dev}" "${llvm}/include" \
+               --replace "\''${llvm-lib}" "${llvm}/lib" \
+               --replace "\''${readline-lib}" "${readline}/lib" \
+               --replace "\''${readline-dev}" "${readline.dev}/include"
+             '';
+           }));
+         nativeBuildInputs = [
+           final."clang_${toString llvmVersion}"
+           pkgconfig
+           xcbuild
+           shakeBuild
+           cabal-install
+         ];
+         propagatedBuildInputs = with (llvmPkgs { inherit llvmVersion; }); [
+           zlib ncurses readline llvm
+           libcxx
+           (stdenv.lib.getDev stdenv.cc.libc)
+           libcxxStdenv
+         ];
+         buildPhase = ''
+           ${shakeBuild}/bin/shakeBuild +RTS -N
+         '';
+         installPhase = ''
+           mkdir -p "$out"/{bin,test}
+           install build/macosx/x86_64/hi-A build/macosx/x86_64/hog-A "$out"/bin
+           install build/macosx/x86_64/hobbes-test-A "$out"/test
+         '';
+       });
+  
 in rec {
   hobbesPackages = when stdenv.isLinux (recurseIntoAttrs (builtins.listToAttrs
     (builtins.map (gccConstraint: {
@@ -125,19 +138,12 @@ in rec {
         value = recurseIntoAttrs ({
           hobbes = dbg (callPackage withCLANG { inherit llvmVersion; });
         });
-      }) llvmVersions)) // recurseIntoAttrs {
-        inherit
-          zlib
-          ncurses
-          readline
-          llvm_8
-          clang_8
+      }) llvmVersions)) // recurseIntoAttrs (builtins.listToAttrs (builtins.map
+        (llvmVersion: {
+          name = "shake-" + toString llvmVersion;
+          value = recurseIntoAttrs ({
+            hobbes = dbg (callPackage withSHAKE { inherit llvmVersion; });
+          });
+        }) llvmVersions))
         ;
-        inherit (haskellPackages)
-          shake
-          shake-language-c
-        ;
-        # build = with haskellPackages; when stdenv.isDarwin (callCabal2nix "hobbesbuild" "${src}/shake" { inherit shake shake-language-c; });
-        build = callPackage build { pkg = hobbesPackages.clang-8.hobbes; inherit zlib ncurses readline pkgconfig; };
-      };
 }
