@@ -21,8 +21,10 @@ import Development.Shake.Language.C
   )
 import Development.Shake.Language.C.Label (append)
 import qualified Development.Shake.Language.C.PkgConfig as PkgConfig
-import Development.Shake.Language.C.Target.OSX
+import qualified Development.Shake.Language.C.Target.Linux as Linux
+-- import Development.Shake.Language.C.Target.OSX
 import qualified Development.Shake.Language.C.Target.OSX as OSX
+import qualified Development.Shake.Language.C.ToolChain as ToolChain
 -- import Development.Shake.Language.C.Util (words')
 import Development.Shake.Util
 
@@ -143,17 +145,24 @@ buildDir = "build"
 main :: IO ()
 main =
   Conc.getNumCapabilities >>= \jobsN -> shakeArgs shakeOptions {shakeFiles = buildDir, shakeThreads = jobsN} do
-    let target = OSX.target OSX.macOSX (X86 X86_64)
-        toolChain =
+    let targetOSX = OSX.target OSX.macOSX (X86 X86_64)
+        targetLinux = Linux.target (X86 X86_64)
+        toolChainOSX :: Action ToolChain
+        toolChainOSX =
           OSX.toolChain
             <$> OSX.getSDKRoot
-            <*> (maximum <$> OSX.getPlatformVersions (targetPlatform target))
-            <*> pure target
+            <*> (maximum <$> OSX.getPlatformVersions (targetPlatform targetOSX))
+            <*> pure targetOSX
+        toolChainLinux :: Action ToolChain
+        toolChainLinux = pure $ Linux.toolChain ToolChain.LLVM
+        toolChain = ${toolChain}
+        target = ${target}
+
         flags :: Action (BuildFlags -> BuildFlags)
         flags =
           ( return $
               append compilerFlags [(Just Cpp, ["-std=c++11"])]
-                >>> append compilerFlags [(Nothing, ["-O3"])]
+                >>> append compilerFlags [(Nothing, ["-O3", "-g"])]
                 >>> append userIncludes ["include"]
                 >>> append
                   systemIncludes

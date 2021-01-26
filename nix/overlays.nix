@@ -75,6 +75,7 @@ let
      , xcbuild ? final.xcbuild
      , libcxxStdenv ? final.libcxxStdenv
      , cabal-install ? final.cabal-install
+     , binutils ? final.binutils
      , stdenv ? (llvmPkgs { inherit llvmVersion; }).stdenv
      }:
        stdenv.mkDerivation rec {
@@ -92,16 +93,18 @@ let
                --replace "\''${llvm-dev}" "${llvm}/include" \
                --replace "\''${llvm-lib}" "${llvm}/lib" \
                --replace "\''${readline-lib}" "${readline}/lib" \
-               --replace "\''${readline-dev}" "${readline.dev}/include"
+               --replace "\''${readline-dev}" "${readline.dev}/include" \
+               --replace "\''${toolChain}" "${if stdenv.isDarwin then "toolChainOSX" else "toolChainLinux"}" \
+               --replace "\''${target}" "${if stdenv.isDarwin then "targetOSX" else "targetLinux"}"
              '';
            }));
          nativeBuildInputs = [
            final."clang_${toString llvmVersion}"
+           binutils
            pkgconfig
-           xcbuild
            shakeBuild
            cabal-install
-         ];
+         ] ++ (if stdenv.isDarwin then [ xcbuild ] else []);
          propagatedBuildInputs = with (llvmPkgs { inherit llvmVersion; }); [
            zlib ncurses readline llvm
            libcxx
