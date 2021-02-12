@@ -38,6 +38,9 @@ let
   linuxOnly = v : if system == "x86_64-linux" then v else {};
   
   when = c: m: if c then m else {};
+
+  withMCMove = with haskellPackages;
+    callCabal2nix "mcmove" ../playground/haskell/mcmove {};
   
   withGCC = { gccVersion ? 10 }:
     let gccPkgs = { gccVersion }: builtins.getAttr ("gcc" + (toString gccVersion) + "Stdenv") final;
@@ -70,13 +73,18 @@ in { hobbesPackages = when stdenv.isLinux (recurseIntoAttrs (builtins.listToAttr
        name = "gcc-" + toString gccConstraint.gccVersion;
        value = recurseIntoAttrs (builtins.listToAttrs (builtins.map (llvmVersion: {
          name = "llvm-" + toString llvmVersion;
-         value = recurseIntoAttrs ({ hobbes = dbg (callPackage (withGCC { inherit (gccConstraint) gccVersion; }) { inherit llvmVersion; }); });
+         value = recurseIntoAttrs ({
+           hobbes = dbg (callPackage (withGCC { inherit (gccConstraint) gccVersion; }) { inherit llvmVersion; });
+           mcmove = withMCMove;
+         });
        }) gccConstraint.llvmVersions));
      }) gccConstraints)))
      // recurseIntoAttrs (builtins.listToAttrs (
        builtins.map
          (llvmVersion: { name="clang-" + toString llvmVersion;
-                         value = recurseIntoAttrs ({ hobbes = dbg (callPackage withCLANG { inherit llvmVersion; }); });
+                         value = recurseIntoAttrs ({
+                           hobbes = dbg (callPackage withCLANG { inherit llvmVersion; });
+                         });
                        })
          llvmVersions));
    }
