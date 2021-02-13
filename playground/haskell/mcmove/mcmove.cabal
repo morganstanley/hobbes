@@ -1,23 +1,31 @@
+cabal-version:       3.0
 name:                mcmove
 version:             0.1.0.0
 -- synopsis:
 -- description:
 homepage:            https://github.com/morganstanley/hobbes#readme
-license:             BSD3
+license:             BSD-3-Clause
 license-file:        LICENSE
 author:              Providence Salumu
 maintainer:          Providence.Salumu@smunix.com
 copyright:           BSD3
 category:            Web
 build-type:          Simple
-cabal-version:       >=1.10
 extra-source-files:  README.md
 
 executable mcmove
+  default-extensions:  BlockArguments
+                       OverloadedStrings
+                       RankNTypes
+                       TypeApplications                                                            
   hs-source-dirs:      src
   main-is:             Main.hs
   default-language:    Haskell2010
-  build-depends:       base >= 4.7 && < 5
+  cxx-options: -std=c++14 -g -O2
+  ghc-options: -pgmc=g++ -O2 -optcxx-std=c++14               
+  include-dirs: __include_dirs_libcxx__
+                __include_dirs_hobbes__                                      
+  build-depends:       base >= 4.7
                      , bytestring
                      , inline-c
                      , inline-c-cpp

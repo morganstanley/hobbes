@@ -39,8 +39,21 @@ let
   
   when = c: m: if c then m else {};
 
-  withMCMove = with haskellPackages;
-    callCabal2nix "mcmove" ../playground/haskell/mcmove {};
+  withMCMove = { hobbes, llvmVersion }:
+    # with haskell.packages.ghc901;
+    with haskellPackages;
+    with haskell.lib;
+    appendConfigureFlags (overrideCabal (callCabal2nix "mcmove" ../playground/haskell/mcmove {}) (drv: {
+      librarySystemDepends = [ hobbes gccStdenv (final."llvmPackages_${toString llvmVersion}".llvm) ];
+      postPatch = ''
+        substituteInPlace mcmove.cabal --replace "__include_dirs_hobbes__" "${hobbes}/include"
+        substituteInPlace mcmove.cabal --replace "__include_dirs_libcxx__" "${gccStdenv}/include/c++/v1"
+        cat mcmove.cabal
+      '';
+    })) [
+      # "--ghc-options=-optl-static"
+      # "--ghc-options=-optl${hobbes}/lib/libhobbes.a"
+    ];
   
   withGCC = { gccVersion ? 10 }:
     let gccPkgs = { gccVersion }: builtins.getAttr ("gcc" + (toString gccVersion) + "Stdenv") final;
@@ -75,7 +88,7 @@ in { hobbesPackages = when stdenv.isLinux (recurseIntoAttrs (builtins.listToAttr
          name = "llvm-" + toString llvmVersion;
          value = recurseIntoAttrs ({
            hobbes = dbg (callPackage (withGCC { inherit (gccConstraint) gccVersion; }) { inherit llvmVersion; });
-           mcmove = withMCMove;
+           mcmove = withMCMove { inherit hobbes llvmVersion; };
          });
        }) gccConstraint.llvmVersions));
      }) gccConstraints)))

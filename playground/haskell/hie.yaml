@@ -1,0 +1,4 @@
+cradle:
+  cabal:
+    - path: "mcmove/src/Main.hs"
+      component: "mcmove:exe:mcmove"
