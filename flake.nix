@@ -2,13 +2,15 @@
   description = "A language and an embedded JIT compiler";
   
   inputs.flake-utils.url = "github:numtide/flake-utils";
+  # inputs.morganstanley.url = "github:morganstanley/hobbes";
+  inputs.morganstanley.url = "github:smunix/hobbes/fix.mcmove";
 
-  outputs = { self, nixpkgs, flake-utils }:
+  outputs = { self, nixpkgs, flake-utils, morganstanley }@inputs:
     flake-utils.lib.eachSystem [ "x86_64-linux" "x86_64-darwin" ] (system:
       let
         overlays = [
           (import ./nix/overlays.nix {
-            inherit system;
+            inherit system inputs;
             version = "${nixpkgs.lib.substring 0 8 self.lastModifiedDate}.${self.shortRev or "dirty"}";
             src = self;
             llvmVersions = [ 6 8 9 10 11 ];

@@ -22,10 +22,12 @@ executable mcmove
   main-is:             Main.hs
   default-language:    Haskell2010
   cxx-options: -std=c++14 -g -O2
-  ghc-options: -pgmc=g++ -O2 -optcxx-std=c++14               
+  ghc-options: -pgmc=__ghc_options_pgmc__
+               -optl=-Wl,-Bdynamic
+               -optl=-lhobbes-dyn                
   include-dirs: __include_dirs_libcxx__
-                __include_dirs_hobbes__                                      
-  build-depends:       base >= 4.7
+                __include_dirs_hobbes__
+  build-depends:       base
                      , bytestring
                      , inline-c
                      , inline-c-cpp
