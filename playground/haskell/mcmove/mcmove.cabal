@@ -13,18 +13,24 @@ extra-source-files:  README.md
 
 executable mcmove
   default-extensions:  BlockArguments
+                       BangPatterns
+                       GADTs
+                       MultiParamTypeClasses                        
                        OverloadedStrings
                        RankNTypes
-                       TypeApplications                                                            
+                       ScopedTypeVariables
+                       TupleSections                                                  
+                       TypeApplications
+                       ViewPatterns                                                             
   hs-source-dirs:      src
   main-is:             Main.hs
   default-language:    Haskell2010
   cxx-options: -std=c++14 -g -O2
   ghc-options: -pgmc=g++
-  ld-options: -lhobbes-dyn
-  extra-libraries: hobbes
+  extra-libraries: hobbes-dyn
   build-depends:       base
                      , bytestring
                      , inline-c
                      , inline-c-cpp
+                     , microlens-platform                       
                      , shared-memory
