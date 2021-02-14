@@ -47,19 +47,14 @@ let
     with haskell.lib;
     let gccEnv = final."gcc${toString gccVersion}Stdenv";
         llvmEnv = final."llvmPackages_${toString llvmVersion}";
-        libCxx = final.libcxx;
     in
-    (overrideCabal (callCabal2nix "mcmove" ../playground/haskell/mcmove {}) (drv: {
-      librarySystemDepends = (drv.librarySystemDepends or []) ++ [ llvmEnv.llvm hobbes ];
-      buildDepends = (drv.builDepends or []) ++ [ llvmEnv.llvm ];
-      # enableStaticLibraries = true;
-      # substituteInPlace mcmove.cabal --replace "__include_dirs_libcxx__" "${libCxx}/include/c++/v1"
+    overrideCabal (callCabal2nix "mcmove" ../playground/haskell/mcmove { inherit hobbes; }) (drv: {
+      librarySystemDepends = (drv.librarySystemDepends or []) ++ [ llvmEnv.llvm ];
       postPatch = ''
-        substituteInPlace mcmove.cabal --replace "__include_dirs_hobbes__" "${hobbes}/include" \
-                                       --replace "__ghc_options_pgmc__" "${gccEnv.cc}/bin/g++"
+        substituteInPlace mcmove.cabal --replace "__ghc_options_pgmc__" "${gccEnv.cc}/bin/g++"
         cat mcmove.cabal
       '';
-    }));
+    });
   
   withGCC = { gccVersion ? 10 }:
     let gccPkgs = { gccVersion }: builtins.getAttr ("gcc" + (toString gccVersion) + "Stdenv") final;
@@ -98,7 +93,6 @@ in { hobbesPackages = when stdenv.isLinux (recurseIntoAttrs (builtins.listToAttr
              inherit llvmVersion;
              inherit (gccConstraint) gccVersion;
              hobbes = inputs.morganstanley.packages.${system}.${"hobbesPackages/gcc-" + toString gccConstraint.gccVersion + "/llvm-" + toString llvmVersion + "/hobbes"};
-             # hobbes = inputs.self.packages.${system}.${"hobbesPackages/gcc-" + toString gccConstraint.gccVersion + "/llvm-" + toString llvmVersion + "/hobbes"};
            };
          });
        }) gccConstraint.llvmVersions));

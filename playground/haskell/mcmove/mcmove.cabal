@@ -1,8 +1,6 @@
 cabal-version:       3.0
 name:                mcmove
 version:             0.1.0.0
--- synopsis:
--- description:
 homepage:            https://github.com/morganstanley/hobbes#readme
 license:             BSD-3-Clause
 license-file:        LICENSE
@@ -22,11 +20,9 @@ executable mcmove
   main-is:             Main.hs
   default-language:    Haskell2010
   cxx-options: -std=c++14 -g -O2
-  ghc-options: -pgmc=__ghc_options_pgmc__
-               -optl=-Wl,-Bdynamic
-               -optl=-lhobbes-dyn                
-  include-dirs: __include_dirs_libcxx__
-                __include_dirs_hobbes__
+  ghc-options: -pgmc=g++
+  ld-options: -lhobbes-dyn
+  extra-libraries: hobbes
   build-depends:       base
                      , bytestring
                      , inline-c
