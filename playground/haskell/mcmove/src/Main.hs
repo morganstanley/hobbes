@@ -3,8 +3,10 @@
 
 module Main where
 
+import System.IO
 import Control.Monad
-import Data.ByteString hiding (putStrLn)
+import Data.ByteString as B hiding (putStrLn, zip)
+import qualified Data.ByteString.Internal as BI
 import Data.Function
 import Foreign.C.Types
 import Foreign.Concurrent (newForeignPtr)
@@ -37,6 +39,7 @@ C.context $
       ]
 
 C.include "<hobbes/hobbes.H>"
+C.include "<iostream>"
 
 C.using "Cc = hobbes::cc"
 C.using "CharLen = std::pair<unsigned char*, size_t>"
@@ -63,14 +66,28 @@ instance Convert ByteString IO CharLen where
       !cl' = cl ^. charLen
 
 disassemble :: Cc -> ByteString -> IO ByteString
-disassemble cc = getMachineCode cc >=> convert
+disassemble cc = getMachineCode >=> convert
   where
-    getMachineCode :: Cc -> ByteString -> IO CharLen
-    getMachineCode = error "nyi"
+    getMachineCode :: ByteString -> IO CharLen
+    getMachineCode bstr = do
+      cl <- [C.block|CharLen*{
+              auto bytes = $fptr-ptr:(Cc* cc')->machineCodeForExpr(std::string($bs-ptr:bstr, $bs-len:bstr));
+              auto r = new CharLen(new uint8_t[bytes.size()], bytes.size());
+              std::memcpy(r->first, bytes.data(), bytes.size());
+              std::cout << "disassemble:" << std::string(reinterpret_cast<char*>(bytes.data()), bytes.size()) << std::endl;
+              std::cout << "size:disassemble:" << bytes.size() << std::endl;
+              return r;
+              }|]
+      newForeignPtr cl ([C.block|void{ delete [] $(CharLen *cl)->first; delete $(CharLen *cl);}|])
+        >>= return . CharLen
+      where
+        !cc' = cc ^. compiler
 
 main :: IO ()
 main = do
   (cc :: Cc) <- new
+  disassemble cc "(\\xs.match xs with | [1,2,3] -> 1 | [1,2,y] -> y | [] -> 9 | _ -> 10) :: [int] -> int"
+        >>= putStrLn . show . zip [1..] . fmap BI.w2c . B.unpack
   x <-
     [C.block| int{
                  auto c = [&]()->hobbes::cc& {
