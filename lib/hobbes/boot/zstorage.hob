@@ -105,6 +105,7 @@ instance UCMSized long   8
 instance UCMSized int128 16
 instance UCMSized float  4
 instance UCMSized double 8
+instance UCMSized bool   1
 
 type pcsmodel n = { pmodels:[:(csmodel 256)|n:] }
 type pdmodel  n = [:<hobbes.DynDModel0>|n:]
@@ -201,6 +202,11 @@ instance (UCModel t tsm tdm) => UCModel [t] ((pcsmodel 8) * tsm) ((pdmodel 8) * 
   ucPrepModel    sm dm   = do { (ucPrepModel::(UCModel long _ _)=>(_,_)->_)(sm.0, dm.0); (ucPrepModel::(UCModel t _ _)=>(_,_)->_)(sm.1, dm.1); }
   ucDeallocModel dm      = do { (ucDeallocModel::(UCModel long _ _)=>_->_)(dm.0); (ucDeallocModel::(UCModel t _ _)=>_->_)(dm.1); }
 
+instance (UCModel t tsm tdm) => UCModel [:t|n:] ((pcsmodel 8) * tsm) ((pdmodel 8) * tdm) where
+  ucAllocModel   f input = ((ucAllocModel::(UCModel long _ _)=>_)(f,input), (ucAllocModel::(UCModel t _ _)=>_)(f,input))
+  ucPrepModel    sm dm   = do { (ucPrepModel::(UCModel long _ _)=>(_,_)->_)(sm.0, dm.0); (ucPrepModel::(UCModel t _ _)=>(_,_)->_)(sm.1, dm.1); }
+  ucDeallocModel dm      = do { (ucDeallocModel::(UCModel long _ _)=>_->_)(dm.0); (ucDeallocModel::(UCModel t _ _)=>_->_)(dm.1); }
+
 ucTakeNStep :: (UCRead t sm dm) => (<hobbes.UCReader>, dm, long, [t], long) -> [t]
 ucTakeNStep r dm n x i =
   if (ucReaderEOF(r) or i == n) then
@@ -218,6 +224,22 @@ ucTakeN r dm n = ucTakeNStep(r, dm, n, newArray(n), 0L)
 instance (UCModel t tsm tdm) => UCRead [t] ((pcsmodel 8) * tsm) ((pdmodel 8) * tdm) where
   ucRead r dm = ucTakeN(r, dm.1, (ucRead::(UCRead long _ _)=>(_,_)->_)(r, dm.0))
 
+ucFTakeNStep :: (UCRead t sm dm) => (<hobbes.UCReader>, dm, long, [:t|n:], long) -> [:t|n:]
+ucFTakeNStep r dm n x i =
+  if (ucReaderEOF(r) or i == n) then
+    x
+  else
+    do {
+      saelem(x, i) <-  ucRead(r, dm);
+      return ucFTakeNStep(r, dm, n, x, i+1L)
+    }
+
+ucFTakeN :: (UCRead t sm dm) => (<hobbes.UCReader>, dm, long) -> [:t|n:]
+ucFTakeN r dm n = ucFTakeNStep(r, dm, n, newPrim()::[:t|n:], 0L)
+
+instance (UCModel t tsm tdm) => UCRead [:t|n:] ((pcsmodel 8) * tsm) ((pdmodel 8) * tdm) where
+  ucRead r dm = ucFTakeN(r, dm.1, (ucRead::(UCRead long _ _)=>(_,_)->_)(r, dm.0))
+
 ucPutN :: (UCWrite t sm dm) => (<hobbes.UCWriter>, dm, [t], long, long) -> ()
 ucPutN w m xs i e =
   if (i == e) then
@@ -230,6 +252,20 @@ ucPutN w m xs i e =
 
 instance (UCModel t tsm tdm) => UCWrite [t] ((pcsmodel 8) * tsm) ((pdmodel 8) * tdm) where
   ucWrite w dm x = do { (ucWrite::(UCWrite long _ _)=>(_,_,_)->_)(w, dm.0, length(x)); ucPutN(w, dm.1, x, 0L, length(x)); }
+
+ucFPutN :: (UCWrite t sm dm) => (<hobbes.UCWriter>, dm, [:t|n:], long, long) -> ()
+ucFPutN w m xs i e =
+  if (i == e) then
+    ()
+  else do {
+   (ucWrite::(UCWrite t sm dm)=>(_,_,_)->_)(w, m, saelem(xs,i));
+    ucFPutN(w, m, xs, i+1L, e);
+  }
+
+instance (UCModel t tsm tdm) => UCWrite [:t|n:] ((pcsmodel 8) * tsm) ((pdmodel 8) * tdm) where
+  ucWrite w dm x = do {(ucWrite::(UCWrite long _ _)=>(_,_,_)->_)(w, dm.0, salength(x)); ucFPutN(w, dm.1, x, 0L, salength(x)); }
+
+
 
 // compression models for enumerations (variants with only unit payloads)
 class UCMEnumCount t b | t -> b

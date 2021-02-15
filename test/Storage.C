@@ -111,10 +111,15 @@ TEST(Storage, Create) {
   }
 }
 
+typedef char fixarray[8];
+
 DEFINE_STRUCT(SeriesTest,
   (int,                x),
   (double,             y),
-  (const array<char>*, z)
+  (const array<char>*, z),
+  (bool,               b),
+  (fixarray,           v)
+              
 );
 
 TEST(Storage, RawSeriesAPI) {
@@ -129,6 +134,8 @@ TEST(Storage, RawSeriesAPI) {
       st.x = i;
       st.y = 3.14159 * static_cast<double>(i);
       st.z = makeString("string_" + str::from(i));
+      st.b = true;
+      memcpy(st.v, "12345678", 8);
       ss(st);
     }
 
@@ -141,6 +148,9 @@ TEST(Storage, RawSeriesAPI) {
       st.x = i;
       st.y = 3.14159 * static_cast<double>(i);
       st.z = makeString("string_" + str::from(i));
+      st.b = true;
+      memcpy(st.v, "12345678", 8);
+
       ss(st);
     }
     EXPECT_TRUE(c().compileFn<bool()>("[x|{x=x}<-f.series_test][:0] == [0..4]")());
@@ -164,6 +174,8 @@ TEST(Storage, CSeriesAPI) {
       st.x = i;
       st.y = 3.14159 * static_cast<double>(i);
       st.z = makeString("string_" + str::from(i));
+      st.b = true;
+      memcpy(st.v, "12345678", 8);
       ss(st);
     }
 
