@@ -26,10 +26,11 @@ executable mcmove
   main-is:             Main.hs
   default-language:    Haskell2010
   cxx-options: -std=c++14 -g -O2
-  ghc-options: -pgmc=g++
+  ghc-options: -pgmc=g++ -ddump-splices -ddump-simpl
   extra-libraries: hobbes-dyn
   build-depends:       base
                      , bytestring
+                     , disassembler                       
                      , inline-c
                      , inline-c-cpp
                      , microlens-platform                       
