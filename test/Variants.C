@@ -102,6 +102,19 @@ TEST(Variants, Enums) {
   EXPECT_EQ((makeStdString(c().compileFn<const array<char>*(PColor pc)>("x", "show(x)")(PColor::Red()))), "|Red|");
 }
 
+DEFINE_VARIANT(Item,
+  (vehicle, int),
+  (food, float)
+);
+
+TEST(Variants, VariantRecord) {
+  Item aVehicle = Item::vehicle(123);
+  Item aFood = Item::food(321.123);
+
+  EXPECT_EQ((c().compileFn<int(const Item*)>("x", "match x with | |vehicle=v| -> v | |food=_| -> 321")(&aVehicle)), 123);
+  EXPECT_EQ((c().compileFn<int(const Item*)>("x", "match x with | |vehicle=v| -> v | |food=_| -> 321")(&aFood)), 321);
+}
+
 TEST(Variants, WithFunctions) {
   EXPECT_TRUE(c().compileFn<bool()>("either((\\|1=f|.f(1L,0L))(just(if (0 > 0) then llt else lgt)), false, id)")());
 }
