@@ -174,15 +174,16 @@ TEST(Storage, CSeriesAPI) {
       st.x = i;
       st.y = 3.14159 * static_cast<double>(i);
       st.z = makeString("string_" + str::from(i));
-      st.b = true;
-      memcpy(st.v, "12345678", 8);
+      st.b = i % 2 == 0;
+      memcpy(st.v, st.z->data, 8);
       ss(st);
     }
 
     hobbes::cc c;
     c.define("cf", "inputFile :: (LoadFile \"" + fname + "\" w) => w");
     EXPECT_TRUE(c.compileFn<bool()>("[x|{x=x}<-cf.series_test] == [0..999]")());
-
+    EXPECT_TRUE(c.compileFn<bool()>("[b|{b=b}<-cf.series_test][:0] == [x%2==0|{x=x}<-cf.series_test][:0]")());
+    EXPECT_TRUE(c.compileFn<bool()>("[v|{v=v}<-cf.series_test][:0] == [z[0:8]|{z=z}<-cf.series_test][:0]")());
     unlink(fname.c_str());
   } catch (...) {
     unlink(fname.c_str());
