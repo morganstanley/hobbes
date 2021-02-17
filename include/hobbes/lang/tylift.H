@@ -422,6 +422,33 @@ template <typename T>
 template <typename T>
   struct lift<T, false, typename tbool<T::is_hmeta_enum && sizeof(typename T::rep_t)!=sizeof(uint32_t)>::type> : public liftEnum<T, typename T::rep_t> { };
 
+// lift variant records
+template <typename T>
+  struct liftVariantRecord {
+    struct descF {
+      Variant::Members* ctors;
+      typedb*           tenv;
+      descF(Variant::Members* ctors, typedb* tenv) : ctors(ctors), tenv(tenv) { }
+
+      template <typename U>
+      void ctor(const char* n, int id) {
+        this->ctors->push_back(Variant::Member(n, lift<U, true>::type(*this->tenv), id));
+      }
+    };
+
+    static MonoTypePtr type(typedb& tenv) {
+      Variant::Members ms;
+      descF f(&ms, &tenv);
+      T::meta(f);
+      return Variant::make(ms);
+    }
+  };
+
+template <typename T>
+  struct lift<T, true, typename tbool<T::is_hmeta_variant>::type> : public liftVariantRecord<T> { };
+template <typename T>
+  struct lift<T*, false, typename tbool<T::is_hmeta_variant>::type> : public liftVariantRecord<T> { };
+
 // lift plain tuples
 template <typename ... Fields>
   struct liftTuple {
