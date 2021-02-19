@@ -154,14 +154,14 @@ void StoredSeries::clear(bool signal) {
  *******/
 
 // A -> (A)
-static MonoTypePtr entuple(const MonoTypePtr& ty) {
+MonoTypePtr entuple(const MonoTypePtr& ty) {
   Record::Members ms;
   ms.push_back(Record::Member(".f0", ty));
   return MonoTypePtr(Record::make(ms));
 }
 
 // A N -> carray A N
-static MonoTypePtr carrayty(const MonoTypePtr& ty, const MonoTypePtr& n) {
+MonoTypePtr carrayty(const MonoTypePtr& ty, const MonoTypePtr& n) {
   Record::Members ms;
   ms.push_back(Record::Member("avail", primty("long")));
   ms.push_back(Record::Member("buffer", FixedArray::make(tvar("t"), tvar("c"))));
@@ -169,7 +169,7 @@ static MonoTypePtr carrayty(const MonoTypePtr& ty, const MonoTypePtr& n) {
 }
 
 // A -> ^x.(()+(A*x@?))
-static MonoTypePtr storedListOf(const MonoTypePtr& ty) {
+MonoTypePtr storedListOf(const MonoTypePtr& ty) {
   Record::Members pms;
   pms.push_back(Record::Member(".f0", ty));
   pms.push_back(Record::Member(".f1", fileRefTy(tvar("x"))));
@@ -182,12 +182,12 @@ static MonoTypePtr storedListOf(const MonoTypePtr& ty) {
 }
 
 // A N -> fseq A N
-static MonoTypePtr storedStreamOf(const MonoTypePtr& ty, size_t n) {
+MonoTypePtr storedStreamOf(const MonoTypePtr& ty, size_t n) {
   return tapp(primty("fseq", tabs(str::strings("t", "c"), fileRefTy(storedListOf(fileRefTy(carrayty(tvar("t"), tvar("c"))))))), list(ty, tlong(n)));
 }
 
 // A -- StoredAs A B --> B
-static MonoTypePtr storeAs(cc* c, const MonoTypePtr& ty) {
+MonoTypePtr storeAs(cc* c, const MonoTypePtr& ty) {
   // construct the constraint that the input type stores to some output type
   MonoTypeUnifier u(c->typeEnv());
   MonoTypePtr sty = freshTypeVar();
