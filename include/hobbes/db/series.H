@@ -17,6 +17,17 @@ namespace hobbes {
 
 typedef uint64_t ufileref;
 
+// A -> (A)
+MonoTypePtr entuple(const MonoTypePtr&);
+// A N -> carray A N
+MonoTypePtr carrayty(const MonoTypePtr&, const MonoTypePtr&);
+// A -> ^x.(()+(A*x@?))
+MonoTypePtr storedListOf(const MonoTypePtr&);
+// A N -> fseq A N
+MonoTypePtr storedStreamOf(const MonoTypePtr&, size_t);
+// A -- StoredAs A B --> B
+MonoTypePtr storeAs(cc* c, const MonoTypePtr&);
+
 class RawStoredSeries {
 public:
   RawStoredSeries(cc*, writer*, const std::string&, const MonoTypePtr&, size_t);
