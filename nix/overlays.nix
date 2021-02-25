@@ -48,8 +48,10 @@ let
     let gccEnv = final."gcc${toString gccVersion}Stdenv";
         llvmEnv = final."llvmPackages_${toString llvmVersion}";
     in
-    overrideCabal (callCabal2nix cname cpath { inherit hobbes-dyn; }) (drv: {
-      librarySystemDepends = (drv.librarySystemDepends or []) ++ [ llvmEnv.llvm ];
+      overrideCabal (callCabal2nix cname cpath { inherit hobbes-dyn; }) (drv: {
+        doHaddock = false;
+        doCheck = false;
+        librarySystemDepends = (drv.librarySystemDepends or []) ++ [ llvmEnv.llvm ];
     });
   
   withGCC = { gccVersion ? 10 }:
@@ -93,13 +95,13 @@ in { hobbesPackages = when stdenv.isLinux (recurseIntoAttrs (builtins.listToAttr
                cname = "mcmove";
                cpath = ../playground/haskell/mcmove;
              };
-             compress = withPlayground {
+             compress = enableDebugging (withPlayground {
                inherit llvmVersion;
                inherit (gccConstraint) gccVersion;
                hobbes-dyn = inputs.morganstanley.packages.${system}.${"hobbesPackages/gcc-" + toString gccConstraint.gccVersion + "/llvm-" + toString llvmVersion + "/hobbes"};
                cname = "compress";
                cpath = ../playground/haskell/compress;
-             };
+             });
            });
          });
        }) gccConstraint.llvmVersions));

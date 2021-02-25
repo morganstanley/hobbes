@@ -8,46 +8,49 @@
 
 const int option = 100;
 
-struct TestEnum {
+struct Test {
   enum Enum : uint32_t { Invalid = 0, Option = option };
-  Enum _value;
-  using is_enum = void;
+  Enum _enum;
 };
 
 namespace hobbes {
-struct liftTestEnum {
+namespace fregion {
+template <> struct compress<Test> : public compress<uint32_t> {};
+} // namespace fregion
+template <> struct lift<Test, true> {
   static MonoTypePtr type(typedb &) {
-    Variant::Members vms;
-    auto i = 0;
-    vms.push_back(Variant::Member("Invalid", primty("unit"), 0));
-    vms.push_back(Variant::Member("Option", primty("unit"), option));
-    return MonoTypePtr(Variant::make(vms));
+    auto variantTy = [&]() -> MonoTypePtr {
+      Variant::Members vms;
+      auto testTy = primty("Test", tabs(str::strings("x"), primty("unit")));
+      vms.push_back(
+          Variant::Member("invalid", tapp(testTy, list(tlong(0))), 0));
+      vms.push_back(
+          Variant::Member("option", tapp(testTy, list(tlong(option))), 1));
+      return MonoTypePtr(Variant::make(vms));
+    };
+    return tapp(primty("test", tabs(str::strings("x"), primty("int"))),
+                list(variantTy()));
   }
 };
-template <class T>
-struct lift<T *, false, typename T::is_enum> : public liftTestEnum {};
-template <class T>
-struct lift<T, true, typename T::is_enum> : public liftTestEnum {};
+template <> struct lift<Test *, false> : public lift<Test, true> {};
 } // namespace hobbes
 
-DEFINE_STRUCT(FixarrayS, (TestEnum, value),
-              (const hobbes::array<char> *, body));
+DEFINE_STRUCT(Struct, (Test, test), (const hobbes::array<char> *, string));
 
 void run(const std::string &fname, bool compressed) {
   hobbes::cc c;
-  FixarrayS v1;
-  v1.body = hobbes::makeString("Hello world!");
-  v1.value._value = TestEnum::Option;
+  Struct v1;
+  v1.string = hobbes::makeString("Hello world!");
+  v1.test._enum = Test::Option;
 
   hobbes::writer writer{fname};
-  hobbes::series<FixarrayS> ss1(&c, &writer, "udata", 10000,
-                                compressed ? hobbes::StoredSeries::Compressed
-                                           : hobbes::StoredSeries::Raw);
+  hobbes::series<Struct> ss1(&c, &writer, "udata", 10000,
+                             compressed ? hobbes::StoredSeries::Compressed
+                                        : hobbes::StoredSeries::Raw);
   ss1(v1);
-  std::cout << "------------testing -----------------" << std::endl;
-  // c.define("f", "inputFile :: (LoadFile "
-  //               " + fname + "
-  //               " w) => w");
+  std::cout << "------------start testing -----------------" << std::endl;
+  // c.define("f", "inputFile :: (LoadFile \"" + fname + "\" w) => w");
   // c.compileFn<void()>(
-  //     "print([(x.value, (unsafeCast(x.value)::{t:int}).t) | x<-f.udata])")();
+  //     "print([(x.test, (unsafeCast(x.test)::{t:int}).t) | x<-f.udata])")();
+  std::cout << "------------end testing -----------------" << std::endl;
 }

@@ -51,3 +51,7 @@ withCc fn = new >>= fn
 someFunc :: IO ()
 someFunc = withCc \_ -> do
   putStrLn "Cc initialized"
+  [C.block|void {
+          run("/home/smunix/Programming/compilers/hobbes/issue-398.db", true);
+          }|]
+  putStrLn "Cc ended"

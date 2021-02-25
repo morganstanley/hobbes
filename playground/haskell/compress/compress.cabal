@@ -30,7 +30,7 @@ common common-stanzas
                        TypeApplications
                        ViewPatterns                                                             
   default-language:    Haskell2010
-  cxx-options: -std=c++14 -g -O2
+  cxx-options: -std=c++14 -g
   ghc-options: -pgmc=g++ -ddump-splices -ddump-simpl
   extra-libraries: hobbes-dyn
   include-dirs: cbits/include                   
