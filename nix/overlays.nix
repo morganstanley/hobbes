@@ -40,7 +40,7 @@ let
   
   when = c: m: if c then m else {};
 
-  withMCMove = { llvmVersion, gccVersion, hobbes-dyn }:
+  withPlayground = { cname, cpath, llvmVersion, gccVersion, hobbes-dyn }:
     # with haskellPackages; # breaks with: https://gitlab.haskell.org/ghc/ghc/-/merge_requests/2556
     with haskell.packages.ghc884;
     # with haskell.packages.ghc8103; # breaks with: https://gitlab.haskell.org/ghc/ghc/-/merge_requests/2556
@@ -48,12 +48,8 @@ let
     let gccEnv = final."gcc${toString gccVersion}Stdenv";
         llvmEnv = final."llvmPackages_${toString llvmVersion}";
     in
-    overrideCabal (callCabal2nix "mcmove" ../playground/haskell/mcmove { inherit hobbes-dyn; }) (drv: {
+    overrideCabal (callCabal2nix cname cpath { inherit hobbes-dyn; }) (drv: {
       librarySystemDepends = (drv.librarySystemDepends or []) ++ [ llvmEnv.llvm ];
-      postPatch = ''
-        substituteInPlace mcmove.cabal --replace "__ghc_options_pgmc__" "${gccEnv.cc}/bin/g++"
-        cat mcmove.cabal
-      '';
     });
   
   withGCC = { gccVersion ? 10 }:
@@ -89,11 +85,22 @@ in { hobbesPackages = when stdenv.isLinux (recurseIntoAttrs (builtins.listToAttr
          name = "llvm-" + toString llvmVersion;
          value = recurseIntoAttrs (rec {
            hobbes = dbg (callPackage (withGCC { inherit (gccConstraint) gccVersion; }) { inherit llvmVersion; });
-           mcmove = withMCMove {
-             inherit llvmVersion;
-             inherit (gccConstraint) gccVersion;
-             hobbes-dyn = inputs.morganstanley.packages.${system}.${"hobbesPackages/gcc-" + toString gccConstraint.gccVersion + "/llvm-" + toString llvmVersion + "/hobbes"};
-           };
+           playground = recurseIntoAttrs (rec {
+             mcmove = withPlayground {
+               inherit llvmVersion;
+               inherit (gccConstraint) gccVersion;
+               hobbes-dyn = inputs.morganstanley.packages.${system}.${"hobbesPackages/gcc-" + toString gccConstraint.gccVersion + "/llvm-" + toString llvmVersion + "/hobbes"};
+               cname = "mcmove";
+               cpath = ../playground/haskell/mcmove;
+             };
+             compress = withPlayground {
+               inherit llvmVersion;
+               inherit (gccConstraint) gccVersion;
+               hobbes-dyn = inputs.morganstanley.packages.${system}.${"hobbesPackages/gcc-" + toString gccConstraint.gccVersion + "/llvm-" + toString llvmVersion + "/hobbes"};
+               cname = "compress";
+               cpath = ../playground/haskell/compress;
+             };
+           });
          });
        }) gccConstraint.llvmVersions));
      }) gccConstraints)))

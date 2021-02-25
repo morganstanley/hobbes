@@ -1,0 +1,76 @@
+cabal-version: 3.0
+name:           compress
+version:        0.1.0.0
+description:    Please see the README on GitHub at <https://github.com/smunix/compress#readme>
+homepage:       https://github.com/smunix/compress#readme
+bug-reports:    https://github.com/smunix/compress/issues
+author:         Providence Salumu
+maintainer:     Providence.Salumu@smunix.com
+copyright:      BSD3
+license:        BSD-3-Clause
+license-file:   LICENSE
+build-type:     Simple
+extra-source-files:
+    README.md
+    ChangeLog.md
+
+source-repository head
+  type: git
+  location: https://github.com/smunix/compress
+
+common common-stanzas
+  default-extensions:  BlockArguments
+                       BangPatterns
+                       GADTs
+                       MultiParamTypeClasses                        
+                       OverloadedStrings
+                       RankNTypes
+                       ScopedTypeVariables
+                       TupleSections                                                  
+                       TypeApplications
+                       ViewPatterns                                                             
+  default-language:    Haskell2010
+  cxx-options: -std=c++14 -g -O2
+  ghc-options: -pgmc=g++ -ddump-splices -ddump-simpl
+  extra-libraries: hobbes-dyn
+  include-dirs: cbits/include                   
+  build-depends:       base
+                     , bytestring
+                     , text
+                     , inline-c
+                     , inline-c-cpp
+                     , microlens-platform                       
+                    
+library
+  import: common-stanzas    
+  exposed-modules:
+      Lib
+  other-modules:
+      Paths_compress
+  hs-source-dirs:
+      src
+
+executable compress-exe
+  import: common-stanzas    
+  main-is: Main.hs
+  other-modules:
+      Paths_compress
+  hs-source-dirs:
+      app
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+    compress
+  default-language: Haskell2010
+
+test-suite compress-test
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  other-modules:
+      Paths_compress
+  hs-source-dirs:
+      test
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      base >=4.7
+    , compress
+  default-language: Haskell2010

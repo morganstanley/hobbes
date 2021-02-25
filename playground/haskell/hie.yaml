@@ -1,4 +1,16 @@
 cradle:
   cabal:
+    - path: "compress/src"
+      component: "lib:compress"
+
+    - path: "compress/app/Main.hs"
+      component: "compress:exe:compress-exe"
+
+    - path: "compress/app/Paths_compress.hs"
+      component: "compress:exe:compress-exe"
+
+    - path: "compress/test"
+      component: "compress:test:compress-test"
+
     - path: "mcmove/src/Main.hs"
       component: "mcmove:exe:mcmove"
