@@ -15,7 +15,7 @@ struct TestEnum {
 };
 
 namespace hobbes {
-template struct liftTestEnum {
+struct liftTestEnum {
   static MonoTypePtr type(typedb &) {
     Variant::Members vms;
     auto i = 0;
@@ -24,11 +24,14 @@ template struct liftTestEnum {
     return MonoTypePtr(Variant::make(vms));
   }
 };
-template struct lift<T *, false, typename T::is_enum> : public liftTestEnum {};
-template struct lift<T, true, typename T::is_enum> : public liftTestEnum {};
+template <class T>
+struct lift<T *, false, typename T::is_enum> : public liftTestEnum {};
+template <class T>
+struct lift<T, true, typename T::is_enum> : public liftTestEnum {};
 } // namespace hobbes
 
-DEFINE_STRUCT(FixarrayS, (TestEnum, value), (const hobbes::array *, body));
+DEFINE_STRUCT(FixarrayS, (TestEnum, value),
+              (const hobbes::array<char> *, body));
 
 void run(const std::string &fname, bool compressed) {
   hobbes::cc c;
@@ -37,9 +40,9 @@ void run(const std::string &fname, bool compressed) {
   v1.value._value = TestEnum::Option;
 
   hobbes::writer writer{fname};
-  hobbes::series ss1(&c, &writer, "udata", 10000,
-                     compressed ? hobbes::StoredSeries::Compressed
-                                : hobbes::StoredSeries::Raw);
+  hobbes::series<FixarrayS> ss1(&c, &writer, "udata", 10000,
+                                compressed ? hobbes::StoredSeries::Compressed
+                                           : hobbes::StoredSeries::Raw);
   ss1(v1);
   std::cout << "------------testing -----------------" << std::endl;
   // c.define("f", "inputFile :: (LoadFile "
