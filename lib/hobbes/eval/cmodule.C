@@ -639,7 +639,7 @@ std::string const &SafeSet::get(std::string const &binding) {
 struct Bool {
   static auto mkF() -> Bool { return Bool(0); }
   static auto mkT() -> Bool { return Bool(1); }
-  Bool(bool v) : i(v ? 1 : 0) {}
+  Bool(bool &&v) : i(v ? 1 : 0) {}
   Bool(Bool const &) = default;
   operator=(Bool const &) = default;
   operator() bool const { return (i == 0 ? fasle : true); }
