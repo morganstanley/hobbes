@@ -635,7 +635,7 @@ std::string const &SafeSet::get(std::string const &binding) {
       },
       [&binding]() -> std::string const & { return binding; });
 }
-
+namespace details {
 struct Bool {
   static auto mkF() -> Bool { return Bool(0); }
   static auto mkT() -> Bool { return Bool(1); }
@@ -649,8 +649,9 @@ private:
   Bool(int i) : i(i) {}
   int i = 0;
 };
+} // namespace details
 
-struct buildTransitiveUnsafePragmaClosure : public switchExprC<Bool> {
+struct buildTransitiveUnsafePragmaClosure : public switchExprC<details::Bool> {
   buildTransitiveUnsafePragmaClosure(MVarDef const &mvd) : mvd(mvd) {}
 
   ~buildTransitiveUnsafePragmaClosure() {
@@ -666,8 +667,8 @@ struct buildTransitiveUnsafePragmaClosure : public switchExprC<Bool> {
   }
   MVarDef const &mvd;
 
-  virtual Bool withConst(const Expr *) const { return true; };
-  virtual Bool with(const Var *v) const {
+  virtual details::Bool withConst(const Expr *) const { return true; };
+  virtual details::Bool with(const Var *v) const {
     return SafeExpr::with<bool>(
         v->value(),
         [&](const SafeExpr::UnsafeDefs &) {
@@ -689,12 +690,12 @@ struct buildTransitiveUnsafePragmaClosure : public switchExprC<Bool> {
         },
         []() { return false; });
   }
-  virtual Bool with(const Let *v) const {
+  virtual details::Bool with(const Let *v) const {
     switchOf(v->varExpr(), *this);
     switchOf(v->bodyExpr(), *this);
     return true;
   }
-  virtual Bool with(const LetRec *v) const {
+  virtual details::Bool with(const LetRec *v) const {
     str::set vns = toSet(v->varNames());
     LetRec::Bindings bs;
     for (const auto &b : v->bindings()) {
@@ -703,34 +704,34 @@ struct buildTransitiveUnsafePragmaClosure : public switchExprC<Bool> {
     switchOf(v->bodyExpr(), *this);
     return true;
   }
-  virtual Bool with(const Fn *v) const {
+  virtual details::Bool with(const Fn *v) const {
     switchOf(v->body(), *this);
     return true;
   }
-  virtual Bool with(const App *v) const {
+  virtual details::Bool with(const App *v) const {
     switchOf(v->fn(), *this);
     switchOf(v->args(), *this);
     return true;
   }
-  virtual Bool with(const Assign *v) const {
+  virtual details::Bool with(const Assign *v) const {
     switchOf(v->left(), *this);
     switchOf(v->right(), *this);
     return true;
   }
-  virtual Bool with(const MkArray *v) const {
+  virtual details::Bool with(const MkArray *v) const {
     switchOf(v->values(), *this);
     return true;
   }
-  virtual Bool with(const MkVariant *v) const {
+  virtual details::Bool with(const MkVariant *v) const {
     switchOf(v->value(), *this);
     return true;
   }
-  virtual Bool with(const MkRecord *v) const {
+  virtual details::Bool with(const MkRecord *v) const {
     switchOf(v->fields(), *this);
     return true;
   }
-  virtual Bool with(const AIndex *) const { return true; }
-  virtual Bool with(const Case *v) const {
+  virtual details::Bool with(const AIndex *) const { return true; }
+  virtual details::Bool with(const Case *v) const {
     const Case::Bindings &cbs = v->bindings();
     Case::Bindings rcbs;
     for (Case::Bindings::const_iterator cb = cbs.begin(); cb != cbs.end();
@@ -744,7 +745,7 @@ struct buildTransitiveUnsafePragmaClosure : public switchExprC<Bool> {
     switchOf(v->variant(), *this);
     return true;
   }
-  virtual Bool with(const Switch *v) const {
+  virtual details::Bool with(const Switch *v) const {
     Switch::Bindings rsbs;
     for (auto sb : v->bindings()) {
       switchOf(sb.exp, *this);
@@ -756,19 +757,19 @@ struct buildTransitiveUnsafePragmaClosure : public switchExprC<Bool> {
     switchOf(v->expr(), *this);
     return true;
   }
-  virtual Bool with(const Proj *v) const {
+  virtual details::Bool with(const Proj *v) const {
     switchOf(v->record(), *this);
     return true;
   }
-  virtual Bool with(const Assump *v) const {
+  virtual details::Bool with(const Assump *v) const {
     switchOf(v->expr(), *this);
     return true;
   }
-  virtual Bool with(const Pack *v) const {
+  virtual details::Bool with(const Pack *v) const {
     switchOf(v->expr(), *this);
     return true;
   }
-  virtual Bool with(const Unpack *v) const {
+  virtual details::Bool with(const Unpack *v) const {
     switchOf(v->package(), *this);
     switchOf(v->expr(), *this);
     return true;
