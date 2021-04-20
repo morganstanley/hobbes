@@ -641,9 +641,9 @@ struct Bool {
   static auto mkT() -> Bool { return Bool(1); }
   Bool(Bool const &) = default;
   Bool(bool v) : i(v ? 1 : 0) {}
-  operator=(Bool const &)->Bool & = default;
-  operator=(bool v)->Bool & { return (*this = Bool(v)); }
-  operator() bool const { return (i == 0 ? fasle : true); }
+  auto operator=(Bool const &) -> Bool & = default;
+  auto operator=(bool v) -> Bool & { return (*this = Bool(v)); }
+  operator bool() const { return (i == 0 ? false : true); }
 
 private:
   Bool(int i) : i(i) {}
