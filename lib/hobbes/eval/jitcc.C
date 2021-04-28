@@ -498,7 +498,7 @@ llvm::Value* jitcc::loadConstant(const std::string& vn) {
     } else if (llvm::Value* r = refGlobal(vn, cv->second.ref)) {
 #if LLVM_VERSION_MAJOR <= 10
       return hasPointerRep(cv->second.mtype) ? r : builder()->CreateLoad(r);
-#elif LLVM_VERSION_MAJOR <= 11
+#elif LLVM_VERSION_MAJOR <= 12 
       return hasPointerRep(cv->second.mtype) ? r : builder()->CreateAlignedLoad(r->getType()->getPointerElementType(), r, llvm::MaybeAlign(8));
 #endif
     } else {

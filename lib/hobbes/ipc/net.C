@@ -1,5 +1,6 @@
 
 #include <hobbes/ipc/net.H>
+#include <hobbes/net.H>
 #include <hobbes/hobbes.H>
 #include <hobbes/util/str.H>
 #include <hobbes/util/codec.H>
@@ -32,36 +33,30 @@ int lookupPort(const std::string& x) {
   }
 }
 
-// create a listening socket on a given port
-int allocateServer(int port) {
-  int s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-  if (s == -1) {
-    throw std::runtime_error("Unable to allocate socket: " + std::string(strerror(errno)));
-  }
-
-  // make sure that we can quickly restart the server if necessary
-  int ra = 1;
-  setsockopt(s, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<char*>(&ra), sizeof(ra));
-
-  // bind the new socket to a local address
-  sockaddr_in laddr;
-  memset(&laddr, 0, sizeof(laddr));
-
-  laddr.sin_family      = AF_INET;
-  laddr.sin_port        = htons(port);
-  laddr.sin_addr.s_addr = INADDR_ANY;
-
-  if (bind(s, reinterpret_cast<sockaddr*>(&laddr), sizeof(laddr)) == -1) {
+// create a listening socket on a given port and a given host
+int allocateServer(int port, const std::string& host) {
+  struct addrinfo* addrs = net::lookupAddrInfo(host, std::to_string(port));
+  struct addrinfo* p = NULL;
+  int s;
+  for (p = addrs; p != 0; p = p->ai_next) {
+    if (p->ai_family != AF_INET || p->ai_protocol != IPPROTO_TCP) continue;
+    s = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
+    if (s == -1) continue;
+    // make sure that we can quickly restart the server if necessary
+    int ra = 1;
+    setsockopt(s, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<char*>(&ra), sizeof(ra));
+    if (bind(s, p->ai_addr, p->ai_addrlen) == 0) break;
     close(s);
-    throw std::runtime_error("Unable to bind socket to local address: " + std::string(strerror(errno)));
   }
-
+  freeaddrinfo(addrs);
+  if (p == NULL) {
+    throw std::runtime_error("Unable to bind socket to address: " + std::string(strerror(errno)));
+  }
   // and then start to listen
   if (listen(s, SOMAXCONN) == -1) {
     close(s);
-    throw std::runtime_error("Unable to listen on local address: " + std::string(strerror(errno)));
+    throw std::runtime_error("Unable to listen on address: " + std::string(strerror(errno)));
   }
-
   return s;
 }
 
@@ -317,6 +312,12 @@ int installNetREPL(int port, Server* svr) {
   return s;
 }
 
+int installNetREPL(const std::string& host, int port, Server* svr) {
+  int s = allocateServer(port, host);
+  registerNetREPL(s, svr);
+  return s;
+}
+
 int installNetREPL(const std::string& filepath, Server* svr) {
   int s = allocateFileSocketServer(filepath);
   registerNetREPL(s, svr);
@@ -389,6 +390,10 @@ private:
 int installNetREPL(int port, cc* c, ReWriteExprFn const& wrExprFn) {
   return installNetREPL(port, new CCServer(c, wrExprFn));
 }
+int installNetREPL(const std::string& host, int port, cc* c, ReWriteExprFn const& wrExprFn) {
+  return installNetREPL(host, port, new CCServer(c, wrExprFn));
+}
+
 int installNetREPL(const std::string& filepath, cc* c, ReWriteExprFn const& wrExprFn) {
   return installNetREPL(filepath, new CCServer(c, wrExprFn));
 }

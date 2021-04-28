@@ -10,6 +10,7 @@
 
 using namespace hobbes;
 static cc& c() { static cc x; return x; }
+static cc& mkCC() { static cc x; return x; }
 
 // start a basic server to validate RPC communication
 static int serverPort = -1;
@@ -45,6 +46,39 @@ int testServerPort() {
   return serverPort;
 }
 
+// start a basic server with configurable hostname and port to validate RPC communication
+static int serverPortWithHost = -1;
+static std::mutex serverMtxWithHost;
+static std::condition_variable serverWithHostStartup;
+
+static void runTestServerWithHost(int ps, int pe, const std::string& host) {
+  std::unique_lock<std::mutex> lk(serverMtxWithHost);
+  serverPortWithHost = ps;
+  while (serverPortWithHost < pe) {
+    try {
+      installNetREPL(host, serverPortWithHost, &mkCC());
+      lk.unlock();
+      serverWithHostStartup.notify_one();
+      runEventLoop();
+    } catch (std::exception&) {
+      ++serverPortWithHost;
+    }
+  }
+  serverPortWithHost = -1;
+}
+
+int testServerWithHostPort(const std::string& host = "") {
+  if (serverPortWithHost < 0) {
+    std::unique_lock<std::mutex> lk(serverMtxWithHost);
+    std::thread serverWithHostProc(std::bind(&runTestServerWithHost, 8765, 9500, host));
+    serverWithHostProc.detach();
+    serverWithHostStartup.wait(lk);
+    if (serverPortWithHost < 0) {
+      throw std::runtime_error("Couldn't allocate port for test server");
+    }
+  }
+  return serverPortWithHost;
+}
 /**************************
  * types/data for net communication
  **************************/
@@ -166,6 +200,49 @@ TEST(Net, syncClientAPI) {
   EXPECT_EQ(std::vector<int>(inv.val,inv.val+3), std::vector<int>({255,0,255}));
 }
 
+TEST(Net, syncClientAPIWithConfiguredHostName) {
+  SyncClient c("localhost", testServerWithHostPort("localhost"));
+  EXPECT_EQ(c.add(1,2), 3);
+  EXPECT_EQ(c.doit(), "missiles launched");
+  EXPECT_EQ(c.misc("foo", 5), list(NC("foo_0",0),NC("foo_1",1),NC("foo_2",2),NC("foo_3",3),NC("foo_4",4),NC("foo_5",5)));
+
+  Group grp = { "id", Kid::Jim(), 4.2, 42 };
+  EXPECT_EQ(grp, grp);
+  for (size_t i = 0; i < 10; ++i) {
+    EXPECT_EQ(c.grpv(grp), V::Frank("frank"));
+  }
+  EXPECT_EQ(c.nothing(), V::Nothing(hobbes::unit()));
+
+  Groups ros = { {"group_0",Kid::Jim(),0.0,0},{"group_1",Kid::Jim(),1.0,1},{"group_2",Kid::Jim(),2.0,2},{"group_3",Kid::Jim(),3.0,3},{"group_4",Kid::Jim(),4.0,4} };
+  EXPECT_EQ(c.recover(0,4), ros);
+
+  EXPECT_EQ(c.eidv(CustomIDEnum::Green), CustomIDEnum::Green);
+
+  auto inv = c.inverse(RGB{{0,255,0}});
+  EXPECT_EQ(std::vector<int>(inv.val,inv.val+3), std::vector<int>({255,0,255}));
+}
+
+TEST(Net, syncClientAPIWithUnConfiguredHostName) {
+  SyncClient c("localhost", testServerWithHostPort());
+  EXPECT_EQ(c.add(1,2), 3);
+  EXPECT_EQ(c.doit(), "missiles launched");
+  EXPECT_EQ(c.misc("foo", 5), list(NC("foo_0",0),NC("foo_1",1),NC("foo_2",2),NC("foo_3",3),NC("foo_4",4),NC("foo_5",5)));
+
+  Group grp = { "id", Kid::Jim(), 4.2, 42 };
+  EXPECT_EQ(grp, grp);
+  for (size_t i = 0; i < 10; ++i) {
+    EXPECT_EQ(c.grpv(grp), V::Frank("frank"));
+  }
+  EXPECT_EQ(c.nothing(), V::Nothing(hobbes::unit()));
+
+  Groups ros = { {"group_0",Kid::Jim(),0.0,0},{"group_1",Kid::Jim(),1.0,1},{"group_2",Kid::Jim(),2.0,2},{"group_3",Kid::Jim(),3.0,3},{"group_4",Kid::Jim(),4.0,4} };
+  EXPECT_EQ(c.recover(0,4), ros);
+
+  EXPECT_EQ(c.eidv(CustomIDEnum::Green), CustomIDEnum::Green);
+
+  auto inv = c.inverse(RGB{{0,255,0}});
+  EXPECT_EQ(std::vector<int>(inv.val,inv.val+3), std::vector<int>({255,0,255}));
+}
 /**************************
  * the asynchronous client networking API
  **************************/
@@ -209,3 +286,56 @@ TEST(Net, asyncClientAPI) {
   EXPECT_EQ(c.pendingRequests(), size_t(0));
 }
 
+TEST(Net, asyncClientAPIWithConfiguredHostName) {
+  AsyncClient c("127.0.0.1", "127.0.0.1", testServerWithHostPort("127.0.0.1"));
+  c.add(1,2, [](int r) { EXPECT_EQ(r, 3); });
+  c.doit([](const std::string& r) { EXPECT_EQ(r, "missiles launched") });
+  c.misc("foo", 5, [](const NameCounts& ncs) { EXPECT_EQ(ncs, list(NC("foo_0",0),NC("foo_1",1),NC("foo_2",2),NC("foo_3",3),NC("foo_4",4),NC("foo_5",5))); });
+
+  Group grp = { "id", Kid::Jim(), 4.2, 42 };
+  for (size_t i = 0; i < 1000; ++i) {
+    c.grpv(grp, [](const V& r) { EXPECT_EQ(r, V::Frank("frank")); });
+    c.nothing([](const V& r  ) { EXPECT_EQ(r, V::Nothing(hobbes::unit())); });
+  }
+
+  Groups ros = { {"group_0",Kid::Jim(),0.0,0},{"group_1",Kid::Jim(),1.0,1},{"group_2",Kid::Jim(),2.0,2},{"group_3",Kid::Jim(),3.0,3},{"group_4",Kid::Jim(),4.0,4} };
+  c.recover(0,4, [&](const Groups& r) { EXPECT_EQ(r, ros); });
+
+  c.eidv(CustomIDEnum::Green, [](const CustomIDEnum& x) { EXPECT_EQ(x, CustomIDEnum::Green); });
+
+  c.inverse(RGB{{0,255,0}}, [](const RGB& inv) { EXPECT_EQ(std::vector<int>(inv.val,inv.val+3), std::vector<int>({255,0,255})); });
+
+  // run a quick epoll loop to process results asynchronously (expect all results within 30 seconds)
+  registerEventHandler(c.fd(), &stepAsyncClient, &c);
+  for (size_t s = 0; s < 30 && c.pendingRequests() > 0; ++s) {
+    runEventLoop(1000*1000);
+  }
+  EXPECT_EQ(c.pendingRequests(), size_t(0));
+}
+
+TEST(Net, asyncClientAPIWithUnConfiguredHostName) {
+  AsyncClient c("127.0.0.1", "127.0.0.1", testServerWithHostPort());
+  c.add(1,2, [](int r) { EXPECT_EQ(r, 3); });
+  c.doit([](const std::string& r) { EXPECT_EQ(r, "missiles launched") });
+  c.misc("foo", 5, [](const NameCounts& ncs) { EXPECT_EQ(ncs, list(NC("foo_0",0),NC("foo_1",1),NC("foo_2",2),NC("foo_3",3),NC("foo_4",4),NC("foo_5",5))); });
+
+  Group grp = { "id", Kid::Jim(), 4.2, 42 };
+  for (size_t i = 0; i < 1000; ++i) {
+    c.grpv(grp, [](const V& r) { EXPECT_EQ(r, V::Frank("frank")); });
+    c.nothing([](const V& r  ) { EXPECT_EQ(r, V::Nothing(hobbes::unit())); });
+  }
+
+  Groups ros = { {"group_0",Kid::Jim(),0.0,0},{"group_1",Kid::Jim(),1.0,1},{"group_2",Kid::Jim(),2.0,2},{"group_3",Kid::Jim(),3.0,3},{"group_4",Kid::Jim(),4.0,4} };
+  c.recover(0,4, [&](const Groups& r) { EXPECT_EQ(r, ros); });
+
+  c.eidv(CustomIDEnum::Green, [](const CustomIDEnum& x) { EXPECT_EQ(x, CustomIDEnum::Green); });
+
+  c.inverse(RGB{{0,255,0}}, [](const RGB& inv) { EXPECT_EQ(std::vector<int>(inv.val,inv.val+3), std::vector<int>({255,0,255})); });
+
+  // run a quick epoll loop to process results asynchronously (expect all results within 30 seconds)
+  registerEventHandler(c.fd(), &stepAsyncClient, &c);
+  for (size_t s = 0; s < 30 && c.pendingRequests() > 0; ++s) {
+    runEventLoop(1000*1000);
+  }
+  EXPECT_EQ(c.pendingRequests(), size_t(0));
+}
