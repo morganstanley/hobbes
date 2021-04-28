@@ -162,7 +162,7 @@ inline addrinfo* lookupAddrInfo(const std::string& host, const std::string& port
   h.ai_socktype = SOCK_STREAM;
 
   struct addrinfo* addrs = 0;
-  switch (getaddrinfo(host.c_str(), port.empty() ? 0 : port.c_str(), &h, &addrs)) {
+  switch (getaddrinfo(host.empty()? 0 : host.c_str(), port.empty() ? 0 : port.c_str(), &h, &addrs)) {
   case 0:              return addrs;
   case EAI_ADDRFAMILY: throw std::runtime_error("Cannot make socket connection to " + host + ":" + port);
   case EAI_AGAIN:      throw std::runtime_error(host + ":" + port + " is temporarily unavailable");
