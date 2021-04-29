@@ -16,7 +16,7 @@ namespace hobbes {
 int lookupPort(const std::string&);
 
 // create a socket listening on a port
-int allocateServer(int port);
+int allocateServer(int port, const std::string& host = "");
 int allocateServer(const std::string& port);
 
 // connect to a host/port
@@ -46,11 +46,13 @@ struct Server {
 };
 
 int installNetREPL(int port, Server*);
+int installNetREPL(const std::string& host, int port, Server*);
 // install a net repl on a unix domain socket (using file paths)
 int installNetREPL(const std::string& /*filepath*/, Server*);
 
 class cc;
 int installNetREPL(int port, cc*, ReWriteExprFn const& = [](ExprPtr const& e) -> ExprPtr { return e; });
+int installNetREPL(const std::string& host, int port, cc*, ReWriteExprFn const& = [](ExprPtr const& e) -> ExprPtr { return e; });
 // install a net repl on a unix domain socket (using file paths)
 int installNetREPL(const std::string& /*filepath*/, cc*, ReWriteExprFn const& = [](ExprPtr const& e) -> ExprPtr { return e; });
 

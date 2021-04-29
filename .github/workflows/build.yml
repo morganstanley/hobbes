@@ -1,12 +1,12 @@
 name: "Build"
-on: [push]
+on: [push, pull_request]
 jobs:
   linux-clang-build:
     runs-on: ${{matrix.os}}
     strategy:
       matrix:
         os: [ubuntu-20.04]
-        clang: [6, 8, 10, 11]
+        clang: [6, 8, 10, 11, 12]
     steps:
       - uses: actions/checkout@v2
         with:
@@ -32,7 +32,7 @@ jobs:
       matrix:
         os: [ubuntu-20.04]
         gcc: [10]
-        llvm: [6, 8, 10, 11]
+        llvm: [6, 8, 10, 11, 12]
     steps:
       - uses: actions/checkout@v2
         with:

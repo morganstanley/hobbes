@@ -11,7 +11,7 @@
 
 #include <llvm/Config/llvm-config.h>
 
-#if LLVM_VERSION_MAJOR != 3 && LLVM_VERSION_MAJOR != 4 && LLVM_VERSION_MAJOR != 6 && LLVM_VERSION_MAJOR != 8 && LLVM_VERSION_MAJOR != 9 && LLVM_VERSION_MAJOR != 10 && LLVM_VERSION_MAJOR != 11
+#if LLVM_VERSION_MAJOR != 3 && LLVM_VERSION_MAJOR != 4 && LLVM_VERSION_MAJOR != 6 && LLVM_VERSION_MAJOR != 8 && LLVM_VERSION_MAJOR != 9 && LLVM_VERSION_MAJOR != 10 && LLVM_VERSION_MAJOR != 11 && LLVM_VERSION_MAJOR != 12
 #error "I don't know how to use this version of LLVM"
 #endif
 
@@ -32,7 +32,7 @@
 #if LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 6 || LLVM_VERSION_MAJOR <= 8 
 #  include <llvm/Bitcode/BitstreamReader.h>
 #  include <llvm/Bitcode/BitstreamWriter.h>
-#elif  LLVM_VERSION_MAJOR <= 11
+#elif  LLVM_VERSION_MAJOR <= 12
 #  include <llvm/Bitstream/BitstreamReader.h>
 #  include <llvm/Bitstream/BitstreamWriter.h>
 #else
@@ -372,7 +372,7 @@ inline llvm::Value* memCopy(llvm::IRBuilder<>* b, llvm::Value* dst, uint32_t dst
   return b->CreateMemCpy(dst, src, sz, srcAlign);
 #elif LLVM_VERSION_MAJOR <= 9
   return b->CreateMemCpy(dst, dstAlign, src, srcAlign, sz);
-#elif LLVM_VERSION_MAJOR <= 11
+#elif LLVM_VERSION_MAJOR <= 12
   return b->CreateMemCpy(dst, llvm::MaybeAlign(dstAlign), src, llvm::MaybeAlign(srcAlign), sz);
 #endif
 }
@@ -586,7 +586,7 @@ inline llvm::Value* fncall(llvm::IRBuilder<>* b, llvm::Value* vfn, llvm::Type* t
   }
 #elif LLVM_VERSION_MAJOR <= 10
   return b->CreateCall(vfn, args);
-#elif LLVM_VERSION_MAJOR <= 11
+#elif LLVM_VERSION_MAJOR <= 12
   if (auto *ty = llvm::dyn_cast<llvm::FunctionType>(tfn)) {
       return b->CreateCall(ty, vfn, args);
   } else {
