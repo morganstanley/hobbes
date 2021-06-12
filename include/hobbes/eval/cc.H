@@ -101,6 +101,14 @@ public:
   MonoTypePtr readMonoType(const std::string&);
   void setReadExprFn(readExprFn);
 
+  struct UnreachableMatches {
+    LexicalAnnotation la;
+    std::string lines;
+  };
+  typedef void (*gatherUnreachableMatchesFn)(const UnreachableMatches&);
+  void gatherUnreachableMatches(const UnreachableMatches& m);
+  void setGatherUnreachableMatchesFn(gatherUnreachableMatchesFn f);
+
   // search for paths from one type to another
   // (currently just one-step paths, may be useful to consider multi-step paths)
   SearchEntries search(const MonoTypePtr&, const MonoTypePtr&);
@@ -113,6 +121,9 @@ private:
   readModuleFn     readModuleF;
   readExprDefnFn   readExprDefnF;
   readExprFn       readExprF;
+
+  gatherUnreachableMatchesFn gatherUnreachableMatchesF = [](const UnreachableMatches&){};
+
 public:
   // type-safe compilation to C++ function pointers
   template <typename RFn, typename ... NamesAndExpr>
@@ -250,6 +261,8 @@ public:
   bool buildInterpretedMatches() const;
   void requireMatchReachability(bool f);
   bool requireMatchReachability() const;
+  void ignoreUnreachableMatches(bool f);
+  bool ignoreUnreachableMatches() const;
   void alwaysLowerPrimMatchTables(bool);
   bool alwaysLowerPrimMatchTables() const;
   void buildColumnwiseMatches(bool f);
@@ -260,9 +273,6 @@ public:
   bool throwOnHugeRegexDFA() const;
   void regexDFAOverNFAMaxRatio(int f);
   int  regexDFAOverNFAMaxRatio() const;
-
-  // allow caller to gather a vector of unreachable rows arising from match compilation
-  UnreachableMatchRowsPtr unreachableMatchRowsPtr;
 
   // allow low-level functions to be added
   void bindLLFunc(const std::string&, op*);
@@ -290,6 +300,7 @@ private:
   bool runModInlinePass;
   bool genInterpretedMatch;
   bool checkMatchReachability;
+  bool ignoreUnreachablePatternMatchRows = false;
   bool lowerPrimMatchTables;
   bool columnwiseMatches;
   size_t maxExprDFASize={1000};

@@ -75,7 +75,7 @@ int TestCoord::runTestGroups(const Args& args) {
   std::cout << "---------------------------------------------------------------------" << std::endl
             << hobbes::describeNanoTime(hobbes::tick()-tt0) << std::endl;
 
-  if (failures.size() > 0) {
+  if (!failures.empty()) {
     std::cout << "\n\nFAILURE" << (failures.size() == 1 ? "" : "S") << ":" << std::endl
               << "---------------------------------------------------------------------" << std::endl;
     for (const auto& failure : failures) {
@@ -83,7 +83,7 @@ int TestCoord::runTestGroups(const Args& args) {
     }
   }
 
-  if (auto path = args.report) {
+  if (const auto* path = args.report) {
     std::ofstream outfile(path, std::ios::out | std::ios::trunc);
     if (outfile) {
       outfile << toJSON();

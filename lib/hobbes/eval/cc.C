@@ -44,7 +44,6 @@ cc::cc() :
   readExprDefnF(&defReadExprDefn),
   readExprF(&defReadExpr),
   drainingDefs(false),
-  unreachableMatchRowsPtr(nullptr),
   runModInlinePass(true),
   genInterpretedMatch(false),
   checkMatchReachability(true),
@@ -164,6 +163,9 @@ MonoTypePtr cc::readMonoType(const std::string& x) {
     throw std::runtime_error("Couldn't parse as type: " + x);
   }
 }
+
+void cc::gatherUnreachableMatches(const UnreachableMatches& m) { hlock _; this->gatherUnreachableMatchesF(m); }
+void cc::setGatherUnreachableMatchesFn(gatherUnreachableMatchesFn f) { this->gatherUnreachableMatchesF = f; }
 
 ExprPtr cc::unsweetenExpression(const TEnvPtr& te, const ExprPtr& e) {
   return unsweetenExpression(te, "", e);
@@ -655,6 +657,9 @@ bool cc::buildInterpretedMatches() const { return this->genInterpretedMatch; }
 void cc::requireMatchReachability(bool f) { this->checkMatchReachability = f; }
 bool cc::requireMatchReachability() const { return this->checkMatchReachability; }
 
+void cc::ignoreUnreachableMatches(bool f) { this->ignoreUnreachablePatternMatchRows = f; }
+bool cc::ignoreUnreachableMatches() const { return this->ignoreUnreachablePatternMatchRows; }
+
 void cc::alwaysLowerPrimMatchTables(bool f) { this->lowerPrimMatchTables = f; }
 bool cc::alwaysLowerPrimMatchTables() const { return this->lowerPrimMatchTables; }
 
@@ -663,7 +668,7 @@ bool cc::buildColumnwiseMatches() const { return this->columnwiseMatches; }
 
 void cc::regexMaxExprDFASize(size_t f) { this->maxExprDFASize = f; }
 size_t cc::regexMaxExprDFASize() const { return this->maxExprDFASize; }
-  
+
 void cc::throwOnHugeRegexDFA(bool f) { this->shouldThrowOnHugeRegexDFA = f; }
 bool cc::throwOnHugeRegexDFA() const { return this-> shouldThrowOnHugeRegexDFA; }
 
