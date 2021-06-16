@@ -1003,6 +1003,7 @@ OptDescs getAllOptions() {
   d["SafeArrays"] =
       "Interpret array indexing 'safely' (always bounds-checked and mapped to "
       "an optional type in case of out-of-bounds access)";
+  d["IgnoreUnreachableMatches"] = "Ignore unreachable pattern match rows";
   return d;
 }
 
@@ -1028,6 +1029,10 @@ ExprPtr translateExprWithOpts(
           {"SafeArrays",
            [](std::string const &, const ExprPtr &e) -> ExprPtr {
              return switchOf(e, makeSafeArrays());
+           }},
+          {"IgnoreUnreachableMatches",
+           [](std::string const &, const ExprPtr &e) -> ExprPtr {
+             return e;
            }},
       };
   thread_local auto ignoreFn = [](std::string const &optName,

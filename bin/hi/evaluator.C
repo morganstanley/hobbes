@@ -12,6 +12,12 @@
 #include <hobbes/util/time.H>
 #include <iostream>
 
+namespace {
+void defPrintUnreachableMatches(const hobbes::cc::UnreachableMatches& m) {
+  std::cout << "warning: " << m.la.filename() << ':' << m.la.lineDesc() << "    " << m.lines << std::endl;
+}
+} // namespace
+
 namespace hi {
 
 // allocate a string in global memory
@@ -65,11 +71,17 @@ evaluator::evaluator(const Args& args) : silent(args.silent), wwwd(0), opts(args
   bindArguments(this->ctx, args.scriptNameVals);
   bindHiDefs(this->ctx);
 
+  const bool ignoreUM = (std::find(opts.cbegin(), opts.cend(), std::string("IgnoreUnreachableMatches")) != opts.cend());
+  this->ctx.ignoreUnreachableMatches(ignoreUM);
+  if (ignoreUM) {
+    this->ctx.setGatherUnreachableMatchesFn(defPrintUnreachableMatches);
+  }
+
   // start alternate input services if necessary
   if (args.replPort > 0) {
     installNetREPL(args.replPort, &this->ctx, [this](ExprPtr const& e) -> ExprPtr { return hobbes::translateExprWithOpts(this->opts, e); });
   }
-  
+
   if (args.httpdPort > 0) {
     // run a local web server (for diagnostics and alternate queries) if requested
     this->wwwd = new WWWServer(args.httpdPort, &this->ctx);
@@ -314,6 +326,10 @@ void evaluator::searchDefs(const std::string& expr_to_type) {
 
 void evaluator::setOption(const std::string& o) {
   this->opts.push_back(o);
+  if (o == "IgnoreUnreachableMatches") {
+    this->ctx.ignoreUnreachableMatches(true);
+    this->ctx.setGatherUnreachableMatchesFn(defPrintUnreachableMatches);
+  }
 }
 
 hobbes::ExprPtr evaluator::readExpr(const std::string& x) {

@@ -20,7 +20,7 @@ void Module::show(std::ostream& out) const {
 }
 
 bool isValidOption(const std::string& o) {
-  return o == "Safe" || o == "SafeArrays";
+  return o == "Safe" || o == "SafeArrays" || o == "IgnoreUnreachableMatches";
 }
 
 void Module::setOption(const std::string& o, const LexicalAnnotation& la) {
