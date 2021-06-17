@@ -136,6 +136,11 @@ TEST(Matching, Regex) {
   }
   EXPECT_TRUE(unreachableExn && "failed to determine expected unreachable regex row");
 
+  // verify unreachable rows should not cause error with IgnoreUnreachableMatches option on
+  c().ignoreUnreachableMatches(true);
+  EXPECT_EQ(c().compileFn<int()>("match \"foo123ooo\" with | '123|foo.*' -> 0 | 'foo.*' -> 1 | _ -> -1")(), 0);
+  c().ignoreUnreachableMatches(false);
+
   // verify binding in regex matches
   EXPECT_EQ(makeStdString(c().compileFn<const array<char>*()>("match \"foobar\" with | 'f(?<os>o*)bar' -> os | _ -> \"???\"")()), "oo");
 
@@ -163,7 +168,7 @@ TEST(Matching, Tests) {
   // make sure that tests with inaccessible names are rejected
   EXPECT_EXCEPTION(c().compileFn<bool()>("\"JIMMY\" matches JIMMY")());
   EXPECT_EXCEPTION(c().compileFn<bool()>("[{x=just(\"JIMMY\")}] matches [{x=|1=JIMMY|}]")());
-  
+
   // make sure that tests with inaccessible _ names are allowed
   EXPECT_TRUE(c().compileFn<bool()>("\"JIMMY\" matches _")());
   EXPECT_TRUE(c().compileFn<bool()>("[{x=just(\"JIMMY\")}] matches [{x=|1=_|}]")());
@@ -196,7 +201,7 @@ TEST(Matching, matchFromStringToBoolIsBool) {
     "| _ _ _ _                 -> false"
   )();
   EXPECT_TRUE(1 == *reinterpret_cast<uint8_t*>(&r));
-  EXPECT_TRUE(r);  
+  EXPECT_TRUE(r);
 }
 #endif
 
@@ -210,7 +215,7 @@ TEST(Matching, matchFromIntToBoolIsBool) {
     "| _ _ _ _ -> false"
   );
   EXPECT_TRUE(1 == *reinterpret_cast<uint8_t*>(&r));
-  EXPECT_TRUE(r);  
+  EXPECT_TRUE(r);
 }
 
 TEST(Matching, matchFromStringToIntIsCorrect) {
@@ -223,7 +228,7 @@ TEST(Matching, matchFromStringToIntIsCorrect) {
     "| _ _ _ _                 -> 0"
   )();
   EXPECT_EQ(uint32_t(86), *reinterpret_cast<uint32_t*>(&r));
-  EXPECT_TRUE(r);  
+  EXPECT_TRUE(r);
 }
 
 TEST(Matching, largeRegexDFAFinishesReasonablyQuickly) {
@@ -266,9 +271,9 @@ TEST(Matching, noRaceInterpMatch) {
     "| _       -> 2"
   );
   size_t wrongMatches = 0;
-  std::vector<std::thread*> ps;
+  std::vector<std::thread> ps;
   for (size_t p = 0; p < 10; ++p) {
-    ps.push_back(new std::thread(([&]() {
+    ps.emplace_back([&]() {
       auto t0 = tick();
       while (wrongMatches == 0 && size_t(tick()-t0) < 1UL*1000*1000*1000) {
         if (f("foo") != 0) {
@@ -279,9 +284,11 @@ TEST(Matching, noRaceInterpMatch) {
         }
         hobbes::resetMemoryPool();
       }
-    })));
+    });
   }
-  for (auto p : ps) { p->join(); delete p; }
+  for (auto& p : ps) {
+    p.join();
+  }
   EXPECT_EQ(wrongMatches, size_t(0));
   c().buildInterpretedMatches(false);
 }

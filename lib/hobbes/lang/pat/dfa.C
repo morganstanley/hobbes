@@ -1133,29 +1133,22 @@ stateidx_t makeDFA(MDFA* dfa, const PatternRows& ps, const LexicalAnnotation& la
     std::vector<size_t> unreachableRows;
     for (size_t r = 0; r < ps.size(); ++r) {
       size_t fs = finalStates[r];
- 
+
       if (dfa->states[fs]->refs == 0) {
         unreachableRows.push_back(r);
       }
     }
-  
+
     if (unreachableRows.size() > 0) {
       std::ostringstream fss;
       fss << "Unreachable row" << (unreachableRows.size() > 1 ? "s" : "") << " in match expression:\n";
       for (size_t ur : unreachableRows) {
         fss << "  " << show(ps[ur]) << std::endl;
       }
-      throw annotated_error(la, fss.str());
-    }
-  }
-
-  // save unreachable rows for the caller instead of raising an error
-  if (dfa->c->unreachableMatchRowsPtr) {
-    for (size_t r = 0; r < ps.size(); ++r) {
-      size_t fs = finalStates[r];
-
-      if (dfa->states[fs]->refs == 0) {
-        dfa->c->unreachableMatchRowsPtr->push_back(std::make_pair(r, ps[r]));
+      if (dfa->c->ignoreUnreachableMatches()) {
+        dfa->c->gatherUnreachableMatches({.la = la, .lines = fss.str()});
+      } else {
+        throw annotated_error(la, fss.str());
       }
     }
   }
