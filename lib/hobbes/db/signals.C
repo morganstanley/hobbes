@@ -525,7 +525,7 @@ void initSignalsDefs(FieldVerifier* fv, cc& c) {
   // add signals for top-level file variables
   c.bind(".addFileSOSignal", &addFileSOSignal);
   c.bindLLFunc("signals", new signalsF());
-  fv->addEliminator(new AddDBFieldSignal());
+  fv->addEliminator(std::make_shared<AddDBFieldSignal>());
 
   c.bind(".addFileSignal", &addFileSignal);
   c.bindLLFunc("addFileSignal", new addFileSignalF());

@@ -53,13 +53,13 @@ std::string FieldVerifier::constraintName() {
 }
 
 FieldVerifier::FieldVerifier() {
-  this->eliminators.push_back(new HFRecordEliminator());
-  this->eliminators.push_back(new HFSLookupEliminator());
-  this->eliminators.push_back(new HFLookupEliminator());
-  this->eliminators.push_back(new HFTEnvLookupEliminator());
+  this->eliminators.push_back(std::make_shared<HFRecordEliminator>());
+  this->eliminators.push_back(std::make_shared<HFSLookupEliminator>());
+  this->eliminators.push_back(std::make_shared<HFLookupEliminator>());
+  this->eliminators.push_back(std::make_shared<HFTEnvLookupEliminator>());
 }
 
-void FieldVerifier::addEliminator(HFEliminator* hfe) {
+void FieldVerifier::addEliminator(const std::shared_ptr<HFEliminator>& hfe) {
   this->eliminators.push_back(hfe);
 
   // a hacky way to make sure that the TEnv eliminator is the last one considered, since it's kind of a catch-all
@@ -69,8 +69,7 @@ void FieldVerifier::addEliminator(HFEliminator* hfe) {
 bool FieldVerifier::refine(const TEnvPtr& tenv, const ConstraintPtr& cst, MonoTypeUnifier* s, Definitions* ds) {
   HasField hf;
   if (dec(cst, &hf)) {
-    for (size_t i = 0; i < this->eliminators.size(); ++i) {
-      auto hfe = this->eliminators[i];
+    for (const auto& hfe : this->eliminators) {
       try {
         if (hfe->satisfiable(tenv, hf, ds) && hfe->refine(tenv, hf, s, ds)) {
           return true;
@@ -85,7 +84,7 @@ bool FieldVerifier::refine(const TEnvPtr& tenv, const ConstraintPtr& cst, MonoTy
 bool FieldVerifier::satisfied(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions* ds) const {
   HasField hf;
   if (dec(cst, &hf)) {
-    for (auto hfe : this->eliminators) {
+    for (const auto& hfe : this->eliminators) {
       try {
         if (hfe->satisfied(tenv, hf, ds)) {
           return true;
@@ -99,7 +98,7 @@ bool FieldVerifier::satisfied(const TEnvPtr& tenv, const ConstraintPtr& cst, Def
 bool FieldVerifier::satisfiable(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions* ds) const {
   HasField hf;
   if (dec(cst, &hf)) {
-    for (auto hfe : this->eliminators) {
+    for (const auto& hfe : this->eliminators) {
       try {
         if (hfe->satisfiable(tenv, hf, ds)) {
           return true;
@@ -166,7 +165,7 @@ struct RewriteFnAccess : public switchExprTyFn {
 ExprPtr FieldVerifier::unqualify(const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPtr& e, Definitions* ds) const {
   HasField hf;
   if (dec(cst, &hf)) {
-    for (auto hfe : this->eliminators) {
+    for (const auto& hfe : this->eliminators) {
       try {
         if (hfe->satisfied(tenv, hf, ds)) {
           return hfe->unqualify(tenv, cst, switchOf(e, RewriteFnAccess(hf, *hfe, tenv, ds, cst)), ds);

@@ -1,13 +1,14 @@
 #include <hobbes/ipc/process.H>
 #include <hobbes/lang/typeinf.H>
 #include <hobbes/lang/preds/class.H>
+#include <memory>
 
 namespace hobbes {
 
 #define PROCESS_SPAWN "spawn"
 
 ProcessP::ProcessP(FieldVerifier* fv) {
-  fv->addEliminator(&this->procman);
+  fv->addEliminator(this->procman);
 }
 
 static bool dec(const ConstraintPtr& c, MonoTypePtr* lhs, MonoTypePtr* rhs) {
@@ -29,7 +30,7 @@ bool ProcessP::refine(const TEnvPtr&, const ConstraintPtr& cst, MonoTypeUnifier*
   MonoTypePtr cmdt, pidt;
   if (dec(cst, &cmdt, &pidt)) {
     if (const TString* cmd = is<TString>(cmdt)) {
-      mgu(pidt, mkPidTy(this->procman.spawnedPid(cmd->value())), u);
+      mgu(pidt, mkPidTy(this->procman->spawnedPid(cmd->value())), u);
     }
   }
   return uc != u->size();
@@ -40,7 +41,7 @@ bool ProcessP::satisfied(const TEnvPtr&, const ConstraintPtr& cst, Definitions*)
   if (dec(cst, &cmdt, &pidt)) {
     if (const TString* cmd = is<TString>(cmdt)) {
       if (const TLong* pid = pidTy(pidt)) {
-        return this->procman.isSpawnedPid(cmd->value(), pid->value());
+        return this->procman->isSpawnedPid(cmd->value(), pid->value());
       }
     }
   }

@@ -6,6 +6,8 @@
 
 #include <hobbes/lang/preds/hasctor/variant.H>
 
+#include <memory>
+
 namespace hobbes {
 
 #define MSELECT_CTOR_FN "maybeFromCtor"
@@ -14,21 +16,21 @@ namespace hobbes {
 // generic field verification and constraint removal
 /////////////////////////////////////////////////////
 CtorVerifier::CtorVerifier() {
-  this->eliminators.push_back(new HCVariantEliminator());
+  addEliminator(std::make_shared<HCVariantEliminator>());
 }
 
 std::string CtorVerifier::constraintName() {
   return "HasCtor";
 }
 
-void CtorVerifier::addEliminator(HCEliminator* hce) {
+void CtorVerifier::addEliminator(const std::shared_ptr<HCEliminator>& hce) {
   this->eliminators.push_back(hce);
 }
 
 HCEliminator* CtorVerifier::findEliminator(const TEnvPtr& tenv, const HasCtor& hc, Definitions* ds) const {
-  for (auto hce : this->eliminators) {
+  for (const auto& hce : this->eliminators) {
     if (hce->satisfiable(tenv, hc, ds)) {
-      return hce;
+      return hce.get();
     }
   }
   return 0;

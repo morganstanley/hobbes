@@ -92,7 +92,7 @@ cc::cc() :
 
   // support subtype constraints (including safe upcasting between C++ objects)
   SubtypeUnqualifier* subuq = new SubtypeUnqualifier();
-  subuq->addEliminator(this->objs.get());
+  subuq->addEliminator(this->objs);
   this->tenv->bind(SubtypeUnqualifier::constraintName(), UnqualifierPtr(subuq));
 
   // support constraints on "field projection" (for records, "objects", ...)

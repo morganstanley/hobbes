@@ -15,7 +15,7 @@ bool dec(const ConstraintPtr&, Subtype*);
 
 // a "subtype eliminator" knows how to resolve a "Subtype" constraint at a particular (category of) type
 struct SubtypeEliminator {
-   virtual ~SubtypeEliminator(void) = default;
+  virtual ~SubtypeEliminator() = default;
   // is this instance eliminable?
   virtual bool satisfied(const TEnvPtr& tenv, const MonoTypePtr& lhs, const MonoTypePtr& rhs) const = 0;
 
@@ -40,7 +40,7 @@ public:
   static std::string constraintName();
 
   // extend the set of 'subtype' eliminators dynamically (dangerous?)
-  void addEliminator(SubtypeEliminator*);
+  void addEliminator(const std::shared_ptr<SubtypeEliminator>&);
 
   // unqualifier interface
   bool        refine(const TEnvPtr&,const ConstraintPtr&,MonoTypeUnifier*,Definitions*);
@@ -52,7 +52,7 @@ public:
   SymSet      bindings ()                                                                  const;
   FunDeps     dependencies(const ConstraintPtr&)                                           const;
 private:
-  typedef std::vector<SubtypeEliminator*> SubtypeEliminators;
+  using SubtypeEliminators = std::vector<std::shared_ptr<SubtypeEliminator>>;
   SubtypeEliminators eliminators;
 
   SubtypeEliminator* findEliminator(const TEnvPtr&, const Subtype&) const;

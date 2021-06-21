@@ -23,21 +23,21 @@ bool dec(const ConstraintPtr& c, AppendsTo* r) {
 }
 
 AppendsToUnqualifier::AppendsToUnqualifier() {
-  addEliminator(new ATRecordEliminator());
+  addEliminator(std::make_shared<ATRecordEliminator>());
 }
 
 std::string AppendsToUnqualifier::constraintName() {
   return "AppendsTo";
 }
 
-void AppendsToUnqualifier::addEliminator(ATEliminator* ate) {
+void AppendsToUnqualifier::addEliminator(const std::shared_ptr<ATEliminator>& ate) {
   this->eliminators.push_back(ate);
 }
 
 ATEliminator* AppendsToUnqualifier::findEliminator(const TEnvPtr& tenv, const AppendsTo* at) const {
   for (ATEliminators::const_iterator ate = this->eliminators.begin(); ate != this->eliminators.end(); ++ate) {
     if ((*ate)->satisfiable(tenv, at->leftType, at->rightType, at->resultType)) {
-      return *ate;
+      return ate->get();
     }
   }
   return 0;

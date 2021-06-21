@@ -3,6 +3,7 @@
 #define HOBBES_LANG_TYPEPREDS_HASFIELD_HPP_INCLUDED
 
 #include <hobbes/lang/tyunqualify.H>
+#include <memory>
 
 namespace hobbes {
 
@@ -56,7 +57,7 @@ public:
   static std::string constraintName();
 
   // extend the set of 'hasfield' eliminators dynamically (dangerous?)
-  void addEliminator(HFEliminator*);
+  void addEliminator(const std::shared_ptr<HFEliminator>&);
 
   // unqualifier interface
   bool        refine(const TEnvPtr&,const ConstraintPtr&,MonoTypeUnifier*,Definitions*);
@@ -68,7 +69,7 @@ public:
   SymSet      bindings ()                                                                  const;
   FunDeps     dependencies(const ConstraintPtr&)                                           const;
 private:
-  typedef std::vector<HFEliminator*> HFEliminators;
+  using HFEliminators = std::vector<std::shared_ptr<HFEliminator>>;
   HFEliminators eliminators;
 };
 

@@ -21,6 +21,8 @@ bool dec(const ConstraintPtr&, AppendsTo*);
 
 // an "appendsto eliminator" knows how to resolve an "AppendsTo" constraint at a particular (category of) type
 struct ATEliminator {
+  virtual ~ATEliminator() = default;
+
   // is this AT instance eliminable?
   virtual bool satisfied(const TEnvPtr& tenv, const MonoTypePtr& lhs, const MonoTypePtr& rhs, const MonoTypePtr& result) const = 0;
 
@@ -45,7 +47,7 @@ public:
   static std::string constraintName();
 
   // extend the set of 'appendsto' eliminators dynamically (dangerous?)
-  void addEliminator(ATEliminator*);
+  void addEliminator(const std::shared_ptr<ATEliminator>&);
 
   // unqualifier interface
   bool        refine(const TEnvPtr&,const ConstraintPtr&,MonoTypeUnifier*,Definitions*);
@@ -57,7 +59,7 @@ public:
   SymSet      bindings ()                                                                  const;
   FunDeps     dependencies(const ConstraintPtr&)                                           const;
 private:
-  typedef std::vector<ATEliminator*> ATEliminators;
+  using ATEliminators = std::vector<std::shared_ptr<ATEliminator>>;
   ATEliminators eliminators;
 
   ATEliminator* findEliminator(const TEnvPtr&, const AppendsTo*) const;

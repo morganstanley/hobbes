@@ -5,6 +5,7 @@
 #include <hobbes/lang/tyunqualify.H>
 #include <hobbes/ipc/procman.H>
 #include <string>
+#include <memory>
 
 namespace hobbes {
 
@@ -25,7 +26,7 @@ public:
   SymSet      bindings ()                                                                const;
   FunDeps     dependencies(const ConstraintPtr&)                                         const;
 private:
-  ProcManager procman;
+  std::shared_ptr<ProcManager> procman{std::make_shared<ProcManager>()};
 };
 
 }
