@@ -20,8 +20,12 @@ jobs:
       - name: nix build hobbesPackages/clang-${{ matrix.clang }}/hobbes
         run: |
           nix build .#hobbesPackages/clang-${{ matrix.clang }}/hobbes
+      - name: nix log hobbesPackages/clang-${{ matrix.clang }}/hobbes
+        if: ${{ always() }}
+        run: |
           nix log  .#hobbesPackages/clang-${{ matrix.clang }}/hobbes &> ${{ matrix.os }}-clang-${{ matrix.clang }}-hobbes.log
       - name: upload log ${{ matrix.os }}-clang-${{ matrix.clang }}-hobbes.log
+        if: ${{ always() }}
         uses: actions/upload-artifact@v1
         with:
           name: output-log-file
@@ -43,11 +47,15 @@ jobs:
           install_url: https://github.com/numtide/nix-flakes-installer/releases/download/nix-2.4pre20201221_9fab14a/install
           extra_nix_config: |
             experimental-features = nix-command flakes ca-references
-      - name: nix build hobbesPackages/clang-${{ matrix.clang }}/hobbes
+      - name: nix build hobbesPackages/gcc-${{ matrix.gcc }}/llvm-${{ matrix.llvm }}/hobbes
         run: |
           nix build .#hobbesPackages/gcc-${{ matrix.gcc }}/llvm-${{ matrix.llvm }}/hobbes
+      - name: nix log hobbesPackages/gcc-${{ matrix.gcc }}/llvm-${{ matrix.llvm }}/hobbes
+        if: ${{ always() }}
+        run: |
           nix log  .#hobbesPackages/gcc-${{ matrix.gcc }}/llvm-${{ matrix.llvm }}/hobbes &> ${{ matrix.os }}-gcc-${{ matrix.gcc }}-llvm-${{ matrix.llvm }}-hobbes.log
       - name: upload log ${{ matrix.os }}-gcc-${{ matrix.gcc }}-llvm-${{ matrix.llvm }}-hobbes.log
+        if: ${{ always() }}
         uses: actions/upload-artifact@v1
         with:
           name: output-log-file
