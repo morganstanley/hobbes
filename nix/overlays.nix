@@ -3,7 +3,7 @@
   llvmVersions,
   gccConstraints,
   system,
-  debug ? false,
+  debug ? true,
 }: final: prev:
 with final;
 let
