@@ -1106,7 +1106,7 @@ void initStorageFileDefs(FieldVerifier* fv, cc& c) {
   c.typeEnv()->bind("LoadFile", UnqualifierPtr(new LoadFileP()));
 
   // resolve references to values stored in files
-  fv->addEliminator(new DBFieldLookup());
+  fv->addEliminator(std::make_shared<DBFieldLookup>());
 
   // read/write top-level values out-of/into a storage file
   c.bindLLFunc(".DBVLoad",  new dbloadVF());

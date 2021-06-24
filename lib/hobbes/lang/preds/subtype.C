@@ -23,14 +23,14 @@ std::string SubtypeUnqualifier::constraintName() {
   return "Subtype";
 }
 
-void SubtypeUnqualifier::addEliminator(SubtypeEliminator* e) {
+void SubtypeUnqualifier::addEliminator(const std::shared_ptr<SubtypeEliminator>& e) {
   this->eliminators.push_back(e);
 }
 
 SubtypeEliminator* SubtypeUnqualifier::findEliminator(const TEnvPtr& tenv, const Subtype& st) const {
   for (SubtypeEliminators::const_iterator e = this->eliminators.begin(); e != this->eliminators.end(); ++e) {
     if ((*e)->satisfiable(tenv, st.lower, st.greater)) {
-      return *e;
+      return e->get();
     }
   }
   return 0;
