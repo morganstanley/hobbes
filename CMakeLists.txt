@@ -14,7 +14,7 @@ find_package(Curses REQUIRED)
 include_directories(${CURSES_INCLUDE_DIRS})
 
 find_package(LLVM REQUIRED CONFIG)
-include_directories(${LLVM_INCLUDE_DIRS})
+include_directories(SYSTEM ${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
 
 if (${LLVM_PACKAGE_VERSION} VERSION_LESS "10.0")
@@ -29,7 +29,8 @@ else()
   set(jit_lib mcjit)
 endif()
 
-find_program(llvm-config llvm-config PATHS ${LLVM_TOOLS_BINARY_DIR})
+find_program(llvm-config llvm-config PATHS ${LLVM_TOOLS_BINARY_DIR} NO_DEFAULT_PATH)
+find_program(llvm-config llvm-config)
 if (${LLVM_PACKAGE_VERSION} VERSION_LESS "4.0")
   execute_process(COMMAND ${llvm-config} --libs x86 ipo ${jit_lib}
                   OUTPUT_VARIABLE llvm_libs
