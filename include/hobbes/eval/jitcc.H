@@ -29,6 +29,10 @@ struct op {
   virtual llvm::Value* apply(jitcc* ev, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) = 0;
 };
 
+#if LLVM_VERSION_MAJOR >= 11
+class ORCJIT;
+#endif
+
 // a JIT compiler for monotyped expressions
 class jitcc {
 public:
@@ -115,17 +119,20 @@ private:
   TEnvPtr tenv;
 
   // produce some machine code for a compiled function
-  void* getMachineCode(llvm::Function*, llvm::JITEventListener* listener = 0);
+  void* getMachineCode(llvm::Function*, llvm::JITEventListener* listener = nullptr);
 
   // the current non-finalized module
   // (new definitions will be accumulated here)
   // (may be null, to lazily allocate modules)
-  llvm::Module* currentModule;
+  llvm::Module* currentModule = nullptr;
 
   // the set of allocated modules
   typedef std::vector<llvm::Module*> Modules;
   Modules modules;
 
+#if LLVM_VERSION_MAJOR >= 11
+
+#else
 #if LLVM_VERSION_MINOR == 6 || LLVM_VERSION_MINOR == 7 || LLVM_VERSION_MINOR == 8 || LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR <= 12
   llvm::legacy::PassManager* mpm;
 
@@ -143,9 +150,10 @@ private:
 #else
 #error "This version of LLVM is not supported"
 #endif
+#endif
 
   // support incremental construction of LLVM assembly sequences
-  llvm::IRBuilder<>* irbuilder;
+  std::unique_ptr<llvm::IRBuilder<>> irbuilder;
 
   // the bound root function environment
   typedef std::map<std::string, op*> FuncEnv;
@@ -216,6 +224,10 @@ private:
   // (in case we want to inline them later)
   typedef std::map<std::string, ExprPtr> GlobalExprs;
   GlobalExprs globalExprs;
+
+#if LLVM_VERSION_MAJOR >= 11
+  std::unique_ptr<ORCJIT> orcjit;
+#endif
 };
 
 // shorthand for compilation over a sequence of expressions

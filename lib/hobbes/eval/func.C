@@ -228,9 +228,9 @@ public:
     llvm::Value*    cond   = c->compile(es[0]);
 
     // for a condition, we need a 'then' branch, an 'else' branch, and a 'merge' block joining the two
-    llvm::BasicBlock* thenBlock  = llvm::BasicBlock::Create(context(), "then", thisFn);
-    llvm::BasicBlock* elseBlock  = llvm::BasicBlock::Create(context(), "else");
-    llvm::BasicBlock* mergeBlock = llvm::BasicBlock::Create(context(), "ifmerge");
+    llvm::BasicBlock* thenBlock  = llvm::BasicBlock::Create(c->builder()->getContext(), "then", thisFn);
+    llvm::BasicBlock* elseBlock  = llvm::BasicBlock::Create(c->builder()->getContext(), "else");
+    llvm::BasicBlock* mergeBlock = llvm::BasicBlock::Create(c->builder()->getContext(), "ifmerge");
 
     // compile 'then' branch flowing to 'merge' block
     c->builder()->CreateCondBr(cond, thenBlock, elseBlock);
@@ -575,7 +575,7 @@ public:
   llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) {
     llvm::Type* tppchar =
       llvm::PointerType::getUnqual(
-        llvm::PointerType::getUnqual(llvm::Type::getInt8Ty(context()))
+        llvm::PointerType::getUnqual(llvm::Type::getInt8Ty(c->builder()->getContext()))
       );
 
     llvm::Value* p = c->compile(es[0]);
@@ -818,9 +818,9 @@ public:
       llvm::Function* thisFn = c->builder()->GetInsertBlock()->getParent();
 
       // for a condition, we need a 'then' branch, an 'else' branch, and a 'merge' block joining the two
-      llvm::BasicBlock* thenBlock  = llvm::BasicBlock::Create(context(), "then", thisFn);
-      llvm::BasicBlock* elseBlock  = llvm::BasicBlock::Create(context(), "else");
-      llvm::BasicBlock* mergeBlock = llvm::BasicBlock::Create(context(), "ifmerge");
+      llvm::BasicBlock* thenBlock  = llvm::BasicBlock::Create(c->builder()->getContext(), "then", thisFn);
+      llvm::BasicBlock* elseBlock  = llvm::BasicBlock::Create(c->builder()->getContext(), "else");
+      llvm::BasicBlock* mergeBlock = llvm::BasicBlock::Create(c->builder()->getContext(), "ifmerge");
 
       // compile 'then' branch flowing to 'merge' block
       c->builder()->CreateCondBr(ishtag, thenBlock, elseBlock);

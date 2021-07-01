@@ -1450,7 +1450,7 @@ struct makePrimDFASF : public switchMState<UnitV> {
       return b->second;
     } else {
       llvm::BasicBlock* obb = this->dfa->c->builder()->GetInsertBlock();
-      llvm::BasicBlock* bb  = llvm::BasicBlock::Create(context(), ".pmst" + freshName(), obb->getParent());
+      llvm::BasicBlock* bb  = llvm::BasicBlock::Create(this->dfa->c->builder()->getContext(), ".pmst" + freshName(), obb->getParent());
       this->dfa->c->builder()->SetInsertPoint(bb);
       switchOf(this->dfa->states[s], *this);
       (*this->branches)[s] = bb;
@@ -1469,7 +1469,7 @@ llvm::Function* makePrimMatchDFAFunc(const std::string& fname, MDFA* dfa, statei
   }
 
   llvm::Function*   result = llvm::Function::Create(llvm::FunctionType::get(intType(), atys, false), llvm::Function::ExternalLinkage, fname, dfa->c->module());
-  llvm::BasicBlock* bb     = llvm::BasicBlock::Create(context(), "entry", result);
+  llvm::BasicBlock* bb     = llvm::BasicBlock::Create(dfa->c->builder()->getContext(), "entry", result);
 
   dfa->c->builder()->SetInsertPoint(bb);
 

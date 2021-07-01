@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.4.1)
 project(hobbes)
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
 find_package(ZLIB REQUIRED)
@@ -21,8 +23,10 @@ set(CMAKE_CXX_STANDARD 14)
 
 if (${LLVM_PACKAGE_VERSION} VERSION_LESS "3.6")
   set(jit_lib jit)
-else()
+elseif(${LLVM_PACKAGE_VERSION} VERSION_LESS "11.0")
   set(jit_lib mcjit)
+else()
+  set(jit_lib mcjit orcjit)
 endif()
 
 find_program(llvm-config llvm-config PATHS ${LLVM_TOOLS_BINARY_DIR} NO_DEFAULT_PATH)
@@ -72,11 +76,11 @@ if(APPLE)
 endif()
 if(LINUX)
   set(sys_libs ${sys_libs} pthread dl rt)
-  set(cxx_flags "-Werror=old-style-cast -Werror -Wall -Wextra -Winit-self -Wreturn-type -Wunused-variable -Wsign-compare -Warray-bounds -Wunknown-pragmas -Wuninitialized -Wstrict-aliasing -Wunused-value -Wunused-label -Wswitch -Wcast-align -Wctor-dtor-privacy -Wmissing-noreturn -Wunused-parameter -Wreorder")
+  set(cxx_flags "-Werror=old-style-cast -Wall -Wextra -Winit-self -Wreturn-type -Wunused-variable -Wsign-compare -Warray-bounds -Wunknown-pragmas -Wuninitialized -Wstrict-aliasing -Wunused-value -Wunused-label -Wswitch -Wcast-align -Wctor-dtor-privacy -Wmissing-noreturn -Wunused-parameter -Wreorder")
 endif()
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${cxx_flags}")
-set(CMAKE_CXX_FLAGS_DEBUG "-g")
+set(CMAKE_CXX_FLAGS_DEBUG "-ggdb3 -O0 -fno-omit-frame-pointer -fno-inline")
 set(CMAKE_CXX_FLAGS_RELEASE "-O2")
 
 add_library(hobbes STATIC ${lib_files})

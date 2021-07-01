@@ -3,6 +3,7 @@
 #define HOBBES_UTIL_LLVM_HPP_INCLUDED
 
 #include <hobbes/util/array.H>
+#include <hobbes/lang/type.H>
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wold-style-cast"
@@ -29,7 +30,7 @@
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/Support/TargetRegistry.h>
 #include <llvm/Support/Signals.h>
-#if LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 6 || LLVM_VERSION_MAJOR <= 8 
+#if LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 6 || LLVM_VERSION_MAJOR <= 8
 #  include <llvm/Bitcode/BitstreamReader.h>
 #  include <llvm/Bitcode/BitstreamWriter.h>
 #elif  LLVM_VERSION_MAJOR <= 12
@@ -49,6 +50,7 @@
 #  include <llvm/PassManager.h>
 #elif LLVM_VERSION_MINOR >= 5 || LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 6 || LLVM_VERSION_MAJOR >= 8
 #  include <llvm/IR/Verifier.h>
+#  include <llvm/ExecutionEngine/Orc/ThreadSafeModule.h>
 #  include <llvm/ExecutionEngine/SectionMemoryManager.h>
 #  include <llvm/IR/LegacyPassManager.h>
 #  include <llvm/Object/ELFObjectFile.h>
@@ -60,14 +62,15 @@ namespace hobbes {
 
 typedef __int128 int128_t;
 
-// keep one context per thread to avoid global locking
-// NOTE: temporarily reverting to one global context
-//       this is because we have some cases where we partially compile in one thread and then resume compiling in another thread
-//       we currently keep a global lock on compilers anyway
-inline llvm::LLVMContext& context() {
-  static llvm::LLVMContext ctx;
-  return ctx;
+inline llvm::orc::ThreadSafeContext& threadSafeContext() {
+  static thread_local auto c = llvm::orc::ThreadSafeContext(std::make_unique<llvm::LLVMContext>());
+  return c;
 }
+
+inline llvm::LLVMContext& unlockedContext() {
+  return *threadSafeContext().getContext();
+}
+
 
 typedef std::vector<llvm::Type*>     Types;
 typedef std::vector<llvm::Constant*> Constants;
@@ -75,15 +78,15 @@ typedef std::vector<llvm::Value*>    Values;
 
 // type utilities
 inline llvm::Type* voidType() {
-  return llvm::Type::getVoidTy(context());
+  return llvm::Type::getVoidTy(unlockedContext());
 }
 
 inline llvm::Type* boolType() {
-  return llvm::Type::getInt1Ty(context());
+  return llvm::Type::getInt1Ty(unlockedContext());
 }
 
 inline llvm::Type* charType() {
-  return llvm::Type::getInt8Ty(context());
+  return llvm::Type::getInt8Ty(unlockedContext());
 }
 
 inline llvm::Type* byteType() {
@@ -91,27 +94,27 @@ inline llvm::Type* byteType() {
 }
 
 inline llvm::Type* shortType() {
-  return llvm::Type::getInt16Ty(context());
+  return llvm::Type::getInt16Ty(unlockedContext());
 }
 
 inline llvm::Type* intType() {
-  return llvm::Type::getInt32Ty(context());
+  return llvm::Type::getInt32Ty(unlockedContext());
 }
 
 inline llvm::Type* longType() {
-  return llvm::Type::getInt64Ty(context());
+  return llvm::Type::getInt64Ty(unlockedContext());
 }
 
 inline llvm::Type* int128Type() {
-  return llvm::Type::getIntNTy(context(), 128);
+  return llvm::Type::getIntNTy(unlockedContext(), 128);
 }
 
 inline llvm::Type* floatType() {
-  return llvm::Type::getFloatTy(context());
+  return llvm::Type::getFloatTy(unlockedContext());
 }
 
 inline llvm::Type* doubleType() {
-  return llvm::Type::getDoubleTy(context());
+  return llvm::Type::getDoubleTy(unlockedContext());
 }
 
 inline llvm::PointerType* ptrType(llvm::Type* ty) {
@@ -125,11 +128,11 @@ inline llvm::ArrayType* arrayType(llvm::Type* ty, size_t sz) {
 }
 
 inline llvm::StructType* packedRecordType(const Types& tys) {
-  return llvm::StructType::get(context(), tys, true);
+  return llvm::StructType::get(unlockedContext(), tys, true);
 }
 
 inline llvm::StructType* recordType(const Types& tys) {
-  return llvm::StructType::get(context(), tys);
+  return llvm::StructType::get(unlockedContext(), tys);
 }
 
 inline llvm::StructType* recordType(llvm::Type* t0) {
@@ -211,44 +214,44 @@ inline llvm::Constant* cvalue(int128_t x) {
 }
 
 inline llvm::Constant* cvalue(float x) {
-  return llvm::ConstantFP::get(context(), llvm::APFloat(x));
+  return llvm::ConstantFP::get(unlockedContext(), llvm::APFloat(x));
 }
 
 inline llvm::Constant* cvalue(double x) {
-  return llvm::ConstantFP::get(context(), llvm::APFloat(x));
+  return llvm::ConstantFP::get(unlockedContext(), llvm::APFloat(x));
 }
 
 // constant int utilities (different than constants to LLVM!)
 inline llvm::ConstantInt* civalue(bool x) {
-  return llvm::ConstantInt::get(llvm::IntegerType::get(context(), 1), static_cast<uint64_t>(x ? 1 : 0));
+  return llvm::ConstantInt::get(llvm::IntegerType::get(unlockedContext(), 1), static_cast<uint64_t>(x ? 1 : 0));
 }
 
 inline llvm::ConstantInt* civalue(char x) {
-  return llvm::ConstantInt::get(llvm::IntegerType::get(context(), 8), static_cast<uint64_t>(x));
+  return llvm::ConstantInt::get(llvm::IntegerType::get(unlockedContext(), 8), static_cast<uint64_t>(x));
 }
 
 inline llvm::ConstantInt* civalue(unsigned char x) {
-  return llvm::ConstantInt::get(llvm::IntegerType::get(context(), 8), static_cast<uint64_t>(x));
+  return llvm::ConstantInt::get(llvm::IntegerType::get(unlockedContext(), 8), static_cast<uint64_t>(x));
 }
 
 inline llvm::ConstantInt* civalue(short x) {
-  return llvm::ConstantInt::get(llvm::IntegerType::get(context(), 16), static_cast<uint64_t>(x));
+  return llvm::ConstantInt::get(llvm::IntegerType::get(unlockedContext(), 16), static_cast<uint64_t>(x));
 }
 
 inline llvm::ConstantInt* civalue(int x) {
-  return llvm::ConstantInt::get(llvm::IntegerType::get(context(), 32), static_cast<uint64_t>(x));
+  return llvm::ConstantInt::get(llvm::IntegerType::get(unlockedContext(), 32), static_cast<uint64_t>(x));
 }
 
 inline llvm::ConstantInt* civalue(unsigned int x) {
-  return llvm::ConstantInt::get(llvm::IntegerType::get(context(), 32), static_cast<uint64_t>(x));
+  return llvm::ConstantInt::get(llvm::IntegerType::get(unlockedContext(), 32), static_cast<uint64_t>(x));
 }
 
 inline llvm::ConstantInt* civalue(long x) {
-  return llvm::ConstantInt::get(llvm::IntegerType::get(context(), 64), static_cast<uint64_t>(x));
+  return llvm::ConstantInt::get(llvm::IntegerType::get(unlockedContext(), 64), static_cast<uint64_t>(x));
 }
 
 inline llvm::ConstantInt* civalue(int128_t x) {
-  return llvm::ConstantInt::get(llvm::IntegerType::get(context(), 128), x); //static_cast<uint64_t>(x));
+  return llvm::ConstantInt::get(llvm::IntegerType::get(unlockedContext(), 128), x); //static_cast<uint64_t>(x));
 }
 
 // an intermediate representation for records
