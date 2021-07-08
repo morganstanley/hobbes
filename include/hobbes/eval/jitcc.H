@@ -46,8 +46,10 @@ public:
   // get the address of a bound symbol
   void* getSymbolAddress(const std::string&);
 
+#if LLVM_VERSION_MAJOR < 11
   // print all module contents
   void dump() const;
+#endif
 
   // define a global from a primitive expression
   void defineGlobal(const std::string& vname, const ExprPtr& unsweetExp);

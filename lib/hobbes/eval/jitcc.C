@@ -13,6 +13,7 @@
 
 #if LLVM_VERSION_MAJOR >= 11
 #include <hobbes/eval/orcjitcc.H>
+#include <llvm/Support/FormatVariadic.h>
 #else
 #if LLVM_VERSION_MINOR == 3 or LLVM_VERSION_MINOR == 5
 #include "llvm/ExecutionEngine/JIT.h"
@@ -186,12 +187,6 @@ llvm::errs() << "new module: " << this->currentModule->getName() << '\n';
 }
 
 #if LLVM_VERSION_MAJOR >= 11
-void jitcc::dump() const {
-  for (auto* m : this->modules) {
-    m->print(llvm::dbgs(), nullptr, /*ShouldPreserveUseListOrder=*/false, /*IsForDebug=*/true);
-  }
-}
-
 void* jitcc::getMachineCode(llvm::Function* f, llvm::JITEventListener* /*listener*/) {
   const std::string fname = f->getName().str();
   auto sym = orcjit->lookup(fname);
@@ -208,9 +203,11 @@ void* jitcc::getMachineCode(llvm::Function* f, llvm::JITEventListener* /*listene
   llvm::errs() << "getMachineCode(" << fname << ") makes " << this->currentModule->getName()
                << " compile\n";
 
+#if 0
   llvm::errs() << this->currentModule->getName() << ">>>>>>>>>\n";
   this->currentModule->dump();
   llvm::errs() << this->currentModule->getName() << "<<<<<<<<<\n";
+#endif
 
   // now we can't touch this module again
   this->currentModule = nullptr;
@@ -222,6 +219,7 @@ void* jitcc::getMachineCode(llvm::Function* f, llvm::JITEventListener* /*listene
         "Internal compiler error, no current module and no machine code for function (" + fname +
         ")");
   }
+
   return llvm::jitTargetAddressToPointer<void*>(sym->getAddress());
 }
 #else
@@ -532,24 +530,7 @@ void jitcc::bindGlobal(const std::string& vn, const MonoTypePtr& ty, void* x) {
 #endif
   }
 llvm::errs() << "binded global " << vn << '\n';
-//if (vn == "floatFormatConfig") {
-  //auto* a = this->currentModule->getGlobalVariable("floatFormatConfig");
-  auto* a = this->currentModule->getGlobalVariable(vn);
-  if (a) {
-  llvm::errs() << "    getLinkage() " << a->getLinkage() << '\n';
-  llvm::errs() << "    isDeclaration() " << a->isDeclaration() << '\n';
-  llvm::errs() << "    isDeclarationForLinker() " << a->isDeclarationForLinker() << '\n';
-  llvm::errs() << "    getGlobalIdentifier() " << a->getGlobalIdentifier() << '\n';
-  llvm::errs() << "    isAbsoluteSymbolRef() " << a->isAbsoluteSymbolRef() << '\n';
-  llvm::errs() << "    hasDefinitiveInitializer() " << a->hasDefinitiveInitializer() << '\n';
-  llvm::errs() << "    hasInitializer() " << a->hasInitializer() << '\n';
-  llvm::errs() << "    getVisibility() " << a->getVisibility() << '\n';
-  } else {
-    llvm::errs() << vn << ": failed to get from current module as global var, " << (is_func ? "a function": "a var") << "\n";
-  }
-//}
 #if LLVM_VERSION_MAJOR >= 11
-  llvm::errs() << vn << " -> " << g.value << '\n';
 llvm::cantFail(orcjit->addExternal(vn, g.value));
 //llvm::cantFail(orcjit->addExternal(vn, x));
 #endif
@@ -641,22 +622,19 @@ void jitcc::defineGlobal(const std::string& vn, const ExprPtr& ue) {
   std::string vname = vn.empty() ? (".global" + freshName()) : vn;
   this->globalExprs[vn] = ue;
 
+  llvm::errs() << llvm::formatv("defineGlobal({0}/{1})\n", vn, vname);
   typedef void (*Thunk)();
   MonoTypePtr uety = requireMonotype(this->tenv, ue);
 
-  llvm::errs() << "defineGlobal(" << vn << ") as ";
   if (isUnit(uety)) {
-    llvm::errs() << " Unit\n";
     // no storage necessary for units
     Thunk f = reinterpret_cast<Thunk>(reifyMachineCodeForFn(uety, list<std::string>(), list<MonoTypePtr>(), ue));
     f();
     releaseMachineCode(reinterpret_cast<void*>(f));
     resetMemoryPool();
   } else if (llvm::Constant* c = toLLVMConstant(this, vname, ue)) {
-    llvm::errs() << " Constant\n";
     // make a global constant ...
     Constant& cv = this->constants[vname];
-llvm::errs() << "defined constant " << vn << "/" << vname << '\n';
     cv.value = c;
     cv.type  = toLLVM(uety);
     cv.mtype = uety;
@@ -668,7 +646,6 @@ llvm::errs() << "defined constant " << vn << "/" << vname << '\n';
       cv.ref = new llvm::GlobalVariable(*module(), cv.type, true, llvm::GlobalVariable::ExternalLinkage, c, vname);
     }
   } else {
-    llvm::errs() << " something else, handled by addExternal?\n";
     // make some space for this global data ...
     if (isLargeType(uety)) {
       void** pdata = reinterpret_cast<void**>(this->globalData.malloc(sizeof(void*)));
@@ -750,6 +727,7 @@ llvm::Value* jitcc::lookupVar(const std::string& vn, const MonoTypePtr& vty) {
     }
   }
 
+  llvm::errs() << "lookupVar(" << vn << ")\n";
   // try to find this variable as a global
   if (llvm::GlobalVariable* gv = maybeRefGlobal(vn)) {
     return builder()->CreateLoad(gv);
@@ -811,11 +789,16 @@ llvm::Value* jitcc::compileAtGlobalScope(const ExprPtr& exp) {
 llvm::Function* jitcc::lookupFunction(const std::string& fn) {
   llvm::Module* thisMod = module();
 
-  for (auto m : this->modules) {
+  for (size_t i = 0; i<this->modules.size(); ++i) {
+  if (this->modules.size() > 1) {
+    llvm::errs() << llvm::formatv("ALERT, MODULE POINTER MIGHT BE INVALID!!!! {0}/{1}\n", i, this->modules.size());
+  }
+    auto m = this->modules[i];
     if (llvm::Function* f = m->getFunction(fn)) {
       if (m == thisMod) {
         return f;
       } else {
+    llvm::errs() << llvm::formatv("ALERT AGAIN, MODULE POINTER MIGHT BE INVALID, NOT CURRENT!!!! {0}/{1}\n", i, this->modules.size());
         return externDecl(f, thisMod);
       }
     }

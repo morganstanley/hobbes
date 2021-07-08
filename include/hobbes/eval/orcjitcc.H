@@ -47,6 +47,7 @@ private:
 
   static llvm::Expected<llvm::orc::ThreadSafeModule>
   optimizeModule(llvm::orc::ThreadSafeModule tsm, const llvm::orc::MaterializationResponsibility&);
+
 };
 } // namespace hobbes
 

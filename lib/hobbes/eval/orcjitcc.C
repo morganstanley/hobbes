@@ -6,6 +6,14 @@
 #include <hobbes/util/llvm.H>
 
 #include <llvm/ExecutionEngine/Orc/CompileUtils.h>
+#include <llvm/Support/FormatVariadic.h>
+
+namespace {
+  LLVM_NODISCARD std::string createUniqueJITDylibName() {
+    static std::atomic_int n(0);
+    return llvm::formatv("<main{0}>", llvm::to_string(n++));
+  }
+}
 
 namespace hobbes {
 
@@ -15,9 +23,15 @@ ORCJIT::ORCJIT(std::unique_ptr<llvm::TargetMachine> tm, const llvm::DataLayout& 
       compileLayer(execSession, objectLayer,
                    std::make_unique<llvm::orc::SimpleCompiler>(*targetMachine)),
       optLayer(execSession, compileLayer, optimizeModule),
-      mainJD(execSession.createBareJITDylib("<main>")) {
+      mainJD(execSession.createBareJITDylib(createUniqueJITDylibName())) {
   mainJD.addGenerator(cantFail(llvm::orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(
       dataLayout.getGlobalPrefix())));
+  compileLayer.setNotifyCompiled([](llvm::orc::VModuleKey K, llvm::orc::ThreadSafeModule TSM) {
+      llvm::errs() << "just compiled module with key " << K << '\n';
+      TSM.withModuleDo([](llvm::Module& m) {
+          m.print(llvm::errs(), nullptr, false, true);
+      });
+  });
 }
 
 llvm::Expected<std::unique_ptr<ORCJIT>> ORCJIT::create() {
