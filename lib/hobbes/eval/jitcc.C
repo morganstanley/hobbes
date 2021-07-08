@@ -48,16 +48,16 @@ public:
   // link symbols across modules :T
   uint64_t getSymbolAddress(const std::string& n) override {
     if (uint64_t laddr = reinterpret_cast<uint64_t>(this->jit->getSymbolAddress(n))) {
-llvm::errs() << "jitmm: get symbol in jit: " << n << '\n';
+      llerrs("n=" << n);
       return laddr;
     }
     if (!n.empty() && n[0] == '_') {
       uint64_t sv = reinterpret_cast<uint64_t>(this->jit->getSymbolAddress(n.substr(1)));
-llvm::errs() << "jitmm: get symbol in jit, no '_': " << n << '\n';
+      llerrs("n=" << n);
       if (sv != 0U) return sv;
     }
     if (uint64_t baddr = llvm::SectionMemoryManager::getSymbolAddress(n)) {
-llvm::errs() << "jitmm: get symbol in section manager: " << n << '\n';
+      llerrs("n=" << n);
       return baddr;
     } else {
       throw std::runtime_error("Internal error, can't resolve symbol: " + n);
@@ -181,7 +181,7 @@ llvm::Module* jitcc::module() {
       return new llvm::Module("jitModule" + str::from(this->modules.size()), c);
     });
     this->modules.push_back(this->currentModule);
-llvm::errs() << "new module: " << this->currentModule->getName() << '\n';
+    llerrs("new module: " << this->currentModule->getName());
   }
   return this->currentModule;
 }
@@ -197,17 +197,10 @@ void* jitcc::getMachineCode(llvm::Function* f, llvm::JITEventListener* /*listene
   }
 
   if (auto e = orcjit->addModule(std::unique_ptr<llvm::Module>(this->currentModule))) {
-    llvm::errs() << e;
+    llerrs(e);
     throw std::runtime_error((", cannot add module " + this->currentModule->getName()).str());
   }
-  llvm::errs() << "getMachineCode(" << fname << ") makes " << this->currentModule->getName()
-               << " compile\n";
-
-#if 0
-  llvm::errs() << this->currentModule->getName() << ">>>>>>>>>\n";
-  this->currentModule->dump();
-  llvm::errs() << this->currentModule->getName() << "<<<<<<<<<\n";
-#endif
+  llerrs("getMachineCode(" << fname << ") makes " << this->currentModule->getName() << " compile");
 
   // now we can't touch this module again
   this->currentModule = nullptr;
@@ -227,7 +220,7 @@ void* jitcc::getSymbolAddress(const std::string& vn) {
   // do we have a global with this name?
   auto gd = this->globals.find(vn);
   if (gd != this->globals.end()) {
-llvm::errs() << "getSymbolAddress(" << vn << ") from globals\n";
+    llerrs("getSymbolAddress(" << vn << ") from globals");
     return gd->second.value;
   }
 
@@ -236,7 +229,7 @@ llvm::errs() << "getSymbolAddress(" << vn << ") from globals\n";
   for (auto ee : this->eengines) {
     if (ee->FindFunctionNamed(vn) || ee->FindGlobalVariableNamed(vn)) {
       if (uint64_t faddr = ee->getFunctionAddress(vn)) {
-llvm::errs() << "getSymbolAddress(" << vn << ") from engine->getFunctionAddress\n";
+        llerrs("getSymbolAddress(" << vn << ") from engine->getFunctionAddress");
         return reinterpret_cast<void*>(faddr);
       }
     }
@@ -280,7 +273,7 @@ void* jitcc::getMachineCode(llvm::Function* f, llvm::JITEventListener* listener)
   // make a new execution engine out of this module (finalizing the module)
   std::string err;
   llvm::ExecutionEngine* ee = makeExecutionEngine(this->currentModule, reinterpret_cast<llvm::SectionMemoryManager*>(new jitmm(this)));
-llvm::errs() << "getMachineCode(" << f->getName() << ") makes " << this->currentModule->getName() << " compile\n";
+  llerrs("getMachineCode(" << f->getName() << ") makes " << this->currentModule->getName() << " compile";)
 
   if (listener) {
     ee->RegisterJITEventListener(listener);
@@ -324,12 +317,6 @@ llvm::errs() << "getMachineCode(" << f->getName() << ") makes " << this->current
   // but we can still get at it through its execution engine
   this->eengines.push_back(ee);
   ee->finalizeObject();
-
-#if 0
-  llvm::errs() << this->currentModule->getName() << ">>>>>>>>>\n";
-  this->currentModule->print(llvm::errs(), nullptr, /*ShouldPreserveUseListOrder=*/false, /*IsForDebug=*/true);
-  llvm::errs() << this->currentModule->getName() << "<<<<<<<<<\n";
-#endif
 
   // now we can't touch this module again
   this->currentModule = 0;
@@ -465,11 +452,10 @@ bool jitcc::isDefined(const std::string& vn) const {
   };
   auto r = f();
   if (r.first) {
-    llvm::errs() << vn << " found in " << r.second;
+    llerrs(vn << " found in " << r.second);
   } else {
-    llvm::errs() << vn << " is not found";
+    llerrs(vn << " is not found");
   }
-  llvm::errs() << '\n';
   return r.first;
 }
 
@@ -482,7 +468,7 @@ llvm::Value* jitcc::compile(const std::string& vname, const ExprPtr& exp) {
 }
 
 void jitcc::bindInstruction(const std::string& vn, op* f) {
-llvm::errs() << "defined fenv " << vn << '\n';
+  llerrs("defined fenv " << vn);
   this->fenv[vn] = f;
 }
 
@@ -529,9 +515,9 @@ void jitcc::bindGlobal(const std::string& vn, const MonoTypePtr& ty, void* x) {
   this->eengine->addGlobalMapping(g.ref.var, g.value);
 #endif
   }
-llvm::errs() << "binded global " << vn << '\n';
+  llerrs("binded global " << vn);
 #if LLVM_VERSION_MAJOR >= 11
-llvm::cantFail(orcjit->addExternal(vn, g.value));
+  llvm::cantFail(orcjit->addExternal(vn, g.value));
 //llvm::cantFail(orcjit->addExternal(vn, x));
 #endif
   this->globals[vn] = g;
@@ -621,8 +607,7 @@ llvm::Value* jitcc::loadConstant(const std::string& vn) {
 void jitcc::defineGlobal(const std::string& vn, const ExprPtr& ue) {
   std::string vname = vn.empty() ? (".global" + freshName()) : vn;
   this->globalExprs[vn] = ue;
-
-  llvm::errs() << llvm::formatv("defineGlobal({0}/{1})\n", vn, vname);
+  llerrs("vn=" << vn << ", vname=" << vname);
   typedef void (*Thunk)();
   MonoTypePtr uety = requireMonotype(this->tenv, ue);
 
@@ -727,7 +712,7 @@ llvm::Value* jitcc::lookupVar(const std::string& vn, const MonoTypePtr& vty) {
     }
   }
 
-  llvm::errs() << "lookupVar(" << vn << ")\n";
+  llerrs(vn);
   // try to find this variable as a global
   if (llvm::GlobalVariable* gv = maybeRefGlobal(vn)) {
     return builder()->CreateLoad(gv);
