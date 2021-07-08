@@ -77,8 +77,11 @@ jitcc::jitcc(const TEnvPtr& tenv)
   this->orcjit = llvm::cantFail(ORCJIT::create(), "orcjit init failed");
 
   // allocate an IR builder with an initial dummy basic-block to write into
-  this->irbuilder = std::make_unique<llvm::IRBuilder<>>(unlockedContext());
-  this->irbuilder->SetInsertPoint(llvm::BasicBlock::Create(this->builder()->getContext(), "dummy"));
+  this->irbuilder = withContext([](llvm::LLVMContext& c) {
+      auto r = std::make_unique<llvm::IRBuilder<>>(c);
+      r->SetInsertPoint(llvm::BasicBlock::Create(c, "dummy"));
+      return r;
+  });
 
   // make sure we've always got one frame for variable defs
   this->vtenv.push_back(VarBindings());
@@ -104,8 +107,11 @@ jitcc::jitcc(const TEnvPtr& tenv) :
   llvm::InitializeNativeTargetAsmPrinter();
 
   // allocate an IR builder with an initial dummy basic-block to write into
-  this->irbuilder = std::make_unique<llvm::IRBuilder<>>(unlockedContext());
-  this->irbuilder->SetInsertPoint(llvm::BasicBlock::Create(this->builder()->getContext(), "dummy"));
+  this->irbuilder = withContext([](llvm::LLVMContext& c) {
+      auto r = std::make_unique<llvm::IRBuilder<>>(c);
+      r->SetInsertPoint(llvm::BasicBlock::Create(c, "dummy"));
+      return r;
+  });
 
   // make sure we've always got one frame for variable defs
   this->vtenv.push_back(VarBindings());
@@ -170,7 +176,9 @@ llvm::IRBuilder<>* jitcc::builder() const {
 
 llvm::Module* jitcc::module() {
   if (this->currentModule == nullptr) {
-    this->currentModule = new llvm::Module("jitModule" + str::from(this->modules.size()), this->builder()->getContext());
+    this->currentModule = withContext([this](llvm::LLVMContext& c) {
+      return new llvm::Module("jitModule" + str::from(this->modules.size()), c);
+    });
     this->modules.push_back(this->currentModule);
 llvm::errs() << "new module: " << this->currentModule->getName() << '\n';
   }
@@ -676,7 +684,8 @@ llvm::errs() << "defined constant " << vn << "/" << vname << '\n';
     if (initfn == 0) {
       throw annotated_error(*ue, "Failed to allocate initializer function for '" + vname + "'.");
     }
-    llvm::BasicBlock* bb = llvm::BasicBlock::Create(this->builder()->getContext(), "entry", initfn);
+    llvm::BasicBlock* bb = withContext(
+        [initfn](llvm::LLVMContext& c) { return llvm::BasicBlock::Create(c, "entry", initfn); });
     this->builder()->SetInsertPoint(bb);
 
     compile(assign(var(vname, uety, ue->la()), ue, ue->la()));
@@ -872,7 +881,8 @@ void jitcc::unsafeCompileFunctions(UCFS* ufs) {
     llvm::Function*   fval = fs[f].result;
     const UCF&        ucf  = fs[f];
     MonoTypePtr       rty  = requireMonotype(this->tenv, ucf.exp);
-    llvm::BasicBlock* bb   = llvm::BasicBlock::Create(builder()->getContext(), "entry", fval);
+    llvm::BasicBlock* bb = withContext(
+        [fval](llvm::LLVMContext& c) { return llvm::BasicBlock::Create(c, "entry", fval); });
 
     this->builder()->SetInsertPoint(bb);
 

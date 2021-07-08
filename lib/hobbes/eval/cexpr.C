@@ -6,6 +6,7 @@
 #include <hobbes/lang/type.H>
 #include <hobbes/util/llvm.H>
 #include <hobbes/util/perf.H>
+#include <llvm/IR/LLVMContext.h>
 
 namespace hobbes {
 
@@ -324,8 +325,12 @@ public:
     llvm::Value* pval = builder()->CreateGEP(var, idxs);
 
     llvm::Function*   thisFn     = builder()->GetInsertBlock()->getParent();
-    llvm::BasicBlock* failBlock  = llvm::BasicBlock::Create(builder()->getContext(), "casefail", thisFn);
-    llvm::BasicBlock* mergeBlock = llvm::BasicBlock::Create(builder()->getContext(), "casemerge", thisFn);
+    llvm::BasicBlock* failBlock  = withContext([thisFn](llvm::LLVMContext& c) {
+      return llvm::BasicBlock::Create(c, "casefail", thisFn);
+    });
+    llvm::BasicBlock* mergeBlock = withContext([thisFn](llvm::LLVMContext& c) {
+      return llvm::BasicBlock::Create(c, "casemerge", thisFn);
+    });
     llvm::SwitchInst* s          = builder()->CreateSwitch(tag, failBlock, v->bindings().size());
 
     typedef std::pair<llvm::Value*, llvm::BasicBlock*> MergeLink;
@@ -334,7 +339,9 @@ public:
 
     for (Case::Bindings::const_iterator b = v->bindings().begin(); b != v->bindings().end(); ++b) {
       unsigned int      caseID    = vty->id(b->selector);
-      llvm::BasicBlock* caseBlock = llvm::BasicBlock::Create(builder()->getContext(), "case_" + str::from(caseID), thisFn);
+      llvm::BasicBlock* caseBlock = withContext([caseID, thisFn](llvm::LLVMContext& c) {
+        return llvm::BasicBlock::Create(c, "case_" + str::from(caseID), thisFn);
+      });
 
       builder()->SetInsertPoint(caseBlock);
       try {
@@ -361,7 +368,8 @@ public:
         throw;
       }
 
-      s->addCase(llvm::ConstantInt::get(llvm::IntegerType::get(builder()->getContext(), 32), scast<uint64_t>(caseID)), caseBlock);
+      s->addCase(llvm::ConstantInt::get(withContext([](llvm::LLVMContext& c) { return llvm::IntegerType::get(c, 32); }),
+                                        scast<uint64_t>(caseID)), caseBlock);
     }
 
     // fill in the default (failure) target for variant matching
@@ -400,8 +408,12 @@ public:
     llvm::Value* e = compile(v->expr());
 
     llvm::Function*   thisFn     = builder()->GetInsertBlock()->getParent();
-    llvm::BasicBlock* failBlock  = llvm::BasicBlock::Create(builder()->getContext(), "casefail", thisFn);
-    llvm::BasicBlock* mergeBlock = llvm::BasicBlock::Create(builder()->getContext(), "casemerge", thisFn);
+    llvm::BasicBlock* failBlock  = withContext([thisFn](llvm::LLVMContext& c) {
+      return llvm::BasicBlock::Create(c, "casefail", thisFn);
+    });
+    llvm::BasicBlock* mergeBlock = withContext([thisFn](llvm::LLVMContext& c) {
+      return llvm::BasicBlock::Create(c, "casemerge", thisFn);
+    });
     llvm::SwitchInst* s          = builder()->CreateSwitch(e, failBlock, v->bindings().size());
 
     typedef std::pair<llvm::Value*, llvm::BasicBlock*> MergeLink;
@@ -411,7 +423,9 @@ public:
     size_t i = 0;
     for (auto b : v->bindings()) {
       size_t caseID = i++;
-      llvm::BasicBlock* caseBlock = llvm::BasicBlock::Create(builder()->getContext(), "case_" + str::from(caseID), thisFn);
+      llvm::BasicBlock* caseBlock = withContext([caseID, thisFn](llvm::LLVMContext& c) {
+        return llvm::BasicBlock::Create(c, "case_" + str::from(caseID), thisFn);
+      });
 
       builder()->SetInsertPoint(caseBlock);
       llvm::Value* caseValue = compile(b.exp);
@@ -597,7 +611,8 @@ private:
 
       if (OpaquePtr* op = is<OpaquePtr>(fty)) {
         if (op->storedContiguously()) {
-          llvm::PointerType* bty = llvm::PointerType::getUnqual(llvm::Type::getInt8Ty(builder()->getContext()));
+          llvm::PointerType* bty = llvm::PointerType::getUnqual(
+              withContext([](llvm::LLVMContext& c) { return llvm::Type::getInt8Ty(c); }));
           return builder()->CreateBitCast(p, bty);
         }
       }

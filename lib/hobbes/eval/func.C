@@ -228,9 +228,9 @@ public:
     llvm::Value*    cond   = c->compile(es[0]);
 
     // for a condition, we need a 'then' branch, an 'else' branch, and a 'merge' block joining the two
-    llvm::BasicBlock* thenBlock  = llvm::BasicBlock::Create(c->builder()->getContext(), "then", thisFn);
-    llvm::BasicBlock* elseBlock  = llvm::BasicBlock::Create(c->builder()->getContext(), "else");
-    llvm::BasicBlock* mergeBlock = llvm::BasicBlock::Create(c->builder()->getContext(), "ifmerge");
+    llvm::BasicBlock* thenBlock  = withContext([thisFn](llvm::LLVMContext& ctx) { return llvm::BasicBlock::Create(ctx, "then", thisFn); });
+    llvm::BasicBlock* elseBlock  = withContext([](llvm::LLVMContext& ctx) { return llvm::BasicBlock::Create(ctx, "else"); });
+    llvm::BasicBlock* mergeBlock = withContext([](llvm::LLVMContext& ctx) { return llvm::BasicBlock::Create(ctx, "ifmerge"); });
 
     // compile 'then' branch flowing to 'merge' block
     c->builder()->CreateCondBr(cond, thenBlock, elseBlock);
@@ -573,10 +573,8 @@ public:
 class adjvtblptr : public op {
 public:
   llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) {
-    llvm::Type* tppchar =
-      llvm::PointerType::getUnqual(
-        llvm::PointerType::getUnqual(llvm::Type::getInt8Ty(c->builder()->getContext()))
-      );
+    llvm::Type* tppchar = llvm::PointerType::getUnqual(llvm::PointerType::getUnqual(
+        withContext([](llvm::LLVMContext& ctx) { return llvm::Type::getInt8Ty(ctx); })));
 
     llvm::Value* p = c->compile(es[0]);
     llvm::Value* o = c->compile(es[1]);
@@ -818,9 +816,9 @@ public:
       llvm::Function* thisFn = c->builder()->GetInsertBlock()->getParent();
 
       // for a condition, we need a 'then' branch, an 'else' branch, and a 'merge' block joining the two
-      llvm::BasicBlock* thenBlock  = llvm::BasicBlock::Create(c->builder()->getContext(), "then", thisFn);
-      llvm::BasicBlock* elseBlock  = llvm::BasicBlock::Create(c->builder()->getContext(), "else");
-      llvm::BasicBlock* mergeBlock = llvm::BasicBlock::Create(c->builder()->getContext(), "ifmerge");
+      llvm::BasicBlock* thenBlock  = withContext([thisFn](llvm::LLVMContext& ctx) { return llvm::BasicBlock::Create(ctx, "then", thisFn); });
+      llvm::BasicBlock* elseBlock  = withContext([](llvm::LLVMContext& ctx) { return llvm::BasicBlock::Create(ctx, "else"); });
+      llvm::BasicBlock* mergeBlock = withContext([](llvm::LLVMContext& ctx) { return llvm::BasicBlock::Create(ctx, "ifmerge"); });
 
       // compile 'then' branch flowing to 'merge' block
       c->builder()->CreateCondBr(ishtag, thenBlock, elseBlock);
