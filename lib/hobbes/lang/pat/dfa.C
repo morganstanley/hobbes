@@ -1411,14 +1411,18 @@ struct makePrimDFASF : public switchMState<UnitV> {
     }
 
     if (x->jumps().size() > 0 && is<Double>(x->jumps().begin()->first)) {
-      llvm::SwitchInst* s = this->dfa->c->builder()->CreateSwitch(this->dfa->c->builder()->CreateBitCast(arg(x->switchVar()), longType()), blockForState(x->defaultState()), x->jumps().size());
+      llvm::SwitchInst* s = withContext([&](auto&) {
+        return this->dfa->c->builder()->CreateSwitch(this->dfa->c->builder()->CreateBitCast(arg(x->switchVar()), longType()), blockForState(x->defaultState()), x->jumps().size());
+      });
       for (const auto& jmp : x->jumps()) {
         if (const Double* d = is<Double>(jmp.first)) {
           s->addCase(civalue(asLongRep(d->value())), blockForState(jmp.second));
         }
       }
     } else {
-      llvm::SwitchInst* s = this->dfa->c->builder()->CreateSwitch(arg(x->switchVar()), blockForState(x->defaultState()), x->jumps().size());
+      llvm::SwitchInst* s = withContext([&](auto&) {
+        return this->dfa->c->builder()->CreateSwitch(arg(x->switchVar()), blockForState(x->defaultState()), x->jumps().size());
+      });
       for (const auto& jmp : x->jumps()) {
         s->addCase(toLLVMConstantInt(jmp.first), blockForState(jmp.second));
       }
@@ -1431,11 +1435,11 @@ struct makePrimDFASF : public switchMState<UnitV> {
     if (ei == this->dfa->exprIdxs.end()) {
       throw std::runtime_error("Internal error, primitive match DFA returns non-indexed expression");
     } else {
-      this->dfa->c->builder()->CreateRet(cvalue(static_cast<int>(ei->second)));
+      withContext([&](auto&) { this->dfa->c->builder()->CreateRet(cvalue(static_cast<int>(ei->second))); });
     }
     return unitv;
   }
-  
+
   UnitV with(const LoadVars*) const {
     throw std::runtime_error("Internal error, not a primitive match table (load vars)");
   }
@@ -1449,15 +1453,15 @@ struct makePrimDFASF : public switchMState<UnitV> {
     if (b != this->branches->end()) {
       return b->second;
     } else {
-      llvm::BasicBlock* obb = this->dfa->c->builder()->GetInsertBlock();
-      llvm::BasicBlock* bb = withContext([obb](llvm::LLVMContext& ctx) {
-        return llvm::BasicBlock::Create(ctx, ".pmst" + freshName(), obb->getParent());
+      return withContext([&](llvm::LLVMContext& ctx) {
+        llvm::BasicBlock* obb = this->dfa->c->builder()->GetInsertBlock();
+        llvm::BasicBlock* bb = llvm::BasicBlock::Create(ctx, ".pmst" + freshName(), obb->getParent());
+        this->dfa->c->builder()->SetInsertPoint(bb);
+        switchOf(this->dfa->states[s], *this);
+        (*this->branches)[s] = bb;
+        this->dfa->c->builder()->SetInsertPoint(obb);
+        return bb;
       });
-      this->dfa->c->builder()->SetInsertPoint(bb);
-      switchOf(this->dfa->states[s], *this);
-      (*this->branches)[s] = bb;
-      this->dfa->c->builder()->SetInsertPoint(obb);
-      return bb;
     }
   }
 };
@@ -1473,7 +1477,7 @@ llvm::Function* makePrimMatchDFAFunc(const std::string& fname, MDFA* dfa, statei
   llvm::Function*   result = llvm::Function::Create(llvm::FunctionType::get(intType(), atys, false), llvm::Function::ExternalLinkage, fname, dfa->c->module());
   llvm::BasicBlock* bb     = withContext([result](llvm::LLVMContext& ctx) { return llvm::BasicBlock::Create(ctx, "entry", result); });
 
-  dfa->c->builder()->SetInsertPoint(bb);
+  withContext([dfa, bb](auto&) { dfa->c->builder()->SetInsertPoint(bb); });
 
   Args fargs;
   llvm::Function::arg_iterator a = result->arg_begin();
@@ -1508,7 +1512,7 @@ public:
   }
 
   llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) {
-    return fncall(c->builder(), this->vfn, this->vfn->getFunctionType(), compileArgs(c, es));
+    return withContext([&](auto&) { return fncall(c->builder(), this->vfn, this->vfn->getFunctionType(), compileArgs(c, es)); });
   }
 
   PolyTypePtr type(typedb&) const {

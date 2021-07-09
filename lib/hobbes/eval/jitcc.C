@@ -589,19 +589,21 @@ llvm::GlobalVariable* jitcc::lookupVarRef(const std::string& vn) {
 llvm::Value* jitcc::loadConstant(const std::string& vn) {
   auto cv = this->constants.find(vn);
   if (cv != this->constants.end()) {
-    if (is<Array>(cv->second.mtype)) {
-      return builder()->CreateLoad(refGlobal(vn, cv->second.ref));
-    } else if (llvm::Value* r = refGlobal(vn, cv->second.ref)) {
-#if LLVM_VERSION_MAJOR <= 10
-      return hasPointerRep(cv->second.mtype) ? r : builder()->CreateLoad(r);
+    return withContext([&](auto&) -> llvm::Value* {
+      if (is<Array>(cv->second.mtype)) {
+        return builder()->CreateLoad(refGlobal(vn, cv->second.ref));
+      } else if (llvm::Value* r = refGlobal(vn, cv->second.ref)) {
+#if   LLVM_VERSION_MAJOR <= 10
+        return hasPointerRep(cv->second.mtype) ? r : builder()->CreateLoad(r);
 #elif LLVM_VERSION_MAJOR <= 12 
-      return hasPointerRep(cv->second.mtype) ? r : builder()->CreateAlignedLoad(r->getType()->getPointerElementType(), r, llvm::MaybeAlign(8));
+        return hasPointerRep(cv->second.mtype) ? r : builder()->CreateAlignedLoad(r->getType()->getPointerElementType(), r, llvm::MaybeAlign(8));
 #endif
-    } else {
-      return cv->second.value;
-    }
+      } else {
+        return cv->second.value;
+      }
+    });
   }
-  return 0;
+  return nullptr;
 }
 
 void jitcc::defineGlobal(const std::string& vn, const ExprPtr& ue) {
@@ -641,17 +643,18 @@ void jitcc::defineGlobal(const std::string& vn, const ExprPtr& ue) {
     }
 
     // compile an initializer function for this expression
-    llvm::BasicBlock* ibb = this->builder()->GetInsertBlock();
+    llvm::BasicBlock* ibb = withContext([this](auto&) { return this->builder()->GetInsertBlock(); });
     llvm::Function* initfn = allocFunction("." + vname + "_init", MonoTypes(), primty("unit"));
-    if (initfn == 0) {
+    if (initfn == nullptr) {
       throw annotated_error(*ue, "Failed to allocate initializer function for '" + vname + "'.");
     }
-    llvm::BasicBlock* bb = withContext(
-        [initfn](llvm::LLVMContext& c) { return llvm::BasicBlock::Create(c, "entry", initfn); });
-    this->builder()->SetInsertPoint(bb);
+    withContext([&](llvm::LLVMContext& c) {
+      llvm::BasicBlock* bb = llvm::BasicBlock::Create(c, "entry", initfn);
+      this->builder()->SetInsertPoint(bb);
 
-    compile(assign(var(vname, uety, ue->la()), ue, ue->la()));
-    this->builder()->CreateRetVoid();
+      compile(assign(var(vname, uety, ue->la()), ue, ue->la()));
+      this->builder()->CreateRetVoid();
+    });
 
     // compile and run this function, it should then perform the global variable assignment
     // (make sure that any allocation happens in the global context iff we need it)
@@ -668,7 +671,7 @@ void jitcc::defineGlobal(const std::string& vn, const ExprPtr& ue) {
 
     // clean up
     releaseMachineCode(reinterpret_cast<void*>(f));
-    this->builder()->SetInsertPoint(ibb);
+    withContext([this, ibb](auto&) { this->builder()->SetInsertPoint(ibb); });
 #if LLVM_VERSION_MAJOR < 11
     initfn->eraseFromParent();
 #endif
@@ -715,7 +718,7 @@ llvm::Value* jitcc::lookupVar(const std::string& vn, const MonoTypePtr& vty) {
   llerrs(vn);
   // try to find this variable as a global
   if (llvm::GlobalVariable* gv = maybeRefGlobal(vn)) {
-    return builder()->CreateLoad(gv);
+    return withContext([this, gv](auto&) { return builder()->CreateLoad(gv); });
   }
 
   // maybe it's a function?
@@ -831,7 +834,7 @@ void jitcc::unsafeCompileFunctions(UCFS* ufs) {
   UCFS& fs = *ufs;
 
   // save our current write context to restore later
-  llvm::BasicBlock* ibb = this->builder()->GetInsertBlock();
+  llvm::BasicBlock* ibb = withContext([this](auto&) { return this->builder()->GetInsertBlock(); });
 
   // prepare the environment for these mutually-recursive definitions
   for (size_t f = 0; f < fs.size(); ++f) {
@@ -852,7 +855,7 @@ void jitcc::unsafeCompileFunctions(UCFS* ufs) {
     llvm::BasicBlock* bb = withContext(
         [fval](llvm::LLVMContext& c) { return llvm::BasicBlock::Create(c, "entry", fval); });
 
-    this->builder()->SetInsertPoint(bb);
+    withContext([this, bb](auto&) { return this->builder()->SetInsertPoint(bb); });
 
     // set argument names for safe referencing here
     this->vtenv.push_back(VarBindings());
@@ -866,41 +869,47 @@ void jitcc::unsafeCompileFunctions(UCFS* ufs) {
 
         llvm::Value* argv = &*a;
         if (is<FixedArray>(ucf.argtys[i])) {
-          argv = cast(this->builder(), ptrType(toLLVM(ucf.argtys[i], false)), argv);
+          argv = withContext([&](auto&) {
+            return cast(this->builder(), ptrType(toLLVM(ucf.argtys[i], false)), argv);
+          });
         }
         this->vtenv.back()[ucf.argns[i]] = argv;
         ++a;
       }
     }
 
-    try {
-      // compile the function body
-      llvm::Value* cexp = compile(ucf.exp);
-      if (isUnit(rty)) {
-        this->builder()->CreateRetVoid();
-      } else {
-        this->builder()->CreateRet(cexp);
-      }
+    withContext([&](auto&) {
+      try {
+        // compile the function body
+        llvm::Value* cexp = compile(ucf.exp);
+        if (isUnit(rty)) {
+          this->builder()->CreateRetVoid();
+        } else {
+          this->builder()->CreateRet(cexp);
+        }
 
 #if LLVM_VERSION_MINOR == 3 or LLVM_VERSION_MINOR == 5
       this->fpm->run(*fval);
 #endif
 
-      // and we're done
-      this->vtenv.pop_back();
-      if (ibb != 0) { this->builder()->SetInsertPoint(ibb); }
-    } catch (...) {
-      if (ibb != 0) { this->builder()->SetInsertPoint(ibb); }
-      this->vtenv.pop_back();
-      throw;
-    }
+        // and we're done
+        this->vtenv.pop_back();
+        if (ibb != 0) { this->builder()->SetInsertPoint(ibb); }
+      } catch (...) {
+        if (ibb != 0) { this->builder()->SetInsertPoint(ibb); }
+        this->vtenv.pop_back();
+        throw;
+      }
+    });
   }
 }
 
 llvm::Value* jitcc::compileAllocStmt(llvm::Value* sz, llvm::Value* asz, llvm::Type* mty, bool zeroMem) {
   llvm::Function* f = lookupFunction(zeroMem ? "mallocz" : "malloc");
   if (!f) throw std::runtime_error("Expected heap allocation function as call.");
-  return builder()->CreateBitCast(fncall(builder(), f, f->getFunctionType(), list(sz, asz)), mty);
+  return withContext([&](auto&) {
+    return builder()->CreateBitCast(fncall(builder(), f, f->getFunctionType(), list(sz, asz)), mty);
+  });
 }
 
 llvm::Value* jitcc::compileAllocStmt(size_t sz, size_t asz, llvm::Type* mty, bool zeroMem) {
@@ -947,7 +956,9 @@ Values compileArgs(jitcc* c, const Exprs& es) {
 
     if (is<Array>(et)) {
       // variable-length arrays need to be cast to a single type to pass LLVM's check
-      r.push_back(c->builder()->CreateBitCast(ev, toLLVM(et)));
+      r.push_back(withContext([&](auto&) {
+          return c->builder()->CreateBitCast(ev, toLLVM(et));
+      }));
     } else if (isUnit(et)) {
       // no need to pass unit anywhere
     } else {
