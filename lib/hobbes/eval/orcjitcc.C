@@ -3,6 +3,7 @@
 #include <llvm/Config/llvm-config.h>
 
 #if LLVM_VERSION_MAJOR >= 11
+#include <hobbes/hobbes.H>
 #include <hobbes/util/llvm.H>
 
 #include <llvm/ExecutionEngine/Orc/CompileUtils.h>
