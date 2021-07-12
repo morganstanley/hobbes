@@ -7,14 +7,6 @@
 #include <hobbes/util/llvm.H>
 
 #include <llvm/ExecutionEngine/Orc/CompileUtils.h>
-#include <llvm/Support/FormatVariadic.h>
-
-namespace {
-LLVM_NODISCARD std::string createUniqueJITDylibName() {
-  static std::atomic_int n(0);
-  return llvm::formatv("<main{0}>", llvm::to_string(n++));
-}
-} // namespace
 
 namespace hobbes {
 
@@ -28,7 +20,7 @@ ORCJIT::ORCJIT(std::unique_ptr<llvm::TargetMachine> tm,
       compileLayer(execSession, objectLayer,
                    std::make_unique<llvm::orc::SimpleCompiler>(*targetMachine)),
       optLayer(execSession, compileLayer, optimizeModule),
-      mainJD(execSession.createBareJITDylib(createUniqueJITDylibName())) {
+      mainJD(execSession.createBareJITDylib(createUniqueName("main"))) {
   mainJD.addGenerator(
       cantFail(llvm::orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(
           dataLayout.getGlobalPrefix())));
@@ -73,7 +65,7 @@ llvm::Expected<llvm::JITEvaluatedSymbol> ORCJIT::lookup(llvm::StringRef name) {
   return e;
 }
 
-llvm::Error ORCJIT::addExternal(llvm::StringRef name, void *ptr) {
+llvm::Error ORCJIT::addExternalSymbol(llvm::StringRef name, void *ptr) {
   return mainJD.define(llvm::orc::absoluteSymbols(
       {{mangle(name), llvm::JITEvaluatedSymbol::fromPointer(ptr)}}));
 }

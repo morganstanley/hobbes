@@ -1,4 +1,5 @@
-
+#include <hobbes/hobbes.H>
+#include <hobbes/util/llvm.H>
 #include <hobbes/lang/pat/dfa.H>
 #include <hobbes/lang/pat/regex.H>
 #include <hobbes/lang/pat/print.H>
@@ -1474,6 +1475,7 @@ llvm::Function* makePrimMatchDFAFunc(const std::string& fname, MDFA* dfa, statei
     }
   }
 
+  llerrs("Function::Create(" << fname << ") in makePrimMatchDFAFunc");
   llvm::Function*   result = llvm::Function::Create(llvm::FunctionType::get(intType(), atys, false), llvm::Function::ExternalLinkage, fname, dfa->c->module());
   llvm::BasicBlock* bb     = withContext([result](llvm::LLVMContext& ctx) { return llvm::BasicBlock::Create(ctx, "entry", result); });
 

@@ -29,7 +29,7 @@ public:
 
   llvm::Expected<llvm::JITEvaluatedSymbol> lookup(llvm::StringRef name);
 
-  llvm::Error addExternal(llvm::StringRef name, void* ptr);
+  llvm::Error addExternalSymbol(llvm::StringRef name, void* ptr);
 
 private:
   std::unique_ptr<llvm::TargetMachine> targetMachine;

@@ -12,13 +12,29 @@
 #include <hobbes/util/ptr.H>
 #include <hobbes/util/region.H>
 
+#include <llvm/ADT/SmallString.h>
+#include <llvm/ADT/StringMap.h>
+#include <llvm/Support/FormatVariadic.h>
+
+#if 0
 #define llerrs(x)                                                              \
   do {                                                                         \
     llvm::errs() << "file:" << __FILE__ << "(" << __LINE__ << ")"              \
                  << ", func:" << __PRETTY_FUNCTION__ << ": " << x << '\n';     \
   } while (false)
+#else
+#define llerrs(x)                                                              \
+  do {                                                                         \
+    llvm::errs() << x << '\n';     \
+  } while (false)
+#endif
 
 namespace hobbes {
+
+LLVM_NODISCARD inline std::string createUniqueName(llvm::StringRef prefix) {
+  static llvm::StringMap<std::atomic_int> m;
+  return llvm::formatv("{0}{1}", prefix, llvm::to_string(m[prefix]++));
+}
 
 // type aliases for common types
 DEFINE_TYPE_ALIAS_AS(timespanT, timespan, int64_t);

@@ -559,6 +559,7 @@ inline llvm::Function* externDecl(llvm::Function* remoteFn, llvm::Module* thisMo
   }
 }
 
+#if LLVM_VERSION_MAJOR < 11
 const size_t FUNCTION_SIZE_THRESHOLD = 64;
 inline llvm::Function* cloneFunction(llvm::Function *f, llvm::Module *targetMod) {
   using namespace llvm;
@@ -589,6 +590,7 @@ inline llvm::Function* cloneFunction(llvm::Function *f, llvm::Module *targetMod)
   CloneFunctionInto(newF, f, vmap, false, returns);
   return newF;
 }
+#endif
 
 inline llvm::Value* fncall(llvm::IRBuilder<>* b, llvm::Value* vfn, llvm::Type* tfn, const Values& args) {
     (void)tfn;

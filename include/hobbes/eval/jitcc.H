@@ -10,6 +10,8 @@
 #include <hobbes/eval/func.H>
 #include <hobbes/eval/ctype.H>
 
+#include <llvm/IR/GlobalVariable.h>
+#include <llvm/IR/ValueHandle.h>
 #include <map>
 #include <string>
 #include <vector>
@@ -31,6 +33,8 @@ struct op {
 
 #if LLVM_VERSION_MAJOR >= 11
 class ORCJIT;
+class Globals;
+class VTEnv;
 #endif
 
 // a JIT compiler for monotyped expressions
@@ -123,14 +127,22 @@ private:
   // produce some machine code for a compiled function
   void* getMachineCode(llvm::Function*, llvm::JITEventListener* listener = nullptr);
 
+#if LLVM_VERSION_MAJOR >= 11
+  //llvm::StringMap<llvm::function_ref<llvm::Function*(llvm::Module*)>> funcProtos;
+
+  std::unique_ptr<llvm::Module> currentModule;
+#else
   // the current non-finalized module
   // (new definitions will be accumulated here)
   // (may be null, to lazily allocate modules)
   llvm::Module* currentModule = nullptr;
+#endif
 
+#if LLVM_VERSION_MAJOR < 11
   // the set of allocated modules
   typedef std::vector<llvm::Module*> Modules;
   Modules modules;
+#endif
 
 #if LLVM_VERSION_MAJOR >= 11
 
@@ -162,9 +174,13 @@ private:
   FuncEnv fenv;
 
   // keep track of variables and local scopes during compilation
+#if LLVM_VERSION_MAJOR >= 11
+  std::unique_ptr<VTEnv> vtenv;
+#else
   typedef std::map<std::string, llvm::Value*> VarBindings;
   typedef std::vector<VarBindings>            VarBindingStack;
   VarBindingStack vtenv;
+#endif
   bool ignoreLocalScope;
 
   // compile sets of mutually-recursive functions (as a special case, single-function compilation)
@@ -183,6 +199,9 @@ private:
   void unsafeCompileFunctions(UCFS*);
 
   // keep track of global variables
+#if LLVM_VERSION_MAJOR >= 11
+  std::unique_ptr<Globals> globals;
+#else
   struct Global {
     MonoTypePtr           type;
     void*                 value;
@@ -193,6 +212,7 @@ private:
   };
   typedef std::map<std::string, Global> Globals;
   Globals globals;
+#endif
 
   // keep track of global data (in case we need to dynamically allocate global variables of any type)
   region globalData;
