@@ -557,7 +557,7 @@ const TEnvPtr& cc::typeEnv() const {
 }
 
 void cc::dumpModule() {
-#if 0
+#if LLVM_VERSION_MAJOR < 11
   hlock _;
   this->jit->dump();
 #endif

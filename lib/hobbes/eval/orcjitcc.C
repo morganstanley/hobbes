@@ -61,10 +61,13 @@ llvm::Error ORCJIT::addModule(std::unique_ptr<llvm::Module> m) {
 }
 
 llvm::Expected<llvm::JITEvaluatedSymbol> ORCJIT::lookup(llvm::StringRef name) {
+#if 0
   auto e = execSession.lookup({&mainJD}, mangle(name.str()));
-  llerrs("    looking up for " << name);
   mainJD.dump(llvm::errs());
   return e;
+#else
+  return execSession.lookup({&mainJD}, mangle(name.str()));
+#endif
 }
 
 llvm::Error ORCJIT::addExternalSymbol(llvm::StringRef name, void *ptr) {

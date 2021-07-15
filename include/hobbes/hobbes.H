@@ -16,18 +16,11 @@
 #include <llvm/ADT/StringMap.h>
 #include <llvm/Support/FormatVariadic.h>
 
-#if 0
 #define llerrs(x)                                                              \
   do {                                                                         \
     llvm::errs() << "file:" << __FILE__ << "(" << __LINE__ << ")"              \
                  << ", func:" << __PRETTY_FUNCTION__ << ": " << x << '\n';     \
   } while (false)
-#else
-#define llerrs(x)                                                              \
-  do {                                                                         \
-    llvm::errs() << x << '\n';     \
-  } while (false)
-#endif
 
 namespace hobbes {
 
