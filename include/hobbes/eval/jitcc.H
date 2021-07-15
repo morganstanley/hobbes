@@ -244,13 +244,19 @@ private:
   typedef std::unordered_map<std::string, std::string> InternConstVars;
   InternConstVars internConstVars;
 
+#if LLVM_VERSION_MAJOR >= 11
+  llvm::GlobalVariable* lookupGlobalVar(const std::string&);
+#else
   // try to load a symbol as a global (may return nullptr if this can't be done)
   llvm::GlobalVariable* maybeRefGlobal(const std::string&);
   llvm::GlobalVariable* refGlobal(const std::string&, llvm::GlobalVariable*);
+#endif
 
+#if LLVM_VERSION_MAJOR < 11
   // pass through a value if it's not a global or if it's a global in the current module
   // else wrap it in an extern decl
   llvm::Value* maybeRefGlobalV(llvm::Value*);
+#endif
 
   // keep track of monotyped definitions as expressions
   // (in case we want to inline them later)
