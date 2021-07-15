@@ -1475,7 +1475,8 @@ llvm::Function* makePrimMatchDFAFunc(const std::string& fname, MDFA* dfa, statei
     }
   }
 
-  llerrs("Function::Create(" << fname << ") in makePrimMatchDFAFunc");
+  llerrs("XXX Function::Create(" << fname << ") in makePrimMatchDFAFunc");
+  //llvm_unreachable("dfa.C has an extern function not handled");
   llvm::Function*   result = llvm::Function::Create(llvm::FunctionType::get(intType(), atys, false), llvm::Function::ExternalLinkage, fname, dfa->c->module());
   llvm::BasicBlock* bb     = withContext([result](llvm::LLVMContext& ctx) { return llvm::BasicBlock::Create(ctx, "entry", result); });
 

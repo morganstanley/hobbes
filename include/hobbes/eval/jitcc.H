@@ -10,11 +10,16 @@
 #include <hobbes/eval/func.H>
 #include <hobbes/eval/ctype.H>
 
-#include <llvm/IR/GlobalVariable.h>
+#if LLVM_VERSION_MAJOR >= 11
 #include <llvm/IR/ValueHandle.h>
+#endif
 #include <map>
 #include <string>
 #include <vector>
+
+namespace llvm {
+class GlobalVariable;
+}
 
 namespace hobbes {
 
@@ -35,6 +40,7 @@ struct op {
 class ORCJIT;
 class Globals;
 class VTEnv;
+class ConstantList;
 #endif
 
 // a JIT compiler for monotyped expressions
@@ -59,7 +65,7 @@ public:
   void defineGlobal(const std::string& vname, const ExprPtr& unsweetExp);
 
   // define a global on some existing memory
-  void bindGlobal(const std::string& vn, const MonoTypePtr& ty, void* v);
+  void bindGlobal(const std::string& vn, const MonoTypePtr& ty, void* x);
 
   // is there a definition of the named symbol?
   bool isDefined(const std::string&) const;
@@ -220,6 +226,9 @@ private:
   void popGlobalRegion(size_t x);
 
   // keep track of global constants
+#if LLVM_VERSION_MAJOR >= 11
+  std::unique_ptr<ConstantList> constants;
+#else
   struct Constant {
     llvm::Constant*       value;
     llvm::Type*           type;
@@ -228,6 +237,7 @@ private:
   };
   typedef std::map<std::string, Constant> Constants;
   Constants constants;
+#endif
   llvm::Value* loadConstant(const std::string&);
 
   // keep some interned strings, helpful for global constants and debug info

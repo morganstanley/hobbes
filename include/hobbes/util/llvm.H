@@ -551,6 +551,7 @@ inline llvm::ExecutionEngine* makeExecutionEngine(llvm::Module* m, llvm::Section
 }
 #endif
 
+#if LLVM_VERSION_MAJOR < 11
 inline llvm::Function* externDecl(llvm::Function* remoteFn, llvm::Module* thisModule) {
   if (llvm::Function* ef = thisModule->getFunction(remoteFn->getName())) {
     return ef;
@@ -558,6 +559,7 @@ inline llvm::Function* externDecl(llvm::Function* remoteFn, llvm::Module* thisMo
     return llvm::Function::Create(remoteFn->getFunctionType(), llvm::Function::ExternalLinkage, remoteFn->getName(), thisModule);
   }
 }
+#endif
 
 #if LLVM_VERSION_MAJOR < 11
 const size_t FUNCTION_SIZE_THRESHOLD = 64;

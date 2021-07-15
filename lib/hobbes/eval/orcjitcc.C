@@ -24,6 +24,7 @@ ORCJIT::ORCJIT(std::unique_ptr<llvm::TargetMachine> tm,
   mainJD.addGenerator(
       cantFail(llvm::orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(
           dataLayout.getGlobalPrefix())));
+#if 0
   compileLayer.setNotifyCompiled(
       [](llvm::orc::VModuleKey K, llvm::orc::ThreadSafeModule TSM) {
         llerrs("just compiled module with key " << K);
@@ -31,6 +32,7 @@ ORCJIT::ORCJIT(std::unique_ptr<llvm::TargetMachine> tm,
           m.print(llvm::errs(), nullptr, false, true);
         });
       });
+#endif
 }
 
 llvm::Expected<std::unique_ptr<ORCJIT>> ORCJIT::create() {
