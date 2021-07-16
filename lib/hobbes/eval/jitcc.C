@@ -153,7 +153,7 @@ public:
   /// Gets \p name by looking up from inner to outer scope
   ///
   /// Possibly recreating decl
-  LLVM_NODISCARD llvm::Value* getOrRecreate(llvm::StringRef name, llvm::Module& m);
+  LLVM_NODISCARD llvm::Value* getOrCreateDecl(llvm::StringRef name, llvm::Module& m);
 
   /// Adds variable \p name to current scope
   void add(llvm::StringRef name, llvm::Value* v) {
@@ -179,7 +179,7 @@ public:
   }
 };
 
-llvm::Value* VTEnv::getOrRecreate(llvm::StringRef name, llvm::Module& m) {
+llvm::Value* VTEnv::getOrCreateDecl(llvm::StringRef name, llvm::Module& m) {
   for (auto vb = vtenv.rbegin(); vb != vtenv.rend(); ++vb) {
     auto it = vb->find(name);
     if (it == vb->end()) {
@@ -220,9 +220,9 @@ public:
   }
 
   /// Gets a global variable \p name by possibly recreating decl in current module
-  LLVM_NODISCARD llvm::GlobalVariable* getOrRecreateVar(llvm::StringRef name, llvm::Module& m);
+  LLVM_NODISCARD llvm::GlobalVariable* getOrCreateVarDecl(llvm::StringRef name, llvm::Module& m);
   /// Gets a global function \p name by possibly recreating decl in current module
-  LLVM_NODISCARD llvm::Function* getOrRecreateFunc(llvm::StringRef name, llvm::Module& m);
+  LLVM_NODISCARD llvm::Function* getOrCreateFuncDecl(llvm::StringRef name, llvm::Module& m);
 
   /// Creates a global variable decl for \p name with type \p ty
   ///
@@ -235,7 +235,7 @@ public:
            llvm::Function* existingF);
 };
 
-llvm::GlobalVariable* Globals::getOrRecreateVar(llvm::StringRef name, llvm::Module& m) {
+llvm::GlobalVariable* Globals::getOrCreateVarDecl(llvm::StringRef name, llvm::Module& m) {
   auto it = globals.find(name);
   if (it == globals.end() || isFunc(it)) {
     return nullptr;
@@ -246,7 +246,7 @@ llvm::GlobalVariable* Globals::getOrRecreateVar(llvm::StringRef name, llvm::Modu
   return llvm::cast<llvm::GlobalVariable>(static_cast<llvm::Value*>(it->second.handle));
 }
 
-llvm::Function* Globals::getOrRecreateFunc(llvm::StringRef name, llvm::Module& m) {
+llvm::Function* Globals::getOrCreateFuncDecl(llvm::StringRef name, llvm::Module& m) {
   auto it = globals.find(name);
   if (it == globals.end() || !isFunc(it)) {
     return nullptr;
@@ -331,7 +331,7 @@ jitcc::jitcc(const TEnvPtr& tenv)
   });
 
   // make sure we've always got one frame for variable defs
-  this->vtenv->pushScope();
+  this->pushScope();
 }
 
 jitcc::~jitcc() {
@@ -823,10 +823,7 @@ llvm::Value* jitcc::maybeRefGlobalV(llvm::Value* v) {
 
 #if LLVM_VERSION_MAJOR >= 11
 llvm::GlobalVariable* jitcc::lookupGlobalVar(const std::string& vn) {
-  if (auto* gv = this->globals->getOrRecreateVar(vn, *this->module())) {
-    return gv;
-  }
-  return nullptr;
+  return this->globals->getOrCreateVarDecl(vn, *this->module());
 }
 #else
 llvm::GlobalVariable* jitcc::maybeRefGlobal(const std::string& vn) {
@@ -1015,7 +1012,7 @@ llvm::Value* jitcc::lookupVar(const std::string& vn, const MonoTypePtr& vty) {
   // try to find this variable up the local variable stack (unless we're ignoring local scope)
 #if LLVM_VERSION_MAJOR >= 11
   if (!this->ignoreLocalScope) {
-    if (auto* fn = this->vtenv->getOrRecreate(vn, *this->module())) {
+    if (auto* fn = this->vtenv->getOrCreateDecl(vn, *this->module())) {
       return fn;
     }
   }
@@ -1109,10 +1106,7 @@ llvm::Value* jitcc::compileAtGlobalScope(const ExprPtr& exp) {
 
 #if LLVM_VERSION_MAJOR >= 11
 llvm::Function* jitcc::lookupFunction(const std::string& fn) {
-  if (auto* func = this->globals->getOrRecreateFunc(fn, *this->module())) {
-    return func;
-  }
-  return nullptr;
+  return  this->globals->getOrCreateFuncDecl(fn, *this->module());
 }
 #else
 llvm::Function* jitcc::lookupFunction(const std::string& fn) {
@@ -1181,7 +1175,7 @@ void jitcc::unsafeCompileFunctions(UCFS* ufs) {
     }
 
 #if LLVM_VERSION_MAJOR >= 11
-    this->vtenv->add(fs[f].name, fval);
+    this->bindScope(fs[f].name, fval);
 #else
     this->vtenv.back()[fs[f].name] = fval;
 #endif
@@ -1200,7 +1194,7 @@ void jitcc::unsafeCompileFunctions(UCFS* ufs) {
 
     // set argument names for safe referencing here
 #if LLVM_VERSION_MAJOR >= 11
-    this->vtenv->pushScope();
+    this->pushScope();
 #else
     this->vtenv.push_back(VarBindings());
 #endif
@@ -1209,7 +1203,7 @@ void jitcc::unsafeCompileFunctions(UCFS* ufs) {
     for (unsigned int i = 0; i < ucf.argns.size(); ++i) {
       if (isUnit(ucf.argtys[i])) {
 #if LLVM_VERSION_MAJOR >= 11
-        this->vtenv->add(ucf.argns[i], cvalue(true)); // this should never even be seen
+        this->bindScope(ucf.argns[i], cvalue(true)); // this should never even be seen
 #else
         this->vtenv.back()[ucf.argns[i]] = cvalue(true); // this should never even be seen
 #endif
@@ -1223,7 +1217,7 @@ void jitcc::unsafeCompileFunctions(UCFS* ufs) {
           });
         }
 #if LLVM_VERSION_MAJOR >= 11
-        this->vtenv->add(ucf.argns[i], argv);
+        this->bindScope(ucf.argns[i], argv);
 #else
         this->vtenv.back()[ucf.argns[i]] = argv;
 #endif
@@ -1246,21 +1240,11 @@ void jitcc::unsafeCompileFunctions(UCFS* ufs) {
 #endif
 
         // and we're done
-#if LLVM_VERSION_MAJOR >= 11
-        this->vtenv->popScope();
-#else
         this->popScope();
-        //this->vtenv.pop_back();
-#endif
         if (ibb != 0) { this->builder()->SetInsertPoint(ibb); }
       } catch (...) {
         if (ibb != 0) { this->builder()->SetInsertPoint(ibb); }
-#if LLVM_VERSION_MAJOR >= 11
-        this->vtenv->popScope();
-#else
         this->popScope();
-        //this->vtenv.pop_back();
-#endif
         throw;
       }
     });

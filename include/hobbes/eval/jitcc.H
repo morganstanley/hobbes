@@ -134,8 +134,6 @@ private:
   void* getMachineCode(llvm::Function*, llvm::JITEventListener* listener = nullptr);
 
 #if LLVM_VERSION_MAJOR >= 11
-  //llvm::StringMap<llvm::function_ref<llvm::Function*(llvm::Module*)>> funcProtos;
-
   std::unique_ptr<llvm::Module> currentModule;
 #else
   // the current non-finalized module
