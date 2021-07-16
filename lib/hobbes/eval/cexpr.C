@@ -742,8 +742,8 @@ public:
     llvm::StructType* saty = varArrayType(elemTy, cs.size());
     llvm::StructType* caty = varArrayType(elemTy);
     
-    return
-      ccast(ptrType(caty),
+    return withContext([&](auto&) {
+      return ccast(ptrType(caty),
         new llvm::GlobalVariable(
           *this->c->module(),
           saty,
@@ -752,6 +752,7 @@ public:
           constArray(this->c->module(), cs, elemTy)
         )
       );
+    });
   }
 
   llvm::Constant* with(const MkVariant*) const {
@@ -771,7 +772,7 @@ public:
         return 0;
       }
     }
-    return constantRecord(this->c->module(), rcs, rty);
+    return withContext([&](auto&) { return constantRecord(this->c->module(), rcs, rty); });
   }
 
   llvm::Constant* with(const AIndex*) const {

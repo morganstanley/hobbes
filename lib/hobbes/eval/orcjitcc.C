@@ -55,9 +55,10 @@ llvm::Expected<std::unique_ptr<ORCJIT>> ORCJIT::create() {
 }
 
 llvm::Error ORCJIT::addModule(std::unique_ptr<llvm::Module> m) {
-  m->setDataLayout(dataLayout);
-  return optLayer.add(
-      mainJD, llvm::orc::ThreadSafeModule(std::move(m), threadSafeContext()));
+  return withContext([&](auto&) {
+    m->setDataLayout(dataLayout);
+    return optLayer.add(mainJD, llvm::orc::ThreadSafeModule(std::move(m), threadSafeContext()));
+  });
 }
 
 llvm::Expected<llvm::JITEvaluatedSymbol> ORCJIT::lookup(llvm::StringRef name) {

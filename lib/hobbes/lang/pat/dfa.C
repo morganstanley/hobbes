@@ -1475,7 +1475,10 @@ llvm::Function* makePrimMatchDFAFunc(const std::string& fname, MDFA* dfa, statei
     }
   }
 
-  llvm::Function*   result = llvm::Function::Create(llvm::FunctionType::get(intType(), atys, false), llvm::Function::ExternalLinkage, fname, dfa->c->module());
+  llvm::Function* result   = withContext([&](auto&) {
+    return llvm::Function::Create(llvm::FunctionType::get(intType(), atys, false),
+                                  llvm::Function::ExternalLinkage, fname, dfa->c->module());
+  });
   llvm::BasicBlock* bb     = withContext([result](llvm::LLVMContext& ctx) { return llvm::BasicBlock::Create(ctx, "entry", result); });
 
   withContext([dfa, bb](auto&) { dfa->c->builder()->SetInsertPoint(bb); });

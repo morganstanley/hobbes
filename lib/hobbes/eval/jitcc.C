@@ -451,12 +451,14 @@ void* jitcc::getMachineCode(llvm::Function* f, llvm::JITEventListener* /*listene
     return llvm::jitTargetAddressToPointer<void*>(sym->getAddress());
   }
 
-  llvm::errs() << this->currentModule->getName() << " :";
-  this->currentModule->print(llvm::dbgs(), nullptr, /*ShouldPreserveUseListOrder=*/false,
-                             /*IsForDebug=*/true);
-  if (auto e = orcjit->addModule(std::move(this->currentModule))) {
-    throw std::runtime_error(", cannot add module");
-  }
+  withContext([&](auto&) {
+    llvm::errs() << this->currentModule->getName() << " :";
+    this->currentModule->print(llvm::dbgs(), nullptr, /*ShouldPreserveUseListOrder=*/false,
+                               /*IsForDebug=*/true);
+    if (auto e = orcjit->addModule(std::move(this->currentModule))) {
+      throw std::runtime_error(", cannot add module");
+    }
+  });
 
   sym = orcjit->lookup(fname);
   if (auto e = sym.takeError()) {
@@ -741,9 +743,11 @@ void jitcc::bindGlobal(const std::string& vn, const MonoTypePtr& ty, void* x) {
 
   void* value = x;
   if (is<Func>(ty) != nullptr) {
-    this->globals->add(vn, *this->module(),
-                       llvm::cast<llvm::FunctionType>(toLLVM(ty, /*asArg=*/false)),
-                       /*existingF=*/nullptr);
+    withContext([&](auto&) {
+      this->globals->add(vn, *this->module(),
+                         llvm::cast<llvm::FunctionType>(toLLVM(ty, /*asArg=*/false)),
+                         /*existingF=*/nullptr);
+    });
   } else {
     if (hasPointerRep(ty) || isFileType(ty)) {
       void** p = reinterpret_cast<void**>(this->globalData.malloc(sizeof(void*)));
@@ -751,7 +755,8 @@ void jitcc::bindGlobal(const std::string& vn, const MonoTypePtr& ty, void* x) {
       value = p;
     }
 
-    this->globals->add(vn, *this->module(), toLLVM(ty, /*asArg=*/true));
+    withContext(
+        [&](auto&) { return this->globals->add(vn, *this->module(), toLLVM(ty, /*asArg=*/true)); });
   }
   llvm::cantFail(orcjit->addExternalSymbol(vn, value));
 }
@@ -823,7 +828,7 @@ llvm::Value* jitcc::maybeRefGlobalV(llvm::Value* v) {
 
 #if LLVM_VERSION_MAJOR >= 11
 llvm::GlobalVariable* jitcc::lookupGlobalVar(const std::string& vn) {
-  return this->globals->getOrCreateVarDecl(vn, *this->module());
+  return withContext([&](auto&) { return this->globals->getOrCreateVarDecl(vn, *this->module()); });
 }
 #else
 llvm::GlobalVariable* jitcc::maybeRefGlobal(const std::string& vn) {
@@ -882,7 +887,8 @@ llvm::GlobalVariable* jitcc::lookupVarRef(const std::string& vn) {
 
 #if LLVM_VERSION_MAJOR >= 11
 llvm::Value* jitcc::loadConstant(const std::string& vn) {
-  return this->constants->loadConstant(vn, *module(), *builder());
+  return withContext(
+      [&](auto&) { return this->constants->loadConstant(vn, *this->module(), *builder()); });
 }
 #else
 llvm::Value* jitcc::loadConstant(const std::string& vn) {
@@ -923,7 +929,8 @@ void jitcc::defineGlobal(const std::string& vn, const ExprPtr& ue) {
   } else if (llvm::Constant* c = toLLVMConstant(this, vname, ue)) {
     // make a global constant ...
 #if LLVM_VERSION_MAJOR >= 11
-    this->constants->createDefinition(vname, *module(), c, uety);
+    withContext(
+        [&](auto&) { return this->constants->createDefinition(vname, *module(), c, uety); });
 #else
     Constant& cv = this->constants[vname];
     cv.value = c;
@@ -1012,7 +1019,8 @@ llvm::Value* jitcc::lookupVar(const std::string& vn, const MonoTypePtr& vty) {
   // try to find this variable up the local variable stack (unless we're ignoring local scope)
 #if LLVM_VERSION_MAJOR >= 11
   if (!this->ignoreLocalScope) {
-    if (auto* fn = this->vtenv->getOrCreateDecl(vn, *this->module())) {
+    if (auto* fn =
+            withContext([&](auto&) { return this->vtenv->getOrCreateDecl(vn, *this->module()); })) {
       return fn;
     }
   }
@@ -1106,7 +1114,8 @@ llvm::Value* jitcc::compileAtGlobalScope(const ExprPtr& exp) {
 
 #if LLVM_VERSION_MAJOR >= 11
 llvm::Function* jitcc::lookupFunction(const std::string& fn) {
-  return  this->globals->getOrCreateFuncDecl(fn, *this->module());
+  return withContext(
+      [&](auto&) { return this->globals->getOrCreateFuncDecl(fn, *this->module()); });
 }
 #else
 llvm::Function* jitcc::lookupFunction(const std::string& fn) {
@@ -1273,12 +1282,16 @@ llvm::Function* jitcc::allocFunction(const std::string& fname, const MonoTypes& 
         llvm::FunctionType::get(toLLVM(rty, true), toLLVM(argl, true), false),
         llvm::Function::ExternalLinkage, fname, m);
   };
-  llvm::Function* ret = f(*this->module());
+  llvm::Function* ret = withContext([&](auto&) { return f(*this->module()); });
+
   if (fname.find(".rfn.t") != std::string::npos) {
     this->vtenv->add(fname, f, ret);
   } else if (!this->globals->contains(fname)) {
-    this->globals->add(fname, *this->module(),
-                       llvm::FunctionType::get(toLLVM(rty, true), toLLVM(argl, true), false), ret);
+    withContext([&](auto&) {
+      return this->globals->add(
+          fname, *this->module(),
+          llvm::FunctionType::get(toLLVM(rty, true), toLLVM(argl, true), false), ret);
+    });
   }
   return ret;
 }
