@@ -452,11 +452,10 @@ void* jitcc::getMachineCode(llvm::Function* f, llvm::JITEventListener* /*listene
   }
 
   withContext([&](auto&) {
-    llvm::errs() << this->currentModule->getName() << " :";
-    this->currentModule->print(llvm::dbgs(), nullptr, /*ShouldPreserveUseListOrder=*/false,
-                               /*IsForDebug=*/true);
+    const std::string name = this->currentModule->getName().str();
     if (auto e = orcjit->addModule(std::move(this->currentModule))) {
-      throw std::runtime_error(", cannot add module");
+      llvm::logAllUnhandledErrors(std::move(e), llvm::errs());
+      throw std::runtime_error("cannot add module " + name);
     }
   });
 
@@ -1280,7 +1279,9 @@ llvm::Function* jitcc::allocFunction(const std::string& fname, const MonoTypes& 
   const auto f = [=](llvm::Module& m) {
     return llvm::Function::Create(
         llvm::FunctionType::get(toLLVM(rty, true), toLLVM(argl, true), false),
-        llvm::Function::ExternalLinkage, fname, m);
+        fname.find(".patfs.") == 0 ? llvm::Function::InternalLinkage
+                                   : llvm::Function::ExternalLinkage,
+        fname, m);
   };
   llvm::Function* ret = withContext([&](auto&) { return f(*this->module()); });
 
