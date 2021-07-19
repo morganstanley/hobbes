@@ -43,7 +43,6 @@ namespace hobbes {
 class ConstantList {
   using VarFnTy = std::function<llvm::GlobalVariable*(llvm::Module&)>;
   struct Constant {
-    llvm::Type* type = nullptr;
     MonoTypePtr mtype;
     llvm::WeakTrackingVH gv;
     VarFnTy fn;
@@ -77,27 +76,16 @@ void ConstantList::createDefinition(const std::string& name, llvm::Module& m,
                                     llvm::Constant* initVal, const MonoTypePtr& mtype) {
   assert(!contains(name));
 
-  Constant c{.type = toLLVM(mtype), .mtype = mtype};
-
-  if (is<Func>(mtype) != nullptr) {
-    // TODO (mo-xiaoming): This condition probably never put into use, functions are either
-    // fetched in Globals or VTEnv. Remove this logic if this is the case
-    c.fn = [name](llvm::Module&) -> llvm::GlobalVariable* { return nullptr; };
-    c.gv = c.fn(m);
-  } else {
-    // create with initializer
-    c.gv = new llvm::GlobalVariable(m, c.type, /*isConstant=*/true,
-                                    llvm::GlobalVariable::ExternalLinkage, initVal, name);
-
-    // store decl func
-    c.fn = [&, type = c.type, name](llvm::Module& m) -> llvm::GlobalVariable* {
-      return prepgv(new llvm::GlobalVariable(m, type, /*isConstant=*/true,
-                                             llvm::GlobalVariable::ExternalLinkage,
-                                             /*initializer=*/nullptr, name));
-    };
-  }
-
-  constants[name] = c;
+  llvm::Type* type = toLLVM(mtype);
+  constants[name] =
+      Constant{.mtype = mtype,
+               .gv = new llvm::GlobalVariable(m, type, /*isConstant=*/true,
+                                              llvm::GlobalVariable::ExternalLinkage, initVal, name),
+               .fn = [&, type, name](llvm::Module& m) -> llvm::GlobalVariable* {
+                 return prepgv(new llvm::GlobalVariable(m, type, /*isConstant=*/true,
+                                                        llvm::GlobalVariable::ExternalLinkage,
+                                                        /*initializer=*/nullptr, name));
+               }};
 }
 
 llvm::Value* ConstantList::loadConstant(llvm::StringRef name, llvm::Module& m,
@@ -112,9 +100,6 @@ llvm::Value* ConstantList::loadConstant(llvm::StringRef name, llvm::Module& m,
       it->second.gv = it->second.fn(m);
     }
 
-    if (static_cast<llvm::Value*>(it->second.gv) == nullptr) {
-      return nullptr;
-    }
     auto* g = llvm::cast<llvm::GlobalVariable>(static_cast<llvm::Value*>(it->second.gv));
 
     if (is<Array>(it->second.mtype) != nullptr) {
@@ -928,8 +913,10 @@ void jitcc::defineGlobal(const std::string& vn, const ExprPtr& ue) {
   } else if (llvm::Constant* c = toLLVMConstant(this, vname, ue)) {
     // make a global constant ...
 #if LLVM_VERSION_MAJOR >= 11
-    withContext(
-        [&](auto&) { return this->constants->createDefinition(vname, *module(), c, uety); });
+    if (is<Func>(uety) == nullptr) {
+      withContext(
+          [&](auto&) { return this->constants->createDefinition(vname, *module(), c, uety); });
+    }
 #else
     Constant& cv = this->constants[vname];
     cv.value = c;
