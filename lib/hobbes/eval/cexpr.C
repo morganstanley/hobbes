@@ -6,6 +6,7 @@
 #include <hobbes/lang/type.H>
 #include <hobbes/util/llvm.H>
 #include <hobbes/util/perf.H>
+#include <llvm/IR/Instruction.h>
 #include <llvm/IR/LLVMContext.h>
 
 namespace hobbes {
@@ -692,7 +693,14 @@ public:
   llvm::Constant* with(const Double* v) const { return cvalue(v->value()); }
 
   llvm::Constant* with(const Var* v) const {
-    return llvm::dyn_cast<llvm::Constant>(this->c->lookupVar(v->value(), requireMonotype(v->type())));
+    // possible instructions created during compilation
+    // remove them otherwise they may become dangling instructions
+    llvm::Value* x = this->c->lookupVar(v->value(), requireMonotype(v->type()));
+    if (auto* inst = llvm::dyn_cast<llvm::Instruction>(x)) {
+      inst->eraseFromParent();
+      return nullptr;
+    }
+    return llvm::dyn_cast<llvm::Constant>(x);
   }
 
   llvm::Constant* with(const Let*) const {
