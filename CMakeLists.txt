@@ -17,11 +17,7 @@ find_package(LLVM REQUIRED CONFIG)
 include_directories(SYSTEM ${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
 
-if (${LLVM_PACKAGE_VERSION} VERSION_LESS "10.0")
-  set(CMAKE_CXX_STANDARD 11)
-else()
-  set(CMAKE_CXX_STANDARD 14)
-endif()
+set(CMAKE_CXX_STANDARD 14)
 
 if (${LLVM_PACKAGE_VERSION} VERSION_LESS "3.6")
   set(jit_lib jit)
