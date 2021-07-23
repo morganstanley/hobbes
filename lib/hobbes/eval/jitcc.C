@@ -2,6 +2,7 @@
 #include <hobbes/hobbes.H>
 #include <hobbes/eval/jitcc.H>
 #include <hobbes/eval/cexpr.H>
+#include <llvm/IR/Attributes.h>
 #include <llvm/IR/Constant.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
@@ -1274,11 +1275,19 @@ void jitcc::releaseMachineCode(void*) {
 #if LLVM_VERSION_MAJOR >= 11
 llvm::Function* jitcc::allocFunction(const std::string& fname, const MonoTypes& argl, const MonoTypePtr& rty) {
   const auto f = [=](llvm::Module& m) {
-    return llvm::Function::Create(
-        llvm::FunctionType::get(toLLVM(rty, true), toLLVM(argl, true), false),
+    llvm::Type* retType = toLLVM(rty, true);
+    auto* f = llvm::Function::Create(
+        llvm::FunctionType::get(retType, toLLVM(argl, true), false),
         fname.find(".patfs.") == 0 ? llvm::Function::InternalLinkage
                                    : llvm::Function::ExternalLinkage,
         fname, m);
+    // https://bugs.llvm.org/show_bug.cgi?id=51163
+    // for a llvm version >=9, zeroext has to be added to functions return boolean
+    // otherwise, 255 will be returned as true
+    if (retType == boolType()) {
+      f->addAttribute(llvm::AttributeList::ReturnIndex, llvm::Attribute::ZExt);
+    }
+    return f;
   };
   llvm::Function* ret = withContext([&](auto&) { return f(*this->module()); });
 
