@@ -324,25 +324,21 @@ TEST(Matching, Monadic) {
 }
 
 TEST(Matching, matchFromStringToBoolIsBool) {
-  bool r = c().compileSafeFn<bool()>("match \"1\" \"2\" \"3\" \"4\" with\n"
-                                     "| \"1\" \"2\" \"3\" \"4\" -> true\n"
-                                     "| \"1\" \"2\" \"3\" _     -> true\n"
-                                     "| \"1\" \"2\" _ _         -> true\n"
-                                     "| \"1\" _ _ _             -> true\n"
-                                     "| _ _ _ _                 -> false")();
-  EXPECT_TRUE(1 == *reinterpret_cast<uint8_t *>(&r));
-  EXPECT_TRUE(r);
+  EXPECT_TRUE(c().compileFn<bool()>("match \"1\" \"2\" \"3\" \"4\" with\n"
+                                    "| \"1\" \"2\" \"3\" \"4\" -> true\n"
+                                    "| \"1\" \"2\" \"3\" _     -> true\n"
+                                    "| \"1\" \"2\" _ _         -> true\n"
+                                    "| \"1\" _ _ _             -> true\n"
+                                    "| _ _ _ _                 -> false"));
 }
 
 TEST(Matching, matchFromIntToBoolIsBool) {
-  bool r = c().compileSafeFn<bool()>("match 1 2 3 4 with\n"
-                                     "| 1 2 3 4 -> true\n"
-                                     "| 1 2 3 _ -> true\n"
-                                     "| 1 2 _ _ -> true\n"
-                                     "| 1 _ _ _ -> true\n"
-                                     "| _ _ _ _ -> false")();
-  EXPECT_TRUE(1 == *reinterpret_cast<uint8_t *>(&r));
-  EXPECT_TRUE(r);
+  EXPECT_TRUE(c().compileFn<bool()>("match 1 2 3 4 with\n"
+                                    "| 1 2 3 4 -> true\n"
+                                    "| 1 2 3 _ -> true\n"
+                                    "| 1 2 _ _ -> true\n"
+                                    "| 1 _ _ _ -> true\n"
+                                    "| _ _ _ _ -> false"));
 }
 
 TEST(Matching, matchFromStringToIntIsCorrect) {
