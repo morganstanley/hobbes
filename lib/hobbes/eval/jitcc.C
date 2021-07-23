@@ -82,7 +82,6 @@ void ConstantList::createDefinition(const std::string& name, llvm::Module& m,
 
   llvm::Type* type = toLLVM(mtype);
   if (is<Func>(mtype) != nullptr) {
-    assert(llvm::isa<llvm::FunctionType>(type));
     constants[name] = Constant{.mtype = mtype, .varOrFunc = initVal, .fn = VarFnTy()};
   } else {
     constants[name] = Constant{
@@ -452,7 +451,6 @@ void* jitcc::getMachineCode(llvm::Function* f, llvm::JITEventListener* /*listene
 
   withContext([&](auto&) {
     const std::string name = this->currentModule->getName().str();
-    //this->currentModule->print(llvm::dbgs(), nullptr, /*ShouldPreserveUseListOrder=*/false, /*IsForDebug=*/true);
     if (auto e = orcjit->addModule(std::move(this->currentModule))) {
       llvm::logAllUnhandledErrors(std::move(e), llvm::errs());
       throw std::runtime_error("cannot add module " + name);
@@ -523,7 +521,6 @@ void* jitcc::getMachineCode(llvm::Function* f, llvm::JITEventListener* listener)
 
   // make a new execution engine out of this module (finalizing the module)
   std::string err;
-  this->currentModule->print(llvm::dbgs(), nullptr, /*ShouldPreserveUseListOrder=*/false, /*IsForDebug=*/true);
   llvm::ExecutionEngine* ee = makeExecutionEngine(this->currentModule, reinterpret_cast<llvm::SectionMemoryManager*>(new jitmm(this)));
 
   if (listener) {

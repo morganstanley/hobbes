@@ -3,7 +3,9 @@
 #define HOBBES_UTIL_LLVM_HPP_INCLUDED
 
 #include <hobbes/util/array.H>
+#if LLVM_VERSION_MAJOR >= 11
 #include <hobbes/lang/type.H>
+#endif
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wold-style-cast"
@@ -50,10 +52,13 @@
 #  include <llvm/PassManager.h>
 #elif LLVM_VERSION_MINOR >= 5 || LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 6 || LLVM_VERSION_MAJOR >= 8
 #  include <llvm/IR/Verifier.h>
-#  include <llvm/ExecutionEngine/Orc/ThreadSafeModule.h>
 #  include <llvm/ExecutionEngine/SectionMemoryManager.h>
 #  include <llvm/IR/LegacyPassManager.h>
 #  include <llvm/Object/ELFObjectFile.h>
+#endif
+
+#if LLVM_VERSION_MAJOR >= 11
+#  include <llvm/ExecutionEngine/Orc/ThreadSafeModule.h>
 #endif
 
 #pragma GCC diagnostic pop
@@ -62,6 +67,8 @@ namespace hobbes {
 
 typedef __int128 int128_t;
 
+
+#if LLVM_VERSION_MAJOR >= 11
 inline llvm::orc::ThreadSafeContext& threadSafeContext() {
   static auto c = llvm::orc::ThreadSafeContext(std::make_unique<llvm::LLVMContext>());
   return c;
@@ -271,7 +278,203 @@ inline llvm::ConstantInt* civalue(int128_t x) {
     return llvm::ConstantInt::get(llvm::IntegerType::get(c, 128), x); // static_cast<uint64_t>(x));
   });
 }
+#else
+// keep one context per thread to avoid global locking
+// NOTE: temporarily reverting to one global context
+//       this is because we have some cases where we partially compile in one thread and then resume compiling in another thread
+//       we currently keep a global lock on compilers anyway
+inline llvm::LLVMContext& context() {
+  static llvm::LLVMContext ctx;
+  return ctx;
+}
 
+template <typename Fn> auto withContext(Fn fn) -> decltype(auto) {
+  return fn(context());
+}
+
+typedef std::vector<llvm::Type*>     Types;
+typedef std::vector<llvm::Constant*> Constants;
+typedef std::vector<llvm::Value*>    Values;
+
+// type utilities
+inline llvm::Type* voidType() {
+  return llvm::Type::getVoidTy(context());
+}
+
+inline llvm::Type* boolType() {
+  return llvm::Type::getInt1Ty(context());
+}
+
+inline llvm::Type* charType() {
+  return llvm::Type::getInt8Ty(context());
+}
+
+inline llvm::Type* byteType() {
+  return charType();
+}
+
+inline llvm::Type* shortType() {
+  return llvm::Type::getInt16Ty(context());
+}
+
+inline llvm::Type* intType() {
+  return llvm::Type::getInt32Ty(context());
+}
+
+inline llvm::Type* longType() {
+  return llvm::Type::getInt64Ty(context());
+}
+
+inline llvm::Type* int128Type() {
+  return llvm::Type::getIntNTy(context(), 128);
+}
+
+inline llvm::Type* floatType() {
+  return llvm::Type::getFloatTy(context());
+}
+
+inline llvm::Type* doubleType() {
+  return llvm::Type::getDoubleTy(context());
+}
+
+inline llvm::PointerType* ptrType(llvm::Type* ty) {
+  return llvm::PointerType::getUnqual(ty);
+}
+
+inline llvm::ArrayType* arrayType(llvm::Type* ty, size_t sz) {
+  // we can be a little dishonest in describing the type of arrays of unit, since LLVM barfs on arrays of unit
+  // and we should never need to look at the "data" in an array of unit values _anyway_!
+  return llvm::ArrayType::get(ty->isVoidTy() ? boolType() : ty, static_cast<uint64_t>(sz));
+}
+
+inline llvm::StructType* packedRecordType(const Types& tys) {
+  return llvm::StructType::get(context(), tys, true);
+}
+
+inline llvm::StructType* recordType(const Types& tys) {
+  return llvm::StructType::get(context(), tys);
+}
+
+inline llvm::StructType* recordType(llvm::Type* t0) {
+  return recordType(list(t0));
+}
+
+inline llvm::StructType* recordType(llvm::Type* t0, llvm::Type* t1) {
+  return recordType(list(t0, t1));
+}
+
+inline llvm::StructType* recordType(llvm::Type* t0, llvm::Type* t1, llvm::Type* t2) {
+  return recordType(list(t0, t1, t2));
+}
+
+inline llvm::StructType* recordType(llvm::Type* t0, llvm::Type* t1, llvm::Type* t2, llvm::Type* t3) {
+  return recordType(list(t0, t1, t2, t3));
+}
+
+inline llvm::StructType* recordType(llvm::Type* t0, llvm::Type* t1, llvm::Type* t2, llvm::Type* t3, llvm::Type* t4) {
+  return recordType(list(t0, t1, t2, t3, t4));
+}
+
+inline llvm::StructType* recordType(llvm::Type* t0, llvm::Type* t1, llvm::Type* t2, llvm::Type* t3, llvm::Type* t4, llvm::Type* t5) {
+  return recordType(list(t0, t1, t2, t3, t4, t5));
+}
+
+inline llvm::StructType* recordType(llvm::Type* t0, llvm::Type* t1, llvm::Type* t2, llvm::Type* t3, llvm::Type* t4, llvm::Type* t5, llvm::Type* t6) {
+  return recordType(list(t0, t1, t2, t3, t4, t5, t6));
+}
+
+inline llvm::FunctionType* functionType(const Types& argTys, llvm::Type* rty) {
+  return llvm::FunctionType::get(rty, argTys, false);
+}
+
+inline llvm::StructType* varArrayType(llvm::Type* elemty, size_t sz = 1) {
+  return recordType(longType(), arrayType(elemty, sz));
+}
+
+// casting
+inline llvm::Value* cast(llvm::IRBuilder<>* b, llvm::Type* ty, llvm::Value* v) {
+  return b->CreateBitCast(v, ty);
+}
+
+inline llvm::Constant* ccast(llvm::Type* ty, llvm::Constant* v) {
+  return llvm::ConstantExpr::getBitCast(v, ty);
+}
+
+// constant utilities
+inline llvm::Constant* cvalue(bool x) {
+  return llvm::Constant::getIntegerValue(boolType(), llvm::APInt(1, x ? 1 : 0, false));
+}
+
+inline llvm::Constant* cvalue(char x) {
+  return llvm::Constant::getIntegerValue(charType(), llvm::APInt(8, x, true));
+}
+
+inline llvm::Constant* cvalue(unsigned char x) {
+  return llvm::Constant::getIntegerValue(charType(), llvm::APInt(8, x, false));
+}
+
+inline llvm::Constant* cvalue(short x) {
+  return llvm::Constant::getIntegerValue(shortType(), llvm::APInt(16, x, false));
+}
+
+inline llvm::Constant* cvalue(int x) {
+  return llvm::Constant::getIntegerValue(intType(), llvm::APInt(32, x, true));
+}
+
+inline llvm::Constant* cvalue(unsigned int x) {
+  return llvm::Constant::getIntegerValue(intType(), llvm::APInt(32, x, true));
+}
+
+inline llvm::Constant* cvalue(long x) {
+  return llvm::Constant::getIntegerValue(longType(), llvm::APInt(64, x, true));
+}
+
+inline llvm::Constant* cvalue(int128_t x) {
+  return llvm::Constant::getIntegerValue(int128Type(), llvm::APInt(128, x, true));
+}
+
+inline llvm::Constant* cvalue(float x) {
+  return llvm::ConstantFP::get(context(), llvm::APFloat(x));
+}
+
+inline llvm::Constant* cvalue(double x) {
+  return llvm::ConstantFP::get(context(), llvm::APFloat(x));
+}
+
+// constant int utilities (different than constants to LLVM!)
+inline llvm::ConstantInt* civalue(bool x) {
+  return llvm::ConstantInt::get(llvm::IntegerType::get(context(), 1), static_cast<uint64_t>(x ? 1 : 0));
+}
+
+inline llvm::ConstantInt* civalue(char x) {
+  return llvm::ConstantInt::get(llvm::IntegerType::get(context(), 8), static_cast<uint64_t>(x));
+}
+
+inline llvm::ConstantInt* civalue(unsigned char x) {
+  return llvm::ConstantInt::get(llvm::IntegerType::get(context(), 8), static_cast<uint64_t>(x));
+}
+
+inline llvm::ConstantInt* civalue(short x) {
+  return llvm::ConstantInt::get(llvm::IntegerType::get(context(), 16), static_cast<uint64_t>(x));
+}
+
+inline llvm::ConstantInt* civalue(int x) {
+  return llvm::ConstantInt::get(llvm::IntegerType::get(context(), 32), static_cast<uint64_t>(x));
+}
+
+inline llvm::ConstantInt* civalue(unsigned int x) {
+  return llvm::ConstantInt::get(llvm::IntegerType::get(context(), 32), static_cast<uint64_t>(x));
+}
+
+inline llvm::ConstantInt* civalue(long x) {
+  return llvm::ConstantInt::get(llvm::IntegerType::get(context(), 64), static_cast<uint64_t>(x));
+}
+
+inline llvm::ConstantInt* civalue(int128_t x) {
+  return llvm::ConstantInt::get(llvm::IntegerType::get(context(), 128), x); //static_cast<uint64_t>(x));
+}
+
+#endif
 // an intermediate representation for records
 typedef std::pair<std::string, llvm::Value*> FieldValue;
 typedef std::vector<FieldValue>              RecordValue;

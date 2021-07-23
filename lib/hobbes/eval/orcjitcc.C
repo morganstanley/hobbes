@@ -24,15 +24,6 @@ ORCJIT::ORCJIT(std::unique_ptr<llvm::TargetMachine> tm,
   mainJD.addGenerator(
       cantFail(llvm::orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(
           dataLayout.getGlobalPrefix())));
-#if 0
-  compileLayer.setNotifyCompiled(
-      [](llvm::orc::VModuleKey K, llvm::orc::ThreadSafeModule TSM) {
-        llerrs("just compiled module with key " << K);
-        TSM.withModuleDo([](llvm::Module &m) {
-          m.print(llvm::errs(), nullptr, false, true);
-        });
-      });
-#endif
 }
 
 llvm::Expected<std::unique_ptr<ORCJIT>> ORCJIT::create() {
@@ -62,13 +53,7 @@ llvm::Error ORCJIT::addModule(std::unique_ptr<llvm::Module> m) {
 }
 
 llvm::Expected<llvm::JITEvaluatedSymbol> ORCJIT::lookup(llvm::StringRef name) {
-#if 0
-  auto e = execSession.lookup({&mainJD}, mangle(name.str()));
-  mainJD.dump(llvm::errs());
-  return e;
-#else
   return execSession.lookup({&mainJD}, mangle(name.str()));
-#endif
 }
 
 llvm::Error ORCJIT::addExternalSymbol(llvm::StringRef name, void *ptr) {
