@@ -46,7 +46,7 @@ TEST(Arrays, Streams) {
   ));
   EXPECT_TRUE((c().compileFn<bool()>(
     "takeS(10, [s | |even='12(?<s>[4-9]+)'| <- [if (x%2 == 0) then |even=show(x)| else |odd=x|::|even:[char],odd:int| | x <- [0..], x > 20]]) == [\"4\", \"6\", \"8\", \"44\", \"46\", \"48\", \"54\", \"56\", \"58\", \"64\"]"
-  )));
+  )()));
 }
 
 TEST(Arrays, WithStdVector) {

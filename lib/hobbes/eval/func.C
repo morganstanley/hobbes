@@ -15,7 +15,7 @@ namespace hobbes {
   public: \
     llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) { \
       llvm::Value* x = c->compile(es[0]); \
-      return c->builder()->mem(x, "t"); \
+      return withContext([&](auto&) { return c->builder()->mem(x, "t"); }); \
     } \
     PolyTypePtr type(typedb&) const { \
       return polytype(prim<rty(aty0)>()); \
@@ -28,7 +28,7 @@ namespace hobbes {
     llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) { \
       llvm::Value* left  = c->compile(es[0]); \
       llvm::Value* right = c->compile(es[1]); \
-      return c->builder()->mem(left, right, "t"); \
+      return withContext([&](auto&) { return c->builder()->mem(left, right, "t"); }); \
     } \
     PolyTypePtr type(typedb&) const { \
       return polytype(prim<rty(aty0,aty1)>()); \
@@ -40,7 +40,7 @@ namespace hobbes {
   public: \
     llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) { \
       llvm::Value* e = c->compile(es[0]); \
-      return c->builder()->CreateCast(cflag, e, toLLVM(prim<outty>()), "t"); \
+      return withContext([&](auto&) { return c->builder()->CreateCast(cflag, e, toLLVM(prim<outty>()), "t"); }); \
     } \
     PolyTypePtr type(typedb&) const { \
       return polytype(prim<outty(inty)>()); \
@@ -52,7 +52,7 @@ namespace hobbes {
   public: \
     llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) { \
       llvm::Value* x = c->compile(es[0]); \
-      return c->builder()->mem(x, a0, "t"); \
+      return withContext([&](auto&) { return c->builder()->mem(x, a0, "t"); }); \
     } \
     PolyTypePtr type(typedb&) const { \
       return polytype(prim<outty(inty)>()); \
@@ -64,7 +64,7 @@ namespace hobbes {
   public: \
     llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) { \
       llvm::Value* x = c->compile(es[0]); \
-      return c->builder()->mem(x, a0, a1, "t"); \
+      return withContext([&](auto&) { return c->builder()->mem(x, a0, a1, "t"); }); \
     } \
     PolyTypePtr type(typedb&) const { \
       return polytype(prim<outty(inty)>()); \
@@ -224,45 +224,47 @@ BOP(dgte, CreateFCmpOGE, double, double, bool);
 class ifexp : public op {
 public:
   llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) {
-    llvm::Function* thisFn = c->builder()->GetInsertBlock()->getParent();
-    llvm::Value*    cond   = c->compile(es[0]);
+    return withContext([&](llvm::LLVMContext& ctx) -> llvm::Value* {
+      llvm::Function* thisFn = c->builder()->GetInsertBlock()->getParent();
+      llvm::Value*    cond   = c->compile(es[0]);
 
-    // for a condition, we need a 'then' branch, an 'else' branch, and a 'merge' block joining the two
-    llvm::BasicBlock* thenBlock  = llvm::BasicBlock::Create(context(), "then", thisFn);
-    llvm::BasicBlock* elseBlock  = llvm::BasicBlock::Create(context(), "else");
-    llvm::BasicBlock* mergeBlock = llvm::BasicBlock::Create(context(), "ifmerge");
+      // for a condition, we need a 'then' branch, an 'else' branch, and a 'merge' block joining the two
+      llvm::BasicBlock* thenBlock  = llvm::BasicBlock::Create(ctx, "then", thisFn);
+      llvm::BasicBlock* elseBlock  = llvm::BasicBlock::Create(ctx, "else");
+      llvm::BasicBlock* mergeBlock = llvm::BasicBlock::Create(ctx, "ifmerge");
 
-    // compile 'then' branch flowing to 'merge' block
-    c->builder()->CreateCondBr(cond, thenBlock, elseBlock);
-    c->builder()->SetInsertPoint(thenBlock);
+      // compile 'then' branch flowing to 'merge' block
+      c->builder()->CreateCondBr(cond, thenBlock, elseBlock);
+      c->builder()->SetInsertPoint(thenBlock);
 
-    llvm::Value* thenExp = c->compile(es[1]);
-    c->builder()->CreateBr(mergeBlock);
-    thenBlock = c->builder()->GetInsertBlock(); // reset block pointer, in case compiling 'then' expression changed the active block
+      llvm::Value* thenExp = c->compile(es[1]);
+      c->builder()->CreateBr(mergeBlock);
+      thenBlock = c->builder()->GetInsertBlock(); // reset block pointer, in case compiling 'then' expression changed the active block
 
-    // compile the 'else' branch
-    thisFn->getBasicBlockList().push_back(elseBlock);
-    c->builder()->SetInsertPoint(elseBlock);
+      // compile the 'else' branch
+      thisFn->getBasicBlockList().push_back(elseBlock);
+      c->builder()->SetInsertPoint(elseBlock);
 
-    llvm::Value* elseExp = c->compile(es[2]);
-    c->builder()->CreateBr(mergeBlock);
-    elseBlock = c->builder()->GetInsertBlock(); // reset block pointer, in case compiling 'else' expression changed the active block
+      llvm::Value* elseExp = c->compile(es[2]);
+      c->builder()->CreateBr(mergeBlock);
+      elseBlock = c->builder()->GetInsertBlock(); // reset block pointer, in case compiling 'else' expression changed the active block
 
-    // finally, merge blocks
-    thisFn->getBasicBlockList().push_back(mergeBlock);
-    c->builder()->SetInsertPoint(mergeBlock);
+      // finally, merge blocks
+      thisFn->getBasicBlockList().push_back(mergeBlock);
+      c->builder()->SetInsertPoint(mergeBlock);
 
-    // and the final value is the phi merge of the two possible branches
-    //   (unless we're returning unit)
-    if (isUnit(tys[1])) {
-      return cvalue(true);
-    } else {
-      llvm::PHINode* pn = c->builder()->CreatePHI(toLLVM(tys[1], true), 2);
-      pn->addIncoming(thenExp, thenBlock);
-      pn->addIncoming(elseExp, elseBlock);
+      // and the final value is the phi merge of the two possible branches
+      //   (unless we're returning unit)
+      if (isUnit(tys[1])) {
+        return cvalue(true);
+      } else {
+        llvm::PHINode* pn = c->builder()->CreatePHI(toLLVM(tys[1], true), 2);
+        pn->addIncoming(thenExp, thenBlock);
+        pn->addIncoming(elseExp, elseBlock);
 
-      return pn;
-    }
+        return pn;
+      }
+    });
   }
 
   PolyTypePtr type(typedb&) const {
@@ -276,7 +278,9 @@ public:
 class alenexp : public op {
 public:
   llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) {
-    return c->builder()->CreateLoad(structOffset(c->builder(), c->compile(es[0]), 0), false, "at");
+    return withContext([c, &es](auto&) {
+      return c->builder()->CreateLoad(structOffset(c->builder(), c->compile(es[0]), 0), false, "at");
+    });
   }
 
   PolyTypePtr type(typedb&) const {
@@ -293,32 +297,34 @@ class aconcatexp : public op {
 public:
   llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) {
     Array* aty = is<Array>(tys[0]);
-    if (aty == 0) {
+    if (aty == nullptr) {
       throw annotated_error(*es[0], "Internal compiler error -- can't make array out of non-array type: " + show(tys[0]));
     }
 
-    llvm::Value* a0 = c->compile(es[0]);
-    llvm::Value* c0 = c->builder()->CreateLoad(structOffset(c->builder(), a0, 0));
-    llvm::Value* d0 = structOffset(c->builder(), a0, 1);
-    llvm::Value* a1 = c->compile(es[1]);
-    llvm::Value* c1 = c->builder()->CreateLoad(structOffset(c->builder(), a1, 0));
-    llvm::Value* d1 = structOffset(c->builder(), a1, 1);
+    return withContext([&](auto&) {
+      llvm::Value* a0 = c->compile(es[0]);
+      llvm::Value* c0 = c->builder()->CreateLoad(structOffset(c->builder(), a0, 0));
+      llvm::Value* d0 = structOffset(c->builder(), a0, 1);
+      llvm::Value* a1 = c->compile(es[1]);
+      llvm::Value* c1 = c->builder()->CreateLoad(structOffset(c->builder(), a1, 0));
+      llvm::Value* d1 = structOffset(c->builder(), a1, 1);
 
-    llvm::Value* aclen = c->builder()->CreateAdd(c0, c1);
-    llvm::Value* mlen  = c->builder()->CreateAdd(cvalue(static_cast<long>(sizeof(long))), c->builder()->CreateMul(aclen, cvalue(static_cast<long>(sizeOf(aty->type())))));
+      llvm::Value* aclen = c->builder()->CreateAdd(c0, c1);
+      llvm::Value* mlen  = c->builder()->CreateAdd(cvalue(static_cast<long>(sizeof(long))), c->builder()->CreateMul(aclen, cvalue(static_cast<long>(sizeOf(aty->type())))));
 
-    llvm::Value* cmdata = c->compileAllocStmt(mlen, cvalue(std::max<long>(sizeof(long), alignment(aty->type()))), toLLVM(tys[0]));
-    c->builder()->CreateStore(aclen, structOffset(c->builder(), cmdata, 0));
+      llvm::Value* cmdata = c->compileAllocStmt(mlen, cvalue(std::max<long>(sizeof(long), alignment(aty->type()))), toLLVM(tys[0]));
+      c->builder()->CreateStore(aclen, structOffset(c->builder(), cmdata, 0));
 
-    if (!isUnit(aty->type())) {
-      // hack to acknowledge the fact that opaque pointers are stored as pointers within arrays
-      long elemSize = is<OpaquePtr>(aty->type()) ? sizeof(void*) : static_cast<long>(sizeOf(aty->type()));
+      if (!isUnit(aty->type())) {
+        // hack to acknowledge the fact that opaque pointers are stored as pointers within arrays
+        long elemSize = is<OpaquePtr>(aty->type()) ? sizeof(void*) : static_cast<long>(sizeOf(aty->type()));
 
-      llvm::Value* od = structOffset(c->builder(), cmdata, 1);
-      memCopy(c->builder(), offset(c->builder(), od, 0), 8, d0, 8, c->builder()->CreateMul(c0, cvalue(elemSize)));
-      memCopy(c->builder(), offset(c->builder(), od, c0), 8, d1, 8, c->builder()->CreateMul(c1, cvalue(elemSize)));
-    }
-    return cmdata;
+        llvm::Value* od = structOffset(c->builder(), cmdata, 1);
+        memCopy(c->builder(), offset(c->builder(), od, 0), 8, d0, 8, c->builder()->CreateMul(c0, cvalue(elemSize)));
+        memCopy(c->builder(), offset(c->builder(), od, c0), 8, d1, 8, c->builder()->CreateMul(c1, cvalue(elemSize)));
+      }
+      return cmdata;
+    });
   }
 
   PolyTypePtr type(typedb&) const {
@@ -340,7 +346,7 @@ class asetlen : public op {
 
     llvm::Value* av = c->compile(es[0]);
     llvm::Value* nc = c->compile(es[1]);
-    c->builder()->CreateStore(nc, structOffset(c->builder(), av, 0));
+    withContext([&](auto&) { c->builder()->CreateStore(nc, structOffset(c->builder(), av, 0)); });
     return cvalue(true);
   }
 
@@ -380,13 +386,15 @@ class saelem : public op {
       return cvalue(true);
     }
 
-    llvm::Value* p = offset(c->builder(), c->compile(es[0]), 0, c->compile(es[1]));
+    return withContext([&](auto&) -> llvm::Value* {
+      llvm::Value* p = offset(c->builder(), c->compile(es[0]), 0, c->compile(es[1]));
 
-    if (isLargeType(rty)) {
-      return p;
-    } else {
-      return c->builder()->CreateLoad(p, false);
-    }
+      if (isLargeType(rty)) {
+        return p;
+      } else {
+        return c->builder()->CreateLoad(p, false);
+      }
+    });
   }
 
   PolyTypePtr type(typedb&) const {
@@ -407,12 +415,14 @@ class saacopy : public op {
     llvm::Value* farr = c->compile(es[0]);
 
     llvm::Value* varr = c->compile(es[1]);
-    llvm::Value* vard = structOffset(c->builder(), varr, 1); // get the var-length array's 'data' pointer
+    withContext([&](auto&) {
+      llvm::Value* vard = structOffset(c->builder(), varr, 1); // get the var-length array's 'data' pointer
 
-    llvm::Value* len  = c->compile(es[2]);
-    llvm::Value* lenb = c->builder()->CreateMul(len, cvalue(static_cast<long>(sizeOf(aty->type()))));
+      llvm::Value* len  = c->compile(es[2]);
+      llvm::Value* lenb = c->builder()->CreateMul(len, cvalue(static_cast<long>(sizeOf(aty->type()))));
 
-    memCopy(c->builder(), farr, 8, vard, 8, lenb);
+      memCopy(c->builder(), farr, 8, vard, 8, lenb);
+    });
     return cvalue(true);
   }
 
@@ -491,7 +501,9 @@ public:
     if (isUnit(rty)) {
       return cvalue(true);
     } else {
-      return c->builder()->CreateBitCast(r, toLLVM(rty, true));
+      return withContext([&](auto&) {
+        return c->builder()->CreateBitCast(r, toLLVM(rty, true));
+      });
     }
   }
 
@@ -513,7 +525,9 @@ public:
     if (isUnit(rty)) {
       return cvalue(true);
     } else if (!hasPointerRep(rty)) {
-      return c->builder()->CreateLoad(c->compileAllocStmt(sizeOf(rty), alignment(rty), ptrType(toLLVM(rty, true)), this->zeroMem));
+      return withContext([&](auto&) {
+        return c->builder()->CreateLoad(c->compileAllocStmt(sizeOf(rty), alignment(rty), ptrType(toLLVM(rty, true)), this->zeroMem));
+      });
     } else {
       return c->compileAllocStmt(sizeOf(rty), alignment(rty), toLLVM(rty, true), this->zeroMem);
     }
@@ -537,9 +551,11 @@ public:
     }
 
     llvm::Value* aclen  = c->compile(es[0]);
-    llvm::Value* mlen   = c->builder()->CreateAdd(cvalue(static_cast<long>(sizeof(long))), c->builder()->CreateMul(aclen, cvalue(static_cast<long>(sizeOf(aty->type())))));
+    llvm::Value* mlen   = withContext([&](auto&) {
+      return c->builder()->CreateAdd(cvalue(static_cast<long>(sizeof(long))), c->builder()->CreateMul(aclen, cvalue(static_cast<long>(sizeOf(aty->type())))));
+    });
     llvm::Value* cmdata = c->compileAllocStmt(mlen, cvalue(std::max<long>(sizeof(long), alignment(aty->type()))), toLLVM(rty));
-    c->builder()->CreateStore(aclen, structOffset(c->builder(), cmdata, 0));
+    withContext([&](auto&) { c->builder()->CreateStore(aclen, structOffset(c->builder(), cmdata, 0)); });
 
     return cmdata;
   }
@@ -558,7 +574,7 @@ public:
   llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) {
     llvm::Value* p = c->compile(es[0]);
     llvm::Value* o = c->compile(es[1]);
-    return c->builder()->CreateGEP(p, o);
+    return withContext([&](auto&) { return c->builder()->CreateGEP(p, o); });
   }
 
   PolyTypePtr type(typedb&) const {
@@ -573,16 +589,14 @@ public:
 class adjvtblptr : public op {
 public:
   llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) {
-    llvm::Type* tppchar =
-      llvm::PointerType::getUnqual(
-        llvm::PointerType::getUnqual(llvm::Type::getInt8Ty(context()))
-      );
+    llvm::Type* tppchar = llvm::PointerType::getUnqual(llvm::PointerType::getUnqual(
+        withContext([](llvm::LLVMContext& ctx) { return llvm::Type::getInt8Ty(ctx); })));
 
     llvm::Value* p = c->compile(es[0]);
     llvm::Value* o = c->compile(es[1]);
 
-    return
-      c->builder()->CreateGEP(
+    return withContext([&](auto&) {
+      return c->builder()->CreateGEP(
         p,
         c->builder()->CreateLoad(
           c->builder()->CreateGEP(
@@ -593,6 +607,7 @@ public:
           )
         )
       );
+    });
   }
 
   PolyTypePtr type(typedb&) const {
@@ -761,13 +776,15 @@ public:
   }
 
   static llvm::Value* payloadValue(jitcc* c, const MonoTypePtr& mty, llvm::Value* pval) {
-    if (isUnit(mty)) {
-      return cvalue(true);
-    } else if (isLargeType(mty)) {
-      return c->builder()->CreateBitCast(pval, toLLVM(mty, true));
-    } else {
-      return c->builder()->CreateLoad(c->builder()->CreateBitCast(pval, llvm::PointerType::getUnqual(toLLVM(mty, true))), false);
-    }
+    return withContext([&](auto&) -> llvm::Value* {
+      if (isUnit(mty)) {
+        return cvalue(true);
+      } else if (isLargeType(mty)) {
+        return c->builder()->CreateBitCast(pval, toLLVM(mty, true));
+      } else {
+        return c->builder()->CreateLoad(c->builder()->CreateBitCast(pval, llvm::PointerType::getUnqual(toLLVM(mty, true))), false);
+      }
+    });
   }
 
   llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) {
@@ -789,72 +806,74 @@ public:
     // compile the variant, head-handler and tail-handler
     llvm::Value* var = c->compile(es[0]);
 
-    // if the tail is 0, we can only possibly match the head
-    if (isVoid(vty->tailType())) {
-      // get an offset to the payload data
-      std::vector<llvm::Value*> idxs;
-      idxs.push_back(cvalue(0));
-      idxs.push_back(cvalue(vty->payloadOffset()));
-      llvm::Value* pval = c->builder()->CreateGEP(var, idxs);
+    return withContext([&](llvm::LLVMContext& ctx) -> llvm::Value* {
+      // if the tail is 0, we can only possibly match the head
+      if (isVoid(vty->tailType())) {
+        // get an offset to the payload data
+        std::vector<llvm::Value*> idxs;
+        idxs.push_back(cvalue(0));
+        idxs.push_back(cvalue(vty->payloadOffset()));
+        llvm::Value* pval = c->builder()->CreateGEP(var, idxs);
 
-      // invoke the head case function with the payload value
-      return callWith(c, es[1], vheadm.type, payloadValue(c, vheadm.type, pval));
-    } else {
-      // pull out the variant tag
-      llvm::Value* ptag = c->builder()->CreateBitCast(var, ptrType(intType()));
-      llvm::Value* tag  = c->builder()->CreateLoad(ptag, false);
-
-      // compare the tag data to the head tag id
-      llvm::Value* htagv  = cvalue(static_cast<int>(vheadm.id));
-      llvm::Value* ishtag = c->builder()->CreateICmpEQ(tag, htagv);
-
-      // get an offset to the payload data
-      std::vector<llvm::Value*> idxs;
-      idxs.push_back(cvalue(0));
-      idxs.push_back(cvalue(vty->payloadOffset()));
-      llvm::Value* pval = c->builder()->CreateGEP(var, idxs);
-
-      // either invoke the head case function, or the tail case function
-      llvm::Function* thisFn = c->builder()->GetInsertBlock()->getParent();
-
-      // for a condition, we need a 'then' branch, an 'else' branch, and a 'merge' block joining the two
-      llvm::BasicBlock* thenBlock  = llvm::BasicBlock::Create(context(), "then", thisFn);
-      llvm::BasicBlock* elseBlock  = llvm::BasicBlock::Create(context(), "else");
-      llvm::BasicBlock* mergeBlock = llvm::BasicBlock::Create(context(), "ifmerge");
-
-      // compile 'then' branch flowing to 'merge' block
-      c->builder()->CreateCondBr(ishtag, thenBlock, elseBlock);
-      c->builder()->SetInsertPoint(thenBlock);
-
-      llvm::Value* thenExp = callWith(c, es[1], vheadm.type, payloadValue(c, vheadm.type, pval));
-
-      c->builder()->CreateBr(mergeBlock);
-      thenBlock = c->builder()->GetInsertBlock(); // reset block pointer, in case compiling 'then' expression changed the active block
-
-      // compile the 'else' branch
-      thisFn->getBasicBlockList().push_back(elseBlock);
-      c->builder()->SetInsertPoint(elseBlock);
-
-      llvm::Value* elseExp = callWith(c, es[2], vty->tailType(), var);
-      c->builder()->CreateBr(mergeBlock);
-      elseBlock = c->builder()->GetInsertBlock(); // reset block pointer, in case compiling 'else' expression changed the active block
-
-      // finally, merge blocks
-      thisFn->getBasicBlockList().push_back(mergeBlock);
-      c->builder()->SetInsertPoint(mergeBlock);
-
-      // and the final value is the phi merge of the two possible branches
-      // (if it's a non-trivial type)
-      if (isUnit(resultType)) {
-        return cvalue(true);
+        // invoke the head case function with the payload value
+        return callWith(c, es[1], vheadm.type, payloadValue(c, vheadm.type, pval));
       } else {
-        llvm::PHINode* pn = c->builder()->CreatePHI(toLLVM(resultType, true), 2);
-        pn->addIncoming(thenExp, thenBlock);
-        pn->addIncoming(elseExp, elseBlock);
+        // pull out the variant tag
+        llvm::Value* ptag = c->builder()->CreateBitCast(var, ptrType(intType()));
+        llvm::Value* tag  = c->builder()->CreateLoad(ptag, false);
 
-        return pn;
+        // compare the tag data to the head tag id
+        llvm::Value* htagv  = cvalue(static_cast<int>(vheadm.id));
+        llvm::Value* ishtag = c->builder()->CreateICmpEQ(tag, htagv);
+
+        // get an offset to the payload data
+        std::vector<llvm::Value*> idxs;
+        idxs.push_back(cvalue(0));
+        idxs.push_back(cvalue(vty->payloadOffset()));
+        llvm::Value* pval = c->builder()->CreateGEP(var, idxs);
+
+        // either invoke the head case function, or the tail case function
+        llvm::Function* thisFn = c->builder()->GetInsertBlock()->getParent();
+
+        // for a condition, we need a 'then' branch, an 'else' branch, and a 'merge' block joining the two
+        llvm::BasicBlock* thenBlock  = llvm::BasicBlock::Create(ctx, "then", thisFn);
+        llvm::BasicBlock* elseBlock  = llvm::BasicBlock::Create(ctx, "else");
+        llvm::BasicBlock* mergeBlock = llvm::BasicBlock::Create(ctx, "ifmerge");
+
+        // compile 'then' branch flowing to 'merge' block
+        c->builder()->CreateCondBr(ishtag, thenBlock, elseBlock);
+        c->builder()->SetInsertPoint(thenBlock);
+
+        llvm::Value* thenExp = callWith(c, es[1], vheadm.type, payloadValue(c, vheadm.type, pval));
+
+        c->builder()->CreateBr(mergeBlock);
+        thenBlock = c->builder()->GetInsertBlock(); // reset block pointer, in case compiling 'then' expression changed the active block
+
+        // compile the 'else' branch
+        thisFn->getBasicBlockList().push_back(elseBlock);
+        c->builder()->SetInsertPoint(elseBlock);
+
+        llvm::Value* elseExp = callWith(c, es[2], vty->tailType(), var);
+        c->builder()->CreateBr(mergeBlock);
+        elseBlock = c->builder()->GetInsertBlock(); // reset block pointer, in case compiling 'else' expression changed the active block
+
+        // finally, merge blocks
+        thisFn->getBasicBlockList().push_back(mergeBlock);
+        c->builder()->SetInsertPoint(mergeBlock);
+
+        // and the final value is the phi merge of the two possible branches
+        // (if it's a non-trivial type)
+        if (isUnit(resultType)) {
+          return cvalue(true);
+        } else {
+          llvm::PHINode* pn = c->builder()->CreatePHI(toLLVM(resultType, true), 2);
+          pn->addIncoming(thenExp, thenBlock);
+          pn->addIncoming(elseExp, elseBlock);
+
+          return pn;
+        }
       }
-    }
+    });
   }
 
   PolyTypePtr type(typedb&) const {
@@ -905,17 +924,19 @@ char   stdstrelem(const std::string& x, size_t i) { return x[i]; }
 
 class packLongF : public op {
   llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) {
-    llvm::Value* c0 = c->builder()->CreateShl(c->builder()->CreateIntCast(c->compile(es[0]), longType(), false), 56);
-    llvm::Value* c1 = c->builder()->CreateShl(c->builder()->CreateIntCast(c->compile(es[1]), longType(), false), 48);
-    llvm::Value* c2 = c->builder()->CreateShl(c->builder()->CreateIntCast(c->compile(es[2]), longType(), false), 40);
-    llvm::Value* c3 = c->builder()->CreateShl(c->builder()->CreateIntCast(c->compile(es[3]), longType(), false), 32);
-    llvm::Value* c4 = c->builder()->CreateShl(c->builder()->CreateIntCast(c->compile(es[4]), longType(), false), 24);
-    llvm::Value* c5 = c->builder()->CreateShl(c->builder()->CreateIntCast(c->compile(es[5]), longType(), false), 16);
-    llvm::Value* c6 = c->builder()->CreateShl(c->builder()->CreateIntCast(c->compile(es[6]), longType(), false), 8);
-    llvm::Value* c7 = c->builder()->CreateIntCast(c->compile(es[7]), longType(), false);
+    return withContext([&](auto&) {
+      llvm::Value* c0 = c->builder()->CreateShl(c->builder()->CreateIntCast(c->compile(es[0]), longType(), false), 56);
+      llvm::Value* c1 = c->builder()->CreateShl(c->builder()->CreateIntCast(c->compile(es[1]), longType(), false), 48);
+      llvm::Value* c2 = c->builder()->CreateShl(c->builder()->CreateIntCast(c->compile(es[2]), longType(), false), 40);
+      llvm::Value* c3 = c->builder()->CreateShl(c->builder()->CreateIntCast(c->compile(es[3]), longType(), false), 32);
+      llvm::Value* c4 = c->builder()->CreateShl(c->builder()->CreateIntCast(c->compile(es[4]), longType(), false), 24);
+      llvm::Value* c5 = c->builder()->CreateShl(c->builder()->CreateIntCast(c->compile(es[5]), longType(), false), 16);
+      llvm::Value* c6 = c->builder()->CreateShl(c->builder()->CreateIntCast(c->compile(es[6]), longType(), false), 8);
+      llvm::Value* c7 = c->builder()->CreateIntCast(c->compile(es[7]), longType(), false);
 
-    return
-      c->builder()->CreateOr(c0,c->builder()->CreateOr(c1,c->builder()->CreateOr(c2,c->builder()->CreateOr(c3,c->builder()->CreateOr(c4,c->builder()->CreateOr(c5,c->builder()->CreateOr(c6,c7)))))));
+      return
+        c->builder()->CreateOr(c0,c->builder()->CreateOr(c1,c->builder()->CreateOr(c2,c->builder()->CreateOr(c3,c->builder()->CreateOr(c4,c->builder()->CreateOr(c5,c->builder()->CreateOr(c6,c7)))))));
+    });
   }
 
   PolyTypePtr type(typedb& db) const {
@@ -926,22 +947,24 @@ class packLongF : public op {
 
 class packIntF : public op {
   llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) {
-    llvm::Value* c0 = c->builder()->CreateIntCast(c->compile(es[0]), intType(), false);
-    llvm::Value* c1 = c->builder()->CreateIntCast(c->compile(es[1]), intType(), false);
-    llvm::Value* c2 = c->builder()->CreateIntCast(c->compile(es[2]), intType(), false);
-    llvm::Value* c3 = c->builder()->CreateIntCast(c->compile(es[3]), intType(), false);
+    return withContext([&](auto&) {
+      llvm::Value* c0 = c->builder()->CreateIntCast(c->compile(es[0]), intType(), false);
+      llvm::Value* c1 = c->builder()->CreateIntCast(c->compile(es[1]), intType(), false);
+      llvm::Value* c2 = c->builder()->CreateIntCast(c->compile(es[2]), intType(), false);
+      llvm::Value* c3 = c->builder()->CreateIntCast(c->compile(es[3]), intType(), false);
 
-    return
-      c->builder()->CreateOr(
-        c->builder()->CreateShl(c0, 24),
+      return
         c->builder()->CreateOr(
-          c->builder()->CreateShl(c1, 16),
+          c->builder()->CreateShl(c0, 24),
           c->builder()->CreateOr(
-            c->builder()->CreateShl(c2, 8),
-            c3
+            c->builder()->CreateShl(c1, 16),
+            c->builder()->CreateOr(
+              c->builder()->CreateShl(c2, 8),
+              c3
+            )
           )
-        )
-      );
+        );
+    });
   }
 
   PolyTypePtr type(typedb& db) const {
@@ -952,14 +975,16 @@ class packIntF : public op {
 
 class packShortF : public op {
   llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) {
-    llvm::Value* c0 = c->builder()->CreateIntCast(c->compile(es[0]), shortType(), false);
-    llvm::Value* c1 = c->builder()->CreateIntCast(c->compile(es[1]), shortType(), false);
+    return withContext([&](auto&) {
+      llvm::Value* c0 = c->builder()->CreateIntCast(c->compile(es[0]), shortType(), false);
+      llvm::Value* c1 = c->builder()->CreateIntCast(c->compile(es[1]), shortType(), false);
 
-    return
-      c->builder()->CreateOr(
-        c->builder()->CreateShl(c0, 8),
-        c1
-      );
+      return
+        c->builder()->CreateOr(
+          c->builder()->CreateShl(c0, 8),
+          c1
+        );
+    });
   }
 
   PolyTypePtr type(typedb& db) const {
@@ -970,11 +995,10 @@ class packShortF : public op {
 
 class cptrrefbyF : public op {
   llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) {
-    return
-      c->builder()->CreateLoad(
-        offset(c->builder(), c->compile(es[0]), c->compile(es[1])),
-        false
-      );
+    return withContext([&](auto&) {
+      return c->builder()->CreateLoad(
+          offset(c->builder(), c->compile(es[0]), c->compile(es[1])), false);
+    });
   }
 
   PolyTypePtr type(typedb& db) const {

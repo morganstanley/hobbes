@@ -557,8 +557,10 @@ const TEnvPtr& cc::typeEnv() const {
 }
 
 void cc::dumpModule() {
+#if LLVM_VERSION_MAJOR < 11
   hlock _;
   this->jit->dump();
+#endif
 }
 
 cc::bytes cc::machineCodeForExpr(const std::string& expr) {

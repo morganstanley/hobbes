@@ -21,8 +21,10 @@ set(CMAKE_CXX_STANDARD 14)
 
 if (${LLVM_PACKAGE_VERSION} VERSION_LESS "3.6")
   set(jit_lib jit)
-else()
+elseif(${LLVM_PACKAGE_VERSION} VERSION_LESS "11.0")
   set(jit_lib mcjit)
+else()
+  set(jit_lib mcjit orcjit)
 endif()
 
 find_program(llvm-config llvm-config PATHS ${LLVM_TOOLS_BINARY_DIR} NO_DEFAULT_PATH)

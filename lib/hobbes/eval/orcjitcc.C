@@ -1,0 +1,96 @@
+#include <hobbes/eval/orcjitcc.H>
+
+#include <llvm/Config/llvm-config.h>
+
+#if LLVM_VERSION_MAJOR >= 11
+#include <hobbes/hobbes.H>
+#include <hobbes/util/llvm.H>
+
+#include <llvm/ExecutionEngine/Orc/CompileUtils.h>
+
+namespace hobbes {
+
+ORCJIT::ORCJIT(std::unique_ptr<llvm::TargetMachine> tm,
+               const llvm::DataLayout &dl)
+    : targetMachine(std::move(tm)), dataLayout(dl),
+      mangle(execSession, dataLayout),
+      objectLayer(
+          execSession,
+          []() { return std::make_unique<llvm::SectionMemoryManager>(); }),
+      compileLayer(execSession, objectLayer,
+                   std::make_unique<llvm::orc::SimpleCompiler>(*targetMachine)),
+      optLayer(execSession, compileLayer, optimizeModule),
+      mainJD(execSession.createBareJITDylib(createUniqueName("main"))) {
+  mainJD.addGenerator(
+      cantFail(llvm::orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(
+          dataLayout.getGlobalPrefix())));
+}
+
+#if LLVM_VERSION_MAJOR >= 12
+ORCJIT::~ORCJIT() {
+  // https://repo.hca.bsc.es/gitlab/rferrer/llvm-epi/-/commit/0aec49c8531bc5282b095730d34681455826bc2c
+  // newly added in llvm12, has to be called to destroy objectLayer associated memory manager
+  llvm::cantFail(execSession.endSession());
+}
+#else
+ORCJIT::~ORCJIT() = default;
+#endif
+
+llvm::Expected<std::unique_ptr<ORCJIT>> ORCJIT::create() {
+  auto jtmb = llvm::orc::JITTargetMachineBuilder::detectHost();
+  if (!jtmb) {
+    return jtmb.takeError();
+  }
+
+  auto tm = jtmb->createTargetMachine();
+  if (!tm) {
+    return tm.takeError();
+  }
+
+  auto dl = jtmb->getDefaultDataLayoutForTarget();
+  if (!dl) {
+    return dl.takeError();
+  }
+
+  return std::make_unique<ORCJIT>(std::move(*tm), *dl);
+}
+
+llvm::Error ORCJIT::addModule(std::unique_ptr<llvm::Module> m) {
+  return withContext([&](auto&) {
+    m->setDataLayout(dataLayout);
+    return optLayer.add(mainJD, llvm::orc::ThreadSafeModule(std::move(m), threadSafeContext()));
+  });
+}
+
+llvm::Expected<llvm::JITEvaluatedSymbol> ORCJIT::lookup(llvm::StringRef name) {
+  return execSession.lookup({&mainJD}, mangle(name.str()));
+}
+
+llvm::Error ORCJIT::addExternalSymbol(llvm::StringRef name, void *ptr) {
+  return mainJD.define(llvm::orc::absoluteSymbols(
+      {{mangle(name), llvm::JITEvaluatedSymbol::fromPointer(ptr)}}));
+}
+
+llvm::Expected<llvm::orc::ThreadSafeModule>
+ORCJIT::optimizeModule(llvm::orc::ThreadSafeModule tsm,
+                       const llvm::orc::MaterializationResponsibility &) {
+  tsm.withModuleDo([](llvm::Module &m) {
+    auto fpm = llvm::legacy::FunctionPassManager(&m);
+    fpm.add(llvm::createReassociatePass());
+    fpm.add(llvm::createNewGVNPass());
+    fpm.add(llvm::createCFGSimplificationPass());
+    fpm.add(llvm::createTailCallEliminationPass());
+    fpm.doInitialization();
+    for (auto &f : m) {
+      fpm.run(f);
+    }
+
+    auto mpm = llvm::legacy::PassManager();
+    mpm.add(llvm::createFunctionInliningPass());
+    mpm.run(m);
+  });
+
+  return tsm;
+}
+} // namespace hobbes
+#endif

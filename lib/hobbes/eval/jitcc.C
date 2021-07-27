@@ -2,12 +2,25 @@
 #include <hobbes/hobbes.H>
 #include <hobbes/eval/jitcc.H>
 #include <hobbes/eval/cexpr.H>
+#include <llvm/IR/Attributes.h>
+#include <llvm/IR/Constant.h>
+#include <llvm/IR/Constants.h>
+#include <llvm/IR/DerivedTypes.h>
+#include <llvm/IR/GlobalVariable.h>
+#include <llvm/IR/Value.h>
+#include <llvm/IR/ValueHandle.h>
+#include <llvm/Support/Error.h>
+#include <llvm/Target/TargetMachine.h>
+#include <stdexcept>
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wold-style-cast"
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #pragma GCC diagnostic ignored "-Wctor-dtor-privacy"
 
+#if LLVM_VERSION_MAJOR >= 11
+#include <hobbes/eval/orcjitcc.H>
+#else
 #if LLVM_VERSION_MINOR == 3 or LLVM_VERSION_MINOR == 5
 #include "llvm/ExecutionEngine/JIT.h"
 #else
@@ -21,6 +34,7 @@
 #if LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 6
 #include "llvm/Transforms/Scalar/GVN.h"
 #endif
+#endif
 
 #include "llvm/Object/ELFObjectFile.h"
 #include "llvm/ExecutionEngine/JITEventListener.h"
@@ -28,23 +42,262 @@
 #pragma GCC diagnostic pop
 
 namespace hobbes {
+#if LLVM_VERSION_MAJOR >= 11
+class ConstantList {
+  using VarFnTy = std::function<llvm::GlobalVariable*(llvm::Module&)>;
+  struct Constant {
+    MonoTypePtr mtype;
+    variant<llvm::WeakTrackingVH, llvm::Constant*> varOrFunc;
+    VarFnTy fn;
+  };
+  llvm::StringMap<Constant> constants;
+
+public:
+  ConstantList() = default;
+  ConstantList(const ConstantList&) = delete;
+  ConstantList(ConstantList&&) = delete;
+  ConstantList& operator=(const ConstantList&) = delete;
+  ConstantList& operator=(ConstantList&&) = delete;
+  ~ConstantList() = default;
+
+  LLVM_NODISCARD bool contains(llvm::StringRef name) const {
+    return constants.find(name) != constants.end();
+  }
+
+  /// Creates const global variable definition
+  ///
+  /// \p initVal is the initializer for this constant, must not be null
+  ///    or it can be a function
+  void createDefinition(const std::string& name, llvm::Module& m, llvm::Constant* initVal,
+                        const MonoTypePtr& mtype);
+
+  /// Gets constant by generating load inst or possibly recreating decl
+  LLVM_NODISCARD llvm::Value* loadConstant(llvm::StringRef name, llvm::Module& m,
+                                           llvm::IRBuilder<>& builder);
+};
+
+void ConstantList::createDefinition(const std::string& name, llvm::Module& m,
+                                    llvm::Constant* initVal, const MonoTypePtr& mtype) {
+  assert(!contains(name));
+
+  llvm::Type* type = toLLVM(mtype);
+  if (is<Func>(mtype) != nullptr) {
+    constants[name] = Constant{.mtype = mtype, .varOrFunc = initVal, .fn = VarFnTy()};
+  } else {
+    constants[name] = Constant{
+        .mtype = mtype,
+        .varOrFunc = llvm::WeakTrackingVH(new llvm::GlobalVariable(
+            m, type, /*isConstant=*/true, llvm::GlobalVariable::ExternalLinkage, initVal, name)),
+        .fn = [&, type, name](llvm::Module& m) -> llvm::GlobalVariable* {
+          return prepgv(new llvm::GlobalVariable(m, type, /*isConstant=*/true,
+                                                 llvm::GlobalVariable::ExternalLinkage,
+                                                 /*initializer=*/nullptr, name));
+        }};
+  }
+}
+
+llvm::Value* ConstantList::loadConstant(llvm::StringRef name, llvm::Module& m,
+                                        llvm::IRBuilder<>& builder) {
+  auto it = constants.find(name);
+  if (it == constants.end()) {
+    return nullptr;
+  }
+
+  if (is<Func>(it->second.mtype) != nullptr) {
+    return *it->second.varOrFunc.get<llvm::Constant*>();
+  }
+
+  return withContext([&](auto&) -> llvm::Value* {
+    if (!it->second.varOrFunc.get<llvm::WeakTrackingVH>()->pointsToAliveValue()) {
+      it->second.varOrFunc = llvm::WeakTrackingVH(it->second.fn(m));
+    }
+
+    auto* g = llvm::cast<llvm::GlobalVariable>(
+        static_cast<llvm::Value*>(*it->second.varOrFunc.get<llvm::WeakTrackingVH>()));
+
+    if (is<Array>(it->second.mtype) != nullptr) {
+      return builder.CreateLoad(g);
+    }
+    if (hasPointerRep(it->second.mtype)) {
+      return g;
+    }
+    return builder.CreateAlignedLoad(g->getType()->getPointerElementType(), g, llvm::MaybeAlign(8));
+  });
+}
+
+class VTEnv {
+public:
+  using FunFnTy = std::function<llvm::Function*(llvm::Module&)>;
+
+private:
+  using VarBindings = llvm::StringMap<llvm::WeakTrackingVH>;
+  using VarBindingStack = llvm::SmallVector<VarBindings, 8>;
+  VarBindingStack vtenv;
+  llvm::StringMap<FunFnTy> vtenvFuns;
+
+public:
+  VTEnv() = default;
+  VTEnv(const VTEnv&) = delete;
+  VTEnv(VTEnv&&) = delete;
+  VTEnv& operator=(const VTEnv&) = delete;
+  VTEnv& operator=(VTEnv&&) = delete;
+  ~VTEnv() = default;
+
+  LLVM_NODISCARD bool contains(llvm::StringRef name) const {
+    return std::any_of(vtenv.rbegin(), vtenv.rend(),
+                       [name](const auto& vb) { return vb.find(name) != vb.end(); });
+  }
+
+  /// Gets \p name by looking up from inner to outer scope
+  ///
+  /// Possibly recreating decl
+  LLVM_NODISCARD llvm::Value* getOrCreateDecl(llvm::StringRef name, llvm::Module& m);
+
+  /// Adds variable \p name to current scope
+  void add(llvm::StringRef name, llvm::Value* v) {
+    this->vtenv.back()[name] = v;
+  }
+
+  /// Adds function \p name to current scope
+  ///
+  /// It stores function prototype for decl recreating
+  void add(llvm::StringRef name, FunFnTy f, llvm::Function* fp) {
+    this->vtenv.back()[name] = fp;
+    vtenvFuns[name] = std::move(f);
+  }
+
+  /// Create a new inner scope
+  void pushScope() {
+    vtenv.push_back(VarBindings());
+  }
+
+  /// Destroys the inner scope
+  void popScope() {
+    vtenv.pop_back();
+  }
+};
+
+llvm::Value* VTEnv::getOrCreateDecl(llvm::StringRef name, llvm::Module& m) {
+  for (auto vb = vtenv.rbegin(); vb != vtenv.rend(); ++vb) {
+    auto it = vb->find(name);
+    if (it == vb->end()) {
+      continue;
+    }
+    if (!it->second.pointsToAliveValue()) {
+      assert(vtenvFuns.find(name) != vtenvFuns.end());
+      it->second = vtenvFuns[name](m);
+    }
+    return it->second;
+  }
+  return nullptr;
+}
+
+class Globals {
+private:
+  using FunFnTy = std::function<llvm::Function*(llvm::Module&)>;
+  using VarFnTy = std::function<llvm::GlobalVariable*(llvm::Module&)>;
+  struct Global {
+    variant<FunFnTy, VarFnTy> protoTypes;
+    llvm::WeakTrackingVH handle;
+  };
+  llvm::StringMap<Global> globals;
+  LLVM_NODISCARD bool isFunc(decltype(globals)::iterator it) const {
+    return it->second.protoTypes.get<FunFnTy>() != nullptr;
+  }
+
+public:
+  Globals() = default;
+  Globals(const Globals&) = delete;
+  Globals(Globals&&) = delete;
+  Globals& operator=(const Globals&) = delete;
+  Globals& operator=(Globals&&) = delete;
+  ~Globals() = default;
+
+  LLVM_NODISCARD bool contains(llvm::StringRef name) const {
+    return globals.find(name) != globals.end();
+  }
+
+  /// Gets a global variable \p name by possibly recreating decl in current module
+  LLVM_NODISCARD llvm::GlobalVariable* getOrCreateVarDecl(llvm::StringRef name, llvm::Module& m);
+  /// Gets a global function \p name by possibly recreating decl in current module
+  LLVM_NODISCARD llvm::Function* getOrCreateFuncDecl(llvm::StringRef name, llvm::Module& m);
+
+  /// Creates a global variable decl for \p name with type \p ty
+  ///
+  /// It stores variable prototype for decl recreating
+  void add(const std::string& name, llvm::Module& m, llvm::Type* ty);
+  /// Creates a global function decl for \p name with type \p ty if \p existingF is null
+  ///
+  /// It stores function prototype for decl recreating
+  void add(const std::string& name, llvm::Module& m, llvm::FunctionType* ty,
+           llvm::Function* existingF);
+};
+
+llvm::GlobalVariable* Globals::getOrCreateVarDecl(llvm::StringRef name, llvm::Module& m) {
+  auto it = globals.find(name);
+  if (it == globals.end() || isFunc(it)) {
+    return nullptr;
+  }
+  if (!it->second.handle.pointsToAliveValue()) {
+    it->second.handle = (*it->second.protoTypes.get<VarFnTy>())(m);
+  }
+  return llvm::cast<llvm::GlobalVariable>(static_cast<llvm::Value*>(it->second.handle));
+}
+
+llvm::Function* Globals::getOrCreateFuncDecl(llvm::StringRef name, llvm::Module& m) {
+  auto it = globals.find(name);
+  if (it == globals.end() || !isFunc(it)) {
+    return nullptr;
+  }
+  if (!it->second.handle.pointsToAliveValue()) {
+    it->second.handle = (*it->second.protoTypes.get<FunFnTy>())(m);
+  }
+  return llvm::cast<llvm::Function>(static_cast<llvm::Value*>(it->second.handle));
+}
+
+void Globals::add(const std::string& name, llvm::Module& m, llvm::Type* ty) {
+  Global g;
+  g.protoTypes = VarFnTy([ty, name](llvm::Module& m) {
+    return prepgv(new llvm::GlobalVariable(m, ty, /*isConstant=*/false,
+                                           llvm::GlobalValue::ExternalLinkage,
+                                           /*initializer=*/nullptr, name),
+                  sizeof(void*));
+  });
+  g.handle = (*g.protoTypes.get<VarFnTy>())(m);
+  globals[name] = g;
+}
+
+void Globals::add(const std::string& name, llvm::Module& m, llvm::FunctionType* ty,
+                  llvm::Function* existingF) {
+  Global g;
+  g.protoTypes = FunFnTy([ty, name](llvm::Module& m) {
+    return llvm::Function::Create(ty, llvm::Function::ExternalLinkage, name, m);
+  });
+  if (existingF != nullptr) {
+    g.handle = existingF;
+  } else {
+    g.handle = (*g.protoTypes.get<FunFnTy>())(m);
+  }
+  globals[name] = g;
+}
+#endif
 
 // this should be moved out of here eventually
 bool isFileType(const MonoTypePtr&);
 
-#if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 6 || LLVM_VERSION_MAJOR >= 8
+#if (LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 6 || LLVM_VERSION_MAJOR >= 8) && LLVM_VERSION_MAJOR < 11
 class jitmm : public llvm::SectionMemoryManager {
 public:
-  jitmm(jitcc* jit) : jit(jit) { }
+  explicit jitmm(jitcc* jit) : jit(jit) { }
 
   // link symbols across modules :T
   uint64_t getSymbolAddress(const std::string& n) override {
     if (uint64_t laddr = reinterpret_cast<uint64_t>(this->jit->getSymbolAddress(n))) {
       return laddr;
     }
-    if (n.size() > 0 && n[0] == '_') {
+    if (!n.empty() && n[0] == '_') {
       uint64_t sv = reinterpret_cast<uint64_t>(this->jit->getSymbolAddress(n.substr(1)));
-      if (sv) return sv;
+      if (sv != 0U) return sv;
     }
     if (uint64_t baddr = llvm::SectionMemoryManager::getSymbolAddress(n)) {
       return baddr;
@@ -57,8 +310,38 @@ private:
 };
 #endif
 
+#if LLVM_VERSION_MAJOR >= 11
+jitcc::jitcc(const TEnvPtr& tenv)
+    : tenv(tenv), vtenv(std::make_unique<VTEnv>()), ignoreLocalScope(false),
+      globals(std::make_unique<Globals>()), globalData(32768 /* min global page size = 32K */),
+      constants(std::make_unique<ConstantList>()) {
+  llvm::InitializeNativeTarget();
+  llvm::InitializeNativeTargetAsmParser();
+  llvm::InitializeNativeTargetAsmPrinter();
+
+  this->orcjit = llvm::cantFail(ORCJIT::create(), "orcjit init failed");
+
+  // allocate an IR builder with an initial dummy basic-block to write into
+  this->irbuilder = withContext([](llvm::LLVMContext& c) {
+      auto r = std::make_unique<llvm::IRBuilder<>>(c);
+      r->SetInsertPoint(llvm::BasicBlock::Create(c, "dummy"));
+      return r;
+  });
+
+  // make sure we've always got one frame for variable defs
+  this->pushScope();
+}
+
+jitcc::~jitcc() {
+  // release low-level functions
+  for (auto f : this->fenv) {
+    delete f.second;
+  }
+}
+#else
+
 jitcc::jitcc(const TEnvPtr& tenv) :
-  tenv(tenv), currentModule(0), irbuilder(0),
+  tenv(tenv),
   ignoreLocalScope(false),
   globalData(32768 /* min global page size = 32K */)
 {
@@ -67,8 +350,11 @@ jitcc::jitcc(const TEnvPtr& tenv) :
   llvm::InitializeNativeTargetAsmPrinter();
 
   // allocate an IR builder with an initial dummy basic-block to write into
-  this->irbuilder = new llvm::IRBuilder<>(context());
-  this->irbuilder->SetInsertPoint(llvm::BasicBlock::Create(context(), "dummy"));
+  this->irbuilder = withContext([](llvm::LLVMContext& c) {
+      auto r = std::make_unique<llvm::IRBuilder<>>(c);
+      r->SetInsertPoint(llvm::BasicBlock::Create(c, "dummy"));
+      return r;
+  });
 
   // make sure we've always got one frame for variable defs
   this->vtenv.push_back(VarBindings());
@@ -120,26 +406,67 @@ jitcc::~jitcc() {
 #elif LLVM_VERSION_MINOR == 3 or LLVM_VERSION_MINOR == 5
   delete this->eengine;
 #endif
-
-  delete this->irbuilder;
 }
+#endif
 
 const TEnvPtr& jitcc::typeEnv() const {
   return this->tenv;
 }
 
 llvm::IRBuilder<>* jitcc::builder() const {
-  return this->irbuilder;
+  return this->irbuilder.get();
 }
 
+#if LLVM_VERSION_MAJOR >= 11
 llvm::Module* jitcc::module() {
-  if (!this->currentModule) {
-    this->currentModule = new llvm::Module("jitModule" + str::from(this->modules.size()), context());
+  if (this->currentModule == nullptr) {
+    this->currentModule = withContext([](llvm::LLVMContext& c) {
+      auto m = std::make_unique<llvm::Module>(createUniqueName("jitModule"), c);
+      return m;
+    });
+  }
+  return this->currentModule.get();
+}
+#else
+llvm::Module* jitcc::module() {
+  if (this->currentModule == nullptr) {
+    this->currentModule = withContext([this](llvm::LLVMContext& c) {
+      return new llvm::Module("jitModule" + str::from(this->modules.size()), c);
+    });
     this->modules.push_back(this->currentModule);
   }
   return this->currentModule;
 }
+#endif
 
+#if LLVM_VERSION_MAJOR >= 11
+void* jitcc::getMachineCode(llvm::Function* f, llvm::JITEventListener* /*listener*/) {
+  const std::string fname = f->getName().str();
+  auto sym = orcjit->lookup(fname);
+  if (auto e = sym.takeError()) {
+    llvm::consumeError(std::move(e));
+  } else {
+    return llvm::jitTargetAddressToPointer<void*>(sym->getAddress());
+  }
+
+  withContext([&](auto&) {
+    const std::string name = this->currentModule->getName().str();
+    if (auto e = orcjit->addModule(std::move(this->currentModule))) {
+      llvm::logAllUnhandledErrors(std::move(e), llvm::errs());
+      throw std::runtime_error("cannot add module " + name);
+    }
+  });
+
+  sym = orcjit->lookup(fname);
+  if (auto e = sym.takeError()) {
+    logAllUnhandledErrors(std::move(e), llvm::errs());
+    throw std::runtime_error(
+        "Internal compiler error, no current module and no machine code for (" + fname + ")");
+  }
+
+  return llvm::jitTargetAddressToPointer<void*>(sym->getAddress());
+}
+#else
 void* jitcc::getSymbolAddress(const std::string& vn) {
   // do we have a global with this name?
   auto gd = this->globals.find(vn);
@@ -156,7 +483,7 @@ void* jitcc::getSymbolAddress(const std::string& vn) {
       }
     }
   }
-#elif LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR == 4 
+#elif LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR == 4
   for (auto ee : this->eengines) {
     if (uint64_t faddr = ee->getFunctionAddress(vn)) {
       return reinterpret_cast<void*>(faddr);
@@ -275,6 +602,7 @@ void* jitcc::getMachineCode(llvm::Function* f, llvm::JITEventListener* listener)
   }
 #endif
 }
+#endif
 
 #if LLVM_VERSION_MINOR >= 7 || LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 6 || LLVM_VERSION_MAJOR >= 8
 // get the machine code produced for a given expression
@@ -283,7 +611,7 @@ class LenWatch : public llvm::JITEventListener {
 public:
   std::string fname;
   size_t sz;
-  LenWatch(const std::string& fname) : fname(fname), sz(0) { }
+  explicit LenWatch(const std::string& fname) : fname(fname), sz(0) { }
   size_t size() const { return this->sz; }
   void NotifyObjectEmitted(const llvm::object::ObjectFile& o, const llvm::RuntimeDyld::LoadedObjectInfo&) {
     for (auto s : o.symbols()) {
@@ -353,6 +681,23 @@ jitcc::bytes jitcc::machineCodeForExpr(const ExprPtr& e) {
   return r;
 }
 
+#if LLVM_VERSION_MAJOR >= 11
+bool jitcc::isDefined(const std::string& vn) const {
+  if (this->globals->contains(vn)) {
+    return true;
+  }
+  if (this->constants->contains(vn)) {
+    return true;
+  }
+  if (lookupOp(vn) != nullptr) {
+    return true;
+  }
+  if (this->vtenv->contains(vn)) {
+    return true;
+  }
+  return false;
+}
+#else
 bool jitcc::isDefined(const std::string& vn) const {
   if (this->globals.find(vn) != this->globals.end()) {
     return true;
@@ -369,6 +714,7 @@ bool jitcc::isDefined(const std::string& vn) const {
     return false;
   }
 }
+#endif
 
 llvm::Value* jitcc::compile(const ExprPtr& exp) {
   return toLLVM(this, exp);
@@ -387,6 +733,30 @@ op* jitcc::lookupOp(const std::string& vn) const {
   return (f == this->fenv.end()) ? 0 : f->second;
 }
 
+#if LLVM_VERSION_MAJOR >= 11
+void jitcc::bindGlobal(const std::string& vn, const MonoTypePtr& ty, void* x) {
+  assert(not this->globals->contains(vn));
+
+  void* value = x;
+  if (is<Func>(ty) != nullptr) {
+    withContext([&](auto&) {
+      this->globals->add(vn, *this->module(),
+                         llvm::cast<llvm::FunctionType>(toLLVM(ty, /*asArg=*/false)),
+                         /*existingF=*/nullptr);
+    });
+  } else {
+    if (hasPointerRep(ty) || isFileType(ty)) {
+      void** p = reinterpret_cast<void**>(this->globalData.malloc(sizeof(void*)));
+      *p = x;
+      value = p;
+    }
+
+    withContext(
+        [&](auto&) { return this->globals->add(vn, *this->module(), toLLVM(ty, /*asArg=*/true)); });
+  }
+  llvm::cantFail(orcjit->addExternalSymbol(vn, value));
+}
+#else
 void jitcc::bindGlobal(const std::string& vn, const MonoTypePtr& ty, void* x) {
   Global g;
   g.type  = ty;
@@ -419,14 +789,16 @@ void jitcc::bindGlobal(const std::string& vn, const MonoTypePtr& ty, void* x) {
                          vn
                        ),
                        sizeof(void*));
-    
+
 #if LLVM_VERSION_MINOR == 3 or LLVM_VERSION_MINOR == 5
   this->eengine->addGlobalMapping(g.ref.var, g.value);
 #endif
   }
   this->globals[vn] = g;
 }
+#endif
 
+#if LLVM_VERSION_MAJOR < 11
 llvm::Value* jitcc::maybeRefGlobalV(llvm::Value* v) {
   llvm::Module* thisMod = module();
 
@@ -448,7 +820,13 @@ llvm::Value* jitcc::maybeRefGlobalV(llvm::Value* v) {
     return v;
   }
 }
+#endif
 
+#if LLVM_VERSION_MAJOR >= 11
+llvm::GlobalVariable* jitcc::lookupGlobalVar(const std::string& vn) {
+  return withContext([&](auto&) { return this->globals->getOrCreateVarDecl(vn, *this->module()); });
+}
+#else
 llvm::GlobalVariable* jitcc::maybeRefGlobal(const std::string& vn) {
   auto gv = this->globals.find(vn);
   if (gv != this->globals.end() && !is<Func>(gv->second.type)) {
@@ -456,7 +834,9 @@ llvm::GlobalVariable* jitcc::maybeRefGlobal(const std::string& vn) {
   }
   return 0;
 }
+#endif
 
+#if LLVM_VERSION_MAJOR < 11
 llvm::GlobalVariable* jitcc::refGlobal(const std::string& vn, llvm::GlobalVariable* gv) {
   llvm::Module* mod = module();
 
@@ -477,41 +857,60 @@ llvm::GlobalVariable* jitcc::refGlobal(const std::string& vn, llvm::GlobalVariab
                   sizeof(void*));
   }
 }
+#endif
 
 llvm::GlobalVariable* jitcc::lookupVarRef(const std::string& vn) {
   // if any local variables shadow this global, hide it
+#if LLVM_VERSION_MAJOR >= 11
+  if (this->vtenv->contains(vn)) {
+    return nullptr;
+  }
+#else
   for (auto vbs : this->vtenv) {
     if (vbs.find(vn) != vbs.end()) {
       return 0;
     }
   }
+#endif
 
   // now if we've got a global with this name, we can get a pointer to it
+#if LLVM_VERSION_MAJOR >= 11
+  return lookupGlobalVar(vn);
+#else
   return maybeRefGlobal(vn);
+#endif
 }
 
+#if LLVM_VERSION_MAJOR >= 11
+llvm::Value* jitcc::loadConstant(const std::string& vn) {
+  return withContext(
+      [&](auto&) { return this->constants->loadConstant(vn, *this->module(), *builder()); });
+}
+#else
 llvm::Value* jitcc::loadConstant(const std::string& vn) {
   auto cv = this->constants.find(vn);
   if (cv != this->constants.end()) {
-    if (is<Array>(cv->second.mtype)) {
-      return builder()->CreateLoad(refGlobal(vn, cv->second.ref));
-    } else if (llvm::Value* r = refGlobal(vn, cv->second.ref)) {
-#if LLVM_VERSION_MAJOR <= 10
-      return hasPointerRep(cv->second.mtype) ? r : builder()->CreateLoad(r);
+    return withContext([&](auto&) -> llvm::Value* {
+      if (is<Array>(cv->second.mtype)) {
+        return builder()->CreateLoad(refGlobal(vn, cv->second.ref));
+      } else if (llvm::Value* r = refGlobal(vn, cv->second.ref)) {
+#if   LLVM_VERSION_MAJOR <= 10
+        return hasPointerRep(cv->second.mtype) ? r : builder()->CreateLoad(r);
 #elif LLVM_VERSION_MAJOR <= 12 
-      return hasPointerRep(cv->second.mtype) ? r : builder()->CreateAlignedLoad(r->getType()->getPointerElementType(), r, llvm::MaybeAlign(8));
+        return hasPointerRep(cv->second.mtype) ? r : builder()->CreateAlignedLoad(r->getType()->getPointerElementType(), r, llvm::MaybeAlign(8));
 #endif
-    } else {
-      return cv->second.value;
-    }
+      } else {
+        return cv->second.value;
+      }
+    });
   }
-  return 0;
+  return nullptr;
 }
+#endif
 
 void jitcc::defineGlobal(const std::string& vn, const ExprPtr& ue) {
   std::string vname = vn.empty() ? (".global" + freshName()) : vn;
   this->globalExprs[vn] = ue;
-
   typedef void (*Thunk)();
   MonoTypePtr uety = requireMonotype(this->tenv, ue);
 
@@ -523,6 +922,10 @@ void jitcc::defineGlobal(const std::string& vn, const ExprPtr& ue) {
     resetMemoryPool();
   } else if (llvm::Constant* c = toLLVMConstant(this, vname, ue)) {
     // make a global constant ...
+#if LLVM_VERSION_MAJOR >= 11
+    withContext(
+        [&](auto&) { return this->constants->createDefinition(vname, *module(), c, uety); });
+#else
     Constant& cv = this->constants[vname];
     cv.value = c;
     cv.type  = toLLVM(uety);
@@ -534,6 +937,7 @@ void jitcc::defineGlobal(const std::string& vn, const ExprPtr& ue) {
     } else {
       cv.ref = new llvm::GlobalVariable(*module(), cv.type, true, llvm::GlobalVariable::ExternalLinkage, c, vname);
     }
+#endif
   } else {
     // make some space for this global data ...
     if (isLargeType(uety)) {
@@ -545,16 +949,18 @@ void jitcc::defineGlobal(const std::string& vn, const ExprPtr& ue) {
     }
 
     // compile an initializer function for this expression
-    llvm::BasicBlock* ibb = this->builder()->GetInsertBlock();
+    llvm::BasicBlock* ibb = withContext([this](auto&) { return this->builder()->GetInsertBlock(); });
     llvm::Function* initfn = allocFunction("." + vname + "_init", MonoTypes(), primty("unit"));
-    if (initfn == 0) {
+    if (initfn == nullptr) {
       throw annotated_error(*ue, "Failed to allocate initializer function for '" + vname + "'.");
     }
-    llvm::BasicBlock* bb = llvm::BasicBlock::Create(context(), "entry", initfn);
-    this->builder()->SetInsertPoint(bb);
+    withContext([&](llvm::LLVMContext& c) {
+      llvm::BasicBlock* bb = llvm::BasicBlock::Create(c, "entry", initfn);
+      this->builder()->SetInsertPoint(bb);
 
-    compile(assign(var(vname, uety, ue->la()), ue, ue->la()));
-    this->builder()->CreateRetVoid();
+      compile(assign(var(vname, uety, ue->la()), ue, ue->la()));
+      this->builder()->CreateRetVoid();
+    });
 
     // compile and run this function, it should then perform the global variable assignment
     // (make sure that any allocation happens in the global context iff we need it)
@@ -571,8 +977,10 @@ void jitcc::defineGlobal(const std::string& vn, const ExprPtr& ue) {
 
     // clean up
     releaseMachineCode(reinterpret_cast<void*>(f));
-    this->builder()->SetInsertPoint(ibb);
+    withContext([this, ibb](auto&) { this->builder()->SetInsertPoint(ibb); });
+#if LLVM_VERSION_MAJOR < 11
     initfn->eraseFromParent();
+#endif
   }
 }
 
@@ -603,6 +1011,14 @@ llvm::Value* jitcc::lookupVar(const std::string& vn, const MonoTypePtr& vty) {
   }
 
   // try to find this variable up the local variable stack (unless we're ignoring local scope)
+#if LLVM_VERSION_MAJOR >= 11
+  if (!this->ignoreLocalScope) {
+    if (auto* fn =
+            withContext([&](auto&) { return this->vtenv->getOrCreateDecl(vn, *this->module()); })) {
+      return fn;
+    }
+  }
+#else
   if (!this->ignoreLocalScope) {
     for (size_t i = 0; i < this->vtenv.size(); ++i) {
       const VarBindings& vbs = this->vtenv[this->vtenv.size() - (i + 1)];
@@ -612,10 +1028,15 @@ llvm::Value* jitcc::lookupVar(const std::string& vn, const MonoTypePtr& vty) {
       }
     }
   }
+#endif
 
   // try to find this variable as a global
+#if LLVM_VERSION_MAJOR >= 11
+  if (llvm::GlobalVariable* gv = lookupGlobalVar(vn)) {
+#else
   if (llvm::GlobalVariable* gv = maybeRefGlobal(vn)) {
-    return builder()->CreateLoad(gv);
+#endif
+    return withContext([this, gv](auto&) { return builder()->CreateLoad(gv); });
   }
 
   // maybe it's a function?
@@ -647,6 +1068,19 @@ llvm::Value* jitcc::internConstString(const std::string& x) {
   return lookupVar(vn, arrayty(primty("char")));
 }
 
+#if LLVM_VERSION_MAJOR >= 11
+void jitcc::pushScope() {
+  this->vtenv->pushScope();
+}
+
+void jitcc::bindScope(const std::string& vn, llvm::Value* v) {
+  this->vtenv->add(vn, v);
+}
+
+void jitcc::popScope() {
+  this->vtenv->popScope();
+}
+#else
 void jitcc::pushScope() {
   this->vtenv.push_back(VarBindings());
 }
@@ -658,6 +1092,7 @@ void jitcc::bindScope(const std::string& vn, llvm::Value* v) {
 void jitcc::popScope() {
   this->vtenv.pop_back();
 }
+#endif
 
 llvm::Value* jitcc::compileAtGlobalScope(const ExprPtr& exp) {
   this->ignoreLocalScope = true;
@@ -671,10 +1106,17 @@ llvm::Value* jitcc::compileAtGlobalScope(const ExprPtr& exp) {
   }
 }
 
+#if LLVM_VERSION_MAJOR >= 11
+llvm::Function* jitcc::lookupFunction(const std::string& fn) {
+  return withContext(
+      [&](auto&) { return this->globals->getOrCreateFuncDecl(fn, *this->module()); });
+}
+#else
 llvm::Function* jitcc::lookupFunction(const std::string& fn) {
   llvm::Module* thisMod = module();
 
-  for (auto m : this->modules) {
+  for (size_t i = 0; i<this->modules.size(); ++i) {
+    auto m = this->modules[i];
     if (llvm::Function* f = m->getFunction(fn)) {
       if (m == thisMod) {
         return f;
@@ -685,7 +1127,7 @@ llvm::Function* jitcc::lookupFunction(const std::string& fn) {
   }
   return 0;
 }
-
+#endif
 llvm::Function* jitcc::compileFunction(const std::string& name, const str::seq& argns, const MonoTypes& argtys, const ExprPtr& exp) {
   UCFS fs;
   fs.push_back(UCF(name, argns, argtys, exp));
@@ -726,7 +1168,7 @@ void jitcc::unsafeCompileFunctions(UCFS* ufs) {
   UCFS& fs = *ufs;
 
   // save our current write context to restore later
-  llvm::BasicBlock* ibb = this->builder()->GetInsertBlock();
+  llvm::BasicBlock* ibb = withContext([this](auto&) { return this->builder()->GetInsertBlock(); });
 
   // prepare the environment for these mutually-recursive definitions
   for (size_t f = 0; f < fs.size(); ++f) {
@@ -735,7 +1177,11 @@ void jitcc::unsafeCompileFunctions(UCFS* ufs) {
       throw std::runtime_error("Failed to allocate function");
     }
 
+#if LLVM_VERSION_MAJOR >= 11
+    this->bindScope(fs[f].name, fval);
+#else
     this->vtenv.back()[fs[f].name] = fval;
+#endif
     fs[f].result = fval;
   }
 
@@ -744,57 +1190,76 @@ void jitcc::unsafeCompileFunctions(UCFS* ufs) {
     llvm::Function*   fval = fs[f].result;
     const UCF&        ucf  = fs[f];
     MonoTypePtr       rty  = requireMonotype(this->tenv, ucf.exp);
-    llvm::BasicBlock* bb   = llvm::BasicBlock::Create(context(), "entry", fval);
+    llvm::BasicBlock* bb = withContext(
+        [fval](llvm::LLVMContext& c) { return llvm::BasicBlock::Create(c, "entry", fval); });
 
-    this->builder()->SetInsertPoint(bb);
+    withContext([this, bb](auto&) { return this->builder()->SetInsertPoint(bb); });
 
     // set argument names for safe referencing here
+#if LLVM_VERSION_MAJOR >= 11
+    this->pushScope();
+#else
     this->vtenv.push_back(VarBindings());
+#endif
 
     llvm::Function::arg_iterator a = fval->arg_begin();
     for (unsigned int i = 0; i < ucf.argns.size(); ++i) {
       if (isUnit(ucf.argtys[i])) {
+#if LLVM_VERSION_MAJOR >= 11
+        this->bindScope(ucf.argns[i], cvalue(true)); // this should never even be seen
+#else
         this->vtenv.back()[ucf.argns[i]] = cvalue(true); // this should never even be seen
+#endif
       } else {
         a->setName(ucf.argns[i]);
 
         llvm::Value* argv = &*a;
         if (is<FixedArray>(ucf.argtys[i])) {
-          argv = cast(this->builder(), ptrType(toLLVM(ucf.argtys[i], false)), argv);
+          argv = withContext([&](auto&) {
+            return cast(this->builder(), ptrType(toLLVM(ucf.argtys[i], false)), argv);
+          });
         }
+#if LLVM_VERSION_MAJOR >= 11
+        this->bindScope(ucf.argns[i], argv);
+#else
         this->vtenv.back()[ucf.argns[i]] = argv;
+#endif
         ++a;
       }
     }
 
-    try {
-      // compile the function body
-      llvm::Value* cexp = compile(ucf.exp);
-      if (isUnit(rty)) {
-        this->builder()->CreateRetVoid();
-      } else {
-        this->builder()->CreateRet(cexp);
-      }
+    withContext([&](auto&) {
+      try {
+        // compile the function body
+        llvm::Value* cexp = compile(ucf.exp);
+        if (isUnit(rty)) {
+          this->builder()->CreateRetVoid();
+        } else {
+          this->builder()->CreateRet(cexp);
+        }
 
 #if LLVM_VERSION_MINOR == 3 or LLVM_VERSION_MINOR == 5
       this->fpm->run(*fval);
 #endif
 
-      // and we're done
-      this->vtenv.pop_back();
-      if (ibb != 0) { this->builder()->SetInsertPoint(ibb); }
-    } catch (...) {
-      if (ibb != 0) { this->builder()->SetInsertPoint(ibb); }
-      this->vtenv.pop_back();
-      throw;
-    }
+        // and we're done
+        this->popScope();
+        if (ibb != 0) { this->builder()->SetInsertPoint(ibb); }
+      } catch (...) {
+        if (ibb != 0) { this->builder()->SetInsertPoint(ibb); }
+        this->popScope();
+        throw;
+      }
+    });
   }
 }
 
 llvm::Value* jitcc::compileAllocStmt(llvm::Value* sz, llvm::Value* asz, llvm::Type* mty, bool zeroMem) {
   llvm::Function* f = lookupFunction(zeroMem ? "mallocz" : "malloc");
   if (!f) throw std::runtime_error("Expected heap allocation function as call.");
-  return builder()->CreateBitCast(fncall(builder(), f, f->getFunctionType(), list(sz, asz)), mty);
+  return withContext([&](auto&) {
+    return builder()->CreateBitCast(fncall(builder(), f, f->getFunctionType(), list(sz, asz)), mty);
+  });
 }
 
 llvm::Value* jitcc::compileAllocStmt(size_t sz, size_t asz, llvm::Type* mty, bool zeroMem) {
@@ -804,6 +1269,37 @@ llvm::Value* jitcc::compileAllocStmt(size_t sz, size_t asz, llvm::Type* mty, boo
 void jitcc::releaseMachineCode(void*) {
 }
 
+#if LLVM_VERSION_MAJOR >= 11
+llvm::Function* jitcc::allocFunction(const std::string& fname, const MonoTypes& argl, const MonoTypePtr& rty) {
+  const auto f = [=](llvm::Module& m) {
+    llvm::Type* retType = toLLVM(rty, true);
+    auto* f = llvm::Function::Create(
+        llvm::FunctionType::get(retType, toLLVM(argl, true), false),
+        fname.find(".patfs.") == 0 ? llvm::Function::InternalLinkage
+                                   : llvm::Function::ExternalLinkage,
+        fname, m);
+    // https://bugs.llvm.org/show_bug.cgi?id=51163
+    // for a llvm version >=9, zeroext has to be added to functions return boolean
+    // otherwise, 255 will be returned as true
+    if (retType == boolType()) {
+      f->addAttribute(llvm::AttributeList::ReturnIndex, llvm::Attribute::ZExt);
+    }
+    return f;
+  };
+  llvm::Function* ret = withContext([&](auto&) { return f(*this->module()); });
+
+  if (fname.find(".rfn.t") != std::string::npos) {
+    this->vtenv->add(fname, f, ret);
+  } else if (!this->globals->contains(fname)) {
+    withContext([&](auto&) {
+      return this->globals->add(
+          fname, *this->module(),
+          llvm::FunctionType::get(toLLVM(rty, true), toLLVM(argl, true), false), ret);
+    });
+  }
+  return ret;
+}
+#else
 llvm::Function* jitcc::allocFunction(const std::string& fname, const MonoTypes& argl, const MonoTypePtr& rty) {
   return
     llvm::Function::Create(
@@ -813,6 +1309,7 @@ llvm::Function* jitcc::allocFunction(const std::string& fname, const MonoTypes& 
       module()
     );
 }
+#endif
 
 void* jitcc::reifyMachineCodeForFn(const MonoTypePtr&, const str::seq& names, const MonoTypes& tys, const ExprPtr& exp) {
   return getMachineCode(compileFunction("", names, tys, exp));
@@ -841,7 +1338,9 @@ Values compileArgs(jitcc* c, const Exprs& es) {
 
     if (is<Array>(et)) {
       // variable-length arrays need to be cast to a single type to pass LLVM's check
-      r.push_back(c->builder()->CreateBitCast(ev, toLLVM(et)));
+      r.push_back(withContext([&](auto&) {
+          return c->builder()->CreateBitCast(ev, toLLVM(et));
+      }));
     } else if (isUnit(et)) {
       // no need to pass unit anywhere
     } else {

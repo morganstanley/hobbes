@@ -266,12 +266,14 @@ struct addFileSignalF : public op {
 
     if (isDArr) {
       sz  = sizeof(long);
-      off = c->builder()->CreateAdd(off, cvalue(static_cast<long>(sizeof(long))));
+      off = withContext([c, off](auto&) { return c->builder()->CreateAdd(off, cvalue(static_cast<long>(sizeof(long)))); });
     } else {
       sz = storageSizeOf(refty);
     }
 
-    return fncall(c->builder(), f, f->getFunctionType(), list<llvm::Value*>(db, off, cvalue(static_cast<long>(sz)), cvalue(static_cast<uint8_t>(isDArr ? BROffsetType::DArray : BROffsetType::Value)), sfn));
+    return withContext([&](auto&) {
+      return fncall(c->builder(), f, f->getFunctionType(), list<llvm::Value*>(db, off, cvalue(static_cast<long>(sz)), cvalue(static_cast<uint8_t>(isDArr ? BROffsetType::DArray : BROffsetType::Value)), sfn));
+    });
   }
 
   PolyTypePtr type(typedb&) const {
