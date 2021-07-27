@@ -26,11 +26,15 @@ ORCJIT::ORCJIT(std::unique_ptr<llvm::TargetMachine> tm,
           dataLayout.getGlobalPrefix())));
 }
 
+#if LLVM_VERSION_MAJOR >= 12
 ORCJIT::~ORCJIT() {
   // https://repo.hca.bsc.es/gitlab/rferrer/llvm-epi/-/commit/0aec49c8531bc5282b095730d34681455826bc2c
   // newly added in llvm12, has to be called to destroy objectLayer associated memory manager
   llvm::cantFail(execSession.endSession());
 }
+#else
+ORCJIT::~ORCJIT() = default;
+#endif
 
 llvm::Expected<std::unique_ptr<ORCJIT>> ORCJIT::create() {
   auto jtmb = llvm::orc::JITTargetMachineBuilder::detectHost();
