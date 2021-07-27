@@ -21,7 +21,7 @@ public:
   ORCJIT(ORCJIT&&) = delete;
   ORCJIT& operator=(const ORCJIT&) = delete;
   ORCJIT& operator=(ORCJIT&&) = delete;
-  ~ORCJIT() = default;
+  ~ORCJIT();
 
   static llvm::Expected<std::unique_ptr<ORCJIT>> create();
 
