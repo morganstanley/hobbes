@@ -319,7 +319,7 @@ jitcc::jitcc(const TEnvPtr& tenv)
   llvm::InitializeNativeTargetAsmParser();
   llvm::InitializeNativeTargetAsmPrinter();
 
-  this->orcjit = llvm::cantFail(ORCJIT::create(), "orcjit init failed");
+  this->orcjit = std::make_unique<ORCJIT>();
 
   // allocate an IR builder with an initial dummy basic-block to write into
   this->irbuilder = withContext([](llvm::LLVMContext& c) {
