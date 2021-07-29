@@ -14,7 +14,7 @@
 namespace llvm {
 class Module;
 namespace orc {
-class LLJIT;
+class LLLazyJIT;
 class MaterializationResponsibility;
 class MangleAndInterner;
 } // namespace orc
@@ -36,10 +36,11 @@ public:
   LLVM_NODISCARD llvm::Expected<llvm::JITEvaluatedSymbol>
   lookup(llvm::StringRef name);
 
-  llvm::Error addExternalSymbol(llvm::StringRef name, void *ptr);
+  llvm::Error addExternalNonCallableSymbol(llvm::StringRef name, void *ptr);
+  llvm::Error addExternalCallableSymbol(llvm::StringRef name, void *ptr);
 
 private:
-  std::unique_ptr<llvm::orc::LLJIT> jit;
+  std::unique_ptr<llvm::orc::LLLazyJIT> jit;
   std::unique_ptr<llvm::orc::MangleAndInterner> mangle;
 };
 } // namespace hobbes
