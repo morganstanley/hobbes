@@ -55,7 +55,7 @@
 
 #include <sys/mman.h>
 #include <unistd.h>
-#include <string.h>
+#include <cstring>
 #include <math.h>
 
 namespace hobbes { namespace mc {
@@ -143,7 +143,7 @@ public:
   // add a label reference at the current write position (assuming a 32-bit displacement)
   void addLabelRef(const std::string& lbl) {
     this->labelRefs[lbl].push_back(this->sz);
-    *reinterpret_cast<uint32_t*>(allocate(sizeof(uint32_t))) = 0;
+    std::memset(allocate(sizeof(uint32_t)), 0, sizeof(uint32_t));
   }
 
   // define a label at the current write position
@@ -230,7 +230,8 @@ private:
         if (!canLowerTo<int32_t>(dist)) {
           throw std::runtime_error("Can't resolve label reference to '" + d->first + "' in program with jump distance greater than 32-bits");
         }
-        *reinterpret_cast<int32_t*>(this->mem + pc) = static_cast<int32_t>(dist);
+        const auto dist32 = static_cast<int32_t>(dist);
+        std::memcpy(this->mem + pc, &dist32, sizeof(dist32));
       }
     }
   }
@@ -1550,7 +1551,7 @@ inline void emitValue(buffer* b, const MODRMCode& modrm) {
   if (O == 1) {
     *b->allocate(1) = static_cast<int8_t>(modrm.disp);
   } else if (O == 2 || (O == 0 && thd_233(modrm.modrm) == 5) || (O == 0 && hasSIB && thd_233(modrm.sib) == 5)) {
-    *reinterpret_cast<int32_t*>(b->allocate(4)) = modrm.disp;
+    std::memcpy(b->allocate(4), &modrm.disp, sizeof(modrm.disp));
   }
 }
 
@@ -1622,7 +1623,7 @@ public:
           // mov rax, faddr
           (*b)[0] = REXW().byte;
           (*b)[1] = 0xb8;
-          *reinterpret_cast<const void**>(&(*b)[2]) = faddr;
+          std::memcpy(&(*b)[2], &faddr, sizeof(faddr));
 
           // call rax
           Reg<X86Reg> rax;

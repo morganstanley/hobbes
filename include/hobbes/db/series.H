@@ -170,8 +170,8 @@ public:
 private:
   StorageMode sm;
   union {
-    char rss[sizeof(RawStoredSeries)];
-    char css[sizeof(CompressedStoredSeries)];
+    alignas(RawStoredSeries) char rss[sizeof(RawStoredSeries)];
+    alignas(CompressedStoredSeries) char css[sizeof(CompressedStoredSeries)];
   } storage;
 };
 

@@ -10,7 +10,7 @@
 #include <hobbes/util/perf.H>
 #include <sstream>
 #include <stdexcept>
-#include <string.h>
+#include <cstring>
 #include <unordered_map>
 #include <atomic>
 
@@ -2362,7 +2362,8 @@ template <typename T>
 template <typename T>
   struct readF {
     static T read(const bytes& in, unsigned int* n) {
-      T r = *reinterpret_cast<const T*>(&(in[*n]));
+      T r;
+      std::memcpy(&r, &in[*n], sizeof(T));
       *n += sizeof(T);
       return r;
     }
