@@ -1,5 +1,6 @@
 
 #include "hobbes/eval/func.H"
+#include "hobbes/util/llvm.H"
 #include <hobbes/eval/cexpr.H>
 #include <hobbes/eval/jitcc.H>
 #include <hobbes/hobbes.H>
@@ -50,6 +51,9 @@
 namespace {
 LLVM_NODISCARD llvm::Function *createFnDecl(llvm::Function *f, llvm::Module &m,
                                             llvm::StringRef name) {
+  if (f->getReturnType() == hobbes::boolType()) {
+    f->addAttribute(llvm::AttributeList::ReturnIndex, llvm::Attribute::ZExt);
+  }
   if (f->getName() != name) {
     f->eraseFromParent();
     return m.getFunction(name);
@@ -201,7 +205,7 @@ public:
   LLVM_NODISCARD llvm::Value *getOrCreateDecl(llvm::StringRef name,
                                               llvm::Module &m);
 
-  /// Adds variable \p name to current scope
+  /// Adds \p name to current scope
   void add(llvm::StringRef name, llvm::Value *v) {
     // do not allow value overwritten function prototype
     // otherwise some decls will not created correctly
