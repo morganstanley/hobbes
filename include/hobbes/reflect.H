@@ -18,7 +18,7 @@
 #include <map>
 #include <iostream>
 #include <sstream>
-#include <string.h>
+#include <cstring>
 #include <assert.h>
 #include <stdexcept>
 #include <type_traits>
@@ -1362,7 +1362,8 @@ inline bool operator!=(const desc& t0, const desc& t1) {
 template <typename T>
   T readValue(const bytes& bs, size_t* i) {
     assert((bs.size() >= (*i + sizeof(T))) && "Invalid type encoding, expected data not available");
-    T result = *reinterpret_cast<const T*>(&bs[*i]);
+    T result;
+    std::memcpy(&result, &bs[*i], sizeof(T));
     *i += sizeof(T);
     return result;
   }
