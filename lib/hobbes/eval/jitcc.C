@@ -1,6 +1,6 @@
 
-#include "hobbes/eval/func.H"
-#include "hobbes/util/llvm.H"
+#include <hobbes/eval/func.H>
+#include <hobbes/util/llvm.H>
 #include <hobbes/eval/cexpr.H>
 #include <hobbes/eval/jitcc.H>
 #include <hobbes/hobbes.H>
@@ -28,22 +28,22 @@
 #include <hobbes/eval/orcjitcc.H>
 #else
 #if LLVM_VERSION_MINOR == 3 or LLVM_VERSION_MINOR == 5
-#include "llvm/ExecutionEngine/JIT.h"
+#include <llvm/ExecutionEngine/JIT.h>
 #else
-#include "llvm/ExecutionEngine/MCJIT.h"
+#include <llvm/ExecutionEngine/MCJIT.h>
 #endif
 
 #if LLVM_VERSION_MINOR >= 8 || LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 6
-#include "llvm/Analysis/BasicAliasAnalysis.h"
+#include <llvm/Analysis/BasicAliasAnalysis.h>
 #endif
 
 #if LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 6
-#include "llvm/Transforms/Scalar/GVN.h"
+#include <llvm/Transforms/Scalar/GVN.h>
 #endif
 #endif
 
-#include "llvm/Object/ELFObjectFile.h"
-#include "llvm/ExecutionEngine/JITEventListener.h"
+#include <llvm/Object/ELFObjectFile.h>
+#include <llvm/ExecutionEngine/JITEventListener.h>
 
 #pragma GCC diagnostic pop
 
