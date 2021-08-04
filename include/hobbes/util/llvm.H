@@ -816,7 +816,11 @@ inline llvm::Value* fncall(llvm::IRBuilder<>* b, llvm::Value* vfn, llvm::Type* t
   return b->CreateCall(vfn, args);
 #elif LLVM_VERSION_MAJOR <= 12
   if (auto *ty = llvm::dyn_cast<llvm::FunctionType>(tfn)) {
-      return b->CreateCall(ty, vfn, args);
+    auto *inst =  b->CreateCall(ty, vfn, args);
+    if (ty->getReturnType() == boolType()) {
+      inst->addAttribute(llvm::AttributeList::ReturnIndex, llvm::Attribute::ZExt);
+    }
+    return inst;
   } else {
     throw std::runtime_error("fncall(...) invoked on non-function type (internal error)");
   }
