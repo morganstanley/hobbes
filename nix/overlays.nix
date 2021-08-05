@@ -1,4 +1,4 @@
-{ src, version, llvmVersions, gccConstraints, system, debug ? false, }:
+{ src, version, llvmVersions, gccConstraints, system, debug ? false, asanAndUBSan }:
 final: prev:
 with final;
 let
@@ -32,7 +32,7 @@ let
 
   when = c: m: if c then m else { };
 
-  withGCC = { gccVersion ? 10 }:
+  withGCC = { gccVersion ? 10, sans }:
     let
       gccPkgs = { gccVersion }:
         builtins.getAttr ("gcc" + (toString gccVersion) + "Stdenv") final;
@@ -41,9 +41,18 @@ let
     in makeOverridable
     ({ llvmVersion, stdenv ? (gccPkgs { inherit gccVersion; }) }:
       stdenv.mkDerivation {
+        inherit version src meta doCheck doTarget dontStrip sans;
         pname = "hobbes-gcc-" + toString gccVersion + "-llvm-"
-          + toString llvmVersion;
-        inherit version src meta doCheck doTarget dontStrip;
+          + toString llvmVersion + (if sans then "-ASanAndUBSan" else "");
+
+        cmakeBuildType=(if sans then "Debug" else "Release");
+        cmakeFlags = [
+          (if sans then "-DUSE_ASAN_AND_UBSAN:BOOL=ON" else "")
+        ];
+        ninjaFlags = [ "-v" ];
+        UBSAN_OPTIONS=(if sans then "print_stacktrace=1" else "");
+        ASAN_OPTIONS=(if sans then "abort_on_error=0,detect_leaks=0" else "");
+
         nativeBuildInputs = nativeBuildInputs;
         buildInputs = buildInputs
           ++ [ (llvmPkgs { inherit llvmVersion; }).llvm ];
@@ -57,10 +66,19 @@ let
     llvmPkgs = { llvmVersion }:
       builtins.getAttr ("llvmPackages_" + (toString llvmVersion)) final;
   in makeOverridable
-  ({ llvmVersion, stdenv ? (llvmPkgs { inherit llvmVersion; }).stdenv }:
+  ({ llvmVersion, sans, stdenv ? (llvmPkgs { inherit llvmVersion; }).stdenv }:
     stdenv.mkDerivation {
-      pname = "hobbes-clang-" + (toString llvmVersion);
       inherit version src meta doCheck doTarget dontStrip;
+      pname = "hobbes-clang-" + (toString llvmVersion) + (if sans then "-ASanAndUBSan" else "");
+
+      cmakeBuildType=(if sans then "Debug" else "Release");
+      cmakeFlags = [
+        (if sans then "-DUSE_ASAN_AND_UBSAN:BOOL=ON" else "")
+      ];
+      ninjaFlags = [ "-v" ];
+      UBSAN_OPTIONS=(if sans then "print_stacktrace=1" else "");
+      ASAN_OPTIONS=(if sans then "abort_on_error=0,detect_leaks=0" else "");
+
       nativeBuildInputs = nativeBuildInputs;
       buildInputs = buildInputs ++ [ (llvmPkgs { inherit llvmVersion; }).llvm ];
       postPatch = ''
@@ -76,18 +94,26 @@ in {
       value = recurseIntoAttrs (builtins.listToAttrs (builtins.map
         (llvmVersion: {
           name = "llvm-" + toString llvmVersion;
-          value = recurseIntoAttrs ({
-            hobbes = dbg
-              (callPackage (withGCC { inherit (gccConstraint) gccVersion; }) {
-                inherit llvmVersion;
+          value = recurseIntoAttrs (builtins.listToAttrs (builtins.map
+            (sans: {
+              name = (if sans then "ASanAndUBSan" else "Default");
+              value = recurseIntoAttrs ({
+                hobbes = dbg
+                  (callPackage (withGCC { inherit sans; inherit (gccConstraint) gccVersion; }) {
+                    inherit llvmVersion;
+                  });
               });
-          });
+            }) asanAndUBSan));
         }) gccConstraint.llvmVersions));
     }) gccConstraints))) // recurseIntoAttrs (builtins.listToAttrs (builtins.map
       (llvmVersion: {
         name = "clang-" + toString llvmVersion;
-        value = recurseIntoAttrs ({
-          hobbes = dbg (callPackage withCLANG { inherit llvmVersion; });
-        });
+        value = recurseIntoAttrs (builtins.listToAttrs (builtins.map
+          (sans: {
+            name = (if sans then "ASanAndUBSan" else "Default");
+            value = recurseIntoAttrs ({
+              hobbes = dbg (callPackage withCLANG { inherit sans; inherit llvmVersion; });
+            });
+          }) asanAndUBSan));
       }) llvmVersions));
 }

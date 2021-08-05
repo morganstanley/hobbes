@@ -78,8 +78,15 @@ if(LINUX)
 endif()
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${cxx_flags}")
-set(CMAKE_CXX_FLAGS_DEBUG "-g")
+set(CMAKE_CXX_FLAGS_DEBUG "-g -Og -fno-omit-frame-pointer")
 set(CMAKE_CXX_FLAGS_RELEASE "-O2")
+
+option(USE_ASAN_UBSAN "Use address,undefined sanitizers" OFF)
+if(USE_ASAN_AND_UBSAN)
+  add_compile_options("-fsanitize=address,undefined;-fno-optimize-sibling-calls;-fsanitize=float-divide-by-zero;-fsanitize=float-cast-overflow;-fno-sanitize-recover=all")
+  add_link_options("-fsanitize=address,undefined;-fno-optimize-sibling-calls;-fsanitize=float-divide-by-zero;-fsanitize=float-cast-overflow;-fno-sanitize-recover=all")
+  message(STATUS "address and undefined sanitizers enabled")
+endif()
 
 add_library(hobbes STATIC ${lib_files})
 target_link_libraries(hobbes PUBLIC ${llvm_ldflags} ${llvm_libs} ${ZLIB_LIBRARIES} ${CURSES_LIBRARIES} ${sys_libs})

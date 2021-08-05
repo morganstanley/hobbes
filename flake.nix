@@ -1,6 +1,6 @@
 {
   description = "A language and an embedded JIT compiler";
-  
+
   inputs.flake-utils.url = "github:numtide/flake-utils";
 
   outputs = { self, nixpkgs, flake-utils }:
@@ -18,9 +18,10 @@
               { gccVersion = 9; llvmVersions = [ 6 8 9 10 11 12 ]; }
               { gccVersion = 10; llvmVersions = [ 6 8 9 10 11 12 ]; }
             ];
+            asanAndUBSan = [ true false ];
           })
         ];
-        
+
         pkgs = import nixpkgs {
           inherit system overlays;
         };
@@ -29,6 +30,6 @@
           packages = flake-utils.lib.flattenTree (pkgs.recurseIntoAttrs {
             inherit (pkgs) hobbesPackages;
           });
-          defaultPackage = packages."hobbesPackages/clang-8/hobbes";
+          defaultPackage = packages."hobbesPackages/clang-8/Default/hobbes";
         });
 }

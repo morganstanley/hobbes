@@ -1,6 +1,36 @@
 name: "Build"
 on: [push, pull_request]
 jobs:
+  linux-build-asan-ubsan:
+    runs-on: ${{matrix.os}}
+    strategy:
+      matrix:
+        os: [ubuntu-20.04]
+        gcc: [8]
+        llvm: [11]
+    steps:
+      - uses: actions/checkout@v2
+        with:
+            # Nix Flakes doesn't work on shallow clones
+            fetch-depth: 0
+      - uses: cachix/install-nix-action@v12
+        with:
+          install_url: https://github.com/numtide/nix-flakes-installer/releases/download/nix-2.4pre20201221_9fab14a/install
+          extra_nix_config: |
+            experimental-features = nix-command flakes ca-references
+      - name: nix build hobbesPackages/gcc-${{ matrix.gcc }}/llvm-${{ matrix.llvm }}/ASanAndUBSan/hobbes
+        run: |
+          nix build .#hobbesPackages/gcc-${{ matrix.gcc }}/llvm-${{ matrix.llvm }}/ASanAndUBSan/hobbes
+      - name: nix log hobbesPackages/gcc-${{ matrix.gcc }}/llvm-${{ matrix.llvm }}/ASanAndUBSan/hobbes
+        if: ${{ always() }}
+        run: |
+          nix log  .#hobbesPackages/gcc-${{ matrix.gcc }}/llvm-${{ matrix.llvm }}/ASanAndUBSan/hobbes &> ${{ matrix.os }}-gcc-${{ matrix.gcc }}-llvm-${{ matrix.llvm }}-ASanAndUBSan-hobbes.log
+      - name: upload log ${{ matrix.os }}-gcc-${{ matrix.gcc }}-llvm-${{ matrix.llvm }}-ASanAndUBSan-hobbes.log
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v1
+        with:
+          name: output-log-file
+          path: ${{ matrix.os }}-gcc-${{ matrix.gcc }}-llvm-${{ matrix.llvm }}-ASanAndUBSan-hobbes.log
   linux-clang-build:
     runs-on: ${{matrix.os}}
     strategy:
@@ -17,19 +47,19 @@ jobs:
           install_url: https://github.com/numtide/nix-flakes-installer/releases/download/nix-2.4pre20201221_9fab14a/install
           extra_nix_config: |
             experimental-features = nix-command flakes ca-references
-      - name: nix build hobbesPackages/clang-${{ matrix.clang }}/hobbes
+      - name: nix build hobbesPackages/clang-${{ matrix.clang }}/Default/hobbes
         run: |
-          nix build .#hobbesPackages/clang-${{ matrix.clang }}/hobbes
-      - name: nix log hobbesPackages/clang-${{ matrix.clang }}/hobbes
+          nix build .#hobbesPackages/clang-${{ matrix.clang }}/Default/hobbes
+      - name: nix log hobbesPackages/clang-${{ matrix.clang }}/Default/hobbes
         if: ${{ always() }}
         run: |
-          nix log  .#hobbesPackages/clang-${{ matrix.clang }}/hobbes &> ${{ matrix.os }}-clang-${{ matrix.clang }}-hobbes.log
-      - name: upload log ${{ matrix.os }}-clang-${{ matrix.clang }}-hobbes.log
+          nix log  .#hobbesPackages/clang-${{ matrix.clang }}/Default/hobbes &> ${{ matrix.os }}-clang-${{ matrix.clang }}-Default-hobbes.log
+      - name: upload log ${{ matrix.os }}-clang-${{ matrix.clang }}-Default-hobbes.log
         if: ${{ always() }}
         uses: actions/upload-artifact@v1
         with:
           name: output-log-file
-          path: ${{ matrix.os }}-clang-${{ matrix.clang }}-hobbes.log
+          path: ${{ matrix.os }}-clang-${{ matrix.clang }}-Default-hobbes.log
   linux-gcc-build:
     runs-on: ${{matrix.os}}
     strategy:
@@ -47,17 +77,16 @@ jobs:
           install_url: https://github.com/numtide/nix-flakes-installer/releases/download/nix-2.4pre20201221_9fab14a/install
           extra_nix_config: |
             experimental-features = nix-command flakes ca-references
-      - name: nix build hobbesPackages/gcc-${{ matrix.gcc }}/llvm-${{ matrix.llvm }}/hobbes
+      - name: nix build hobbesPackages/gcc-${{ matrix.gcc }}/llvm-${{ matrix.llvm }}/Default/hobbes
         run: |
-          nix build .#hobbesPackages/gcc-${{ matrix.gcc }}/llvm-${{ matrix.llvm }}/hobbes
-      - name: nix log hobbesPackages/gcc-${{ matrix.gcc }}/llvm-${{ matrix.llvm }}/hobbes
+          nix build .#hobbesPackages/gcc-${{ matrix.gcc }}/llvm-${{ matrix.llvm }}/Default/hobbes
+      - name: nix log hobbesPackages/gcc-${{ matrix.gcc }}/llvm-${{ matrix.llvm }}/Default/hobbes
         if: ${{ always() }}
         run: |
-          nix log  .#hobbesPackages/gcc-${{ matrix.gcc }}/llvm-${{ matrix.llvm }}/hobbes &> ${{ matrix.os }}-gcc-${{ matrix.gcc }}-llvm-${{ matrix.llvm }}-hobbes.log
-      - name: upload log ${{ matrix.os }}-gcc-${{ matrix.gcc }}-llvm-${{ matrix.llvm }}-hobbes.log
+          nix log  .#hobbesPackages/gcc-${{ matrix.gcc }}/llvm-${{ matrix.llvm }}/Default/hobbes &> ${{ matrix.os }}-gcc-${{ matrix.gcc }}-llvm-${{ matrix.llvm }}-Default-hobbes.log
+      - name: upload log ${{ matrix.os }}-gcc-${{ matrix.gcc }}-llvm-${{ matrix.llvm }}-Default-hobbes.log
         if: ${{ always() }}
         uses: actions/upload-artifact@v1
         with:
           name: output-log-file
-          path: ${{ matrix.os }}-gcc-${{ matrix.gcc }}-llvm-${{ matrix.llvm }}-hobbes.log
-
+          path: ${{ matrix.os }}-gcc-${{ matrix.gcc }}-llvm-${{ matrix.llvm }}-Default-hobbes.log
