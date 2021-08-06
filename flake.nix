@@ -18,7 +18,6 @@
               { gccVersion = 9; llvmVersions = [ 6 8 9 10 11 12 ]; }
               { gccVersion = 10; llvmVersions = [ 6 8 9 10 11 12 ]; }
             ];
-            asanAndUBSan = [ true false ];
           })
         ];
 
@@ -30,6 +29,6 @@
           packages = flake-utils.lib.flattenTree (pkgs.recurseIntoAttrs {
             inherit (pkgs) hobbesPackages;
           });
-          defaultPackage = packages."hobbesPackages/clang-8/Default/hobbes";
+          defaultPackage = packages."hobbesPackages/clang-8/hobbes";
         });
 }

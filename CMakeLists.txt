@@ -83,8 +83,11 @@ set(CMAKE_CXX_FLAGS_RELEASE "-O2")
 
 option(USE_ASAN_UBSAN "Use address,undefined sanitizers" OFF)
 if(USE_ASAN_AND_UBSAN)
-  add_compile_options("-fsanitize=address,undefined;-fno-optimize-sibling-calls;-fsanitize=float-divide-by-zero;-fsanitize=float-cast-overflow;-fno-sanitize-recover=all")
-  add_link_options("-fsanitize=address,undefined;-fno-optimize-sibling-calls;-fsanitize=float-divide-by-zero;-fsanitize=float-cast-overflow;-fno-sanitize-recover=all")
+  add_compile_options("-fsanitize=address,undefined;-fno-optimize-sibling-calls;-fno-sanitize-recover=all")
+  add_link_options("-fsanitize=address,undefined;-fno-optimize-sibling-calls;-fno-sanitize-recover=all")
+  add_compile_options("$<$<OR:$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>>:-fsanitize=local-bounds,float-divide-by-zero,nullability,signed-integer-overflow,shift,integer-divide-by-zero,implicit-signed-integer-truncation>")
+  add_link_options("$<$<OR:$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>>:-fsanitize=local-bounds,float-divide-by-zero,nullability,signed-integer-overflow,shift,integer-divide-by-zero,implicit-signed-integer-truncation>")
+  add_compile_options("$<$<CXX_COMPILER_ID:GNU>:--param=max-vartrack-size=60000000>")
   message(STATUS "address and undefined sanitizers enabled")
 endif()
 
