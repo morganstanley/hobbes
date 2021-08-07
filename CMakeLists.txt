@@ -78,12 +78,15 @@ if(LINUX)
 endif()
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${cxx_flags}")
-set(CMAKE_CXX_FLAGS_DEBUG "-g -Og -fno-omit-frame-pointer")
+set(CMAKE_CXX_FLAGS_DEBUG "-g")
 set(CMAKE_CXX_FLAGS_RELEASE "-O2")
 
 option(USE_ASAN_UBSAN "Use address,undefined sanitizers" OFF)
 if(USE_ASAN_AND_UBSAN)
-  add_compile_options("-fsanitize=address,undefined;-fno-optimize-sibling-calls;-fno-sanitize-recover=all")
+  # _FORTIFY_SOURCE doesn't play well with asan
+  # https://github.com/google/sanitizers/issues/247
+  add_definitions(-U_FORTIFY_SOURCE)
+  add_compile_options("-fno-omit-frame-pointer;-fsanitize=address,undefined;-fno-optimize-sibling-calls;-fno-sanitize-recover=all")
   add_link_options("-fsanitize=address,undefined;-fno-optimize-sibling-calls;-fno-sanitize-recover=all")
   add_compile_options("$<$<OR:$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>>:-fsanitize=local-bounds,float-divide-by-zero,nullability,signed-integer-overflow,shift,integer-divide-by-zero,implicit-signed-integer-truncation>")
   add_link_options("$<$<OR:$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>>:-fsanitize=local-bounds,float-divide-by-zero,nullability,signed-integer-overflow,shift,integer-divide-by-zero,implicit-signed-integer-truncation>")

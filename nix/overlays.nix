@@ -16,7 +16,7 @@ let
 
   separateDebugInfo = debug;
 
-  meta = with stdenv.lib; {
+  meta = with lib; {
     description = "A language and an embedded JIT compiler";
     longDescription = ''
       Hobbes is a language, embedded compiler, and runtime for efficient
@@ -85,7 +85,7 @@ let
       ];
       ninjaFlags = [ "-v" ];
       UBSAN_OPTIONS="print_stacktrace=1";
-      ASAN_OPTIONS="abort_on_error=0,detect_leaks=0,check_initialization_order=1";
+      ASAN_OPTIONS="detect_leaks=0:strict_string_checks=1:detect_stack_use_after_return=1:check_initialization_order=1:strict_init_order=1:use_odr_indicator=1";
 
       nativeBuildInputs = nativeBuildInputs;
       buildInputs = buildInputs ++ [ (llvmPkgs { inherit llvmVersion; }).llvm ];
@@ -119,7 +119,7 @@ in {
       (llvmVersion: {
         name = "clang-" + toString llvmVersion + "-ASanAndUBSan";
         value = recurseIntoAttrs ({
-          hobbes = dbg (callPackage withCLANGAsanAndUBSan { inherit llvmVersion; });
+          hobbes = (callPackage withCLANGAsanAndUBSan { inherit llvmVersion; });
         });
       }) llvmVersions));
 }

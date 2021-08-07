@@ -23,7 +23,7 @@ jobs:
       - name: nix log hobbesPackages/clang-${{ matrix.clang }}-ASanAndUBSan/hobbes
         if: ${{ always() }}
         run: |
-          nix log  .#hobbesPackages/clang-${{ matrix.clang }}-ASanAndUBSan/hobbes &> ${{ matrix.os }}-clang-${{ matrix.clang }}--ASanAndUBSan-hobbes.log
+          nix log  .#hobbesPackages/clang-${{ matrix.clang }}-ASanAndUBSan/hobbes &> ${{ matrix.os }}-clang-${{ matrix.clang }}-ASanAndUBSan-hobbes.log
       - name: upload log ${{ matrix.os }}-clang-${{ matrix.clang }}-ASanAndUBSan-hobbes.log
         if: ${{ always() }}
         uses: actions/upload-artifact@v1
