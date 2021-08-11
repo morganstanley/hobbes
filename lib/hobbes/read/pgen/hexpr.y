@@ -518,6 +518,15 @@ def: importdef { $$ = $1; }
    | id id id id id id id id id id "=" l0expr { $$ = new MVarDef(list(*$1, *$2, *$3, *$4, *$5, *$6, *$7, *$8, *$9, *$10), ExprPtr($12), m(@1, @12)); }
    | id id id id id id id id id id id "=" l0expr { $$ = new MVarDef(list(*$1, *$2, *$3, *$4, *$5, *$6, *$7, *$8, *$9, *$10, *$11), ExprPtr($13), m(@1, @13)); }
    | id id id id id id id id id id id id "=" l0expr { $$ = new MVarDef(list(*$1, *$2, *$3, *$4, *$5, *$6, *$7, *$8, *$9, *$10, *$11, *$12), ExprPtr($14), m(@1, @14)); }
+   | id id id id id id id id id id id id id "=" l0expr { $$ = new MVarDef(list(*$1, *$2, *$3, *$4, *$5, *$6, *$7, *$8, *$9, *$10, *$11, *$12, *$13), ExprPtr($15), m(@1, @15)); }
+   | id id id id id id id id id id id id id id "=" l0expr { $$ = new MVarDef(list(*$1, *$2, *$3, *$4, *$5, *$6, *$7, *$8, *$9, *$10, *$11, *$12, *$13, *$14), ExprPtr($16), m(@1, @16)); }
+   | id id id id id id id id id id id id id id id "=" l0expr { $$ = new MVarDef(list(*$1, *$2, *$3, *$4, *$5, *$6, *$7, *$8, *$9, *$10, *$11, *$12, *$13, *$14, *$15), ExprPtr($17), m(@1, @17)); }
+   | id id id id id id id id id id id id id id id id "=" l0expr { $$ = new MVarDef(list(*$1, *$2, *$3, *$4, *$5, *$6, *$7, *$8, *$9, *$10, *$11, *$12, *$13, *$14, *$15, *$16), ExprPtr($18), m(@1, @18)); }
+   | id id id id id id id id id id id id id id id id id "=" l0expr { $$ = new MVarDef(list(*$1, *$2, *$3, *$4, *$5, *$6, *$7, *$8, *$9, *$10, *$11, *$12, *$13, *$14, *$15, *$16, *$17), ExprPtr($19), m(@1, @19)); }
+   | id id id id id id id id id id id id id id id id id id "=" l0expr { $$ = new MVarDef(list(*$1, *$2, *$3, *$4, *$5, *$6, *$7, *$8, *$9, *$10, *$11, *$12, *$13, *$14, *$15, *$16, *$17, *$18), ExprPtr($20), m(@1, @20)); }
+   | id id id id id id id id id id id id id id id id id id id "=" l0expr { $$ = new MVarDef(list(*$1, *$2, *$3, *$4, *$5, *$6, *$7, *$8, *$9, *$10, *$11, *$12, *$13, *$14, *$15, *$16, *$17, *$18, *$19), ExprPtr($21), m(@1, @21)); }
+   | id id id id id id id id id id id id id id id id id id id id "=" l0expr { $$ = new MVarDef(list(*$1, *$2, *$3, *$4, *$5, *$6, *$7, *$8, *$9, *$10, *$11, *$12, *$13, *$14, *$15, *$16, *$17, *$18, *$19, *$20), ExprPtr($22), m(@1, @22)); }
+   | id id id id id id id id id id id id id id id id id id id id id "=" l0expr { $$ = new MVarDef(list(*$1, *$2, *$3, *$4, *$5, *$6, *$7, *$8, *$9, *$10, *$11, *$12, *$13, *$14, *$15, *$16, *$17, *$18, *$19, *$20, *$21), ExprPtr($23), m(@1, @23)); }
 
    // evaluate an expression just for side-effects, then discard it
    | l5expr { $$ = new MVarDef(list(freshName()), let(freshName(), ExprPtr($1), mktunit(m(@1)), m(@1)), m(@1)); }
