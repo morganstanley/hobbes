@@ -1,6 +1,6 @@
-#line 1 "hexpr.lex.C"
+#line 2 "hexpr.lex.C"
 
-#line 3 "hexpr.lex.C"
+#line 4 "hexpr.lex.C"
 
 #define  YY_INT_ALIGNED short int
 
@@ -789,9 +789,9 @@ std::string* identifier(const char* b, const char* e) {
     return hobbes::autorelease(new std::string(b, e));
   }
 }
-#line 792 "hexpr.lex.C"
+#line 793 "hexpr.lex.C"
 
-#line 794 "hexpr.lex.C"
+#line 795 "hexpr.lex.C"
 
 #define INITIAL 0
 #define BLOCK_COMMENT 1
@@ -978,43 +978,43 @@ extern int yylex (void);
  */
 YY_DECL
 {
-    yy_state_type yy_current_state;
-    char *yy_cp, *yy_bp;
-    int yy_act;
+	yy_state_type yy_current_state;
+	char *yy_cp, *yy_bp;
+	int yy_act;
     
-    if ( !(yy_init) )
-    {
-        (yy_init) = 1;
+	if ( !(yy_init) )
+		{
+		(yy_init) = 1;
 
 #ifdef YY_USER_INIT
-        YY_USER_INIT;
+		YY_USER_INIT;
 #endif
 
         /* Create the reject buffer large enough to save one state per allowed character. */
         if ( ! (yy_state_buf) )
             (yy_state_buf) = (yy_state_type *)yyalloc(YY_STATE_BUF_SIZE  );
-        if ( ! (yy_state_buf) )
-            YY_FATAL_ERROR( "out of dynamic memory in yylex()" );
+            if ( ! (yy_state_buf) )
+                YY_FATAL_ERROR( "out of dynamic memory in yylex()" );
 
-        if ( ! (yy_start) )
-            (yy_start) = 1;     /* first start state */
+		if ( ! (yy_start) )
+			(yy_start) = 1;	/* first start state */
 
-        if ( ! yyin )
-            yyin = stdin;
+		if ( ! yyin )
+			yyin = stdin;
 
-        if ( ! yyout )
-            yyout = stdout;
+		if ( ! yyout )
+			yyout = stdout;
 
-        if ( ! YY_CURRENT_BUFFER ) {
-            yyensure_buffer_stack ();
-            YY_CURRENT_BUFFER_LVALUE =
-                yy_create_buffer( yyin, YY_BUF_SIZE );
-        }
+		if ( ! YY_CURRENT_BUFFER ) {
+			yyensure_buffer_stack ();
+			YY_CURRENT_BUFFER_LVALUE =
+				yy_create_buffer( yyin, YY_BUF_SIZE );
+		}
 
-        yy_load_buffer_state(  );
-    }
+		yy_load_buffer_state(  );
+		}
 
-    {
+	{
 #line 71 "hexpr.l"
 
 
@@ -1028,7 +1028,7 @@ YY_DECL
   }
 
 
-#line 1031 "hexpr.lex.C"
+#line 1032 "hexpr.lex.C"
 
 	while ( /*CONSTCOND*/1 )		/* loops until end-of-file is reached */
 		{
@@ -1730,7 +1730,7 @@ YY_RULE_SETUP
 #line 214 "hexpr.l"
 ECHO;
 	YY_BREAK
-#line 1733 "hexpr.lex.C"
+#line 1734 "hexpr.lex.C"
 			case YY_STATE_EOF(INITIAL):
 			case YY_STATE_EOF(BLOCK_COMMENT):
 				yyterminate();
@@ -2013,21 +2013,21 @@ static int yy_get_next_buffer (void)
  */
     static yy_state_type yy_try_NUL_trans  (yy_state_type yy_current_state )
 {
-    int yy_is_jam;
+	int yy_is_jam;
     
-    YY_CHAR yy_c = 1;
-    while ( yy_chk[yy_base[yy_current_state] + yy_c] != yy_current_state )
-    {
-        yy_current_state = (int) yy_def[yy_current_state];
-        if ( yy_current_state >= 281 )
-            yy_c = yy_meta[yy_c];
-    }
-    yy_current_state = yy_nxt[yy_base[yy_current_state] + yy_c];
-    yy_is_jam = (yy_current_state == 280);
-    if ( ! yy_is_jam )
-        *(yy_state_ptr)++ = yy_current_state;
+	YY_CHAR yy_c = 1;
+	while ( yy_chk[yy_base[yy_current_state] + yy_c] != yy_current_state )
+		{
+		yy_current_state = (int) yy_def[yy_current_state];
+		if ( yy_current_state >= 281 )
+			yy_c = yy_meta[yy_c];
+		}
+	yy_current_state = yy_nxt[yy_base[yy_current_state] + yy_c];
+	yy_is_jam = (yy_current_state == 280);
+	if ( ! yy_is_jam )
+		*(yy_state_ptr)++ = yy_current_state;
 
-    return yy_is_jam ? 0 : yy_current_state;
+		return yy_is_jam ? 0 : yy_current_state;
 }
 
 #ifndef YY_NO_UNPUT
