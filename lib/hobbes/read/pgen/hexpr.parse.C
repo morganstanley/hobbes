@@ -1,8 +1,8 @@
-/* A Bison parser, made by GNU Bison 3.5.1.  */
+/* A Bison parser, made by GNU Bison 3.7.6.  */
 
 /* Bison implementation for Yacc-like parsers in C
 
-   Copyright (C) 1984, 1989-1990, 2000-2015, 2018-2020 Free Software Foundation,
+   Copyright (C) 1984, 1989-1990, 2000-2015, 2018-2021 Free Software Foundation,
    Inc.
 
    This program is free software: you can redistribute it and/or modify
@@ -16,7 +16,7 @@
    GNU General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
+   along with this program.  If not, see <https://www.gnu.org/licenses/>.  */
 
 /* As a special exception, you may create a larger work that contains
    part or all of the Bison parser skeleton and distribute that work
@@ -34,6 +34,10 @@
 /* C LALR(1) parser skeleton written by Richard Stallman, by
    simplifying the original so-called "semantic" parser.  */
 
+/* DO NOT RELY ON FEATURES THAT ARE NOT DOCUMENTED in the manual,
+   especially those whose name start with YY_ or yy_.  They are
+   private implementation details that can be changed or removed.  */
+
 /* All symbols defined below should begin with yy or YY, to avoid
    infringing on user name space.  This should be done even for local
    variables, as they might otherwise be expanded by user macros.
@@ -41,14 +45,11 @@
    define necessary library symbols; they are noted "INFRINGES ON
    USER NAME SPACE" below.  */
 
-/* Undocumented macros, especially those whose name start with YY_,
-   are private implementation details.  Do not rely on them.  */
+/* Identify Bison output, and Bison version.  */
+#define YYBISON 30706
 
-/* Identify Bison output.  */
-#define YYBISON 1
-
-/* Bison version.  */
-#define YYBISON_VERSION "3.5.1"
+/* Bison version string.  */
+#define YYBISON_VERSION "3.7.6"
 
 /* Skeleton name.  */
 #define YYSKELETON_NAME "yacc.c"
@@ -322,7 +323,7 @@ extern PatVarCtorFn patVarCtorFn;
 }
 
 
-#line 326 "hexpr.parse.C"
+#line 327 "hexpr.parse.C"
 
 # ifndef YY_CAST
 #  ifdef __cplusplus
@@ -345,220 +346,194 @@ extern PatVarCtorFn patVarCtorFn;
 #  endif
 # endif
 
-/* Enabling verbose error messages.  */
-#ifdef YYERROR_VERBOSE
-# undef YYERROR_VERBOSE
-# define YYERROR_VERBOSE 1
-#else
-# define YYERROR_VERBOSE 1
-#endif
-
-/* Use api.header.include to #include this header
-   instead of duplicating it here.  */
-#ifndef YY_YY_HEXPR_PARSE_H_INCLUDED
-# define YY_YY_HEXPR_PARSE_H_INCLUDED
-/* Debug traces.  */
-#ifndef YYDEBUG
-# define YYDEBUG 0
-#endif
-#if YYDEBUG
-extern int yydebug;
-#endif
-
-/* Token type.  */
-#ifndef YYTOKENTYPE
-# define YYTOKENTYPE
-  enum yytokentype
-  {
-    TPARSEMODULE = 258,
-    TPARSEDEFN = 259,
-    TPARSEEXPR = 260,
-    TOPTION = 261,
-    TMODULE = 262,
-    TWHERE = 263,
-    TIMPORT = 264,
-    TTYPE = 265,
-    TDATA = 266,
-    TCLASS = 267,
-    TINST = 268,
-    TINDENT = 269,
-    TBOOL = 270,
-    TCHAR = 271,
-    TBYTE = 272,
-    TBYTES = 273,
-    TSHORT = 274,
-    TINT = 275,
-    TLONG = 276,
-    TINT128 = 277,
-    TFLOAT = 278,
-    TDOUBLE = 279,
-    TIDENT = 280,
-    TSTRING = 281,
-    TREGEX = 282,
-    TTIMEINTERVAL = 283,
-    TTIME = 284,
-    TDATETIME = 285,
-    TTUPSECTION = 286,
-    TCSTARROW = 287,
-    TARROW = 288,
-    TCOLON = 289,
-    TEXISTS = 290,
-    TASSIGN = 291,
-    TPARROW = 292,
-    TEQUALS = 293,
-    TASSUMP = 294,
-    TAPPEND = 295,
-    TPLUS = 296,
-    TMINUS = 297,
-    TTIMES = 298,
-    TDIVIDE = 299,
-    TREM = 300,
-    TDOT = 301,
-    TEQUIV = 302,
-    TEQ = 303,
-    TCIEQ = 304,
-    TNEQ = 305,
-    TLT = 306,
-    TLTE = 307,
-    TGT = 308,
-    TGTE = 309,
-    TNOT = 310,
-    TLET = 311,
-    TCASE = 312,
-    TDEFAULT = 313,
-    TMATCH = 314,
-    TMATCHES = 315,
-    TPARSE = 316,
-    TWITH = 317,
-    TOF = 318,
-    TAND = 319,
-    TOR = 320,
-    TIF = 321,
-    TTHEN = 322,
-    TELSE = 323,
-    TIN = 324,
-    TPACK = 325,
-    TUNPACK = 326,
-    TDO = 327,
-    TRETURN = 328,
-    TLPAREN = 329,
-    TRPAREN = 330,
-    TLBRACKET = 331,
-    TRBRACKET = 332,
-    TLBRACE = 333,
-    TRBRACE = 334,
-    TBAR = 335,
-    TCOMMA = 336,
-    TSEMICOLON = 337,
-    TFN = 338,
-    TFNL = 339,
-    TCOMPOSE = 340,
-    TUPTO = 341,
-    TCARET = 342,
-    TAT = 343,
-    TDOLLAR = 344,
-    TQUESTION = 345,
-    TSQUOTE = 346,
-    TEQUOTE = 347,
-    TUNSAFE = 348,
-    TSAFE = 349,
-    TLPRAGMA = 350,
-    TRPRAGMA = 351
-  };
-#endif
-
-/* Value type.  */
-#if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
-union YYSTYPE
+// #include "hexpr.parse.H"
+/* Symbol kind.  */
+enum yysymbol_kind_t
 {
-#line 262 "hexpr.y"
-
-  hobbes::Module*              module;
-  hobbes::ModuleDefs*          mdefs;
-  hobbes::ModuleDef*           mdef;
-  hobbes::CFunDepDef*          fundep;
-  hobbes::CFunDepDefs*         fundeps;
-  hobbes::MVarTypeDefs*        mvtydefs;
-  hobbes::MVarTypeDef*         mvtydef;
-  hobbes::MVarDefs*            mvdefs;
-  hobbes::MVarDef*             mvdef;
-  hobbes::str::seq*            strings;
-
-  hobbes::Expr*                exp;
-  hobbes::Exprs*               exps;
-  hobbes::MkRecord::FieldDefs* rfields;
-  hobbes::Case::Bindings*      vfields;
-  hobbes::Case::Binding*       vbind;
-
-  hobbes::PatternRows*         patternexps;
-  hobbes::PatternRow*          patternexp;
-  hobbes::Patterns*            patterns;
-  hobbes::Pattern*             pattern;
-  hobbes::CSelection*          cselection;
-  hobbes::CSelections*         cselections;
-  hobbes::MatchRecord::Fields* recpatfields;
-  hobbes::MatchRecord::Field*  recpatfield;
-
-  typedef std::pair<hobbes::PatternPtr, hobbes::ExprPtr> LetBinding;
-  typedef std::vector<LetBinding>                        LetBindings;
-
-  LetBinding*                             letbinding;
-  LetBindings*                            letbindings;
-
-  hobbes::QualType*            qualtype;
-  hobbes::Constraints*         tconstraints;
-  hobbes::Constraint*          tconstraint;
-  const hobbes::MonoTypePtr*   mtype;
-  hobbes::MonoTypes*           mtypes;
-  hobbes::Record::Members*     mreclist;
-  hobbes::Variant::Members*    mvarlist;
-
-  std::string*                            string;
-  bool                                    boolv;
-  char                                    charv;
-  short                                   shortv;
-  int                                     intv;
-  long                                    longv;
-  __int128                                int128v;
-  float                                   floatv;
-  double                                  doublev;
-
-  hobbes::Grammar*             prules;
-  hobbes::Grammar::value_type* prule;
-  hobbes::GrammarRules*        prdefs;
-  hobbes::GrammarRule*         prdef;
-  hobbes::BoundGrammarValues*  pbelems;
-  hobbes::BoundGrammarValue*   pbelem;
-  hobbes::GrammarValue*        pvalue;
-
-#line 535 "hexpr.parse.C"
-
+  YYSYMBOL_YYEMPTY = -2,
+  YYSYMBOL_YYEOF = 0,                      /* "end of file"  */
+  YYSYMBOL_YYerror = 1,                    /* error  */
+  YYSYMBOL_YYUNDEF = 2,                    /* "invalid token"  */
+  YYSYMBOL_TPARSEMODULE = 3,               /* "domodule"  */
+  YYSYMBOL_TPARSEDEFN = 4,                 /* "dodefn"  */
+  YYSYMBOL_TPARSEEXPR = 5,                 /* "doexpr"  */
+  YYSYMBOL_TOPTION = 6,                    /* "option"  */
+  YYSYMBOL_TMODULE = 7,                    /* "module"  */
+  YYSYMBOL_TWHERE = 8,                     /* "where"  */
+  YYSYMBOL_TIMPORT = 9,                    /* "import"  */
+  YYSYMBOL_TTYPE = 10,                     /* "type"  */
+  YYSYMBOL_TDATA = 11,                     /* "data"  */
+  YYSYMBOL_TCLASS = 12,                    /* "class"  */
+  YYSYMBOL_TINST = 13,                     /* "instance"  */
+  YYSYMBOL_TINDENT = 14,                   /* "indent"  */
+  YYSYMBOL_TBOOL = 15,                     /* "boolV"  */
+  YYSYMBOL_TCHAR = 16,                     /* "charV"  */
+  YYSYMBOL_TBYTE = 17,                     /* "byteV"  */
+  YYSYMBOL_TBYTES = 18,                    /* "bytesV"  */
+  YYSYMBOL_TSHORT = 19,                    /* "shortV"  */
+  YYSYMBOL_TINT = 20,                      /* "intV"  */
+  YYSYMBOL_TLONG = 21,                     /* "longV"  */
+  YYSYMBOL_TINT128 = 22,                   /* "int128V"  */
+  YYSYMBOL_TFLOAT = 23,                    /* "floatV"  */
+  YYSYMBOL_TDOUBLE = 24,                   /* "doubleV"  */
+  YYSYMBOL_TIDENT = 25,                    /* "id"  */
+  YYSYMBOL_TSTRING = 26,                   /* "stringV"  */
+  YYSYMBOL_TREGEX = 27,                    /* "regexV"  */
+  YYSYMBOL_TTIMEINTERVAL = 28,             /* "timespanV"  */
+  YYSYMBOL_TTIME = 29,                     /* "timeV"  */
+  YYSYMBOL_TDATETIME = 30,                 /* "dateTimeV"  */
+  YYSYMBOL_TTUPSECTION = 31,               /* "tupSection"  */
+  YYSYMBOL_TCSTARROW = 32,                 /* "=>"  */
+  YYSYMBOL_TARROW = 33,                    /* "->"  */
+  YYSYMBOL_TCOLON = 34,                    /* ":"  */
+  YYSYMBOL_TEXISTS = 35,                   /* "exists"  */
+  YYSYMBOL_TASSIGN = 36,                   /* "<-"  */
+  YYSYMBOL_TPARROW = 37,                   /* ":="  */
+  YYSYMBOL_TEQUALS = 38,                   /* "="  */
+  YYSYMBOL_TASSUMP = 39,                   /* "::"  */
+  YYSYMBOL_TAPPEND = 40,                   /* "++"  */
+  YYSYMBOL_TPLUS = 41,                     /* "+"  */
+  YYSYMBOL_TMINUS = 42,                    /* "-"  */
+  YYSYMBOL_TTIMES = 43,                    /* "*"  */
+  YYSYMBOL_TDIVIDE = 44,                   /* "/"  */
+  YYSYMBOL_TREM = 45,                      /* "%"  */
+  YYSYMBOL_TDOT = 46,                      /* "."  */
+  YYSYMBOL_TEQUIV = 47,                    /* "=="  */
+  YYSYMBOL_TEQ = 48,                       /* "==="  */
+  YYSYMBOL_TCIEQ = 49,                     /* "~"  */
+  YYSYMBOL_TNEQ = 50,                      /* "!="  */
+  YYSYMBOL_TLT = 51,                       /* "<"  */
+  YYSYMBOL_TLTE = 52,                      /* "<="  */
+  YYSYMBOL_TGT = 53,                       /* ">"  */
+  YYSYMBOL_TGTE = 54,                      /* ">="  */
+  YYSYMBOL_TNOT = 55,                      /* "!"  */
+  YYSYMBOL_TLET = 56,                      /* "let"  */
+  YYSYMBOL_TCASE = 57,                     /* "case"  */
+  YYSYMBOL_TDEFAULT = 58,                  /* "default"  */
+  YYSYMBOL_TMATCH = 59,                    /* "match"  */
+  YYSYMBOL_TMATCHES = 60,                  /* "matches"  */
+  YYSYMBOL_TPARSE = 61,                    /* "parse"  */
+  YYSYMBOL_TWITH = 62,                     /* "with"  */
+  YYSYMBOL_TOF = 63,                       /* "of"  */
+  YYSYMBOL_TAND = 64,                      /* "and"  */
+  YYSYMBOL_TOR = 65,                       /* "or"  */
+  YYSYMBOL_TIF = 66,                       /* "if"  */
+  YYSYMBOL_TTHEN = 67,                     /* "then"  */
+  YYSYMBOL_TELSE = 68,                     /* "else"  */
+  YYSYMBOL_TIN = 69,                       /* "in"  */
+  YYSYMBOL_TPACK = 70,                     /* "pack"  */
+  YYSYMBOL_TUNPACK = 71,                   /* "unpack"  */
+  YYSYMBOL_TDO = 72,                       /* "do"  */
+  YYSYMBOL_TRETURN = 73,                   /* "return"  */
+  YYSYMBOL_TLPAREN = 74,                   /* "("  */
+  YYSYMBOL_TRPAREN = 75,                   /* ")"  */
+  YYSYMBOL_TLBRACKET = 76,                 /* "["  */
+  YYSYMBOL_TRBRACKET = 77,                 /* "]"  */
+  YYSYMBOL_TLBRACE = 78,                   /* "{"  */
+  YYSYMBOL_TRBRACE = 79,                   /* "}"  */
+  YYSYMBOL_TBAR = 80,                      /* "|"  */
+  YYSYMBOL_TCOMMA = 81,                    /* ","  */
+  YYSYMBOL_TSEMICOLON = 82,                /* ";"  */
+  YYSYMBOL_TFN = 83,                       /* "\\"  */
+  YYSYMBOL_TFNL = 84,                      /* "fn"  */
+  YYSYMBOL_TCOMPOSE = 85,                  /* "o"  */
+  YYSYMBOL_TUPTO = 86,                     /* ".."  */
+  YYSYMBOL_TCARET = 87,                    /* "^"  */
+  YYSYMBOL_TAT = 88,                       /* "@"  */
+  YYSYMBOL_TDOLLAR = 89,                   /* "$"  */
+  YYSYMBOL_TQUESTION = 90,                 /* "?"  */
+  YYSYMBOL_TSQUOTE = 91,                   /* "'"  */
+  YYSYMBOL_TEQUOTE = 92,                   /* "`"  */
+  YYSYMBOL_TUNSAFE = 93,                   /* "UNSAFE"  */
+  YYSYMBOL_TSAFE = 94,                     /* "SAFE"  */
+  YYSYMBOL_TLPRAGMA = 95,                  /* "{-#"  */
+  YYSYMBOL_TRPRAGMA = 96,                  /* "#-}"  */
+  YYSYMBOL_97_ = 97,                       /* "=~"  */
+  YYSYMBOL_YYACCEPT = 98,                  /* $accept  */
+  YYSYMBOL_s = 99,                         /* s  */
+  YYSYMBOL_module = 100,                   /* module  */
+  YYSYMBOL_defs = 101,                     /* defs  */
+  YYSYMBOL_def = 102,                      /* def  */
+  YYSYMBOL_importdef = 103,                /* importdef  */
+  YYSYMBOL_pragmadef = 104,                /* pragmadef  */
+  YYSYMBOL_pragmaty = 105,                 /* pragmaty  */
+  YYSYMBOL_tydef = 106,                    /* tydef  */
+  YYSYMBOL_vartybind = 107,                /* vartybind  */
+  YYSYMBOL_vardef = 108,                   /* vardef  */
+  YYSYMBOL_classdef = 109,                 /* classdef  */
+  YYSYMBOL_fundeps = 110,                  /* fundeps  */
+  YYSYMBOL_fundep = 111,                   /* fundep  */
+  YYSYMBOL_cmembers = 112,                 /* cmembers  */
+  YYSYMBOL_cmember = 113,                  /* cmember  */
+  YYSYMBOL_instdef = 114,                  /* instdef  */
+  YYSYMBOL_imembers = 115,                 /* imembers  */
+  YYSYMBOL_imember = 116,                  /* imember  */
+  YYSYMBOL_names = 117,                    /* names  */
+  YYSYMBOL_nameseq = 118,                  /* nameseq  */
+  YYSYMBOL_name = 119,                     /* name  */
+  YYSYMBOL_opname = 120,                   /* opname  */
+  YYSYMBOL_idseq = 121,                    /* idseq  */
+  YYSYMBOL_types = 122,                    /* types  */
+  YYSYMBOL_l0expr = 123,                   /* l0expr  */
+  YYSYMBOL_lhexpr = 124,                   /* lhexpr  */
+  YYSYMBOL_l1expr = 125,                   /* l1expr  */
+  YYSYMBOL_l2expr = 126,                   /* l2expr  */
+  YYSYMBOL_l3expr = 127,                   /* l3expr  */
+  YYSYMBOL_l4expr = 128,                   /* l4expr  */
+  YYSYMBOL_l5expr = 129,                   /* l5expr  */
+  YYSYMBOL_letbindings = 130,              /* letbindings  */
+  YYSYMBOL_letbinding = 131,               /* letbinding  */
+  YYSYMBOL_dobindings = 132,               /* dobindings  */
+  YYSYMBOL_dobinding = 133,                /* dobinding  */
+  YYSYMBOL_cselconds = 134,                /* cselconds  */
+  YYSYMBOL_cselection = 135,               /* cselection  */
+  YYSYMBOL_cselections = 136,              /* cselections  */
+  YYSYMBOL_l6expr = 137,                   /* l6expr  */
+  YYSYMBOL_prules = 138,                   /* prules  */
+  YYSYMBOL_prule = 139,                    /* prule  */
+  YYSYMBOL_prdefs = 140,                   /* prdefs  */
+  YYSYMBOL_prdef = 141,                    /* prdef  */
+  YYSYMBOL_pbelems = 142,                  /* pbelems  */
+  YYSYMBOL_pbelem = 143,                   /* pbelem  */
+  YYSYMBOL_pvalue = 144,                   /* pvalue  */
+  YYSYMBOL_tsseq = 145,                    /* tsseq  */
+  YYSYMBOL_l6exprs = 146,                  /* l6exprs  */
+  YYSYMBOL_patternexps = 147,              /* patternexps  */
+  YYSYMBOL_patternexp = 148,               /* patternexp  */
+  YYSYMBOL_patterns = 149,                 /* patterns  */
+  YYSYMBOL_refutablep = 150,               /* refutablep  */
+  YYSYMBOL_irrefutablep = 151,             /* irrefutablep  */
+  YYSYMBOL_pattern = 152,                  /* pattern  */
+  YYSYMBOL_patternseq = 153,               /* patternseq  */
+  YYSYMBOL_patternseqn = 154,              /* patternseqn  */
+  YYSYMBOL_recpatfields = 155,             /* recpatfields  */
+  YYSYMBOL_recpatfield = 156,              /* recpatfield  */
+  YYSYMBOL_recfields = 157,                /* recfields  */
+  YYSYMBOL_recfieldname = 158,             /* recfieldname  */
+  YYSYMBOL_recfieldpath = 159,             /* recfieldpath  */
+  YYSYMBOL_varfields = 160,                /* varfields  */
+  YYSYMBOL_varbind = 161,                  /* varbind  */
+  YYSYMBOL_cargs = 162,                    /* cargs  */
+  YYSYMBOL_qtype = 163,                    /* qtype  */
+  YYSYMBOL_cst = 164,                      /* cst  */
+  YYSYMBOL_tpreds = 165,                   /* tpreds  */
+  YYSYMBOL_tpred = 166,                    /* tpred  */
+  YYSYMBOL_l1mtargl = 167,                 /* l1mtargl  */
+  YYSYMBOL_ltmtype = 168,                  /* ltmtype  */
+  YYSYMBOL_l0mtype = 169,                  /* l0mtype  */
+  YYSYMBOL_l1mtype = 170,                  /* l1mtype  */
+  YYSYMBOL_tyind = 171,                    /* tyind  */
+  YYSYMBOL_cppid = 172,                    /* cppid  */
+  YYSYMBOL_l0mtargl = 173,                 /* l0mtargl  */
+  YYSYMBOL_l0mtarglt = 174,                /* l0mtarglt  */
+  YYSYMBOL_mtuplist = 175,                 /* mtuplist  */
+  YYSYMBOL_msumlist = 176,                 /* msumlist  */
+  YYSYMBOL_mreclist = 177,                 /* mreclist  */
+  YYSYMBOL_mvarlist = 178,                 /* mvarlist  */
+  YYSYMBOL_id = 179                        /* id  */
 };
-typedef union YYSTYPE YYSTYPE;
-# define YYSTYPE_IS_TRIVIAL 1
-# define YYSTYPE_IS_DECLARED 1
-#endif
+typedef enum yysymbol_kind_t yysymbol_kind_t;
 
-/* Location type.  */
-#if ! defined YYLTYPE && ! defined YYLTYPE_IS_DECLARED
-typedef struct YYLTYPE YYLTYPE;
-struct YYLTYPE
-{
-  int first_line;
-  int first_column;
-  int last_line;
-  int last_column;
-};
-# define YYLTYPE_IS_DECLARED 1
-# define YYLTYPE_IS_TRIVIAL 1
-#endif
-
-
-extern YYSTYPE yylval;
-extern YYLTYPE yylloc;
-int yyparse (void);
-
-#endif /* !YY_YY_HEXPR_PARSE_H_INCLUDED  */
 
 
 
@@ -597,6 +572,18 @@ typedef __INT_LEAST16_TYPE__ yytype_int16;
 typedef int_least16_t yytype_int16;
 #else
 typedef short yytype_int16;
+#endif
+
+/* Work around bug in HP-UX 11.23, which defines these macros
+   incorrectly for preprocessor constants.  This workaround can likely
+   be removed in 2023, as HPE has promised support for HP-UX 11.23
+   (aka HP-UX 11i v2) only through the end of 2022; see Table 2 of
+   <https://h20195.www2.hpe.com/V2/getpdf.aspx/4AA4-7673ENW.pdf>.  */
+#ifdef __hpux
+# undef UINT_LEAST8_MAX
+# undef UINT_LEAST16_MAX
+# define UINT_LEAST8_MAX 255
+# define UINT_LEAST16_MAX 65535
 #endif
 
 #if defined __UINT_LEAST8_MAX__ && __UINT_LEAST8_MAX__ <= __INT_MAX__
@@ -658,6 +645,7 @@ typedef int yytype_uint16;
 
 #define YYSIZEOF(X) YY_CAST (YYPTRDIFF_T, sizeof (X))
 
+
 /* Stored state numbers (used for stacks). */
 typedef yytype_int16 yy_state_t;
 
@@ -675,6 +663,7 @@ typedef int yy_state_fast_t;
 #  define YY_(Msgid) Msgid
 # endif
 #endif
+
 
 #ifndef YY_ATTRIBUTE_PURE
 # if defined __GNUC__ && 2 < __GNUC__ + (96 <= __GNUC_MINOR__)
@@ -694,9 +683,9 @@ typedef int yy_state_fast_t;
 
 /* Suppress unused-variable warnings by "using" E.  */
 #if ! defined lint || defined __GNUC__
-# define YYUSE(E) ((void) (E))
+# define YY_USE(E) ((void) (E))
 #else
-# define YYUSE(E) /* empty */
+# define YY_USE(E) /* empty */
 #endif
 
 #if defined __GNUC__ && ! defined __ICC && 407 <= __GNUC__ * 100 + __GNUC_MINOR__
@@ -733,7 +722,7 @@ typedef int yy_state_fast_t;
 
 #define YY_ASSERT(E) ((void) (0 && (E)))
 
-#if ! defined yyoverflow || YYERROR_VERBOSE
+#if 1
 
 /* The parser invokes alloca or malloc; define the necessary symbols.  */
 
@@ -798,8 +787,7 @@ void free (void *); /* INFRINGES ON USER NAME SPACE */
 #   endif
 #  endif
 # endif
-#endif /* ! defined yyoverflow || YYERROR_VERBOSE */
-
+#endif /* 1 */
 
 #if (! defined yyoverflow \
      && (! defined __cplusplus \
@@ -878,14 +866,16 @@ union yyalloc
 /* YYNSTATES -- Number of states.  */
 #define YYNSTATES  809
 
-#define YYUNDEFTOK  2
+/* YYMAXUTOK -- Last valid token kind.  */
 #define YYMAXUTOK   352
 
 
 /* YYTRANSLATE(TOKEN-NUM) -- Symbol number corresponding to TOKEN-NUM
    as returned by yylex, with out-of-bounds checking.  */
-#define YYTRANSLATE(YYX)                                                \
-  (0 <= (YYX) && (YYX) <= YYMAXUTOK ? yytranslate[YYX] : YYUNDEFTOK)
+#define YYTRANSLATE(YYX)                                \
+  (0 <= (YYX) && (YYX) <= YYMAXUTOK                     \
+   ? YY_CAST (yysymbol_kind_t, yytranslate[YYX])        \
+   : YYSYMBOL_YYUNDEF)
 
 /* YYTRANSLATE[TOKEN-NUM] -- Symbol number corresponding to TOKEN-NUM
    as returned by yylex.  */
@@ -973,29 +963,36 @@ static const yytype_int16 yyrline[] =
 };
 #endif
 
-#if YYDEBUG || YYERROR_VERBOSE || 1
+/** Accessing symbol of state STATE.  */
+#define YY_ACCESSING_SYMBOL(State) YY_CAST (yysymbol_kind_t, yystos[State])
+
+#if 1
+/* The user-facing name of the symbol whose (internal) number is
+   YYSYMBOL.  No bounds checking.  */
+static const char *yysymbol_name (yysymbol_kind_t yysymbol) YY_ATTRIBUTE_UNUSED;
+
 /* YYTNAME[SYMBOL-NUM] -- String name of the symbol SYMBOL-NUM.
    First, the terminals, then, starting at YYNTOKENS, nonterminals.  */
 static const char *const yytname[] =
 {
-  "$end", "error", "$undefined", "\"domodule\"", "\"dodefn\"",
-  "\"doexpr\"", "\"option\"", "\"module\"", "\"where\"", "\"import\"",
-  "\"type\"", "\"data\"", "\"class\"", "\"instance\"", "\"indent\"",
-  "\"boolV\"", "\"charV\"", "\"byteV\"", "\"bytesV\"", "\"shortV\"",
-  "\"intV\"", "\"longV\"", "\"int128V\"", "\"floatV\"", "\"doubleV\"",
-  "\"id\"", "\"stringV\"", "\"regexV\"", "\"timespanV\"", "\"timeV\"",
-  "\"dateTimeV\"", "\"tupSection\"", "\"=>\"", "\"->\"", "\":\"",
-  "\"exists\"", "\"<-\"", "\":=\"", "\"=\"", "\"::\"", "\"++\"", "\"+\"",
-  "\"-\"", "\"*\"", "\"/\"", "\"%\"", "\".\"", "\"==\"", "\"===\"",
-  "\"~\"", "\"!=\"", "\"<\"", "\"<=\"", "\">\"", "\">=\"", "\"!\"",
-  "\"let\"", "\"case\"", "\"default\"", "\"match\"", "\"matches\"",
-  "\"parse\"", "\"with\"", "\"of\"", "\"and\"", "\"or\"", "\"if\"",
-  "\"then\"", "\"else\"", "\"in\"", "\"pack\"", "\"unpack\"", "\"do\"",
-  "\"return\"", "\"(\"", "\")\"", "\"[\"", "\"]\"", "\"{\"", "\"}\"",
-  "\"|\"", "\",\"", "\";\"", "\"\\\\\"", "\"fn\"", "\"o\"", "\"..\"",
-  "\"^\"", "\"@\"", "\"$\"", "\"?\"", "\"'\"", "\"`\"", "\"UNSAFE\"",
-  "\"SAFE\"", "\"{-#\"", "\"#-}\"", "\"=~\"", "$accept", "s", "module",
-  "defs", "def", "importdef", "pragmadef", "pragmaty", "tydef",
+  "\"end of file\"", "error", "\"invalid token\"", "\"domodule\"",
+  "\"dodefn\"", "\"doexpr\"", "\"option\"", "\"module\"", "\"where\"",
+  "\"import\"", "\"type\"", "\"data\"", "\"class\"", "\"instance\"",
+  "\"indent\"", "\"boolV\"", "\"charV\"", "\"byteV\"", "\"bytesV\"",
+  "\"shortV\"", "\"intV\"", "\"longV\"", "\"int128V\"", "\"floatV\"",
+  "\"doubleV\"", "\"id\"", "\"stringV\"", "\"regexV\"", "\"timespanV\"",
+  "\"timeV\"", "\"dateTimeV\"", "\"tupSection\"", "\"=>\"", "\"->\"",
+  "\":\"", "\"exists\"", "\"<-\"", "\":=\"", "\"=\"", "\"::\"", "\"++\"",
+  "\"+\"", "\"-\"", "\"*\"", "\"/\"", "\"%\"", "\".\"", "\"==\"",
+  "\"===\"", "\"~\"", "\"!=\"", "\"<\"", "\"<=\"", "\">\"", "\">=\"",
+  "\"!\"", "\"let\"", "\"case\"", "\"default\"", "\"match\"",
+  "\"matches\"", "\"parse\"", "\"with\"", "\"of\"", "\"and\"", "\"or\"",
+  "\"if\"", "\"then\"", "\"else\"", "\"in\"", "\"pack\"", "\"unpack\"",
+  "\"do\"", "\"return\"", "\"(\"", "\")\"", "\"[\"", "\"]\"", "\"{\"",
+  "\"}\"", "\"|\"", "\",\"", "\";\"", "\"\\\\\"", "\"fn\"", "\"o\"",
+  "\"..\"", "\"^\"", "\"@\"", "\"$\"", "\"?\"", "\"'\"", "\"`\"",
+  "\"UNSAFE\"", "\"SAFE\"", "\"{-#\"", "\"#-}\"", "\"=~\"", "$accept", "s",
+  "module", "defs", "def", "importdef", "pragmadef", "pragmaty", "tydef",
   "vartybind", "vardef", "classdef", "fundeps", "fundep", "cmembers",
   "cmember", "instdef", "imembers", "imember", "names", "nameseq", "name",
   "opname", "idseq", "types", "l0expr", "lhexpr", "l1expr", "l2expr",
@@ -1010,9 +1007,15 @@ static const char *const yytname[] =
   "cppid", "l0mtargl", "l0mtarglt", "mtuplist", "msumlist", "mreclist",
   "mvarlist", "id", YY_NULLPTR
 };
+
+static const char *
+yysymbol_name (yysymbol_kind_t yysymbol)
+{
+  return yytname[yysymbol];
+}
 #endif
 
-# ifdef YYPRINT
+#ifdef YYPRINT
 /* YYTOKNUM[NUM] -- (External) token number corresponding to the
    (internal) symbol number NUM (which must be that of a token).  */
 static const yytype_int16 yytoknum[] =
@@ -1028,7 +1031,7 @@ static const yytype_int16 yytoknum[] =
      335,   336,   337,   338,   339,   340,   341,   342,   343,   344,
      345,   346,   347,   348,   349,   350,   351,   352
 };
-# endif
+#endif
 
 #define YYPACT_NINF (-590)
 
@@ -1232,7 +1235,7 @@ static const yytype_int16 yypgoto[] =
   /* YYDEFGOTO[NTERM-NUM].  */
 static const yytype_int16 yydefgoto[] =
 {
-      -1,     4,    43,    44,    45,    46,    47,   151,    48,    49,
+       0,     4,    43,    44,    45,    46,    47,   151,    48,    49,
      632,    50,   541,   542,   539,   540,    51,   551,   552,   265,
      266,    52,   139,   543,   272,   140,    65,    66,    67,    68,
       69,    70,   107,   108,   298,   299,   736,   472,   473,    54,
@@ -2042,10 +2045,10 @@ static const yytype_int8 yyr2[] =
 };
 
 
+enum { YYENOMEM = -2 };
+
 #define yyerrok         (yyerrstatus = 0)
 #define yyclearin       (yychar = YYEMPTY)
-#define YYEMPTY         (-2)
-#define YYEOF           0
 
 #define YYACCEPT        goto yyacceptlab
 #define YYABORT         goto yyabortlab
@@ -2071,10 +2074,9 @@ static const yytype_int8 yyr2[] =
       }                                                           \
   while (0)
 
-/* Error token number */
-#define YYTERROR        1
-#define YYERRCODE       256
-
+/* Backward compatibility with an undocumented macro.
+   Use YYerror or YYUNDEF. */
+#define YYERRCODE YYUNDEF
 
 /* YYLLOC_DEFAULT -- Set CURRENT to span from RHS[1] to RHS[N].
    If N is 0, then set CURRENT to the empty location which ends
@@ -2122,8 +2124,8 @@ do {                                            \
    This macro was not mandated originally: define only if we know
    we won't break user code: when these are the locations we know.  */
 
-#ifndef YY_LOCATION_PRINT
-# if defined YYLTYPE_IS_TRIVIAL && YYLTYPE_IS_TRIVIAL
+# ifndef YY_LOCATION_PRINT
+#  if defined YYLTYPE_IS_TRIVIAL && YYLTYPE_IS_TRIVIAL
 
 /* Print *YYLOCP on YYO.  Private, do not rely on its existence. */
 
@@ -2153,22 +2155,22 @@ yy_location_print_ (FILE *yyo, YYLTYPE const * const yylocp)
   return res;
  }
 
-#  define YY_LOCATION_PRINT(File, Loc)          \
+#   define YY_LOCATION_PRINT(File, Loc)          \
   yy_location_print_ (File, &(Loc))
 
-# else
-#  define YY_LOCATION_PRINT(File, Loc) ((void) 0)
-# endif
-#endif
+#  else
+#   define YY_LOCATION_PRINT(File, Loc) ((void) 0)
+#  endif
+# endif /* !defined YY_LOCATION_PRINT */
 
 
-# define YY_SYMBOL_PRINT(Title, Type, Value, Location)                    \
+# define YY_SYMBOL_PRINT(Title, Kind, Value, Location)                    \
 do {                                                                      \
   if (yydebug)                                                            \
     {                                                                     \
       YYFPRINTF (stderr, "%s ", Title);                                   \
       yy_symbol_print (stderr,                                            \
-                  Type, Value, Location); \
+                  Kind, Value, Location); \
       YYFPRINTF (stderr, "\n");                                           \
     }                                                                     \
 } while (0)
@@ -2179,19 +2181,20 @@ do {                                                                      \
 `-----------------------------------*/
 
 static void
-yy_symbol_value_print (FILE *yyo, int yytype, YYSTYPE const * const yyvaluep, YYLTYPE const * const yylocationp)
+yy_symbol_value_print (FILE *yyo,
+                       yysymbol_kind_t yykind, YYSTYPE const * const yyvaluep, YYLTYPE const * const yylocationp)
 {
   FILE *yyoutput = yyo;
-  YYUSE (yyoutput);
-  YYUSE (yylocationp);
+  YY_USE (yyoutput);
+  YY_USE (yylocationp);
   if (!yyvaluep)
     return;
 # ifdef YYPRINT
-  if (yytype < YYNTOKENS)
-    YYPRINT (yyo, yytoknum[yytype], *yyvaluep);
+  if (yykind < YYNTOKENS)
+    YYPRINT (yyo, yytoknum[yykind], *yyvaluep);
 # endif
   YY_IGNORE_MAYBE_UNINITIALIZED_BEGIN
-  YYUSE (yytype);
+  YY_USE (yykind);
   YY_IGNORE_MAYBE_UNINITIALIZED_END
 }
 
@@ -2201,14 +2204,15 @@ yy_symbol_value_print (FILE *yyo, int yytype, YYSTYPE const * const yyvaluep, YY
 `---------------------------*/
 
 static void
-yy_symbol_print (FILE *yyo, int yytype, YYSTYPE const * const yyvaluep, YYLTYPE const * const yylocationp)
+yy_symbol_print (FILE *yyo,
+                 yysymbol_kind_t yykind, YYSTYPE const * const yyvaluep, YYLTYPE const * const yylocationp)
 {
   YYFPRINTF (yyo, "%s %s (",
-             yytype < YYNTOKENS ? "token" : "nterm", yytname[yytype]);
+             yykind < YYNTOKENS ? "token" : "nterm", yysymbol_name (yykind));
 
   YY_LOCATION_PRINT (yyo, *yylocationp);
   YYFPRINTF (yyo, ": ");
-  yy_symbol_value_print (yyo, yytype, yyvaluep, yylocationp);
+  yy_symbol_value_print (yyo, yykind, yyvaluep, yylocationp);
   YYFPRINTF (yyo, ")");
 }
 
@@ -2241,7 +2245,8 @@ do {                                                            \
 `------------------------------------------------*/
 
 static void
-yy_reduce_print (yy_state_t *yyssp, YYSTYPE *yyvsp, YYLTYPE *yylsp, int yyrule)
+yy_reduce_print (yy_state_t *yyssp, YYSTYPE *yyvsp, YYLTYPE *yylsp,
+                 int yyrule)
 {
   int yylno = yyrline[yyrule];
   int yynrhs = yyr2[yyrule];
@@ -2253,9 +2258,9 @@ yy_reduce_print (yy_state_t *yyssp, YYSTYPE *yyvsp, YYLTYPE *yylsp, int yyrule)
     {
       YYFPRINTF (stderr, "   $%d = ", yyi + 1);
       yy_symbol_print (stderr,
-                       yystos[+yyssp[yyi + 1 - yynrhs]],
-                       &yyvsp[(yyi + 1) - (yynrhs)]
-                       , &(yylsp[(yyi + 1) - (yynrhs)])                       );
+                       YY_ACCESSING_SYMBOL (+yyssp[yyi + 1 - yynrhs]),
+                       &yyvsp[(yyi + 1) - (yynrhs)],
+                       &(yylsp[(yyi + 1) - (yynrhs)]));
       YYFPRINTF (stderr, "\n");
     }
 }
@@ -2270,8 +2275,8 @@ do {                                    \
    multiple parsers can coexist.  */
 int yydebug;
 #else /* !YYDEBUG */
-# define YYDPRINTF(Args)
-# define YY_SYMBOL_PRINT(Title, Type, Value, Location)
+# define YYDPRINTF(Args) ((void) 0)
+# define YY_SYMBOL_PRINT(Title, Kind, Value, Location)
 # define YY_STACK_PRINT(Bottom, Top)
 # define YY_REDUCE_PRINT(Rule)
 #endif /* !YYDEBUG */
@@ -2294,12 +2299,61 @@ int yydebug;
 #endif
 
 
-#if YYERROR_VERBOSE
+/* Context of a parse error.  */
+typedef struct
+{
+  yy_state_t *yyssp;
+  yysymbol_kind_t yytoken;
+  YYLTYPE *yylloc;
+} yypcontext_t;
 
-# ifndef yystrlen
-#  if defined __GLIBC__ && defined _STRING_H
-#   define yystrlen(S) (YY_CAST (YYPTRDIFF_T, strlen (S)))
-#  else
+/* Put in YYARG at most YYARGN of the expected tokens given the
+   current YYCTX, and return the number of tokens stored in YYARG.  If
+   YYARG is null, return the number of expected tokens (guaranteed to
+   be less than YYNTOKENS).  Return YYENOMEM on memory exhaustion.
+   Return 0 if there are more than YYARGN expected tokens, yet fill
+   YYARG up to YYARGN. */
+static int
+yypcontext_expected_tokens (const yypcontext_t *yyctx,
+                            yysymbol_kind_t yyarg[], int yyargn)
+{
+  /* Actual size of YYARG. */
+  int yycount = 0;
+  int yyn = yypact[+*yyctx->yyssp];
+  if (!yypact_value_is_default (yyn))
+    {
+      /* Start YYX at -YYN if negative to avoid negative indexes in
+         YYCHECK.  In other words, skip the first -YYN actions for
+         this state because they are default actions.  */
+      int yyxbegin = yyn < 0 ? -yyn : 0;
+      /* Stay within bounds of both yycheck and yytname.  */
+      int yychecklim = YYLAST - yyn + 1;
+      int yyxend = yychecklim < YYNTOKENS ? yychecklim : YYNTOKENS;
+      int yyx;
+      for (yyx = yyxbegin; yyx < yyxend; ++yyx)
+        if (yycheck[yyx + yyn] == yyx && yyx != YYSYMBOL_YYerror
+            && !yytable_value_is_error (yytable[yyx + yyn]))
+          {
+            if (!yyarg)
+              ++yycount;
+            else if (yycount == yyargn)
+              return 0;
+            else
+              yyarg[yycount++] = YY_CAST (yysymbol_kind_t, yyx);
+          }
+    }
+  if (yyarg && yycount == 0 && 0 < yyargn)
+    yyarg[0] = YYSYMBOL_YYEMPTY;
+  return yycount;
+}
+
+
+
+
+#ifndef yystrlen
+# if defined __GLIBC__ && defined _STRING_H
+#  define yystrlen(S) (YY_CAST (YYPTRDIFF_T, strlen (S)))
+# else
 /* Return the length of YYSTR.  */
 static YYPTRDIFF_T
 yystrlen (const char *yystr)
@@ -2309,13 +2363,13 @@ yystrlen (const char *yystr)
     continue;
   return yylen;
 }
-#  endif
 # endif
+#endif
 
-# ifndef yystpcpy
-#  if defined __GLIBC__ && defined _STRING_H && defined _GNU_SOURCE
-#   define yystpcpy stpcpy
-#  else
+#ifndef yystpcpy
+# if defined __GLIBC__ && defined _STRING_H && defined _GNU_SOURCE
+#  define yystpcpy stpcpy
+# else
 /* Copy YYSRC to YYDEST, returning the address of the terminating '\0' in
    YYDEST.  */
 static char *
@@ -2329,10 +2383,10 @@ yystpcpy (char *yydest, const char *yysrc)
 
   return yyd - 1;
 }
-#  endif
 # endif
+#endif
 
-# ifndef yytnamerr
+#ifndef yytnamerr
 /* Copy to YYRES the contents of YYSTR after stripping away unnecessary
    quotes and backslashes, so that it's suitable for yyerror.  The
    heuristic is that double-quoting is unnecessary unless the string
@@ -2347,7 +2401,6 @@ yytnamerr (char *yyres, const char *yystr)
     {
       YYPTRDIFF_T yyn = 0;
       char const *yyp = yystr;
-
       for (;;)
         switch (*++yyp)
           {
@@ -2381,31 +2434,15 @@ yytnamerr (char *yyres, const char *yystr)
   else
     return yystrlen (yystr);
 }
-# endif
+#endif
 
-/* Copy into *YYMSG, which is of size *YYMSG_ALLOC, an error message
-   about the unexpected token YYTOKEN for the state stack whose top is
-   YYSSP.
 
-   Return 0 if *YYMSG was successfully written.  Return 1 if *YYMSG is
-   not large enough to hold the message.  In that case, also set
-   *YYMSG_ALLOC to the required number of bytes.  Return 2 if the
-   required number of bytes is too large to store.  */
 static int
-yysyntax_error (YYPTRDIFF_T *yymsg_alloc, char **yymsg,
-                yy_state_t *yyssp, int yytoken)
+yy_syntax_error_arguments (const yypcontext_t *yyctx,
+                           yysymbol_kind_t yyarg[], int yyargn)
 {
-  enum { YYERROR_VERBOSE_ARGS_MAXIMUM = 5 };
-  /* Internationalized format string. */
-  const char *yyformat = YY_NULLPTR;
-  /* Arguments of yyformat: reported tokens (one for the "unexpected",
-     one per "expected"). */
-  char const *yyarg[YYERROR_VERBOSE_ARGS_MAXIMUM];
   /* Actual size of YYARG. */
   int yycount = 0;
-  /* Cumulated lengths of YYARG.  */
-  YYPTRDIFF_T yysize = 0;
-
   /* There are many possibilities here to consider:
      - If this state is a consistent state with a default action, then
        the only way this function was invoked is if the default action
@@ -2429,52 +2466,54 @@ yysyntax_error (YYPTRDIFF_T *yymsg_alloc, char **yymsg,
        one exception: it will still contain any token that will not be
        accepted due to an error action in a later state.
   */
-  if (yytoken != YYEMPTY)
+  if (yyctx->yytoken != YYSYMBOL_YYEMPTY)
     {
-      int yyn = yypact[+*yyssp];
-      YYPTRDIFF_T yysize0 = yytnamerr (YY_NULLPTR, yytname[yytoken]);
-      yysize = yysize0;
-      yyarg[yycount++] = yytname[yytoken];
-      if (!yypact_value_is_default (yyn))
-        {
-          /* Start YYX at -YYN if negative to avoid negative indexes in
-             YYCHECK.  In other words, skip the first -YYN actions for
-             this state because they are default actions.  */
-          int yyxbegin = yyn < 0 ? -yyn : 0;
-          /* Stay within bounds of both yycheck and yytname.  */
-          int yychecklim = YYLAST - yyn + 1;
-          int yyxend = yychecklim < YYNTOKENS ? yychecklim : YYNTOKENS;
-          int yyx;
-
-          for (yyx = yyxbegin; yyx < yyxend; ++yyx)
-            if (yycheck[yyx + yyn] == yyx && yyx != YYTERROR
-                && !yytable_value_is_error (yytable[yyx + yyn]))
-              {
-                if (yycount == YYERROR_VERBOSE_ARGS_MAXIMUM)
-                  {
-                    yycount = 1;
-                    yysize = yysize0;
-                    break;
-                  }
-                yyarg[yycount++] = yytname[yyx];
-                {
-                  YYPTRDIFF_T yysize1
-                    = yysize + yytnamerr (YY_NULLPTR, yytname[yyx]);
-                  if (yysize <= yysize1 && yysize1 <= YYSTACK_ALLOC_MAXIMUM)
-                    yysize = yysize1;
-                  else
-                    return 2;
-                }
-              }
-        }
+      int yyn;
+      if (yyarg)
+        yyarg[yycount] = yyctx->yytoken;
+      ++yycount;
+      yyn = yypcontext_expected_tokens (yyctx,
+                                        yyarg ? yyarg + 1 : yyarg, yyargn - 1);
+      if (yyn == YYENOMEM)
+        return YYENOMEM;
+      else
+        yycount += yyn;
     }
+  return yycount;
+}
+
+/* Copy into *YYMSG, which is of size *YYMSG_ALLOC, an error message
+   about the unexpected token YYTOKEN for the state stack whose top is
+   YYSSP.
+
+   Return 0 if *YYMSG was successfully written.  Return -1 if *YYMSG is
+   not large enough to hold the message.  In that case, also set
+   *YYMSG_ALLOC to the required number of bytes.  Return YYENOMEM if the
+   required number of bytes is too large to store.  */
+static int
+yysyntax_error (YYPTRDIFF_T *yymsg_alloc, char **yymsg,
+                const yypcontext_t *yyctx)
+{
+  enum { YYARGS_MAX = 5 };
+  /* Internationalized format string. */
+  const char *yyformat = YY_NULLPTR;
+  /* Arguments of yyformat: reported tokens (one for the "unexpected",
+     one per "expected"). */
+  yysymbol_kind_t yyarg[YYARGS_MAX];
+  /* Cumulated lengths of YYARG.  */
+  YYPTRDIFF_T yysize = 0;
+
+  /* Actual size of YYARG. */
+  int yycount = yy_syntax_error_arguments (yyctx, yyarg, YYARGS_MAX);
+  if (yycount == YYENOMEM)
+    return YYENOMEM;
 
   switch (yycount)
     {
-# define YYCASE_(N, S)                      \
+#define YYCASE_(N, S)                       \
       case N:                               \
         yyformat = S;                       \
-      break
+        break
     default: /* Avoid compiler warnings. */
       YYCASE_(0, YY_("syntax error"));
       YYCASE_(1, YY_("syntax error, unexpected %s"));
@@ -2482,17 +2521,23 @@ yysyntax_error (YYPTRDIFF_T *yymsg_alloc, char **yymsg,
       YYCASE_(3, YY_("syntax error, unexpected %s, expecting %s or %s"));
       YYCASE_(4, YY_("syntax error, unexpected %s, expecting %s or %s or %s"));
       YYCASE_(5, YY_("syntax error, unexpected %s, expecting %s or %s or %s or %s"));
-# undef YYCASE_
+#undef YYCASE_
     }
 
+  /* Compute error message size.  Don't count the "%s"s, but reserve
+     room for the terminator.  */
+  yysize = yystrlen (yyformat) - 2 * yycount + 1;
   {
-    /* Don't count the "%s"s in the final size, but reserve room for
-       the terminator.  */
-    YYPTRDIFF_T yysize1 = yysize + (yystrlen (yyformat) - 2 * yycount) + 1;
-    if (yysize <= yysize1 && yysize1 <= YYSTACK_ALLOC_MAXIMUM)
-      yysize = yysize1;
-    else
-      return 2;
+    int yyi;
+    for (yyi = 0; yyi < yycount; ++yyi)
+      {
+        YYPTRDIFF_T yysize1
+          = yysize + yytnamerr (YY_NULLPTR, yytname[yyarg[yyi]]);
+        if (yysize <= yysize1 && yysize1 <= YYSTACK_ALLOC_MAXIMUM)
+          yysize = yysize1;
+        else
+          return YYENOMEM;
+      }
   }
 
   if (*yymsg_alloc < yysize)
@@ -2501,7 +2546,7 @@ yysyntax_error (YYPTRDIFF_T *yymsg_alloc, char **yymsg,
       if (! (yysize <= *yymsg_alloc
              && *yymsg_alloc <= YYSTACK_ALLOC_MAXIMUM))
         *yymsg_alloc = YYSTACK_ALLOC_MAXIMUM;
-      return 1;
+      return -1;
     }
 
   /* Avoid sprintf, as that infringes on the user's name space.
@@ -2513,7 +2558,7 @@ yysyntax_error (YYPTRDIFF_T *yymsg_alloc, char **yymsg,
     while ((*yyp = *yyformat) != '\0')
       if (*yyp == '%' && yyformat[1] == 's' && yyi < yycount)
         {
-          yyp += yytnamerr (yyp, yyarg[yyi++]);
+          yyp += yytnamerr (yyp, yytname[yyarg[yyi++]]);
           yyformat += 2;
         }
       else
@@ -2524,30 +2569,29 @@ yysyntax_error (YYPTRDIFF_T *yymsg_alloc, char **yymsg,
   }
   return 0;
 }
-#endif /* YYERROR_VERBOSE */
+
 
 /*-----------------------------------------------.
 | Release the memory associated to this symbol.  |
 `-----------------------------------------------*/
 
 static void
-yydestruct (const char *yymsg, int yytype, YYSTYPE *yyvaluep, YYLTYPE *yylocationp)
+yydestruct (const char *yymsg,
+            yysymbol_kind_t yykind, YYSTYPE *yyvaluep, YYLTYPE *yylocationp)
 {
-  YYUSE (yyvaluep);
-  YYUSE (yylocationp);
+  YY_USE (yyvaluep);
+  YY_USE (yylocationp);
   if (!yymsg)
     yymsg = "Deleting";
-  YY_SYMBOL_PRINT (yymsg, yytype, yyvaluep, yylocationp);
+  YY_SYMBOL_PRINT (yymsg, yykind, yyvaluep, yylocationp);
 
   YY_IGNORE_MAYBE_UNINITIALIZED_BEGIN
-  YYUSE (yytype);
+  YY_USE (yykind);
   YY_IGNORE_MAYBE_UNINITIALIZED_END
 }
 
 
-
-
-/* The lookahead symbol.  */
+/* Lookahead token kind.  */
 int yychar;
 
 /* The semantic value of the lookahead symbol.  */
@@ -2562,6 +2606,8 @@ YYLTYPE yylloc
 int yynerrs;
 
 
+
+
 /*----------.
 | yyparse.  |
 `----------*/
@@ -2569,53 +2615,48 @@ int yynerrs;
 int
 yyparse (void)
 {
-    yy_state_fast_t yystate;
+    yy_state_fast_t yystate = 0;
     /* Number of tokens to shift before error messages enabled.  */
-    int yyerrstatus;
+    int yyerrstatus = 0;
 
-    /* The stacks and their tools:
-       'yyss': related to states.
-       'yyvs': related to semantic values.
-       'yyls': related to locations.
-
-       Refer to the stacks through separate pointers, to allow yyoverflow
+    /* Refer to the stacks through separate pointers, to allow yyoverflow
        to reallocate them elsewhere.  */
 
-    /* The state stack.  */
+    /* Their size.  */
+    YYPTRDIFF_T yystacksize = YYINITDEPTH;
+
+    /* The state stack: array, bottom, top.  */
     yy_state_t yyssa[YYINITDEPTH];
-    yy_state_t *yyss;
-    yy_state_t *yyssp;
+    yy_state_t *yyss = yyssa;
+    yy_state_t *yyssp = yyss;
 
-    /* The semantic value stack.  */
+    /* The semantic value stack: array, bottom, top.  */
     YYSTYPE yyvsa[YYINITDEPTH];
-    YYSTYPE *yyvs;
-    YYSTYPE *yyvsp;
+    YYSTYPE *yyvs = yyvsa;
+    YYSTYPE *yyvsp = yyvs;
 
-    /* The location stack.  */
+    /* The location stack: array, bottom, top.  */
     YYLTYPE yylsa[YYINITDEPTH];
-    YYLTYPE *yyls;
-    YYLTYPE *yylsp;
-
-    /* The locations where the error started and ended.  */
-    YYLTYPE yyerror_range[3];
-
-    YYPTRDIFF_T yystacksize;
+    YYLTYPE *yyls = yylsa;
+    YYLTYPE *yylsp = yyls;
 
   int yyn;
+  /* The return value of yyparse.  */
   int yyresult;
-  /* Lookahead token as an internal (translated) token number.  */
-  int yytoken = 0;
+  /* Lookahead symbol kind.  */
+  yysymbol_kind_t yytoken = YYSYMBOL_YYEMPTY;
   /* The variables used to return semantic value and location from the
      action routines.  */
   YYSTYPE yyval;
   YYLTYPE yyloc;
 
-#if YYERROR_VERBOSE
+  /* The locations where the error started and ended.  */
+  YYLTYPE yyerror_range[3];
+
   /* Buffer for error messages, and its allocated size.  */
   char yymsgbuf[128];
   char *yymsg = yymsgbuf;
   YYPTRDIFF_T yymsg_alloc = sizeof yymsgbuf;
-#endif
 
 #define YYPOPSTACK(N)   (yyvsp -= (N), yyssp -= (N), yylsp -= (N))
 
@@ -2623,16 +2664,8 @@ yyparse (void)
      Keep to zero when no symbol should be popped.  */
   int yylen = 0;
 
-  yyssp = yyss = yyssa;
-  yyvsp = yyvs = yyvsa;
-  yylsp = yyls = yylsa;
-  yystacksize = YYINITDEPTH;
-
   YYDPRINTF ((stderr, "Starting parse\n"));
 
-  yystate = 0;
-  yyerrstatus = 0;
-  yynerrs = 0;
   yychar = YYEMPTY; /* Cause a token to be read.  */
   yylsp[0] = yylloc;
   goto yysetstate;
@@ -2656,6 +2689,7 @@ yysetstate:
   YY_IGNORE_USELESS_CAST_BEGIN
   *yyssp = YY_CAST (yy_state_t, yystate);
   YY_IGNORE_USELESS_CAST_END
+  YY_STACK_PRINT (yyss, yyssp);
 
   if (yyss + yystacksize - 1 <= yyssp)
 #if !defined yyoverflow && !defined YYSTACK_RELOCATE
@@ -2705,7 +2739,7 @@ yysetstate:
         YYSTACK_RELOCATE (yyss_alloc, yyss);
         YYSTACK_RELOCATE (yyvs_alloc, yyvs);
         YYSTACK_RELOCATE (yyls_alloc, yyls);
-# undef YYSTACK_RELOCATE
+#  undef YYSTACK_RELOCATE
         if (yyss1 != yyssa)
           YYSTACK_FREE (yyss1);
       }
@@ -2745,17 +2779,29 @@ yybackup:
 
   /* Not known => get a lookahead token if don't already have one.  */
 
-  /* YYCHAR is either YYEMPTY or YYEOF or a valid lookahead symbol.  */
+  /* YYCHAR is either empty, or end-of-input, or a valid lookahead.  */
   if (yychar == YYEMPTY)
     {
-      YYDPRINTF ((stderr, "Reading a token: "));
+      YYDPRINTF ((stderr, "Reading a token\n"));
       yychar = yylex ();
     }
 
   if (yychar <= YYEOF)
     {
-      yychar = yytoken = YYEOF;
+      yychar = YYEOF;
+      yytoken = YYSYMBOL_YYEOF;
       YYDPRINTF ((stderr, "Now at end of input.\n"));
+    }
+  else if (yychar == YYerror)
+    {
+      /* The scanner already issued an error message, process directly
+         to error recovery.  But do not keep the error token as
+         lookahead, it is too special and may lead us to an endless
+         loop in error recovery. */
+      yychar = YYUNDEF;
+      yytoken = YYSYMBOL_YYerror;
+      yyerror_range[1] = yylloc;
+      goto yyerrlab1;
     }
   else
     {
@@ -2828,793 +2874,793 @@ yyreduce:
   YY_REDUCE_PRINT (yyn);
   switch (yyn)
     {
-  case 2:
+  case 2: /* s: "domodule" module  */
 #line 488 "hexpr.y"
                             { yyParsedModule = (yyvsp[0].module);                     }
-#line 2835 "hexpr.parse.C"
+#line 2881 "hexpr.parse.C"
     break;
 
-  case 3:
+  case 3: /* s: "dodefn" id "=" l0expr  */
 #line 489 "hexpr.y"
                             { yyParsedVar    = *(yyvsp[-2].string); yyParsedExpr = (yyvsp[0].exp); }
-#line 2841 "hexpr.parse.C"
+#line 2887 "hexpr.parse.C"
     break;
 
-  case 4:
+  case 4: /* s: "dodefn" l0expr  */
 #line 490 "hexpr.y"
                             { yyParsedVar    = "";  yyParsedExpr = (yyvsp[0].exp); }
-#line 2847 "hexpr.parse.C"
+#line 2893 "hexpr.parse.C"
     break;
 
-  case 5:
+  case 5: /* s: "doexpr" l0expr  */
 #line 491 "hexpr.y"
                             { yyParsedExpr   = (yyvsp[0].exp);                     }
-#line 2853 "hexpr.parse.C"
+#line 2899 "hexpr.parse.C"
     break;
 
-  case 6:
+  case 6: /* module: "option" id module  */
 #line 494 "hexpr.y"
                                  { (yyval.module) = (yyvsp[0].module); (yyval.module)->setOption(*(yyvsp[-1].string), m((yylsp[-2]))); }
-#line 2859 "hexpr.parse.C"
+#line 2905 "hexpr.parse.C"
     break;
 
-  case 7:
+  case 7: /* module: "module" id "where" defs  */
 #line 495 "hexpr.y"
                                  { (yyval.module) = new Module(*(yyvsp[-2].string), *(yyvsp[0].mdefs)); }
-#line 2865 "hexpr.parse.C"
+#line 2911 "hexpr.parse.C"
     break;
 
-  case 8:
+  case 8: /* module: defs  */
 #line 496 "hexpr.y"
                                  { (yyval.module) = new Module(freshName(), *(yyvsp[0].mdefs)); }
-#line 2871 "hexpr.parse.C"
+#line 2917 "hexpr.parse.C"
     break;
 
-  case 9:
+  case 9: /* defs: %empty  */
 #line 498 "hexpr.y"
                     { (yyval.mdefs) = autorelease(new ModuleDefs()); }
-#line 2877 "hexpr.parse.C"
+#line 2923 "hexpr.parse.C"
     break;
 
-  case 10:
+  case 10: /* defs: def  */
 #line 499 "hexpr.y"
                     { (yyval.mdefs) = autorelease(new ModuleDefs()); (yyval.mdefs)->push_back(ModuleDefPtr((yyvsp[0].mdef))); }
-#line 2883 "hexpr.parse.C"
+#line 2929 "hexpr.parse.C"
     break;
 
-  case 11:
+  case 11: /* defs: defs def  */
 #line 500 "hexpr.y"
                     { (yyval.mdefs) = (yyvsp[-1].mdefs);                            (yyval.mdefs)->push_back(ModuleDefPtr((yyvsp[0].mdef))); }
-#line 2889 "hexpr.parse.C"
+#line 2935 "hexpr.parse.C"
     break;
 
-  case 12:
+  case 12: /* def: importdef  */
 #line 502 "hexpr.y"
                { (yyval.mdef) = (yyvsp[0].mdef); }
-#line 2895 "hexpr.parse.C"
+#line 2941 "hexpr.parse.C"
     break;
 
-  case 13:
+  case 13: /* def: tydef  */
 #line 503 "hexpr.y"
                { (yyval.mdef) = (yyvsp[0].mdef); }
-#line 2901 "hexpr.parse.C"
+#line 2947 "hexpr.parse.C"
     break;
 
-  case 14:
+  case 14: /* def: vartybind  */
 #line 504 "hexpr.y"
                { (yyval.mdef) = (yyvsp[0].mvtydef); }
-#line 2907 "hexpr.parse.C"
+#line 2953 "hexpr.parse.C"
     break;
 
-  case 15:
+  case 15: /* def: classdef  */
 #line 505 "hexpr.y"
                { (yyval.mdef) = (yyvsp[0].mdef); }
-#line 2913 "hexpr.parse.C"
+#line 2959 "hexpr.parse.C"
     break;
 
-  case 16:
+  case 16: /* def: instdef  */
 #line 506 "hexpr.y"
                { (yyval.mdef) = (yyvsp[0].mdef); }
-#line 2919 "hexpr.parse.C"
+#line 2965 "hexpr.parse.C"
     break;
 
-  case 17:
+  case 17: /* def: pragmadef  */
 #line 507 "hexpr.y"
                { (yyval.mdef) = (yyvsp[0].mdef); }
-#line 2925 "hexpr.parse.C"
+#line 2971 "hexpr.parse.C"
     break;
 
-  case 18:
+  case 18: /* def: id "=" l0expr  */
 #line 509 "hexpr.y"
                    { (yyval.mdef) = new MVarDef(list(*(yyvsp[-2].string)), ExprPtr((yyvsp[0].exp)), m((yylsp[-2]), (yylsp[0]))); }
-#line 2931 "hexpr.parse.C"
+#line 2977 "hexpr.parse.C"
     break;
 
-  case 19:
+  case 19: /* def: id id "=" l0expr  */
 #line 510 "hexpr.y"
                       { (yyval.mdef) = new MVarDef(list(*(yyvsp[-3].string), *(yyvsp[-2].string)), ExprPtr((yyvsp[0].exp)), m((yylsp[-3]), (yylsp[0]))); }
-#line 2937 "hexpr.parse.C"
+#line 2983 "hexpr.parse.C"
     break;
 
-  case 20:
+  case 20: /* def: id id id "=" l0expr  */
 #line 511 "hexpr.y"
                          { (yyval.mdef) = new MVarDef(list(*(yyvsp[-4].string), *(yyvsp[-3].string), *(yyvsp[-2].string)), ExprPtr((yyvsp[0].exp)), m((yylsp[-4]), (yylsp[0]))); }
-#line 2943 "hexpr.parse.C"
+#line 2989 "hexpr.parse.C"
     break;
 
-  case 21:
+  case 21: /* def: id id id id "=" l0expr  */
 #line 512 "hexpr.y"
                             { (yyval.mdef) = new MVarDef(list(*(yyvsp[-5].string), *(yyvsp[-4].string), *(yyvsp[-3].string), *(yyvsp[-2].string)), ExprPtr((yyvsp[0].exp)), m((yylsp[-5]), (yylsp[0]))); }
-#line 2949 "hexpr.parse.C"
+#line 2995 "hexpr.parse.C"
     break;
 
-  case 22:
+  case 22: /* def: id id id id id "=" l0expr  */
 #line 513 "hexpr.y"
                                { (yyval.mdef) = new MVarDef(list(*(yyvsp[-6].string), *(yyvsp[-5].string), *(yyvsp[-4].string), *(yyvsp[-3].string), *(yyvsp[-2].string)), ExprPtr((yyvsp[0].exp)), m((yylsp[-6]), (yylsp[0]))); }
-#line 2955 "hexpr.parse.C"
+#line 3001 "hexpr.parse.C"
     break;
 
-  case 23:
+  case 23: /* def: id id id id id id "=" l0expr  */
 #line 514 "hexpr.y"
                                   { (yyval.mdef) = new MVarDef(list(*(yyvsp[-7].string), *(yyvsp[-6].string), *(yyvsp[-5].string), *(yyvsp[-4].string), *(yyvsp[-3].string), *(yyvsp[-2].string)), ExprPtr((yyvsp[0].exp)), m((yylsp[-7]), (yylsp[0]))); }
-#line 2961 "hexpr.parse.C"
+#line 3007 "hexpr.parse.C"
     break;
 
-  case 24:
+  case 24: /* def: id id id id id id id "=" l0expr  */
 #line 515 "hexpr.y"
                                      { (yyval.mdef) = new MVarDef(list(*(yyvsp[-8].string), *(yyvsp[-7].string), *(yyvsp[-6].string), *(yyvsp[-5].string), *(yyvsp[-4].string), *(yyvsp[-3].string), *(yyvsp[-2].string)), ExprPtr((yyvsp[0].exp)), m((yylsp[-8]), (yylsp[0]))); }
-#line 2967 "hexpr.parse.C"
+#line 3013 "hexpr.parse.C"
     break;
 
-  case 25:
+  case 25: /* def: id id id id id id id id "=" l0expr  */
 #line 516 "hexpr.y"
                                         { (yyval.mdef) = new MVarDef(list(*(yyvsp[-9].string), *(yyvsp[-8].string), *(yyvsp[-7].string), *(yyvsp[-6].string), *(yyvsp[-5].string), *(yyvsp[-4].string), *(yyvsp[-3].string), *(yyvsp[-2].string)), ExprPtr((yyvsp[0].exp)), m((yylsp[-9]), (yylsp[0]))); }
-#line 2973 "hexpr.parse.C"
+#line 3019 "hexpr.parse.C"
     break;
 
-  case 26:
+  case 26: /* def: id id id id id id id id id "=" l0expr  */
 #line 517 "hexpr.y"
                                            { (yyval.mdef) = new MVarDef(list(*(yyvsp[-10].string), *(yyvsp[-9].string), *(yyvsp[-8].string), *(yyvsp[-7].string), *(yyvsp[-6].string), *(yyvsp[-5].string), *(yyvsp[-4].string), *(yyvsp[-3].string), *(yyvsp[-2].string)), ExprPtr((yyvsp[0].exp)), m((yylsp[-10]), (yylsp[0]))); }
-#line 2979 "hexpr.parse.C"
+#line 3025 "hexpr.parse.C"
     break;
 
-  case 27:
+  case 27: /* def: id id id id id id id id id id "=" l0expr  */
 #line 518 "hexpr.y"
                                               { (yyval.mdef) = new MVarDef(list(*(yyvsp[-11].string), *(yyvsp[-10].string), *(yyvsp[-9].string), *(yyvsp[-8].string), *(yyvsp[-7].string), *(yyvsp[-6].string), *(yyvsp[-5].string), *(yyvsp[-4].string), *(yyvsp[-3].string), *(yyvsp[-2].string)), ExprPtr((yyvsp[0].exp)), m((yylsp[-11]), (yylsp[0]))); }
-#line 2985 "hexpr.parse.C"
+#line 3031 "hexpr.parse.C"
     break;
 
-  case 28:
+  case 28: /* def: id id id id id id id id id id id "=" l0expr  */
 #line 519 "hexpr.y"
                                                  { (yyval.mdef) = new MVarDef(list(*(yyvsp[-12].string), *(yyvsp[-11].string), *(yyvsp[-10].string), *(yyvsp[-9].string), *(yyvsp[-8].string), *(yyvsp[-7].string), *(yyvsp[-6].string), *(yyvsp[-5].string), *(yyvsp[-4].string), *(yyvsp[-3].string), *(yyvsp[-2].string)), ExprPtr((yyvsp[0].exp)), m((yylsp[-12]), (yylsp[0]))); }
-#line 2991 "hexpr.parse.C"
+#line 3037 "hexpr.parse.C"
     break;
 
-  case 29:
+  case 29: /* def: id id id id id id id id id id id id "=" l0expr  */
 #line 520 "hexpr.y"
                                                     { (yyval.mdef) = new MVarDef(list(*(yyvsp[-13].string), *(yyvsp[-12].string), *(yyvsp[-11].string), *(yyvsp[-10].string), *(yyvsp[-9].string), *(yyvsp[-8].string), *(yyvsp[-7].string), *(yyvsp[-6].string), *(yyvsp[-5].string), *(yyvsp[-4].string), *(yyvsp[-3].string), *(yyvsp[-2].string)), ExprPtr((yyvsp[0].exp)), m((yylsp[-13]), (yylsp[0]))); }
-#line 2997 "hexpr.parse.C"
+#line 3043 "hexpr.parse.C"
     break;
 
-  case 30:
+  case 30: /* def: id id id id id id id id id id id id id "=" l0expr  */
 #line 521 "hexpr.y"
                                                        { (yyval.mdef) = new MVarDef(list(*(yyvsp[-14].string), *(yyvsp[-13].string), *(yyvsp[-12].string), *(yyvsp[-11].string), *(yyvsp[-10].string), *(yyvsp[-9].string), *(yyvsp[-8].string), *(yyvsp[-7].string), *(yyvsp[-6].string), *(yyvsp[-5].string), *(yyvsp[-4].string), *(yyvsp[-3].string), *(yyvsp[-2].string)), ExprPtr((yyvsp[0].exp)), m((yylsp[-14]), (yylsp[0]))); }
-#line 3003 "hexpr.parse.C"
+#line 3049 "hexpr.parse.C"
     break;
 
-  case 31:
+  case 31: /* def: id id id id id id id id id id id id id id "=" l0expr  */
 #line 522 "hexpr.y"
                                                           { (yyval.mdef) = new MVarDef(list(*(yyvsp[-15].string), *(yyvsp[-14].string), *(yyvsp[-13].string), *(yyvsp[-12].string), *(yyvsp[-11].string), *(yyvsp[-10].string), *(yyvsp[-9].string), *(yyvsp[-8].string), *(yyvsp[-7].string), *(yyvsp[-6].string), *(yyvsp[-5].string), *(yyvsp[-4].string), *(yyvsp[-3].string), *(yyvsp[-2].string)), ExprPtr((yyvsp[0].exp)), m((yylsp[-15]), (yylsp[0]))); }
-#line 3009 "hexpr.parse.C"
+#line 3055 "hexpr.parse.C"
     break;
 
-  case 32:
+  case 32: /* def: id id id id id id id id id id id id id id id "=" l0expr  */
 #line 523 "hexpr.y"
                                                              { (yyval.mdef) = new MVarDef(list(*(yyvsp[-16].string), *(yyvsp[-15].string), *(yyvsp[-14].string), *(yyvsp[-13].string), *(yyvsp[-12].string), *(yyvsp[-11].string), *(yyvsp[-10].string), *(yyvsp[-9].string), *(yyvsp[-8].string), *(yyvsp[-7].string), *(yyvsp[-6].string), *(yyvsp[-5].string), *(yyvsp[-4].string), *(yyvsp[-3].string), *(yyvsp[-2].string)), ExprPtr((yyvsp[0].exp)), m((yylsp[-16]), (yylsp[0]))); }
-#line 3015 "hexpr.parse.C"
+#line 3061 "hexpr.parse.C"
     break;
 
-  case 33:
+  case 33: /* def: id id id id id id id id id id id id id id id id "=" l0expr  */
 #line 524 "hexpr.y"
                                                                 { (yyval.mdef) = new MVarDef(list(*(yyvsp[-17].string), *(yyvsp[-16].string), *(yyvsp[-15].string), *(yyvsp[-14].string), *(yyvsp[-13].string), *(yyvsp[-12].string), *(yyvsp[-11].string), *(yyvsp[-10].string), *(yyvsp[-9].string), *(yyvsp[-8].string), *(yyvsp[-7].string), *(yyvsp[-6].string), *(yyvsp[-5].string), *(yyvsp[-4].string), *(yyvsp[-3].string), *(yyvsp[-2].string)), ExprPtr((yyvsp[0].exp)), m((yylsp[-17]), (yylsp[0]))); }
-#line 3021 "hexpr.parse.C"
+#line 3067 "hexpr.parse.C"
     break;
 
-  case 34:
+  case 34: /* def: id id id id id id id id id id id id id id id id id "=" l0expr  */
 #line 525 "hexpr.y"
                                                                    { (yyval.mdef) = new MVarDef(list(*(yyvsp[-18].string), *(yyvsp[-17].string), *(yyvsp[-16].string), *(yyvsp[-15].string), *(yyvsp[-14].string), *(yyvsp[-13].string), *(yyvsp[-12].string), *(yyvsp[-11].string), *(yyvsp[-10].string), *(yyvsp[-9].string), *(yyvsp[-8].string), *(yyvsp[-7].string), *(yyvsp[-6].string), *(yyvsp[-5].string), *(yyvsp[-4].string), *(yyvsp[-3].string), *(yyvsp[-2].string)), ExprPtr((yyvsp[0].exp)), m((yylsp[-18]), (yylsp[0]))); }
-#line 3027 "hexpr.parse.C"
+#line 3073 "hexpr.parse.C"
     break;
 
-  case 35:
+  case 35: /* def: id id id id id id id id id id id id id id id id id id "=" l0expr  */
 #line 526 "hexpr.y"
                                                                       { (yyval.mdef) = new MVarDef(list(*(yyvsp[-19].string), *(yyvsp[-18].string), *(yyvsp[-17].string), *(yyvsp[-16].string), *(yyvsp[-15].string), *(yyvsp[-14].string), *(yyvsp[-13].string), *(yyvsp[-12].string), *(yyvsp[-11].string), *(yyvsp[-10].string), *(yyvsp[-9].string), *(yyvsp[-8].string), *(yyvsp[-7].string), *(yyvsp[-6].string), *(yyvsp[-5].string), *(yyvsp[-4].string), *(yyvsp[-3].string), *(yyvsp[-2].string)), ExprPtr((yyvsp[0].exp)), m((yylsp[-19]), (yylsp[0]))); }
-#line 3033 "hexpr.parse.C"
+#line 3079 "hexpr.parse.C"
     break;
 
-  case 36:
+  case 36: /* def: id id id id id id id id id id id id id id id id id id id "=" l0expr  */
 #line 527 "hexpr.y"
                                                                          { (yyval.mdef) = new MVarDef(list(*(yyvsp[-20].string), *(yyvsp[-19].string), *(yyvsp[-18].string), *(yyvsp[-17].string), *(yyvsp[-16].string), *(yyvsp[-15].string), *(yyvsp[-14].string), *(yyvsp[-13].string), *(yyvsp[-12].string), *(yyvsp[-11].string), *(yyvsp[-10].string), *(yyvsp[-9].string), *(yyvsp[-8].string), *(yyvsp[-7].string), *(yyvsp[-6].string), *(yyvsp[-5].string), *(yyvsp[-4].string), *(yyvsp[-3].string), *(yyvsp[-2].string)), ExprPtr((yyvsp[0].exp)), m((yylsp[-20]), (yylsp[0]))); }
-#line 3039 "hexpr.parse.C"
+#line 3085 "hexpr.parse.C"
     break;
 
-  case 37:
+  case 37: /* def: id id id id id id id id id id id id id id id id id id id id "=" l0expr  */
 #line 528 "hexpr.y"
                                                                             { (yyval.mdef) = new MVarDef(list(*(yyvsp[-21].string), *(yyvsp[-20].string), *(yyvsp[-19].string), *(yyvsp[-18].string), *(yyvsp[-17].string), *(yyvsp[-16].string), *(yyvsp[-15].string), *(yyvsp[-14].string), *(yyvsp[-13].string), *(yyvsp[-12].string), *(yyvsp[-11].string), *(yyvsp[-10].string), *(yyvsp[-9].string), *(yyvsp[-8].string), *(yyvsp[-7].string), *(yyvsp[-6].string), *(yyvsp[-5].string), *(yyvsp[-4].string), *(yyvsp[-3].string), *(yyvsp[-2].string)), ExprPtr((yyvsp[0].exp)), m((yylsp[-21]), (yylsp[0]))); }
-#line 3045 "hexpr.parse.C"
+#line 3091 "hexpr.parse.C"
     break;
 
-  case 38:
+  case 38: /* def: id id id id id id id id id id id id id id id id id id id id id "=" l0expr  */
 #line 529 "hexpr.y"
                                                                                { (yyval.mdef) = new MVarDef(list(*(yyvsp[-22].string), *(yyvsp[-21].string), *(yyvsp[-20].string), *(yyvsp[-19].string), *(yyvsp[-18].string), *(yyvsp[-17].string), *(yyvsp[-16].string), *(yyvsp[-15].string), *(yyvsp[-14].string), *(yyvsp[-13].string), *(yyvsp[-12].string), *(yyvsp[-11].string), *(yyvsp[-10].string), *(yyvsp[-9].string), *(yyvsp[-8].string), *(yyvsp[-7].string), *(yyvsp[-6].string), *(yyvsp[-5].string), *(yyvsp[-4].string), *(yyvsp[-3].string), *(yyvsp[-2].string)), ExprPtr((yyvsp[0].exp)), m((yylsp[-22]), (yylsp[0]))); }
-#line 3051 "hexpr.parse.C"
+#line 3097 "hexpr.parse.C"
     break;
 
-  case 39:
+  case 39: /* def: l5expr  */
 #line 532 "hexpr.y"
             { (yyval.mdef) = new MVarDef(list(freshName()), let(freshName(), ExprPtr((yyvsp[0].exp)), mktunit(m((yylsp[0]))), m((yylsp[0]))), m((yylsp[0]))); }
-#line 3057 "hexpr.parse.C"
+#line 3103 "hexpr.parse.C"
     break;
 
-  case 40:
+  case 40: /* importdef: "import" cppid  */
 #line 535 "hexpr.y"
                           { (yyval.mdef) = new MImport(yyModulePath, *(yyvsp[0].string), m((yylsp[-1]), (yylsp[0]))); }
-#line 3063 "hexpr.parse.C"
+#line 3109 "hexpr.parse.C"
     break;
 
-  case 41:
+  case 41: /* pragmadef: "{-#" pragmaty "#-}"  */
 #line 538 "hexpr.y"
                                 { (yyval.mdef) = (yyvsp[-1].mdef); }
-#line 3069 "hexpr.parse.C"
+#line 3115 "hexpr.parse.C"
     break;
 
-  case 42:
+  case 42: /* pragmaty: "UNSAFE" id  */
 #line 539 "hexpr.y"
                       { (yyval.mdef) = new MUnsafePragmaDef(*(yyvsp[0].string), m((yylsp[-1]), (yylsp[0]))); }
-#line 3075 "hexpr.parse.C"
+#line 3121 "hexpr.parse.C"
     break;
 
-  case 43:
+  case 43: /* pragmaty: "SAFE" id  */
 #line 540 "hexpr.y"
                     { (yyval.mdef) = new MSafePragmaDef(*(yyvsp[0].string), m((yylsp[-1]), (yylsp[0]))); }
-#line 3081 "hexpr.parse.C"
+#line 3127 "hexpr.parse.C"
     break;
 
-  case 44:
+  case 44: /* tydef: "type" nameseq "=" qtype  */
 #line 543 "hexpr.y"
                                 { (yyval.mdef) = new MTypeDef(MTypeDef::Transparent, hobbes::select(*(yyvsp[-2].strings), 0), hobbes::select(*(yyvsp[-2].strings), 1, (int)(yyvsp[-2].strings)->size()), QualTypePtr((yyvsp[0].qualtype)), m((yylsp[-3]), (yylsp[0]))); }
-#line 3087 "hexpr.parse.C"
+#line 3133 "hexpr.parse.C"
     break;
 
-  case 45:
+  case 45: /* tydef: "data" nameseq "=" qtype  */
 #line 544 "hexpr.y"
                                 { (yyval.mdef) = new MTypeDef(MTypeDef::Opaque, hobbes::select(*(yyvsp[-2].strings), 0), hobbes::select(*(yyvsp[-2].strings), 1, (int)(yyvsp[-2].strings)->size()), QualTypePtr((yyvsp[0].qualtype)), m((yylsp[-3]), (yylsp[0]))); }
-#line 3093 "hexpr.parse.C"
+#line 3139 "hexpr.parse.C"
     break;
 
-  case 46:
+  case 46: /* vartybind: name "::" qtype  */
 #line 547 "hexpr.y"
                            { (yyval.mvtydef) = new MVarTypeDef(*(yyvsp[-2].string), QualTypePtr((yyvsp[0].qualtype)), m((yylsp[-2]), (yylsp[0]))); }
-#line 3099 "hexpr.parse.C"
+#line 3145 "hexpr.parse.C"
     break;
 
-  case 47:
+  case 47: /* vardef: names "=" l0expr  */
 #line 549 "hexpr.y"
                          { (yyval.mvdef) = new MVarDef(*(yyvsp[-2].strings), ExprPtr((yyvsp[0].exp)), m((yylsp[-2]), (yylsp[0]))); }
-#line 3105 "hexpr.parse.C"
+#line 3151 "hexpr.parse.C"
     break;
 
-  case 48:
+  case 48: /* classdef: "class" cst "=>" id names  */
 #line 552 "hexpr.y"
                                                                  { (yyval.mdef) = new ClassDef(*(yyvsp[-3].tconstraints), *(yyvsp[-1].string), *(yyvsp[0].strings), CFunDepDefs(), MVarTypeDefs(), m((yylsp[-4]), (yylsp[0]))); wantIndent(false); }
-#line 3111 "hexpr.parse.C"
+#line 3157 "hexpr.parse.C"
     break;
 
-  case 49:
+  case 49: /* classdef: "class" cst "=>" id names "|" fundeps  */
 #line 553 "hexpr.y"
                                                                  { (yyval.mdef) = new ClassDef(*(yyvsp[-5].tconstraints), *(yyvsp[-3].string), *(yyvsp[-2].strings), *(yyvsp[0].fundeps),           MVarTypeDefs(), m((yylsp[-6]), (yylsp[0]))); wantIndent(false); }
-#line 3117 "hexpr.parse.C"
+#line 3163 "hexpr.parse.C"
     break;
 
-  case 50:
+  case 50: /* classdef: "class" cst "=>" id names "where" cmembers  */
 #line 554 "hexpr.y"
                                                                  { (yyval.mdef) = new ClassDef(*(yyvsp[-5].tconstraints), *(yyvsp[-3].string), *(yyvsp[-2].strings), CFunDepDefs(), *(yyvsp[0].mvtydefs), m((yylsp[-6]), (yylsp[0])));            wantIndent(false); }
-#line 3123 "hexpr.parse.C"
+#line 3169 "hexpr.parse.C"
     break;
 
-  case 51:
+  case 51: /* classdef: "class" cst "=>" id names "|" fundeps "where" cmembers  */
 #line 555 "hexpr.y"
                                                                  { (yyval.mdef) = new ClassDef(*(yyvsp[-7].tconstraints), *(yyvsp[-5].string), *(yyvsp[-4].strings), *(yyvsp[-2].fundeps),           *(yyvsp[0].mvtydefs), m((yylsp[-8]), (yylsp[0])));            wantIndent(false); }
-#line 3129 "hexpr.parse.C"
+#line 3175 "hexpr.parse.C"
     break;
 
-  case 52:
+  case 52: /* classdef: "class" id names  */
 #line 556 "hexpr.y"
                                                                  { (yyval.mdef) = new ClassDef(Constraints(), *(yyvsp[-1].string), *(yyvsp[0].strings), CFunDepDefs(), MVarTypeDefs(), m((yylsp[-2]), (yylsp[0]))); wantIndent(false); }
-#line 3135 "hexpr.parse.C"
+#line 3181 "hexpr.parse.C"
     break;
 
-  case 53:
+  case 53: /* classdef: "class" id names "|" fundeps  */
 #line 557 "hexpr.y"
                                                                  { (yyval.mdef) = new ClassDef(Constraints(), *(yyvsp[-3].string), *(yyvsp[-2].strings), *(yyvsp[0].fundeps),           MVarTypeDefs(), m((yylsp[-4]), (yylsp[0]))); wantIndent(false); }
-#line 3141 "hexpr.parse.C"
+#line 3187 "hexpr.parse.C"
     break;
 
-  case 54:
+  case 54: /* classdef: "class" id names "where" cmembers  */
 #line 558 "hexpr.y"
                                                                  { (yyval.mdef) = new ClassDef(Constraints(), *(yyvsp[-3].string), *(yyvsp[-2].strings), CFunDepDefs(), *(yyvsp[0].mvtydefs), m((yylsp[-4]), (yylsp[0])));            wantIndent(false); }
-#line 3147 "hexpr.parse.C"
+#line 3193 "hexpr.parse.C"
     break;
 
-  case 55:
+  case 55: /* classdef: "class" id names "|" fundeps "where" cmembers  */
 #line 559 "hexpr.y"
                                                                  { (yyval.mdef) = new ClassDef(Constraints(), *(yyvsp[-5].string), *(yyvsp[-4].strings), *(yyvsp[-2].fundeps),           *(yyvsp[0].mvtydefs), m((yylsp[-6]), (yylsp[0])));            wantIndent(false); }
-#line 3153 "hexpr.parse.C"
+#line 3199 "hexpr.parse.C"
     break;
 
-  case 56:
+  case 56: /* fundeps: fundep  */
 #line 561 "hexpr.y"
                             { (yyval.fundeps) = autorelease(new CFunDepDefs()); (yyval.fundeps)->push_back(*(yyvsp[0].fundep)); }
-#line 3159 "hexpr.parse.C"
+#line 3205 "hexpr.parse.C"
     break;
 
-  case 57:
+  case 57: /* fundeps: fundeps "," fundep  */
 #line 562 "hexpr.y"
                             { (yyval.fundeps) = (yyvsp[-2].fundeps);                             (yyval.fundeps)->push_back(*(yyvsp[0].fundep)); }
-#line 3165 "hexpr.parse.C"
+#line 3211 "hexpr.parse.C"
     break;
 
-  case 58:
+  case 58: /* fundep: idseq "->" idseq  */
 #line 564 "hexpr.y"
                          { (yyval.fundep) = autorelease(new CFunDepDef(*(yyvsp[-2].strings), *(yyvsp[0].strings))); }
-#line 3171 "hexpr.parse.C"
+#line 3217 "hexpr.parse.C"
     break;
 
-  case 59:
+  case 59: /* cmembers: cmember  */
 #line 566 "hexpr.y"
                            { (yyval.mvtydefs) = autorelease(new MVarTypeDefs()); (yyval.mvtydefs)->push_back(MVarTypeDefPtr((yyvsp[0].mvtydef))); }
-#line 3177 "hexpr.parse.C"
+#line 3223 "hexpr.parse.C"
     break;
 
-  case 60:
+  case 60: /* cmembers: cmembers cmember  */
 #line 567 "hexpr.y"
                            { (yyval.mvtydefs) = (yyvsp[-1].mvtydefs);                              (yyval.mvtydefs)->push_back(MVarTypeDefPtr((yyvsp[0].mvtydef))); }
-#line 3183 "hexpr.parse.C"
+#line 3229 "hexpr.parse.C"
     break;
 
-  case 61:
+  case 61: /* cmember: "indent" vartybind  */
 #line 569 "hexpr.y"
                             { (yyval.mvtydef) = (yyvsp[0].mvtydef); }
-#line 3189 "hexpr.parse.C"
+#line 3235 "hexpr.parse.C"
     break;
 
-  case 62:
+  case 62: /* instdef: "instance" id types  */
 #line 572 "hexpr.y"
                                                        { (yyval.mdef) = new InstanceDef(Constraints(), *(yyvsp[-1].string), *(yyvsp[0].mtypes), MVarDefs(), m((yylsp[-2]), (yylsp[0]))); wantIndent(false); }
-#line 3195 "hexpr.parse.C"
+#line 3241 "hexpr.parse.C"
     break;
 
-  case 63:
+  case 63: /* instdef: "instance" cst "=>" id types  */
 #line 573 "hexpr.y"
                                                        { (yyval.mdef) = new InstanceDef(*(yyvsp[-3].tconstraints),           *(yyvsp[-1].string), *(yyvsp[0].mtypes), MVarDefs(), m((yylsp[-4]), (yylsp[0]))); wantIndent(false); }
-#line 3201 "hexpr.parse.C"
+#line 3247 "hexpr.parse.C"
     break;
 
-  case 64:
+  case 64: /* instdef: "instance" id types "where" imembers  */
 #line 574 "hexpr.y"
                                                        { (yyval.mdef) = new InstanceDef(Constraints(), *(yyvsp[-3].string), *(yyvsp[-2].mtypes), *(yyvsp[0].mvdefs), m((yylsp[-4]), (yylsp[0])));        wantIndent(false); }
-#line 3207 "hexpr.parse.C"
+#line 3253 "hexpr.parse.C"
     break;
 
-  case 65:
+  case 65: /* instdef: "instance" cst "=>" id types "where" imembers  */
 #line 575 "hexpr.y"
                                                        { (yyval.mdef) = new InstanceDef(*(yyvsp[-5].tconstraints),           *(yyvsp[-3].string), *(yyvsp[-2].mtypes), *(yyvsp[0].mvdefs), m((yylsp[-6]), (yylsp[0])));        wantIndent(false); }
-#line 3213 "hexpr.parse.C"
+#line 3259 "hexpr.parse.C"
     break;
 
-  case 66:
+  case 66: /* imembers: imember  */
 #line 577 "hexpr.y"
                            { (yyval.mvdefs) = autorelease(new MVarDefs()); (yyval.mvdefs)->push_back(MVarDefPtr((yyvsp[0].mvdef))); }
-#line 3219 "hexpr.parse.C"
+#line 3265 "hexpr.parse.C"
     break;
 
-  case 67:
+  case 67: /* imembers: imembers imember  */
 #line 578 "hexpr.y"
                            { (yyval.mvdefs) = (yyvsp[-1].mvdefs);                          (yyval.mvdefs)->push_back(MVarDefPtr((yyvsp[0].mvdef))); }
-#line 3225 "hexpr.parse.C"
+#line 3271 "hexpr.parse.C"
     break;
 
-  case 68:
+  case 68: /* imember: "indent" vardef  */
 #line 580 "hexpr.y"
                          { (yyval.mvdef) = (yyvsp[0].mvdef); }
-#line 3231 "hexpr.parse.C"
+#line 3277 "hexpr.parse.C"
     break;
 
-  case 69:
+  case 69: /* names: nameseq  */
 #line 583 "hexpr.y"
                { (yyval.strings) = (yyvsp[0].strings); }
-#line 3237 "hexpr.parse.C"
+#line 3283 "hexpr.parse.C"
     break;
 
-  case 70:
+  case 70: /* names: id opname id  */
 #line 585 "hexpr.y"
                     { (yyval.strings) = autorelease(new str::seq()); (yyval.strings)->push_back(*(yyvsp[-1].string)); (yyval.strings)->push_back(*(yyvsp[-2].string)); (yyval.strings)->push_back(*(yyvsp[0].string)); }
-#line 3243 "hexpr.parse.C"
+#line 3289 "hexpr.parse.C"
     break;
 
-  case 71:
+  case 71: /* nameseq: name  */
 #line 587 "hexpr.y"
                       { (yyval.strings) = autorelease(new str::seq()); (yyval.strings)->push_back(*(yyvsp[0].string)); }
-#line 3249 "hexpr.parse.C"
+#line 3295 "hexpr.parse.C"
     break;
 
-  case 72:
+  case 72: /* nameseq: nameseq name  */
 #line 588 "hexpr.y"
                       { (yyval.strings) = (yyvsp[-1].strings);                          (yyval.strings)->push_back(*(yyvsp[0].string)); }
-#line 3255 "hexpr.parse.C"
+#line 3301 "hexpr.parse.C"
     break;
 
-  case 73:
+  case 73: /* name: id  */
 #line 590 "hexpr.y"
          { (yyval.string) = (yyvsp[0].string); }
-#line 3261 "hexpr.parse.C"
+#line 3307 "hexpr.parse.C"
     break;
 
-  case 74:
+  case 74: /* name: "(" opname ")"  */
 #line 592 "hexpr.y"
                      { (yyval.string) = (yyvsp[-1].string); }
-#line 3267 "hexpr.parse.C"
+#line 3313 "hexpr.parse.C"
     break;
 
-  case 75:
+  case 75: /* opname: "and"  */
 #line 594 "hexpr.y"
               { (yyval.string) = autorelease(new std::string("and")); }
-#line 3273 "hexpr.parse.C"
+#line 3319 "hexpr.parse.C"
     break;
 
-  case 76:
+  case 76: /* opname: "or"  */
 #line 595 "hexpr.y"
               { (yyval.string) = autorelease(new std::string("or")); }
-#line 3279 "hexpr.parse.C"
+#line 3325 "hexpr.parse.C"
     break;
 
-  case 77:
+  case 77: /* opname: "o"  */
 #line 596 "hexpr.y"
               { (yyval.string) = autorelease(new std::string("compose")); }
-#line 3285 "hexpr.parse.C"
+#line 3331 "hexpr.parse.C"
     break;
 
-  case 78:
+  case 78: /* opname: "."  */
 #line 597 "hexpr.y"
               { (yyval.string) = autorelease(new std::string("compose")); }
-#line 3291 "hexpr.parse.C"
+#line 3337 "hexpr.parse.C"
     break;
 
-  case 79:
+  case 79: /* opname: "~"  */
 #line 598 "hexpr.y"
               { (yyval.string) = autorelease(new std::string("~")); }
-#line 3297 "hexpr.parse.C"
+#line 3343 "hexpr.parse.C"
     break;
 
-  case 80:
+  case 80: /* opname: "=~"  */
 #line 599 "hexpr.y"
                { (yyval.string) = autorelease(new std::string("=~")); }
-#line 3303 "hexpr.parse.C"
+#line 3349 "hexpr.parse.C"
     break;
 
-  case 81:
+  case 81: /* opname: "==="  */
 #line 600 "hexpr.y"
               { (yyval.string) = autorelease(new std::string("===")); }
-#line 3309 "hexpr.parse.C"
+#line 3355 "hexpr.parse.C"
     break;
 
-  case 82:
+  case 82: /* opname: "=="  */
 #line 601 "hexpr.y"
               { (yyval.string) = autorelease(new std::string("==")); }
-#line 3315 "hexpr.parse.C"
+#line 3361 "hexpr.parse.C"
     break;
 
-  case 83:
+  case 83: /* opname: "<"  */
 #line 602 "hexpr.y"
               { (yyval.string) = autorelease(new std::string("<")); }
-#line 3321 "hexpr.parse.C"
+#line 3367 "hexpr.parse.C"
     break;
 
-  case 84:
+  case 84: /* opname: "<="  */
 #line 603 "hexpr.y"
               { (yyval.string) = autorelease(new std::string("<=")); }
-#line 3327 "hexpr.parse.C"
+#line 3373 "hexpr.parse.C"
     break;
 
-  case 85:
+  case 85: /* opname: ">"  */
 #line 604 "hexpr.y"
               { (yyval.string) = autorelease(new std::string(">")); }
-#line 3333 "hexpr.parse.C"
+#line 3379 "hexpr.parse.C"
     break;
 
-  case 86:
+  case 86: /* opname: ">="  */
 #line 605 "hexpr.y"
               { (yyval.string) = autorelease(new std::string(">=")); }
-#line 3339 "hexpr.parse.C"
+#line 3385 "hexpr.parse.C"
     break;
 
-  case 87:
+  case 87: /* opname: "in"  */
 #line 606 "hexpr.y"
               { (yyval.string) = autorelease(new std::string("in")); }
-#line 3345 "hexpr.parse.C"
+#line 3391 "hexpr.parse.C"
     break;
 
-  case 88:
+  case 88: /* opname: "++"  */
 #line 607 "hexpr.y"
               { (yyval.string) = autorelease(new std::string("append")); }
-#line 3351 "hexpr.parse.C"
+#line 3397 "hexpr.parse.C"
     break;
 
-  case 89:
+  case 89: /* opname: "+"  */
 #line 608 "hexpr.y"
               { (yyval.string) = autorelease(new std::string("+")); }
-#line 3357 "hexpr.parse.C"
+#line 3403 "hexpr.parse.C"
     break;
 
-  case 90:
+  case 90: /* opname: "-"  */
 #line 609 "hexpr.y"
               { (yyval.string) = autorelease(new std::string("-")); }
-#line 3363 "hexpr.parse.C"
+#line 3409 "hexpr.parse.C"
     break;
 
-  case 91:
+  case 91: /* opname: "*"  */
 #line 610 "hexpr.y"
               { (yyval.string) = autorelease(new std::string("*")); }
-#line 3369 "hexpr.parse.C"
+#line 3415 "hexpr.parse.C"
     break;
 
-  case 92:
+  case 92: /* opname: "/"  */
 #line 611 "hexpr.y"
               { (yyval.string) = autorelease(new std::string("/")); }
-#line 3375 "hexpr.parse.C"
+#line 3421 "hexpr.parse.C"
     break;
 
-  case 93:
+  case 93: /* opname: "%"  */
 #line 612 "hexpr.y"
               { (yyval.string) = autorelease(new std::string("%")); }
-#line 3381 "hexpr.parse.C"
+#line 3427 "hexpr.parse.C"
     break;
 
-  case 94:
+  case 94: /* idseq: id  */
 #line 614 "hexpr.y"
                 { (yyval.strings) = autorelease(new str::seq()); (yyval.strings)->push_back(*(yyvsp[0].string)); }
-#line 3387 "hexpr.parse.C"
+#line 3433 "hexpr.parse.C"
     break;
 
-  case 95:
+  case 95: /* idseq: idseq id  */
 #line 615 "hexpr.y"
                 { (yyval.strings) = (yyvsp[-1].strings);                          (yyval.strings)->push_back(*(yyvsp[0].string)); }
-#line 3393 "hexpr.parse.C"
+#line 3439 "hexpr.parse.C"
     break;
 
-  case 96:
+  case 96: /* types: l0mtype  */
 #line 617 "hexpr.y"
                      { (yyval.mtypes) = autorelease(new MonoTypes()); (yyval.mtypes)->push_back(*(yyvsp[0].mtype)); }
-#line 3399 "hexpr.parse.C"
+#line 3445 "hexpr.parse.C"
     break;
 
-  case 97:
+  case 97: /* types: types l0mtype  */
 #line 618 "hexpr.y"
                      { (yyval.mtypes) = (yyvsp[-1].mtypes);                           (yyval.mtypes)->push_back(*(yyvsp[0].mtype)); }
-#line 3405 "hexpr.parse.C"
+#line 3451 "hexpr.parse.C"
     break;
 
-  case 98:
+  case 98: /* l0expr: "\\" patterns "." l0expr  */
 #line 621 "hexpr.y"
                                  { (yyval.exp) = makePatternFn(*(yyvsp[-2].patterns), ExprPtr((yyvsp[0].exp)), m((yylsp[-3]), (yylsp[0]))); }
-#line 3411 "hexpr.parse.C"
+#line 3457 "hexpr.parse.C"
     break;
 
-  case 99:
+  case 99: /* l0expr: "fn" patterns "." l0expr  */
 #line 622 "hexpr.y"
                                  { (yyval.exp) = makePatternFn(*(yyvsp[-2].patterns), ExprPtr((yyvsp[0].exp)), m((yylsp[-3]), (yylsp[0]))); }
-#line 3417 "hexpr.parse.C"
+#line 3463 "hexpr.parse.C"
     break;
 
-  case 100:
+  case 100: /* l0expr: lhexpr "<-" lhexpr  */
 #line 623 "hexpr.y"
                                  { (yyval.exp) = new Assign(ExprPtr((yyvsp[-2].exp)), ExprPtr((yyvsp[0].exp)), m((yylsp[-2]), (yylsp[0]))); }
-#line 3423 "hexpr.parse.C"
+#line 3469 "hexpr.parse.C"
     break;
 
-  case 101:
+  case 101: /* l0expr: lhexpr  */
 #line 624 "hexpr.y"
                                  { (yyval.exp) = (yyvsp[0].exp); }
-#line 3429 "hexpr.parse.C"
+#line 3475 "hexpr.parse.C"
     break;
 
-  case 102:
+  case 102: /* lhexpr: "!" l1expr  */
 #line 626 "hexpr.y"
                                  { (yyval.exp) = TAPP1(var("not",m((yylsp[-1]))), (yyvsp[0].exp), m((yylsp[-1]),(yylsp[0]))); }
-#line 3435 "hexpr.parse.C"
+#line 3481 "hexpr.parse.C"
     break;
 
-  case 103:
+  case 103: /* lhexpr: lhexpr "and" lhexpr  */
 #line 627 "hexpr.y"
                                  { (yyval.exp) = TAPP2(var("and",m((yylsp[-1]))), (yyvsp[-2].exp), (yyvsp[0].exp), m((yylsp[-2]),(yylsp[0]))); }
-#line 3441 "hexpr.parse.C"
+#line 3487 "hexpr.parse.C"
     break;
 
-  case 104:
+  case 104: /* lhexpr: lhexpr "or" lhexpr  */
 #line 628 "hexpr.y"
                                  { (yyval.exp) = TAPP2(var("or",m((yylsp[-1]))),  (yyvsp[-2].exp), (yyvsp[0].exp), m((yylsp[-2]),(yylsp[0]))); }
-#line 3447 "hexpr.parse.C"
+#line 3493 "hexpr.parse.C"
     break;
 
-  case 105:
+  case 105: /* lhexpr: lhexpr "o" lhexpr  */
 #line 629 "hexpr.y"
                                  { (yyval.exp) = TAPP2(var("compose",m((yylsp[-1]))), (yyvsp[-2].exp), (yyvsp[0].exp), m((yylsp[-2]),(yylsp[0]))); }
-#line 3453 "hexpr.parse.C"
+#line 3499 "hexpr.parse.C"
     break;
 
-  case 106:
+  case 106: /* lhexpr: l1expr "in" l1expr  */
 #line 630 "hexpr.y"
                                  { (yyval.exp) = TAPP2(var("in",m((yylsp[-1]))), (yyvsp[-2].exp), (yyvsp[0].exp), m((yylsp[-2]),(yylsp[0]))); }
-#line 3459 "hexpr.parse.C"
+#line 3505 "hexpr.parse.C"
     break;
 
-  case 107:
+  case 107: /* lhexpr: l1expr  */
 #line 631 "hexpr.y"
                                  { (yyval.exp) = (yyvsp[0].exp); }
-#line 3465 "hexpr.parse.C"
+#line 3511 "hexpr.parse.C"
     break;
 
-  case 108:
+  case 108: /* l1expr: "if" l0expr "then" l0expr "else" l0expr  */
 #line 633 "hexpr.y"
                                                 { (yyval.exp) = TAPP3(var("if",m((yylsp[-5]))), (yyvsp[-4].exp), (yyvsp[-2].exp), (yyvsp[0].exp), m((yylsp[-5]), (yylsp[0]))); }
-#line 3471 "hexpr.parse.C"
+#line 3517 "hexpr.parse.C"
     break;
 
-  case 109:
+  case 109: /* l1expr: l2expr  */
 #line 634 "hexpr.y"
                                                 { (yyval.exp) = (yyvsp[0].exp); }
-#line 3477 "hexpr.parse.C"
+#line 3523 "hexpr.parse.C"
     break;
 
-  case 110:
+  case 110: /* l2expr: l2expr "~" l2expr  */
 #line 636 "hexpr.y"
                             { (yyval.exp) = TAPP2(var("~",m((yylsp[-1]))), (yyvsp[-2].exp), (yyvsp[0].exp), m((yylsp[-2]),(yylsp[0]))); }
-#line 3483 "hexpr.parse.C"
+#line 3529 "hexpr.parse.C"
     break;
 
-  case 111:
+  case 111: /* l2expr: l2expr "===" l2expr  */
 #line 637 "hexpr.y"
                             { (yyval.exp) = TAPP2(var("===",m((yylsp[-1]))), (yyvsp[-2].exp), (yyvsp[0].exp), m((yylsp[-2]),(yylsp[0]))); }
-#line 3489 "hexpr.parse.C"
+#line 3535 "hexpr.parse.C"
     break;
 
-  case 112:
+  case 112: /* l2expr: l2expr "==" l2expr  */
 #line 638 "hexpr.y"
                             { (yyval.exp) = TAPP2(var("==",m((yylsp[-1]))), (yyvsp[-2].exp), (yyvsp[0].exp), m((yylsp[-2]),(yylsp[0]))); }
-#line 3495 "hexpr.parse.C"
+#line 3541 "hexpr.parse.C"
     break;
 
-  case 113:
+  case 113: /* l2expr: l2expr "!=" l2expr  */
 #line 639 "hexpr.y"
                             { (yyval.exp) = TAPP1(var("not",m((yylsp[-1]))), TAPP2(var("==",m((yylsp[-1]))), (yyvsp[-2].exp), (yyvsp[0].exp), m((yylsp[-2]),(yylsp[0]))), m((yylsp[-2]),(yylsp[0]))); }
-#line 3501 "hexpr.parse.C"
+#line 3547 "hexpr.parse.C"
     break;
 
-  case 114:
+  case 114: /* l2expr: l2expr "<" l2expr  */
 #line 640 "hexpr.y"
                             { (yyval.exp) = TAPP2(var("<",m((yylsp[-1]))),  (yyvsp[-2].exp), (yyvsp[0].exp), m((yylsp[-2]),(yylsp[0]))); }
-#line 3507 "hexpr.parse.C"
+#line 3553 "hexpr.parse.C"
     break;
 
-  case 115:
+  case 115: /* l2expr: l2expr "<=" l2expr  */
 #line 641 "hexpr.y"
                             { (yyval.exp) = TAPP2(var("<=",m((yylsp[-1]))), (yyvsp[-2].exp), (yyvsp[0].exp), m((yylsp[-2]),(yylsp[0]))); }
-#line 3513 "hexpr.parse.C"
+#line 3559 "hexpr.parse.C"
     break;
 
-  case 116:
+  case 116: /* l2expr: l2expr ">" l2expr  */
 #line 642 "hexpr.y"
                             { (yyval.exp) = TAPP2(var(">",m((yylsp[-1]))),  (yyvsp[-2].exp), (yyvsp[0].exp), m((yylsp[-2]),(yylsp[0]))); }
-#line 3519 "hexpr.parse.C"
+#line 3565 "hexpr.parse.C"
     break;
 
-  case 117:
+  case 117: /* l2expr: l2expr ">=" l2expr  */
 #line 643 "hexpr.y"
                             { (yyval.exp) = TAPP2(var(">=",m((yylsp[-1]))), (yyvsp[-2].exp), (yyvsp[0].exp), m((yylsp[-2]),(yylsp[0]))); }
-#line 3525 "hexpr.parse.C"
+#line 3571 "hexpr.parse.C"
     break;
 
-  case 118:
+  case 118: /* l2expr: l3expr  */
 #line 644 "hexpr.y"
                             { (yyval.exp) = (yyvsp[0].exp); }
-#line 3531 "hexpr.parse.C"
+#line 3577 "hexpr.parse.C"
     break;
 
-  case 119:
+  case 119: /* l3expr: l3expr "+" l3expr  */
 #line 646 "hexpr.y"
                            { (yyval.exp) = TAPP2(var("+",m((yylsp[-1]))), (yyvsp[-2].exp), (yyvsp[0].exp), m((yylsp[-2]),(yylsp[0]))); }
-#line 3537 "hexpr.parse.C"
+#line 3583 "hexpr.parse.C"
     break;
 
-  case 120:
+  case 120: /* l3expr: l3expr "-" l3expr  */
 #line 647 "hexpr.y"
                            { (yyval.exp) = TAPP2(var("-",m((yylsp[-1]))), (yyvsp[-2].exp), (yyvsp[0].exp), m((yylsp[-2]),(yylsp[0]))); }
-#line 3543 "hexpr.parse.C"
+#line 3589 "hexpr.parse.C"
     break;
 
-  case 121:
+  case 121: /* l3expr: l3expr "++" l3expr  */
 #line 648 "hexpr.y"
                            { (yyval.exp) = TAPP2(var("append",m((yylsp[-1]))), (yyvsp[-2].exp), (yyvsp[0].exp), m((yylsp[-2]),(yylsp[0]))); }
-#line 3549 "hexpr.parse.C"
+#line 3595 "hexpr.parse.C"
     break;
 
-  case 122:
+  case 122: /* l3expr: "-" l3expr  */
 #line 649 "hexpr.y"
                            { (yyval.exp) = TAPP1(var("neg",m((yylsp[-1]))), ExprPtr((yyvsp[0].exp)), m((yylsp[-1]),(yylsp[0]))); }
-#line 3555 "hexpr.parse.C"
+#line 3601 "hexpr.parse.C"
     break;
 
-  case 123:
+  case 123: /* l3expr: l4expr  */
 #line 650 "hexpr.y"
                            { (yyval.exp) = (yyvsp[0].exp); }
-#line 3561 "hexpr.parse.C"
+#line 3607 "hexpr.parse.C"
     break;
 
-  case 124:
+  case 124: /* l4expr: l4expr "*" l4expr  */
 #line 652 "hexpr.y"
                           { (yyval.exp) = TAPP2(var("*", m((yylsp[-1]))), (yyvsp[-2].exp), (yyvsp[0].exp), m((yylsp[-2]), (yylsp[0]))); }
-#line 3567 "hexpr.parse.C"
+#line 3613 "hexpr.parse.C"
     break;
 
-  case 125:
+  case 125: /* l4expr: l4expr "/" l4expr  */
 #line 653 "hexpr.y"
                           { (yyval.exp) = TAPP2(var("/", m((yylsp[-1]))), (yyvsp[-2].exp), (yyvsp[0].exp), m((yylsp[-2]), (yylsp[0]))); }
-#line 3573 "hexpr.parse.C"
+#line 3619 "hexpr.parse.C"
     break;
 
-  case 126:
+  case 126: /* l4expr: l4expr "%" l4expr  */
 #line 654 "hexpr.y"
                           { (yyval.exp) = TAPP2(var("%", m((yylsp[-1]))), (yyvsp[-2].exp), (yyvsp[0].exp), m((yylsp[-2]), (yylsp[0]))); }
-#line 3579 "hexpr.parse.C"
+#line 3625 "hexpr.parse.C"
     break;
 
-  case 127:
+  case 127: /* l4expr: l5expr  */
 #line 655 "hexpr.y"
                           { (yyval.exp) = (yyvsp[0].exp); }
-#line 3585 "hexpr.parse.C"
+#line 3631 "hexpr.parse.C"
     break;
 
-  case 128:
+  case 128: /* l5expr: l6expr  */
 #line 657 "hexpr.y"
                { (yyval.exp) = (yyvsp[0].exp); }
-#line 3591 "hexpr.parse.C"
+#line 3637 "hexpr.parse.C"
     break;
 
-  case 129:
+  case 129: /* l5expr: "let" letbindings "in" l0expr  */
 #line 660 "hexpr.y"
                                       { (yyval.exp) = compileNestedLetMatch(*(yyvsp[-2].letbindings), ExprPtr((yyvsp[0].exp)), m((yylsp[-3]),(yylsp[0])))->clone(); }
-#line 3597 "hexpr.parse.C"
+#line 3643 "hexpr.parse.C"
     break;
 
-  case 130:
+  case 130: /* l5expr: "let" letbindings ";" "in" l0expr  */
 #line 661 "hexpr.y"
                                           { (yyval.exp) = compileNestedLetMatch(*(yyvsp[-3].letbindings), ExprPtr((yyvsp[0].exp)), m((yylsp[-4]),(yylsp[0])))->clone(); }
-#line 3603 "hexpr.parse.C"
+#line 3649 "hexpr.parse.C"
     break;
 
-  case 131:
+  case 131: /* l5expr: "match" l6exprs "with" patternexps  */
 #line 664 "hexpr.y"
                                            { (yyval.exp) = compileMatch(yyParseCC, *(yyvsp[-2].exps), normPatternRules(*(yyvsp[0].patternexps), m((yylsp[-3]),(yylsp[0]))), m((yylsp[-3]),(yylsp[0])))->clone(); }
-#line 3609 "hexpr.parse.C"
+#line 3655 "hexpr.parse.C"
     break;
 
-  case 132:
+  case 132: /* l5expr: l6expr "matches" pattern  */
 #line 667 "hexpr.y"
                                  { (yyval.exp) = compileMatchTest(yyParseCC, ExprPtr((yyvsp[-2].exp)), PatternPtr((yyvsp[0].pattern)), m((yylsp[-2]),(yylsp[0])))->clone(); }
-#line 3615 "hexpr.parse.C"
+#line 3661 "hexpr.parse.C"
     break;
 
-  case 133:
+  case 133: /* l5expr: "parse" "{" prules "}"  */
 #line 670 "hexpr.y"
                                {
         try {
@@ -3626,1407 +3672,1407 @@ yyreduce:
           throw annotated_error(m((yylsp[-3]),(yylsp[0])), ss.str());
         }
       }
-#line 3630 "hexpr.parse.C"
+#line 3676 "hexpr.parse.C"
     break;
 
-  case 134:
+  case 134: /* l5expr: "do" "{" dobindings "}"  */
 #line 682 "hexpr.y"
                                                 { (yyval.exp) = compileNestedLetMatch(*(yyvsp[-1].letbindings), ExprPtr(new Unit(m((yylsp[-3]),(yylsp[0])))), m((yylsp[-3]),(yylsp[0]))); }
-#line 3636 "hexpr.parse.C"
+#line 3682 "hexpr.parse.C"
     break;
 
-  case 135:
+  case 135: /* l5expr: "do" "{" dobindings "return" l0expr "}"  */
 #line 683 "hexpr.y"
                                                 { (yyval.exp) = compileNestedLetMatch(*(yyvsp[-3].letbindings), ExprPtr((yyvsp[-1].exp)), m((yylsp[-5]),(yylsp[0]))); }
-#line 3642 "hexpr.parse.C"
+#line 3688 "hexpr.parse.C"
     break;
 
-  case 136:
+  case 136: /* l5expr: l6expr "::" qtype  */
 #line 686 "hexpr.y"
                                 { (yyval.exp) = new Assump(ExprPtr((yyvsp[-2].exp)), QualTypePtr((yyvsp[0].qualtype)), m((yylsp[-2]),(yylsp[0]))); }
-#line 3648 "hexpr.parse.C"
+#line 3694 "hexpr.parse.C"
     break;
 
-  case 137:
+  case 137: /* letbindings: letbindings ";" letbinding  */
 #line 688 "hexpr.y"
                                         { (yyvsp[-2].letbindings)->push_back(*(yyvsp[0].letbinding)); (yyval.letbindings) = (yyvsp[-2].letbindings); }
-#line 3654 "hexpr.parse.C"
+#line 3700 "hexpr.parse.C"
     break;
 
-  case 138:
+  case 138: /* letbindings: letbinding  */
 #line 689 "hexpr.y"
                                         { (yyval.letbindings) = autorelease(new LetBindings()); (yyval.letbindings)->push_back(*(yyvsp[0].letbinding)); }
-#line 3660 "hexpr.parse.C"
+#line 3706 "hexpr.parse.C"
     break;
 
-  case 139:
+  case 139: /* letbinding: irrefutablep "=" l1expr  */
 #line 691 "hexpr.y"
                                     { (yyval.letbinding) = autorelease(new LetBinding(PatternPtr((yyvsp[-2].pattern)), ExprPtr((yyvsp[0].exp)))); }
-#line 3666 "hexpr.parse.C"
+#line 3712 "hexpr.parse.C"
     break;
 
-  case 140:
+  case 140: /* dobindings: dobindings dobinding  */
 #line 693 "hexpr.y"
                                  { (yyval.letbindings) = (yyvsp[-1].letbindings); (yyval.letbindings)->push_back(*(yyvsp[0].letbinding)); }
-#line 3672 "hexpr.parse.C"
+#line 3718 "hexpr.parse.C"
     break;
 
-  case 141:
+  case 141: /* dobindings: dobinding  */
 #line 694 "hexpr.y"
                                  { (yyval.letbindings) = autorelease(new LetBindings()); (yyval.letbindings)->push_back(*(yyvsp[0].letbinding)); }
-#line 3678 "hexpr.parse.C"
+#line 3724 "hexpr.parse.C"
     break;
 
-  case 142:
+  case 142: /* dobinding: irrefutablep "=" l0expr ";"  */
 #line 696 "hexpr.y"
                                        { (yyval.letbinding) = autorelease(new LetBinding(PatternPtr((yyvsp[-3].pattern)), ExprPtr((yyvsp[-1].exp)))); }
-#line 3684 "hexpr.parse.C"
+#line 3730 "hexpr.parse.C"
     break;
 
-  case 143:
+  case 143: /* dobinding: l0expr ";"  */
 #line 697 "hexpr.y"
                                        { (yyval.letbinding) = autorelease(new LetBinding(PatternPtr(new MatchAny("_",m((yylsp[-1])))), ExprPtr((yyvsp[-1].exp)))); }
-#line 3690 "hexpr.parse.C"
+#line 3736 "hexpr.parse.C"
     break;
 
-  case 144:
+  case 144: /* cselconds: cselconds "," lhexpr  */
 #line 699 "hexpr.y"
                                 { (yyval.exps) = (yyvsp[-2].exps); (yyval.exps)->push_back(ExprPtr((yyvsp[0].exp))); }
-#line 3696 "hexpr.parse.C"
+#line 3742 "hexpr.parse.C"
     break;
 
-  case 145:
+  case 145: /* cselconds: lhexpr  */
 #line 700 "hexpr.y"
                                 { (yyval.exps) = autorelease(new Exprs()); (yyval.exps)->push_back(ExprPtr((yyvsp[0].exp))); }
-#line 3702 "hexpr.parse.C"
+#line 3748 "hexpr.parse.C"
     break;
 
-  case 146:
+  case 146: /* cselection: pattern "<-" l0expr "," cselconds  */
 #line 702 "hexpr.y"
                                               { (yyval.cselection) = new CSelection(); (yyval.cselection)->pat = PatternPtr((yyvsp[-4].pattern)); (yyval.cselection)->seq = ExprPtr((yyvsp[-2].exp)); (yyval.cselection)->conds = *(yyvsp[0].exps); }
-#line 3708 "hexpr.parse.C"
+#line 3754 "hexpr.parse.C"
     break;
 
-  case 147:
+  case 147: /* cselection: pattern "<-" l0expr  */
 #line 703 "hexpr.y"
                                               { (yyval.cselection) = new CSelection(); (yyval.cselection)->pat = PatternPtr((yyvsp[-2].pattern)); (yyval.cselection)->seq = ExprPtr((yyvsp[0].exp)); }
-#line 3714 "hexpr.parse.C"
+#line 3760 "hexpr.parse.C"
     break;
 
-  case 148:
+  case 148: /* cselections: cselections "|" cselection  */
 #line 705 "hexpr.y"
                                         { (yyval.cselections) = (yyvsp[-2].cselections); (yyval.cselections)->push_back(CSelectionPtr((yyvsp[0].cselection))); }
-#line 3720 "hexpr.parse.C"
+#line 3766 "hexpr.parse.C"
     break;
 
-  case 149:
+  case 149: /* cselections: cselection  */
 #line 706 "hexpr.y"
                                         { (yyval.cselections) = autorelease(new CSelections()); (yyval.cselections)->push_back(CSelectionPtr((yyvsp[0].cselection))); }
-#line 3726 "hexpr.parse.C"
+#line 3772 "hexpr.parse.C"
     break;
 
-  case 150:
+  case 150: /* l6expr: l6expr "(" cargs ")"  */
 #line 709 "hexpr.y"
                                 { (yyval.exp) = new App(ExprPtr((yyvsp[-3].exp)), *(yyvsp[-1].exps), m((yylsp[-3]), (yylsp[0]))); }
-#line 3732 "hexpr.parse.C"
+#line 3778 "hexpr.parse.C"
     break;
 
-  case 151:
+  case 151: /* l6expr: id  */
 #line 710 "hexpr.y"
                                 { (yyval.exp) = varCtorFn(*(yyvsp[0].string), m((yylsp[0]))); }
-#line 3738 "hexpr.parse.C"
+#line 3784 "hexpr.parse.C"
     break;
 
-  case 152:
+  case 152: /* l6expr: "[" l0expr ".." l0expr "]"  */
 #line 713 "hexpr.y"
                                                           { (yyval.exp) = new App(var("range", m((yylsp[-2]))), list(ExprPtr((yyvsp[-3].exp)), ExprPtr((yyvsp[-1].exp))), m((yylsp[-4]), (yylsp[0]))); }
-#line 3744 "hexpr.parse.C"
+#line 3790 "hexpr.parse.C"
     break;
 
-  case 153:
+  case 153: /* l6expr: "[" l0expr ".." "]"  */
 #line 714 "hexpr.y"
                                                           { (yyval.exp) = new App(var("iterateS", m((yylsp[-1]))), list(ExprPtr((yyvsp[-2].exp)), fn(str::strings(".x"), fncall(var("+", m((yylsp[-1]))), list(var(".x", m((yylsp[-1]))), ExprPtr(new Int(1, m((yylsp[-1]))))), m((yylsp[-1]))), m((yylsp[-1])))), m((yylsp[-3]), (yylsp[0]))); }
-#line 3750 "hexpr.parse.C"
+#line 3796 "hexpr.parse.C"
     break;
 
-  case 154:
+  case 154: /* l6expr: "[" l0expr "|" cselections "]"  */
 #line 715 "hexpr.y"
                                                           { (yyval.exp) = desugarComprehension(yyParseCC, ExprPtr((yyvsp[-3].exp)), *(yyvsp[-1].cselections), m((yylsp[-4]), (yylsp[0]))); }
-#line 3756 "hexpr.parse.C"
+#line 3802 "hexpr.parse.C"
     break;
 
-  case 155:
+  case 155: /* l6expr: "[" cargs "]"  */
 #line 716 "hexpr.y"
                                                           { (yyval.exp) = new MkArray(*(yyvsp[-1].exps), m((yylsp[-2]), (yylsp[0]))); }
-#line 3762 "hexpr.parse.C"
+#line 3808 "hexpr.parse.C"
     break;
 
-  case 156:
+  case 156: /* l6expr: l6expr "[" "timeV" "]"  */
 #line 717 "hexpr.y"
                                                           { (yyval.exp) = maybeArraySliceWithTime(ExprPtr((yyvsp[-3].exp)), *(yyvsp[-1].string), m((yylsp[-3]), (yylsp[0]))); }
-#line 3768 "hexpr.parse.C"
+#line 3814 "hexpr.parse.C"
     break;
 
-  case 157:
+  case 157: /* l6expr: l6expr "[" l0expr "]"  */
 #line 718 "hexpr.y"
                                                           { (yyval.exp) = mkAIndex(ExprPtr((yyvsp[-3].exp)), ExprPtr((yyvsp[-1].exp)), m((yylsp[-3]), (yylsp[0]))); }
-#line 3774 "hexpr.parse.C"
+#line 3820 "hexpr.parse.C"
     break;
 
-  case 158:
+  case 158: /* l6expr: l6expr "[" l0expr ":" l0expr "]"  */
 #line 719 "hexpr.y"
                                                           { (yyval.exp) = new App(var("slice", m((yylsp[-2]))), list(ExprPtr((yyvsp[-5].exp)), ExprPtr((yyvsp[-3].exp)), ExprPtr((yyvsp[-1].exp))), m((yylsp[-5]), (yylsp[0]))); }
-#line 3780 "hexpr.parse.C"
+#line 3826 "hexpr.parse.C"
     break;
 
-  case 159:
+  case 159: /* l6expr: l6expr "[" l0expr ":" "]"  */
 #line 720 "hexpr.y"
                                                           { std::string vn = freshName(); (yyval.exp) = new Let(vn, ExprPtr((yyvsp[-4].exp)), fncall(var("slice",m((yylsp[-1]))), list(var(vn,m((yylsp[-4]))), ExprPtr((yyvsp[-2].exp)), fncall(var("size",m((yylsp[-1]))), list(var(vn,m((yylsp[-4])))),m((yylsp[-4])))),m((yylsp[-4]),(yylsp[0]))), m((yylsp[-4]), (yylsp[0]))); }
-#line 3786 "hexpr.parse.C"
+#line 3832 "hexpr.parse.C"
     break;
 
-  case 160:
+  case 160: /* l6expr: l6expr "[" ":" l0expr "]"  */
 #line 721 "hexpr.y"
                                                           { std::string vn = freshName(); (yyval.exp) = new Let(vn, ExprPtr((yyvsp[-4].exp)), fncall(var("slice",m((yylsp[-2]))), list(var(vn,m((yylsp[-4]))), fncall(var("size",m((yylsp[-2]))), list(var(vn,m((yylsp[-2])))),m((yylsp[-4]))), ExprPtr((yyvsp[-1].exp))), m((yylsp[-4]),(yylsp[0]))), m((yylsp[-4]), (yylsp[0]))); }
-#line 3792 "hexpr.parse.C"
+#line 3838 "hexpr.parse.C"
     break;
 
-  case 161:
+  case 161: /* l6expr: "|" id "=" l0expr "|"  */
 #line 724 "hexpr.y"
                                                               { (yyval.exp) = new MkVariant(*(yyvsp[-3].string), ExprPtr((yyvsp[-1].exp)), m((yylsp[-4]), (yylsp[0]))); }
-#line 3798 "hexpr.parse.C"
+#line 3844 "hexpr.parse.C"
     break;
 
-  case 162:
+  case 162: /* l6expr: "|" "intV" "=" l0expr "|"  */
 #line 725 "hexpr.y"
                                                               { (yyval.exp) = new MkVariant(".f" + str::from((yyvsp[-3].intv)), ExprPtr((yyvsp[-1].exp)), m((yylsp[-4]), (yylsp[0]))); }
-#line 3804 "hexpr.parse.C"
+#line 3850 "hexpr.parse.C"
     break;
 
-  case 163:
+  case 163: /* l6expr: "|" id "|"  */
 #line 726 "hexpr.y"
                                                               { (yyval.exp) = new MkVariant(*(yyvsp[-1].string), ExprPtr(new Unit(m((yylsp[-1])))), m((yylsp[-2]), (yylsp[0]))); }
-#line 3810 "hexpr.parse.C"
+#line 3856 "hexpr.parse.C"
     break;
 
-  case 164:
+  case 164: /* l6expr: "case" l0expr "of" "|" varfields "|"  */
 #line 727 "hexpr.y"
                                                               { (yyval.exp) = new Case(ExprPtr((yyvsp[-4].exp)), *(yyvsp[-1].vfields), m((yylsp[-5]), (yylsp[0]))); }
-#line 3816 "hexpr.parse.C"
+#line 3862 "hexpr.parse.C"
     break;
 
-  case 165:
+  case 165: /* l6expr: "case" l0expr "of" "|" varfields "|" "default" l0expr  */
 #line 728 "hexpr.y"
                                                               { (yyval.exp) = new Case(ExprPtr((yyvsp[-6].exp)), *(yyvsp[-3].vfields), ExprPtr((yyvsp[0].exp)), m((yylsp[-7]), (yylsp[0]))); }
-#line 3822 "hexpr.parse.C"
+#line 3868 "hexpr.parse.C"
     break;
 
-  case 166:
+  case 166: /* l6expr: "{" recfields "}"  */
 #line 731 "hexpr.y"
                               { if ((yyvsp[-1].rfields)->size() > 0) { (yyval.exp) = new MkRecord(*(yyvsp[-1].rfields), m((yylsp[-2]), (yylsp[0]))); } else { (yyval.exp) = new Unit(m((yylsp[-2]), (yylsp[0]))); } }
-#line 3828 "hexpr.parse.C"
+#line 3874 "hexpr.parse.C"
     break;
 
-  case 167:
+  case 167: /* l6expr: "{" recfields "," "}"  */
 #line 732 "hexpr.y"
                               { if ((yyvsp[-2].rfields)->size() > 0) { (yyval.exp) = new MkRecord(*(yyvsp[-2].rfields), m((yylsp[-3]), (yylsp[0]))); } else { (yyval.exp) = new Unit(m((yylsp[-3]), (yylsp[0]))); } }
-#line 3834 "hexpr.parse.C"
+#line 3880 "hexpr.parse.C"
     break;
 
-  case 168:
+  case 168: /* l6expr: l6expr recfieldpath  */
 #line 733 "hexpr.y"
                               { (yyval.exp) = makeProjSeq((yyvsp[-1].exp), *(yyvsp[0].strings), m((yylsp[-1]), (yylsp[0]))); }
-#line 3840 "hexpr.parse.C"
+#line 3886 "hexpr.parse.C"
     break;
 
-  case 169:
+  case 169: /* l6expr: recfieldpath  */
 #line 736 "hexpr.y"
                      { (yyval.exp) = new Fn(str::strings("x"), proj(var("x", m((yylsp[0]))), *(yyvsp[0].strings), m((yylsp[0]))), m((yylsp[0]))); }
-#line 3846 "hexpr.parse.C"
+#line 3892 "hexpr.parse.C"
     break;
 
-  case 170:
+  case 170: /* l6expr: "regexV"  */
 #line 739 "hexpr.y"
                  { (yyval.exp) = compileRegexFn(yyParseCC, std::string((yyvsp[0].string)->begin() + 1, (yyvsp[0].string)->end() - 1), m((yylsp[0])))->clone(); }
-#line 3852 "hexpr.parse.C"
+#line 3898 "hexpr.parse.C"
     break;
 
-  case 171:
+  case 171: /* l6expr: "pack" l6expr  */
 #line 742 "hexpr.y"
                                            { (yyval.exp) = new Pack(ExprPtr((yyvsp[0].exp)), m((yylsp[-1]), (yylsp[0]))); }
-#line 3858 "hexpr.parse.C"
+#line 3904 "hexpr.parse.C"
     break;
 
-  case 172:
+  case 172: /* l6expr: "unpack" id "=" l6expr "in" l6expr  */
 #line 743 "hexpr.y"
                                            { (yyval.exp) = new Unpack(*(yyvsp[-4].string), ExprPtr((yyvsp[-2].exp)), ExprPtr((yyvsp[0].exp)), m((yylsp[-5]), (yylsp[0]))); }
-#line 3864 "hexpr.parse.C"
+#line 3910 "hexpr.parse.C"
     break;
 
-  case 173:
+  case 173: /* l6expr: "boolV"  */
 #line 746 "hexpr.y"
                     { (yyval.exp) = new Bool((yyvsp[0].boolv), m((yylsp[0]))); }
-#line 3870 "hexpr.parse.C"
+#line 3916 "hexpr.parse.C"
     break;
 
-  case 174:
+  case 174: /* l6expr: "charV"  */
 #line 747 "hexpr.y"
                     { (yyval.exp) = new Char(str::readCharDef(*(yyvsp[0].string)), m((yylsp[0]))); }
-#line 3876 "hexpr.parse.C"
+#line 3922 "hexpr.parse.C"
     break;
 
-  case 175:
+  case 175: /* l6expr: "byteV"  */
 #line 748 "hexpr.y"
                     { (yyval.exp) = new Byte(str::dehex(*(yyvsp[0].string)), m((yylsp[0]))); }
-#line 3882 "hexpr.parse.C"
+#line 3928 "hexpr.parse.C"
     break;
 
-  case 176:
+  case 176: /* l6expr: "bytesV"  */
 #line 749 "hexpr.y"
                     { (yyval.exp) = mkarray(str::dehexs(*(yyvsp[0].string)), m((yylsp[0]))); }
-#line 3888 "hexpr.parse.C"
+#line 3934 "hexpr.parse.C"
     break;
 
-  case 177:
+  case 177: /* l6expr: "shortV"  */
 #line 750 "hexpr.y"
                     { (yyval.exp) = new Short((yyvsp[0].shortv), m((yylsp[0]))); }
-#line 3894 "hexpr.parse.C"
+#line 3940 "hexpr.parse.C"
     break;
 
-  case 178:
+  case 178: /* l6expr: "intV"  */
 #line 751 "hexpr.y"
                     { (yyval.exp) = new Int((yyvsp[0].intv), m((yylsp[0]))); }
-#line 3900 "hexpr.parse.C"
+#line 3946 "hexpr.parse.C"
     break;
 
-  case 179:
+  case 179: /* l6expr: "longV"  */
 #line 752 "hexpr.y"
                     { (yyval.exp) = new Long((yyvsp[0].longv), m((yylsp[0]))); }
-#line 3906 "hexpr.parse.C"
+#line 3952 "hexpr.parse.C"
     break;
 
-  case 180:
+  case 180: /* l6expr: "int128V"  */
 #line 753 "hexpr.y"
                     { (yyval.exp) = new Int128((yyvsp[0].int128v), m((yylsp[0]))); }
-#line 3912 "hexpr.parse.C"
+#line 3958 "hexpr.parse.C"
     break;
 
-  case 181:
+  case 181: /* l6expr: "floatV"  */
 #line 754 "hexpr.y"
                     { (yyval.exp) = new Float((yyvsp[0].floatv), m((yylsp[0]))); }
-#line 3918 "hexpr.parse.C"
+#line 3964 "hexpr.parse.C"
     break;
 
-  case 182:
+  case 182: /* l6expr: "doubleV"  */
 #line 755 "hexpr.y"
                     { (yyval.exp) = new Double((yyvsp[0].doublev), m((yylsp[0]))); }
-#line 3924 "hexpr.parse.C"
+#line 3970 "hexpr.parse.C"
     break;
 
-  case 183:
+  case 183: /* l6expr: "stringV"  */
 #line 756 "hexpr.y"
                     { (yyval.exp) = mkarray(str::unescape(str::trimq(*(yyvsp[0].string))), m((yylsp[0]))); }
-#line 3930 "hexpr.parse.C"
+#line 3976 "hexpr.parse.C"
     break;
 
-  case 184:
+  case 184: /* l6expr: tsseq  */
 #line 757 "hexpr.y"
                     { (yyval.exp) = mkTimespanExpr(*(yyvsp[0].strings), m((yylsp[0])))->clone(); }
-#line 3936 "hexpr.parse.C"
+#line 3982 "hexpr.parse.C"
     break;
 
-  case 185:
+  case 185: /* l6expr: "timeV"  */
 #line 758 "hexpr.y"
                     { (yyval.exp) = mkTimeExpr(*(yyvsp[0].string), m((yylsp[0])))->clone(); }
-#line 3942 "hexpr.parse.C"
+#line 3988 "hexpr.parse.C"
     break;
 
-  case 186:
+  case 186: /* l6expr: "dateTimeV"  */
 #line 759 "hexpr.y"
                     { (yyval.exp) = mkDateTimeExpr(*(yyvsp[0].string), m((yylsp[0])))->clone(); }
-#line 3948 "hexpr.parse.C"
+#line 3994 "hexpr.parse.C"
     break;
 
-  case 187:
+  case 187: /* l6expr: "(" cargs ")"  */
 #line 762 "hexpr.y"
                       { (yyval.exp) = pickNestedExp((yyvsp[-1].exps), m((yylsp[-2]),(yylsp[0]))); }
-#line 3954 "hexpr.parse.C"
+#line 4000 "hexpr.parse.C"
     break;
 
-  case 188:
+  case 188: /* l6expr: "(" "++" ")"  */
 #line 765 "hexpr.y"
                       { (yyval.exp) = new Var("append", m((yylsp[-1]))); }
-#line 3960 "hexpr.parse.C"
+#line 4006 "hexpr.parse.C"
     break;
 
-  case 189:
+  case 189: /* l6expr: "(" "+" ")"  */
 #line 766 "hexpr.y"
                       { (yyval.exp) = new Var("+",      m((yylsp[-1]))); }
-#line 3966 "hexpr.parse.C"
+#line 4012 "hexpr.parse.C"
     break;
 
-  case 190:
+  case 190: /* l6expr: "(" "-" ")"  */
 #line 767 "hexpr.y"
                       { (yyval.exp) = new Var("-",      m((yylsp[-1]))); }
-#line 3972 "hexpr.parse.C"
+#line 4018 "hexpr.parse.C"
     break;
 
-  case 191:
+  case 191: /* l6expr: "(" "*" ")"  */
 #line 768 "hexpr.y"
                       { (yyval.exp) = new Var("*",      m((yylsp[-1]))); }
-#line 3978 "hexpr.parse.C"
+#line 4024 "hexpr.parse.C"
     break;
 
-  case 192:
+  case 192: /* l6expr: "(" "/" ")"  */
 #line 769 "hexpr.y"
                       { (yyval.exp) = new Var("/",      m((yylsp[-1]))); }
-#line 3984 "hexpr.parse.C"
+#line 4030 "hexpr.parse.C"
     break;
 
-  case 193:
+  case 193: /* l6expr: "(" "%" ")"  */
 #line 770 "hexpr.y"
                       { (yyval.exp) = new Var("%",      m((yylsp[-1]))); }
-#line 3990 "hexpr.parse.C"
+#line 4036 "hexpr.parse.C"
     break;
 
-  case 194:
+  case 194: /* l6expr: "(" "~" ")"  */
 #line 771 "hexpr.y"
                       { (yyval.exp) = new Var("~",      m((yylsp[-1]))); }
-#line 3996 "hexpr.parse.C"
+#line 4042 "hexpr.parse.C"
     break;
 
-  case 195:
+  case 195: /* l6expr: "(" "===" ")"  */
 #line 772 "hexpr.y"
                       { (yyval.exp) = new Var("===",    m((yylsp[-1]))); }
-#line 4002 "hexpr.parse.C"
+#line 4048 "hexpr.parse.C"
     break;
 
-  case 196:
+  case 196: /* l6expr: "(" "==" ")"  */
 #line 773 "hexpr.y"
                       { (yyval.exp) = new Var("==",     m((yylsp[-1]))); }
-#line 4008 "hexpr.parse.C"
+#line 4054 "hexpr.parse.C"
     break;
 
-  case 197:
+  case 197: /* l6expr: "(" "!=" ")"  */
 #line 774 "hexpr.y"
                       { (yyval.exp) = new Var("!=",     m((yylsp[-1]))); }
-#line 4014 "hexpr.parse.C"
+#line 4060 "hexpr.parse.C"
     break;
 
-  case 198:
+  case 198: /* l6expr: "(" "<" ")"  */
 #line 775 "hexpr.y"
                       { (yyval.exp) = new Var("<",      m((yylsp[-1]))); }
-#line 4020 "hexpr.parse.C"
+#line 4066 "hexpr.parse.C"
     break;
 
-  case 199:
+  case 199: /* l6expr: "(" ">" ")"  */
 #line 776 "hexpr.y"
                       { (yyval.exp) = new Var(">",      m((yylsp[-1]))); }
-#line 4026 "hexpr.parse.C"
+#line 4072 "hexpr.parse.C"
     break;
 
-  case 200:
+  case 200: /* l6expr: "(" ">=" ")"  */
 #line 777 "hexpr.y"
                       { (yyval.exp) = new Var(">=",     m((yylsp[-1]))); }
-#line 4032 "hexpr.parse.C"
+#line 4078 "hexpr.parse.C"
     break;
 
-  case 201:
+  case 201: /* l6expr: "(" "<=" ")"  */
 #line 778 "hexpr.y"
                       { (yyval.exp) = new Var("<=",     m((yylsp[-1]))); }
-#line 4038 "hexpr.parse.C"
+#line 4084 "hexpr.parse.C"
     break;
 
-  case 202:
+  case 202: /* l6expr: "(" "and" ")"  */
 #line 779 "hexpr.y"
                       { (yyval.exp) = new Var("and",    m((yylsp[-1]))); }
-#line 4044 "hexpr.parse.C"
+#line 4090 "hexpr.parse.C"
     break;
 
-  case 203:
+  case 203: /* l6expr: "(" "or" ")"  */
 #line 780 "hexpr.y"
                       { (yyval.exp) = new Var("or",     m((yylsp[-1]))); }
-#line 4050 "hexpr.parse.C"
+#line 4096 "hexpr.parse.C"
     break;
 
-  case 204:
+  case 204: /* l6expr: "(" "in" ")"  */
 #line 781 "hexpr.y"
                       { (yyval.exp) = new Var("in",     m((yylsp[-1]))); }
-#line 4056 "hexpr.parse.C"
+#line 4102 "hexpr.parse.C"
     break;
 
-  case 205:
+  case 205: /* l6expr: "(" "!" ")"  */
 #line 782 "hexpr.y"
                       { (yyval.exp) = new Var("not",    m((yylsp[-1]))); }
-#line 4062 "hexpr.parse.C"
+#line 4108 "hexpr.parse.C"
     break;
 
-  case 206:
+  case 206: /* l6expr: "`" l0expr "`"  */
 #line 785 "hexpr.y"
                        { (yyval.exp) = new Assump(fncall(var("unsafeCast", m((yylsp[-1]))), list(mktunit(m((yylsp[-1])))), m((yylsp[-1]))), qualtype(tapp(primty("quote"), list(texpr(ExprPtr((yyvsp[-1].exp)))))), m((yylsp[-1]))); }
-#line 4068 "hexpr.parse.C"
+#line 4114 "hexpr.parse.C"
     break;
 
-  case 207:
+  case 207: /* prules: prules prule  */
 #line 787 "hexpr.y"
                      { (yyval.prules) = (yyvsp[-1].prules); (yyval.prules)->push_back(*(yyvsp[0].prule)); }
-#line 4074 "hexpr.parse.C"
+#line 4120 "hexpr.parse.C"
     break;
 
-  case 208:
+  case 208: /* prules: prule  */
 #line 788 "hexpr.y"
                      { (yyval.prules) = autorelease(new Grammar()); (yyval.prules)->push_back(*(yyvsp[0].prule)); }
-#line 4080 "hexpr.parse.C"
+#line 4126 "hexpr.parse.C"
     break;
 
-  case 209:
+  case 209: /* prule: id ":=" prdefs  */
 #line 790 "hexpr.y"
                       { (yyval.prule) = autorelease(new Grammar::value_type(*(yyvsp[-2].string), *(yyvsp[0].prdefs))); }
-#line 4086 "hexpr.parse.C"
+#line 4132 "hexpr.parse.C"
     break;
 
-  case 210:
+  case 210: /* prdefs: prdefs "|" prdef  */
 #line 792 "hexpr.y"
                          { (yyval.prdefs) = (yyvsp[-2].prdefs); (yyval.prdefs)->push_back(*(yyvsp[0].prdef)); }
-#line 4092 "hexpr.parse.C"
+#line 4138 "hexpr.parse.C"
     break;
 
-  case 211:
+  case 211: /* prdefs: prdef  */
 #line 793 "hexpr.y"
                          { (yyval.prdefs) = autorelease(new GrammarRules()); (yyval.prdefs)->push_back(*(yyvsp[0].prdef)); }
-#line 4098 "hexpr.parse.C"
+#line 4144 "hexpr.parse.C"
     break;
 
-  case 212:
+  case 212: /* prdef: pbelems "{" l0expr "}"  */
 #line 795 "hexpr.y"
                               { (yyval.prdef) = autorelease(new GrammarRule(*(yyvsp[-3].pbelems), ExprPtr((yyvsp[-1].exp)))); }
-#line 4104 "hexpr.parse.C"
+#line 4150 "hexpr.parse.C"
     break;
 
-  case 213:
+  case 213: /* pbelems: pbelems pbelem  */
 #line 797 "hexpr.y"
                         { (yyval.pbelems) = (yyvsp[-1].pbelems); (yyval.pbelems)->push_back(*(yyvsp[0].pbelem)); }
-#line 4110 "hexpr.parse.C"
+#line 4156 "hexpr.parse.C"
     break;
 
-  case 214:
+  case 214: /* pbelems: %empty  */
 #line 798 "hexpr.y"
                         { (yyval.pbelems) = autorelease(new BoundGrammarValues()); }
-#line 4116 "hexpr.parse.C"
+#line 4162 "hexpr.parse.C"
     break;
 
-  case 215:
+  case 215: /* pbelem: id ":" pvalue  */
 #line 800 "hexpr.y"
                       { (yyval.pbelem) = autorelease(new BoundGrammarValue(*(yyvsp[-2].string), GrammarValuePtr((yyvsp[0].pvalue)))); }
-#line 4122 "hexpr.parse.C"
+#line 4168 "hexpr.parse.C"
     break;
 
-  case 216:
+  case 216: /* pbelem: pvalue  */
 #line 801 "hexpr.y"
                       { (yyval.pbelem) = autorelease(new BoundGrammarValue("_", GrammarValuePtr((yyvsp[0].pvalue)))); }
-#line 4128 "hexpr.parse.C"
+#line 4174 "hexpr.parse.C"
     break;
 
-  case 217:
+  case 217: /* pvalue: id  */
 #line 803 "hexpr.y"
                       { (yyval.pvalue) = new GSymRef(*(yyvsp[0].string), m((yylsp[0]))); }
-#line 4134 "hexpr.parse.C"
+#line 4180 "hexpr.parse.C"
     break;
 
-  case 218:
+  case 218: /* pvalue: "stringV"  */
 #line 804 "hexpr.y"
                       { (yyval.pvalue) = new GStr(str::unescape(str::trimq(*(yyvsp[0].string))), m((yylsp[0]))); }
-#line 4140 "hexpr.parse.C"
+#line 4186 "hexpr.parse.C"
     break;
 
-  case 219:
+  case 219: /* pvalue: "charV"  */
 #line 805 "hexpr.y"
                       { (yyval.pvalue) = new GStr(std::string(1, str::readCharDef(*(yyvsp[0].string))), m((yylsp[0]))); }
-#line 4146 "hexpr.parse.C"
+#line 4192 "hexpr.parse.C"
     break;
 
-  case 220:
+  case 220: /* tsseq: "timespanV"  */
 #line 807 "hexpr.y"
                          { (yyval.strings) = autorelease(new str::seq()); (yyval.strings)->push_back(*(yyvsp[0].string)); }
-#line 4152 "hexpr.parse.C"
+#line 4198 "hexpr.parse.C"
     break;
 
-  case 221:
+  case 221: /* tsseq: tsseq "timespanV"  */
 #line 808 "hexpr.y"
                          { (yyval.strings) = (yyvsp[-1].strings); (yyval.strings)->push_back(*(yyvsp[0].string)); }
-#line 4158 "hexpr.parse.C"
+#line 4204 "hexpr.parse.C"
     break;
 
-  case 222:
+  case 222: /* l6exprs: l6exprs l6expr  */
 #line 810 "hexpr.y"
                         { (yyval.exps) = (yyvsp[-1].exps); (yyval.exps)->push_back(ExprPtr((yyvsp[0].exp))); }
-#line 4164 "hexpr.parse.C"
+#line 4210 "hexpr.parse.C"
     break;
 
-  case 223:
+  case 223: /* l6exprs: l6expr  */
 #line 811 "hexpr.y"
                         { (yyval.exps) = autorelease(new Exprs()); (yyval.exps)->push_back(ExprPtr((yyvsp[0].exp))); }
-#line 4170 "hexpr.parse.C"
+#line 4216 "hexpr.parse.C"
     break;
 
-  case 224:
+  case 224: /* patternexps: patternexps patternexp  */
 #line 813 "hexpr.y"
                                     { (yyval.patternexps) = (yyvsp[-1].patternexps); (yyval.patternexps)->push_back(*(yyvsp[0].patternexp)); }
-#line 4176 "hexpr.parse.C"
+#line 4222 "hexpr.parse.C"
     break;
 
-  case 225:
+  case 225: /* patternexps: patternexp  */
 #line 814 "hexpr.y"
                                     { (yyval.patternexps) = autorelease(new PatternRows()); (yyval.patternexps)->push_back(*(yyvsp[0].patternexp)); }
-#line 4182 "hexpr.parse.C"
+#line 4228 "hexpr.parse.C"
     break;
 
-  case 226:
+  case 226: /* patternexp: "|" patterns "->" l0expr  */
 #line 816 "hexpr.y"
                                                     { (yyval.patternexp) = autorelease(new PatternRow(*(yyvsp[-2].patterns), ExprPtr((yyvsp[0].exp)))); }
-#line 4188 "hexpr.parse.C"
+#line 4234 "hexpr.parse.C"
     break;
 
-  case 227:
+  case 227: /* patternexp: "|" patterns "where" l0expr "->" l0expr  */
 #line 817 "hexpr.y"
                                                     { (yyval.patternexp) = autorelease(new PatternRow(*(yyvsp[-4].patterns), ExprPtr((yyvsp[-2].exp)), ExprPtr((yyvsp[0].exp)))); }
-#line 4194 "hexpr.parse.C"
+#line 4240 "hexpr.parse.C"
     break;
 
-  case 228:
+  case 228: /* patterns: patterns pattern  */
 #line 820 "hexpr.y"
                            { (yyval.patterns) = (yyvsp[-1].patterns); (yyval.patterns)->push_back(PatternPtr((yyvsp[0].pattern))); }
-#line 4200 "hexpr.parse.C"
+#line 4246 "hexpr.parse.C"
     break;
 
-  case 229:
+  case 229: /* patterns: pattern  */
 #line 821 "hexpr.y"
                            { (yyval.patterns) = autorelease(new Patterns()); (yyval.patterns)->push_back(PatternPtr((yyvsp[0].pattern))); }
-#line 4206 "hexpr.parse.C"
+#line 4252 "hexpr.parse.C"
     break;
 
-  case 230:
+  case 230: /* refutablep: "boolV"  */
 #line 823 "hexpr.y"
                                        { (yyval.pattern) = new MatchLiteral(PrimitivePtr(new Bool((yyvsp[0].boolv), m((yylsp[0])))), m((yylsp[0]))); }
-#line 4212 "hexpr.parse.C"
+#line 4258 "hexpr.parse.C"
     break;
 
-  case 231:
+  case 231: /* refutablep: "charV"  */
 #line 824 "hexpr.y"
                                        { (yyval.pattern) = new MatchLiteral(PrimitivePtr(new Char(str::readCharDef(*(yyvsp[0].string)), m((yylsp[0])))), m((yylsp[0]))); }
-#line 4218 "hexpr.parse.C"
+#line 4264 "hexpr.parse.C"
     break;
 
-  case 232:
+  case 232: /* refutablep: "byteV"  */
 #line 825 "hexpr.y"
                                        { (yyval.pattern) = new MatchLiteral(PrimitivePtr(new Byte(str::dehex(*(yyvsp[0].string)), m((yylsp[0])))), m((yylsp[0]))); }
-#line 4224 "hexpr.parse.C"
+#line 4270 "hexpr.parse.C"
     break;
 
-  case 233:
+  case 233: /* refutablep: "shortV"  */
 #line 826 "hexpr.y"
                                        { (yyval.pattern) = new MatchLiteral(PrimitivePtr(new Short((yyvsp[0].shortv), m((yylsp[0])))), m((yylsp[0]))); }
-#line 4230 "hexpr.parse.C"
+#line 4276 "hexpr.parse.C"
     break;
 
-  case 234:
+  case 234: /* refutablep: "intV"  */
 #line 827 "hexpr.y"
                                        { (yyval.pattern) = new MatchLiteral(PrimitivePtr(new Int((yyvsp[0].intv), m((yylsp[0])))), m((yylsp[0]))); }
-#line 4236 "hexpr.parse.C"
+#line 4282 "hexpr.parse.C"
     break;
 
-  case 235:
+  case 235: /* refutablep: "longV"  */
 #line 828 "hexpr.y"
                                        { (yyval.pattern) = new MatchLiteral(PrimitivePtr(new Long((yyvsp[0].longv), m((yylsp[0])))), m((yylsp[0]))); }
-#line 4242 "hexpr.parse.C"
+#line 4288 "hexpr.parse.C"
     break;
 
-  case 236:
+  case 236: /* refutablep: "int128V"  */
 #line 829 "hexpr.y"
                                        { (yyval.pattern) = new MatchLiteral(PrimitivePtr(new Int128((yyvsp[0].int128v), m((yylsp[0])))), m((yylsp[0]))); }
-#line 4248 "hexpr.parse.C"
+#line 4294 "hexpr.parse.C"
     break;
 
-  case 237:
+  case 237: /* refutablep: "doubleV"  */
 #line 830 "hexpr.y"
                                        { (yyval.pattern) = new MatchLiteral(PrimitivePtr(new Double((yyvsp[0].doublev), m((yylsp[0])))), m((yylsp[0]))); }
-#line 4254 "hexpr.parse.C"
+#line 4300 "hexpr.parse.C"
     break;
 
-  case 238:
+  case 238: /* refutablep: "bytesV"  */
 #line 831 "hexpr.y"
                                        { (yyval.pattern) = mkpatarray(str::dehexs(*(yyvsp[0].string)), m((yylsp[0]))); }
-#line 4260 "hexpr.parse.C"
+#line 4306 "hexpr.parse.C"
     break;
 
-  case 239:
+  case 239: /* refutablep: "stringV"  */
 #line 832 "hexpr.y"
                                        { (yyval.pattern) = mkpatarray(str::unescape(str::trimq(*(yyvsp[0].string))), m((yylsp[0]))); }
-#line 4266 "hexpr.parse.C"
+#line 4312 "hexpr.parse.C"
     break;
 
-  case 240:
+  case 240: /* refutablep: tsseq  */
 #line 833 "hexpr.y"
                                        { (yyval.pattern) = new MatchLiteral(mkTimespanPrim(*(yyvsp[0].strings), m((yylsp[0]))), mkTimespanExpr(*(yyvsp[0].strings), m((yylsp[0]))), m((yylsp[0]))); }
-#line 4272 "hexpr.parse.C"
+#line 4318 "hexpr.parse.C"
     break;
 
-  case 241:
+  case 241: /* refutablep: "timeV"  */
 #line 834 "hexpr.y"
                                        { (yyval.pattern) = new MatchLiteral(mkTimePrim(*(yyvsp[0].string), m((yylsp[0]))), mkTimeExpr(*(yyvsp[0].string), m((yylsp[0]))), m((yylsp[0]))); }
-#line 4278 "hexpr.parse.C"
+#line 4324 "hexpr.parse.C"
     break;
 
-  case 242:
+  case 242: /* refutablep: "dateTimeV"  */
 #line 835 "hexpr.y"
                                        { (yyval.pattern) = new MatchLiteral(mkDateTimePrim(*(yyvsp[0].string), m((yylsp[0]))), mkDateTimeExpr(*(yyvsp[0].string), m((yylsp[0]))), m((yylsp[0]))); }
-#line 4284 "hexpr.parse.C"
+#line 4330 "hexpr.parse.C"
     break;
 
-  case 243:
+  case 243: /* refutablep: "regexV"  */
 #line 836 "hexpr.y"
                                        { (yyval.pattern) = new MatchRegex(std::string((yyvsp[0].string)->begin() + 1, (yyvsp[0].string)->end() - 1), m((yylsp[0]))); }
-#line 4290 "hexpr.parse.C"
+#line 4336 "hexpr.parse.C"
     break;
 
-  case 244:
+  case 244: /* refutablep: "[" patternseq "]"  */
 #line 837 "hexpr.y"
                                        { (yyval.pattern) = new MatchArray(*(yyvsp[-1].patterns), m((yylsp[-2]),(yylsp[0]))); }
-#line 4296 "hexpr.parse.C"
+#line 4342 "hexpr.parse.C"
     break;
 
-  case 245:
+  case 245: /* refutablep: "[" patternseq "," "]"  */
 #line 838 "hexpr.y"
                                        { (yyval.pattern) = new MatchArray(*(yyvsp[-2].patterns), m((yylsp[-3]),(yylsp[0]))); }
-#line 4302 "hexpr.parse.C"
+#line 4348 "hexpr.parse.C"
     break;
 
-  case 246:
+  case 246: /* refutablep: "|" id "|"  */
 #line 839 "hexpr.y"
                                        { (yyval.pattern) = new MatchVariant(*(yyvsp[-1].string), PatternPtr(new MatchLiteral(PrimitivePtr(new Unit(m((yylsp[-1])))), m((yylsp[-1])))), m((yylsp[-2]),(yylsp[0]))); }
-#line 4308 "hexpr.parse.C"
+#line 4354 "hexpr.parse.C"
     break;
 
-  case 247:
+  case 247: /* refutablep: "|" id "=" pattern "|"  */
 #line 840 "hexpr.y"
                                        { (yyval.pattern) = new MatchVariant(*(yyvsp[-3].string), PatternPtr((yyvsp[-1].pattern)), m((yylsp[-4]),(yylsp[0]))); }
-#line 4314 "hexpr.parse.C"
+#line 4360 "hexpr.parse.C"
     break;
 
-  case 248:
+  case 248: /* refutablep: "|" "intV" "=" pattern "|"  */
 #line 841 "hexpr.y"
                                        { (yyval.pattern) = new MatchVariant(".f" + str::from((yyvsp[-3].intv)), PatternPtr((yyvsp[-1].pattern)), m((yylsp[-4]),(yylsp[0]))); }
-#line 4320 "hexpr.parse.C"
+#line 4366 "hexpr.parse.C"
     break;
 
-  case 249:
+  case 249: /* refutablep: "(" patternseq ")"  */
 #line 842 "hexpr.y"
                                        { (yyval.pattern) = pickNestedPat((yyvsp[-1].patterns), m((yylsp[-2]),(yylsp[0]))); }
-#line 4326 "hexpr.parse.C"
+#line 4372 "hexpr.parse.C"
     break;
 
-  case 250:
+  case 250: /* refutablep: "(" patternseq "," ")"  */
 #line 843 "hexpr.y"
                                        { (yyval.pattern) = pickNestedPat((yyvsp[-2].patterns), m((yylsp[-3]),(yylsp[0]))); }
-#line 4332 "hexpr.parse.C"
+#line 4378 "hexpr.parse.C"
     break;
 
-  case 251:
+  case 251: /* refutablep: "{" recpatfields "}"  */
 #line 844 "hexpr.y"
                                        { (yyval.pattern) = new MatchRecord(*(yyvsp[-1].recpatfields), m((yylsp[-2]),(yylsp[0]))); }
-#line 4338 "hexpr.parse.C"
+#line 4384 "hexpr.parse.C"
     break;
 
-  case 252:
+  case 252: /* refutablep: "{" recpatfields "," "}"  */
 #line 845 "hexpr.y"
                                        { (yyval.pattern) = new MatchRecord(*(yyvsp[-2].recpatfields), m((yylsp[-3]),(yylsp[0]))); }
-#line 4344 "hexpr.parse.C"
+#line 4390 "hexpr.parse.C"
     break;
 
-  case 253:
+  case 253: /* refutablep: id  */
 #line 846 "hexpr.y"
                                        { (yyval.pattern) = patVarCtorFn(*(yyvsp[0].string), m((yylsp[0]))); }
-#line 4350 "hexpr.parse.C"
+#line 4396 "hexpr.parse.C"
     break;
 
-  case 254:
+  case 254: /* irrefutablep: id  */
 #line 848 "hexpr.y"
                                        { (yyval.pattern) = new MatchAny(*(yyvsp[0].string), m((yylsp[0]))); }
-#line 4356 "hexpr.parse.C"
+#line 4402 "hexpr.parse.C"
     break;
 
-  case 255:
+  case 255: /* irrefutablep: "(" patternseq ")"  */
 #line 849 "hexpr.y"
                                        { (yyval.pattern) = pickNestedPat((yyvsp[-1].patterns), m((yylsp[-2]),(yylsp[0]))); }
-#line 4362 "hexpr.parse.C"
+#line 4408 "hexpr.parse.C"
     break;
 
-  case 256:
+  case 256: /* irrefutablep: "(" patternseq "," ")"  */
 #line 850 "hexpr.y"
                                        { (yyval.pattern) = pickNestedPat((yyvsp[-2].patterns), m((yylsp[-3]),(yylsp[0]))); }
-#line 4368 "hexpr.parse.C"
+#line 4414 "hexpr.parse.C"
     break;
 
-  case 257:
+  case 257: /* irrefutablep: "{" recpatfields "}"  */
 #line 851 "hexpr.y"
                                        { (yyval.pattern) = new MatchRecord(*(yyvsp[-1].recpatfields), m((yylsp[-2]),(yylsp[0]))); }
-#line 4374 "hexpr.parse.C"
+#line 4420 "hexpr.parse.C"
     break;
 
-  case 258:
+  case 258: /* irrefutablep: "{" recpatfields "," "}"  */
 #line 852 "hexpr.y"
                                        { (yyval.pattern) = new MatchRecord(*(yyvsp[-2].recpatfields), m((yylsp[-3]),(yylsp[0]))); }
-#line 4380 "hexpr.parse.C"
+#line 4426 "hexpr.parse.C"
     break;
 
-  case 259:
+  case 259: /* pattern: refutablep  */
 #line 854 "hexpr.y"
                     { (yyval.pattern) = (yyvsp[0].pattern); }
-#line 4386 "hexpr.parse.C"
+#line 4432 "hexpr.parse.C"
     break;
 
-  case 260:
+  case 260: /* patternseq: patternseqn  */
 #line 856 "hexpr.y"
                           { (yyval.patterns) = (yyvsp[0].patterns); }
-#line 4392 "hexpr.parse.C"
+#line 4438 "hexpr.parse.C"
     break;
 
-  case 261:
+  case 261: /* patternseq: %empty  */
 #line 857 "hexpr.y"
                           { (yyval.patterns) = new Patterns(); }
-#line 4398 "hexpr.parse.C"
+#line 4444 "hexpr.parse.C"
     break;
 
-  case 262:
+  case 262: /* patternseqn: patternseqn "," pattern  */
 #line 859 "hexpr.y"
                                      { (yyval.patterns) = (yyvsp[-2].patterns); (yyval.patterns)->push_back(PatternPtr((yyvsp[0].pattern))); }
-#line 4404 "hexpr.parse.C"
+#line 4450 "hexpr.parse.C"
     break;
 
-  case 263:
+  case 263: /* patternseqn: pattern  */
 #line 860 "hexpr.y"
                                      { (yyval.patterns) = new Patterns(); (yyval.patterns)->push_back(PatternPtr((yyvsp[0].pattern))); }
-#line 4410 "hexpr.parse.C"
+#line 4456 "hexpr.parse.C"
     break;
 
-  case 264:
+  case 264: /* recpatfields: recpatfields "," recpatfield  */
 #line 862 "hexpr.y"
                                            { (yyval.recpatfields) = (yyvsp[-2].recpatfields); (yyval.recpatfields)->push_back(*(yyvsp[0].recpatfield)); }
-#line 4416 "hexpr.parse.C"
+#line 4462 "hexpr.parse.C"
     break;
 
-  case 265:
+  case 265: /* recpatfields: recpatfield  */
 #line 863 "hexpr.y"
                                            { (yyval.recpatfields) = new MatchRecord::Fields(); (yyval.recpatfields)->push_back(*(yyvsp[0].recpatfield)); }
-#line 4422 "hexpr.parse.C"
+#line 4468 "hexpr.parse.C"
     break;
 
-  case 266:
+  case 266: /* recpatfield: id "=" pattern  */
 #line 865 "hexpr.y"
                             { (yyval.recpatfield) = new MatchRecord::Field(*(yyvsp[-2].string), PatternPtr((yyvsp[0].pattern))); }
-#line 4428 "hexpr.parse.C"
+#line 4474 "hexpr.parse.C"
     break;
 
-  case 267:
+  case 267: /* recfields: %empty  */
 #line 867 "hexpr.y"
                                                  { (yyval.rfields) = autorelease(new MkRecord::FieldDefs()); }
-#line 4434 "hexpr.parse.C"
+#line 4480 "hexpr.parse.C"
     break;
 
-  case 268:
+  case 268: /* recfields: recfieldname "=" l0expr  */
 #line 868 "hexpr.y"
                                                  { (yyval.rfields) = autorelease(new MkRecord::FieldDefs()); (yyval.rfields)->push_back(MkRecord::FieldDef(*(yyvsp[-2].string), ExprPtr((yyvsp[0].exp)))); }
-#line 4440 "hexpr.parse.C"
+#line 4486 "hexpr.parse.C"
     break;
 
-  case 269:
+  case 269: /* recfields: recfields "," recfieldname "=" l0expr  */
 #line 869 "hexpr.y"
                                                  { (yyval.rfields) = (yyvsp[-4].rfields);                                     (yyval.rfields)->push_back(MkRecord::FieldDef(*(yyvsp[-2].string), ExprPtr((yyvsp[0].exp)))); }
-#line 4446 "hexpr.parse.C"
+#line 4492 "hexpr.parse.C"
     break;
 
-  case 270:
+  case 270: /* recfieldname: id  */
 #line 871 "hexpr.y"
                          { (yyval.string) = (yyvsp[0].string); }
-#line 4452 "hexpr.parse.C"
+#line 4498 "hexpr.parse.C"
     break;
 
-  case 271:
+  case 271: /* recfieldname: "data"  */
 #line 872 "hexpr.y"
                          { (yyval.string) = autorelease(new std::string("data")); }
-#line 4458 "hexpr.parse.C"
+#line 4504 "hexpr.parse.C"
     break;
 
-  case 272:
+  case 272: /* recfieldname: "type"  */
 #line 873 "hexpr.y"
                          { (yyval.string) = autorelease(new std::string("type")); }
-#line 4464 "hexpr.parse.C"
+#line 4510 "hexpr.parse.C"
     break;
 
-  case 273:
+  case 273: /* recfieldname: "where"  */
 #line 874 "hexpr.y"
                          { (yyval.string) = autorelease(new std::string("where")); }
-#line 4470 "hexpr.parse.C"
+#line 4516 "hexpr.parse.C"
     break;
 
-  case 274:
+  case 274: /* recfieldname: "class"  */
 #line 875 "hexpr.y"
                          { (yyval.string) = autorelease(new std::string("class")); wantIndent(false); }
-#line 4476 "hexpr.parse.C"
+#line 4522 "hexpr.parse.C"
     break;
 
-  case 275:
+  case 275: /* recfieldname: "instance"  */
 #line 876 "hexpr.y"
                          { (yyval.string) = autorelease(new std::string("instance")); wantIndent(false); }
-#line 4482 "hexpr.parse.C"
+#line 4528 "hexpr.parse.C"
     break;
 
-  case 276:
+  case 276: /* recfieldname: "exists"  */
 #line 877 "hexpr.y"
                          { (yyval.string) = autorelease(new std::string("exists")); }
-#line 4488 "hexpr.parse.C"
+#line 4534 "hexpr.parse.C"
     break;
 
-  case 277:
+  case 277: /* recfieldname: "import"  */
 #line 878 "hexpr.y"
                          { (yyval.string) = autorelease(new std::string("import")); }
-#line 4494 "hexpr.parse.C"
+#line 4540 "hexpr.parse.C"
     break;
 
-  case 278:
+  case 278: /* recfieldname: "module"  */
 #line 879 "hexpr.y"
                          { (yyval.string) = autorelease(new std::string("module")); }
-#line 4500 "hexpr.parse.C"
+#line 4546 "hexpr.parse.C"
     break;
 
-  case 279:
+  case 279: /* recfieldname: "parse"  */
 #line 880 "hexpr.y"
                          { (yyval.string) = autorelease(new std::string("parse")); }
-#line 4506 "hexpr.parse.C"
+#line 4552 "hexpr.parse.C"
     break;
 
-  case 280:
+  case 280: /* recfieldname: "do"  */
 #line 881 "hexpr.y"
                          { (yyval.string) = autorelease(new std::string("do")); }
-#line 4512 "hexpr.parse.C"
+#line 4558 "hexpr.parse.C"
     break;
 
-  case 281:
+  case 281: /* recfieldname: "return"  */
 #line 882 "hexpr.y"
                          { (yyval.string) = autorelease(new std::string("return")); }
-#line 4518 "hexpr.parse.C"
+#line 4564 "hexpr.parse.C"
     break;
 
-  case 282:
+  case 282: /* recfieldname: "fn"  */
 #line 883 "hexpr.y"
                          { (yyval.string) = autorelease(new std::string("fn")); }
-#line 4524 "hexpr.parse.C"
+#line 4570 "hexpr.parse.C"
     break;
 
-  case 283:
+  case 283: /* recfieldname: "intV"  */
 #line 884 "hexpr.y"
                          { (yyval.string) = autorelease(new std::string(".f" + str::from((yyvsp[0].intv)))); }
-#line 4530 "hexpr.parse.C"
+#line 4576 "hexpr.parse.C"
     break;
 
-  case 284:
+  case 284: /* recfieldname: "stringV"  */
 #line 885 "hexpr.y"
                          { std::string stringField = str::unescape(str::trimq(*(yyvsp[0].string)));
                            if (stringField.size() > 0 && stringField[0] == '.' ) {
                              throw annotated_error(m((yylsp[0])), "Cannot define record string label with leading '.'");
                            }
                            (yyval.string) = autorelease(new std::string(str::unescape(str::trimq(*(yyvsp[0].string))))); }
-#line 4540 "hexpr.parse.C"
+#line 4586 "hexpr.parse.C"
     break;
 
-  case 285:
+  case 285: /* recfieldpath: recfieldpath "." recfieldname  */
 #line 891 "hexpr.y"
                                             { (yyval.strings) = (yyvsp[-2].strings); (yyval.strings)->push_back(*(yyvsp[0].string)); }
-#line 4546 "hexpr.parse.C"
+#line 4592 "hexpr.parse.C"
     break;
 
-  case 286:
+  case 286: /* recfieldpath: recfieldpath "tupSection"  */
 #line 892 "hexpr.y"
                                             { (yyval.strings) = (yyvsp[-1].strings); str::seq x = tupSectionFields(*(yyvsp[0].string)); (yyval.strings)->insert((yyval.strings)->end(), x.begin(), x.end()); }
-#line 4552 "hexpr.parse.C"
+#line 4598 "hexpr.parse.C"
     break;
 
-  case 287:
+  case 287: /* recfieldpath: "." recfieldname  */
 #line 893 "hexpr.y"
                                             { (yyval.strings) = autorelease(new str::seq()); (yyval.strings)->push_back(*(yyvsp[0].string)); }
-#line 4558 "hexpr.parse.C"
+#line 4604 "hexpr.parse.C"
     break;
 
-  case 288:
+  case 288: /* recfieldpath: "tupSection"  */
 #line 894 "hexpr.y"
                                             { (yyval.strings) = autorelease(new str::seq()); *(yyval.strings) = tupSectionFields(*(yyvsp[0].string)); }
-#line 4564 "hexpr.parse.C"
+#line 4610 "hexpr.parse.C"
     break;
 
-  case 289:
+  case 289: /* varfields: varbind  */
 #line 896 "hexpr.y"
                                  { (yyval.vfields) = autorelease(new Case::Bindings()); (yyval.vfields)->push_back(*(yyvsp[0].vbind)); }
-#line 4570 "hexpr.parse.C"
+#line 4616 "hexpr.parse.C"
     break;
 
-  case 290:
+  case 290: /* varfields: varfields "," varbind  */
 #line 897 "hexpr.y"
                                  { (yyval.vfields) = (yyvsp[-2].vfields); (yyval.vfields)->push_back(*(yyvsp[0].vbind)); }
-#line 4576 "hexpr.parse.C"
+#line 4622 "hexpr.parse.C"
     break;
 
-  case 291:
+  case 291: /* varbind: id "=" l0expr  */
 #line 899 "hexpr.y"
                                   { (yyval.vbind) = autorelease(new Case::Binding(*(yyvsp[-2].string), *(yyvsp[-2].string), ExprPtr((yyvsp[0].exp)))); }
-#line 4582 "hexpr.parse.C"
+#line 4628 "hexpr.parse.C"
     break;
 
-  case 292:
+  case 292: /* varbind: id ":" id "=" l0expr  */
 #line 900 "hexpr.y"
                                   { (yyval.vbind) = autorelease(new Case::Binding(*(yyvsp[-4].string), *(yyvsp[-2].string), ExprPtr((yyvsp[0].exp)))); }
-#line 4588 "hexpr.parse.C"
+#line 4634 "hexpr.parse.C"
     break;
 
-  case 293:
+  case 293: /* varbind: "intV" ":" id "=" l0expr  */
 #line 901 "hexpr.y"
                                   { (yyval.vbind) = autorelease(new Case::Binding(".f" + str::from((yyvsp[-4].intv)), *(yyvsp[-2].string), ExprPtr((yyvsp[0].exp)))); }
-#line 4594 "hexpr.parse.C"
+#line 4640 "hexpr.parse.C"
     break;
 
-  case 294:
+  case 294: /* cargs: %empty  */
 #line 903 "hexpr.y"
                         { (yyval.exps) = autorelease(new Exprs()); }
-#line 4600 "hexpr.parse.C"
+#line 4646 "hexpr.parse.C"
     break;
 
-  case 295:
+  case 295: /* cargs: l0expr  */
 #line 904 "hexpr.y"
                         { (yyval.exps) = autorelease(new Exprs()); (yyval.exps)->push_back(ExprPtr((yyvsp[0].exp))); }
-#line 4606 "hexpr.parse.C"
+#line 4652 "hexpr.parse.C"
     break;
 
-  case 296:
+  case 296: /* cargs: cargs "," l0expr  */
 #line 905 "hexpr.y"
                         { (yyvsp[-2].exps)->push_back(ExprPtr((yyvsp[0].exp))); (yyval.exps) = (yyvsp[-2].exps); }
-#line 4612 "hexpr.parse.C"
+#line 4658 "hexpr.parse.C"
     break;
 
-  case 297:
+  case 297: /* qtype: cst "=>" l0mtype  */
 #line 907 "hexpr.y"
                          { (yyval.qualtype) = new QualType(*(yyvsp[-2].tconstraints), *(yyvsp[0].mtype)); }
-#line 4618 "hexpr.parse.C"
+#line 4664 "hexpr.parse.C"
     break;
 
-  case 298:
+  case 298: /* qtype: l0mtype  */
 #line 908 "hexpr.y"
                          { (yyval.qualtype) = new QualType(Constraints(), *(yyvsp[0].mtype)); }
-#line 4624 "hexpr.parse.C"
+#line 4670 "hexpr.parse.C"
     break;
 
-  case 299:
+  case 299: /* cst: "(" tpreds ")"  */
 #line 911 "hexpr.y"
                     { (yyval.tconstraints) = (yyvsp[-1].tconstraints); }
-#line 4630 "hexpr.parse.C"
+#line 4676 "hexpr.parse.C"
     break;
 
-  case 300:
+  case 300: /* tpreds: tpred  */
 #line 913 "hexpr.y"
                          { (yyval.tconstraints) = autorelease(new Constraints()); (yyval.tconstraints)->push_back(ConstraintPtr((yyvsp[0].tconstraint))); }
-#line 4636 "hexpr.parse.C"
+#line 4682 "hexpr.parse.C"
     break;
 
-  case 301:
+  case 301: /* tpreds: tpreds "," tpred  */
 #line 914 "hexpr.y"
                          { (yyvsp[-2].tconstraints)->push_back(ConstraintPtr((yyvsp[0].tconstraint))); (yyval.tconstraints) = (yyvsp[-2].tconstraints); }
-#line 4642 "hexpr.parse.C"
+#line 4688 "hexpr.parse.C"
     break;
 
-  case 302:
+  case 302: /* tpred: id l1mtargl  */
 #line 916 "hexpr.y"
                                                       { (yyval.tconstraint) = new Constraint(*(yyvsp[-1].string), *(yyvsp[0].mtypes)); }
-#line 4648 "hexpr.parse.C"
+#line 4694 "hexpr.parse.C"
     break;
 
-  case 303:
+  case 303: /* tpred: l1mtype "==" l1mtype  */
 #line 917 "hexpr.y"
                                                       { (yyval.tconstraint) = new Constraint(EqualTypes::constraintName(), list(*(yyvsp[-2].mtype), *(yyvsp[0].mtype))); }
-#line 4654 "hexpr.parse.C"
+#line 4700 "hexpr.parse.C"
     break;
 
-  case 304:
+  case 304: /* tpred: l1mtype "!=" l1mtype  */
 #line 918 "hexpr.y"
                                                       { (yyval.tconstraint) = new Constraint(NotEqualTypes::constraintName(), list(*(yyvsp[-2].mtype), *(yyvsp[0].mtype))); }
-#line 4660 "hexpr.parse.C"
+#line 4706 "hexpr.parse.C"
     break;
 
-  case 305:
+  case 305: /* tpred: l1mtype "~" l1mtype  */
 #line 919 "hexpr.y"
                                                       { (yyval.tconstraint) = new Constraint(FixIsoRecur::constraintName(), list(*(yyvsp[-2].mtype), *(yyvsp[0].mtype))); }
-#line 4666 "hexpr.parse.C"
+#line 4712 "hexpr.parse.C"
     break;
 
-  case 306:
+  case 306: /* tpred: l1mtype "=" "{" l1mtype "*" l1mtype "}"  */
 #line 920 "hexpr.y"
                                                       { (yyval.tconstraint) = new Constraint(RecordDeconstructor::constraintName(), list(tlong(1), tlong(0), *(yyvsp[-6].mtype), freshTypeVar(),  *(yyvsp[-3].mtype), *(yyvsp[-1].mtype))); }
-#line 4672 "hexpr.parse.C"
+#line 4718 "hexpr.parse.C"
     break;
 
-  case 307:
+  case 307: /* tpred: l1mtype "=" "{" id ":" l1mtype "*" l1mtype "}"  */
 #line 921 "hexpr.y"
                                                       { (yyval.tconstraint) = new Constraint(RecordDeconstructor::constraintName(), list(tlong(1), tlong(0), *(yyvsp[-8].mtype), TVar::make(*(yyvsp[-5].string)), *(yyvsp[-3].mtype), *(yyvsp[-1].mtype))); }
-#line 4678 "hexpr.parse.C"
+#line 4724 "hexpr.parse.C"
     break;
 
-  case 308:
+  case 308: /* tpred: l1mtype "=" "(" l1mtype "*" l1mtype ")"  */
 #line 922 "hexpr.y"
                                                       { (yyval.tconstraint) = new Constraint(RecordDeconstructor::constraintName(), list(tlong(1), tlong(1), *(yyvsp[-6].mtype), freshTypeVar(),  *(yyvsp[-3].mtype), *(yyvsp[-1].mtype))); }
-#line 4684 "hexpr.parse.C"
+#line 4730 "hexpr.parse.C"
     break;
 
-  case 309:
+  case 309: /* tpred: "{" l1mtype "*" l1mtype "}" "=" l1mtype  */
 #line 923 "hexpr.y"
                                                       { (yyval.tconstraint) = new Constraint(RecordDeconstructor::constraintName(), list(tlong(0), tlong(0), *(yyvsp[0].mtype), freshTypeVar(),  *(yyvsp[-5].mtype), *(yyvsp[-3].mtype))); }
-#line 4690 "hexpr.parse.C"
+#line 4736 "hexpr.parse.C"
     break;
 
-  case 310:
+  case 310: /* tpred: "{" id ":" l1mtype "*" l1mtype "}" "=" l1mtype  */
 #line 924 "hexpr.y"
                                                       { (yyval.tconstraint) = new Constraint(RecordDeconstructor::constraintName(), list(tlong(0), tlong(0), *(yyvsp[0].mtype), TVar::make(*(yyvsp[-7].string)), *(yyvsp[-5].mtype), *(yyvsp[-3].mtype))); }
-#line 4696 "hexpr.parse.C"
+#line 4742 "hexpr.parse.C"
     break;
 
-  case 311:
+  case 311: /* tpred: "(" l1mtype "*" l1mtype ")" "=" l1mtype  */
 #line 925 "hexpr.y"
                                                       { (yyval.tconstraint) = new Constraint(RecordDeconstructor::constraintName(), list(tlong(0), tlong(1), *(yyvsp[0].mtype), freshTypeVar(),  *(yyvsp[-5].mtype), *(yyvsp[-3].mtype))); }
-#line 4702 "hexpr.parse.C"
+#line 4748 "hexpr.parse.C"
     break;
 
-  case 312:
+  case 312: /* tpred: l1mtype "." recfieldname "::" l1mtype  */
 #line 927 "hexpr.y"
                                                       { (yyval.tconstraint) = HasField::newConstraint(HasField::Read,  *(yyvsp[-4].mtype), TString::make(*(yyvsp[-2].string)), *(yyvsp[0].mtype)); }
-#line 4708 "hexpr.parse.C"
+#line 4754 "hexpr.parse.C"
     break;
 
-  case 313:
+  case 313: /* tpred: l1mtype "." recfieldname "<-" l1mtype  */
 #line 928 "hexpr.y"
                                                       { (yyval.tconstraint) = HasField::newConstraint(HasField::Write, *(yyvsp[-4].mtype), TString::make(*(yyvsp[-2].string)), *(yyvsp[0].mtype)); }
-#line 4714 "hexpr.parse.C"
+#line 4760 "hexpr.parse.C"
     break;
 
-  case 314:
+  case 314: /* tpred: l1mtype "/" l1mtype "::" l1mtype  */
 #line 929 "hexpr.y"
                                                       { (yyval.tconstraint) = HasField::newConstraint(HasField::Read,  *(yyvsp[-4].mtype), *(yyvsp[-2].mtype),                *(yyvsp[0].mtype)); }
-#line 4720 "hexpr.parse.C"
+#line 4766 "hexpr.parse.C"
     break;
 
-  case 315:
+  case 315: /* tpred: l1mtype "/" l1mtype "<-" l1mtype  */
 #line 930 "hexpr.y"
                                                       { (yyval.tconstraint) = HasField::newConstraint(HasField::Write, *(yyvsp[-4].mtype), *(yyvsp[-2].mtype),                *(yyvsp[0].mtype)); }
-#line 4726 "hexpr.parse.C"
+#line 4772 "hexpr.parse.C"
     break;
 
-  case 316:
+  case 316: /* tpred: l1mtype "=" "|" l1mtype "+" l1mtype "|"  */
 #line 932 "hexpr.y"
                                                       { (yyval.tconstraint) = new Constraint(VariantDeconstructor::constraintName(), list(tlong(1), *(yyvsp[-6].mtype), freshTypeVar(),  *(yyvsp[-3].mtype), *(yyvsp[-1].mtype))); }
-#line 4732 "hexpr.parse.C"
+#line 4778 "hexpr.parse.C"
     break;
 
-  case 317:
+  case 317: /* tpred: "|" l1mtype "+" l1mtype "|" "=" l1mtype  */
 #line 933 "hexpr.y"
                                                       { (yyval.tconstraint) = new Constraint(VariantDeconstructor::constraintName(), list(tlong(0), *(yyvsp[0].mtype), freshTypeVar(),  *(yyvsp[-5].mtype), *(yyvsp[-3].mtype))); }
-#line 4738 "hexpr.parse.C"
+#line 4784 "hexpr.parse.C"
     break;
 
-  case 318:
+  case 318: /* tpred: l1mtype "=" "|" id ":" l1mtype "+" l1mtype "|"  */
 #line 934 "hexpr.y"
                                                       { (yyval.tconstraint) = new Constraint(VariantDeconstructor::constraintName(), list(tlong(1), *(yyvsp[-8].mtype), TVar::make(*(yyvsp[-5].string)), *(yyvsp[-3].mtype), *(yyvsp[-1].mtype))); }
-#line 4744 "hexpr.parse.C"
+#line 4790 "hexpr.parse.C"
     break;
 
-  case 319:
+  case 319: /* tpred: "|" id ":" l1mtype "+" l1mtype "|" "=" l1mtype  */
 #line 935 "hexpr.y"
                                                       { (yyval.tconstraint) = new Constraint(VariantDeconstructor::constraintName(), list(tlong(0), *(yyvsp[0].mtype), TVar::make(*(yyvsp[-7].string)), *(yyvsp[-5].mtype), *(yyvsp[-3].mtype))); }
-#line 4750 "hexpr.parse.C"
+#line 4796 "hexpr.parse.C"
     break;
 
-  case 320:
+  case 320: /* tpred: "|" id ":" l0mtype "|" "::" l1mtype  */
 #line 937 "hexpr.y"
                                                       { (yyval.tconstraint) = new Constraint(CtorVerifier::constraintName(), list(*(yyvsp[0].mtype), TString::make(*(yyvsp[-5].string)), *(yyvsp[-3].mtype))); }
-#line 4756 "hexpr.parse.C"
+#line 4802 "hexpr.parse.C"
     break;
 
-  case 321:
+  case 321: /* tpred: "|" l1mtype "/" l0mtype "|" "::" l1mtype  */
 #line 938 "hexpr.y"
                                                       { (yyval.tconstraint) = new Constraint(CtorVerifier::constraintName(), list(*(yyvsp[0].mtype), *(yyvsp[-5].mtype),                *(yyvsp[-3].mtype))); }
-#line 4762 "hexpr.parse.C"
+#line 4808 "hexpr.parse.C"
     break;
 
-  case 322:
+  case 322: /* tpred: l1mtype "++" l1mtype "=" l1mtype  */
 #line 939 "hexpr.y"
                                                       { (yyval.tconstraint) = new Constraint(AppendsToUnqualifier::constraintName(), list(*(yyvsp[-4].mtype), *(yyvsp[-2].mtype), *(yyvsp[0].mtype))); }
-#line 4768 "hexpr.parse.C"
+#line 4814 "hexpr.parse.C"
     break;
 
-  case 323:
+  case 323: /* l1mtargl: l1mtype  */
 #line 941 "hexpr.y"
                            { (yyval.mtypes) = autorelease(new MonoTypes()); (yyval.mtypes)->push_back(*(yyvsp[0].mtype)); }
-#line 4774 "hexpr.parse.C"
+#line 4820 "hexpr.parse.C"
     break;
 
-  case 324:
+  case 324: /* l1mtargl: l1mtargl l1mtype  */
 #line 942 "hexpr.y"
                            { (yyvsp[-1].mtypes)->push_back(*(yyvsp[0].mtype)); (yyval.mtypes) = (yyvsp[-1].mtypes); }
-#line 4780 "hexpr.parse.C"
+#line 4826 "hexpr.parse.C"
     break;
 
-  case 325:
+  case 325: /* ltmtype: ltmtype l0mtype  */
 #line 944 "hexpr.y"
                           { (yyval.mtypes) = (yyvsp[-1].mtypes); (yyval.mtypes)->push_back(*(yyvsp[0].mtype)); }
-#line 4786 "hexpr.parse.C"
+#line 4832 "hexpr.parse.C"
     break;
 
-  case 326:
+  case 326: /* ltmtype: l0mtype  */
 #line 945 "hexpr.y"
                           { (yyval.mtypes) = autorelease(new MonoTypes()); (yyval.mtypes)->push_back(*(yyvsp[0].mtype)); }
-#line 4792 "hexpr.parse.C"
+#line 4838 "hexpr.parse.C"
     break;
 
-  case 327:
+  case 327: /* l0mtype: l0mtargl "->" l1mtype  */
 #line 947 "hexpr.y"
                                { (yyval.mtype) = autorelease(new MonoTypePtr(Func::make(tuplety(*(yyvsp[-2].mtypes)), *(yyvsp[0].mtype)))); }
-#line 4798 "hexpr.parse.C"
+#line 4844 "hexpr.parse.C"
     break;
 
-  case 328:
+  case 328: /* l0mtype: mtuplist  */
 #line 948 "hexpr.y"
                                { (yyval.mtype) = autorelease(new MonoTypePtr(makeTupleType(*(yyvsp[0].mtypes)))); }
-#line 4804 "hexpr.parse.C"
+#line 4850 "hexpr.parse.C"
     break;
 
-  case 329:
+  case 329: /* l0mtype: msumlist  */
 #line 949 "hexpr.y"
                                { (yyval.mtype) = autorelease(new MonoTypePtr(makeSumType(*(yyvsp[0].mtypes)))); }
-#line 4810 "hexpr.parse.C"
+#line 4856 "hexpr.parse.C"
     break;
 
-  case 330:
+  case 330: /* l1mtype: id  */
 #line 951 "hexpr.y"
                                            { (yyval.mtype) = autorelease(new MonoTypePtr(monoTypeByName(*(yyvsp[0].string)))); }
-#line 4816 "hexpr.parse.C"
+#line 4862 "hexpr.parse.C"
     break;
 
-  case 331:
+  case 331: /* l1mtype: "<" cppid ">"  */
 #line 952 "hexpr.y"
                                            { (yyval.mtype) = autorelease(new MonoTypePtr(OpaquePtr::make(str::replace<char>(*(yyvsp[-1].string), ".", "::"), 0, false))); }
-#line 4822 "hexpr.parse.C"
+#line 4868 "hexpr.parse.C"
     break;
 
-  case 332:
+  case 332: /* l1mtype: "[" "]"  */
 #line 953 "hexpr.y"
                                            { (yyval.mtype) = autorelease(new MonoTypePtr(Prim::make("[]"))); }
-#line 4828 "hexpr.parse.C"
+#line 4874 "hexpr.parse.C"
     break;
 
-  case 333:
+  case 333: /* l1mtype: "[" ltmtype "]"  */
 #line 954 "hexpr.y"
                                            { try { (yyval.mtype) = autorelease(new MonoTypePtr(Array::make(yyParseCC->replaceTypeAliases(accumTApp(*(yyvsp[-1].mtypes)))))); } catch (std::exception& ex) { throw annotated_error(m((yylsp[-1])), ex.what()); } }
-#line 4834 "hexpr.parse.C"
+#line 4880 "hexpr.parse.C"
     break;
 
-  case 334:
+  case 334: /* l1mtype: "[" ":" l0mtype "|" tyind ":" "]"  */
 #line 955 "hexpr.y"
                                            { (yyval.mtype) = autorelease(new MonoTypePtr(FixedArray::make(*(yyvsp[-4].mtype), *(yyvsp[-2].mtype)))); }
-#line 4840 "hexpr.parse.C"
+#line 4886 "hexpr.parse.C"
     break;
 
-  case 335:
+  case 335: /* l1mtype: "(" "->" ")"  */
 #line 956 "hexpr.y"
                                            { (yyval.mtype) = autorelease(new MonoTypePtr(Prim::make("->"))); }
-#line 4846 "hexpr.parse.C"
+#line 4892 "hexpr.parse.C"
     break;
 
-  case 336:
+  case 336: /* l1mtype: "(" ltmtype ")"  */
 #line 957 "hexpr.y"
                                            { try { (yyval.mtype) = autorelease(new MonoTypePtr(clone(yyParseCC->replaceTypeAliases(accumTApp(*(yyvsp[-1].mtypes)))))); } catch (std::exception& ex) { throw annotated_error(m((yylsp[-1])), ex.what()); } }
-#line 4852 "hexpr.parse.C"
+#line 4898 "hexpr.parse.C"
     break;
 
-  case 337:
+  case 337: /* l1mtype: "{" mreclist "}"  */
 #line 958 "hexpr.y"
                                            { (yyval.mtype) = autorelease(new MonoTypePtr(makeRecType(*(yyvsp[-1].mreclist)))); }
-#line 4858 "hexpr.parse.C"
+#line 4904 "hexpr.parse.C"
     break;
 
-  case 338:
+  case 338: /* l1mtype: "|" mvarlist "|"  */
 #line 959 "hexpr.y"
                                            { (yyval.mtype) = autorelease(new MonoTypePtr(makeVarType(*(yyvsp[-1].mvarlist)))); }
-#line 4864 "hexpr.parse.C"
+#line 4910 "hexpr.parse.C"
     break;
 
-  case 339:
+  case 339: /* l1mtype: "(" ")"  */
 #line 960 "hexpr.y"
                                            { (yyval.mtype) = autorelease(new MonoTypePtr(Prim::make("unit"))); }
-#line 4870 "hexpr.parse.C"
+#line 4916 "hexpr.parse.C"
     break;
 
-  case 340:
+  case 340: /* l1mtype: "intV"  */
 #line 961 "hexpr.y"
                                            { (yyval.mtype) = autorelease(new MonoTypePtr(((yyvsp[0].intv) == 0) ? Prim::make("void") : TLong::make((yyvsp[0].intv)))); }
-#line 4876 "hexpr.parse.C"
+#line 4922 "hexpr.parse.C"
     break;
 
-  case 341:
+  case 341: /* l1mtype: "boolV"  */
 #line 962 "hexpr.y"
                                            { (yyval.mtype) = autorelease(new MonoTypePtr((yyvsp[0].boolv) ? TLong::make(1) : TLong::make(0))); }
-#line 4882 "hexpr.parse.C"
+#line 4928 "hexpr.parse.C"
     break;
 
-  case 342:
+  case 342: /* l1mtype: "exists" id "." l1mtype  */
 #line 963 "hexpr.y"
                                            { (yyval.mtype) = autorelease(new MonoTypePtr(Exists::make(*(yyvsp[-2].string), *(yyvsp[0].mtype)))); }
-#line 4888 "hexpr.parse.C"
+#line 4934 "hexpr.parse.C"
     break;
 
-  case 343:
+  case 343: /* l1mtype: l1mtype "@" l1mtype  */
 #line 964 "hexpr.y"
                                            { (yyval.mtype) = autorelease(new MonoTypePtr(fileRefTy(*(yyvsp[-2].mtype), *(yyvsp[0].mtype)))); }
-#line 4894 "hexpr.parse.C"
+#line 4940 "hexpr.parse.C"
     break;
 
-  case 344:
+  case 344: /* l1mtype: l1mtype "@" "?"  */
 #line 965 "hexpr.y"
                                            { (yyval.mtype) = autorelease(new MonoTypePtr(fileRefTy(*(yyvsp[-2].mtype)))); }
-#line 4900 "hexpr.parse.C"
+#line 4946 "hexpr.parse.C"
     break;
 
-  case 345:
+  case 345: /* l1mtype: "^" id "." l1mtype  */
 #line 966 "hexpr.y"
                                            { (yyval.mtype) = autorelease(new MonoTypePtr(Recursive::make(*(yyvsp[-2].string), *(yyvsp[0].mtype)))); }
-#line 4906 "hexpr.parse.C"
+#line 4952 "hexpr.parse.C"
     break;
 
-  case 346:
+  case 346: /* l1mtype: "stringV"  */
 #line 967 "hexpr.y"
                                            { (yyval.mtype) = autorelease(new MonoTypePtr(TString::make(str::unescape(str::trimq(*(yyvsp[0].string)))))); }
-#line 4912 "hexpr.parse.C"
+#line 4958 "hexpr.parse.C"
     break;
 
-  case 347:
+  case 347: /* l1mtype: "`" l0expr "`"  */
 #line 968 "hexpr.y"
                                            { (yyval.mtype) = autorelease(new MonoTypePtr(TApp::make(primty("quote"), list(texpr(ExprPtr((yyvsp[-1].exp))))))); }
-#line 4918 "hexpr.parse.C"
+#line 4964 "hexpr.parse.C"
     break;
 
-  case 348:
+  case 348: /* tyind: id  */
 #line 970 "hexpr.y"
               { (yyval.mtype) = autorelease(new MonoTypePtr(TVar::make(*(yyvsp[0].string)))); }
-#line 4924 "hexpr.parse.C"
+#line 4970 "hexpr.parse.C"
     break;
 
-  case 349:
+  case 349: /* tyind: "intV"  */
 #line 971 "hexpr.y"
               { (yyval.mtype) = autorelease(new MonoTypePtr(TLong::make((yyvsp[0].intv)))); }
-#line 4930 "hexpr.parse.C"
+#line 4976 "hexpr.parse.C"
     break;
 
-  case 350:
+  case 350: /* cppid: id  */
 #line 973 "hexpr.y"
                     { (yyval.string) = (yyvsp[0].string); }
-#line 4936 "hexpr.parse.C"
+#line 4982 "hexpr.parse.C"
     break;
 
-  case 351:
+  case 351: /* cppid: cppid "." id  */
 #line 974 "hexpr.y"
                     { (yyval.string) = (yyvsp[-2].string); *(yyval.string) += "."; *(yyval.string) += *(yyvsp[0].string); }
-#line 4942 "hexpr.parse.C"
+#line 4988 "hexpr.parse.C"
     break;
 
-  case 352:
+  case 352: /* l0mtargl: l1mtype  */
 #line 976 "hexpr.y"
                                         { (yyval.mtypes) = autorelease(new MonoTypes()); (yyval.mtypes)->push_back(*(yyvsp[0].mtype)); }
-#line 4948 "hexpr.parse.C"
+#line 4994 "hexpr.parse.C"
     break;
 
-  case 353:
+  case 353: /* l0mtargl: "(" l0mtype "," l0mtarglt ")"  */
 #line 977 "hexpr.y"
                                         { (yyvsp[-1].mtypes)->insert((yyvsp[-1].mtypes)->begin(), *(yyvsp[-3].mtype)); (yyval.mtypes) = (yyvsp[-1].mtypes); }
-#line 4954 "hexpr.parse.C"
+#line 5000 "hexpr.parse.C"
     break;
 
-  case 354:
+  case 354: /* l0mtarglt: l0mtype  */
 #line 979 "hexpr.y"
                                  { (yyval.mtypes) = autorelease(new MonoTypes()); (yyval.mtypes)->push_back(*(yyvsp[0].mtype)); }
-#line 4960 "hexpr.parse.C"
+#line 5006 "hexpr.parse.C"
     break;
 
-  case 355:
+  case 355: /* l0mtarglt: l0mtarglt "," l0mtype  */
 #line 980 "hexpr.y"
                                  { (yyvsp[-2].mtypes)->push_back(*(yyvsp[0].mtype)); (yyval.mtypes) = (yyvsp[-2].mtypes); }
-#line 4966 "hexpr.parse.C"
+#line 5012 "hexpr.parse.C"
     break;
 
-  case 356:
+  case 356: /* mtuplist: l1mtype  */
 #line 982 "hexpr.y"
                                { (yyval.mtypes) = autorelease(new MonoTypes()); (yyval.mtypes)->push_back(*(yyvsp[0].mtype)); }
-#line 4972 "hexpr.parse.C"
+#line 5018 "hexpr.parse.C"
     break;
 
-  case 357:
+  case 357: /* mtuplist: mtuplist "*" l1mtype  */
 #line 983 "hexpr.y"
                                { (yyval.mtypes) = (yyvsp[-2].mtypes); (yyval.mtypes)->push_back(*(yyvsp[0].mtype)); }
-#line 4978 "hexpr.parse.C"
+#line 5024 "hexpr.parse.C"
     break;
 
-  case 358:
+  case 358: /* msumlist: l1mtype "+" l1mtype  */
 #line 985 "hexpr.y"
                                { (yyval.mtypes) = autorelease(new MonoTypes()); (yyval.mtypes)->push_back(*(yyvsp[-2].mtype)); (yyval.mtypes)->push_back(*(yyvsp[0].mtype)); }
-#line 4984 "hexpr.parse.C"
+#line 5030 "hexpr.parse.C"
     break;
 
-  case 359:
+  case 359: /* msumlist: msumlist "+" l1mtype  */
 #line 986 "hexpr.y"
                                { (yyval.mtypes) = (yyvsp[-2].mtypes); (yyval.mtypes)->push_back(*(yyvsp[0].mtype)); }
-#line 4990 "hexpr.parse.C"
+#line 5036 "hexpr.parse.C"
     break;
 
-  case 360:
+  case 360: /* mreclist: mreclist "," id ":" l0mtype  */
 #line 988 "hexpr.y"
                                       { (yyval.mreclist) = (yyvsp[-4].mreclist);                                 (yyval.mreclist)->push_back(Record::Member(*(yyvsp[-2].string), *(yyvsp[0].mtype))); }
-#line 4996 "hexpr.parse.C"
+#line 5042 "hexpr.parse.C"
     break;
 
-  case 361:
+  case 361: /* mreclist: id ":" l0mtype  */
 #line 989 "hexpr.y"
                                       { (yyval.mreclist) = autorelease(new Record::Members()); (yyval.mreclist)->push_back(Record::Member(*(yyvsp[-2].string), *(yyvsp[0].mtype))); }
-#line 5002 "hexpr.parse.C"
+#line 5048 "hexpr.parse.C"
     break;
 
-  case 362:
+  case 362: /* mvarlist: mvarlist "," id ":" l0mtype  */
 #line 991 "hexpr.y"
                                       { (yyval.mvarlist) = (yyvsp[-4].mvarlist);                                  (yyval.mvarlist)->push_back(Variant::Member(*(yyvsp[-2].string), *(yyvsp[0].mtype),                0)); }
-#line 5008 "hexpr.parse.C"
+#line 5054 "hexpr.parse.C"
     break;
 
-  case 363:
+  case 363: /* mvarlist: mvarlist "," id  */
 #line 992 "hexpr.y"
                                       { (yyval.mvarlist) = (yyvsp[-2].mvarlist);                                  (yyval.mvarlist)->push_back(Variant::Member(*(yyvsp[0].string), Prim::make("unit"), 0)); }
-#line 5014 "hexpr.parse.C"
+#line 5060 "hexpr.parse.C"
     break;
 
-  case 364:
+  case 364: /* mvarlist: id ":" l0mtype  */
 #line 993 "hexpr.y"
                                       { (yyval.mvarlist) = autorelease(new Variant::Members()); (yyval.mvarlist)->push_back(Variant::Member(*(yyvsp[-2].string), *(yyvsp[0].mtype),                0)); }
-#line 5020 "hexpr.parse.C"
+#line 5066 "hexpr.parse.C"
     break;
 
-  case 365:
+  case 365: /* mvarlist: id  */
 #line 994 "hexpr.y"
                                       { (yyval.mvarlist) = autorelease(new Variant::Members()); (yyval.mvarlist)->push_back(Variant::Member(*(yyvsp[0].string), Prim::make("unit"), 0)); }
-#line 5026 "hexpr.parse.C"
+#line 5072 "hexpr.parse.C"
     break;
 
 
-#line 5030 "hexpr.parse.C"
+#line 5076 "hexpr.parse.C"
 
       default: break;
     }
@@ -5041,11 +5087,10 @@ yyreduce:
      case of YYERROR or YYBACKUP, subsequent parser actions might lead
      to an incorrect destructor call or verbose syntax error message
      before the lookahead is translated.  */
-  YY_SYMBOL_PRINT ("-> $$ =", yyr1[yyn], &yyval, &yyloc);
+  YY_SYMBOL_PRINT ("-> $$ =", YY_CAST (yysymbol_kind_t, yyr1[yyn]), &yyval, &yyloc);
 
   YYPOPSTACK (yylen);
   yylen = 0;
-  YY_STACK_PRINT (yyss, yyssp);
 
   *++yyvsp = yyval;
   *++yylsp = yyloc;
@@ -5070,50 +5115,45 @@ yyreduce:
 yyerrlab:
   /* Make sure we have latest lookahead translation.  See comments at
      user semantic actions for why this is necessary.  */
-  yytoken = yychar == YYEMPTY ? YYEMPTY : YYTRANSLATE (yychar);
-
+  yytoken = yychar == YYEMPTY ? YYSYMBOL_YYEMPTY : YYTRANSLATE (yychar);
   /* If not already recovering from an error, report this error.  */
   if (!yyerrstatus)
     {
       ++yynerrs;
-#if ! YYERROR_VERBOSE
-      yyerror (YY_("syntax error"));
-#else
-# define YYSYNTAX_ERROR yysyntax_error (&yymsg_alloc, &yymsg, \
-                                        yyssp, yytoken)
       {
+        yypcontext_t yyctx
+          = {yyssp, yytoken, &yylloc};
         char const *yymsgp = YY_("syntax error");
         int yysyntax_error_status;
-        yysyntax_error_status = YYSYNTAX_ERROR;
+        yysyntax_error_status = yysyntax_error (&yymsg_alloc, &yymsg, &yyctx);
         if (yysyntax_error_status == 0)
           yymsgp = yymsg;
-        else if (yysyntax_error_status == 1)
+        else if (yysyntax_error_status == -1)
           {
             if (yymsg != yymsgbuf)
               YYSTACK_FREE (yymsg);
-            yymsg = YY_CAST (char *, YYSTACK_ALLOC (YY_CAST (YYSIZE_T, yymsg_alloc)));
-            if (!yymsg)
+            yymsg = YY_CAST (char *,
+                             YYSTACK_ALLOC (YY_CAST (YYSIZE_T, yymsg_alloc)));
+            if (yymsg)
               {
-                yymsg = yymsgbuf;
-                yymsg_alloc = sizeof yymsgbuf;
-                yysyntax_error_status = 2;
+                yysyntax_error_status
+                  = yysyntax_error (&yymsg_alloc, &yymsg, &yyctx);
+                yymsgp = yymsg;
               }
             else
               {
-                yysyntax_error_status = YYSYNTAX_ERROR;
-                yymsgp = yymsg;
+                yymsg = yymsgbuf;
+                yymsg_alloc = sizeof yymsgbuf;
+                yysyntax_error_status = YYENOMEM;
               }
           }
         yyerror (yymsgp);
-        if (yysyntax_error_status == 2)
+        if (yysyntax_error_status == YYENOMEM)
           goto yyexhaustedlab;
       }
-# undef YYSYNTAX_ERROR
-#endif
     }
 
   yyerror_range[1] = yylloc;
-
   if (yyerrstatus == 3)
     {
       /* If just tried and failed to reuse lookahead token after an
@@ -5162,13 +5202,14 @@ yyerrorlab:
 yyerrlab1:
   yyerrstatus = 3;      /* Each real token shifted decrements this.  */
 
+  /* Pop stack until we find a state that shifts the error token.  */
   for (;;)
     {
       yyn = yypact[yystate];
       if (!yypact_value_is_default (yyn))
         {
-          yyn += YYTERROR;
-          if (0 <= yyn && yyn <= YYLAST && yycheck[yyn] == YYTERROR)
+          yyn += YYSYMBOL_YYerror;
+          if (0 <= yyn && yyn <= YYLAST && yycheck[yyn] == YYSYMBOL_YYerror)
             {
               yyn = yytable[yyn];
               if (0 < yyn)
@@ -5182,7 +5223,7 @@ yyerrlab1:
 
       yyerror_range[1] = *yylsp;
       yydestruct ("Error: popping",
-                  yystos[yystate], yyvsp, yylsp);
+                  YY_ACCESSING_SYMBOL (yystate), yyvsp, yylsp);
       YYPOPSTACK (1);
       yystate = *yyssp;
       YY_STACK_PRINT (yyss, yyssp);
@@ -5193,13 +5234,11 @@ yyerrlab1:
   YY_IGNORE_MAYBE_UNINITIALIZED_END
 
   yyerror_range[2] = yylloc;
-  /* Using YYLLOC is tempting, but would change the location of
-     the lookahead.  YYLOC is available though.  */
-  YYLLOC_DEFAULT (yyloc, yyerror_range, 2);
-  *++yylsp = yyloc;
+  ++yylsp;
+  YYLLOC_DEFAULT (*yylsp, yyerror_range, 2);
 
   /* Shift the error token.  */
-  YY_SYMBOL_PRINT ("Shifting", yystos[yyn], yyvsp, yylsp);
+  YY_SYMBOL_PRINT ("Shifting", YY_ACCESSING_SYMBOL (yyn), yyvsp, yylsp);
 
   yystate = yyn;
   goto yynewstate;
@@ -5221,20 +5260,20 @@ yyabortlab:
   goto yyreturn;
 
 
-#if !defined yyoverflow || YYERROR_VERBOSE
+#if 1
 /*-------------------------------------------------.
 | yyexhaustedlab -- memory exhaustion comes here.  |
 `-------------------------------------------------*/
 yyexhaustedlab:
   yyerror (YY_("memory exhausted"));
   yyresult = 2;
-  /* Fall through.  */
+  goto yyreturn;
 #endif
 
 
-/*-----------------------------------------------------.
-| yyreturn -- parsing is finished, return the result.  |
-`-----------------------------------------------------*/
+/*-------------------------------------------------------.
+| yyreturn -- parsing is finished, clean up and return.  |
+`-------------------------------------------------------*/
 yyreturn:
   if (yychar != YYEMPTY)
     {
@@ -5251,19 +5290,18 @@ yyreturn:
   while (yyssp != yyss)
     {
       yydestruct ("Cleanup: popping",
-                  yystos[+*yyssp], yyvsp, yylsp);
+                  YY_ACCESSING_SYMBOL (+*yyssp), yyvsp, yylsp);
       YYPOPSTACK (1);
     }
 #ifndef yyoverflow
   if (yyss != yyssa)
     YYSTACK_FREE (yyss);
 #endif
-#if YYERROR_VERBOSE
   if (yymsg != yymsgbuf)
     YYSTACK_FREE (yymsg);
-#endif
   return yyresult;
 }
+
 #line 998 "hexpr.y"
 
 #pragma GCC diagnostic pop
