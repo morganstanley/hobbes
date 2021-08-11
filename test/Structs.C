@@ -2,6 +2,9 @@
 #include <hobbes/hobbes.H>
 #include "test.H"
 
+#include <cstddef>
+#include <type_traits>
+
 using namespace hobbes;
 
 DEFINE_STRUCT(
@@ -208,9 +211,11 @@ TEST(Structs, Alignment) {
   c().bind("makeAT", &makeAT);
   EXPECT_TRUE(true);
 
+  static_assert(std::is_standard_layout<PadTest>::value, "must be standard layout to use offsetof");
+
   Record::Members ms;
-  ms.push_back(Record::Member("x", lift<int>::type(c()), 0));
-  ms.push_back(Record::Member("y", lift<long>::type(c()), static_cast<int>(reinterpret_cast<size_t>(&reinterpret_cast<PadTest*>(0)->y))));
+  ms.push_back(Record::Member("x", lift<int>::type(c()), offsetof(PadTest, x)));
+  ms.push_back(Record::Member("y", lift<long>::type(c()), offsetof(PadTest, y)));
   MonoTypePtr pty(Record::make(Record::withExplicitPadding(ms)));
 
   PadTest p;
