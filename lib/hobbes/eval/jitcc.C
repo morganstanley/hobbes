@@ -26,6 +26,13 @@
 
 #if LLVM_VERSION_MAJOR >= 11
 #include <hobbes/eval/orcjitcc.H>
+
+#include <cstdio>
+#include <cassert>
+#include <type_traits>
+#include <new>
+#include <memory>
+#include <limits>
 #else
 #if LLVM_VERSION_MINOR == 3 or LLVM_VERSION_MINOR == 5
 #include <llvm/ExecutionEngine/JIT.h>
@@ -49,6 +56,181 @@
 
 #if LLVM_VERSION_MAJOR >= 11
 namespace {
+template <typename T, typename... Ts> struct hasType {
+  static constexpr bool value = false;
+};
+
+template <typename T, typename H, typename... Ts> struct hasType<T, H, Ts...> {
+  static constexpr bool value =
+      std::is_same<T, H>::value || hasType<T, Ts...>::value;
+};
+
+template <typename... Ts> struct hasDuplication {
+  static constexpr bool value = false;
+};
+
+template <typename T, typename... Ts> struct hasDuplication<T, Ts...> {
+  static constexpr bool value =
+      hasType<T, Ts...>::value || hasDuplication<Ts...>::value;
+};
+
+template <typename T, typename... Ts> struct IndexByType;
+
+template <typename T, typename... Ts> struct IndexByType<T, T, Ts...> {
+  static constexpr int value = 0;
+};
+
+template <typename T, typename U, typename... Ts>
+struct IndexByType<T, U, Ts...> {
+  static constexpr int value = 1 + IndexByType<T, Ts...>::value;
+};
+
+template <typename U, typename... Ts> struct VariantLiteTypeMatch {
+  static bool act(std::size_t, std::size_t) { return false; }
+};
+
+template <typename U, typename T, typename... Ts>
+struct VariantLiteTypeMatch<U, T, Ts...> {
+  static bool act(std::size_t N, std::size_t tag) {
+    if (tag == (N - sizeof...(Ts) - 1U)) {
+      return std::is_same<U, T>::value;
+    } else {
+      return VariantLiteTypeMatch<U, Ts...>::act(N, tag);
+    }
+  }
+};
+
+template <typename... Ts> struct VariantLiteDeletor {
+  static void act(std::size_t, std::size_t, void *) {}
+};
+
+template <typename T, typename... Ts> struct VariantLiteDeletor<T, Ts...> {
+  static void act(std::size_t N, std::size_t tag, void *storage) {
+    if (tag == (N - sizeof...(Ts) - 1)) {
+      reinterpret_cast<T *>(storage)->~T();
+    } else {
+      VariantLiteDeletor<Ts...>::act(N, tag, storage);
+    }
+  }
+};
+
+template <typename... Ts> struct VariantLiteCopyCreator {
+  static void act(std::size_t, std::size_t, void *, const void *) {}
+};
+
+template <typename T, typename... Ts> struct VariantLiteCopyCreator<T, Ts...> {
+  static void act(std::size_t N, std::size_t other_tag, void *this_storage,
+                  const void *other_storage) {
+    if (other_tag == (N - sizeof...(Ts) - 1)) {
+      new (this_storage) T(*reinterpret_cast<const T *>(other_storage));
+    } else {
+      VariantLiteCopyCreator<Ts...>::act(N, other_tag, this_storage,
+                                         other_storage);
+    }
+  }
+};
+
+template <typename... Ts> struct VariantLiteMoveCreator {
+  static void act(std::size_t, std::size_t, void *, const void *) {}
+};
+
+template <typename T, typename... Ts> struct VariantLiteMoveCreator<T, Ts...> {
+  static void act(std::size_t N, std::size_t other_tag, void *this_storage,
+                  const void *other_storage) {
+    if (other_tag == (N - sizeof...(Ts) - 1)) {
+      new (this_storage)
+          T(std::move(*reinterpret_cast<const T *>(other_storage)));
+    } else {
+      VariantLiteMoveCreator<Ts...>::act(N, other_tag, this_storage,
+                                         other_storage);
+    }
+  }
+};
+
+template <typename... Ts> struct VariantLite {
+  static constexpr std::size_t N = sizeof...(Ts);
+
+  static_assert(N > 0, "");
+  static_assert(not hasDuplication<Ts...>::value, "");
+
+  VariantLite() = default;
+
+  template <typename T> VariantLite(T t) {
+    static_assert(hasType<T, Ts...>::value, "");
+    new (&storage) T(std::move(t));
+    tag = IndexByType<T, Ts...>::value;
+  }
+
+  VariantLite(const VariantLite &rhs) {
+    tag = rhs.tag;
+    if (isValid()) {
+      VariantLiteCopyCreator<Ts...>::act(N, rhs.tag, &storage, &rhs.storage);
+    }
+  }
+
+  VariantLite &operator=(const VariantLite &rhs) & {
+    if (isValid()) {
+      VariantLiteDeletor<Ts...>::act(N, tag, &storage);
+    }
+    tag = rhs.tag;
+    if (isValid()) {
+      VariantLiteCopyCreator<Ts...>::act(N, rhs.tag, &storage, &rhs.storage);
+    }
+    return *this;
+  }
+
+  VariantLite(VariantLite &&rhs) {
+    tag = rhs.tag;
+    if (isValid()) {
+      VariantLiteMoveCreator<Ts...>::act(N, rhs.tag, &storage, &rhs.storage);
+    }
+  }
+
+  VariantLite &operator=(VariantLite &&rhs) & {
+    if (isValid()) {
+      VariantLiteDeletor<Ts...>::act(N, tag, &storage);
+    }
+    tag = rhs.tag;
+    if (isValid()) {
+      VariantLiteMoveCreator<Ts...>::act(N, rhs.tag, &storage, &rhs.storage);
+    }
+    return *this;
+  }
+
+  template <typename T> VariantLite &operator=(T t) {
+    static_assert(hasType<T, Ts...>::value, "");
+    if (isValid()) {
+      VariantLiteDeletor<Ts...>::act(N, tag, &storage);
+    }
+    new (&storage) T(std::move(t));
+    tag = IndexByType<T, Ts...>::value;
+    return *this;
+  }
+
+  ~VariantLite() {
+    if (isValid()) {
+      VariantLiteDeletor<Ts...>::act(N, tag, &storage);
+    }
+  }
+
+  bool isValid() const { return tag != InvalidTag; }
+
+  template <typename T> T *get() {
+    static_assert(hasType<T, Ts...>::value, "");
+    if (isValid() && VariantLiteTypeMatch<T, Ts...>::act(N, tag)) {
+      return reinterpret_cast<T *>(&storage);
+    }
+    return nullptr;
+  }
+
+private:
+  static constexpr std::size_t InvalidTag =
+      std::numeric_limits<std::size_t>::max();
+
+  std::aligned_union_t<0, Ts...> storage;
+  std::size_t tag = InvalidTag;
+};
+
 LLVM_NODISCARD llvm::Function *createFnDecl(llvm::Function *f, llvm::Module &m,
                                             llvm::StringRef name) {
   if (f->getReturnType() == hobbes::boolType()) {
@@ -86,7 +268,7 @@ class ConstantList {
   struct Constant {
     // function is a constant
     // globalvariable returned by a function
-    variant<VarDeclFnTy, llvm::Constant *> value;
+    VariantLite<VarDeclFnTy, llvm::Constant *> value;
     Ty ty = Ty::Other;
   };
   llvm::StringMap<Constant> constants;
@@ -181,7 +363,7 @@ public:
   using FnDeclFnTy = std::function<llvm::Function *(llvm::Module &)>;
 
 private:
-  using ValOrFnTy = variant<FnDeclFnTy, llvm::WeakTrackingVH>;
+  using ValOrFnTy = VariantLite<FnDeclFnTy, llvm::WeakTrackingVH>;
   using VarBindingStack = llvm::SmallVector<llvm::StringMap<ValOrFnTy>, 8>;
   VarBindingStack vtenv;
 
@@ -255,7 +437,7 @@ class Globals {
 private:
   using FnDeclFnTy = std::function<llvm::Function *(llvm::Module &)>;
   using VarDeclFnTy = std::function<llvm::GlobalVariable *(llvm::Module &)>;
-  llvm::StringMap<variant<FnDeclFnTy, VarDeclFnTy>> globals;
+  llvm::StringMap<VariantLite<FnDeclFnTy, VarDeclFnTy>> globals;
 
   LLVM_NODISCARD bool isFunc(decltype(globals)::iterator it) const {
     return it->second.get<FnDeclFnTy>() != nullptr;

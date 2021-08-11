@@ -81,6 +81,19 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${cxx_flags}")
 set(CMAKE_CXX_FLAGS_DEBUG "-g")
 set(CMAKE_CXX_FLAGS_RELEASE "-O2")
 
+option(USE_ASAN_UBSAN "Use address,undefined sanitizers" OFF)
+if(USE_ASAN_AND_UBSAN)
+  # _FORTIFY_SOURCE doesn't play well with asan
+  # https://github.com/google/sanitizers/issues/247
+  add_definitions(-U_FORTIFY_SOURCE)
+  add_compile_options("-fno-omit-frame-pointer;-fsanitize=address,undefined;-fno-optimize-sibling-calls;-fno-sanitize-recover=all")
+  add_link_options("-fsanitize=address,undefined;-fno-optimize-sibling-calls;-fno-sanitize-recover=all")
+  add_compile_options("$<$<OR:$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>>:-fsanitize=local-bounds,float-divide-by-zero,nullability,signed-integer-overflow,shift,integer-divide-by-zero>")
+  add_link_options("$<$<OR:$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:AppleClang>>:-fsanitize=local-bounds,float-divide-by-zero,nullability,signed-integer-overflow,shift,integer-divide-by-zero>")
+  add_compile_options("$<$<CXX_COMPILER_ID:GNU>:--param=max-vartrack-size=60000000>")
+  message(STATUS "address and undefined sanitizers enabled")
+endif()
+
 add_library(hobbes STATIC ${lib_files})
 target_link_libraries(hobbes PUBLIC ${llvm_ldflags} ${llvm_libs} ${ZLIB_LIBRARIES} ${CURSES_LIBRARIES} ${sys_libs})
 add_library(hobbes-pic STATIC ${lib_files})
@@ -96,7 +109,7 @@ enable_testing()
 add_executable(hobbes-test ${test_files})
 target_link_libraries(hobbes-test PRIVATE hobbes)
 add_test(hobbes-test hobbes-test)
-include(FindPythonInterp)
+find_package(PythonInterp 2.7 REQUIRED)
 set_property(TARGET hobbes-test PROPERTY COMPILE_FLAGS "-DPYTHON_EXECUTABLE=\"${PYTHON_EXECUTABLE}\" -DSCRIPT_DIR=\"${CMAKE_SOURCE_DIR}/scripts/\"")
 
 install(TARGETS hobbes hobbes-pic DESTINATION "lib")

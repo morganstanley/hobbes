@@ -1,6 +1,6 @@
 {
   description = "A language and an embedded JIT compiler";
-  
+
   inputs.flake-utils.url = "github:numtide/flake-utils";
 
   outputs = { self, nixpkgs, flake-utils }:
@@ -20,7 +20,7 @@
             ];
           })
         ];
-        
+
         pkgs = import nixpkgs {
           inherit system overlays;
         };

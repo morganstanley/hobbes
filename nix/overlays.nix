@@ -16,7 +16,7 @@ let
 
   separateDebugInfo = debug;
 
-  meta = with stdenv.lib; {
+  meta = with lib; {
     description = "A language and an embedded JIT compiler";
     longDescription = ''
       Hobbes is a language, embedded compiler, and runtime for efficient
@@ -69,6 +69,34 @@ let
       '';
     });
 
+  withCLANGAsanAndUBSan = let
+    llvmPkgs = { llvmVersion }:
+      builtins.getAttr ("llvmPackages_" + (toString llvmVersion)) final;
+  in makeOverridable
+  ({ llvmVersion, stdenv ? (llvmPkgs { inherit llvmVersion; }).stdenv }:
+    stdenv.mkDerivation {
+      pname = "hobbes-clang-" + (toString llvmVersion) + "-ASanAndUBSan";
+      inherit version src meta doCheck doTarget;
+
+      patches = [ ./ubsan_supp.patch ];
+
+      dontStrip = true;
+      cmakeBuildType="Debug";
+      cmakeFlags = [
+        "-DUSE_ASAN_AND_UBSAN:BOOL=ON"
+      ];
+      ninjaFlags = [ "-v" ];
+      UBSAN_OPTIONS="print_stacktrace=1";
+      ASAN_OPTIONS="detect_leaks=0:strict_string_checks=1:detect_stack_use_after_return=1:check_initialization_order=1:strict_init_order=1:use_odr_indicator=1";
+
+      nativeBuildInputs = nativeBuildInputs;
+      buildInputs = buildInputs ++ [ (llvmPkgs { inherit llvmVersion; }).llvm ];
+      postPatch = ''
+        substituteInPlace CMakeLists.txt \
+           --replace "\''${CMAKE_SOURCE_DIR}" "${src}"
+      '';
+    });
+
 in {
   hobbesPackages = when stdenv.isLinux (recurseIntoAttrs (builtins.listToAttrs
     (builtins.map (gccConstraint: {
@@ -88,6 +116,12 @@ in {
         name = "clang-" + toString llvmVersion;
         value = recurseIntoAttrs ({
           hobbes = dbg (callPackage withCLANG { inherit llvmVersion; });
+        });
+      }) llvmVersions)) // recurseIntoAttrs (builtins.listToAttrs (builtins.map
+      (llvmVersion: {
+        name = "clang-" + toString llvmVersion + "-ASanAndUBSan";
+        value = recurseIntoAttrs ({
+          hobbes = (callPackage withCLANGAsanAndUBSan { inherit llvmVersion; });
         });
       }) llvmVersions));
 }

@@ -262,6 +262,9 @@ template <typename T>
   }
 template <typename TIter>
   inline void writes(imagefile* f, TIter begin, TIter end) {
+    if (begin == end) {
+      return;
+    }
     fdwrite(f, reinterpret_cast<const char*>(&(*begin)), (end - begin) * sizeof(*begin));
   }
 inline void write(imagefile* f, const std::string& x) {
