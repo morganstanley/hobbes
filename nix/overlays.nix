@@ -78,6 +78,8 @@ let
       pname = "hobbes-clang-" + (toString llvmVersion) + "-ASanAndUBSan";
       inherit version src meta doCheck doTarget;
 
+      patches = [ ./ubsan_supp.patch ];
+
       dontStrip = true;
       cmakeBuildType="Debug";
       cmakeFlags = [
