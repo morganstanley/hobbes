@@ -639,7 +639,7 @@ template <typename ... Ctors>
     // \p fn should be void(void*) alike
     template <typename T, typename Fn,
               std::enable_if_t<(detail::CountType<T, Ctors...>::value > 1)>>
-    void visit(uint32_t t, Fn &&fn) {
+    void get(uint32_t t, Fn &&fn) {
       detail::variantVisitorByTag<Fn, Ctors...>::visit(
           count, t, std::forward<Fn>(fn), this->storage);
     }
