@@ -567,6 +567,34 @@ template <size_t, typename T, typename U>
     }
   };
 
+namespace detail {
+template <typename Fn, typename... Ts> struct variantVisitorByTag {
+  static void visit(std::size_t, std::size_t, Fn &&, void *) {}
+};
+
+template <typename Fn, typename T, typename... Ts>
+struct variantVisitorByTag<Fn, T, Ts...> {
+  static void visit(std::size_t count, std::size_t tag, Fn &&fn,
+                    void *storage) {
+    if (tag == (count - sizeof...(Ts) - 1)) {
+      std::forward<Fn>(fn)(storage);
+    } else {
+      variantVisitorByTag<Fn, Ts...>::visit(count, tag, fn, storage);
+    }
+  }
+};
+
+template <typename T, typename... Ts> struct CountType {
+  static constexpr std::size_t value = 0;
+};
+
+template <typename T, typename U, typename... Ts>
+struct CountType<T, U, Ts...> {
+  static constexpr std::size_t value =
+      (std::is_same<T, U>::value ? 1 : 0) + CountType<T, Ts...>::value;
+};
+} // namespace detail
+
 template <typename ... Ctors>
   class variant {
   public:
@@ -599,10 +627,22 @@ template <typename ... Ctors>
       return *this;
     }
 
-    template <typename T>
+    // This function is only instantiated when T is unique in Ctors
+    template <typename T, typename = std::enable_if_t<detail::CountType<T, Ctors...>::value == 1>>
       T* get() { return findByCtor<T>(); }
-    template <typename T>
+    template <typename T, typename = std::enable_if_t<detail::CountType<T, Ctors...>::value == 1>>
       const T* get() const { return findByCtor<T>(); }
+
+    // This function is only instantiated in case of having a type like variant<char, int, char>
+    // and tring to access the char
+    //
+    // \p fn should be void(void*) alike
+    template <typename T, typename Fn,
+              std::enable_if_t<(detail::CountType<T, Ctors...>::value > 1)>>
+    void get(uint32_t t, Fn &&fn) {
+      detail::variantVisitorByTag<Fn, Ctors...>::visit(
+          count, t, std::forward<Fn>(fn), this->storage);
+    }
 
     template <typename R, template <size_t,class,class> class F, typename U, typename ... Args>
       R apply(Args... args) {
@@ -624,10 +664,8 @@ template <typename ... Ctors>
       typename maximum<TAlignOfF, Ctors...>::type maxAlignedT;
     };
 
-    template <typename T>
+    template <typename T, typename = std::enable_if_t<detail::CountType<T, Ctors...>::value == 1>>
       T* findByCtor() const {
-        static_assert(CtorIndexOf<T, Ctors...>::value < sizeof...(Ctors), "Constructor type isn't part of variant");
-
         if (this->tag == CtorIndexOf<T, Ctors...>::value) {
           return const_cast<T*>(reinterpret_cast<const T*>(this->storage));
         } else {
@@ -640,11 +678,11 @@ template <typename ... Ctors>
     return lhs.unsafeTag() == rhs.unsafeTag() &&
            variantApp<bool, variantPayloadEq, void, tuple<Ctors...>, const void*>::apply(lhs.unsafeTag(), const_cast<void*>(reinterpret_cast<const void*>(lhs.unsafePayload())), reinterpret_cast<const void*>(rhs.unsafePayload()));
   }
-template <typename T, typename ... Ctors>
+template <typename T, typename ... Ctors, typename = std::enable_if_t<detail::CountType<T, Ctors...>::value == 1>>
   T* get(variant<Ctors...>& v) {
     return v.template get<T>();
   }
-template <typename T, typename ... Ctors>
+template <typename T, typename ... Ctors, typename = std::enable_if_t<detail::CountType<T, Ctors...>::value == 1>>
   const T* get(const variant<Ctors...>& v) {
     return v.template get<T>();
   }
