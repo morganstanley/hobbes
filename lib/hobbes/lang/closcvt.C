@@ -98,7 +98,8 @@ struct ClosureConvertF : public switchExprTyFn {
 
   ExprPtr with(const Fn* v) const {
     ExprPtr nbody = switchOf(v->body(), ClosureConvertF(fnFrame(this->tenv, v->varNames()), this->roots));
-    return makeClosureOver(new Fn(v->varNames(), nbody, v->la()), excludeRootVars(setDifference(freeVars(nbody), toSet(v->varNames()))));
+    const Fn fn(v->varNames(), nbody, v->la());
+    return makeClosureOver(&fn, excludeRootVars(setDifference(freeVars(nbody), toSet(v->varNames()))));
   }
 
   ExprPtr with(const Let* v) const {
