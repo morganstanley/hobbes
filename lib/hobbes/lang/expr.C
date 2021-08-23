@@ -1243,7 +1243,10 @@ const MonoTypePtr& requireMonotype(const TEnvPtr& tenv, const ExprPtr& e) {
   if (e->type()->constraints().size() > 0) {
     Constraints cs = expandHiddenTCs(tenv, simplifyVarNames(e->type())->constraints());
     std::ostringstream ss;
-    ss << "Failed to compile expression due to unresolved type constraint" << (cs.size() > 1 ? "s" : "");
+    ss << "Failed to compile expression due to unresolved type constraint" << (cs.size() > 1 ? "s" : "") << ":\n";
+    for (auto const& c : cs) {
+      ss << "  " << c << '\n';
+    }
     throw unsolved_constraints(*e, ss.str(), cs);
   }
   
