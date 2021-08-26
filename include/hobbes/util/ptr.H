@@ -33,7 +33,7 @@ template <typename T, typename ... Args>
       std::lock_guard<std::recursive_mutex> lock(mutex);
       for (typename Values::iterator v = this->values.begin(); v != this->values.end();) {
         if (v->second.use_count() == 1) {
-          this->values.erase(v++);
+          v = this->values.erase(v);
           ++c;
         } else {
           ++v;
