@@ -230,6 +230,10 @@ MonoTypePtr makeRecType(const Record::Members& tms) {
 }
 
 MonoTypePtr makeVarType(const Variant::Members& vms) {
+  if (std::any_of(std::cbegin(vms), std::cend(vms), [](const auto& v) { return v.id != 0; })) {
+    return Variant::make(vms);
+  }
+
   Variant::Members tvms = vms;
   for (unsigned int i = 0; i < tvms.size(); ++i) {
     tvms[i].id = i;
@@ -992,6 +996,16 @@ mvarlist: mvarlist "," id ":" l0mtype { $$ = $1;                                
         | mvarlist "," id             { $$ = $1;                                  $$->push_back(Variant::Member(*$3, Prim::make("unit"), 0)); }
         | id ":" l0mtype              { $$ = autorelease(new Variant::Members()); $$->push_back(Variant::Member(*$1, *$3,                0)); }
         | id                          { $$ = autorelease(new Variant::Members()); $$->push_back(Variant::Member(*$1, Prim::make("unit"), 0)); }
+        | mvarlist "," id "(" "intV" ")"   { $$ = $1;                                  $$->push_back(Variant::Member(*$3, Prim::make("unit"), $5)); }
+        | mvarlist "," id "(" "shortV" ")" { $$ = $1;                                  $$->push_back(Variant::Member(*$3, Prim::make("unit"),$5)); }
+        | mvarlist "," id "(" "boolV" ")"  { $$ = $1;                                  $$->push_back(Variant::Member(*$3, Prim::make("unit"), $5)); }
+        | mvarlist "," id "(" "byteV" ")"  { $$ = $1;                                  $$->push_back(Variant::Member(*$3, Prim::make("unit"), str::dehex(*$5))); }
+        | mvarlist "," id "(" "charV" ")"  { $$ = $1;                                  $$->push_back(Variant::Member(*$3, Prim::make("unit"), str::readCharDef(*$5))); }
+        | id "(" "intV" ")"                { $$ = autorelease(new Variant::Members()); $$->push_back(Variant::Member(*$1, Prim::make("unit"), $3)); }
+        | id "(" "shortV" ")"              { $$ = autorelease(new Variant::Members()); $$->push_back(Variant::Member(*$1, Prim::make("unit"), $3)); }
+        | id "(" "boolV" ")"               { $$ = autorelease(new Variant::Members()); $$->push_back(Variant::Member(*$1, Prim::make("unit"), $3)); }
+        | id "(" "byteV" ")"               { $$ = autorelease(new Variant::Members()); $$->push_back(Variant::Member(*$1, Prim::make("unit"), str::dehex(*$3))); }
+        | id "(" "charV" ")"               { $$ = autorelease(new Variant::Members()); $$->push_back(Variant::Member(*$1, Prim::make("unit"), str::readCharDef(*$3))); }
 
 id: TIDENT;
 
