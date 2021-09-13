@@ -170,16 +170,16 @@ TEST(Variants, PEnumsChar) {
   EXPECT_TRUE(x.compileFn<bool()>("show(spcc.pe) == \"|e2|\"")());
   EXPECT_TRUE(x.compileFn<bool()>("show(spcc.pen) == \"|e1|\"")());
   EXPECT_TRUE(x.compileFn<bool()>("show(spcc) == \"{pe=|e2|, pen=|e1|, x=42}\"")());
-  EXPECT_TRUE(x.compileFn<bool()>("show(unsafeCast(unsafeCast(3)::char)::((penum char |A(3), B(4)|))) == \"|A|\"")());
-  EXPECT_TRUE(x.compileFn<bool()>("show(unsafeCast(unsafeCast(0)::char)::((penum char |A(3), B, C(7)|))) == \"|B|\"")());
+  EXPECT_TRUE(x.compileFn<bool()>("show(unsafeCast(unsafeCast(0X03)::char)::((penum char |A(3), B(4)|))) == \"|A|\"")());
+  EXPECT_TRUE(x.compileFn<bool()>("show(unsafeCast(unsafeCast(0X00)::char)::((penum char |A(3), B, C(7)|))) == \"|B|\"")());
 
   x.compileFn<void()>(
       "spcc.pen <- unsafeCast('2')::((penum char |e0(3), e1(4), e2('2')|))")();
   EXPECT_TRUE(x.compileFn<bool()>("show(spcc.pen) == \"|e2|\"")());
 
-  x.define("newpen", "unsafeCast(unsafeCast(3)::char)::((penum char |e0(3), e1(4), e2('2')|))");
+  x.define("newpen", "unsafeCast(unsafeCast(0X03)::char)::((penum char |e0(3), e1(4), e2('2')|))");
   EXPECT_TRUE(x.compileFn<bool()>("show(newpen) == \"|e0|\"")());
-  x.compileFn<void()>("newpen <- unsafeCast(unsafeCast(4)::char)::((penum char |e0(3), e1(4), e2('2')|))")();
+  x.compileFn<void()>("newpen <- unsafeCast(unsafeCast(0X04)::char)::((penum char |e0(3), e1(4), e2('2')|))")();
   EXPECT_TRUE(x.compileFn<bool()>("show(newpen) == \"|e1|\"")());
 }
 
