@@ -171,8 +171,22 @@ TEST(Variants, PEnumsChar) {
   EXPECT_TRUE(x.compileFn<bool()>("show(spcc.pen) == \"|e1|\"")());
   EXPECT_TRUE(x.compileFn<bool()>("show(spcc) == \"{pe=|e2|, pen=|e1|, x=42}\"")());
   EXPECT_TRUE(x.compileFn<bool()>("show(unsafeCast(unsafeCast(0X03)::char)::((penum char |A(3), B(4)|))) == \"|A|\"")());
-  EXPECT_TRUE(x.compileFn<bool()>("show(unsafeCast(unsafeCast(0X00)::char)::((penum char |A(3), B, C(7)|))) == \"|B|\"")());
+  EXPECT_TRUE(x.compileFn<bool()>("show(unsafeCast(unsafeCast(0X01)::char)::((penum char |A, B|))) == \"|B|\"")());
   EXPECT_TRUE(x.compileFn<bool()>("show(unsafeCast('C')::((penum char |A('A'), B('B'), C('C')|))) == \"|C|\"")());
+  bool exp = false;
+  try {
+    x.compileFn<void()>("unsafeCast('A')::((penum char |A('A'), B, C('C')|))")();
+  } catch (const std::exception &) {
+    exp = true;
+  }
+  EXPECT_TRUE(exp && "Expected rejection of penum with missing defined values");
+  exp = false;
+  try {
+    x.compileFn<void()>("unsafeCast('1')::((penum char |A('0'), B('1'), C('0')|))")();
+  } catch (const std::exception &) {
+    exp = true;
+  }
+  EXPECT_TRUE(exp && "Expected rejection of penum with duplicated values");
 
   x.compileFn<void()>(
       "spcc.pen <- unsafeCast('2')::((penum char |e0(3), e1(4), e2('2')|))")();
@@ -210,7 +224,21 @@ TEST(Variants, PEnumsShort) {
   EXPECT_TRUE(x.compileFn<bool()>("show(spcc.pen) == \"|e1|\"")());
   EXPECT_TRUE(x.compileFn<bool()>("show(spcc) == \"{pe=|e2|, pen=|e1|, x=42}\"")());
   EXPECT_TRUE(x.compileFn<bool()>("show(unsafeCast(3S)::((penum short |A(3), B(4)|))) == \"|A|\"")());
-  EXPECT_TRUE(x.compileFn<bool()>("show(unsafeCast(0S)::((penum short |A(3), B, C(7)|))) == \"|B|\"")());
+  EXPECT_TRUE(x.compileFn<bool()>("show(unsafeCast(1S)::((penum short |A, B|))) == \"|B|\"")());
+  bool exp = false;
+  try {
+    x.compileFn<void()>("unsafeCast(0S)::((penum short |A(3), B, C(7)|))")();
+  } catch (const std::exception &) {
+    exp = true;
+  }
+  EXPECT_TRUE(exp && "Expected rejection of penum with missing defined values");
+  exp = false;
+  try {
+    x.compileFn<void()>("unsafeCast(4S)::((penum short |A(3), B(4), C(3)|))")();
+  } catch (const std::exception &) {
+    exp = true;
+  }
+  EXPECT_TRUE(exp && "Expected rejection of penum with duplicated values");
 
   x.compileFn<void()>("spcc.pen <- unsafeCast(7S)::((penum short |e0(3), e1(4), e2(7)|))")();
   EXPECT_TRUE(x.compileFn<bool()>("show(spcc.pen) == \"|e2|\"")());

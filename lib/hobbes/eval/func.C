@@ -882,13 +882,26 @@ public:
   }
 };
 
-class penum_show_op : public op {
+class penumShow : public op {
 public:
   llvm::Value *apply(jitcc *c, const MonoTypes &tys, const MonoTypePtr &,
                      const Exprs &es) override {
     auto *app = is<TApp>(tys[0]);
-    auto *var = is<Variant>(app->args()[1]);
-    const auto &ms = var->members();
+    if (app == 0) {
+      throw annotated_error(*es[0], "Internal error, " + show(tys[0]) +
+                                        " is not an application");
+    }
+    if (app->args().size() != 2) {
+      throw annotated_error(*es[0],
+                            "Internal error, penum should have two parameters");
+    }
+    auto *vty = is<Variant>(app->args()[1]);
+    if (!vty) {
+      throw annotated_error(
+          *es[0], "Internal error, penumShow applied to non-variant type: " +
+                      show(app->args()[1]));
+    }
+    const auto &ms = vty->members();
     llvm::Value *id = c->compile(es[0]);
     return withContext([&](llvm::LLVMContext &ctx) -> llvm::Value * {
       id = c->builder()->CreateZExt(id, c->builder()->getInt64Ty());
@@ -1140,7 +1153,8 @@ void initDefOperators(cc* c) {
   BINDF(".variantHeadLabel",  new varHLabel());
   BINDF(".variantSplit",      new varSplit());
   BINDF(".variantInjectHead", new varInjH());
-  BINDF("penumShow", new penum_show_op());
+
+  BINDF("penumShow",          new penumShow());
 
   // access std::string fields
   c->bind("stdstrsize", &stdstrsize);

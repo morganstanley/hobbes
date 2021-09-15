@@ -39,6 +39,7 @@ typedef struct YYLTYPE {
 #include <stdexcept>
 #include <vector>
 #include <stdio.h>
+#include <set>
 
 using namespace hobbes;
 
@@ -229,11 +230,23 @@ MonoTypePtr makeRecType(const Record::Members& tms) {
   return Record::make(tms);
 }
 
-MonoTypePtr makeVarType(const Variant::Members& vms) {
-  if (std::any_of(std::cbegin(vms), std::cend(vms), [](const auto& v) { return v.id != 0; })) {
-    return Variant::make(vms);
+MonoTypePtr makePVarType(const Variant::Members &vms,
+                         const LexicalAnnotation &la) {
+  struct VMC {
+    bool operator()(const Variant::Member &lhs,
+                    const Variant::Member &rhs) const {
+      return lhs.id < rhs.id;
+    }
+  };
+  const std::set<Variant::Member, VMC> tvms(vms.cbegin(), vms.cend());
+  if (tvms.size() != vms.size()) {
+    throw annotated_error(la, "penum cannot have duplicated values");
   }
 
+  return Variant::make(vms);
+}
+
+MonoTypePtr makeVarType(const Variant::Members& vms) {
   Variant::Members tvms = vms;
   for (unsigned int i = 0; i < tvms.size(); ++i) {
     tvms[i].id = i;
@@ -437,6 +450,7 @@ extern PatVarCtorFn patVarCtorFn;
 %type <mtypes>       types mtuplist msumlist
 %type <mreclist>     mreclist
 %type <mvarlist>     mvarlist
+%type <mvarlist>     mpvarlist
 
 %type <exp>          l0expr lhexpr l1expr l2expr l3expr l4expr l5expr l6expr
 %type <exps>         l6exprs cargs cselconds
@@ -961,6 +975,7 @@ l1mtype: id                                { $$ = autorelease(new MonoTypePtr(mo
        | "(" ltmtype ")"                   { try { $$ = autorelease(new MonoTypePtr(clone(yyParseCC->replaceTypeAliases(accumTApp(*$2))))); } catch (std::exception& ex) { throw annotated_error(m(@2), ex.what()); } }
        | "{" mreclist "}"                  { $$ = autorelease(new MonoTypePtr(makeRecType(*$2))); }
        | "|" mvarlist "|"                  { $$ = autorelease(new MonoTypePtr(makeVarType(*$2))); }
+       | "|" mpvarlist "|"                 { $$ = autorelease(new MonoTypePtr(makePVarType(*$2, m(@2)))); }
        | "(" ")"                           { $$ = autorelease(new MonoTypePtr(Prim::make("unit"))); }
        | "intV"                            { $$ = autorelease(new MonoTypePtr(($1 == 0) ? Prim::make("void") : TLong::make($1))); }
        | "boolV"                           { $$ = autorelease(new MonoTypePtr($1 ? TLong::make(1) : TLong::make(0))); }
@@ -996,16 +1011,17 @@ mvarlist: mvarlist "," id ":" l0mtype { $$ = $1;                                
         | mvarlist "," id             { $$ = $1;                                  $$->push_back(Variant::Member(*$3, Prim::make("unit"), 0)); }
         | id ":" l0mtype              { $$ = autorelease(new Variant::Members()); $$->push_back(Variant::Member(*$1, *$3,                0)); }
         | id                          { $$ = autorelease(new Variant::Members()); $$->push_back(Variant::Member(*$1, Prim::make("unit"), 0)); }
-        | mvarlist "," id "(" "intV" ")"   { $$ = $1;                                  $$->push_back(Variant::Member(*$3, Prim::make("unit"), $5)); }
-        | mvarlist "," id "(" "shortV" ")" { $$ = $1;                                  $$->push_back(Variant::Member(*$3, Prim::make("unit"),$5)); }
-        | mvarlist "," id "(" "boolV" ")"  { $$ = $1;                                  $$->push_back(Variant::Member(*$3, Prim::make("unit"), $5)); }
-        | mvarlist "," id "(" "byteV" ")"  { $$ = $1;                                  $$->push_back(Variant::Member(*$3, Prim::make("unit"), str::dehex(*$5))); }
-        | mvarlist "," id "(" "charV" ")"  { $$ = $1;                                  $$->push_back(Variant::Member(*$3, Prim::make("unit"), str::readCharDef(*$5))); }
-        | id "(" "intV" ")"                { $$ = autorelease(new Variant::Members()); $$->push_back(Variant::Member(*$1, Prim::make("unit"), $3)); }
-        | id "(" "shortV" ")"              { $$ = autorelease(new Variant::Members()); $$->push_back(Variant::Member(*$1, Prim::make("unit"), $3)); }
-        | id "(" "boolV" ")"               { $$ = autorelease(new Variant::Members()); $$->push_back(Variant::Member(*$1, Prim::make("unit"), $3)); }
-        | id "(" "byteV" ")"               { $$ = autorelease(new Variant::Members()); $$->push_back(Variant::Member(*$1, Prim::make("unit"), str::dehex(*$3))); }
-        | id "(" "charV" ")"               { $$ = autorelease(new Variant::Members()); $$->push_back(Variant::Member(*$1, Prim::make("unit"), str::readCharDef(*$3))); }
+
+mpvarlist: mpvarlist "," id "(" "intV" ")"   { $$ = $1;                                  $$->push_back(Variant::Member(*$3, Prim::make("unit"), $5)); }
+         | mpvarlist "," id "(" "shortV" ")" { $$ = $1;                                  $$->push_back(Variant::Member(*$3, Prim::make("unit"),$5)); }
+         | mpvarlist "," id "(" "boolV" ")"  { $$ = $1;                                  $$->push_back(Variant::Member(*$3, Prim::make("unit"), $5)); }
+         | mpvarlist "," id "(" "byteV" ")"  { $$ = $1;                                  $$->push_back(Variant::Member(*$3, Prim::make("unit"), str::dehex(*$5))); }
+         | mpvarlist "," id "(" "charV" ")"  { $$ = $1;                                  $$->push_back(Variant::Member(*$3, Prim::make("unit"), str::readCharDef(*$5))); }
+         | id "(" "intV" ")"                 { $$ = autorelease(new Variant::Members()); $$->push_back(Variant::Member(*$1, Prim::make("unit"), $3)); }
+         | id "(" "shortV" ")"               { $$ = autorelease(new Variant::Members()); $$->push_back(Variant::Member(*$1, Prim::make("unit"), $3)); }
+         | id "(" "boolV" ")"                { $$ = autorelease(new Variant::Members()); $$->push_back(Variant::Member(*$1, Prim::make("unit"), $3)); }
+         | id "(" "byteV" ")"                { $$ = autorelease(new Variant::Members()); $$->push_back(Variant::Member(*$1, Prim::make("unit"), str::dehex(*$3))); }
+         | id "(" "charV" ")"                { $$ = autorelease(new Variant::Members()); $$->push_back(Variant::Member(*$1, Prim::make("unit"), str::readCharDef(*$3))); }
 
 id: TIDENT;
 
