@@ -172,6 +172,7 @@ TEST(Variants, PEnumsChar) {
   EXPECT_TRUE(x.compileFn<bool()>("show(spcc) == \"{pe=|e2|, pen=|e1|, x=42}\"")());
   EXPECT_TRUE(x.compileFn<bool()>("show(unsafeCast(unsafeCast(0X03)::char)::((penum char |A(3), B(4)|))) == \"|A|\"")());
   EXPECT_TRUE(x.compileFn<bool()>("show(unsafeCast(unsafeCast(0X00)::char)::((penum char |A(3), B, C(7)|))) == \"|B|\"")());
+  EXPECT_TRUE(x.compileFn<bool()>("show(unsafeCast('C')::((penum char |A('A'), B('B'), C('C')|))) == \"|C|\"")());
 
   x.compileFn<void()>(
       "spcc.pen <- unsafeCast('2')::((penum char |e0(3), e1(4), e2('2')|))")();
