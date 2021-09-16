@@ -188,8 +188,6 @@ TEST(Variants, PEnumsChar) {
   EXPECT_TRUE(x.compileFn<bool()>("show(newpen) == \"|e0|\"")());
   x.compileFn<void()>("newpen <- unsafeCast(unsafeCast(0X04)::char)::((penum char |e0(3), e1(4), e2('2')|))")();
   EXPECT_TRUE(x.compileFn<bool()>("show(newpen) == \"|e1|\"")());
-  x.compileFn<void()>("newpen <- |e2('2')|::((penum char |e0(3), e1(4), e2('2')|))")();
-  EXPECT_TRUE(x.compileFn<bool()>("show(newpen) == \"|e2|\"")());
 }
 
 struct PEShortNContinous : PEnumBase<short, 3, 4, 7> {};
@@ -228,6 +226,4 @@ TEST(Variants, PEnumsShort) {
   EXPECT_TRUE(x.compileFn<bool()>("show(newpen) == \"|e0|\"")());
   x.compileFn<void()>("newpen <- unsafeCast(4S)::((penum short |e0(3), e1(4), e2(7)|))")();
   EXPECT_TRUE(x.compileFn<bool()>("show(newpen) == \"|e1|\"")());
-  x.compileFn<void()>("newpen <- |e2(7)|::((penum short |e0(3), e1(4), e2(7)|))")();
-  EXPECT_TRUE(x.compileFn<bool()>("show(newpen) == \"|e2|\"")());
 }

@@ -872,14 +872,13 @@ void showFull(const Variant::Members& ms, std::ostream& out) {
       if (discrete) {
         out << '(' << m.id << ')';
       }
+      showFullVarPayloadSuffix(m.type, out);
     };
 
     showPayload(ms[i]);
-    showFullVarPayloadSuffix(ms[i].type, out);
     for (size_t j = i + 1; j < ms.size(); ++j) {
       out << ", ";
       showPayload(ms[j]);
-      showFullVarPayloadSuffix(ms[j].type, out);
     }
   }
   out << "|";
