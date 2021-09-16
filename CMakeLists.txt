@@ -14,7 +14,13 @@ find_package(Curses REQUIRED)
 include_directories(${CURSES_INCLUDE_DIRS})
 
 find_package(LLVM REQUIRED CONFIG)
-include_directories(SYSTEM ${LLVM_INCLUDE_DIRS})
+if (CMAKE_COMPILER_IS_GNUCXX)
+  # if libc++abi is installed, cxxabi.h in llvm path will be used
+  # have to lower llvm include path search order
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -idirafter ${LLVM_INCLUDE_DIRS}")
+else()
+  include_directories(SYSTEM ${LLVM_INCLUDE_DIRS})
+endif()
 add_definitions(${LLVM_DEFINITIONS})
 
 set(CMAKE_CXX_STANDARD 14)
