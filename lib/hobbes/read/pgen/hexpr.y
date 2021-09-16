@@ -230,20 +230,37 @@ MonoTypePtr makeRecType(const Record::Members& tms) {
   return Record::make(tms);
 }
 
-MonoTypePtr makePVarType(const Variant::Members &vms,
-                         const LexicalAnnotation &la) {
-  struct VMC {
-    bool operator()(const Variant::Member &lhs,
-                    const Variant::Member &rhs) const {
-      return lhs.id < rhs.id;
+static MonoTypePtr makePVarTypeImp(const Variant::Members &vms,
+                                   const LexicalAnnotation *la) {
+  const auto sanityCheck = [&] {
+    auto tvms = vms;
+    std::sort(tvms.begin(), tvms.end(),
+              [](const auto &a, const auto &b) { return a.id < b.id; });
+    const auto it = std::adjacent_find(
+        tvms.cbegin(), tvms.cend(),
+        [](const auto &a, const auto &b) { return a.id == b.id; });
+    if (it != tvms.cend()) {
+      const auto es =
+          "penum has duplicated value(" + std::to_string(it->id) + ")";
+      if (la != nullptr) {
+        throw annotated_error(*la, es);
+      } else {
+        throw std::runtime_error(es);
+      }
     }
   };
-  const std::set<Variant::Member, VMC> tvms(vms.cbegin(), vms.cend());
-  if (tvms.size() != vms.size()) {
-    throw annotated_error(la, "penum cannot have duplicated values");
-  }
 
+  sanityCheck();
   return Variant::make(vms);
+}
+
+MonoTypePtr makePVarType(const Variant::Members &vms) {
+  return makePVarTypeImp(vms, nullptr);
+}
+
+MonoTypePtr makePVarType(const Variant::Members &vms,
+                         const LexicalAnnotation &la) {
+  return makePVarTypeImp(vms, &la);
 }
 
 MonoTypePtr makeVarType(const Variant::Members& vms) {

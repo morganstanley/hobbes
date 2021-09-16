@@ -160,5 +160,28 @@ private:
     } \
   }
 
+#define EXPECT_EXCEPTION_MSG(p, E, S) \
+  { \
+    bool exp = false; \
+    const std::string s = S; \
+    try { \
+      (p); \
+    } catch (const E& e) { \
+      const std::string es = e.what(); \
+      if (es.find(s) != std::string::npos) { \
+        exp = true; \
+      } \
+    } \
+    if (!exp) { \
+      std::ostringstream errmsg; \
+      errmsg << "Expression '" #p "' ran successfully but an '" #E; \
+      if (!s.empty()) { \
+        errmsg << "' contains string '" #S; \
+      } \
+      errmsg << "' was expected" << " " << FILEINFO(__FILE__, __LINE__); \
+      throw std::runtime_error(errmsg.str()); \
+    } \
+  }
+
 #endif
 
