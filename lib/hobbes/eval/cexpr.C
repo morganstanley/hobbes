@@ -1,11 +1,12 @@
 
+#include "hobbes/reflect.H"
 #include <hobbes/eval/jitcc.H>
 #include <hobbes/eval/cexpr.H>
 #include <hobbes/eval/ctype.H>
 #include <hobbes/lang/expr.H>
 #include <hobbes/lang/type.H>
 #include <hobbes/util/llvm.H>
-#include <hobbes/util/perf.H>
+#include <hobbes/lang/preds/hasctor/variant.H>
 #include <llvm/IR/Instruction.h>
 #include <llvm/IR/LLVMContext.h>
 
@@ -221,8 +222,18 @@ public:
 
   llvm::Value* with(const MkVariant* v) const {
     MonoTypePtr mvty = requireMonotype(v->type());
-    Variant*    vty  = is<Variant>(mvty);
-    if (!vty) { throw annotated_error(*v, "Internal compiler error, compiling variant without variant type: " + show(v) + " :: " + show(v->type())); }
+    const Variant *vty = is<Variant>(mvty);
+    if (vty == nullptr && show(v->value()) == "()") {
+      vty = variantInPEnum(mvty);
+      if (vty != nullptr) {
+        llvm::Type *uty = toLLVM(mvty);
+        return withContext([&](auto &) {
+          return llvm::Constant::getIntegerValue(
+              uty, llvm::APInt(8 * sizeOf(mvty), vty->id(v->label())));
+        });
+      }
+    }
+    if (!vty) { throw annotated_error(*v, "Internal compiler error, compiling variant without penum/variant type: " + show(v) + " :: " + show(v->type())); }
 
     llvm::Value* p  = compileAllocStmt(sizeOf(mvty), alignment(mvty), ptrType(byteType()));
     llvm::Value* tg = cvalue(vty->id(v->label()));

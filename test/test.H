@@ -174,11 +174,11 @@ private:
     } \
     if (!exp) { \
       std::ostringstream errmsg; \
-      errmsg << "Expression '" #p "' ran successfully but an '" #E; \
+      errmsg << "Expression '" #p "' expects a '" #E; \
       if (!s.empty()) { \
-        errmsg << "' contains string '" #S; \
+        errmsg << "' which contains string '" #S; \
       } \
-      errmsg << "' was expected" << " " << FILEINFO(__FILE__, __LINE__); \
+      errmsg << "' at " << " " << FILEINFO(__FILE__, __LINE__); \
       throw std::runtime_error(errmsg.str()); \
     } \
   }

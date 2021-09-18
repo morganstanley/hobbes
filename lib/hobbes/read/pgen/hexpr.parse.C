@@ -108,7 +108,6 @@ typedef struct YYLTYPE {
 #include <stdexcept>
 #include <vector>
 #include <stdio.h>
-#include <set>
 
 using namespace hobbes;
 

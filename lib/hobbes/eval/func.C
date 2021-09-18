@@ -3,6 +3,7 @@
 #include <hobbes/eval/func.H>
 #include <hobbes/eval/ctype.H>
 #include <hobbes/db/file.H>
+#include <hobbes/lang/preds/hasctor/variant.H>
 
 #include <iostream>
 
@@ -886,25 +887,15 @@ class penumShow : public op {
 public:
   llvm::Value *apply(jitcc *c, const MonoTypes &tys, const MonoTypePtr &,
                      const Exprs &es) override {
-    auto *app = is<TApp>(tys[0]);
-    if (app == 0) {
+    const Variant *vty = variantInPEnum(tys[0]);
+    if (vty == nullptr) {
       throw annotated_error(*es[0], "Internal error, " + show(tys[0]) +
                                         " is not an application");
-    }
-    if (app->args().size() != 2) {
-      throw annotated_error(*es[0],
-                            "Internal error, penum should have two parameters");
-    }
-    auto *vty = is<Variant>(app->args()[1]);
-    if (!vty) {
-      throw annotated_error(
-          *es[0], "Internal error, penumShow applied to non-variant type: " +
-                      show(app->args()[1]));
     }
     const auto &ms = vty->members();
     llvm::Value *id = c->compile(es[0]);
     return withContext([&](llvm::LLVMContext &ctx) -> llvm::Value * {
-      id = c->builder()->CreateZExt(id, c->builder()->getInt64Ty());
+      id = c->builder()->CreateZExt(id, c->builder()->getInt32Ty());
       return genIfElse(c, ctx, id, ms, ms.size() - 1);
     });
   }
@@ -920,7 +911,7 @@ private:
     auto *builder = c->builder();
     llvm::Function *thisFn = builder->GetInsertBlock()->getParent();
     llvm::Value *cond =
-        builder->CreateICmpEQ(builder->getInt64(ms[ind].id), id);
+        builder->CreateICmpEQ(builder->getInt32(ms[ind].id), id);
 
     auto *thenBlock = llvm::BasicBlock::Create(ctx, "then", thisFn);
     auto *elseBlock = llvm::BasicBlock::Create(ctx, "else");
