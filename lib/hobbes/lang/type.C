@@ -774,17 +774,16 @@ inline bool isHiddenCtor(const Variant::Member& m) {
   return isHiddenCtorName(m.selector);
 }
 
-int findHiddenMember(int i, const std::string& lbl, const Variant::Members& ms) {
-  std::string hlbl = ".p" + lbl;
-  while (i >= 0 && ms[i].selector != hlbl) {
-    --i;
-  }
-  return i;
+int findHiddenMember(const std::string& lbl, const Variant::Members& ms) {
+  const auto it = std::find_if(
+      ms.crbegin(), ms.crend(),
+      [hlbl = ".p" + lbl](const auto &m) { return m.selector == hlbl; });
+  return std::distance(it, ms.crend()) - 1;
 }
 
 Variant::Members consMember(const std::string& lbl, const MonoTypePtr& hty, const Variant::Members& tty) {
   // try to find a place to insert this type, otherwise insert it at the head
-  int slot = findHiddenMember(tty.size() - 1, lbl, tty);
+  const int slot = findHiddenMember(lbl, tty);
 
   Variant::Members r;
   if (slot < 0) {
@@ -1076,12 +1075,11 @@ unsigned int nextVisibleMember(unsigned int i, const Record::Members& ms) {
   return i;
 }
 
-int findHiddenMember(int i, const std::string& lbl, const Record::Members& ms) {
-  std::string hlbl = ".p" + lbl;
-  while (i >= 0 && ms[i].field != hlbl) {
-    --i;
-  }
-  return i;
+int findHiddenMember(const std::string& lbl, const Record::Members& ms) {
+  const auto it = std::find_if(
+      ms.crbegin(), ms.crend(),
+      [hlbl = ".p" + lbl](const auto &m) { return m.field == hlbl; });
+  return std::distance(it, ms.crend()) - 1;
 }
 
 static void resetFieldOffsets(Record::Members* ms) {
@@ -1092,7 +1090,7 @@ static void resetFieldOffsets(Record::Members* ms) {
 
 Record::Members consMember(const std::string& lbl, const MonoTypePtr& hty, const Record::Members& tty) {
   // try to find a place to insert this type, otherwise insert it at the head
-  int slot = findHiddenMember(tty.size() - 1, lbl, tty);
+  const int slot = findHiddenMember(lbl, tty);
 
   Record::Members r;
   if (slot < 0) {
