@@ -1,4 +1,5 @@
 
+#include <algorithm>
 #include <hobbes/lang/type.H>
 #include <hobbes/lang/expr.H>
 #include <hobbes/lang/tylift.H>
@@ -858,12 +859,25 @@ void showFull(const Variant::Members& ms, std::ostream& out) {
   out << "|";
   size_t i = nextVisibleMember(0, ms);
   if (i < ms.size()) {
-    out << ms[i].selector;
-    showFullVarPayloadSuffix(ms[i].type, out);
+    const bool discrete = [s = std::next(ms.cbegin(), i), e = ms.cend()] {
+      // not start from zero or not continous
+      return s->id != 0 ||
+             std::adjacent_find(s, e, [](const auto &a, const auto &b) {
+               return !((a.id < b.id) && (a.id + 1 == b.id));
+             }) != e;
+    }();
+    const auto showPayload = [&out, discrete](const Variant::Member &m) {
+      out << m.selector;
+      if (discrete) {
+        out << '(' << m.id << ')';
+      }
+      showFullVarPayloadSuffix(m.type, out);
+    };
+
+    showPayload(ms[i]);
     for (size_t j = i + 1; j < ms.size(); ++j) {
       out << ", ";
-      out << ms[j].selector;
-      showFullVarPayloadSuffix(ms[j].type, out);
+      showPayload(ms[j]);
     }
   }
   out << "|";

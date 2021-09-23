@@ -16,6 +16,8 @@
 #include <chrono>
 #include <stdexcept>
 
+extern hobbes::MonoTypePtr makePVarType(const hobbes::Variant::Members &vms);
+
 namespace hobbes {
 
 /*********
@@ -410,7 +412,8 @@ template <typename T, typename R = uint32_t>
       if (sizeof(R) == sizeof(uint32_t)) {
         return Variant::make(vms);
       } else {
-        return tapp(primty("penum", tabs(str::strings("r", "v"), tvar("r"))), list(lift<R>::type(tenv), Variant::make(vms)));
+        return tapp(primty("penum", tabs(str::strings("r", "v"), tvar("r"))),
+                    list(lift<R>::type(tenv), makePVarType(vms)));
       }
     }
   };

@@ -16,12 +16,6 @@
 #include <llvm/ADT/StringMap.h>
 #include <llvm/Support/FormatVariadic.h>
 
-#define llerrs(x)                                                              \
-  do {                                                                         \
-    llvm::errs() << "file:" << __FILE__ << "(" << __LINE__ << ")"              \
-                 << ", func:" << __PRETTY_FUNCTION__ << ": " << x << '\n';     \
-  } while (false)
-
 namespace hobbes {
 
 LLVM_NODISCARD inline std::string createUniqueName(llvm::StringRef prefix) {

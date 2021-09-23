@@ -229,6 +229,39 @@ MonoTypePtr makeRecType(const Record::Members& tms) {
   return Record::make(tms);
 }
 
+static MonoTypePtr makePVarTypeImp(const Variant::Members &vms,
+                                   const LexicalAnnotation *la) {
+  const auto sanityCheck = [&] {
+    auto tvms = vms;
+    std::sort(tvms.begin(), tvms.end(),
+              [](const auto &a, const auto &b) { return a.id < b.id; });
+    const auto it = std::adjacent_find(
+        tvms.cbegin(), tvms.cend(),
+        [](const auto &a, const auto &b) { return a.id == b.id; });
+    if (it != tvms.cend()) {
+      const auto es =
+          "penum has duplicated value(" + std::to_string(it->id) + ")";
+      if (la != nullptr) {
+        throw annotated_error(*la, es);
+      } else {
+        throw std::runtime_error(es);
+      }
+    }
+  };
+
+  sanityCheck();
+  return Variant::make(vms);
+}
+
+MonoTypePtr makePVarType(const Variant::Members &vms) {
+  return makePVarTypeImp(vms, nullptr);
+}
+
+MonoTypePtr makePVarType(const Variant::Members &vms,
+                         const LexicalAnnotation &la) {
+  return makePVarTypeImp(vms, &la);
+}
+
 MonoTypePtr makeVarType(const Variant::Members& vms) {
   Variant::Members tvms = vms;
   for (unsigned int i = 0; i < tvms.size(); ++i) {
@@ -299,6 +332,7 @@ extern PatVarCtorFn patVarCtorFn;
   hobbes::MonoTypes*           mtypes;
   hobbes::Record::Members*     mreclist;
   hobbes::Variant::Members*    mvarlist;
+  hobbes::Variant::Member*     mpvar;
 
   std::string*                            string;
   bool                                    boolv;
@@ -433,6 +467,8 @@ extern PatVarCtorFn patVarCtorFn;
 %type <mtypes>       types mtuplist msumlist
 %type <mreclist>     mreclist
 %type <mvarlist>     mvarlist
+%type <mvarlist>     mpvarlist
+%type <mpvar>        mpvar
 
 %type <exp>          l0expr lhexpr l1expr l2expr l3expr l4expr l5expr l6expr
 %type <exps>         l6exprs cargs cselconds
@@ -957,6 +993,7 @@ l1mtype: id                                { $$ = autorelease(new MonoTypePtr(mo
        | "(" ltmtype ")"                   { try { $$ = autorelease(new MonoTypePtr(clone(yyParseCC->replaceTypeAliases(accumTApp(*$2))))); } catch (std::exception& ex) { throw annotated_error(m(@2), ex.what()); } }
        | "{" mreclist "}"                  { $$ = autorelease(new MonoTypePtr(makeRecType(*$2))); }
        | "|" mvarlist "|"                  { $$ = autorelease(new MonoTypePtr(makeVarType(*$2))); }
+       | "|" mpvarlist "|"                 { $$ = autorelease(new MonoTypePtr(makePVarType(*$2, m(@2)))); }
        | "(" ")"                           { $$ = autorelease(new MonoTypePtr(Prim::make("unit"))); }
        | "intV"                            { $$ = autorelease(new MonoTypePtr(($1 == 0) ? Prim::make("void") : TLong::make($1))); }
        | "boolV"                           { $$ = autorelease(new MonoTypePtr($1 ? TLong::make(1) : TLong::make(0))); }
@@ -992,6 +1029,15 @@ mvarlist: mvarlist "," id ":" l0mtype { $$ = $1;                                
         | mvarlist "," id             { $$ = $1;                                  $$->push_back(Variant::Member(*$3, Prim::make("unit"), 0)); }
         | id ":" l0mtype              { $$ = autorelease(new Variant::Members()); $$->push_back(Variant::Member(*$1, *$3,                0)); }
         | id                          { $$ = autorelease(new Variant::Members()); $$->push_back(Variant::Member(*$1, Prim::make("unit"), 0)); }
+
+mpvarlist: mpvarlist "," mpvar { $$ = $1;                                  $$->push_back(*$3); }
+         | mpvar               { $$ = autorelease(new Variant::Members()); $$->push_back(*$1); }
+
+mpvar: id "(" "intV" ")"   { $$ = autorelease(new Variant::Member(*$1, Prim::make("unit"), $3)); }
+     | id "(" "shortV" ")" { $$ = autorelease(new Variant::Member(*$1, Prim::make("unit"), $3)); }
+     | id "(" "boolV" ")"  { $$ = autorelease(new Variant::Member(*$1, Prim::make("unit"), $3)); }
+     | id "(" "byteV" ")"  { $$ = autorelease(new Variant::Member(*$1, Prim::make("unit"), str::dehex(*$3))); }
+     | id "(" "charV" ")"  { $$ = autorelease(new Variant::Member(*$1, Prim::make("unit"), str::readCharDef(*$3))); }
 
 id: TIDENT;
 

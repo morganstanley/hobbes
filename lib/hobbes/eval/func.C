@@ -3,6 +3,7 @@
 #include <hobbes/eval/func.H>
 #include <hobbes/eval/ctype.H>
 #include <hobbes/db/file.H>
+#include <hobbes/lang/preds/hasctor/variant.H>
 
 #include <iostream>
 
@@ -882,6 +883,71 @@ public:
   }
 };
 
+class penumShow : public op {
+public:
+  llvm::Value *apply(jitcc *c, const MonoTypes &tys, const MonoTypePtr &,
+                     const Exprs &es) override {
+    const Variant *vty = isVariantPEnum(tys[0]);
+    if (vty == nullptr) {
+      throw annotated_error(*es[0], "Internal error, " + show(tys[0]) +
+                                        " is not an application");
+    }
+    const auto &ms = vty->members();
+    llvm::Value *id = c->compile(es[0]);
+    return withContext([&](llvm::LLVMContext &ctx) -> llvm::Value * {
+      id = c->builder()->CreateZExt(id, c->builder()->getInt32Ty());
+      return genIfElse(c, ctx, id, ms, ms.size() - 1);
+    });
+  }
+  hobbes::PolyTypePtr type(typedb &) const override {
+    static PolyTypePtr ty(new PolyType(
+        1, qualtype(functy(list(tgen(0)), arrayty(prim<char>())))));
+    return ty;
+  }
+
+private:
+  llvm::Value *genIfElse(jitcc *c, llvm::LLVMContext &ctx, llvm::Value *id,
+                         const Variant::Members &ms, size_t ind) {
+    auto *builder = c->builder();
+    llvm::Function *thisFn = builder->GetInsertBlock()->getParent();
+    llvm::Value *cond =
+        builder->CreateICmpEQ(builder->getInt32(ms[ind].id), id);
+
+    auto *thenBlock = llvm::BasicBlock::Create(ctx, "then", thisFn);
+    auto *elseBlock = llvm::BasicBlock::Create(ctx, "else");
+    auto *mergeBlock = llvm::BasicBlock::Create(ctx, "ifmerge");
+
+    builder->CreateCondBr(cond, thenBlock, elseBlock);
+    builder->SetInsertPoint(thenBlock);
+    llvm::Value *thenExp = c->compile(ExprPtr(
+        mkarray("|" + ms[ind].selector + "|", LexicalAnnotation::null())));
+    builder->CreateBr(mergeBlock);
+
+    thenBlock = builder->GetInsertBlock();
+
+    thisFn->getBasicBlockList().push_back(elseBlock);
+    builder->SetInsertPoint(elseBlock);
+
+    llvm::Value *elseExp = nullptr;
+    if (ind == 0) {
+      elseExp = c->compile(ExprPtr(mkarray("?", LexicalAnnotation::null())));
+    } else {
+      elseExp = genIfElse(c, ctx, id, ms, ind - 1);
+    }
+
+    builder->CreateBr(mergeBlock);
+
+    elseBlock = builder->GetInsertBlock();
+
+    thisFn->getBasicBlockList().push_back(mergeBlock);
+    builder->SetInsertPoint(mergeBlock);
+    auto *pn = builder->CreatePHI(toLLVM(arrayty(prim<char>()), true), 2);
+    pn->addIncoming(thenExp, thenBlock);
+    pn->addIncoming(elseExp, elseBlock);
+    return pn;
+  }
+};
+
 /*
  * NOTE: stdstrsizeF and stdstrelemF assume a certain memory representation for std::string
  *       this makes them very efficient in e.g. large match expressions on std::string values
@@ -1078,6 +1144,8 @@ void initDefOperators(cc* c) {
   BINDF(".variantHeadLabel",  new varHLabel());
   BINDF(".variantSplit",      new varSplit());
   BINDF(".variantInjectHead", new varInjH());
+
+  BINDF("penumShow",          new penumShow());
 
   // access std::string fields
   c->bind("stdstrsize", &stdstrsize);

@@ -14,6 +14,8 @@ struct HCVariantEliminator : public HCEliminator {
   std::string name() const;
 };
 
+const Variant* isVariantPEnum(const MonoTypePtr& e);
+
 }
 
 #endif
