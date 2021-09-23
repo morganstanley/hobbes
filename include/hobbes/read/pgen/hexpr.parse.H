@@ -156,7 +156,7 @@ extern int yydebug;
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 union YYSTYPE
 {
-#line 296 "hexpr.y"
+#line 295 "hexpr.y"
 
   hobbes::Module*              module;
   hobbes::ModuleDefs*          mdefs;
@@ -197,6 +197,7 @@ union YYSTYPE
   hobbes::MonoTypes*           mtypes;
   hobbes::Record::Members*     mreclist;
   hobbes::Variant::Members*    mvarlist;
+  hobbes::Variant::Member*     mpvar;
 
   std::string*                            string;
   bool                                    boolv;
@@ -216,7 +217,7 @@ union YYSTYPE
   hobbes::BoundGrammarValue*   pbelem;
   hobbes::GrammarValue*        pvalue;
 
-#line 220 "hexpr.parse.H"
+#line 221 "hexpr.parse.H"
 
 };
 typedef union YYSTYPE YYSTYPE;

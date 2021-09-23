@@ -224,7 +224,7 @@ public:
     MonoTypePtr mvty = requireMonotype(v->type());
     const Variant *vty = is<Variant>(mvty);
     if (vty == nullptr && show(v->value()) == "()") {
-      vty = variantInPEnum(mvty);
+      vty = isVariantPEnum(mvty);
       if (vty != nullptr) {
         llvm::Type *uty = toLLVM(mvty);
         return withContext([&](auto &) {

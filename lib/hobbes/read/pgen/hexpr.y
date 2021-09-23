@@ -332,6 +332,7 @@ extern PatVarCtorFn patVarCtorFn;
   hobbes::MonoTypes*           mtypes;
   hobbes::Record::Members*     mreclist;
   hobbes::Variant::Members*    mvarlist;
+  hobbes::Variant::Member*     mpvar;
 
   std::string*                            string;
   bool                                    boolv;
@@ -467,6 +468,7 @@ extern PatVarCtorFn patVarCtorFn;
 %type <mreclist>     mreclist
 %type <mvarlist>     mvarlist
 %type <mvarlist>     mpvarlist
+%type <mpvar>        mpvar
 
 %type <exp>          l0expr lhexpr l1expr l2expr l3expr l4expr l5expr l6expr
 %type <exps>         l6exprs cargs cselconds
@@ -1028,16 +1030,14 @@ mvarlist: mvarlist "," id ":" l0mtype { $$ = $1;                                
         | id ":" l0mtype              { $$ = autorelease(new Variant::Members()); $$->push_back(Variant::Member(*$1, *$3,                0)); }
         | id                          { $$ = autorelease(new Variant::Members()); $$->push_back(Variant::Member(*$1, Prim::make("unit"), 0)); }
 
-mpvarlist: mpvarlist "," id "(" "intV" ")"   { $$ = $1;                                  $$->push_back(Variant::Member(*$3, Prim::make("unit"), $5)); }
-         | mpvarlist "," id "(" "shortV" ")" { $$ = $1;                                  $$->push_back(Variant::Member(*$3, Prim::make("unit"),$5)); }
-         | mpvarlist "," id "(" "boolV" ")"  { $$ = $1;                                  $$->push_back(Variant::Member(*$3, Prim::make("unit"), $5)); }
-         | mpvarlist "," id "(" "byteV" ")"  { $$ = $1;                                  $$->push_back(Variant::Member(*$3, Prim::make("unit"), str::dehex(*$5))); }
-         | mpvarlist "," id "(" "charV" ")"  { $$ = $1;                                  $$->push_back(Variant::Member(*$3, Prim::make("unit"), str::readCharDef(*$5))); }
-         | id "(" "intV" ")"                 { $$ = autorelease(new Variant::Members()); $$->push_back(Variant::Member(*$1, Prim::make("unit"), $3)); }
-         | id "(" "shortV" ")"               { $$ = autorelease(new Variant::Members()); $$->push_back(Variant::Member(*$1, Prim::make("unit"), $3)); }
-         | id "(" "boolV" ")"                { $$ = autorelease(new Variant::Members()); $$->push_back(Variant::Member(*$1, Prim::make("unit"), $3)); }
-         | id "(" "byteV" ")"                { $$ = autorelease(new Variant::Members()); $$->push_back(Variant::Member(*$1, Prim::make("unit"), str::dehex(*$3))); }
-         | id "(" "charV" ")"                { $$ = autorelease(new Variant::Members()); $$->push_back(Variant::Member(*$1, Prim::make("unit"), str::readCharDef(*$3))); }
+mpvarlist: mpvarlist "," mpvar { $$ = $1;                                  $$->push_back(*$3); }
+         | mpvar               { $$ = autorelease(new Variant::Members()); $$->push_back(*$1); }
+
+mpvar: id "(" "intV" ")"   { $$ = autorelease(new Variant::Member(*$1, Prim::make("unit"), $3)); }
+     | id "(" "shortV" ")" { $$ = autorelease(new Variant::Member(*$1, Prim::make("unit"), $3)); }
+     | id "(" "boolV" ")"  { $$ = autorelease(new Variant::Member(*$1, Prim::make("unit"), $3)); }
+     | id "(" "byteV" ")"  { $$ = autorelease(new Variant::Member(*$1, Prim::make("unit"), str::dehex(*$3))); }
+     | id "(" "charV" ")"  { $$ = autorelease(new Variant::Member(*$1, Prim::make("unit"), str::readCharDef(*$3))); }
 
 id: TIDENT;
 

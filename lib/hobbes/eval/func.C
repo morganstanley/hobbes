@@ -887,7 +887,7 @@ class penumShow : public op {
 public:
   llvm::Value *apply(jitcc *c, const MonoTypes &tys, const MonoTypePtr &,
                      const Exprs &es) override {
-    const Variant *vty = variantInPEnum(tys[0]);
+    const Variant *vty = isVariantPEnum(tys[0]);
     if (vty == nullptr) {
       throw annotated_error(*es[0], "Internal error, " + show(tys[0]) +
                                         " is not an application");
