@@ -1,0 +1,3 @@
+
+type Type = ^x.|Prim:([char] * (() + x)), Record:[[char]*x], Variant:[[char]*x*int], OpaquePtr:([char]*int*bool), Exists:([char]*x), Recursive:([char]*x), TAbs:([[char]]*x), TApp:(x*[x]), Func:([x]*x), Array:x, FixedArray:(x*x), TString:[char], TLong:long, TVar:[char]|
+
