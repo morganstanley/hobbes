@@ -39,7 +39,7 @@ extern YYLTYPE         yyErrPos;
 extern int yyparse();
 #define YY_BUF_SIZE 16384
 struct yy_buffer_state;
-typedef yy_buffer_state* YY_BUFFER_STATE;
+using YY_BUFFER_STATE = yy_buffer_state *;
 extern YY_BUFFER_STATE yy_scan_string(const char*);
 extern YY_BUFFER_STATE yy_create_buffer(FILE*, int);
 extern void yy_switch_to_buffer(YY_BUFFER_STATE);

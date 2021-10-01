@@ -16,13 +16,13 @@ struct MonoTypeLT {
 struct MTyMap {
   template <typename V>
     struct map {
-      typedef std::map<MonoTypePtr, V, MonoTypeLT> type;
+      using type = std::map<MonoTypePtr, V, MonoTypeLT>;
     };
 };
 
 // used to do exact matches on types with a wildcard
-typedef variant<unit, MonoTypePtr> MaybePathPoint;
-typedef std::vector<MaybePathPoint> MaybePathPoints;
+using MaybePathPoint = variant<unit, MonoTypePtr>;
+using MaybePathPoints = std::vector<MaybePathPoint>;
 
 // a map from type sequences to some value
 template <typename V>
@@ -63,7 +63,7 @@ template <typename V>
       findMatches(this->d.rootPoint(), path, 0, out);
     }
   private:
-    typedef prefix_tree<MonoTypePtr, V, MTyMap> tmdata;
+    using tmdata = prefix_tree<MonoTypePtr, V, MTyMap>;
     tmdata d;
 
     bool hasMatch(MonoTypeUnifier& u, typename tmdata::point_t p, const MonoTypes& mts, size_t i) const {

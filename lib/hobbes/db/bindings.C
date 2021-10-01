@@ -28,7 +28,7 @@ static bool isWriteable(uint32_t f) {
   return f == 2;
 }
 
-typedef std::pair<bool, MonoTypePtr> UTFileConfig;
+using UTFileConfig = std::pair<bool, MonoTypePtr>;
 bool unpackFileType(const MonoTypePtr& fty, UTFileConfig* fcfg) {
   if (const TApp* ap = is<TApp>(fty)) {
     if (ap->args().size() == 2) {
@@ -45,7 +45,7 @@ bool unpackFileType(const MonoTypePtr& fty, UTFileConfig* fcfg) {
   return false;
 }
 
-typedef std::pair<bool, const Record*> FileConfig;
+using FileConfig = std::pair<bool, const Record *>;
 bool unpackFileType(const MonoTypePtr& fty, FileConfig* fcfg) {
   UTFileConfig ufcfg;
   if (unpackFileType(fty, &ufcfg)) {
@@ -86,7 +86,7 @@ struct injFileReferencesF : public switchTyFn {
   }
 };
 
-typedef std::pair<MonoTypePtr, ExprPtr> FRefT;
+using FRefT = std::pair<MonoTypePtr, ExprPtr>;
 
 FRefT assumeFRefT(const MonoTypePtr& ty, const LexicalAnnotation& la) {
   if (const TApp* ap = is<TApp>(ty)) {
@@ -712,7 +712,7 @@ struct openFileF : public op {
   openFileF(bool writeable, const std::string& loadf) : writeable(writeable), loadf(loadf) {
   }
 
-  typedef std::unordered_map<std::string, MonoTypePtr> InternTypes;
+  using InternTypes = std::unordered_map<std::string, MonoTypePtr>;
   InternTypes internTypes;
 
   long encodeTypePtr(const Record* rty) {
@@ -980,7 +980,7 @@ public:
     reader*     file;
     MonoTypePtr type;
   };
-  typedef std::map<std::string, LoadedFile> LoadedFiles;
+  using LoadedFiles = std::map<std::string, LoadedFile>;
   mutable LoadedFiles loadedFiles;
 
   const LoadedFile& loadedFile(bool writeable, const std::string& path) const {

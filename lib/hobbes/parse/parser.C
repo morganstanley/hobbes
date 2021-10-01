@@ -41,7 +41,7 @@ struct ParserEvalInfo {
   parserdef   pdef;
   lrtable     table;
 
-  typedef std::map<terminal*, Exprs> ReduceExprs;
+  using ReduceExprs = std::map<terminal *, Exprs>;
   ReduceExprs reduceExprs;
 };
 

@@ -35,11 +35,11 @@ namespace hobbes {
 
 template <typename K, typename V>
   struct slnode {
-    typedef uint16_t level;
+    using level = uint16_t;
     static const size_t maxLevels = 8*sizeof(level);
 
     // a fileref pointer to a skip-list node
-    typedef fregion::fileref<slnode<K,V>> noderef;
+    using noderef = fregion::fileref<slnode<K, V>>;
 
     // the tower of 'next' pointers from this node
     // (0 is the "slow lane" with nothing skipped, then "faster" skips going further up)
@@ -304,7 +304,7 @@ template <typename K, typename V>
       return this->d->count;
     }
 
-    typedef sliterator<K,V> iterator;
+    using iterator = sliterator<K, V>;
     iterator end()   { return iterator(); }
     iterator begin() { return (this->d->root.next.size==0 || this->d->root.next[0].index==0) ? end() : iterator(this->f, this->d->root.next[0].load(f)); }
 
@@ -327,7 +327,7 @@ template <typename K, typename V>
 template <typename K>
   class slrefmap {
   public:
-    typedef uint64_t ufileref;
+    using ufileref = uint64_t;
 
     slrefmap(const std::string& name, fregion::imagefile* f, const ty::desc& refType) {
       this->f = f;
@@ -355,7 +355,7 @@ template <typename K>
       return this->d->count;
     }
 
-    typedef sliterator<K,ufileref> iterator;
+    using iterator = sliterator<K, ufileref>;
     iterator end()   { return iterator(); }
     iterator begin() { return (this->d->root.next.size==0 || this->d->root.next[0].index==0) ? end() : iterator(this->f, this->d->root.next[0].load(f)); }
 

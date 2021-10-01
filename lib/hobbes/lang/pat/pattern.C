@@ -331,7 +331,7 @@ void normalizeRecPatterns(const Patterns& ps, const std::set<std::string>& fname
   }
 }
 
-typedef std::map<std::string, Patterns> NamedPatternGroups;
+using NamedPatternGroups = std::map<std::string, Patterns>;
 
 NamedPatternGroups groupRecordPatterns(const Patterns& ps) {
   NamedPatternGroups r;

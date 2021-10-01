@@ -20,7 +20,7 @@ void popModuleDir();
 void compile(cc*, const ModulePtr& m);
 
 // set language options, display language options
-typedef std::map<std::string, std::string> OptDescs;
+using OptDescs = std::map<std::string, std::string>;
 OptDescs getAllOptions();
 
 ExprPtr translateExprWithOpts(const ModulePtr&, const ExprPtr&);

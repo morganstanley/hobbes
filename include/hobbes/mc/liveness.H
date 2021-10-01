@@ -242,13 +242,13 @@ inline std::set<L> truncTo(const std::set<U>& us) {
 //                 key  :: Var -> K      (such that K is unique for Var and has < defined)
 //                 desc :: K -> string   (describe a variable key for an error message)
 //
-typedef uint32_t VarID;
+using VarID = uint32_t;
 
 template <typename VarM>
 class VarUniverse {
 public:
-  typedef typename VarM::Var Var;
-  typedef decltype(VarM::key(*reinterpret_cast<Var*>(42))) K;
+  using Var = typename VarM::Var;
+  using K = decltype(VarM::key(*reinterpret_cast<Var *>(42)));
 
   VarUniverse() {
   }
@@ -310,8 +310,8 @@ private:
 template <typename InstM, typename VarM = InstM>
 class BlockLiveness {
 public:
-  typedef typename InstM::Instruction Inst;
-  typedef typename InstM::Var         Var;
+  using Inst = typename InstM::Instruction;
+  using Var = typename InstM::Var;
 
   BlockLiveness(const std::set<Var>& initVars, const std::vector<Inst>& insts, const InstM& instM) : insts(insts), instM(instM) {
     // initialize the variable universe out of the instruction sequence
@@ -550,8 +550,8 @@ public:
 template <typename InstM, typename VarM = InstM>
 class BasicLiveness {
 public:
-  typedef typename InstM::Instruction Inst;
-  typedef typename InstM::Var         Var;
+  using Inst = typename InstM::Instruction;
+  using Var = typename InstM::Var;
 
   BasicLiveness(const std::set<Var>& initVars, const std::vector<Inst>& insts, const InstM& instM) : insts(insts), instM(instM) {
     // initialize the variable universe out of the instruction sequence

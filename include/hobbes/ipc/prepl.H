@@ -29,7 +29,7 @@ void procRead(proc*, std::ostream*, uint64_t waitUS = 0);
 MonoTypePtr refinedType(const proc& p, const std::string& fname, const MonoTypePtr& hasty);
 int invocationID(const proc& p, const std::string& fname, const MonoTypePtr& hasty);
 
-typedef std::pair<size_t, MonoTypePtr> PrepProcExpr;
+using PrepProcExpr = std::pair<size_t, MonoTypePtr>;
 PrepProcExpr procPrepareExpr(const proc&, const ExprPtr&);
 
 void runMachineREPL(cc*);

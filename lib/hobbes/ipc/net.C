@@ -402,9 +402,9 @@ public:
 private:
   cc *c;
 
-  typedef void (*NetFn)(int); // socket -> ()
-  typedef std::map<exprid, NetFn> NetFns;
-  typedef std::map<int, NetFns> ConnNetFns;
+  using NetFn = void (*)(int); // socket -> ()
+  using NetFns = std::map<exprid, NetFn>;
+  using ConnNetFns = std::map<int, NetFns>;
   ConnNetFns cnetFns;
   ReWriteExprFn wrExprFn;
 };

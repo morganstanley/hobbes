@@ -50,9 +50,9 @@ template <typename T, bool InStruct>
 // a dbseq is a linked list sequence just like 'seq' except that its links are file offsets rather than memory offsets
 template <typename T>
   struct dbseq {
-    typedef fileref<dbseq<T>*>    link_t;
-    typedef std::pair<T, link_t>  cons_t;
-    typedef variant<unit, cons_t> rep_t;
+    using link_t = fileref<dbseq<T> *>;
+    using cons_t = std::pair<T, link_t>;
+    using rep_t = variant<unit, cons_t>;
 
     rep_t data;
 
@@ -77,48 +77,48 @@ template <typename T, bool InStruct>
 // determine representation type (this is necessary to differentiate types represented by value or reference)
 template <typename T>
   struct frefty {
-    typedef T  type;
-    typedef T* ptr;
+    using type = T;
+    using ptr = T *;
   };
 
 template <typename T>
   struct frefty< array<T> > {
-    typedef array<T>* type;
-    typedef array<T>* ptr;
+    using type = array<T> *;
+    using ptr = array<T> *;
   };
 
 template <typename T>
   struct frefty< array<T>* > {
-    typedef array<T>* type;
-    typedef array<T>* ptr;
+    using type = array<T> *;
+    using ptr = array<T> *;
   };
 
 template <typename T>
   struct frefty< dbseq<T> > {
-    typedef dbseq<T>* type;
-    typedef dbseq<T>* ptr;
+    using type = dbseq<T> *;
+    using ptr = dbseq<T> *;
   };
 
 template <typename T>
   struct frefty< dbseq<T>* > {
-    typedef dbseq<T>* type;
-    typedef dbseq<T>* ptr;
+    using type = dbseq<T> *;
+    using ptr = dbseq<T> *;
   };
 
 template <typename T>
   struct frefty< recursive<T> > {
-    typedef recursive<T>* type;
-    typedef recursive<T>* ptr;
+    using type = recursive<T> *;
+    using ptr = recursive<T> *;
   };
 
 template <typename T>
   struct frefty< recursive<T>* > {
-    typedef recursive<T>* type;
-    typedef recursive<T>* ptr;
+    using type = recursive<T> *;
+    using ptr = recursive<T> *;
   };
 
 // common typedefs
-typedef fileref<array<char>*> strref;
+using strref = fileref<array<char> *>;
 
 // what is the size of a type as represented in storage?
 size_t storageSizeOf(const MonoTypePtr&);
@@ -128,7 +128,7 @@ class cc;
 
 // data file details are internally defined
 namespace fregion { struct imagefile; }
-typedef fregion::imagefile imagefile;
+using imagefile = fregion::imagefile;
 
 // a db reader can only read data from a file
 class reader {
@@ -173,9 +173,9 @@ public:
       unsafeUnloadArray(xs, sizeof(T));
     }
 private:
-  typedef std::vector<uint64_t> StoredOffsets;
-  typedef std::vector<size_t>   StoredOffsetElemSizes;
-  typedef std::vector<size_t>   StoredOffsetSizes;
+  using StoredOffsets = std::vector<uint64_t>;
+  using StoredOffsetElemSizes = std::vector<size_t>;
+  using StoredOffsetSizes = std::vector<size_t>;
 
   StoredOffsets     storedOffsets;
   StoredOffsetSizes storedOffElemSizes;
@@ -236,8 +236,8 @@ public:
   int unsafeGetFD() const;
 public:
   // helpful diagnostic functions
-  typedef std::pair<uint8_t, short> PageEntry;
-  typedef array<PageEntry>          PageEntries;
+  using PageEntry = std::pair<uint8_t, short>;
+  using PageEntries = array<PageEntry>;
 
   PageEntries* pageEntries() const;
 protected:
@@ -247,7 +247,7 @@ protected:
     MonoTypePtr type;
     uint64_t    offset;
   };
-  typedef std::unordered_map<std::string, SBinding> SBindings;
+  using SBindings = std::unordered_map<std::string, SBinding>;
   SBindings sbindings;
   void addSBinding(const std::string&, const MonoTypePtr&, uint64_t);
 };
@@ -287,7 +287,7 @@ public:
 
   template <typename TIter>
     fileref<array<typename std::iterator_traits<TIter>::value_type>*> store(TIter b, TIter e) {
-      typedef typename std::iterator_traits<TIter>::value_type T;
+      using T = typename std::iterator_traits<TIter>::value_type;
       size_t len = e - b;
       array<T>* r = store<T>(len);
       for (size_t i = 0; i < len; ++i) {

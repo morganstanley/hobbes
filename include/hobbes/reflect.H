@@ -63,9 +63,9 @@ namespace string {
     }
 
   // tokenize strings
-  typedef std::vector<std::string> seq;
+  using seq = std::vector<std::string>;
   inline seq csplit(const std::string& str, const std::string& pivot) {
-    typedef std::string::size_type size_type;
+    using size_type = std::string::size_type;
   
     seq       ret;
     size_type mp = 0;
@@ -85,7 +85,7 @@ namespace string {
     return ret;
   }
 
-  typedef std::pair<std::string, std::string> pair;
+  using pair = std::pair<std::string, std::string>;
   inline pair rsplit(const std::string& s, const std::string& ss) {
     size_t p = s.rfind(ss);
     if (p == std::string::npos) {
@@ -109,7 +109,7 @@ namespace string {
   }
 }
 
-typedef __int128 int128_t;
+using int128_t = __int128;
 
 // very basic macro metaprogramming
 #define PRIV_HPPF_FIRST(a, ...) a
@@ -188,7 +188,7 @@ template <size_t... pcs>
 
 // value-level bool -> type-level bool
 template <bool f> struct tbool { };
-template <>       struct tbool<true> { typedef void type; };
+template <>       struct tbool<true> { using type = void; };
 
 // test to see if a type(s) can be printed
 template <typename T, class = decltype(std::declval<std::ostream&>() << std::declval<T>())>
@@ -230,7 +230,7 @@ template <size_t index, size_t base, typename Field, typename ... Fields>
   struct offsetInfo<index, base, Field, Fields...> {
     static const size_t offset = alignTo(base, alignof(Field));
 
-    typedef offsetInfo<index+1, offset+sizeof(Field), Fields...> tail;
+    using tail = offsetInfo<index + 1, offset + sizeof(Field), Fields...>;
 
     static const size_t maxAlignment = szmax(alignof(Field), tail::maxAlignment);
     static const size_t size         = (offset-base) + sizeof(Field) + tail::size;
@@ -265,13 +265,13 @@ template <typename Offs>
 template <size_t, typename ... Fields>
   struct nth { };
 template <typename Field, typename ... Fields>
-  struct nth<0, Field, Fields...> { typedef Field type; };
+  struct nth<0, Field, Fields...> { using type = Field; };
 template <size_t n, typename Field, typename ... Fields>
   struct nth<n, Field, Fields...> : nth<n-1, Fields...> { };
 
 template <typename ... Fields>
   struct tuple {
-    typedef offsetInfo<0, 0, Fields...> offs;
+    using offs = offsetInfo<0, 0, Fields...>;
     static const size_t alignment = offs::maxAlignment;
     static const size_t size      = alignTo(offs::size, offs::maxAlignment);
     static const bool   packed    = (size == offs::size) && offs::packed;
@@ -331,33 +331,33 @@ template <typename ... Fields>
 template <size_t i, typename T>
   struct tupType { };
 template <size_t i, typename ... Ts>
-  struct tupType<i, tuple<Ts...>> { typedef typename nth<i, Ts...>::type type; };
+  struct tupType<i, tuple<Ts...>> { using type = typename nth<i, Ts...>::type; };
 
 // map a function over a tuple's types (useful for structurally-derived types)
 template <typename ... Ts>
   struct concatT { };
 template <typename ... Ts1, typename ... Ts2, typename ... Rest>
   struct concatT<tuple<Ts1...>, tuple<Ts2...>, Rest...> {
-    typedef typename concatT<tuple<Ts1..., Ts2...>, Rest...>::type type;
+    using type = typename concatT<tuple<Ts1..., Ts2...>, Rest...>::type;
   }; 
 template <typename ... Ts>
   struct concatT<tuple<Ts...>> {
-    typedef tuple<Ts...> type;
+    using type = tuple<Ts...>;
   };
 
 template <template <typename T> class F, typename X>
   struct fmap { };
 template <template <typename T> class F, typename H, typename ... Rest>
   struct fmap<F, tuple<H, Rest...>> {
-    typedef typename concatT<tuple<typename F<H>::type>, typename fmap<F, tuple<Rest...>>::type>::type type;
+    using type = typename concatT<tuple<typename F<H>::type>, typename fmap<F, tuple<Rest...>>::type>::type;
   }; 
 template <template <typename T> class F, typename H>
   struct fmap<F, tuple<H>> {
-    typedef tuple<typename F<H>::type> type;
+    using type = tuple<typename F<H>::type>;
   };
 template <template <typename T> class F>
   struct fmap<F, tuple<>> {
-    typedef tuple<> type;
+    using type = tuple<>;
   };
 
 // show a tuple iff its fields can be shown
@@ -393,7 +393,7 @@ inline std::ostream& operator<<(std::ostream& o, const unit&) { o << "()"; retur
 // drop the first type from a sequence to determine a tuple type
 // (useful with these macro expansions where we can't distinguish first and rest values)
 template <typename ... Ts>             struct tupleTail           {                            };
-template <typename T, typename ... Ts> struct tupleTail<T, Ts...> { typedef tuple<Ts...> type; };
+template <typename T, typename ... Ts> struct tupleTail<T, Ts...> { using type = tuple<Ts...>; };
 
 // reflective structs
 #define PRIV_HPPF_STRUCT_FIELD(t, n) t n;
@@ -473,15 +473,15 @@ template <typename T, typename ... Ts> struct tupleTail<T, Ts...> { typedef tupl
 template <bool f, typename T, typename F>
   struct TIfF { };
 template <typename T, typename F>
-  struct TIfF<true, T, F> { typedef T type; };
+  struct TIfF<true, T, F> { using type = T; };
 template <typename T, typename F>
-  struct TIfF<false, T, F> { typedef F type; };
+  struct TIfF<false, T, F> { using type = F; };
 template <typename T>
   struct TSizeOfF { static const size_t value = sizeof(T); };
 template <typename T>
   struct TAlignOfF { static const size_t value = alignof(T); };
 template <template <class> class SzP, typename T0, typename ... Ts>
-  struct maximum { static const size_t value = SzP<T0>::value; typedef T0 type; };
+  struct maximum { static const size_t value = SzP<T0>::value; using type = T0; };
 template <template <class> class SzP, typename T0, typename T1, typename ... Ts>
   struct maximum<SzP, T0, T1, Ts...> : public maximum<SzP, typename TIfF<SzP<T1>::value < SzP<T0>::value, T0, T1>::type, Ts...> { };
 
@@ -492,21 +492,21 @@ template <typename T, typename ... Ctors>
 template <typename T, typename Ctor, typename ... Ctors>
   struct CtorIndexOf<T, Ctor, Ctors...> { static const uint32_t value = 1 + CtorIndexOf<T, Ctors...>::value; };
 template <typename T, typename ... Ts>
-  struct First { typedef T type; };
+  struct First { using type = T; };
 
 template <size_t i, typename R, template <size_t,class,class> class F, typename U, typename A, typename ... Ctors>
   struct variantAppInit {
   };
 template <size_t i, typename R, template <size_t,class,class> class F, typename U, typename ... Args, typename ... Ctors>
   struct variantAppInit<i, R, F, U, tuple<Args...>, Ctors...> {
-    typedef R (*PF)(void*, Args...);
+    using PF = R (*)(void *, Args...);
     static bool init(PF*) { return true; }
   };
 template <size_t i, typename R, template <size_t,class,class> class F, typename U, typename ... Args, typename Ctor, typename ... Ctors>
   struct variantAppInit<i, R, F, U, tuple<Args...>, Ctor, Ctors...> {
-    typedef R (*PF)(void*, Args...);
+    using PF = R (*)(void *, Args...);
     static bool init(PF* pfs) {
-      typedef R (*TPF)(Ctor*, Args...);
+      using TPF = R (*)(Ctor *, Args...);
       TPF tpf = &F<i, Ctor, U>::fn;
       pfs[i] = reinterpret_cast<PF>(tpf);
       return variantAppInit<i+1, R, F, U, tuple<Args...>, Ctors...>::init(pfs);
@@ -518,7 +518,7 @@ template <typename R, template <size_t,class,class> class F, typename U, typenam
   };
 template <template <size_t,class,class> class F, typename U, typename ... Ctors, typename ... Args>
   struct variantApp<void, F, U, tuple<Ctors...>, Args...> {
-    typedef void (*PF)(void*, Args...);
+    using PF = void (*)(void *, Args...);
     static PF* fns() {
       static PF fvec[sizeof...(Ctors)];
       static bool init = variantAppInit<0, void, F, U, tuple<Args...>, Ctors...>::init(fvec);
@@ -533,7 +533,7 @@ template <template <size_t,class,class> class F, typename U, typename ... Ctors,
 
 template <typename R, template <size_t,class,class> class F, typename U, typename ... Ctors, typename ... Args>
   struct variantApp<R, F, U, tuple<Ctors...>, Args...> {
-    typedef R (*PF)(void*, Args...);
+    using PF = R (*)(void *, Args...);
     static PF* fns() {
       static PF fvec[sizeof...(Ctors)];
       static bool init = variantAppInit<0, R, F, U, tuple<Args...>, Ctors...>::init(fvec);
@@ -601,8 +601,8 @@ template <typename ... Ctors>
     static const size_t count = sizeof...(Ctors);
     static_assert(count > 0, "Empty variants are impossible to construct");
 
-    typedef variantApp<void, variantPayloadCtor, void, tuple<Ctors...>, const void*> VCCtor;
-    typedef variantApp<void, variantPayloadDtor, void, tuple<Ctors...>>              VDtor;
+    using VCCtor = variantApp<void, variantPayloadCtor, void, tuple<Ctors...>, const void *>;
+    using VDtor = variantApp<void, variantPayloadDtor, void, tuple<Ctors...>>;
 
     variant() : tag(0) {
       new (this->storage) typename First<Ctors...>::type();
@@ -688,12 +688,12 @@ template <typename T, typename ... Ctors, typename = std::enable_if_t<detail::Co
   }
 
 template <typename ... Ts>             struct variantTail           {                              };
-template <typename T, typename ... Ts> struct variantTail<T, Ts...> { typedef variant<Ts...> type; };
+template <typename T, typename ... Ts> struct variantTail<T, Ts...> { using type = variant<Ts...>; };
 
 template <typename T>
   struct toVariant { };
 template <typename ... Ts>
-  struct toVariant<tuple<Ts...>> { typedef variant<Ts...> type; };
+  struct toVariant<tuple<Ts...>> { using type = variant<Ts...>; };
 
 // show a variant iff its constructors can be shown
 template <size_t, typename T, typename U>
@@ -959,7 +959,7 @@ template <typename ... Ts>
 // arrays with dynamically-determined length
 template <typename T>
   struct array {
-    typedef array<T>* ptr;
+    using ptr = array<T> *;
 
     size_t size;
     T      data[1]; // unknown length, bytes inline with this structure
@@ -1016,7 +1016,7 @@ template <typename T, size_t N>       T* end  (      carray<T,N>& d) { return d.
 template <typename RepTy>
   struct alias {
     static const bool is_hmeta_alias = true;
-    typedef RepTy type;
+    using type = RepTy;
     RepTy value;
 
     alias() : value() { }
@@ -1041,7 +1041,7 @@ template <typename RepTy>
 
 namespace ty {
 
-typedef std::vector<uint8_t> bytes;
+using bytes = std::vector<uint8_t>;
 
 // type encoding logic
 #define PRIV_HPPF_TYCTOR_PRIM      (static_cast<uint32_t>(0))
@@ -1056,7 +1056,7 @@ typedef std::vector<uint8_t> bytes;
 #define PRIV_HPPF_TYCTOR_TABS      (static_cast<uint32_t>(15))
 
 struct D { uint32_t tid; D(uint32_t tid) : tid(tid) { } };
-typedef std::shared_ptr<D> desc;
+using desc = std::shared_ptr<D>;
 
 struct Nat : public D {
   Nat(size_t x) : D(PRIV_HPPF_TYCTOR_SIZE), x(x) { }
@@ -1093,8 +1093,8 @@ struct Arr : public D {
 inline desc array(const desc& t) { return desc(new Arr(t)); }
 
 struct Variant : public D {
-  typedef tuple<std::string, uint32_t, desc> Ctor;
-  typedef std::vector<Ctor> Ctors;
+  using Ctor = tuple<std::string, uint32_t, desc>;
+  using Ctors = std::vector<Ctor>;
 
   Variant(const Ctors& ctors) : D(PRIV_HPPF_TYCTOR_VARIANT), ctors(ctors) { }
 
@@ -1122,8 +1122,8 @@ template <typename ... Tys>
   }
 
 struct Struct : public D {
-  typedef tuple<std::string, int, desc> Field;
-  typedef std::vector<Field> Fields;
+  using Field = tuple<std::string, int, desc>;
+  using Fields = std::vector<Field>;
 
   Struct(const Fields& fields) : D(PRIV_HPPF_TYCTOR_STRUCT), fields(fields) { }
 
@@ -1171,7 +1171,7 @@ struct Recursive : public D {
 inline desc recursive(const std::string& x, const desc& t) { return desc(new Recursive(x, t)); }
 
 struct Fn : public D {
-  typedef std::vector<std::string> Args;
+  using Args = std::vector<std::string>;
   Fn(const Args& args, const desc& t) : D(PRIV_HPPF_TYCTOR_TABS), args(args), t(t) { }
 
   Args args;
@@ -1190,7 +1190,7 @@ template <typename ... Tys>
   inline desc fn(const Tys& ... tt) { Fn::Args args; return fnAcc<Tys...>::acc(&args, tt...); }
 
 struct App : public D {
-  typedef std::vector<desc> Args;
+  using Args = std::vector<desc>;
 
   App(const desc& f, const Args& args) : D(PRIV_HPPF_TYCTOR_TAPP), f(f), args(args) { }
 

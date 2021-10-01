@@ -219,7 +219,7 @@ void WWWServer::evalHxpFile(const hobbes::HTTPRequest&, int fd, const std::strin
 }
 
 // utility functions for web processes
-typedef hobbes::array<char> cstr;
+using cstr = hobbes::array<char>;
 
 const cstr* linkTarget(const cstr* p) {
   using namespace hobbes;
@@ -232,7 +232,7 @@ const cstr* slurpFile(const cstr* fpath) {
   return makeString(str::slurp(f));
 }
 
-typedef std::pair<const cstr*, const cstr*> cstrpair;
+using cstrpair = std::pair<const cstr *, const cstr *>;
 
 const hobbes::array< const cstr* >* csplit(const cstr* s, const cstr* ss) {
   using namespace hobbes;
@@ -377,7 +377,7 @@ void WWWServer::printDefaultPage(int fd) {
 
 void WWWServer::printQueryResult(int fd, const std::string& expr) {
   try {
-    typedef void (*pprintF)();
+    using pprintF = void (*)();
     pprintF f = this->c->compileFn<void()>("print(" + expr + ")");
 
     // redirect stdout for this evaluation

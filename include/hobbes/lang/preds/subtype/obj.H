@@ -38,7 +38,7 @@ struct PtrAdjustment {
     }
   }
 };
-typedef std::vector<PtrAdjustment> PtrAdjustmentPath; // for A <: ... <: Z, all adjustments
+using PtrAdjustmentPath = std::vector<PtrAdjustment>; // for A <: ... <: Z, all adjustments
 
 std::string show(const PtrAdjustmentPath& p);
 
@@ -55,7 +55,7 @@ public:
   // record class definitions
   void add(const class_type* ct);
 #else
-  typedef int class_type;
+  using class_type = int;
 #endif
   bool add(const std::type_info& ti);
   bool add(const std::type_info* ti);
@@ -85,13 +85,13 @@ public:
   PolyTypePtr     lookup   (const std::string& vn)                              const override;
   SymSet          bindings ()                                                   const override;
 private:
-  typedef std::map<std::string, const class_type*> ClassDefs;
+  using ClassDefs = std::map<std::string, const class_type *>;
   ClassDefs classDefs;
 
   bool mayBeKnown(const MonoTypePtr& mt) const;
   bool pathExists(const std::string& from, const std::string& to) const;
 };
-typedef std::shared_ptr<Objs> ObjsPtr;
+using ObjsPtr = std::shared_ptr<Objs>;
 
 }
 

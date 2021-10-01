@@ -151,7 +151,7 @@ void evaluatePartialHTTPRequest(int c, void* ud) {
 int installHTTPD(int port, HTTPRequestHandler f, void* ud) {
   int s = allocateServer(port);
 
-  typedef std::pair<HTTPRequestHandler, void*> ReqCB;
+  using ReqCB = std::pair<HTTPRequestHandler, void *>;
   auto* rcb = new ReqCB(f, ud);
 
   registerEventHandler(

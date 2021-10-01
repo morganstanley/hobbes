@@ -98,9 +98,9 @@ template <typename K, typename V, typename KVLift, typename VPlus>
   private:
     size_t eqsz;
 
-    typedef eqsetmem<K, V>               node_t;
-    typedef std::unique_ptr<node_t>      nodep; // allows multiple incremental extensions of unification sets
-    typedef std::unordered_map<K, nodep> nodes_t;
+    using node_t = eqsetmem<K, V>;
+    using nodep = std::unique_ptr<node_t>; // allows multiple incremental extensions of unification sets
+    using nodes_t = std::unordered_map<K, nodep>;
     nodes_t nodes;
 
     static node_t* findRepresentative(node_t* n) {

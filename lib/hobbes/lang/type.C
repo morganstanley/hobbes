@@ -43,7 +43,7 @@ template <typename T>
     if (ts.size() == 0) {
       return "{}";
     } else {
-      typedef typename std::set<T>::const_iterator TCIter;
+      using TCIter = typename std::set<T>::const_iterator;
       TCIter t = ts.begin();
       std::string r = "{" + str::from(*t);
       ++t;
@@ -545,44 +545,25 @@ unsigned int alignment(const MonoTypePtr& pty) {
 ////////////
 // manage allocation of mono types so that type pointers are uniquely determined by constructor arguments
 ////////////
-typedef unique_refc_map<const Prim,       std::string, MonoTypePtr>        PrimMem;
-typedef unique_refc_map<const OpaquePtr,  std::string, unsigned int, bool> OpaquePtrMem;
-typedef unique_refc_map<const TVar,       std::string>                     TVarMem;
-typedef unique_refc_map<const TGen,       int>                             TGenMem;
-typedef unique_refc_map<const TAbs,       str::seq,    MonoTypePtr>        TAbsMem;
-typedef unique_refc_map<const TApp,       MonoTypePtr, MonoTypes>          TAppMem;
-typedef unique_refc_map<const FixedArray, MonoTypePtr, MonoTypePtr>        FixedArrayMem;
-typedef unique_refc_map<const Array,      MonoTypePtr>                     ArrayMem;
-typedef unique_refc_map<const Variant,    Variant::Members>                VariantMem;
-typedef unique_refc_map<const Record,     Record::Members>                 RecordMem;
-typedef unique_refc_map<const Func,       MonoTypePtr, MonoTypePtr>        FuncMem;
-typedef unique_refc_map<const Exists,     std::string, MonoTypePtr>        ExistsMem;
-typedef unique_refc_map<const Recursive,  std::string, MonoTypePtr>        RecursiveMem;
+using PrimMem = unique_refc_map<const Prim, std::string, MonoTypePtr>;
+using OpaquePtrMem = unique_refc_map<const OpaquePtr, std::string, unsigned int, bool>;
+using TVarMem = unique_refc_map<const TVar, std::string>;
+using TGenMem = unique_refc_map<const TGen, int>;
+using TAbsMem = unique_refc_map<const TAbs, str::seq, MonoTypePtr>;
+using TAppMem = unique_refc_map<const TApp, MonoTypePtr, MonoTypes>;
+using FixedArrayMem = unique_refc_map<const FixedArray, MonoTypePtr, MonoTypePtr>;
+using ArrayMem = unique_refc_map<const Array, MonoTypePtr>;
+using VariantMem = unique_refc_map<const Variant, Variant::Members>;
+using RecordMem = unique_refc_map<const Record, Record::Members>;
+using FuncMem = unique_refc_map<const Func, MonoTypePtr, MonoTypePtr>;
+using ExistsMem = unique_refc_map<const Exists, std::string, MonoTypePtr>;
+using RecursiveMem = unique_refc_map<const Recursive, std::string, MonoTypePtr>;
 
-typedef unique_refc_map<const TString,    std::string>                     TStringMem;
-typedef unique_refc_map<const TLong,      long>                            TLongMem;
-typedef unique_refc_map<const TExpr,      std::string>                     TExprMem;
+using TStringMem = unique_refc_map<const TString, std::string>;
+using TLongMem = unique_refc_map<const TLong, long>;
+using TExprMem = unique_refc_map<const TExpr, std::string>;
 
-typedef
-  unique_refc_maps<
-    PrimMem,
-    OpaquePtrMem,
-    TVarMem,
-    TGenMem,
-    TAbsMem,
-    TAppMem,
-    FixedArrayMem,
-    ArrayMem,
-    VariantMem,
-    RecordMem,
-    FuncMem,
-    ExistsMem,
-    RecursiveMem,
-
-    TStringMem,
-    TLongMem,
-    TExprMem
-  > MTypeCtorMaps;
+using MTypeCtorMaps = unique_refc_maps<PrimMem, OpaquePtrMem, TVarMem, TGenMem, TAbsMem, TAppMem, FixedArrayMem, ArrayMem, VariantMem, RecordMem, FuncMem, ExistsMem, RecursiveMem, TStringMem, TLongMem, TExprMem>;
 
 MTypeCtorMaps* tctorMaps() {
   static MTypeCtorMaps* x = 0;
@@ -2127,7 +2108,7 @@ MonoTypePtr repTypeStep(const MonoTypePtr& t) {
 }
 
 // compute the size of a monotype (in bytes)
-typedef unsigned int nat;
+using nat = unsigned int;
 nat nadd(nat lhs, nat rhs) { return lhs + rhs; }
 nat nmax(nat lhs, nat rhs) { return std::max<nat>(lhs, rhs); }
 
@@ -2351,7 +2332,7 @@ QualTypePtr unpackedType(const QualTypePtr& qty) {
 }
 
 // support an efficient binary codec for type descriptions
-typedef std::vector<unsigned char> bytes;
+using bytes = std::vector<unsigned char>;
 
 void write(bool b,               bytes* out) { out->push_back(b ? 0x01 : 0x00); }
 void write(char c,               bytes* out) { out->push_back(c); }

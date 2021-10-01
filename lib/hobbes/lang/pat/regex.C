@@ -13,7 +13,7 @@ namespace hobbes {
  * parse regular expressions into an AST
  ******************/
 
-typedef uint8_t rchar_t;
+using rchar_t = uint8_t;
 
 // epsilon / the empty string
 struct REps : public Regex {
@@ -156,8 +156,8 @@ RegexPtr anyOf(const Regexes& rs) {
   }
 }
 
-typedef std::pair<rchar_t, rchar_t> CharRange;
-typedef std::vector<CharRange> CharRanges;
+using CharRange = std::pair<rchar_t, rchar_t>;
+using CharRanges = std::vector<CharRange>;
 
 CharRanges toRanges(const std::set<rchar_t>& cs) {
   if (cs.size() == 0) {
@@ -207,7 +207,7 @@ RegexPtr unescapePatChar(rchar_t x) {
 }
 
 // read char sets
-typedef std::pair<size_t, std::set<rchar_t>> DCharset;
+using DCharset = std::pair<size_t, std::set<rchar_t>>;
 
 void charRange(rchar_t i, rchar_t e, std::set<rchar_t>* out) {
   for (auto x = static_cast<size_t>(i); x <= static_cast<size_t>(e); ++x) {
@@ -250,7 +250,7 @@ DCharset readCharset(const std::string& x, size_t i) {
 }
 
 // parse a complete regex
-typedef std::pair<size_t, RegexPtr> DRegex;
+using DRegex = std::pair<size_t, RegexPtr>;
 DRegex diffRegex(const RegexPtr& lhs, const std::string& x, size_t i);
 
 DRegex returnR(const std::string& x, size_t k, const RegexPtr& r) {
@@ -377,10 +377,10 @@ str::seq bindingNames(const RegexPtr& rgx) {
 /******************************
  * translate the regex AST to an NFA
  ******************************/
-typedef uint32_t state;
-typedef std::set<state> stateset;
+using state = uint32_t;
+using stateset = std::set<state>;
 
-typedef uint32_t result;
+using result = uint32_t;
 static const result nullResult = static_cast<result>(-1);
 
 struct char_range_ord {
@@ -407,9 +407,9 @@ struct char_range_ord {
   }
 };
 
-typedef range_map<rchar_t, stateset, char_range_ord> ntransitions;
+using ntransitions = range_map<rchar_t, stateset, char_range_ord>;
 
-typedef std::map<result, str::set> srcmarkers;
+using srcmarkers = std::map<result, str::set>;
 
 struct NFAState {
   // transitions to successor states
@@ -424,7 +424,7 @@ struct NFAState {
   void beginMark(result r, const std::string& m) { this->begins[r].insert(m); }
   void endMark  (result r, const std::string& m) {   this->ends[r].insert(m); }
 };
-typedef std::vector<NFAState> NFA;
+using NFA = std::vector<NFAState>;
 
 // for a given set of NFA states, find the set of non-overlapping char ranges
 CharRanges usedCharRanges(const NFA& nfa, const stateset& ss) {
@@ -606,9 +606,9 @@ void print(std::ostream& out, const NFA& nfa) {
 /**********************
  * find eps* for an NFA
  **********************/
-typedef std::map<state, stateset> EpsClosure;
+using EpsClosure = std::map<state, stateset>;
 
-typedef std::vector<bool> statemarks;
+using statemarks = std::vector<bool>;
 
 void findEpsClosure(const NFA& nfa, state s, statemarks* sms, EpsClosure* ec) {
   if (!(*sms)[s]) {
@@ -683,7 +683,7 @@ void print(std::ostream& out, const EpsClosure& ec) {
 /**********************
  * convert an NFA to a DFA
  **********************/
-typedef range_map<rchar_t, state, char_range_ord> dtransitions;
+using dtransitions = range_map<rchar_t, state, char_range_ord>;
 struct DFAState {
   dtransitions chars;
 
@@ -693,7 +693,7 @@ struct DFAState {
   // markers to begin and end recording subranges
   srcmarkers begins, ends;
 };
-typedef std::vector<DFAState> DFA;
+using DFA = std::vector<DFAState>;
 
 void insert(stateset* o, const stateset& i) {
   o->insert(i.begin(), i.end());
@@ -711,7 +711,7 @@ stateset nfaTransition(const NFA& nfa, const EpsClosure& ec, const stateset& ss,
 }
 
 // sets of NFA states are mapped to distinct DFA states
-typedef std::map<stateset, state> Nss2Ds;
+using Nss2Ds = std::map<stateset, state>;
 
 // create a DFA state from a set of NFA states
 // (or if it's already been made, just return the existing state)
@@ -1046,9 +1046,9 @@ void makeExprDFAFunc(cc* c, const std::string& fname, const MonoTypePtr& capture
   c->define(fname, assume(fndef, qualtype(qarrT->constraints(), functy(list(captureTy, arrT, primty("long"), primty("long"), primty("int")), primty("int"))), rootLA));
 }
 
-typedef std::pair<char,char>  CRange;
-typedef std::pair<CRange,int> CTransition;
-typedef array<CTransition>    CTransitions;
+using CRange = std::pair<char, char>;
+using CTransition = std::pair<CRange, int>;
+using CTransitions = array<CTransition>;
 
 DEFINE_STRUCT(
   DFAStateRep,
@@ -1125,7 +1125,7 @@ void mergeCharRangesAndEqResults(DFA* dfa, const RStates& fstates, RStates* rsta
 /**************************
  * compress a DFA by merging equivalent states
  **************************/
-typedef std::map<state, state> EqStates;
+using EqStates = std::map<state, state>;
 
 void visitGraph(const std::vector<std::vector<state>>& g, state m, std::vector<bool>& visited, std::function<void(state)> visitFn) {
   std::queue<state> q;

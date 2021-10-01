@@ -562,7 +562,7 @@ DEFINE_VARIANT(
   (just,    std::string)
 );
 
-typedef std::array<std::string,2> FRStrArr;
+using FRStrArr = std::array<std::string, 2>;
 
 DEFINE_STRUCT(
   FRTest,
@@ -657,7 +657,7 @@ DEFINE_ENUM(
   (Magenta)
 );
 
-typedef std::vector<std::string> strs;
+using strs = std::vector<std::string>;
 
 DEFINE_STRUCT(
   MyStruct,
@@ -897,8 +897,8 @@ TEST(Storage, FRegionCArrays) {
 
     // verify memcopyable carrays can be accessed by reference
     //   'carray (int*double) 20'
-    typedef std::pair<int,double> IandD;
-    typedef hobbes::carray<IandD, 20> XS;
+    using IandD = std::pair<int, double>;
+    using XS = hobbes::carray<IandD, 20>;
 
     auto& xs = *w.define<XS>("xs");
     for (size_t i = 0; i < 10; ++i) {
@@ -908,10 +908,10 @@ TEST(Storage, FRegionCArrays) {
     
     // verify that non-memcopyable can be written
     //     'carray (int * [char]@? * [int+double]@?) 20'
-    typedef hobbes::variant<int,double> IorD;
-    typedef std::vector<IorD>   IorDs;
-    typedef hobbes::tuple<int, std::string, IorDs> Y;
-    typedef hobbes::carray<Y, 20> YS;
+    using IorD = hobbes::variant<int, double>;
+    using IorDs = std::vector<IorD>;
+    using Y = hobbes::tuple<int, std::string, IorDs>;
+    using YS = hobbes::carray<Y, 20>;
 
     IorDs idi; idi.push_back(IorD(100)); idi.push_back(IorD(3.14159)); idi.push_back(IorD(200));
     IorDs ddi; ddi.push_back(IorD(2.1)); ddi.push_back(IorD(4.2));     ddi.push_back(IorD(29));

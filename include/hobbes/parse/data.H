@@ -17,8 +17,8 @@
 
 namespace hobbes {
 
-typedef unsigned int nat;
-typedef std::vector<nat> nats;
+using nat = unsigned int;
+using nats = std::vector<nat>;
 
 template <typename T>
   std::string show(const T* t) {
@@ -46,8 +46,8 @@ template <typename T>
 // we just watch characters and record newlines
 class linedb {
 public:
-  typedef std::shared_ptr<linedb>  ptr;
-  typedef std::pair<nat, nat> LineCol;
+  using ptr = std::shared_ptr<linedb>;
+  using LineCol = std::pair<nat, nat>;
 
   linedb(nat stype, const std::string& sdesc);
 
@@ -66,8 +66,8 @@ private:
 };
 
 // load a set of lines around an implicated set from the specified line database
-typedef std::vector<std::string> strings;
-typedef std::pair<nats, strings> ldblines;
+using strings = std::vector<std::string>;
+using ldblines = std::pair<nats, strings>;
 
 ldblines load(const linedb::ptr& ldb, const linedb::LineCol& i, const linedb::LineCol& f);
 

@@ -118,8 +118,8 @@ void printAnnotatedError(const hobbes::annotated_error& ae, const hobbes::Constr
 void printASM(void*,size_t);
 
 // show help on supported prompt commands
-typedef std::pair<std::string, std::string> CmdDesc;
-typedef std::vector<CmdDesc>                CmdDescs;
+using CmdDesc = std::pair<std::string, std::string>;
+using CmdDescs = std::vector<CmdDesc>;
 
 void showShellHelp(const CmdDescs& cds) {
   std::string header = "Supported hi commands";

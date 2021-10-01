@@ -129,8 +129,8 @@ long ProcManager::spawnedPid(const std::string& cmd) {
   }
 }
 
-typedef void (*ThunkF)();
-typedef std::vector<ThunkF> ThunkFs;
+using ThunkF = void (*)();
+using ThunkFs = std::vector<ThunkF>;
 
 static int machineREPLLogFD = -1;
 
@@ -439,7 +439,7 @@ void runMachineREPLStep(cc* c) {
   }
 }
 
-typedef std::map<int,const char*> Signames;
+using Signames = std::map<int, const char *>;
 static Signames rsignames;
 static void deadlySignal [[noreturn]] (int sig, siginfo_t*, void*) {
   if (machineREPLLogFD > 0) {

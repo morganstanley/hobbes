@@ -317,8 +317,8 @@ template <
   typename SVLT = std::less<SValue>
 >
 MStatePtr makeSplitState(MDFA* dfa, const PatternRows& ps, size_t c) {
-  typedef std::map<SValue, PatternRows, SVLT> Branches;
-  typedef std::map<SValue, size_t>            BranchOrder;
+  using Branches = std::map<SValue, PatternRows, SVLT>;
+  using BranchOrder = std::map<SValue, size_t>;
 
   Branches    bs;
   BranchOrder bos;
@@ -361,8 +361,8 @@ MStatePtr makeSplitState(MDFA* dfa, const PatternRows& ps, size_t c) {
   }
 
   // finally, pull the branch and default jumps together (in introduction order) and make the new state
-  typedef std::pair<SValue, stateidx_t> Jump;
-  typedef std::vector<Jump>             Jumps;
+  using Jump = std::pair<SValue, stateidx_t>;
+  using Jumps = std::vector<Jump>;
   Jumps jmps;
 
   jmps.resize(bs.size());
@@ -1205,8 +1205,8 @@ struct liftDFAExprF : public switchMState<ExprPtr> {
   }
 };
 
-typedef std::pair<ExprPtr, PrimitivePtr> ExprCheck;
-typedef std::vector<ExprCheck> ExprChecks;
+using ExprCheck = std::pair<ExprPtr, PrimitivePtr>;
+using ExprChecks = std::vector<ExprCheck>;
 
 ExprPtr checkExpr(const ExprChecks& cs, const LexicalAnnotation& la) {
   if (cs.size() == 0) {
@@ -1328,7 +1328,7 @@ ExprPtr liftDFAExpr(cc* c, const PatternRows& ps, const LexicalAnnotation& rootL
 }
 
 // determine the row/expr set reachable from a DFA state
-typedef std::map<size_t, ExprPtr> RowResults;
+using RowResults = std::map<size_t, ExprPtr>;
 
 struct reachableRowExprsF : public switchMState<UnitV> {
   const MDFA* dfa;
@@ -1382,8 +1382,8 @@ long asLongRep(long*  x) { return *x; }
 long asLongRep(double x) { return asLongRep(reinterpret_cast<long*>(&x)); }
 
 // derive a primitive search function from a DFA (or sub-DFA) that contains _only_ primitive tests
-typedef std::map<std::string, llvm::Value*>      Args;
-typedef std::map<stateidx_t,  llvm::BasicBlock*> StateBranches;
+using Args = std::map<std::string, llvm::Value *>;
+using StateBranches = std::map<stateidx_t, llvm::BasicBlock *>;
 
 struct makePrimDFASF : public switchMState<UnitV> {
   const Args&    args;
@@ -1533,8 +1533,8 @@ void makeCompiledPrimMatchFunction(const std::string& fname, MDFA* dfa, stateidx
 }
 
 // derive a primitive match DFA to run in an interpreted mode, to minimize compilation overhead
-typedef variant<int, long> IDFATransition;
-typedef array< std::pair<long, IDFATransition> > IDFATransitions;
+using IDFATransition = variant<int, long>;
+using IDFATransitions = array<std::pair<long, IDFATransition>>;
 
 struct IDFAState {
   long             reads;
@@ -1560,8 +1560,8 @@ MonoTypePtr dfaStateType() {
   return arrayty(MonoTypePtr(Record::make(dfafns)));
 }
 
-typedef std::unordered_map<std::string, size_t> ArgPos;
-typedef std::unordered_map<size_t, size_t>      GlobalToLocalState;
+using ArgPos = std::unordered_map<std::string, size_t>;
+using GlobalToLocalState = std::unordered_map<size_t, size_t>;
 
 void mapStatesFrom(MDFA* dfa, stateidx_t state, GlobalToLocalState* localstate) {
   if (localstate->find(state) == localstate->end()) {
@@ -1629,7 +1629,7 @@ void copyStateDef(const ArgPos& argpos, MDFA* dfa, stateidx_t state, const Globa
 }
 
 IDFATransitions* transitions(const ArgPos& argpos, MDFA* dfa, const SwitchVal::Jumps& jmps, const GlobalToLocalState& localstate, std::set<stateidx_t>* dones, array<IDFAState>* dfaStates) {
-  typedef std::map<long, IDFATransition> SortedSVJumps;
+  using SortedSVJumps = std::map<long, IDFATransition>;
 
   SortedSVJumps ssvj;
   for (const auto& jmp : jmps) {

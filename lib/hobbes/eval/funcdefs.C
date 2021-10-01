@@ -18,8 +18,8 @@ namespace hobbes {
 
 static __thread region* threadRegionp = 0;
 
-typedef std::pair<std::string, region*> NamedRegion;
-typedef std::vector<NamedRegion> Regions;
+using NamedRegion = std::pair<std::string, region *>;
+using Regions = std::vector<NamedRegion>;
 static __thread Regions* threadRegionsp = 0;
 static __thread size_t   currentRegion = 0;
 
@@ -199,7 +199,7 @@ std::string makeStdString(const array<char>* x) {
 
 template <typename T>
   struct maybe {
-    typedef variant<unit, T> ty;
+    using ty = variant<unit, T>;
 
     static const maybe<T>::ty* nothing() {
       return new (memalloc(sizeof(ty), alignof(ty))) ty(unit());

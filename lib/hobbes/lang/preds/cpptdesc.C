@@ -5,7 +5,7 @@
 
 namespace hobbes {
 
-typedef std::vector<std::string> RDefs;
+using RDefs = std::vector<std::string>;
 static void describeCPPTypeMin(std::ostream*, const std::string& tname, const MonoTypePtr& ty, const LexicalAnnotation& la, RDefs*);
 
 struct defineCPPTy : public switchType<UnitV> {

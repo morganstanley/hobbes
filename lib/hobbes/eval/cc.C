@@ -347,8 +347,8 @@ bool cc::isTypeAliasName(const std::string& name) const {
 }
 
 struct repTypeAliasesF : public switchTyFn {
-  typedef std::pair<str::seq, MonoTypePtr>        TTyDef;
-  typedef std::unordered_map<std::string, TTyDef> TTyDefs;
+  using TTyDef = std::pair<str::seq, MonoTypePtr>;
+  using TTyDefs = std::unordered_map<std::string, TTyDef>;
   const TTyDefs& ttyDefs;
  
   repTypeAliasesF(const TTyDefs& ttyDefs) : ttyDefs(ttyDefs) {

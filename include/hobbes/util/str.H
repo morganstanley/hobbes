@@ -16,9 +16,9 @@ namespace hobbes { namespace str {
 std::string env(const std::string& varname);
 void env(const std::string& varname, const std::string& value);
 
-typedef std::vector<std::string>  seq;
-typedef std::vector<seq>          seqs;
-typedef std::vector<unsigned int> lengths;
+using seq = std::vector<std::string>;
+using seqs = std::vector<seq>;
+using lengths = std::vector<unsigned int>;
 
 void repeat(unsigned int n, const std::string& s, seq* out);
 seq repeat(unsigned int n, const std::string& s);
@@ -183,7 +183,7 @@ template <typename Char>
       return src;
     }
 
-    typedef typename std::basic_string<Char>::size_type SZT;
+    using SZT = typename std::basic_string<Char>::size_type;
     std::basic_string<Char> result;
     SZT                     sz     = src.find(old_substr);
     SZT                     lsz    = 0;
@@ -217,7 +217,7 @@ std::string unescape(const std::string&);
 
 bool endsWith(const std::string& s, const std::string& sfx);
 
-typedef std::pair<std::string, std::string> pair;
+using pair = std::pair<std::string, std::string>;
 
 inline pair trim(const pair& p) {
   return pair(trim(p.first), trim(p.second));
@@ -238,10 +238,10 @@ unsigned int firstFailIndex(bool (*P)(char), const std::string& s);
 std::string cdelim(const seq& ss, const std::string& d);
 
 // common containers for strings
-typedef std::set<std::string> set;
+using set = std::set<std::string>;
 std::string show(const set&);
 
-typedef std::map<std::string, std::string> named_strings;
+using named_strings = std::map<std::string, std::string>;
 std::string show(const named_strings&);
 
 // process a string by 'expanding' embedded variables/expressions and unescaping sequences

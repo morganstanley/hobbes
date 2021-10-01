@@ -43,7 +43,7 @@ private:
 };
 
 // parameter parsing for the 'compileFn' family of functions
-typedef std::function<ExprPtr(const std::string &)> ExprParser;
+using ExprParser = std::function<ExprPtr (const std::string &)>;
 
 template <typename... NamesAndExpr> struct PArgl {};
 template <> struct PArgl<ExprPtr> {
@@ -99,20 +99,19 @@ public:
   virtual ~cc();
 
   // parse expressions
-  typedef ModulePtr (*readModuleFileFn)(cc *, const std::string &);
+  using readModuleFileFn = ModulePtr (*)(cc *, const std::string &);
   ModulePtr readModuleFile(const std::string &);
   void setReadModuleFileFn(readModuleFileFn);
 
-  typedef ModulePtr (*readModuleFn)(cc *, const std::string &);
+  using readModuleFn = ModulePtr (*)(cc *, const std::string &);
   ModulePtr readModule(const std::string &);
   void setReadModuleFn(readModuleFn);
 
-  typedef std::pair<std::string, ExprPtr> (*readExprDefnFn)(
-      cc *, const std::string &);
+  using readExprDefnFn = std::pair<std::string, ExprPtr> (*)(cc *, const std::string &);
   std::pair<std::string, ExprPtr> readExprDefn(const std::string &);
   void setReadExprDefnFn(readExprDefnFn);
 
-  typedef ExprPtr (*readExprFn)(cc *, const std::string &);
+  using readExprFn = ExprPtr (*)(cc *, const std::string &);
   ExprPtr readExpr(const std::string &);
   MonoTypePtr readMonoType(const std::string &);
   void setReadExprFn(readExprFn);
@@ -121,7 +120,7 @@ public:
     LexicalAnnotation la;
     std::string lines;
   };
-  typedef void (*gatherUnreachableMatchesFn)(const UnreachableMatches &);
+  using gatherUnreachableMatchesFn = void (*)(const UnreachableMatches &);
   void gatherUnreachableMatches(const UnreachableMatches &m);
   void setGatherUnreachableMatchesFn(gatherUnreachableMatchesFn f);
 
@@ -221,7 +220,7 @@ public:
   void dumpModule();
 
   // get the x86 machine code for an expression (useful for debugging)
-  typedef std::vector<unsigned char> bytes;
+  using bytes = std::vector<unsigned char>;
   bytes machineCodeForExpr(const std::string &expr);
 
   // keep track of C++ classes so that we can perform upcasts where necessary
@@ -262,8 +261,8 @@ public:
   }
 
 private:
-  typedef std::pair<str::seq, MonoTypePtr> TTyDef;
-  typedef std::unordered_map<std::string, TTyDef> TTyDefs;
+  using TTyDef = std::pair<str::seq, MonoTypePtr>;
+  using TTyDefs = std::unordered_map<std::string, TTyDef>;
   TTyDefs ttyDefs;
 
 public:
@@ -358,7 +357,7 @@ private:
   int dfaOverNfaMaxRatio = 4;
 
   // the bound root type-def environment
-  typedef std::map<std::string, PolyTypePtr> TypeAliasMap;
+  using TypeAliasMap = std::map<std::string, PolyTypePtr>;
 
   TEnvPtr tenv;
   TypeAliasMap typeAliases;
@@ -394,7 +393,7 @@ template <typename T> struct rccF {
 };
 
 template <typename R, typename... Args> struct rccF<R (*)(Args...)> {
-  typedef R (*cbF)(Args...);
+  using cbF = R (*)(Args...);
   static cbF compile(cc *c, const str::seq &vns, const std::string &expr) {
     return rcast<cbF>(c->unsafeCompileFn(lift<cbF>::type(*c), vns, expr));
   }

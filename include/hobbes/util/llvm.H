@@ -65,7 +65,7 @@
 
 namespace hobbes {
 
-typedef __int128 int128_t;
+using int128_t = __int128;
 
 
 #if LLVM_VERSION_MAJOR >= 11
@@ -79,9 +79,9 @@ template <typename Fn> auto withContext(Fn fn) -> decltype(auto) {
   return fn(*threadSafeContext().getContext());
 }
 
-typedef std::vector<llvm::Type*>     Types;
-typedef std::vector<llvm::Constant*> Constants;
-typedef std::vector<llvm::Value*>    Values;
+using Types = std::vector<llvm::Type *>;
+using Constants = std::vector<llvm::Constant *>;
+using Values = std::vector<llvm::Value *>;
 
 // type utilities
 inline llvm::Type* voidType() {
@@ -476,11 +476,11 @@ inline llvm::ConstantInt* civalue(int128_t x) {
 
 #endif
 // an intermediate representation for records
-typedef std::pair<std::string, llvm::Value*> FieldValue;
-typedef std::vector<FieldValue>              RecordValue;
+using FieldValue = std::pair<std::string, llvm::Value *>;
+using RecordValue = std::vector<FieldValue>;
 
-typedef std::pair<std::string, llvm::Constant*> ConstFieldValue;
-typedef std::vector<ConstFieldValue>            ConstRecordValue;
+using ConstFieldValue = std::pair<std::string, llvm::Constant *>;
+using ConstRecordValue = std::vector<ConstFieldValue>;
 
 // add any standard settings to global variables that we need
 inline llvm::GlobalVariable* prepgv(llvm::GlobalVariable* gv, unsigned int align = sizeof(void*)) {
@@ -636,7 +636,7 @@ inline Types types(const Constants& cs) {
   return r;
 }
 
-typedef std::pair<std::vector<std::string>, Values> UnzRecValues;
+using UnzRecValues = std::pair<std::vector<std::string>, Values>;
 
 inline Constants recordUZConstants(const UnzRecValues& rps, const Record* rty) {
   Constants r;

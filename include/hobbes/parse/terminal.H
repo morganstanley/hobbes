@@ -25,8 +25,8 @@ struct terminal {
   virtual PatternPtr matchPattern() const = 0;
   virtual ExprPtr matchRefExpr() const = 0;
 };
-typedef std::vector<terminal*> terminals;
-typedef std::set<terminal*> terminalset;
+using terminals = std::vector<terminal *>;
+using terminalset = std::set<terminal *>;
 
 // characters can be terminals
 class character : public terminal {
@@ -79,7 +79,7 @@ struct prec {
   assoc::pref asc;
 };
 
-typedef std::map<terminal*, prec> precedence;
+using precedence = std::map<terminal *, prec>;
 
 }
 

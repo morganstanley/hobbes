@@ -7,14 +7,14 @@
 
 namespace hobbes { namespace stream {
 
-typedef std::vector<uint8_t> RawData;
+using RawData = std::vector<uint8_t>;
 
 template < typename Char = char, typename Traits = std::char_traits<Char> >
   class raw_ostream_buffer : public std::basic_streambuf<Char, Traits> {
   public:
-    typedef std::basic_streambuf<Char, Traits> BaseT;
-    typedef typename BaseT::int_type  int_type;
-    typedef typename BaseT::char_type char_type;
+    using BaseT = std::basic_streambuf<Char, Traits>;
+    using int_type = typename BaseT::int_type;
+    using char_type = typename BaseT::char_type;
 
     raw_ostream_buffer(RawData* d) : d(d) {
     }
@@ -45,7 +45,7 @@ template < typename Char = char, typename Traits = std::char_traits<Char> >
 template < typename Char = char, typename Traits = std::char_traits<Char> >
   class raw_istream_buffer : public std::basic_streambuf<Char, Traits> {
   public:
-    typedef std::basic_streambuf<Char, Traits> BaseT;
+    using BaseT = std::basic_streambuf<Char, Traits>;
 
     raw_istream_buffer(const RawData& d) {
       if (d.size() == 0) {

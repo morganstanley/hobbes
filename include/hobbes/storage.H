@@ -221,8 +221,8 @@ namespace platform = futex;
 
 namespace hobbes { namespace storage {
 
-typedef void (*WaitFn)(volatile uint32_t*, int, size_t, const std::function<void()>&);
-typedef void (*WakeFn)(volatile uint32_t*, int);
+using WaitFn = void (*)(volatile uint32_t *, int, size_t, const std::function<void ()> &);
+using WakeFn = void (*)(volatile uint32_t *, int);
 
 enum WaitPolicy {
   Platform = 0,
@@ -251,7 +251,7 @@ namespace hobbes { namespace storage {
 
 #define HSTORE_VERSION static_cast<uint32_t>(0x00020000)
 
-typedef std::vector<uint8_t> bytes;
+using bytes = std::vector<uint8_t>;
 
 // write transactions into shared memory
 #define PRIV_HSTORE_LIKELY(x)   __builtin_expect((x),1)
@@ -418,7 +418,7 @@ inline int makeGroupHost(const std::string& groupName, const std::string& sdir =
 }
 
 // identify this process/thread
-typedef std::pair<uint64_t, uint64_t> ProcThread;
+using ProcThread = std::pair<uint64_t, uint64_t>;
 
 inline ProcThread thisProcThread() {
   ProcThread r;
@@ -893,7 +893,7 @@ public:
   inline const pqueue_config& config() const { return this->cfg; }
 
   // access queue init data; (null,0) if no data was specified
-  typedef std::pair<const uint8_t*, size_t> MetaData;
+  using MetaData = std::pair<const uint8_t *, size_t>;
   MetaData meta() const {
     return MetaData(this->metad, this->metasz);
   }
@@ -1199,9 +1199,9 @@ template <typename T>
 // a generic method to write tuples as a last resort
 template <size_t i, size_t n, typename ... Ts>
   struct storeTupleDef {
-    typedef typename nth<i, Ts...>::type H;
-    typedef typename tuple<Ts...>::offs  offs;
-    typedef storeTupleDef<i+1, n, Ts...> Recurse;
+    using H = typename nth<i, Ts...>::type;
+    using offs = typename tuple<Ts...>::offs;
+    using Recurse = storeTupleDef<i + 1, n, Ts...>;
 
     static void fieldDefs(ty::Struct::Fields* fs) {
       fs->push_back(ty::Struct::Field(".f" + hobbes::string::from(i), static_cast<int>(offsetAt<i, offs>::value), store<H>::type()));
@@ -1261,7 +1261,7 @@ template <typename ... Ts>
 template <typename ... Ts>
   struct storeStdLayoutTuple<tuple<Ts...>, typename tbool<(!tuple<Ts...>::packed && !tuple<Ts...>::offs::packed) || !all_memcpyableFs<Ts...>::value>::type> {
     static const bool can_memcpy = false;
-    typedef storeTupleDef<0, sizeof...(Ts), Ts...> Reflect;
+    using Reflect = storeTupleDef<0, sizeof...(Ts), Ts...>;
     static ty::desc type()                                 { return Reflect::type(); }
     static size_t   size(const tuple<Ts...>& t)            { return Reflect::size(t); }
     static bool     write(wpipe& p, const tuple<Ts...>& t) { return Reflect::incrWrite(p, t); }
@@ -1324,14 +1324,14 @@ template <typename T> struct member;
 
 template <typename T, typename F>
   struct member<F T::*> {
-    typedef F type;
-    typedef F T::* Acc;
+    using type = F;
+    using Acc = F T::*;
     static const F& read(const T& x, Acc a) { return x.*a; }
   };
 template <typename T, typename F>
   struct member<F (T::*)() const> {
-    typedef F type;
-    typedef F (T::*Acc)() const;
+    using type = F;
+    using Acc = F (T::*)() const;
     static F read(const T& x, Acc a) { return (x.*a)(); }
   };
 
@@ -1413,8 +1413,8 @@ template <typename T>
 // store variants
 template <size_t i, size_t n, typename ... Ts>
   struct storeVariantDef {
-    typedef typename nth<i, Ts...>::type   H;
-    typedef storeVariantDef<i+1, n, Ts...> Recurse;
+    using H = typename nth<i, Ts...>::type;
+    using Recurse = storeVariantDef<i + 1, n, Ts...>;
 
     static void ctorDefs(ty::Variant::Ctors* cs) {
       cs->push_back(ty::Variant::Ctor(".f" + hobbes::string::from(i), static_cast<int>(i), store<H>::type()));
@@ -1466,7 +1466,7 @@ struct descVariantF {
 
 template <typename T>
   struct store<T, typename tbool<T::is_hmeta_variant>::type> {
-    typedef typename T::as_variant_type VT;
+    using VT = typename T::as_variant_type;
     static const bool can_memcpy = store<VT>::can_memcpy;
 
     static ty::desc type() {
@@ -1488,7 +1488,7 @@ struct recursion {
 
 template <typename T>
   struct recursive {
-    typedef T value_type;
+    using value_type = T;
     value_type value;
     recursive(const value_type& x) : value(x) { }
   };
@@ -1499,7 +1499,7 @@ template <>
       return ty::var("x");
     }
 
-    typedef size_t (*RecSizeF)(const recursion&);
+    using RecSizeF = size_t (*)(const recursion &);
     static RecSizeF& sizeF() {
       thread_local RecSizeF fn = 0;
       return fn;
@@ -1508,7 +1508,7 @@ template <>
       return sizeF()(x);
     }
 
-    typedef bool (*RecWriteF)(wpipe&, const recursion&);
+    using RecWriteF = bool (*)(wpipe &, const recursion &);
     static RecWriteF& writeF() {
       thread_local RecWriteF fn = 0;
       return fn;
@@ -1527,7 +1527,7 @@ template <typename T>
       return size(*reinterpret_cast<const recursive<T>*>(x.value));
     }
     static size_t size(const recursive<T>& x) {
-      typedef typename store<recursion>::RecSizeF RSF;
+      using RSF = typename store<recursion>::RecSizeF;
       RSF sf = store<recursion>::sizeF();
       store<recursion>::sizeF() = &store<recursive<T>>::recSize;
       size_t r = store<T>::size(x.value);
@@ -1539,7 +1539,7 @@ template <typename T>
       return write(p, *reinterpret_cast<const recursive<T>*>(x.value));
     }
     static bool write(wpipe& p, const recursive<T>& x) {
-      typedef typename store<recursion>::RecWriteF RWF;
+      using RWF = typename store<recursion>::RecWriteF;
       RWF sf = store<recursion>::writeF();
       store<recursion>::writeF() = &store<recursive<T>>::recWrite;
       bool r = store<T>::write(p, x.value);
@@ -1551,7 +1551,7 @@ template <typename T>
 // store opaque type aliases
 template <typename T>
   struct store<T, typename tbool<T::is_hmeta_alias>::type> {
-    typedef typename T::type RT;
+    using RT = typename T::type;
     static const bool can_memcpy = store<RT>::can_memcpy;
 
     static ty::desc type ()                     { return ty::prim(T::name(), store<RT>::type()); ; }
@@ -1576,7 +1576,7 @@ template <typename F, typename T>
 #define HNAME(N,E) ::hobbes::storage::namedValue<PRIV_HPPF_TSTR(#N),decltype(E)>(E)
 
 // allow inference of log statement names from payload types
-typedef void (*tynamehints)(std::vector<std::string>*);
+using tynamehints = void (*)(std::vector<std::string> *);
 template <typename T>
   struct nameAt {
     template <typename U, std::string (*P)()> struct HasStorageName { };
@@ -1612,7 +1612,7 @@ template <typename F, typename T>
 
 template <typename ... Ts>
   struct hstore_payload_types {
-    typedef unit head_type;
+    using head_type = unit;
     static const size_t count = 0;
     static const bool isTuple = true;
     static void fields(const char*,size_t,ty::Struct::Fields*) {}
@@ -1620,7 +1620,7 @@ template <typename ... Ts>
   };
 template <typename T, typename ... Ts>
   struct hstore_payload_types<T,Ts...> {
-    typedef T head_type;
+    using head_type = T;
     static const size_t count = 1 + hstore_payload_types<Ts...>::count;
     static const bool isTuple = hstore_argl_name<T>::isTuple && hstore_payload_types<Ts...>::isTuple;
     static void fields(const char* fmt, size_t f, ty::Struct::Fields* fs) {
@@ -1640,7 +1640,7 @@ template <typename ... Ts>
     return hstore_payload_types<Ts...>();
   }
 
-typedef void (*tydescfn)(bytes*,std::string*);
+using tydescfn = void (*)(bytes *, std::string *);
 template <typename TyList>
   void makeTyDescF(bytes* e, std::string* d) {
     ty::desc td;
@@ -1689,7 +1689,7 @@ struct StorageGroup {
     uint32_t    line;
     uint32_t    id;
   };
-  typedef std::map<std::string, StmtData> StorageStatements;
+  using StorageStatements = std::map<std::string, StmtData>;
 
   StorageStatements* statements;
   PipeQOS            qos;
@@ -2029,7 +2029,7 @@ struct statement {
            this->type   == rhs.type;
   }
 };
-typedef std::vector<statement> statements;
+using statements = std::vector<statement>;
 
 inline size_t rs(const reader::MetaData& md, size_t o, size_t n, uint8_t* b) {
   if (o + n <= md.second) {

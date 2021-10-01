@@ -26,12 +26,12 @@ protected:
 private:
   int cid;
 };
-typedef std::shared_ptr<ModuleDef> ModuleDefPtr;
-typedef std::vector<ModuleDefPtr>  ModuleDefs;
+using ModuleDefPtr = std::shared_ptr<ModuleDef>;
+using ModuleDefs = std::vector<ModuleDefPtr>;
 
 template <typename Case>
   struct ModuleDefCase : public ModuleDef {
-    typedef ModuleDefCase<Case> Base;
+    using Base = ModuleDefCase<Case>;
     ModuleDefCase(const LexicalAnnotation&);
   };
 
@@ -83,8 +83,8 @@ private:
   std::string vname;
   QualTypePtr qty;
 };
-typedef std::shared_ptr<MVarTypeDef> MVarTypeDefPtr;
-typedef std::vector<MVarTypeDefPtr>  MVarTypeDefs;
+using MVarTypeDefPtr = std::shared_ptr<MVarTypeDef>;
+using MVarTypeDefs = std::vector<MVarTypeDefPtr>;
 
 class MVarDef : public ModuleDefCase<MVarDef> {
 public:
@@ -99,13 +99,13 @@ private:
   str::seq vargl;
   ExprPtr  expr;
 };
-typedef std::shared_ptr<MVarDef> MVarDefPtr;
-typedef std::vector<MVarDefPtr>  MVarDefs;
+using MVarDefPtr = std::shared_ptr<MVarDef>;
+using MVarDefs = std::vector<MVarDefPtr>;
 
 MVarDefs substitute(const MonoTypeSubst&, const MVarDefs&);
 
-typedef std::pair<str::seq, str::seq> CFunDepDef;
-typedef std::vector<CFunDepDef>       CFunDepDefs;
+using CFunDepDef = std::pair<str::seq, str::seq>;
+using CFunDepDefs = std::vector<CFunDepDef>;
 
 class ClassDef : public ModuleDefCase<ClassDef> {
 public:
@@ -127,8 +127,8 @@ private:
   CFunDepDefs  fdeps;
   MVarTypeDefs mvtydefs;
 };
-typedef std::shared_ptr<ClassDef> ClassDefPtr;
-typedef std::vector<ClassDefPtr>  ClassDefs;
+using ClassDefPtr = std::shared_ptr<ClassDef>;
+using ClassDefs = std::vector<ClassDefPtr>;
 
 class InstanceDef : public ModuleDefCase<InstanceDef> {
 public:
@@ -148,8 +148,8 @@ private:
   MonoTypes   targs;
   MVarDefs    mdefs;
 };
-typedef std::shared_ptr<InstanceDef> InstanceDefPtr;
-typedef std::vector<InstanceDefPtr>  InstanceDefs;
+using InstanceDefPtr = std::shared_ptr<InstanceDef>;
+using InstanceDefs = std::vector<InstanceDefPtr>;
 
 class MUnsafePragmaDef : public ModuleDefCase<MUnsafePragmaDef> {
 public:
@@ -253,8 +253,8 @@ private:
   std::vector<std::string> opts;
 };
 
-typedef std::shared_ptr<Module> ModulePtr;
-typedef std::vector<ModulePtr>  Modules;
+using ModulePtr = std::shared_ptr<Module>;
+using Modules = std::vector<ModulePtr>;
 
 // basic utilities
 std::string show(const Module& m);

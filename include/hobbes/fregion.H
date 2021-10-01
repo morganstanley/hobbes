@@ -106,10 +106,10 @@ struct pagedata {
   void type(pagetype::code x) { this->ptfd = encode(x, availBytes()); }
   void availBytes(uint16_t x) { this->ptfd = encode(type(), x); }
 };
-typedef std::vector<pagedata> pagetable;
+using pagetable = std::vector<pagedata>;
 
 // the index of a page of data in the underlying file
-typedef uint64_t file_pageindex_t;
+using file_pageindex_t = uint64_t;
 
 // convenience for raising errors out of errno
 inline void raiseSysError [[noreturn]] (const std::string& msg, const std::string& fname) {
@@ -118,7 +118,7 @@ inline void raiseSysError [[noreturn]] (const std::string& msg, const std::strin
   throw std::runtime_error(ss.str());
 }
 
-typedef std::vector<uint8_t> bytes;
+using bytes = std::vector<uint8_t>;
 
 // a stored name/value binding
 struct binding {
@@ -129,7 +129,7 @@ struct binding {
   size_t boffset; // where is this binding data stored in the file?
 };
 
-typedef std::map<std::string, binding> bindingset;
+using bindingset = std::map<std::string, binding>;
 
 // a mem-mapped file region
 struct fregion {
@@ -140,7 +140,7 @@ struct fregion {
 };
 
 // account for mappings by absolute page
-typedef std::map<file_pageindex_t, fregion> fmappings;
+using fmappings = std::map<file_pageindex_t, fregion>;
 
 // remember which mapped sections correspond to which pages
 struct falloc {
@@ -148,11 +148,11 @@ struct falloc {
   size_t           size; // the number of bytes allocated to this thing
 };
 
-typedef std::map<char*, falloc> fallocs;
+using fallocs = std::map<char *, falloc>;
 
 // fast page searches (to avoid linear searches of the entire page table)
-typedef std::vector<file_pageindex_t>     pageseq;
-typedef std::map<pagetype::code, pageseq> ptyorder;
+using pageseq = std::vector<file_pageindex_t>;
+using ptyorder = std::map<pagetype::code, pageseq>;
 
 // an image file, opened either for reading or writing
 struct imagefile {
@@ -1404,10 +1404,10 @@ template <typename U, typename V>
 // store tuples
 template <size_t i, size_t n, typename ... Ts>
   struct storeTupleDef {
-    typedef typename nth<i, Ts...>::type H;
-    typedef tuple<Ts...>                 TT;
-    typedef typename TT::offs            offs;
-    typedef storeTupleDef<i+1, n, Ts...> Recurse;
+    using H = typename nth<i, Ts...>::type;
+    using TT = tuple<Ts...>;
+    using offs = typename TT::offs;
+    using Recurse = storeTupleDef<i + 1, n, Ts...>;
 
     static void fieldDefs(size_t offset, ty::Struct::Fields* fs) {
       offset = align(offset, store<H>::alignment());
@@ -1452,7 +1452,7 @@ template <typename ... Ts>
 template <typename ... Ts>
   struct store<tuple<Ts...>, typename tbool<!all_memcpyable<Ts...>::value>::type> : public storeTupleDef<0, sizeof...(Ts), Ts...> {
     static const bool can_memcpy = false;
-    typedef storeTupleDef<0, sizeof...(Ts), Ts...> Reflect;
+    using Reflect = storeTupleDef<0, sizeof...(Ts), Ts...>;
 
     static void write(imagefile* f, void* p, const tuple<Ts...>& x) {
       Reflect::incrWrite(f, p, x);
@@ -1590,9 +1590,9 @@ template <typename T>
 // store variants
 template <size_t i, size_t n, typename ... Ts>
   struct storeVariantDef {
-    typedef typename nth<i, Ts...>::type   H;
-    typedef variant<Ts...>                 VT;
-    typedef storeVariantDef<i+1, n, Ts...> Recurse;
+    using H = typename nth<i, Ts...>::type;
+    using VT = variant<Ts...>;
+    using Recurse = storeVariantDef<i + 1, n, Ts...>;
 
     static void ctorDefs(ty::Variant::Ctors* cs) {
       cs->push_back(ty::Variant::Ctor(".f" + hobbes::string::from(i), static_cast<int>(i), store<H>::storeType()));
@@ -1639,7 +1639,7 @@ template <size_t tag, typename T, typename M>
 template <typename ... Ts>
   struct store<variant<Ts...>, typename tbool<!all_memcpyable<Ts...>::value>::type> : public storeVariantDef<0, sizeof...(Ts), Ts...> {
     static const bool can_memcpy = false;
-    typedef storeVariantDef<0, sizeof...(Ts), Ts...> Reflect;
+    using Reflect = storeVariantDef<0, sizeof...(Ts), Ts...>;
 
     static void write(imagefile* f, void* p, const variant<Ts...>& x) {
       x.template apply<void, variantGenWrite, void, imagefile*, void*, size_t>(f, p, Reflect::tagOffset());
@@ -1693,7 +1693,7 @@ struct calcVSizeF {
 
 template <typename T>
   struct store<T, typename tbool<T::is_hmeta_variant>::type> {
-    typedef typename T::as_variant_type VT;
+    using VT = typename T::as_variant_type;
     static const bool can_memcpy = store<VT>::can_memcpy;
 
     static ty::desc storeType() {
@@ -1713,7 +1713,7 @@ template <typename T>
 // store opaque type aliases
 template <typename T>
   struct store<T, typename tbool<T::is_hmeta_alias>::type> {
-    typedef typename T::type RT;
+    using RT = typename T::type;
 
     static ty::desc storeType() { return ty::prim(T::name(), store<RT>::storeType()); ; }
 
@@ -2080,7 +2080,7 @@ public:
   imagefile* fileData() { return this->f; }
   const imagefile* fileData() const { return this->f; }
 private:
-  typedef std::map<std::string, seriesi*> wseriess;
+  using wseriess = std::map<std::string, seriesi *>;
   imagefile* f;
   wseriess   ss;
 };
@@ -2385,8 +2385,8 @@ public:
     return false;
   }
 private:
-  typedef std::map<std::string, std::pair<uint32_t, ty::desc>> VarDef;
-  typedef std::unordered_map<uint32_t, std::function<void(imagefile*,uint64_t)>> VarCtorBindings;
+  using VarDef = std::map<std::string, std::pair<uint32_t, ty::desc>>;
+  using VarCtorBindings = std::unordered_map<uint32_t, std::function<void (imagefile *, uint64_t)>>;
   struct LogDef {
     // the encoded ordering variant type and seq binding
     ty::desc       tdesc;
@@ -2551,7 +2551,7 @@ public:
   imagefile* fileData() { return this->f; }
   const imagefile* fileData() const { return this->f; }
 private:
-  typedef std::map<std::string, seriesi*> rseriess;
+  using rseriess = std::map<std::string, seriesi *>;
   imagefile* f;
   rseriess   ss;
 };

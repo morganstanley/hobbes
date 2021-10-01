@@ -119,7 +119,7 @@ public:
   llvm::Value* internConstString(const std::string&);
 
   // get the machine code produced for a given expression
-  typedef std::vector<uint8_t> bytes;
+  using bytes = std::vector<uint8_t>;
   bytes machineCodeForExpr(const ExprPtr&);
 
   // inline all global definitions within an expression
@@ -174,7 +174,7 @@ private:
   std::unique_ptr<llvm::IRBuilder<>> irbuilder;
 
   // the bound root function environment
-  typedef std::map<std::string, op*> FuncEnv;
+  using FuncEnv = std::map<std::string, op *>;
   FuncEnv fenv;
 
   // keep track of variables and local scopes during compilation
@@ -199,7 +199,7 @@ private:
     inline UCF(const std::string& name, const str::seq& argns, const MonoTypes& argtys, const ExprPtr& exp)
       : name(name), argns(argns), argtys(argtys), exp(exp) { }
   };
-  typedef std::vector<UCF> UCFS;
+  using UCFS = std::vector<UCF>;
   void unsafeCompileFunctions(UCFS*);
 
   // keep track of global variables
@@ -239,7 +239,7 @@ private:
   llvm::Value* loadConstant(const std::string&);
 
   // keep some interned strings, helpful for global constants and debug info
-  typedef std::unordered_map<std::string, std::string> InternConstVars;
+  using InternConstVars = std::unordered_map<std::string, std::string>;
   InternConstVars internConstVars;
 
 #if LLVM_VERSION_MAJOR >= 11
@@ -258,7 +258,7 @@ private:
 
   // keep track of monotyped definitions as expressions
   // (in case we want to inline them later)
-  typedef std::map<std::string, ExprPtr> GlobalExprs;
+  using GlobalExprs = std::map<std::string, ExprPtr>;
   GlobalExprs globalExprs;
 
 #if LLVM_VERSION_MAJOR >= 11
@@ -267,7 +267,7 @@ private:
 };
 
 // shorthand for compilation over a sequence of expressions
-typedef std::vector<llvm::Value*> Values;
+using Values = std::vector<llvm::Value *>;
 
 Values compile(jitcc*, const Exprs&);
 Values compileArgs(jitcc*, const Exprs&);

@@ -51,8 +51,8 @@ void bindArguments(hobbes::cc& ctx, const Args::NameVals& args) {
   // value-level binding
   //   arguments :: [[char]*[char]]
   //   arguments = [("foo", "bar"), ...]
-  typedef std::pair<array<char>*, array<char>*> StrPair;
-  typedef array<StrPair> StrPairs;
+  using StrPair = std::pair<array<char> *, array<char> *>;
+  using StrPairs = array<StrPair>;
 
   auto* arguments = reinterpret_cast<StrPairs*>(malloc(sizeof(long) + args.size() * sizeof(StrPair)));
   arguments->size = 0;
@@ -232,7 +232,7 @@ void evaluator::printAssembly(const std::string& expr, void (*f)(void*,size_t)) 
 }
 
 void evaluator::perfTestExpr(const std::string& expr) {
-  typedef void (*pvthunk)();
+  using pvthunk = void (*)();
   pvthunk f = this->ctx.compileFn<void()>(readExpr("let x = (" + expr + ") in ()"));
   f();
 
@@ -265,7 +265,7 @@ void evaluator::breakdownEvalExpr(const std::string& expr) {
   long ust = hobbes::tick() - t0;
 
   t0 = hobbes::tick();
-  typedef void (*pvthunk)();
+  using pvthunk = void (*)();
   pvthunk f = this->ctx.compileFn<void()>(e);
   long ct = hobbes::tick() - t0;
 

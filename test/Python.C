@@ -59,7 +59,7 @@ static std::string mkFName(const std::string& ext = "db") {
 }
 #endif
 
-typedef std::array<int, 10> IArr;
+using IArr = std::array<int, 10>;
 DEFINE_STRUCT(
   TestStruct,
   (int, x),

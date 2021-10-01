@@ -879,7 +879,7 @@ void serializeGroundInstances(const TEnvPtr& tenv, const TClass* c, const TCInst
   }
 }
 
-typedef std::vector<const TClass*> Classes;
+using Classes = std::vector<const TClass *>;
 
 void serializeGroundClasses(const TEnvPtr& tenv, const Classes& cs, std::ostream& out) {
   encode(cs.size(), out);

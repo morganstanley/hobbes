@@ -4,7 +4,7 @@
 
 namespace hobbes {
 
-typedef std::map<std::string, terminal*> symbols;
+using symbols = std::map<std::string, terminal *>;
 
 terminal* sym(symbols* ss, const std::string& x) {
   auto si = ss->find(x);
@@ -17,7 +17,7 @@ terminal* sym(symbols* ss, const std::string& x) {
   }
 }
 
-typedef std::map<char, terminal*> chars;
+using chars = std::map<char, terminal *>;
 
 terminal* chr(chars* cs, char x) {
   auto ci = cs->find(x);

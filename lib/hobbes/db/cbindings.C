@@ -16,8 +16,8 @@ struct DynCumFreqState {
   }
   uint8_t maxSymbol;
 
-  typedef uint16_t index_t;
-  typedef uint16_t symbol;
+  using index_t = uint16_t;
+  using symbol = uint16_t;
 
   index_t symbolCount() const { return static_cast<index_t>(this->maxSymbol)+1; }
   symbol  esc()         const { return static_cast<symbol>(symbolCount()); }
@@ -80,10 +80,10 @@ public:
   ~DynDModel0() {
   }
 
-  typedef DynCumFreqState CFS;
-  typedef typename CFS::index_t index_t;
-  typedef typename CFS::symbol  symbol;
-  typedef typename CFS::CModel  CModel;
+  using CFS = DynCumFreqState;
+  using index_t = typename CFS::index_t;
+  using symbol = typename CFS::symbol;
+  using CModel = typename CFS::CModel;
 
   struct PModel {
     PModel(bool input, uint8_t maxSymbol) : freqs(0), activeFreqs(0), pc(0), input(input), lc(0) {
@@ -211,7 +211,7 @@ public:
   }
 
   uint8_t read(DynDModel0* dm) {
-    typedef uint16_t symbol;
+    using symbol = uint16_t;
 
     symbol s=0;
     arithn::code clow=0, chigh=0;

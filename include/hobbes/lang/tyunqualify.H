@@ -9,12 +9,12 @@
 
 namespace hobbes {
 
-typedef std::set<std::string> SymSet;
+using SymSet = std::set<std::string>;
 
 // how do some parameters of a constraint determine others?
-typedef std::vector<int>       VarIDs;
-typedef std::pair<VarIDs, int> FunDep;
-typedef std::vector<FunDep>    FunDeps;
+using VarIDs = std::vector<int>;
+using FunDep = std::pair<VarIDs, int>;
+using FunDeps = std::vector<FunDep>;
 
 // if E :: T and R.satisfied(T), then R.unqualify(E)
 class Unqualifier {
@@ -44,12 +44,12 @@ class Unqualifier {
     // list functional dependencies between constraint parameters (if any)
     virtual FunDeps dependencies(const ConstraintPtr&) const = 0;
 };
-typedef std::shared_ptr<Unqualifier> UnqualifierPtr;
+using UnqualifierPtr = std::shared_ptr<Unqualifier>;
 
 // type predicates are resolved by an assumed disjoint set of unqualifiers
 class UnqualifierSet : public Unqualifier {
   public:
-    typedef std::map<std::string, UnqualifierPtr> Unqualifiers;
+    using Unqualifiers = std::map<std::string, UnqualifierPtr>;
 
     void                add(const std::string& name, const UnqualifierPtr& uq);
     UnqualifierPtr      findUnqualifier(const std::string& name);
@@ -66,7 +66,7 @@ class UnqualifierSet : public Unqualifier {
   private:
     Unqualifiers uqs;
 };
-typedef std::shared_ptr<UnqualifierSet> UnqualifierSetPtr;
+using UnqualifierSetPtr = std::shared_ptr<UnqualifierSet>;
 
 // utilities to remove discharged type predicates
 bool hasConstraint(const ConstraintPtr& c, const Constraints& cs);

@@ -16,8 +16,8 @@ namespace hobbes {
 template <typename K, typename V, typename Ord>
   class range_map {
   public:
-    typedef std::pair<K, K> range;
-    typedef std::vector<range> ranges;
+    using range = std::pair<K, K>;
+    using ranges = std::vector<range>;
 
     // show the state of this range map
     void show(std::ostream& out) const {
@@ -239,7 +239,7 @@ template <typename K, typename V, typename Ord>
       }
     }
 
-    typedef std::vector<std::pair<range, V>> Mapping;
+    using Mapping = std::vector<std::pair<range, V>>;
     Mapping mapping() const {
       Mapping r;
       for (size_t i = 0; i < this->rs.size(); ++i) {
@@ -353,7 +353,7 @@ template <typename K, typename V, typename Ord>
       assert(rangesValid());
     }
   private:
-    typedef std::vector<V> values;
+    using values = std::vector<V>;
     ranges rs;
     values vs;
 

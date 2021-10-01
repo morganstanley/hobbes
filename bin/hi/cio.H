@@ -7,7 +7,7 @@
 namespace hi {
 
 // controls display options
-typedef unsigned char color;
+using color = unsigned char;
 
 DEFINE_STRUCT(ConsoleColors,
   (color, promptfg),

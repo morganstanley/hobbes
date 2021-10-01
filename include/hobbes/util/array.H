@@ -14,11 +14,11 @@
 namespace hobbes {
 
 // a unit value, since C++ doesn't handle 'void' correctly
-typedef unsigned char UnitV;
+using UnitV = unsigned char;
 static const UnitV unitv = 0x00;
 
 // byte sequences, a common type of array
-typedef std::vector<uint8_t> bytes;
+using bytes = std::vector<uint8_t>;
 
 // shorthand for list construction (maybe not necessary with C++ initializer lists)
 template <typename T>

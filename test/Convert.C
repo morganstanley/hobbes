@@ -23,7 +23,7 @@ template <typename T, size_t N>
 using namespace hobbes;
 
 // the type we want to convert FROM (the type we receive)
-typedef std::array<int, 5> IArr;
+using IArr = std::array<int, 5>;
 
 DEFINE_VARIANT(
   Friend,
@@ -40,7 +40,7 @@ DEFINE_STRUCT(
 );
 
 // the type we want to convert TO
-typedef std::array<size_t,5> LArr;
+using LArr = std::array<size_t, 5>;
 
 DEFINE_VARIANT(
   NewFriend,

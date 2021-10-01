@@ -477,7 +477,7 @@ bool lookback(const parserdef& p, nat q, terminal* r, const rule& w, const trans
 }
 
 // for a rule w and sym A, find all prefixes b such that w = bAs, s =>* eps
-typedef std::vector<terminals> prefixes;
+using prefixes = std::vector<terminals>;
 
 prefixes endingAt(const parserdef& p, const rule& w, terminal* a) {
   prefixes r;
@@ -522,7 +522,7 @@ terminalset directReads(const parserdef& p, const transition& x) {
 // a utility to make it easier to create closures
 template <typename E, typename X0, typename R>
   struct clos1 {
-    typedef R (*PFN)(const E&, const X0&);
+    using PFN = R (*)(const E &, const X0 &);
     const E& env;
     PFN      fn;
     
@@ -532,7 +532,7 @@ template <typename E, typename X0, typename R>
 
 template <typename E, typename X0, typename X1, typename R>
   struct clos2 {
-    typedef R (*PFN)(const E&, const X0&, const X1&);
+    using PFN = R (*)(const E &, const X0 &, const X1 &);
     const E& env;
     PFN      fn;
 
@@ -541,13 +541,13 @@ template <typename E, typename X0, typename X1, typename R>
   };
 
 // typedefs to work around type inference failure for the below digraph expressions
-typedef terminalset (*ptsappend)(const terminalset&, const terminalset&);
+using ptsappend = terminalset (*)(const terminalset &, const terminalset &);
 
-typedef clos1<parserdef, transition,             terminalset> DRT;
-typedef clos2<parserdef, transition, transition, bool>        readsT;
+using DRT = clos1<parserdef, transition, terminalset>;
+using readsT = clos2<parserdef, transition, transition, bool>;
 
-typedef clos1<transition_lookahead, transition,             terminalset> RT;
-typedef clos2<parserdef,            transition, transition, bool>        includesT;
+using RT = clos1<transition_lookahead, transition, terminalset>;
+using includesT = clos2<parserdef, transition, transition, bool>;
 
 // compute Read(x=(s,A)) = directReads(s,A) + (Read(q,B) | (s,A) reads (q,B))
 transition_lookahead Reads(const parserdef& p, const transitionset& ts) {

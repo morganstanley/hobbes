@@ -359,8 +359,8 @@ public:
       return builder()->CreateSwitch(tag, failBlock, v->bindings().size());
     });
 
-    typedef std::pair<llvm::Value*, llvm::BasicBlock*> MergeLink;
-    typedef std::vector<MergeLink> MergeLinks;
+    using MergeLink = std::pair<llvm::Value *, llvm::BasicBlock *>;
+    using MergeLinks = std::vector<MergeLink>;
     MergeLinks mergeLinks;
 
     for (auto b = v->bindings().begin(); b != v->bindings().end(); ++b) {
@@ -448,8 +448,8 @@ public:
       return builder()->CreateSwitch(e, failBlock, v->bindings().size());
     });
 
-    typedef std::pair<llvm::Value*, llvm::BasicBlock*> MergeLink;
-    typedef std::vector<MergeLink> MergeLinks;
+    using MergeLink = std::pair<llvm::Value *, llvm::BasicBlock *>;
+    using MergeLinks = std::vector<MergeLink>;
     MergeLinks mergeLinks;
 
     return withContext([&](auto& c) -> llvm::Value* {

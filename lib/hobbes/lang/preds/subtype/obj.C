@@ -359,7 +359,7 @@ struct ObjUnqualify : public switchExprTyFn {
     }
   }
 
-  typedef std::vector<size_t> Idxs;
+  using Idxs = std::vector<size_t>;
 
   static Idxs coercionIndexes(const TEnvPtr& tenv, const ExprPtr& fe, const MonoTypePtr& convTo, Definitions* ds) {
     QualTypePtr fty  = validateType(tenv, fe, ds)->type();

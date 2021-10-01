@@ -159,8 +159,8 @@ public:
   // this is useful for deciding an efficient form of call instruction just if we are within 32-bits of the target
   // but need to degrade to a less efficient (larger code size) call if not
 # define HMC_MAX_PATCH_LEN 16
-  typedef std::array<uint8_t, HMC_MAX_PATCH_LEN>                     PatchBuffer;
-  typedef std::function<void(const uint8_t*,PatchBuffer*,uint32_t*)> PatchFn;
+  using PatchBuffer = std::array<uint8_t, 16>;
+  using PatchFn = std::function<void (const uint8_t *, PatchBuffer *, uint32_t *)>;
 
   void patchWithRIP(const PatchFn& pfn) {
     // make the initial patch and remember how many bytes it used initially
@@ -190,7 +190,7 @@ public:
   }
 
   // finalize the buffer so that we can execute its code
-  typedef void (*ThunkF)();
+  using ThunkF = void (*)();
 
   ThunkF finalize() {
     resolveLabelReferences();
@@ -210,8 +210,8 @@ private:
   uint8_t* mem;
 
   // label defs/refs
-  typedef std::map<std::string, size_t>              LabelDefs;
-  typedef std::map<std::string, std::vector<size_t>> LabelRefs;
+  using LabelDefs = std::map<std::string, size_t>;
+  using LabelRefs = std::map<std::string, std::vector<size_t>>;
 
   LabelDefs labelDefs;
   LabelRefs labelRefs;
@@ -237,8 +237,8 @@ private:
   }
 
   // keep track of RIP-dependent patches and re-derive them when we grow our buffer (which should be an infrequent event)
-  typedef std::pair<PatchFn, uint32_t> Patch;
-  typedef std::map<const uint8_t*, Patch> Patches;
+  using Patch = std::pair<PatchFn, uint32_t>;
+  using Patches = std::map<const uint8_t *, Patch>;
 
   Patches ripPatches;
 
@@ -305,7 +305,7 @@ private:
   // apply cumulative adjustments at fixed offsets to source offsets
   // this allows us to make insertions in exec buffers and "fix up" references to offsets in the original buffer
   // (e.g. if we had an offset to 5 before, but inserted 2 bytes at 3, then our offset should be adjusted to 7)
-  typedef std::map<size_t, int> CumAdjustments;
+  using CumAdjustments = std::map<size_t, int>;
 
   static size_t applyCumAdjustments(const CumAdjustments& cadj, size_t offset) {
     auto leb = cadj.lower_bound(offset);
@@ -358,7 +358,7 @@ private:
  *
  *       Where 'sz' means value size in bytes and 'ty' means register class (int or float).
  */
-typedef uint8_t RegSize; // 1,2,4,8
+using RegSize = uint8_t; // 1,2,4,8
 enum RegClass { Int, Float };
 
 template <typename RegisterID>
@@ -635,7 +635,7 @@ enum X86Reg : uint8_t {
 };
 
 // an instruction argument using x86 machine register IDs is a 'machine arg'
-typedef Arg<X86Reg> MArg;
+using MArg = Arg<X86Reg>;
 
 // by tradition, there are some special names for some of the registers
 // we should be consistent with those naming standards when interfacing with humans
@@ -850,8 +850,8 @@ template <typename RegisterID>
 using Instructions = std::vector<Instruction<RegisterID>>;
 
 // an instruction using x86 machine registers is a 'machine instruction'
-typedef Instruction<X86Reg> MInst;
-typedef std::vector<MInst>  MInsts;
+using MInst = Instruction<X86Reg>;
+using MInsts = std::vector<MInst>;
 
 // print instructions and instruction sequences for human display
 template <typename RegisterID>
@@ -1271,8 +1271,8 @@ private:
 // we should also be able to infer which arguments are in/out/inout here
 class Match {
 public:
-  typedef std::vector<Rule> RuleSeq;
-  typedef std::vector<int>  VarRefs;
+  using RuleSeq = std::vector<Rule>;
+  using VarRefs = std::vector<int>;
 
   Match() { /* invalid */ }
   Match(const RuleSeq& rules) {
@@ -1651,14 +1651,14 @@ private:
 
 #ifndef HMC_ENCODE_NO_INLINE_CODETABLES
 
-typedef std::map<std::string, Match> EncodingTable;
+using EncodingTable = std::map<std::string, Match>;
 
 inline void bootEncodingTable(EncodingTable& t) {
-  typedef Output&            O;
-  typedef const Reg<X86Reg>& R;
-  typedef const RM&          RM;
-  typedef const Immediate&   I;
-  typedef const LabelRef&    LR;
+  using O = Output &;
+  using R = const Reg<X86Reg> &;
+  using RM = const RM &;
+  using I = const Immediate &;
+  using LR = const LabelRef &;
 
   t["add"] = Match({
     Rule(io(P::reg("al")),  P::imm8(),  [](O o, I ib){o(        ui8(0x04), ui8(ib));}),

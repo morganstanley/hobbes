@@ -11,7 +11,7 @@ namespace hobbes {
 /******************
  * global set of client connections
  ******************/
-typedef std::set<Client*> Connections;
+using Connections = std::set<Client *>;
 static Connections connections;
 
 bool isAllocatedConnection(Client* c) {

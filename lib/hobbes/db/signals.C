@@ -17,11 +17,11 @@
 namespace hobbes {
 
 // imported from 'bindings' (some refactoring might be good here)
-typedef std::pair<MonoTypePtr, ExprPtr> FRefT;
+using FRefT = std::pair<MonoTypePtr, ExprPtr>;
 FRefT assumeFRefT(const MonoTypePtr&, const LexicalAnnotation&);
 
-typedef std::pair<bool, MonoTypePtr> UTFileConfig;
-typedef std::pair<bool, const Record*> FileConfig;
+using UTFileConfig = std::pair<bool, MonoTypePtr>;
+using FileConfig = std::pair<bool, const Record *>;
 bool unpackFileType(const MonoTypePtr& fty, UTFileConfig* fcfg);
 bool unpackFileType(const MonoTypePtr& fty, FileConfig* fcfg);
 
@@ -29,10 +29,10 @@ MonoTypePtr injFileReferences(const MonoTypePtr&, const ExprPtr&);
 
 // raise a signal when a particular range of bytes in a file have been changed
 // (and include the reference to the file offset that changed)
-typedef bool (*ChangeSignal)(long);
-typedef std::set<ChangeSignal> ChangeSignals;
+using ChangeSignal = bool (*)(long);
+using ChangeSignals = std::set<ChangeSignal>;
 
-typedef std::vector<uint8_t> bytes;
+using bytes = std::vector<uint8_t>;
 
 enum BROffsetType : uint8_t { Binding=0, DArray=1, Value=2 };
 
@@ -43,7 +43,7 @@ struct ByteRangeWatch {
   ChangeSignals          fs;
 };
 
-typedef std::map<uint64_t, ByteRangeWatch> ByteRangeWatches;
+using ByteRangeWatches = std::map<uint64_t, ByteRangeWatch>;
 
 struct FileWatch {
   std::string      filePath;
@@ -82,7 +82,7 @@ void sweepFileWatch(FileWatch& fw) {
   }
 }
 
-typedef std::vector<FileWatch> FileWatches;
+using FileWatches = std::vector<FileWatch>;
 
 #ifdef BUILD_LINUX
 // on Linux, we can use inotify to watch for file updates
@@ -196,9 +196,9 @@ SystemWatch* watcher() {
 }
 #endif
 
-typedef std::pair<uint8_t, uint64_t>                            IsArrOldVal;
-typedef std::pair<uint64_t, IsArrOldVal>                        OffsetData;
-typedef std::pair<const array<char>*, const array<OffsetData>*> FileWatchData;
+using IsArrOldVal = std::pair<uint8_t, uint64_t>;
+using OffsetData = std::pair<uint64_t, IsArrOldVal>;
+using FileWatchData = std::pair<const array<char> *, const array<OffsetData> *>;
 
 const array<FileWatchData>* fileWatchData() {
   const SystemWatch&    w = *watcher();

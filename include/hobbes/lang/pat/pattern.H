@@ -14,12 +14,12 @@
 
 namespace hobbes {
 
-typedef std::vector<size_t> Idxs;
+using Idxs = std::vector<size_t>;
 
 // the main signature for this module -- convert a pattern match expression to a primitive compilable expression
 class Pattern;
-typedef std::shared_ptr<Pattern> PatternPtr;
-typedef std::vector<PatternPtr>  Patterns;
+using PatternPtr = std::shared_ptr<Pattern>;
+using Patterns = std::vector<PatternPtr>;
 
 struct PatternRow {
   inline PatternRow() { }
@@ -30,8 +30,8 @@ struct PatternRow {
   ExprPtr  guard;    // a required condition for a match (may be null if there is no guard)
   ExprPtr  result;   // the expression to be evaluated when the given pattern conditions are met
 };
-typedef std::vector<PatternRow> PatternRows;
-typedef std::shared_ptr<std::vector<std::pair<size_t, PatternRow>>> UnreachableMatchRowsPtr;
+using PatternRows = std::vector<PatternRow>;
+using UnreachableMatchRowsPtr = std::shared_ptr<std::vector<std::pair<size_t, PatternRow>>>;
 
 // support quick hashing of pattern tables
 bool operator==(const PatternRow&, const PatternRow&);
@@ -76,7 +76,7 @@ private:
 template <typename Case>
   class PatternCase : public Pattern {
   public:
-    typedef PatternCase<Case> Base;
+    using Base = PatternCase<Case>;
     PatternCase(const LexicalAnnotation&);
   };
 
@@ -170,8 +170,8 @@ private:
 // match a record of patterns
 class MatchRecord : public PatternCase<MatchRecord> {
 public:
-  typedef std::pair<std::string, PatternPtr> Field;
-  typedef std::vector<Field>                 Fields;
+  using Field = std::pair<std::string, PatternPtr>;
+  using Fields = std::vector<Field>;
 
   MatchRecord(const Fields& fs, const LexicalAnnotation&); // default indexes = [0,fs.size())
 
@@ -290,8 +290,8 @@ struct CSelection {
   ExprPtr    seq;
   Exprs      conds;
 };
-typedef std::shared_ptr<CSelection> CSelectionPtr;
-typedef std::vector<CSelectionPtr> CSelections;
+using CSelectionPtr = std::shared_ptr<CSelection>;
+using CSelections = std::vector<CSelectionPtr>;
 
 Expr* desugarComprehension(cc* c, const ExprPtr& ex, const CSelections& cs, const LexicalAnnotation& la);
 

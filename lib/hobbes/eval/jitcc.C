@@ -1147,7 +1147,7 @@ llvm::Value* jitcc::loadConstant(const std::string& vn) {
 void jitcc::defineGlobal(const std::string& vn, const ExprPtr& ue) {
   std::string vname = vn.empty() ? (".global" + freshName()) : vn;
   this->globalExprs[vn] = ue;
-  typedef void (*Thunk)();
+  using Thunk = void (*)();
   MonoTypePtr uety = requireMonotype(this->tenv, ue);
 
   if (isUnit(uety)) {

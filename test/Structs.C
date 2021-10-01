@@ -81,8 +81,8 @@ TEST(Structs, Consts) {
   EXPECT_TRUE(c().compileFn<bool()>("(1,\"jimmy\",13L).1 == \"jimmy\"")());
   EXPECT_TRUE(c().compileFn<bool()>("(if (0 == 0) then (1,2) else (3,4)).0 == 1")());
 
-  typedef std::pair<unsigned char, double> FWeight;
-  typedef array<FWeight>                   FWeights;
+  using FWeight = std::pair<unsigned char, double>;
+  using FWeights = array<FWeight>;
   EXPECT_EQ(c().compileFn<FWeights*()>("[(0XAE, 1.2),(0XBD, 2.4),(0XFF, 5.9)]")()->data[1].second, 2.4);
 }
 
@@ -193,8 +193,8 @@ TEST(Structs, LiftTuple) {
   EXPECT_TRUE(c().compileFn<bool(const hobbes::tuple<short,int,std::string>&)>("p", "p==(42,314159,\"jimmy\")")(p));
 }
 
-typedef variant<unit, AlignA> MaybeAlignA;
-typedef variant<unit, AlignB> MaybeAlignB;
+using MaybeAlignA = variant<unit, AlignA>;
+using MaybeAlignB = variant<unit, AlignB>;
 
 DEFINE_STRUCT(AlignTest,
   (MaybeAlignA, ma),

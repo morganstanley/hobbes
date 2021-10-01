@@ -48,7 +48,7 @@ const hobbes::array<char>* showTick(long x) {
 void enableConsoleCmds(bool f);
 
 // spawn sub-processes and support basic I/O
-typedef std::pair<int, int> PIO;
+using PIO = std::pair<int, int>;
 
 const PIO* pexec(const hobbes::array<char>* cmd) {
   PIO* p = hobbes::make<PIO>(0, 0);

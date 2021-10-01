@@ -22,7 +22,7 @@ struct eventcbclosure {
   int                      fd;
   std::function<void(int)> fn;
 };
-typedef std::map<int, eventcbclosure*> EventClosures;
+using EventClosures = std::map<int, eventcbclosure *>;
 
 void registerEventHandler(int fd, eventhandler fn, void* ud, bool f) {
   registerEventHandler(fd, [fn,ud](int c){fn(c,ud);}, f);

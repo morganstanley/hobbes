@@ -12,7 +12,7 @@
 
 namespace hobbes {
 
-typedef __int128 int128_t;
+using int128_t = __int128;
 
 class Expr : public LexicallyAnnotated {
 public:
@@ -42,7 +42,7 @@ private:
 template <typename Case>
   class ExprCase : public Expr {
   public:
-    typedef ExprCase<Case> Base;
+    using Base = ExprCase<Case>;
     ExprCase(const LexicalAnnotation&);
     virtual bool operator==(const Case&) const = 0;
 
@@ -57,11 +57,11 @@ template <typename Case>
     }
   };
 
-typedef std::shared_ptr<Expr> ExprPtr;
-typedef std::vector<ExprPtr>  Exprs;
+using ExprPtr = std::shared_ptr<Expr>;
+using Exprs = std::vector<ExprPtr>;
 
-typedef std::pair<std::string, ExprPtr> Definition;
-typedef std::vector<Definition>         Definitions;
+using Definition = std::pair<std::string, ExprPtr>;
+using Definitions = std::vector<Definition>;
 
 std::string show(const Expr& e);
 std::string show(const Expr* e);
@@ -85,17 +85,17 @@ public:
   // for efficient case dispatch
   Primitive(int cid, const LexicalAnnotation&);
 };
-typedef std::shared_ptr<Primitive> PrimitivePtr;
+using PrimitivePtr = std::shared_ptr<Primitive>;
 
 struct PrimPtrLT {
   bool operator()(const PrimitivePtr&, const PrimitivePtr&) const;
 };
-typedef std::set<PrimitivePtr, PrimPtrLT> PrimitiveSet;
+using PrimitiveSet = std::set<PrimitivePtr, PrimPtrLT>;
 
 template <typename Case>
   class PrimitiveCase : public Primitive {
   public:
-    typedef PrimitiveCase<Case> Base;
+    using Base = PrimitiveCase<Case>;
     PrimitiveCase(const LexicalAnnotation&);
     virtual bool equiv(const Case&) const = 0;
     virtual bool lt(const Case&) const = 0;
@@ -325,8 +325,8 @@ private:
 // local mutually-recursive function definition
 class LetRec : public ExprCase<LetRec> {
 public:
-  typedef std::pair<std::string, ExprPtr> Binding;
-  typedef std::vector<Binding> Bindings;
+  using Binding = std::pair<std::string, ExprPtr>;
+  using Bindings = std::vector<Binding>;
 
   LetRec(const Bindings&, const ExprPtr&, const LexicalAnnotation&);
   bool operator==(const LetRec&) const override;
@@ -351,7 +351,7 @@ private:
 // \x0...xn -> E (function introduction)
 class Fn : public ExprCase<Fn> {
 public:
-  typedef std::vector<std::string> VarNames;
+  using VarNames = std::vector<std::string>;
 
   Fn(const VarNames& vs, const ExprPtr& e, const LexicalAnnotation&);
   bool operator==(const Fn&) const override;
@@ -459,8 +459,8 @@ private:
 // {f0=E0,...,fN=EN} (record introduction)
 class MkRecord : public ExprCase<MkRecord> {
 public:
-  typedef std::pair<std::string, ExprPtr> FieldDef;
-  typedef std::vector<FieldDef>           FieldDefs;
+  using FieldDef = std::pair<std::string, ExprPtr>;
+  using FieldDefs = std::vector<FieldDef>;
 
   MkRecord(const FieldDefs& fs, const LexicalAnnotation&);
   bool operator==(const MkRecord&) const override;
@@ -516,7 +516,7 @@ public:
     std::string vname;
     ExprPtr     exp;
   };
-  typedef std::vector<Binding> Bindings;
+  using Bindings = std::vector<Binding>;
 
   Case(const ExprPtr& v, const Bindings& bs, const LexicalAnnotation&);
   Case(const ExprPtr& v, const Bindings& bs, const ExprPtr& def, const LexicalAnnotation&);
@@ -554,7 +554,7 @@ public:
     PrimitivePtr value;
     ExprPtr      exp;
   };
-  typedef std::vector<Binding> Bindings;
+  using Bindings = std::vector<Binding>;
 
   Switch(const ExprPtr& v, const Bindings& bs, const LexicalAnnotation&);
   Switch(const ExprPtr& v, const Bindings& bs, const ExprPtr& def, const LexicalAnnotation&);
@@ -1046,7 +1046,7 @@ inline Exprs exprs(const Case::Bindings& bs) {
 // replaces instances of a given variable name with the specified expression
 //  (NOTE: this does nothing to prevent variable capture, other than respecting shadowing)
 //  (ie: the free variables of the substituted expression should be disjoint with program variables)
-typedef std::map<std::string, ExprPtr> VarMapping;
+using VarMapping = std::map<std::string, ExprPtr>;
 ExprPtr substitute(const VarMapping& vm, const ExprPtr& e, bool* mapped = 0);
 
 // apply a type substitution across an expression
@@ -1291,8 +1291,8 @@ template <typename T>
 
 template <typename K, typename T>
   std::vector< std::pair<K, T> > switchOf(const std::vector< std::pair<K, ExprPtr> >& kes, const switchExpr<T>& f) {
-    typedef std::pair<K, T> KT;
-    typedef std::vector<KT> KTS;
+    using KT = std::pair<K, T>;
+    using KTS = std::vector<KT>;
     KTS kts;
     for (auto ke : kes) {
       kts.push_back(KT(ke.first, switchOf(ke.second, f)));
@@ -1302,8 +1302,8 @@ template <typename K, typename T>
 
 template <typename K, typename T>
   std::vector< std::pair<K, T> > switchOf(const std::vector< std::pair<K, ExprPtr> >& kes, const switchExprM<T>& f) {
-    typedef std::pair<K, T> KT;
-    typedef std::vector<KT> KTS;
+    using KT = std::pair<K, T>;
+    using KTS = std::vector<KT>;
     KTS kts;
     for (auto ke : kes) {
       kts.push_back(KT(ke.first, switchOf(ke.second, const_cast<switchExprM<T>&>(f))));
@@ -1402,7 +1402,7 @@ ExprPtr stripExplicitAssumptions(const ExprPtr&);
 const ExprPtr& stripAssumpHead(const ExprPtr&);
 
 // find the free variables in a term
-typedef std::set<std::string> VarSet;
+using VarSet = std::set<std::string>;
 
 VarSet freeVars(const ExprPtr&);
 VarSet freeVars(const Expr&);

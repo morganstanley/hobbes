@@ -92,7 +92,7 @@ void sendFileContents(NetConnection& connection, const openfd& sfd) {
 
 void sendSegmentFiles(NetConnection& connection, const std::string& localdir) {
   // poll for segment files
-  typedef std::map<time_t, std::set<std::string>> OrderedSegFiles;
+  using OrderedSegFiles = std::map<time_t, std::set<std::string>>;
   OrderedSegFiles segfiles;
 
   glob_t g;

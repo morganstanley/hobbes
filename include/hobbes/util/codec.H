@@ -10,7 +10,7 @@
 
 namespace hobbes {
 
-typedef __int128 int128_t;
+using int128_t = __int128;
 
 #define PRIM_CODEC(T) \
   inline void encode(T x, std::ostream& out) { out.write(reinterpret_cast<const char*>(&x), sizeof(x)); } \

@@ -89,12 +89,12 @@ struct Session {
   hobbes::writer* db;
 
   // sections of the file for structured data
-  typedef std::vector<hobbes::StoredSeries*> StoredSeriess;
+  using StoredSeriess = std::vector<hobbes::StoredSeries *>;
   StoredSeriess streams;
 
   // functions for actually writing stream data
-  typedef void (*WriteFn)(hobbes::storage::Transaction*);
-  typedef std::vector<WriteFn> WriteFns;
+  using WriteFn = void (*)(hobbes::storage::Transaction *);
+  using WriteFns = std::vector<WriteFn>;
 
   WriteFns writeFns;
 

@@ -21,7 +21,7 @@ public:
 private:
   friend struct ProcManUnqualify;
 
-  typedef std::map<std::string, proc> SpawnedProcs;
+  using SpawnedProcs = std::map<std::string, proc>;
   SpawnedProcs procs;
 
   const proc& lp(long) const;

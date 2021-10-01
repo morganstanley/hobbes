@@ -23,7 +23,7 @@ public:
 private:
   GrammarValue();
 };
-typedef std::shared_ptr<GrammarValue> GrammarValuePtr;
+using GrammarValuePtr = std::shared_ptr<GrammarValue>;
 
 class GSymRef : public GrammarValue {
 public:
@@ -70,7 +70,7 @@ struct BoundGrammarValue {
   std::string     varname;
   GrammarValuePtr element;
 };
-typedef std::vector<BoundGrammarValue> BoundGrammarValues;
+using BoundGrammarValues = std::vector<BoundGrammarValue>;
 
 struct GrammarRule {
   inline GrammarRule(const BoundGrammarValues& vs, const ExprPtr& e) : values(vs), reduction(e) { }
@@ -78,10 +78,10 @@ struct GrammarRule {
   BoundGrammarValues values;
   ExprPtr            reduction;
 };
-typedef std::vector<GrammarRule> GrammarRules;
+using GrammarRules = std::vector<GrammarRule>;
 
-typedef std::pair<std::string, GrammarRules> GrammarSymDef;
-typedef std::vector<GrammarSymDef> Grammar;
+using GrammarSymDef = std::pair<std::string, GrammarRules>;
+using Grammar = std::vector<GrammarSymDef>;
 
 // allow the construction of parsers from grammars
 class cc;

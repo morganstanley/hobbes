@@ -419,10 +419,10 @@ void RawStoredSeries::consBatchNode(uint64_t nextPtr) {
   *this->headNodeRef = this->batchNode;
 }
 
-typedef array<int>           PBatch;
-typedef fileref<PBatch*>     PBatchRef;
-typedef dbseq<PBatchRef>     PBatchList;
-typedef fileref<PBatchList*> PBatchListRef;
+using PBatch = array<int>;
+using PBatchRef = fileref<PBatch *>;
+using PBatchList = dbseq<PBatchRef>;
+using PBatchListRef = fileref<PBatchList *>;
 
 void RawStoredSeries::restartFromBatchNode() {
   auto* n = reinterpret_cast<PBatchList*>(this->outputFile->unsafeLoad(*this->headNodeRef, sizeof(PBatchList)));

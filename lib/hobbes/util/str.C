@@ -231,7 +231,7 @@ pair rsplit(const std::string& s, const std::string& ss) {
 }
 
 seq csplit(const std::string& str, const std::string& pivot) {
-  typedef std::string::size_type size_type;
+  using size_type = std::string::size_type;
 
   seq       ret;
   size_type mp = 0;
@@ -581,7 +581,7 @@ public:
     return r;
   }
 private:
-  typedef std::map<char, std::unique_ptr<ptnode>> Children;
+  using Children = std::map<char, std::unique_ptr<ptnode>>;
   Children children;
 
   // does this node complete a valid word?

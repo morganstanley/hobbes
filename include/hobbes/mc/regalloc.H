@@ -56,11 +56,11 @@ namespace hobbes { namespace mc {
 static const uint32_t MaxRegisters = 16;
 
 // instructions subject to register allocation have free register names (as strings)
-typedef Instructions<std::string> RInsts;
-typedef Instruction <std::string> RInst;
-typedef Arg         <std::string> RArg;
-typedef Reg         <std::string> RReg;
-typedef RegDeref    <std::string> RRegDeref;
+using RInsts = Instructions<std::string>;
+using RInst = Instruction<std::string>;
+using RArg = Arg<std::string>;
+using RReg = Reg<std::string>;
+using RRegDeref = RegDeref<std::string>;
 
 inline std::string stdRegName(X86Reg r, RegClass rc) {
   return regName(r, 8, rc);
@@ -215,8 +215,8 @@ inline std::set<std::string> regUses(const RInst& ri) {
 // a liveness module for instruction sequences with infinite named registers
 class RInstM {
 public:
-  typedef RInst       Instruction;
-  typedef std::string Var;
+  using Instruction = RInst;
+  using Var = std::string;
 
   RInstM(const RInsts& insts) {
     for (size_t pc = 0; pc < insts.size(); ++pc) {
@@ -427,7 +427,7 @@ public:
     }
   }
 private:
-  typedef std::map<VarID, std::set<VarID>> VarIDSets;
+  using VarIDSets = std::map<VarID, std::set<VarID>>;
 
   size_t    varc;
   VarSet    vtest;
@@ -588,7 +588,7 @@ public:
     return this->assignSeq;
   }
 
-  typedef std::map<VarID, VarID> VarAliasing;
+  using VarAliasing = std::map<VarID, VarID>;
 
   const VarAliasing& aliasedVars() const {
     return this->coalescedVars;
@@ -607,12 +607,12 @@ private:
   uint32_t degree     (VarID v) const { return this->ig->interferences(v).size(); }
 
   // divisions of the interference graph to evaluate
-  typedef std::set<VarID> VarList;
+  using VarList = std::set<VarID>;
   VarList removeVar, freezeVar, spillVar;
   VarSet  assignedVars;
 
-  typedef std::pair<VarID, VarID> Move;
-  typedef std::set<Move> MoveList;
+  using Move = std::pair<VarID, VarID>;
+  using MoveList = std::set<Move>;
   MoveList moves;
   MoveList delayedMoves;
 
@@ -918,7 +918,7 @@ private:
 // apply : replace var names in instructions, either mapping into the space of fewer var names or into the space
 //         of machine registers
 //
-typedef std::map<std::string, X86Reg> RMSubst;
+using RMSubst = std::map<std::string, X86Reg>;
 
 inline MInst subst(const RMSubst& s, const RInst& i) {
   return
@@ -940,7 +940,7 @@ inline MInst subst(const RMSubst& s, const RInst& i) {
     );
 }
 
-typedef std::map<std::string, std::string> RRSubst;
+using RRSubst = std::map<std::string, std::string>;
 
 inline RInst subst(const RRSubst& s, const RInst& i) {
   return
@@ -1097,7 +1097,7 @@ size_t firstFit(const ProgramLiveness& live, const Interference& ig, const std::
 
 // spillFrame : calculate the spill frame for a set of variables to spill, packed into as few frame slots as possible
 //              computed offsets will be relative to a given frame size (and the frame size will be updated on exit)
-typedef std::map<VarID, uint32_t> SpillFrame;
+using SpillFrame = std::map<VarID, uint32_t>;
 
 inline SpillFrame spillFrame(const ProgramLiveness& live, const Interference& ig, uint32_t* sframe, const std::set<VarID>& spillVars) {
   // find a slot for each spilled var (creating as few as necessary)

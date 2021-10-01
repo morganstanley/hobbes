@@ -12,8 +12,8 @@ namespace hobbes {
 
 template <typename K, typename V, typename KMap>
   struct prefix_tree_node {
-    typedef typename KMap::template map<prefix_tree_node<K, V, KMap>*>::type SubkeyMap;
-    typedef variant<unit, V> MaybeV;
+    using SubkeyMap = typename KMap::template map<prefix_tree_node<K, V, KMap> *>::type;
+    using MaybeV = variant<unit, V>;
 
     ~prefix_tree_node() {
       for (typename SubkeyMap::const_iterator c = this->children.begin(); c != this->children.end(); ++c) {
@@ -38,7 +38,7 @@ template <typename K, typename V, typename KMap>
 template <typename K, typename V, typename KMap>
   class prefix_tree {
   private:
-    typedef prefix_tree_node<K, V, KMap> node_t;
+    using node_t = prefix_tree_node<K, V, KMap>;
     node_t* root;
 
     template <typename KIter>
@@ -94,7 +94,7 @@ template <typename K, typename V, typename KMap>
       return lookup(k.begin(), k.end());
     }
 
-    typedef std::vector<V> ValueSeq;
+    using ValueSeq = std::vector<V>;
     void values(ValueSeq* vs) const {
       this->root->values(vs);
     }
@@ -106,7 +106,7 @@ template <typename K, typename V, typename KMap>
     }
 
     // support incremental search
-    typedef void* point_t;
+    using point_t = void *;
     point_t rootPoint() const { return this->root; }
 
     point_t moveTo(const K& k, point_t base) const {
@@ -115,7 +115,7 @@ template <typename K, typename V, typename KMap>
       return (c == n->children.end()) ? 0 : c->second;
     }
 
-    typedef std::vector<K> KeySeq;
+    using KeySeq = std::vector<K>;
     void keysAt(KeySeq* ks, point_t base) const {
       const node_t* n = reinterpret_cast<node_t*>(base);
 
@@ -130,8 +130,8 @@ template <typename K, typename V, typename KMap>
       return r;
     }
 
-    typedef std::pair<K, point_t> KeyPoint;
-    typedef std::vector<KeyPoint> KeyPointSeq;
+    using KeyPoint = std::pair<K, point_t>;
+    using KeyPointSeq = std::vector<KeyPoint>;
     void keyPointsAt(KeyPointSeq* kps, point_t base) const {
       const node_t* n = reinterpret_cast<node_t*>(base);
 

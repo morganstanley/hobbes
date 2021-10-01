@@ -21,24 +21,24 @@ class MonoTypeUnifier;
 
 // forall a0..aN : T
 class PolyType;
-typedef std::shared_ptr<PolyType> PolyTypePtr;
-typedef std::vector<PolyTypePtr>    PolyTypes;
+using PolyTypePtr = std::shared_ptr<PolyType>;
+using PolyTypes = std::vector<PolyTypePtr>;
 
 // (C0, ..., Cn) => T
 class QualType;
-typedef std::shared_ptr<QualType> QualTypePtr;
-typedef std::vector<QualTypePtr>    QualTypes;
+using QualTypePtr = std::shared_ptr<QualType>;
+using QualTypes = std::vector<QualTypePtr>;
 
 // P(T)
 class Constraint;
-typedef std::shared_ptr<Constraint> ConstraintPtr;
-typedef std::vector<ConstraintPtr>    Constraints;
+using ConstraintPtr = std::shared_ptr<Constraint>;
+using Constraints = std::vector<ConstraintPtr>;
 
 // T
 class MonoType {
 public:
   virtual ~MonoType();
-  typedef std::shared_ptr<MonoType> ptr;
+  using ptr = std::shared_ptr<MonoType>;
 
   virtual void show(std::ostream&) const = 0;
   bool operator==(const MonoType& rhs) const;
@@ -57,7 +57,7 @@ private:
 
 public:
   // improves performance of identifying type variables and tgens
-  typedef std::set<std::string> TypeVarNames;
+  using TypeVarNames = std::set<std::string>;
   TypeVarNames freeTVars;
   int tgenCount;
 
@@ -68,8 +68,8 @@ public:
   mutable ptr unaliasedType;
 };
 
-typedef MonoType::ptr MonoTypePtr;
-typedef std::vector<MonoTypePtr>  MonoTypes;
+using MonoTypePtr = MonoType::ptr;
+using MonoTypes = std::vector<MonoTypePtr>;
 
 inline std::ostream& operator<<(std::ostream& out, const MonoTypePtr& t) {
   t->show(out);
@@ -78,13 +78,13 @@ inline std::ostream& operator<<(std::ostream& out, const MonoTypePtr& t) {
 
 // nested environments for types and type predicate resolvers
 class TEnv;
-typedef std::shared_ptr<TEnv> TEnvPtr;
+using TEnvPtr = std::shared_ptr<TEnv>;
 
 class Unqualifier;
-typedef std::shared_ptr<Unqualifier> UnqualifierPtr;
+using UnqualifierPtr = std::shared_ptr<Unqualifier>;
 
 class UnqualifierSet;
-typedef std::shared_ptr<UnqualifierSet> UnqualifierSetPtr;
+using UnqualifierSetPtr = std::shared_ptr<UnqualifierSet>;
 
 class TEnv {
 public:
@@ -111,12 +111,12 @@ public:
   TEnv* root();
 public:
   // get access to the internal type environment map (should only be used for debugging)
-  typedef std::map<std::string, PolyTypePtr> PolyTypeEnv;
+  using PolyTypeEnv = std::map<std::string, PolyTypePtr>;
 
   PolyTypeEnv typeEnvTable(std::function<std::string const&(std::string const&)> const& = [](std::string const& binding) -> std::string const& { return binding; }) const;
   str::set boundVariables() const;
 
-  typedef std::map<std::string, UnqualifierPtr> Unqualifiers;
+  using Unqualifiers = std::map<std::string, UnqualifierPtr>;
   const Unqualifiers& unqualifiers() const;
 private:
   TEnvPtr           parent;
@@ -129,7 +129,7 @@ public:
   MonoTypePtr unalias(const std::string&) const;
   bool isOpaqueTypeAlias(const std::string&) const;
 private:
-  typedef std::map<std::string, MonoTypePtr> TypeAliases;
+  using TypeAliases = std::map<std::string, MonoTypePtr>;
   TypeAliases typeAliases;
 
 public:
@@ -145,10 +145,10 @@ TEnvPtr fnFrame(const TEnvPtr&, const str::seq&, const MonoTypes&);
 TEnvPtr bindFrame(const TEnvPtr&, const std::string&, const MonoTypePtr&);
 TEnvPtr bindFrame(const TEnvPtr&, const std::string&, const QualTypePtr&);
 
-typedef std::string                   TVName;
-typedef std::vector<TVName>           Names;
-typedef std::set<TVName>              NameSet;
-typedef std::map<TVName, MonoTypePtr> MonoTypeSubst;
+using TVName = std::string;
+using Names = std::vector<TVName>;
+using NameSet = std::set<TVName>;
+using MonoTypeSubst = std::map<TVName, MonoTypePtr>;
 
 inline MonoTypeSubst substitution(const str::seq& ns, const MonoTypes& ts) {
   MonoTypeSubst s;
@@ -390,7 +390,7 @@ public:
     MonoTypePtr  type;
     unsigned int id;
   };
-  typedef std::vector<Member> Members;
+  using Members = std::vector<Member>;
 
   void show(std::ostream& out) const override;
 
@@ -440,7 +440,7 @@ public:
     MonoTypePtr type;
     int         offset;
   };
-  typedef std::vector<Member> Members;
+  using Members = std::vector<Member>;
 
   void show(std::ostream& out) const override;
 
@@ -634,7 +634,7 @@ private:
 // expressions in types
 //  (eventually we will need to eliminate the distinction between types and expressions)
 class Expr;
-typedef std::shared_ptr<Expr> ExprPtr;
+using ExprPtr = std::shared_ptr<Expr>;
 
 class TExpr : public MonoTypeCase<TExpr> {
 public:
@@ -712,35 +712,35 @@ template <typename T>
 struct CPtr {
   template <typename T>
     struct as {
-      typedef const T* ty;
+      using ty = const T *;
     };
 };
 
 struct MPtr {
   template <typename T>
     struct as {
-      typedef T* ty;
+      using ty = T *;
     };
 };
 
 template <typename T, typename Ptr, typename PtrC, typename F>
   T switchOfF(Ptr ty, F f) {
-    typedef typename PtrC::template as<Prim>::ty       PrimT;
-    typedef typename PtrC::template as<OpaquePtr>::ty  OpaquePtrT;
-    typedef typename PtrC::template as<TVar>::ty       TVarT;
-    typedef typename PtrC::template as<TGen>::ty       TGenT;
-    typedef typename PtrC::template as<TAbs>::ty       TAbsT;
-    typedef typename PtrC::template as<TApp>::ty       TAppT;
-    typedef typename PtrC::template as<FixedArray>::ty FixedArrayT;
-    typedef typename PtrC::template as<Array>::ty      ArrayT;
-    typedef typename PtrC::template as<Variant>::ty    VariantT;
-    typedef typename PtrC::template as<Record>::ty     RecordT;
-    typedef typename PtrC::template as<Func>::ty       FuncT;
-    typedef typename PtrC::template as<Exists>::ty     ExistsT;
-    typedef typename PtrC::template as<Recursive>::ty  RecursiveT;
-    typedef typename PtrC::template as<TString>::ty    TStringT;
-    typedef typename PtrC::template as<TLong>::ty      TLongT;
-    typedef typename PtrC::template as<TExpr>::ty      TExprT;
+    using PrimT = typename PtrC::template as<Prim>::ty;
+    using OpaquePtrT = typename PtrC::template as<OpaquePtr>::ty;
+    using TVarT = typename PtrC::template as<TVar>::ty;
+    using TGenT = typename PtrC::template as<TGen>::ty;
+    using TAbsT = typename PtrC::template as<TAbs>::ty;
+    using TAppT = typename PtrC::template as<TApp>::ty;
+    using FixedArrayT = typename PtrC::template as<FixedArray>::ty;
+    using ArrayT = typename PtrC::template as<Array>::ty;
+    using VariantT = typename PtrC::template as<Variant>::ty;
+    using RecordT = typename PtrC::template as<Record>::ty;
+    using FuncT = typename PtrC::template as<Func>::ty;
+    using ExistsT = typename PtrC::template as<Exists>::ty;
+    using RecursiveT = typename PtrC::template as<Recursive>::ty;
+    using TStringT = typename PtrC::template as<TString>::ty;
+    using TLongT = typename PtrC::template as<TLong>::ty;
+    using TExprT = typename PtrC::template as<TExpr>::ty;
 
     switch (ty->case_id()) {
     case Prim::type_case_id:
@@ -809,8 +809,8 @@ template <typename T>
 
 template <typename K, typename T>
   std::vector< std::pair<K, T> > switchOf(const std::vector< std::pair<K, MonoTypePtr> >& kts, const switchType<T>& f) {
-    typedef std::pair<K, T> KT;
-    typedef std::vector<KT> KTS;
+    using KT = std::pair<K, T>;
+    using KTS = std::vector<KT>;
     KTS r;
     for (typename std::vector< std::pair<K, MonoTypePtr> >::const_iterator kt = kts.begin(); kt != kts.end(); ++kt) {
       r.push_back(KT(kt->first, switchOf(kt->second, f)));
@@ -935,7 +935,7 @@ int tgenSize(const MonoTypes& mts);
 int tgenSize(const ConstraintPtr& c);
 [[noreturn]] int tgenSize(const QualTypePtr& qt);
 
-typedef std::set<int> TGenVarSet;
+using TGenVarSet = std::set<int>;
 TGenVarSet tgenVars(const MonoTypePtr&);
 
 TVName        canonicalName(int v);
@@ -1268,7 +1268,7 @@ MonoTypePtr fileRefTy(const MonoTypePtr&);
 template <>
   struct genHash<Record::Member> {
     inline size_t operator()(const Record::Member& x) const {
-      typedef std::tuple<std::string, MonoTypePtr, unsigned int> RMTup;
+      using RMTup = std::tuple<std::string, MonoTypePtr, unsigned int>;
       static genHash<RMTup> h;
       return h(RMTup(x.field, x.type, x.offset));
     }
@@ -1276,7 +1276,7 @@ template <>
 template <>
   struct genHash<Variant::Member> {
     inline size_t operator()(const Variant::Member& x) const {
-      typedef std::tuple<std::string, MonoTypePtr, unsigned int> VMTup;
+      using VMTup = std::tuple<std::string, MonoTypePtr, unsigned int>;
       static genHash<VMTup> h;
       return h(VMTup(x.selector, x.type, x.id));
     }

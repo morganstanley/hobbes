@@ -33,7 +33,7 @@ bool importObject(cc *e, const std::string &sopath) {
                                dlerror());
     }
 
-    typedef void (*InitF)(cc *);
+    using InitF = void (*)(cc *);
     auto initF = reinterpret_cast<InitF>(dlsym(h, "initialize"));
 
     if (initF == nullptr) {
@@ -56,7 +56,7 @@ bool importScript(cc *e, const std::string &fname) {
   }
 }
 
-typedef std::vector<std::string> ModulePaths;
+using ModulePaths = std::vector<std::string>;
 static ModulePaths &modulePaths() {
   static thread_local ModulePaths mps;
   if (mps.size() == 0) {
@@ -191,7 +191,7 @@ ModulePtr applyTypeDefns(cc *e, const ModulePtr &m) {
 }
 
 // index type variables and sanity check names to ensure no duplicates
-typedef std::map<std::string, int> NameIndexing;
+using NameIndexing = std::map<std::string, int>;
 
 NameIndexing nameIndexing(const str::seq &ns) {
   NameIndexing r;

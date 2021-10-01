@@ -14,10 +14,10 @@
 
 namespace hobbes {
 
-typedef std::pair<bool, std::string>    BuffOrFilename;
-typedef std::shared_ptr<BuffOrFilename> BuffOrFilenamePtr;
-typedef std::pair<size_t, size_t>       Pos; // line#, offset
-typedef std::pair<Pos, Pos>             LexRange;
+using BuffOrFilename = std::pair<bool, std::string>;
+using BuffOrFilenamePtr = std::shared_ptr<BuffOrFilename>;
+using Pos = std::pair<size_t, size_t>; // line#, offset
+using LexRange = std::pair<Pos, Pos>;
 
 struct LexicalAnnotation {
   LexicalAnnotation();
@@ -54,8 +54,8 @@ private:
   LexicallyAnnotated();
 };
 
-typedef std::pair<std::string, LexicalAnnotation> annmsg;
-typedef std::vector<annmsg>                       annmsgs;
+using annmsg = std::pair<std::string, LexicalAnnotation>;
+using annmsgs = std::vector<annmsg>;
 
 class annotated_error : public std::runtime_error {
 public:
