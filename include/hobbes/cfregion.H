@@ -1089,7 +1089,7 @@ template <typename T>
     cwseries(const cwseries<T>&) = delete;
     cwseries<T>& operator=(const cwseries<T>&) = delete;
 
-    const ty::desc&    typeDef()  const { return this->tdef; }
+    const ty::desc&    typeDef()  const override { return this->tdef; }
     const std::string& name()     const { return this->seqname; }
     imagefile*         file()     const { return this->f; }
 
@@ -1192,7 +1192,7 @@ template <typename T>
     ~crseries() {
     }
 
-    const ty::desc& typeDef()  const { return this->tdef; }
+    const ty::desc& typeDef()  const override { return this->tdef; }
     imagefile*      file()     const { return this->f; }
 
     bool next(T* x) {

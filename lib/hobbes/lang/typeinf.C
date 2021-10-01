@@ -112,27 +112,27 @@ struct encodeCtorForm : public switchType<std::string> {
 
   encodeCtorForm(const MonoTypePtr& forTy, MonoTypes* targs, str::seq* ignvs) : forTy(forTy), targs(targs), ignvs(ignvs) { }
 
-  std::string with(const Prim* v) const {
+  std::string with(const Prim* v) const override {
     return "prim:" + v->name();
   }
 
-  std::string with(const OpaquePtr* v) const {
+  std::string with(const OpaquePtr* v) const override {
     return "ptr" + std::string(v->storedContiguously() ? "c" : "") + ":" + v->name();
   }
 
-  std::string with(const TVar* v) const {
+  std::string with(const TVar* v) const override {
     return "var:" + v->name();
   }
 
-  std::string with(const TGen* v) const {
+  std::string with(const TGen* v) const override {
     return "tgen:" + str::from(v->id());
   }
 
-  std::string with(const TAbs* v) const {
+  std::string with(const TAbs* v) const override {
     return "tabs:" + show(v);
   }
 
-  std::string with(const TApp* v) const {
+  std::string with(const TApp* v) const override {
     this->targs->push_back(v->fn());
     for (const auto& arg : v->args()) {
       this->targs->push_back(arg);
@@ -140,18 +140,18 @@ struct encodeCtorForm : public switchType<std::string> {
     return "tapp";
   }
 
-  std::string with(const FixedArray* v) const {
+  std::string with(const FixedArray* v) const override {
     this->targs->push_back(v->type());
     this->targs->push_back(v->length());
     return "farray";
   }
 
-  std::string with(const Array* v) const {
+  std::string with(const Array* v) const override {
     this->targs->push_back(v->type());
     return "array";
   }
 
-  std::string with(const Variant* v) const {
+  std::string with(const Variant* v) const override {
     std::ostringstream vn;
     vn << "variant:";
     for (Variant::Members::const_iterator c = v->members().begin(); c != v->members().end(); ++c) {
@@ -161,7 +161,7 @@ struct encodeCtorForm : public switchType<std::string> {
     return vn.str();
   }
 
-  std::string with(const Record* v) const {
+  std::string with(const Record* v) const override {
     std::ostringstream rn;
     rn << "record:";
     for (Record::Members::const_iterator f = v->members().begin(); f != v->members().end(); ++f) {
@@ -171,33 +171,33 @@ struct encodeCtorForm : public switchType<std::string> {
     return rn.str();
   }
 
-  std::string with(const Func* v) const {
+  std::string with(const Func* v) const override {
     this->targs->push_back(v->argument());
     this->targs->push_back(v->result());
     return "->";
   }
 
-  std::string with(const Exists* v) const {
+  std::string with(const Exists* v) const override {
     this->ignvs->push_back(v->absTypeName());
     this->targs->push_back(v->absType());
     return "exists";
   }
   
-  std::string with(const Recursive* v) const {
+  std::string with(const Recursive* v) const override {
     this->ignvs->push_back(v->recTypeName());
     this->targs->push_back(v->recType());
     return "recur";
   }
 
-  std::string with(const TString* v) const {
+  std::string with(const TString* v) const override {
     return "string:" + v->value();
   }
 
-  std::string with(const TLong* v) const {
+  std::string with(const TLong* v) const override {
     return "long:" + str::from(v->value());
   }
 
-  std::string with(const TExpr* v) const {
+  std::string with(const TExpr* v) const override {
     return "expr:" + show(v);
   }
 };
@@ -258,11 +258,11 @@ struct substituteInto : public switchTyFn {
   UTypeRec&        uty;
   substituteInto(MonoTypeUnifier* s, UTypeRec& uty) : s(s), uty(uty) { }
 
-  MonoTypePtr with(const TVar* v) const {
+  MonoTypePtr with(const TVar* v) const override {
     return this->s->binding(v->name());
   }
 
-  MonoTypePtr with(const TApp* v) const {
+  MonoTypePtr with(const TApp* v) const override {
     this->uty.visited = true;
     MonoTypePtr f = this->s->substitute(v->fn());
     MonoTypes args;
@@ -273,7 +273,7 @@ struct substituteInto : public switchTyFn {
     return MonoTypePtr(TApp::make(f, args));
   }
 
-  MonoTypePtr with(const FixedArray* v) const {
+  MonoTypePtr with(const FixedArray* v) const override {
     this->uty.visited = true;
     MonoTypePtr t = this->s->substitute(v->type());
     MonoTypePtr l = this->s->substitute(v->length());
@@ -281,14 +281,14 @@ struct substituteInto : public switchTyFn {
     return MonoTypePtr(FixedArray::make(t, l));
   }
 
-  MonoTypePtr with(const Array* v) const {
+  MonoTypePtr with(const Array* v) const override {
     this->uty.visited = true;
     MonoTypePtr e = this->s->substitute(v->type());
     this->uty.visited = false;
     return MonoTypePtr(Array::make(e));
   }
 
-  MonoTypePtr with(const Variant* v) const {
+  MonoTypePtr with(const Variant* v) const override {
     this->uty.visited = true;
     Variant::Members vms;
     for (const auto& c : v->members()) {
@@ -298,7 +298,7 @@ struct substituteInto : public switchTyFn {
     return MonoTypePtr(Variant::make(vms));
   }
 
-  MonoTypePtr with(const Record* v) const {
+  MonoTypePtr with(const Record* v) const override {
     this->uty.visited = true;
     Record::Members rms;
     for (const auto& f : v->members()) {
@@ -308,7 +308,7 @@ struct substituteInto : public switchTyFn {
     return MonoTypePtr(Record::make(rms));
   }
 
-  MonoTypePtr with(const Func* v) const {
+  MonoTypePtr with(const Func* v) const override {
     this->uty.visited = true;
     MonoTypePtr a = this->s->substitute(v->argument());
     MonoTypePtr r = this->s->substitute(v->result());
@@ -316,21 +316,21 @@ struct substituteInto : public switchTyFn {
     return MonoTypePtr(Func::make(a, r));
   }
 
-  MonoTypePtr with(const Exists* v) const {
+  MonoTypePtr with(const Exists* v) const override {
     this->uty.visited = true;
     MonoTypePtr at = this->s->substitute(v->absType());
     this->uty.visited = false;
     return MonoTypePtr(Exists::make(v->absTypeName(), at));
   }
 
-  MonoTypePtr with(const Recursive* v) const {
+  MonoTypePtr with(const Recursive* v) const override {
     this->uty.visited = true;
     MonoTypePtr rt = this->s->substitute(v->recType());
     this->uty.visited = false;
     return MonoTypePtr(Recursive::make(v->recTypeName(), rt));
   }
 
-  MonoTypePtr with(const TExpr* v) const {
+  MonoTypePtr with(const TExpr* v) const override {
     this->uty.visited = true;
     ExprPtr e = substitute(this->s, v->expr());
     this->uty.visited = false;
@@ -423,7 +423,7 @@ struct exprTypeSubst : public switchExprTyFnM {
   MonoTypeUnifier* u;
   exprTypeSubst(MonoTypeUnifier* u) : u(u) { }
 
-  QualTypePtr withTy(const QualTypePtr& qt) const {
+  QualTypePtr withTy(const QualTypePtr& qt) const override {
     return substitute(this->u, qt);
   }
 };
@@ -562,23 +562,23 @@ struct expTypeInfF : public switchExprM<UnitV> {
     return unitv;
   }
 
-  UnitV with(Unit* v)   { return mkprim(v, "unit"); }
-  UnitV with(Bool* v)   { return mkprim(v, "bool"); }
-  UnitV with(Char* v)   { return mkprim(v, "char"); }
-  UnitV with(Byte* v)   { return mkprim(v, "byte"); }
-  UnitV with(Short* v)  { return mkprim(v, "short"); }
-  UnitV with(Int* v)    { return mkprim(v, "int"); }
-  UnitV with(Long* v)   { return mkprim(v, "long"); }
-  UnitV with(Int128* v) { return mkprim(v, "int128"); }
-  UnitV with(Float* v)  { return mkprim(v, "float"); }
-  UnitV with(Double* v) { return mkprim(v, "double"); }
+  UnitV with(Unit* v) override   { return mkprim(v, "unit"); }
+  UnitV with(Bool* v) override   { return mkprim(v, "bool"); }
+  UnitV with(Char* v) override   { return mkprim(v, "char"); }
+  UnitV with(Byte* v) override   { return mkprim(v, "byte"); }
+  UnitV with(Short* v) override  { return mkprim(v, "short"); }
+  UnitV with(Int* v) override    { return mkprim(v, "int"); }
+  UnitV with(Long* v) override   { return mkprim(v, "long"); }
+  UnitV with(Int128* v) override { return mkprim(v, "int128"); }
+  UnitV with(Float* v) override  { return mkprim(v, "float"); }
+  UnitV with(Double* v) override { return mkprim(v, "double"); }
 
-  UnitV with(Var* v) {
+  UnitV with(Var* v) override {
     v->type(this->tenv->lookup(v->value())->instantiate());
     return unitv;
   }
 
-  UnitV with(Let* v) {
+  UnitV with(Let* v) override {
     switchOf(v->varExpr(), *this);
     switchOf(v->bodyExpr(), expTypeInfF(bindFrame(this->tenv, v->var(), v->varExpr()->type()), this->u, this->ds));
 
@@ -596,7 +596,7 @@ struct expTypeInfF : public switchExprM<UnitV> {
     return r;
   }
 
-  UnitV with(LetRec* v) {
+  UnitV with(LetRec* v) override {
     TEnvPtr lrtenv = letRecFrame(this->tenv, v->bindings());
 
     Constraints cs;
@@ -613,7 +613,7 @@ struct expTypeInfF : public switchExprM<UnitV> {
     return unitv;
   }
 
-  UnitV with(Fn* v) {
+  UnitV with(Fn* v) override {
     MonoTypes argl = freshTypeVars(v->varNames().size());
     switchOf(v->body(), expTypeInfF(fnFrame(this->tenv, v->varNames(), argl), this->u, this->ds));
 
@@ -621,7 +621,7 @@ struct expTypeInfF : public switchExprM<UnitV> {
     return unitv;
   }
 
-  UnitV with(App* v) {
+  UnitV with(App* v) override {
     switchOf(v->fn(), *this);
 
     Constraints csts;
@@ -640,7 +640,7 @@ struct expTypeInfF : public switchExprM<UnitV> {
     return unitv;
   }
 
-  UnitV with(Assign* v) {
+  UnitV with(Assign* v) override {
     switchOf(v->left(),  *this);
     switchOf(v->right(), *this);
 
@@ -688,7 +688,7 @@ struct expTypeInfF : public switchExprM<UnitV> {
     }
   }
 
-  UnitV with(MkArray* v) {
+  UnitV with(MkArray* v) override {
     Constraints cs;
     MonoTypePtr ety  = freshTypeVar();
     QualTypePtr qety = qualtype(ety);
@@ -704,7 +704,7 @@ struct expTypeInfF : public switchExprM<UnitV> {
   }
 
   // V hasfield x:T => <:x:T:> :: V
-  UnitV with(MkVariant* v) {
+  UnitV with(MkVariant* v) override {
     switchOf(v->value(), *this);
 
     MonoTypePtr   vty  = freshTypeVar();
@@ -715,7 +715,7 @@ struct expTypeInfF : public switchExprM<UnitV> {
     return unitv;
   }
 
-  UnitV with(MkRecord* v) {
+  UnitV with(MkRecord* v) override {
     QualTypes ftys;
     str::set fnames;
 
@@ -733,7 +733,7 @@ struct expTypeInfF : public switchExprM<UnitV> {
     return unitv;
   }
 
-  UnitV with(AIndex* v) {
+  UnitV with(AIndex* v) override {
     v->index(assume(fncall(var("convert", v->index()->la()), list(v->index()), v->index()->la()), primty("long"), v->index()->la()));
 
     switchOf(v->array(), *this);
@@ -781,7 +781,7 @@ struct expTypeInfF : public switchExprM<UnitV> {
     return unitv;
   }
 
-  UnitV with(Case* v) {
+  UnitV with(Case* v) override {
     // if a default case is specified, the set of variant constructors is open
     if (v->defaultExpr().get() != 0) {
       return withGenericMeaning(v);
@@ -825,7 +825,7 @@ struct expTypeInfF : public switchExprM<UnitV> {
     return unitv;
   }
 
-  UnitV with(Switch* v) {
+  UnitV with(Switch* v) override {
     switchOf(v->expr(), *this);
     mgu(v->expr(), qualtype(v->bindings()[0].value->primType()), this->u);
 
@@ -853,7 +853,7 @@ struct expTypeInfF : public switchExprM<UnitV> {
   }
 
   // E.f => (E::R).f :: R hasfield f:t => t
-  UnitV with(Proj* v) {
+  UnitV with(Proj* v) override {
     switchOf(v->record(), *this);
 
     MonoTypePtr   fty  = freshTypeVar();
@@ -864,7 +864,7 @@ struct expTypeInfF : public switchExprM<UnitV> {
     return unitv;
   }
 
-  UnitV with(Assump* v) {
+  UnitV with(Assump* v) override {
     switchOf(v->expr(), *this);
     mgu(v->expr(), v->ty(), this->u);
 
@@ -899,7 +899,7 @@ struct expTypeInfF : public switchExprM<UnitV> {
     return unitv;
   }
 
-  UnitV with(Pack* v) {
+  UnitV with(Pack* v) override {
     switchOf(v->expr(), *this);
 
     MonoTypePtr   packedType = freshTypeVar();
@@ -910,7 +910,7 @@ struct expTypeInfF : public switchExprM<UnitV> {
     return unitv;
   }
 
-  UnitV with(Unpack* v) {
+  UnitV with(Unpack* v) override {
     switchOf(v->package(), *this);
     switchOf(v->expr(), expTypeInfF(bindFrame(this->tenv, v->varName(), unpackedType(substitute(this->u, v->package()->type()))), this->u, this->ds));
 
@@ -926,7 +926,7 @@ struct applySubstitutionF : public switchExprTyFnM {
   MonoTypeUnifier* s;
   applySubstitutionF(MonoTypeUnifier* s) : s(s) { }
 
-  QualTypePtr withTy(const QualTypePtr& qt) const {
+  QualTypePtr withTy(const QualTypePtr& qt) const override {
     return substitute(this->s, qt);
   }
 };

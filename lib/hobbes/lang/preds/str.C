@@ -10,7 +10,7 @@ class SplitP : public Unqualifier {
 public:
   static std::string constraintName() { return "Split"; }
 
-  bool refine(const TEnvPtr&, const ConstraintPtr& cst, MonoTypeUnifier* u, Definitions*) {
+  bool refine(const TEnvPtr&, const ConstraintPtr& cst, MonoTypeUnifier* u, Definitions*) override {
     // try to refine as a csplit
     {
       std::string str;
@@ -38,7 +38,7 @@ public:
     return false;
   }
 
-  bool satisfied(const TEnvPtr&, const ConstraintPtr& cst, Definitions*) const {
+  bool satisfied(const TEnvPtr&, const ConstraintPtr& cst, Definitions*) const override {
     std::string delim;
     str::seq    ss;
     MonoTypePtr result;
@@ -48,7 +48,7 @@ public:
     return false;
   }
 
-  bool satisfiable(const TEnvPtr& tenv, const ConstraintPtr& c, Definitions* ds) const {
+  bool satisfiable(const TEnvPtr& tenv, const ConstraintPtr& c, Definitions* ds) const override {
     if (c->name() != SplitP::constraintName() || c->arguments().size() != 3) {
       return false;
     }
@@ -70,7 +70,7 @@ public:
     }
   }
 
-  void explain(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*, annmsgs*) {
+  void explain(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*, annmsgs*) override {
   }
 
   struct StripCst : public switchExprTyFn {
@@ -78,26 +78,26 @@ public:
     StripCst(const ConstraintPtr& cst) : constraint(cst) {
     }
   
-    ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const {
+    ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const override {
       ExprPtr result(e);
       result->type(removeConstraint(this->constraint, qty));
       return result;
     }
   };
   
-  ExprPtr unqualify(const TEnvPtr&, const ConstraintPtr& cst, const ExprPtr& e, Definitions*) const {
+  ExprPtr unqualify(const TEnvPtr&, const ConstraintPtr& cst, const ExprPtr& e, Definitions*) const override {
     return switchOf(e, StripCst(cst));
   }
   
-  PolyTypePtr lookup(const std::string&) const {
+  PolyTypePtr lookup(const std::string&) const override {
     return PolyTypePtr();
   }
   
-  SymSet bindings() const {
+  SymSet bindings() const override {
     return SymSet();
   }
   
-  FunDeps dependencies(const ConstraintPtr&) const {
+  FunDeps dependencies(const ConstraintPtr&) const override {
     return list(FunDep(list(0, 1), 2), FunDep(list(1, 2), 0));
   }
 private:
@@ -155,7 +155,7 @@ class LsP : public Unqualifier {
 public:
   static std::string constraintName() { return "Ls"; }
 
-  bool refine(const TEnvPtr&, const ConstraintPtr& cst, MonoTypeUnifier* u, Definitions*) {
+  bool refine(const TEnvPtr&, const ConstraintPtr& cst, MonoTypeUnifier* u, Definitions*) override {
     if (cst->arguments().size() == 2) {
       if (const TString* dir = is<TString>(cst->arguments()[0])) {
         size_t c = u->size();
@@ -166,7 +166,7 @@ public:
     return false;
   }
 
-  bool satisfied(const TEnvPtr&, const ConstraintPtr& cst, Definitions*) const {
+  bool satisfied(const TEnvPtr&, const ConstraintPtr& cst, Definitions*) const override {
     if (cst->arguments().size() == 2) {
       if (const TString* dir = is<TString>(cst->arguments()[0])) {
         return *cst->arguments()[1] == *tstrings(str::paths(dir->value()));
@@ -175,11 +175,11 @@ public:
     return false;
   }
 
-  bool satisfiable(const TEnvPtr& tenv, const ConstraintPtr& c, Definitions* ds) const {
+  bool satisfiable(const TEnvPtr& tenv, const ConstraintPtr& c, Definitions* ds) const override {
     return c->arguments().size() == 2 && (is<TVar>(c->arguments()[0]) || is<TVar>(c->arguments()[1]) || satisfied(tenv, c, ds));
   }
 
-  void explain(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*, annmsgs*) {
+  void explain(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*, annmsgs*) override {
   }
 
   struct StripCst : public switchExprTyFn {
@@ -187,26 +187,26 @@ public:
     StripCst(const ConstraintPtr& cst) : constraint(cst) {
     }
   
-    ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const {
+    ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const override {
       ExprPtr result(e);
       result->type(removeConstraint(this->constraint, qty));
       return result;
     }
   };
   
-  ExprPtr unqualify(const TEnvPtr&, const ConstraintPtr& cst, const ExprPtr& e, Definitions*) const {
+  ExprPtr unqualify(const TEnvPtr&, const ConstraintPtr& cst, const ExprPtr& e, Definitions*) const override {
     return switchOf(e, StripCst(cst));
   }
   
-  PolyTypePtr lookup(const std::string&) const {
+  PolyTypePtr lookup(const std::string&) const override {
     return PolyTypePtr();
   }
   
-  SymSet bindings() const {
+  SymSet bindings() const override {
     return SymSet();
   }
   
-  FunDeps dependencies(const ConstraintPtr&) const {
+  FunDeps dependencies(const ConstraintPtr&) const override {
     return list(FunDep(list(0), 1));
   }
 };

@@ -224,7 +224,7 @@ BOP(dgte, CreateFCmpOGE, double, double, bool);
 // inline conditional
 class ifexp : public op {
 public:
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) override {
     return withContext([&](llvm::LLVMContext& ctx) -> llvm::Value* {
       llvm::Function* thisFn = c->builder()->GetInsertBlock()->getParent();
       llvm::Value*    cond   = c->compile(es[0]);
@@ -268,7 +268,7 @@ public:
     });
   }
 
-  PolyTypePtr type(typedb&) const {
+  PolyTypePtr type(typedb&) const override {
     static MonoTypePtr tg0(TGen::make(0));
     static PolyTypePtr ifty(new PolyType(1, qualtype(Func::make(tuplety(list(MonoTypePtr(Prim::make("bool")), tg0, tg0)), tg0))));
     return ifty;
@@ -278,13 +278,13 @@ public:
 // array-length lookup
 class alenexp : public op {
 public:
-  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) override {
     return withContext([c, &es](auto&) {
       return c->builder()->CreateLoad(structOffset(c->builder(), c->compile(es[0]), 0), false, "at");
     });
   }
 
-  PolyTypePtr type(typedb&) const {
+  PolyTypePtr type(typedb&) const override {
     static MonoTypePtr tg0(TGen::make(0));
     static MonoTypePtr tlong(Prim::make("long"));
     static PolyTypePtr alenty(new PolyType(1, qualtype(Func::make(tuplety(list(MonoTypePtr(Array::make(tg0)))), tlong))));
@@ -296,7 +296,7 @@ public:
 // array concatenation
 class aconcatexp : public op {
 public:
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) override {
     Array* aty = is<Array>(tys[0]);
     if (aty == nullptr) {
       throw annotated_error(*es[0], "Internal compiler error -- can't make array out of non-array type: " + show(tys[0]));
@@ -328,7 +328,7 @@ public:
     });
   }
 
-  PolyTypePtr type(typedb&) const {
+  PolyTypePtr type(typedb&) const override {
     static MonoTypePtr tg0(TGen::make(0));
     static MonoTypePtr earr(Array::make(tg0));
     static PolyTypePtr fty(new PolyType(1, qualtype(Func::make(tuplety(list(earr,earr)), earr))));
@@ -339,7 +339,7 @@ public:
 
 // unsafe set array length
 class asetlen : public op {
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) override {
     Array* aty = is<Array>(tys[0]);
     if (aty == 0) {
       throw annotated_error(*es[0], "Internal compiler error -- can't make array out of non-array type: " + show(tys[0]));
@@ -351,21 +351,21 @@ class asetlen : public op {
     return cvalue(true);
   }
 
-  PolyTypePtr type(typedb&) const {
+  PolyTypePtr type(typedb&) const override {
     return polytype(1, qualtype(functy(list(arrayty(tgen(0)), primty("long")), primty("unit"))));
   }
 };
 
 // static-length array length lookup
 class salenexp : public op {
-  llvm::Value* apply(jitcc*, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) {
+  llvm::Value* apply(jitcc*, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) override {
     const FixedArray* aty = is<FixedArray>(tys[0]);
     if (!aty) { throw annotated_error(*es[0], "Cannot determine length, not a fixed-length array: " + show(tys[0])); }
 
     return cvalue(aty->requireLength());
   }
 
-  PolyTypePtr type(typedb&) const {
+  PolyTypePtr type(typedb&) const override {
     static MonoTypePtr tg0(TGen::make(0));
     static MonoTypePtr tg1(TGen::make(1));
     static MonoTypePtr tlong(Prim::make("long"));
@@ -377,7 +377,7 @@ class salenexp : public op {
 
 // static-length array element lookup
 class saelem : public op {
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) override {
     const FixedArray* aty = is<FixedArray>(tys[0]);
     if (!aty) { throw annotated_error(*es[0], "Cannot index element, not a fixed-length array: " + show(tys[0])); }
 
@@ -398,7 +398,7 @@ class saelem : public op {
     });
   }
 
-  PolyTypePtr type(typedb&) const {
+  PolyTypePtr type(typedb&) const override {
     static MonoTypePtr tg0(TGen::make(0));
     static MonoTypePtr tg1(TGen::make(1));
     static MonoTypePtr tlong(Prim::make("long"));
@@ -409,7 +409,7 @@ class saelem : public op {
 
 // copy contents of a variable-length array to a static-length array
 class saacopy : public op {
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) override {
     const FixedArray* aty = is<FixedArray>(tys[0]);
     if (!aty) { throw annotated_error(*es[0], "Cannot determine length, not a fixed-length array: " + show(tys[0])); }
 
@@ -427,7 +427,7 @@ class saacopy : public op {
     return cvalue(true);
   }
 
-  PolyTypePtr type(typedb&) const {
+  PolyTypePtr type(typedb&) const override {
     static MonoTypePtr tg0 (TGen::make(0));
     static MonoTypePtr tg1 (TGen::make(1));
     static MonoTypePtr faty(FixedArray::make(tg0, tg1));
@@ -442,7 +442,7 @@ class saacopy : public op {
 // generic contextless function application
 class applyCFn : public op {
 public:
-  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr& rty, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr& rty, const Exprs& es) override {
     if (const MkRecord* args = is<MkRecord>(es[1])) {
       return c->compile(fncall(es[0], exprs(args->fields()), es[0]->la()));
     } else {
@@ -470,7 +470,7 @@ public:
     }
   }
 
-  PolyTypePtr type(typedb&) const {
+  PolyTypePtr type(typedb&) const override {
     static MonoTypePtr tg0(TGen::make(0));
     static MonoTypePtr tg1(TGen::make(1));
     static MonoTypePtr tf(Func::make(tg0, tg1));
@@ -483,11 +483,11 @@ public:
 // identity transform -- do nothing
 class idexp : public op {
 public:
-  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) override {
     return c->compile(es[0]);
   }
 
-  PolyTypePtr type(typedb&) const {
+  PolyTypePtr type(typedb&) const override {
     static MonoTypePtr tg0(TGen::make(0));
     static PolyTypePtr idty(new PolyType(1, qualtype(Func::make(tuplety(list(tg0)), tg0))));
     return idty;
@@ -497,7 +497,7 @@ public:
 // identity transform, with (unsafe) bit cast
 class castexp : public op {
 public:
-  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr& rty, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr& rty, const Exprs& es) override {
     llvm::Value* r = c->compile(es[0]);
     if (isUnit(rty)) {
       return cvalue(true);
@@ -508,7 +508,7 @@ public:
     }
   }
 
-  PolyTypePtr type(typedb&) const {
+  PolyTypePtr type(typedb&) const override {
     static MonoTypePtr tg0(TGen::make(0));
     static MonoTypePtr tg1(TGen::make(1));
     static PolyTypePtr idty(new PolyType(2, qualtype(Func::make(tuplety(list(tg0)), tg1))));
@@ -522,7 +522,7 @@ public:
   newPrimfn(bool zeroMem = false) : zeroMem(zeroMem) {
   }
 
-  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr& rty, const Exprs&) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr& rty, const Exprs&) override {
     if (isUnit(rty)) {
       return cvalue(true);
     } else if (!hasPointerRep(rty)) {
@@ -534,7 +534,7 @@ public:
     }
   }
 
-  PolyTypePtr type(typedb&) const {
+  PolyTypePtr type(typedb&) const override {
     static MonoTypePtr tg0(TGen::make(0));
     static PolyTypePtr npty(new PolyType(1, qualtype(Func::make(tuplety(list(prim<void>())), tg0))));
     return npty;
@@ -545,7 +545,7 @@ private:
 
 class newArrayfn : public op {
 public:
-  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr& rty, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr& rty, const Exprs& es) override {
     const Array* aty = is<Array>(rty);
     if (!aty) {
       throw annotated_error(*es[0], "Invalid usage, newArray called for non-array type");
@@ -561,7 +561,7 @@ public:
     return cmdata;
   }
 
-  PolyTypePtr type(typedb&) const {
+  PolyTypePtr type(typedb&) const override {
     static MonoTypePtr tg0(TGen::make(0));
     static MonoTypePtr tlng = prim<long>();
     static PolyTypePtr npty(new PolyType(1, qualtype(Func::make(tuplety(list(tlng)), arrayty(tg0)))));
@@ -572,13 +572,13 @@ public:
 // adjust a pointer, through a vtbl or not (this should only wind up being used for witnessing subclass relations)
 class adjptr : public op {
 public:
-  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) override {
     llvm::Value* p = c->compile(es[0]);
     llvm::Value* o = c->compile(es[1]);
     return withContext([&](auto&) { return c->builder()->CreateGEP(p, o); });
   }
 
-  PolyTypePtr type(typedb&) const {
+  PolyTypePtr type(typedb&) const override {
     static MonoTypePtr tg0(TGen::make(0));
     static MonoTypePtr tg1(TGen::make(1));
     static MonoTypePtr tint(Prim::make("int"));
@@ -589,7 +589,7 @@ public:
 
 class adjvtblptr : public op {
 public:
-  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) override {
     llvm::Type* tppchar = llvm::PointerType::getUnqual(llvm::PointerType::getUnqual(
         withContext([](llvm::LLVMContext& ctx) { return llvm::Type::getInt8Ty(ctx); })));
 
@@ -611,7 +611,7 @@ public:
     });
   }
 
-  PolyTypePtr type(typedb&) const {
+  PolyTypePtr type(typedb&) const override {
     static MonoTypePtr tg0(TGen::make(0));
     static MonoTypePtr tg1(TGen::make(1));
     static MonoTypePtr tint(Prim::make("int"));
@@ -623,7 +623,7 @@ public:
 // compile-time record deconstruction
 class recHLabel : public op {
 public:
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs&) {
+  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs&) override {
     if (tys.size() != 1) {
       throw std::runtime_error("Internal error, recordHeadLabel applied incorrectly");
     }
@@ -637,7 +637,7 @@ public:
     return c->compile(lbl);
   }
 
-  PolyTypePtr type(typedb&) const {
+  PolyTypePtr type(typedb&) const override {
     static PolyTypePtr unsafeTy(new PolyType(1, qualtype(functy(list(tgen(0)), arrayty(prim<char>())))));
     return unsafeTy;
   }
@@ -645,7 +645,7 @@ public:
 
 class recHValue : public op {
 public:
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) override {
     if (tys.size() != 1) {
       throw std::runtime_error("Internal error, recordHeadValue applied incorrectly");
     }
@@ -659,7 +659,7 @@ public:
     return c->compile(proj);
   }
 
-  PolyTypePtr type(typedb&) const {
+  PolyTypePtr type(typedb&) const override {
     static PolyTypePtr unsafeTy(new PolyType(2, qualtype(functy(list(tgen(0)), tgen(1)))));
     return unsafeTy;
   }
@@ -667,7 +667,7 @@ public:
 
 class recTail : public op {
 public:
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) override {
     if (tys.size() != 1) {
       throw std::runtime_error("Internal error, recordTail applied incorrectly");
     }
@@ -688,7 +688,7 @@ public:
     }
   }
 
-  PolyTypePtr type(typedb&) const {
+  PolyTypePtr type(typedb&) const override {
     static PolyTypePtr unsafeTy(new PolyType(2, qualtype(functy(list(tgen(0)), tgen(1)))));
     return unsafeTy;
   }
@@ -696,7 +696,7 @@ public:
 
 class varHLabel : public op {
 public:
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs&) {
+  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs&) override {
     if (tys.size() != 1) {
       throw std::runtime_error("Internal error, varHLabel applied incorrectly");
     }
@@ -713,14 +713,14 @@ public:
     return c->compile(ExprPtr(mkarray(lbl, LexicalAnnotation::null())));
   }
 
-  PolyTypePtr type(typedb&) const {
+  PolyTypePtr type(typedb&) const override {
     static PolyTypePtr unsafeTy(new PolyType(1, qualtype(functy(list(tgen(0)), arrayty(prim<char>())))));
     return unsafeTy;
   }
 };
 
 class varInjH : public op {
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) override {
     if (tys.size() != 1) {
       throw std::runtime_error("Internal error, varInjH applied incorrectly");
     }
@@ -735,7 +735,7 @@ class varInjH : public op {
     return c->compile(inje);
   }
 
-  PolyTypePtr type(typedb&) const {
+  PolyTypePtr type(typedb&) const override {
     static PolyTypePtr unsafeTy(new PolyType(2, qualtype(functy(list(tgen(0)), tgen(1)))));
     return unsafeTy;
   }
@@ -788,7 +788,7 @@ public:
     });
   }
 
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) override {
     // make sure we've got our types right
     MonoTypePtr vtyv   = tys[0];
     MonoTypePtr tfntyv = tys[2];
@@ -877,7 +877,7 @@ public:
     });
   }
 
-  PolyTypePtr type(typedb&) const {
+  PolyTypePtr type(typedb&) const override {
     static PolyTypePtr unsafeTy(new PolyType(4, qualtype(functy(list(tgen(0), closty(list(tgen(1)), tgen(3)), closty(list(tgen(2)), tgen(3))), tgen(3)))));
     return unsafeTy;
   }
@@ -989,7 +989,7 @@ size_t stdstrsize(const std::string& x)           { return x.size(); }
 char   stdstrelem(const std::string& x, size_t i) { return x[i]; }
 
 class packLongF : public op {
-  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) override {
     return withContext([&](auto&) {
       llvm::Value* c0 = c->builder()->CreateShl(c->builder()->CreateIntCast(c->compile(es[0]), longType(), false), 56);
       llvm::Value* c1 = c->builder()->CreateShl(c->builder()->CreateIntCast(c->compile(es[1]), longType(), false), 48);
@@ -1005,14 +1005,14 @@ class packLongF : public op {
     });
   }
 
-  PolyTypePtr type(typedb& db) const {
+  PolyTypePtr type(typedb& db) const override {
     MonoTypePtr cty(Prim::make("char"));
     return polytype(0, qualtype(functy(list(cty, cty, cty, cty, cty, cty, cty, cty), lift<long>::type(db))));
   }
 };
 
 class packIntF : public op {
-  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) override {
     return withContext([&](auto&) {
       llvm::Value* c0 = c->builder()->CreateIntCast(c->compile(es[0]), intType(), false);
       llvm::Value* c1 = c->builder()->CreateIntCast(c->compile(es[1]), intType(), false);
@@ -1033,14 +1033,14 @@ class packIntF : public op {
     });
   }
 
-  PolyTypePtr type(typedb& db) const {
+  PolyTypePtr type(typedb& db) const override {
     MonoTypePtr cty(Prim::make("char"));
     return polytype(0, qualtype(functy(list(cty, cty, cty, cty), lift<int>::type(db))));
   }
 };
 
 class packShortF : public op {
-  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) override {
     return withContext([&](auto&) {
       llvm::Value* c0 = c->builder()->CreateIntCast(c->compile(es[0]), shortType(), false);
       llvm::Value* c1 = c->builder()->CreateIntCast(c->compile(es[1]), shortType(), false);
@@ -1053,21 +1053,21 @@ class packShortF : public op {
     });
   }
 
-  PolyTypePtr type(typedb& db) const {
+  PolyTypePtr type(typedb& db) const override {
     MonoTypePtr cty(Prim::make("char"));
     return polytype(0, qualtype(functy(list(cty, cty), lift<short>::type(db))));
   }
 };
 
 class cptrrefbyF : public op {
-  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) override {
     return withContext([&](auto&) {
       return c->builder()->CreateLoad(
           offset(c->builder(), c->compile(es[0]), c->compile(es[1])), false);
     });
   }
 
-  PolyTypePtr type(typedb& db) const {
+  PolyTypePtr type(typedb& db) const override {
     return polytype(qualtype(functy(list(lift<char*>::type(db), lift<long>::type(db)), lift<char>::type(db))));
   }
 };

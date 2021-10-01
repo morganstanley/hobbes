@@ -1008,7 +1008,7 @@ template <typename R, typename ... Args>
       this->sched->enqueue(this);
     }
 
-    bool readAndFinish() {
+    bool readAndFinish() override {
       if (io<R>::accum(*this->socket, &this->pr, &this->r)) {
         this->ks.front()(this->r);
         this->ks.pop();

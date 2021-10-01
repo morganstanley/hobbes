@@ -49,16 +49,16 @@ Record::Members removeUnit(const Record::Members& ms) {
 // compile int constants for int switches
 class compileIntConstF : public switchConst<llvm::ConstantInt*> {
 public:
-  llvm::ConstantInt* with(const Unit*   v) const { return fail(*v); }
-  llvm::ConstantInt* with(const Bool*   v) const { return civalue(v->value()); }
-  llvm::ConstantInt* with(const Char*   v) const { return civalue(v->value()); }
-  llvm::ConstantInt* with(const Byte*   v) const { return civalue(v->value()); }
-  llvm::ConstantInt* with(const Short*  v) const { return civalue(v->value()); }
-  llvm::ConstantInt* with(const Int*    v) const { return civalue(v->value()); }
-  llvm::ConstantInt* with(const Long*   v) const { return civalue(v->value()); }
-  llvm::ConstantInt* with(const Int128* v) const { return civalue(v->value()); }
-  llvm::ConstantInt* with(const Float*  v) const { return fail(*v); }
-  llvm::ConstantInt* with(const Double* v) const { return fail(*v); }
+  llvm::ConstantInt* with(const Unit*   v) const override { return fail(*v); }
+  llvm::ConstantInt* with(const Bool*   v) const override { return civalue(v->value()); }
+  llvm::ConstantInt* with(const Char*   v) const override { return civalue(v->value()); }
+  llvm::ConstantInt* with(const Byte*   v) const override { return civalue(v->value()); }
+  llvm::ConstantInt* with(const Short*  v) const override { return civalue(v->value()); }
+  llvm::ConstantInt* with(const Int*    v) const override { return civalue(v->value()); }
+  llvm::ConstantInt* with(const Long*   v) const override { return civalue(v->value()); }
+  llvm::ConstantInt* with(const Int128* v) const override { return civalue(v->value()); }
+  llvm::ConstantInt* with(const Float*  v) const override { return fail(*v); }
+  llvm::ConstantInt* with(const Double* v) const override { return fail(*v); }
 private:
   llvm::ConstantInt* fail(const LexicallyAnnotated& la) const {
     throw annotated_error(la, "Internal error, can't switch on non-integral type");
@@ -75,22 +75,22 @@ public:
   compileExpF(const std::string& vname, jitcc* c) : c(c), vname(vname) {
   }
 
-  llvm::Value* with(const Unit*    ) const { return cvalue(true); } // should get optimized away -- unit should have no runtime representation
-  llvm::Value* with(const Bool*   v) const { return cvalue(v->value()); }
-  llvm::Value* with(const Char*   v) const { return cvalue(v->value()); }
-  llvm::Value* with(const Byte*   v) const { return cvalue(v->value()); }
-  llvm::Value* with(const Short*  v) const { return cvalue(v->value()); }
-  llvm::Value* with(const Int*    v) const { return cvalue(v->value()); }
-  llvm::Value* with(const Long*   v) const { return cvalue(v->value()); }
-  llvm::Value* with(const Int128* v) const { return cvalue(v->value()); }
-  llvm::Value* with(const Float*  v) const { return cvalue(v->value()); }
-  llvm::Value* with(const Double* v) const { return cvalue(v->value()); }
+  llvm::Value* with(const Unit*    ) const override { return cvalue(true); } // should get optimized away -- unit should have no runtime representation
+  llvm::Value* with(const Bool*   v) const override { return cvalue(v->value()); }
+  llvm::Value* with(const Char*   v) const override { return cvalue(v->value()); }
+  llvm::Value* with(const Byte*   v) const override { return cvalue(v->value()); }
+  llvm::Value* with(const Short*  v) const override { return cvalue(v->value()); }
+  llvm::Value* with(const Int*    v) const override { return cvalue(v->value()); }
+  llvm::Value* with(const Long*   v) const override { return cvalue(v->value()); }
+  llvm::Value* with(const Int128* v) const override { return cvalue(v->value()); }
+  llvm::Value* with(const Float*  v) const override { return cvalue(v->value()); }
+  llvm::Value* with(const Double* v) const override { return cvalue(v->value()); }
 
-  llvm::Value* with(const Var* v) const {
+  llvm::Value* with(const Var* v) const override {
     return c->lookupVar(v->value(), requireMonotype(v->type()));
   }
 
-  llvm::Value* with(const Let* v) const {
+  llvm::Value* with(const Let* v) const override {
     // compile the bound variable's value
     llvm::Value* var  = compile(v->varExpr());
     llvm::Value* body = 0;
@@ -107,7 +107,7 @@ public:
     return body;
   }
 
-  llvm::Value* with(const LetRec* v) const {
+  llvm::Value* with(const LetRec* v) const override {
     try {
       this->c->pushScope();
       this->c->compileFunctions(v->bindings());
@@ -120,7 +120,7 @@ public:
     }
   }
 
-  llvm::Value* with(const Fn* v) const {
+  llvm::Value* with(const Fn* v) const override {
     Func* fty = is<Func>(requireMonotype(v->type()));
     if (!fty) {
       throw annotated_error(*v, "Internal compiler error, not a function type: " + show(v->type()));
@@ -137,7 +137,7 @@ public:
     }
   }
 
-  llvm::Value* with(const App* v) const {
+  llvm::Value* with(const App* v) const override {
     // for the special case of "operators", we should allow them to decide how to compile
     //   this allows us to use primitive instructions / control-flow
     if (Var* fv = is<Var>(stripAssumpHead(v->fn()))) {
@@ -155,7 +155,7 @@ public:
     });
   }
 
-  llvm::Value* with(const Assign* v) const {
+  llvm::Value* with(const Assign* v) const override {
     MonoTypePtr lty = requireMonotype(v->left()->type());
     MonoTypePtr rty = requireMonotype(v->right()->type());
 
@@ -177,7 +177,7 @@ public:
     }
   }
 
-  llvm::Value* with(const MkArray* v) const {
+  llvm::Value* with(const MkArray* v) const override {
     MonoTypePtr ty  = requireMonotype(v->type());
     Array*      aty = is<Array>(ty);
     if (aty == 0) {
@@ -220,7 +220,7 @@ public:
     }
   }
 
-  llvm::Value* with(const MkVariant* v) const {
+  llvm::Value* with(const MkVariant* v) const override {
     MonoTypePtr mvty = requireMonotype(v->type());
     const Variant *vty = is<Variant>(mvty);
     if (vty == nullptr && show(v->value()) == "()") {
@@ -261,7 +261,7 @@ public:
     });
   }
 
-  llvm::Value* with(const MkRecord* v) const {
+  llvm::Value* with(const MkRecord* v) const override {
     MonoTypePtr mrty = requireMonotype(v->type());
     Record*     rty  = is<Record>(mrty);
     if (!rty) { throw annotated_error(*v, "Internal compiler error, compiling record without record type: " + show(v) + " :: " + show(v->type())); }
@@ -296,7 +296,7 @@ public:
     }
   }
 
-  llvm::Value* with(const AIndex* v) const {
+  llvm::Value* with(const AIndex* v) const override {
     MonoTypePtr  aity = requireMonotype(v->type());
     llvm::Value* ar   = compile(v->array());
     llvm::Value* ir   = compile(v->index());
@@ -329,7 +329,7 @@ public:
     }
   }
 
-  llvm::Value* with(const Case* v) const {
+  llvm::Value* with(const Case* v) const override {
     MonoTypePtr casety = requireMonotype(v->type());
     MonoTypePtr varty  = requireMonotype(v->variant()->type());
     Variant*    vty    = is<Variant>(varty);
@@ -429,7 +429,7 @@ public:
     });
   }
 
-  llvm::Value* with(const Switch* v) const {
+  llvm::Value* with(const Switch* v) const override {
     MonoTypePtr casety = requireMonotype(v->type());
 
     // prepare to switch on the discriminant
@@ -490,7 +490,7 @@ public:
     });
   }
 
-  llvm::Value* with(const Proj* v) const {
+  llvm::Value* with(const Proj* v) const override {
     Record* rty = is<Record>(requireMonotype(v->record()->type()));
     if (!rty) {
       throw annotated_error(*v, "Internal compiler error (received non-record type in projection).");
@@ -522,19 +522,19 @@ public:
     });
   }
 
-  llvm::Value* with(const Assump* v) const {
+  llvm::Value* with(const Assump* v) const override {
     // because we explicitly discard these type assumptions before compilation, this case should never happen
     return switchOf(v->expr(), *this);
   }
 
-  llvm::Value* with(const Pack* v) const {
+  llvm::Value* with(const Pack* v) const override {
     llvm::Value* ev = compile(v->expr());
     llvm::Type*  et = toLLVM(requireMonotype(v->type()), true);
 
     return withContext([&](auto&) { return builder()->CreateBitCast(ev, et); });
   }
 
-  llvm::Value* with(const Unpack* v) const {
+  llvm::Value* with(const Unpack* v) const override {
     llvm::Value* var  = compile(v->package());
     llvm::Value* body = 0;
 
@@ -692,18 +692,18 @@ public:
   std::string vname;
   compileConstExpF(jitcc* c, const std::string& vname) : vname(vname), c(c) { }
 
-  llvm::Constant* with(const Unit*    ) const { return cvalue(true); } // should get optimized away -- unit should have no runtime representation
-  llvm::Constant* with(const Bool*   v) const { return cvalue(v->value()); }
-  llvm::Constant* with(const Char*   v) const { return cvalue(v->value()); }
-  llvm::Constant* with(const Byte*   v) const { return cvalue(v->value()); }
-  llvm::Constant* with(const Short*  v) const { return cvalue(v->value()); }
-  llvm::Constant* with(const Int*    v) const { return cvalue(v->value()); }
-  llvm::Constant* with(const Long*   v) const { return cvalue(v->value()); }
-  llvm::Constant* with(const Int128* v) const { return cvalue(v->value()); }
-  llvm::Constant* with(const Float*  v) const { return cvalue(v->value()); }
-  llvm::Constant* with(const Double* v) const { return cvalue(v->value()); }
+  llvm::Constant* with(const Unit*    ) const override { return cvalue(true); } // should get optimized away -- unit should have no runtime representation
+  llvm::Constant* with(const Bool*   v) const override { return cvalue(v->value()); }
+  llvm::Constant* with(const Char*   v) const override { return cvalue(v->value()); }
+  llvm::Constant* with(const Byte*   v) const override { return cvalue(v->value()); }
+  llvm::Constant* with(const Short*  v) const override { return cvalue(v->value()); }
+  llvm::Constant* with(const Int*    v) const override { return cvalue(v->value()); }
+  llvm::Constant* with(const Long*   v) const override { return cvalue(v->value()); }
+  llvm::Constant* with(const Int128* v) const override { return cvalue(v->value()); }
+  llvm::Constant* with(const Float*  v) const override { return cvalue(v->value()); }
+  llvm::Constant* with(const Double* v) const override { return cvalue(v->value()); }
 
-  llvm::Constant* with(const Var* v) const {
+  llvm::Constant* with(const Var* v) const override {
     // possible instructions created during compilation
     // remove them otherwise they may become dangling instructions
     llvm::Value* x = this->c->lookupVar(v->value(), requireMonotype(v->type()));
@@ -714,15 +714,15 @@ public:
     return llvm::dyn_cast<llvm::Constant>(x);
   }
 
-  llvm::Constant* with(const Let*) const {
+  llvm::Constant* with(const Let*) const override {
     return 0;
   }
 
-  llvm::Constant* with(const LetRec*) const {
+  llvm::Constant* with(const LetRec*) const override {
     return 0;
   }
 
-  llvm::Constant* with(const Fn* v) const {
+  llvm::Constant* with(const Fn* v) const override {
     Func* fty = is<Func>(requireMonotype(v->type()));
     if (!fty) {
       throw annotated_error(*v, "Internal compiler error, not a function type: " + show(v->type()));
@@ -739,15 +739,15 @@ public:
     }
   }
 
-  llvm::Constant* with(const App*) const {
+  llvm::Constant* with(const App*) const override {
     return 0;
   }
 
-  llvm::Constant* with(const Assign*) const {
+  llvm::Constant* with(const Assign*) const override {
     return 0;
   }
 
-  llvm::Constant* with(const MkArray* v) const {
+  llvm::Constant* with(const MkArray* v) const override {
     MonoTypePtr ty  = requireMonotype(v->type());
     Array*      aty = is<Array>(ty);
     if (aty == 0) {
@@ -774,11 +774,11 @@ public:
     });
   }
 
-  llvm::Constant* with(const MkVariant*) const {
+  llvm::Constant* with(const MkVariant*) const override {
     return 0;
   }
 
-  llvm::Constant* with(const MkRecord* v) const {
+  llvm::Constant* with(const MkRecord* v) const override {
     MonoTypePtr mrty = requireMonotype(v->type());
     Record*     rty  = is<Record>(mrty);
     if (!rty) { throw annotated_error(*v, "Internal compiler error, compiling record without record type: " + show(v) + " :: " + show(v->type())); }
@@ -794,31 +794,31 @@ public:
     return withContext([&](auto&) { return constantRecord(this->c->module(), rcs, rty); });
   }
 
-  llvm::Constant* with(const AIndex*) const {
+  llvm::Constant* with(const AIndex*) const override {
     return 0;
   }
 
-  llvm::Constant* with(const Case*) const {
+  llvm::Constant* with(const Case*) const override {
     return 0;
   }
 
-  llvm::Constant* with(const Switch*) const {
+  llvm::Constant* with(const Switch*) const override {
     return 0;
   }
 
-  llvm::Constant* with(const Proj*) const {
+  llvm::Constant* with(const Proj*) const override {
     return 0;
   }
 
-  llvm::Constant* with(const Assump* v) const {
+  llvm::Constant* with(const Assump* v) const override {
     return switchOf(v->expr(), *this);
   }
 
-  llvm::Constant* with(const Pack*) const {
+  llvm::Constant* with(const Pack*) const override {
     return 0;
   }
 
-  llvm::Constant* with(const Unpack*) const {
+  llvm::Constant* with(const Unpack*) const override {
     return 0;
   }
 private:

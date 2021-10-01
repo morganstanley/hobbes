@@ -80,11 +80,11 @@ struct ProcessPUnqualify : public switchExprTyFn {
     this->pid = tpid->value();
   }
 
-  QualTypePtr withTy(const QualTypePtr& qt) const {
+  QualTypePtr withTy(const QualTypePtr& qt) const override {
     return removeConstraint(this->constraint, qt);
   }
 
-  ExprPtr with(const App* ap) const {
+  ExprPtr with(const App* ap) const override {
     if (const Var* fn = is<Var>(stripAssumpHead(ap->fn()))) {
       if (fn->value() == PROCESS_SPAWN && hasConstraint(this->constraint, fn->type())) {
         return wrapWithTy(ap->type(), new Long(this->pid, fn->la()));
@@ -93,7 +93,7 @@ struct ProcessPUnqualify : public switchExprTyFn {
     return ExprPtr(new App(switchOf(ap->fn(), *this), switchOf(ap->args(), *this), ap->la()));
   }
 
-  ExprPtr with(const Var* v) const {
+  ExprPtr with(const Var* v) const override {
     if (hasConstraint(this->constraint, v->type())) {
       throw std::runtime_error("spawn to lambda NYI (unnecessary?)");
     }

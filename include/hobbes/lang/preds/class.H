@@ -53,14 +53,14 @@ public:
   TCInstances matches(const TEnvPtr& tenv, const MonoTypes& mts, MonoTypeUnifier*, Definitions* ds) const;
 
   // unqualifier interface
-  bool        refine     (const TEnvPtr& tenv, const ConstraintPtr& cst, MonoTypeUnifier* s, Definitions* ds);
-  bool        satisfied  (const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions* ds)                   const;
-  bool        satisfiable(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions* ds)                   const;
-  void        explain    (const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPtr& e, Definitions* ds, annmsgs* msgs);
-  ExprPtr     unqualify  (const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPtr& e, Definitions* ds) const;
-  PolyTypePtr lookup     (const std::string& vn)                                                            const;
-  SymSet      bindings   ()                                                                                 const;
-  FunDeps     dependencies(const ConstraintPtr&)                                                            const;
+  bool        refine     (const TEnvPtr& tenv, const ConstraintPtr& cst, MonoTypeUnifier* s, Definitions* ds) override;
+  bool        satisfied  (const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions* ds)                   const override;
+  bool        satisfiable(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions* ds)                   const override;
+  void        explain    (const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPtr& e, Definitions* ds, annmsgs* msgs) override;
+  ExprPtr     unqualify  (const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPtr& e, Definitions* ds) const override;
+  PolyTypePtr lookup     (const std::string& vn)                                                            const override;
+  SymSet      bindings   ()                                                                                 const override;
+  FunDeps     dependencies(const ConstraintPtr&)                                                            const override;
 
   // the member type in the implied context of this class's qua[nt|l]ification
   //   (normally you should use 'lookup' to get fully qualified types)

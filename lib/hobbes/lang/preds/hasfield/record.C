@@ -79,13 +79,13 @@ struct HFRecordUnqualify : public switchExprTyFn {
   HFRecordUnqualify(const ConstraintPtr& cst) : constraint(cst) {
   }
 
-  ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const {
+  ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const override {
     ExprPtr result(e);
     result->type(removeConstraint(this->constraint, qty));
     return result;
   }
 
-  ExprPtr with(const Assign* v) const {
+  ExprPtr with(const Assign* v) const override {
     // hack to assign [char] into <std.string>
     if (hasConstraint(this->constraint, v->type())) {
       if (*v->left()->type()->monoType() == *stdstrty && *v->right()->type()->monoType() == *chararrty) {

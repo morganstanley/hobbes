@@ -98,7 +98,7 @@ struct appTyDefnF : public switchTyFn {
   ModulePtr m;
   cc *e;
   appTyDefnF(const ModulePtr &m, cc *e) : m(m), e(e) {}
-  MonoTypePtr with(const TVar *v) const {
+  MonoTypePtr with(const TVar *v) const override {
     const auto &tn = v->name();
 
     if (isPrimName(tn) || e->isTypeAliasName(tn)) {
@@ -110,12 +110,12 @@ struct appTyDefnF : public switchTyFn {
     }
   }
 
-  MonoTypePtr with(const TApp *ap) const {
+  MonoTypePtr with(const TApp *ap) const override {
     return e->replaceTypeAliases(
         TApp::make(switchOf(ap->fn(), *this), switchOf(ap->args(), *this)));
   }
 
-  MonoTypePtr with(const TExpr *x) const {
+  MonoTypePtr with(const TExpr *x) const override {
     return TExpr::make(applyTypeDefns(
         this->m, this->e, translateExprWithOpts(m->options(), x->expr())));
   }
@@ -151,7 +151,7 @@ struct appTyDefnEF : public switchExprTyFn {
   ModulePtr m;
   cc *e;
   appTyDefnEF(const ModulePtr &m, cc *e) : m(m), e(e) {}
-  QualTypePtr withTy(const QualTypePtr &t) const {
+  QualTypePtr withTy(const QualTypePtr &t) const override {
     if (t)
       return applyTypeDefns(this->m, this->e, t);
     else
@@ -166,7 +166,7 @@ struct appTyDefnMF : public switchMDefTyFn {
   ModulePtr m;
   cc *e;
   appTyDefnMF(const ModulePtr &m, cc *e) : m(m), e(e) {}
-  QualTypePtr withTy(const QualTypePtr &t) const {
+  QualTypePtr withTy(const QualTypePtr &t) const override {
     if (t)
       return applyTypeDefns(this->m, this->e, t);
     else
@@ -667,8 +667,8 @@ struct buildTransitiveUnsafePragmaClosure : public switchExprC<details::Bool> {
   }
   MVarDef const &mvd;
 
-  virtual details::Bool withConst(const Expr *) const { return true; };
-  virtual details::Bool with(const Var *v) const {
+  details::Bool withConst(const Expr *) const override { return true; };
+  details::Bool with(const Var *v) const override {
     return SafeExpr::with<bool>(
         v->value(),
         [&](const SafeExpr::UnsafeDefs &) {
@@ -690,12 +690,12 @@ struct buildTransitiveUnsafePragmaClosure : public switchExprC<details::Bool> {
         },
         []() { return false; });
   }
-  virtual details::Bool with(const Let *v) const {
+  details::Bool with(const Let *v) const override {
     switchOf(v->varExpr(), *this);
     switchOf(v->bodyExpr(), *this);
     return true;
   }
-  virtual details::Bool with(const LetRec *v) const {
+  details::Bool with(const LetRec *v) const override {
     str::set vns = toSet(v->varNames());
     LetRec::Bindings bs;
     for (const auto &b : v->bindings()) {
@@ -704,34 +704,34 @@ struct buildTransitiveUnsafePragmaClosure : public switchExprC<details::Bool> {
     switchOf(v->bodyExpr(), *this);
     return true;
   }
-  virtual details::Bool with(const Fn *v) const {
+  details::Bool with(const Fn *v) const override {
     switchOf(v->body(), *this);
     return true;
   }
-  virtual details::Bool with(const App *v) const {
+  details::Bool with(const App *v) const override {
     switchOf(v->fn(), *this);
     switchOf(v->args(), *this);
     return true;
   }
-  virtual details::Bool with(const Assign *v) const {
+  details::Bool with(const Assign *v) const override {
     switchOf(v->left(), *this);
     switchOf(v->right(), *this);
     return true;
   }
-  virtual details::Bool with(const MkArray *v) const {
+  details::Bool with(const MkArray *v) const override {
     switchOf(v->values(), *this);
     return true;
   }
-  virtual details::Bool with(const MkVariant *v) const {
+  details::Bool with(const MkVariant *v) const override {
     switchOf(v->value(), *this);
     return true;
   }
-  virtual details::Bool with(const MkRecord *v) const {
+  details::Bool with(const MkRecord *v) const override {
     switchOf(v->fields(), *this);
     return true;
   }
-  virtual details::Bool with(const AIndex *) const { return true; }
-  virtual details::Bool with(const Case *v) const {
+  details::Bool with(const AIndex *) const override { return true; }
+  details::Bool with(const Case *v) const override {
     const Case::Bindings &cbs = v->bindings();
     Case::Bindings rcbs;
     for (Case::Bindings::const_iterator cb = cbs.begin(); cb != cbs.end();
@@ -745,7 +745,7 @@ struct buildTransitiveUnsafePragmaClosure : public switchExprC<details::Bool> {
     switchOf(v->variant(), *this);
     return true;
   }
-  virtual details::Bool with(const Switch *v) const {
+  details::Bool with(const Switch *v) const override {
     Switch::Bindings rsbs;
     for (auto sb : v->bindings()) {
       switchOf(sb.exp, *this);
@@ -757,19 +757,19 @@ struct buildTransitiveUnsafePragmaClosure : public switchExprC<details::Bool> {
     switchOf(v->expr(), *this);
     return true;
   }
-  virtual details::Bool with(const Proj *v) const {
+  details::Bool with(const Proj *v) const override {
     switchOf(v->record(), *this);
     return true;
   }
-  virtual details::Bool with(const Assump *v) const {
+  details::Bool with(const Assump *v) const override {
     switchOf(v->expr(), *this);
     return true;
   }
-  virtual details::Bool with(const Pack *v) const {
+  details::Bool with(const Pack *v) const override {
     switchOf(v->expr(), *this);
     return true;
   }
-  virtual details::Bool with(const Unpack *v) const {
+  details::Bool with(const Unpack *v) const override {
     switchOf(v->package(), *this);
     switchOf(v->expr(), *this);
     return true;
@@ -859,9 +859,9 @@ struct makeSafe : public switchExprC<ExprPtr> {
     return ss.str();
   }
 
-  ExprPtr withConst(const Expr *v) const { return ExprPtr(v->clone()); }
+  ExprPtr withConst(const Expr *v) const override { return ExprPtr(v->clone()); }
 
-  ExprPtr with(const Var *v) const {
+  ExprPtr with(const Var *v) const override {
     return SafeExpr::template with<ExprPtr>(
         v->value(),
         [&, this](const SafeExpr::UnsafeDefs &unsafeDef) {
@@ -883,12 +883,12 @@ struct makeSafe : public switchExprC<ExprPtr> {
         [&]() { return ExprPtr(v->clone()); });
   }
 
-  ExprPtr with(const Let *v) const {
+  ExprPtr with(const Let *v) const override {
     return ExprPtr(new Let(v->var(), switchOf(v->varExpr(), *this),
                            switchOf(v->bodyExpr(), *this), v->la()));
   }
 
-  ExprPtr with(const LetRec *v) const {
+  ExprPtr with(const LetRec *v) const override {
     str::set vns = toSet(v->varNames());
     LetRec::Bindings bs;
     for (const auto &b : v->bindings()) {
@@ -897,41 +897,41 @@ struct makeSafe : public switchExprC<ExprPtr> {
     return ExprPtr(new LetRec(bs, switchOf(v->bodyExpr(), *this), v->la()));
   }
 
-  ExprPtr with(const Fn *v) const {
+  ExprPtr with(const Fn *v) const override {
     return ExprPtr(new Fn(v->varNames(), switchOf(v->body(), *this), v->la()));
   }
 
-  ExprPtr with(const App *v) const {
+  ExprPtr with(const App *v) const override {
     return ExprPtr(
         new App(switchOf(v->fn(), *this), switchOf(v->args(), *this), v->la()));
   }
 
-  ExprPtr with(const Assign *v) const {
+  ExprPtr with(const Assign *v) const override {
     return ExprPtr(new Assign(switchOf(v->left(), *this),
                               switchOf(v->right(), *this), v->la()));
   }
 
-  ExprPtr with(const MkArray *v) const {
+  ExprPtr with(const MkArray *v) const override {
     return ExprPtr(new MkArray(switchOf(v->values(), *this), v->la()));
   }
 
-  ExprPtr with(const MkVariant *v) const {
+  ExprPtr with(const MkVariant *v) const override {
     return ExprPtr(
         new MkVariant(v->label(), switchOf(v->value(), *this), v->la()));
   }
 
-  ExprPtr with(const MkRecord *v) const {
+  ExprPtr with(const MkRecord *v) const override {
     return ExprPtr(new MkRecord(switchOf(v->fields(), *this), v->la()));
   }
 
-  ExprPtr with(const AIndex *v) const {
+  ExprPtr with(const AIndex *v) const override {
     return fncall(
         var("atm", v->la()),
         list(switchOf(v->array(), *this), switchOf(v->index(), *this)),
         v->la());
   }
 
-  ExprPtr with(const Case *v) const {
+  ExprPtr with(const Case *v) const override {
     const Case::Bindings &cbs = v->bindings();
     Case::Bindings rcbs;
     for (Case::Bindings::const_iterator cb = cbs.begin(); cb != cbs.end();
@@ -946,7 +946,7 @@ struct makeSafe : public switchExprC<ExprPtr> {
     return ExprPtr(new Case(switchOf(v->variant(), *this), rcbs, de, v->la()));
   }
 
-  ExprPtr with(const Switch *v) const {
+  ExprPtr with(const Switch *v) const override {
     Switch::Bindings rsbs;
     for (auto sb : v->bindings()) {
       rsbs.push_back(Switch::Binding(sb.value, switchOf(sb.exp, *this)));
@@ -958,19 +958,19 @@ struct makeSafe : public switchExprC<ExprPtr> {
     return ExprPtr(new Switch(switchOf(v->expr(), *this), rsbs, de, v->la()));
   }
 
-  ExprPtr with(const Proj *v) const {
+  ExprPtr with(const Proj *v) const override {
     return ExprPtr(new Proj(switchOf(v->record(), *this), v->field(), v->la()));
   }
 
-  ExprPtr with(const Assump *v) const {
+  ExprPtr with(const Assump *v) const override {
     return ExprPtr(new Assump(switchOf(v->expr(), *this), v->ty(), v->la()));
   }
 
-  ExprPtr with(const Pack *v) const {
+  ExprPtr with(const Pack *v) const override {
     return ExprPtr(new Pack(switchOf(v->expr(), *this), v->la()));
   }
 
-  ExprPtr with(const Unpack *v) const {
+  ExprPtr with(const Unpack *v) const override {
     return ExprPtr(new Unpack(v->varName(), switchOf(v->package(), *this),
                               switchOf(v->expr(), *this), v->la()));
   }
@@ -994,7 +994,7 @@ struct makeSafeArrays : public makeSafe {
     }
   };
 
-  ExprPtr with(const Var *v) const { return SafeArray::with(v); }
+  ExprPtr with(const Var *v) const override { return SafeArray::with(v); }
 };
 
 OptDescs getAllOptions() {

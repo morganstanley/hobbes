@@ -77,11 +77,11 @@ struct IsoRecUnqualify : public switchExprTyFn {
   IsoRecUnqualify(const ConstraintPtr& constraint) : constraint(constraint) {
   }
 
-  QualTypePtr withTy(const QualTypePtr& qt) const {
+  QualTypePtr withTy(const QualTypePtr& qt) const override {
     return removeConstraint(this->constraint, qt);
   }
 
-  ExprPtr with(const Var* v) const {
+  ExprPtr with(const Var* v) const override {
     if (hasConstraint(this->constraint, v->type())) {
       // replace safe functions with 'unsafe' ones
       if (v->value() == RECTY_ROLL) {

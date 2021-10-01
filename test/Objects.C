@@ -24,7 +24,7 @@ class Left : public virtual Top {
 public:
   Left(int x, double y, int z) : Top(x, y, z) { }
 
-  int foo(int,double,char) { return 10; }
+  int foo(int,double,char) override { return 10; }
   int bar()                { return 1111; }
 };
 
@@ -32,7 +32,7 @@ class Right : public virtual Top {
 public:
   Right(int x, double y, int z) : Top(x, y, z) { }
 
-  int foo(int,double,char) { return 20; }
+  int foo(int,double,char) override { return 20; }
   int baz()                { return 2222; }
 };
 
@@ -40,7 +40,7 @@ class Bottom : public Left, public Right {
 public:
   Bottom(int x, double y, int z) : Top(x, y, z), Left(x*z, y*y, z*x), Right(x*x, y*y, z*z) { }
 
-  int foo(int,double,char) { return 30; }
+  int foo(int,double,char) override { return 30; }
   int zzz()                { return 3333; }
 };
 
@@ -71,7 +71,7 @@ public:
 
 class SIDerived : public SIBase {
 public:
-  int doblah() {
+  int doblah() override {
     return 20;
   }
 };

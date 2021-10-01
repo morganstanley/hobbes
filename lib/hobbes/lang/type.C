@@ -1564,23 +1564,23 @@ MonoTypePtr clone(const MonoTypePtr& t) { return t; }
 MonoTypePtr clone(const MonoType*    t) { return clone(*t); }
 
 struct cloneF : public switchType<MonoTypePtr> {
-  MonoTypePtr with(const Prim*       v) const { return Prim::make(v->name(), v->representation()); }
-  MonoTypePtr with(const OpaquePtr*  v) const { return OpaquePtr::make(v->name(), v->size(), v->storedContiguously()); }
-  MonoTypePtr with(const TVar*       v) const { return TVar::make(v->name()); }
-  MonoTypePtr with(const TGen*       v) const { return TGen::make(v->id()); }
-  MonoTypePtr with(const TAbs*       v) const { return TAbs::make(v->args(), v->body()); }
-  MonoTypePtr with(const TApp*       v) const { return TApp::make(v->fn(), v->args()); }
-  MonoTypePtr with(const FixedArray* v) const { return FixedArray::make(v->type(), v->length()); }
-  MonoTypePtr with(const Array*      v) const { return Array::make(v->type()); }
-  MonoTypePtr with(const Variant*    v) const { return Variant::make(v->members()); }
-  MonoTypePtr with(const Record*     v) const { return Record::make(v->members()); }
-  MonoTypePtr with(const Func*       v) const { return Func::make(v->argument(), v->result()); }
-  MonoTypePtr with(const Exists*     v) const { return Exists::make(v->absTypeName(), v->absType()); }
-  MonoTypePtr with(const Recursive*  v) const { return Recursive::make(v->recTypeName(), v->recType()); }
+  MonoTypePtr with(const Prim*       v) const override { return Prim::make(v->name(), v->representation()); }
+  MonoTypePtr with(const OpaquePtr*  v) const override { return OpaquePtr::make(v->name(), v->size(), v->storedContiguously()); }
+  MonoTypePtr with(const TVar*       v) const override { return TVar::make(v->name()); }
+  MonoTypePtr with(const TGen*       v) const override { return TGen::make(v->id()); }
+  MonoTypePtr with(const TAbs*       v) const override { return TAbs::make(v->args(), v->body()); }
+  MonoTypePtr with(const TApp*       v) const override { return TApp::make(v->fn(), v->args()); }
+  MonoTypePtr with(const FixedArray* v) const override { return FixedArray::make(v->type(), v->length()); }
+  MonoTypePtr with(const Array*      v) const override { return Array::make(v->type()); }
+  MonoTypePtr with(const Variant*    v) const override { return Variant::make(v->members()); }
+  MonoTypePtr with(const Record*     v) const override { return Record::make(v->members()); }
+  MonoTypePtr with(const Func*       v) const override { return Func::make(v->argument(), v->result()); }
+  MonoTypePtr with(const Exists*     v) const override { return Exists::make(v->absTypeName(), v->absType()); }
+  MonoTypePtr with(const Recursive*  v) const override { return Recursive::make(v->recTypeName(), v->recType()); }
   
-  MonoTypePtr with(const TString* v) const { return TString::make(v->value()); }
-  MonoTypePtr with(const TLong*   v) const { return TLong::make(v->value()); }
-  MonoTypePtr with(const TExpr*   v) const { return TExpr::make(v->expr()); }
+  MonoTypePtr with(const TString* v) const override { return TString::make(v->value()); }
+  MonoTypePtr with(const TLong*   v) const override { return TLong::make(v->value()); }
+  MonoTypePtr with(const TExpr*   v) const override { return TExpr::make(v->expr()); }
 };
 MonoTypePtr clone(const MonoType& t) { return switchOf(t, cloneF()); }
 
@@ -1734,7 +1734,7 @@ struct tgenVarsF : public walkTy {
   TGenVarSet* s;
   tgenVarsF(TGenVarSet* s) : s(s) { }
 
-  UnitV with(const TGen* v) const {
+  UnitV with(const TGen* v) const override {
     this->s->insert(v->id());
     return unitv;
   }
@@ -1778,7 +1778,7 @@ class instantiateF : public switchTyFn {
 public:
   instantiateF(const MonoTypes& ts) : ts(ts) { }
 
-  MonoTypePtr with(const TGen* v) const {
+  MonoTypePtr with(const TGen* v) const override {
     return MonoTypePtr(this->ts[v->id()]);
   }
 private:
@@ -1976,7 +1976,7 @@ class substituteF : public switchTyFn {
 public:
   substituteF(bool transitive, const MonoTypeSubst& s) : transitive(transitive), s(s) { }
 
-  MonoTypePtr with(const TVar* v) const {
+  MonoTypePtr with(const TVar* v) const override {
     MonoTypeSubst::const_iterator si = this->s.find(v->name());
     if (si != this->s.end()) {
       if (this->transitive) {
@@ -1989,7 +1989,7 @@ public:
     }
   }
 
-  MonoTypePtr with(const Exists* v) const {
+  MonoTypePtr with(const Exists* v) const override {
     if (this->s.find(v->absTypeName()) == this->s.end()) {
       return Exists::make(v->absTypeName(), switchOf(v->absType(), *this));
     } else {
@@ -1999,7 +1999,7 @@ public:
     }
   }
 
-  MonoTypePtr with(const Recursive* v) const {
+  MonoTypePtr with(const Recursive* v) const override {
     if (this->s.find(v->recTypeName()) == this->s.end()) {
       return Recursive::make(v->recTypeName(), switchOf(v->recType(), *this));
     } else {
@@ -2133,7 +2133,7 @@ nat nmax(nat lhs, nat rhs) { return std::max<nat>(lhs, rhs); }
 
 class sizeOfF : public switchType<nat> {
 public:
-  nat with(const Prim* v) const {
+  nat with(const Prim* v) const override {
     if (v->representation()) {
       return r(v->representation());
     } else {
@@ -2141,22 +2141,22 @@ public:
     }
   }
 
-  nat with(const OpaquePtr*  v) const { return v->storedContiguously() ? v->size() : sizeof(void*); }
-  nat with(const TVar*       v) const { throw std::runtime_error("Can't determine size of type variable '" + v->name() + "'"); }
-  nat with(const TGen*       v) const { throw std::runtime_error("Can't determine size of polytype argument #" + str::from(v->id())); }
-  nat with(const FixedArray* v) const { return r(v->type()) * v->requireLength(); }
-  nat with(const Array*       ) const { return sizeof(void*); }
-  nat with(const Variant*    v) const { return rv(v); }
-  nat with(const Record*     v) const { return rv(v); }
-  nat with(const Func*        ) const { return sizeof(void*); }
-  nat with(const Exists*      ) const { return sizeof(void*); }
-  nat with(const Recursive*   ) const { return sizeof(void*); }
+  nat with(const OpaquePtr*  v) const override { return v->storedContiguously() ? v->size() : sizeof(void*); }
+  nat with(const TVar*       v) const override { throw std::runtime_error("Can't determine size of type variable '" + v->name() + "'"); }
+  nat with(const TGen*       v) const override { throw std::runtime_error("Can't determine size of polytype argument #" + str::from(v->id())); }
+  nat with(const FixedArray* v) const override { return r(v->type()) * v->requireLength(); }
+  nat with(const Array*       ) const override { return sizeof(void*); }
+  nat with(const Variant*    v) const override { return rv(v); }
+  nat with(const Record*     v) const override { return rv(v); }
+  nat with(const Func*        ) const override { return sizeof(void*); }
+  nat with(const Exists*      ) const override { return sizeof(void*); }
+  nat with(const Recursive*   ) const override { return sizeof(void*); }
 
-  nat with(const TAbs* v) const {
+  nat with(const TAbs* v) const override {
     throw std::runtime_error("Can't determine size of type abstraction: " + show(v));
   }
 
-  nat with(const TApp* v) const {
+  nat with(const TApp* v) const override {
     // uncurry type function applications
     while (const TApp* lv = is<TApp>(v->fn())) {
       v = lv;
@@ -2194,9 +2194,9 @@ public:
   }
 
   // type-level values/expressions have no runtime content (they're equivalent to unit)
-  nat with(const TString* ) const { return 0; }
-  nat with(const TLong*   ) const { return 0; }
-  nat with(const TExpr*   ) const { return 0; }
+  nat with(const TString* ) const override { return 0; }
+  nat with(const TLong*   ) const override { return 0; }
+  nat with(const TExpr*   ) const override { return 0; }
 private:
   nat withPrim(const std::string& pn) const {
     if (pn == "unit") {
@@ -2435,7 +2435,7 @@ class encodeMonoTypeF : public switchType<UnitV> {
 public:
   encodeMonoTypeF(bytes* out) : out(out) { }
 
-  UnitV with(const Prim* v) const {
+  UnitV with(const Prim* v) const override {
     write(Prim::type_case_id, this->out);
     write(v->name(),          this->out);
     if (v->representation()) {
@@ -2447,7 +2447,7 @@ public:
     return unitv;
   }
 
-  UnitV with(const OpaquePtr* v) const {
+  UnitV with(const OpaquePtr* v) const override {
     write(OpaquePtr::type_case_id, this->out);
     write(v->name(),               this->out);
     write(v->size(),               this->out);
@@ -2455,26 +2455,26 @@ public:
     return unitv;
   }
 
-  UnitV with(const TGen* v) const {
+  UnitV with(const TGen* v) const override {
     write(TGen::type_case_id, this->out);
     write(v->id(),            this->out);
     return unitv;
   }
 
-  UnitV with(const TVar* v) const {
+  UnitV with(const TVar* v) const override {
     write(TVar::type_case_id, this->out);
     write(v->name(),          this->out);
     return unitv;
   }
 
-  UnitV with(const TAbs* v) const {
+  UnitV with(const TAbs* v) const override {
     write(TAbs::type_case_id, this->out);
     write(v->args(), this->out);
     switchOf(v->body(), *this);
     return unitv;
   }
 
-  UnitV with(const TApp* v) const {
+  UnitV with(const TApp* v) const override {
     write(TApp::type_case_id, this->out);
 
     switchOf(v->fn(), *this);
@@ -2485,7 +2485,7 @@ public:
     return unitv;
   }
 
-  UnitV with(const FixedArray* v) const {
+  UnitV with(const FixedArray* v) const override {
     write(FixedArray::type_case_id, this->out);
 
     switchOf(v->type(),   *this);
@@ -2493,14 +2493,14 @@ public:
     return unitv;
   }
 
-  UnitV with(const Array* v) const {
+  UnitV with(const Array* v) const override {
     write(Array::type_case_id, this->out);
 
     switchOf(v->type(), *this);
     return unitv;
   }
 
-  UnitV with(const Variant* v) const {
+  UnitV with(const Variant* v) const override {
     write(Variant::type_case_id, this->out);
 
     const Variant::Members& ms = v->members();
@@ -2516,7 +2516,7 @@ public:
     return unitv;
   }
 
-  UnitV with(const Record* v) const {
+  UnitV with(const Record* v) const override {
     write(Record::type_case_id, this->out);
 
     const Record::Members& ms = v->members();
@@ -2532,14 +2532,14 @@ public:
     return unitv;
   }
 
-  UnitV with(const Func* v) const {
+  UnitV with(const Func* v) const override {
     write(Func::type_case_id, this->out);
     switchOf(v->argument(), *this);
     switchOf(v->result(),   *this);
     return unitv;
   }
 
-  UnitV with(const Exists* v) const {
+  UnitV with(const Exists* v) const override {
     write(Exists::type_case_id, this->out);
     write(v->absTypeName(),     this->out);
 
@@ -2547,7 +2547,7 @@ public:
     return unitv;
   }
 
-  UnitV with(const Recursive* v) const {
+  UnitV with(const Recursive* v) const override {
     write(Recursive::type_case_id, this->out);
     write(v->recTypeName(),        this->out);
 
@@ -2555,19 +2555,19 @@ public:
     return unitv;
   }
 
-  UnitV with(const TString* v) const {
+  UnitV with(const TString* v) const override {
     write(TString::type_case_id, this->out);
     write(v->value(),            this->out);
     return unitv;
   }
 
-  UnitV with(const TLong* v) const {
+  UnitV with(const TLong* v) const override {
     write(TLong::type_case_id, this->out);
     write(v->value(),          this->out);
     return unitv;
   }
 
-  UnitV with(const TExpr* v) const {
+  UnitV with(const TExpr* v) const override {
     write(TExpr::type_case_id, this->out);
     std::vector<uint8_t> ebs;
     encode(stripAssumpHead(v->expr()), &ebs);
@@ -2795,7 +2795,7 @@ void decode(MonoTypePtr* mty, std::istream& in) {
 
 // open opaque type aliases not defined by this library
 struct unaliasPrimTypesF : public switchTyFn {
-  MonoTypePtr with(const Prim* t) const {
+  MonoTypePtr with(const Prim* t) const override {
     if (t->representation()) {
       // well this is awkward ...
       if (t->name() != "time" && t->name() != "datetime" && t->name() != "timespan") {

@@ -271,22 +271,22 @@ public:
   // ("transparent" in the sense that all other aspects of compilation see the
   // fully expanded type)
   void defineTypeAlias(const std::string &name, const str::seq &argNames,
-                       const MonoTypePtr &ty);
-  bool isTypeAliasName(const std::string &name) const;
-  MonoTypePtr replaceTypeAliases(const MonoTypePtr &ty) const;
+                       const MonoTypePtr &ty) override;
+  bool isTypeAliasName(const std::string &name) const override;
+  MonoTypePtr replaceTypeAliases(const MonoTypePtr &ty) const override;
 
   // typedb interface
   PolyTypePtr opaquePtrPolyType(const std::type_info &ti, unsigned int sz,
-                                bool inStruct);
+                                bool inStruct) override;
   MonoTypePtr opaquePtrMonoType(const std::type_info &ti, unsigned int sz,
-                                bool inStruct);
+                                bool inStruct) override;
 
-  PolyTypePtr generalize(const MonoTypePtr &mt) const;
+  PolyTypePtr generalize(const MonoTypePtr &mt) const override;
 
   MonoTypePtr defineNamedType(const std::string &name, const str::seq &argNames,
-                              const MonoTypePtr &ty);
-  bool isTypeName(const std::string &) const;
-  MonoTypePtr namedTypeRepresentation(const std::string &) const;
+                              const MonoTypePtr &ty) override;
+  bool isTypeName(const std::string &) const override;
+  MonoTypePtr namedTypeRepresentation(const std::string &) const override;
 
   // an 'unsafe' compilation method
   //   (the compiled function will conform to the input type description, but

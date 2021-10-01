@@ -1780,7 +1780,7 @@ template <typename T>
     ~wseries() {
     }
 
-    const ty::desc&    typeDef()  const { return this->tdef; }
+    const ty::desc&    typeDef()  const override { return this->tdef; }
     const std::string& name()     const { return this->seqname; }
     imagefile*         file()     const { return this->f; }
 
@@ -1935,7 +1935,7 @@ template <typename ... Wss>
     }
     ~wsseq() {
     }
-    const ty::desc& typeDef()  const { return this->log.typeDef(); }
+    const ty::desc& typeDef()  const override { return this->log.typeDef(); }
   private:
     wseries<std::pair<uint32_t,size_t>> log;
   };
@@ -2229,7 +2229,7 @@ template <typename T>
     ~rseries() {
     }
 
-    const ty::desc& typeDef() const { return this->tdef; }
+    const ty::desc& typeDef() const override { return this->tdef; }
     imagefile*      file()    const { return this->f; }
 
     bool next(T* x, int maxWaitMS = 0 /* <0 : infinite wait, 0 : no wait, >0 : wait up to milliseconds */) {

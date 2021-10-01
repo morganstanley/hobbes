@@ -175,11 +175,11 @@ struct VAUnqualify : public switchExprTyFn {
   const ConstraintPtr& constraint;
   VAUnqualify(const ConstraintPtr& constraint) : constraint(constraint) { }
 
-  QualTypePtr withTy(const QualTypePtr& qt) const {
+  QualTypePtr withTy(const QualTypePtr& qt) const override {
     return removeConstraint(this->constraint, qt);
   }
 
-  ExprPtr with(const Var* v) const {
+  ExprPtr with(const Var* v) const override {
     if (hasConstraint(this->constraint, v->type())) {
       if (v->value() == REF_VAR_APP) {
         // rewrite this variable to become a function that does the promised case analysis and dispatch to closure calls

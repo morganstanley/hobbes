@@ -85,7 +85,7 @@ struct ProcManUnqualify : public switchExprTyFn {
   ProcManUnqualify(const ProcManager* pthis, const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions* defs) : pthis(pthis), tenv(tenv), constraint(cst), defs(defs) {
   }
 
-  ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const {
+  ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const override {
     ExprPtr result(e);
     result->type(removeConstraint(this->constraint, qty));
     ExprPtr aresult(new Assump(result, result->type(), result->la()));
@@ -103,7 +103,7 @@ struct ProcManUnqualify : public switchExprTyFn {
     }
   }
 
-  ExprPtr with(const Fn* v) const {
+  ExprPtr with(const Fn* v) const override {
     const Func* fty = is<Func>(v->type()->monoType());
     if (!fty) {
       throw std::runtime_error("Internal error, expected annotated function type");
@@ -117,7 +117,7 @@ struct ProcManUnqualify : public switchExprTyFn {
     );
   }
 
-  ExprPtr with(const Let* v) const {
+  ExprPtr with(const Let* v) const override {
     return wrapWithTy(v->type(),
       new Let(
         v->var(),
@@ -179,7 +179,7 @@ struct ProcManUnqualify : public switchExprTyFn {
       blockRead(p, fty->result()), la), la), la);
   }
 
-  ExprPtr with(const App* v) const {
+  ExprPtr with(const App* v) const override {
     if (const Proj* f = is<Proj>(stripAssumpHead(v->fn()))) {
       if (const proc* p = isProcRef(f)) {
         return makeInvocation(p, switchOf(f->record(), *this), f->field(), f->type()->monoType(), switchOf(v->args(), *this));
@@ -188,7 +188,7 @@ struct ProcManUnqualify : public switchExprTyFn {
     return wrapWithTy(v->type(), new App(switchOf(v->fn(), *this), switchOf(v->args(), *this), v->la()));
   }
 
-  ExprPtr with(const Proj* v) const {
+  ExprPtr with(const Proj* v) const override {
     // generate a function for this reference to an external function
     if (const proc* p = isProcRef(v)) {
       const Func* fty = is<Func>(v->type()->monoType());

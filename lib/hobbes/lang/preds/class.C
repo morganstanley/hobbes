@@ -485,11 +485,11 @@ struct TCUnqualify : public switchExprTyFn {
   const ConstraintPtr& constraint;
   TCUnqualify(const TCInstance* inst, Definitions* ds, const TEnvPtr& tenv, const ConstraintPtr& constraint) : inst(inst), ds(ds), tenv(tenv), constraint(constraint) { }
 
-  QualTypePtr withTy(const QualTypePtr& qt) const {
+  QualTypePtr withTy(const QualTypePtr& qt) const override {
     return removeConstraint(this->constraint, qt);
   }
 
-  ExprPtr with(const Var* v) const {
+  ExprPtr with(const Var* v) const override {
     // if we can resolve this symbol as an overload, replace it
     MemberMapping::const_iterator mm = inst->memberMapping().find(v->value());
 

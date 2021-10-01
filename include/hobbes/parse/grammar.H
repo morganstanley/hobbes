@@ -28,7 +28,7 @@ typedef std::shared_ptr<GrammarValue> GrammarValuePtr;
 class GSymRef : public GrammarValue {
 public:
   GSymRef(const std::string&, const LexicalAnnotation&);
-  void show(std::ostream&) const;
+  void show(std::ostream&) const override;
 
   const std::string& value() const;
 private:
@@ -38,7 +38,7 @@ private:
 class GStr : public GrammarValue {
 public:
   GStr(const std::string&, const LexicalAnnotation&);
-  void show(std::ostream&) const;
+  void show(std::ostream&) const override;
 
   const std::string& value() const;
 private:

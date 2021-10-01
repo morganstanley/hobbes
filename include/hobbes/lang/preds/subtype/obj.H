@@ -77,13 +77,13 @@ public:
   PolyTypePtr generalize(const MonoTypePtr& mt) const;
 
   // subtype eliminator interface
-  bool refine     (const TEnvPtr& tenv, const MonoTypePtr& lhs, const MonoTypePtr& rhs, MonoTypeUnifier* s);
-  bool satisfied  (const TEnvPtr& tenv, const MonoTypePtr& lhs, const MonoTypePtr& rhs) const;
-  bool satisfiable(const TEnvPtr& tenv, const MonoTypePtr& lhs, const MonoTypePtr& rhs) const;
+  bool refine     (const TEnvPtr& tenv, const MonoTypePtr& lhs, const MonoTypePtr& rhs, MonoTypeUnifier* s) override;
+  bool satisfied  (const TEnvPtr& tenv, const MonoTypePtr& lhs, const MonoTypePtr& rhs) const override;
+  bool satisfiable(const TEnvPtr& tenv, const MonoTypePtr& lhs, const MonoTypePtr& rhs) const override;
 
-  ExprPtr unqualify(const TEnvPtr&,const ConstraintPtr&,const ExprPtr&,Definitions*) const;
-  PolyTypePtr     lookup   (const std::string& vn)                              const;
-  SymSet          bindings ()                                                   const;
+  ExprPtr unqualify(const TEnvPtr&,const ConstraintPtr&,const ExprPtr&,Definitions*) const override;
+  PolyTypePtr     lookup   (const std::string& vn)                              const override;
+  SymSet          bindings ()                                                   const override;
 private:
   typedef std::map<std::string, const class_type*> ClassDefs;
   ClassDefs classDefs;

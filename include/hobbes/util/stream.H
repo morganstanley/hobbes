@@ -21,7 +21,7 @@ template < typename Char = char, typename Traits = std::char_traits<Char> >
   private:
     RawData* d;
 
-    int_type overflow(int_type c) {
+    int_type overflow(int_type c) override {
       if (c != Traits::eof()) {
         d->push_back(static_cast<uint8_t>(Traits::to_char_type(c)));
       }

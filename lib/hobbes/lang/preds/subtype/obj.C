@@ -296,13 +296,13 @@ struct ObjUnqualify : public switchExprTyFn {
     }
   }
 
-  ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const {
+  ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const override {
     ExprPtr result(e);
     result->type(removeConstraint(this->constraint, qty));
     return result;
   }
 
-  ExprPtr with(const Var* v) const {
+  ExprPtr with(const Var* v) const override {
     if (!hasConstraint(this->constraint, v->type())) {
       return wrapWithTy(v->type(), v->clone());
     } else if (const Func* fty = is<Func>(v->type()->monoType())) {
@@ -327,7 +327,7 @@ struct ObjUnqualify : public switchExprTyFn {
     }
   }
 
-  ExprPtr with(const Fn* v) const {
+  ExprPtr with(const Fn* v) const override {
     const Func* fty = is<Func>(v->type()->monoType());
     if (!fty) {
       throw std::runtime_error("Internal error, expected annotated function type");
@@ -341,7 +341,7 @@ struct ObjUnqualify : public switchExprTyFn {
     );
   }
   
-  ExprPtr with(const App* v) const {
+  ExprPtr with(const App* v) const override {
     if (hasConstraint(this->constraint, v->fn()->type())) {
       ExprPtr f    = is<Var>(v->fn()) ? wrapWithTy(v->fn()->type(), v->fn()->clone()) : switchOf(v->fn(), *this);
       Exprs   args = switchOf(v->args(), *this);

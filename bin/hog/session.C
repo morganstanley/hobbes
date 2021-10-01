@@ -388,7 +388,7 @@ public:
   ConsolidateGroup(hobbes::StoredSeries::StorageMode sm) : sm(sm) {
   }
 
-  ProcessTxnF appendStorageSession(const std::string& dirPfx, hobbes::storage::PipeQOS qos, hobbes::storage::CommitMethod cm, const hobbes::storage::statements& stmts) {
+  ProcessTxnF appendStorageSession(const std::string& dirPfx, hobbes::storage::PipeQOS qos, hobbes::storage::CommitMethod cm, const hobbes::storage::statements& stmts) override {
     std::lock_guard<std::mutex> slock(this->m);
     for (auto* cs : this->sessions) {
       if (dirPfx == cs->dirPfx && qos == cs->qos && cm == cs->cm && stmts == cs->stmts) {
@@ -433,7 +433,7 @@ public:
   SimpleGroup(hobbes::StoredSeries::StorageMode sm) : sm(sm) {
   }
 
-  ProcessTxnF appendStorageSession(const std::string& dirPfx, hobbes::storage::PipeQOS qos, hobbes::storage::CommitMethod cm, const hobbes::storage::statements& stmts) {
+  ProcessTxnF appendStorageSession(const std::string& dirPfx, hobbes::storage::PipeQOS qos, hobbes::storage::CommitMethod cm, const hobbes::storage::statements& stmts) override {
     Session* s = new Session;
     return initStorageSession<AllocFreshFile>(s, dirPfx, qos, cm, stmts, this->sm);
   }

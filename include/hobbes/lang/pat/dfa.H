@@ -58,7 +58,7 @@ public:
   const Defs& defs() const;
   stateidx_t nextState() const;
 
-  std::string stamp();
+  std::string stamp() override;
 
   static const int type_case_id = 0;
 private:
@@ -76,7 +76,7 @@ public:
   const Jumps& jumps() const;
   stateidx_t defaultState() const;
 
-  std::string stamp();
+  std::string stamp() override;
 
   static const int type_case_id = 1;
 private:
@@ -95,7 +95,7 @@ public:
   const CtorJumps& jumps() const;
   stateidx_t defaultState() const;
 
-  std::string stamp();
+  std::string stamp() override;
 
   static const int type_case_id = 2;
 private:
@@ -110,7 +110,7 @@ public:
 
   const ExprPtr& expr() const;
 
-  std::string stamp();
+  std::string stamp() override;
 
   static const int type_case_id = 3;
 private:

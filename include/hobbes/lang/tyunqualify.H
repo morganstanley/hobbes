@@ -55,14 +55,14 @@ class UnqualifierSet : public Unqualifier {
     UnqualifierPtr      findUnqualifier(const std::string& name);
     const Unqualifiers& unqualifiers() const;
 
-    bool        refine(const TEnvPtr&,const ConstraintPtr&,MonoTypeUnifier*,Definitions*);
-    bool        satisfied(const TEnvPtr&,const ConstraintPtr&,Definitions*)                  const;
-    bool        satisfiable(const TEnvPtr&,const ConstraintPtr&,Definitions*)                const;
-    void        explain(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*, annmsgs*);
-    ExprPtr     unqualify(const TEnvPtr&,const ConstraintPtr&, const ExprPtr&, Definitions*) const;
-    PolyTypePtr lookup(const std::string& vn)                                                const;
-    SymSet      bindings()                                                                   const;
-    FunDeps     dependencies(const ConstraintPtr&)                                           const;
+    bool        refine(const TEnvPtr&,const ConstraintPtr&,MonoTypeUnifier*,Definitions*) override;
+    bool        satisfied(const TEnvPtr&,const ConstraintPtr&,Definitions*)                  const override;
+    bool        satisfiable(const TEnvPtr&,const ConstraintPtr&,Definitions*)                const override;
+    void        explain(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*, annmsgs*) override;
+    ExprPtr     unqualify(const TEnvPtr&,const ConstraintPtr&, const ExprPtr&, Definitions*) const override;
+    PolyTypePtr lookup(const std::string& vn)                                                const override;
+    SymSet      bindings()                                                                   const override;
+    FunDeps     dependencies(const ConstraintPtr&)                                           const override;
   private:
     Unqualifiers uqs;
 };

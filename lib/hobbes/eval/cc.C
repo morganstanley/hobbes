@@ -354,7 +354,7 @@ struct repTypeAliasesF : public switchTyFn {
   repTypeAliasesF(const TTyDefs& ttyDefs) : ttyDefs(ttyDefs) {
   }
 
-  MonoTypePtr with(const Prim* v) const {
+  MonoTypePtr with(const Prim* v) const override {
     if (!v->representation()) {
       auto td = this->ttyDefs.find(v->name());
       if (td != this->ttyDefs.end()) {
@@ -366,7 +366,7 @@ struct repTypeAliasesF : public switchTyFn {
     return Prim::make(v->name(), v->representation());
   }
 
-  MonoTypePtr with(const TApp* v) const {
+  MonoTypePtr with(const TApp* v) const override {
     if (const Prim* f = is<Prim>(v->fn())) {
       auto td = this->ttyDefs.find(f->name());
       if (td != this->ttyDefs.end()) {

@@ -66,11 +66,11 @@ struct injFileReferencesF : public switchTyFn {
   ExprPtr f;
   injFileReferencesF(const ExprPtr& f) : f(f) { }
 
-  MonoTypePtr with(const Prim* t) const {
+  MonoTypePtr with(const Prim* t) const override {
     return Prim::make(t->name(), t->representation() ? switchOf(t->representation(), *this) : t->representation());
   }
 
-  MonoTypePtr with(const TApp* v) const {
+  MonoTypePtr with(const TApp* v) const override {
     MonoTypePtr tf    = switchOf(v->fn(), *this);
     MonoTypes   targs = switchOf(v->args(), *this);
 
@@ -177,7 +177,7 @@ char* dbloadarr(long db, long offset, long esz) {
 
 // load/store root values in storage files
 class dbloadVF : public op {
-  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr& rty, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr& rty, const Exprs& es) override {
     llvm::Value* db  = c->compile(es[0]);
     llvm::Value* off = c->compile(es[1]);
 
@@ -200,7 +200,7 @@ class dbloadVF : public op {
     });
   }
 
-  PolyTypePtr type(typedb&) const {
+  PolyTypePtr type(typedb&) const override {
     static MonoTypePtr tg0(TGen::make(0));
     static MonoTypePtr tg1(TGen::make(1));
     static MonoTypePtr tg2(TGen::make(2));
@@ -210,7 +210,7 @@ class dbloadVF : public op {
 };
 
 class dbstoreVF : public op {
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) override {
     llvm::Value* db   = c->compile(es[0]);
     llvm::Value* off  = c->compile(es[1]);
     llvm::Value* outv = c->compile(es[2]);
@@ -242,7 +242,7 @@ class dbstoreVF : public op {
     });
   }
 
-  PolyTypePtr type(typedb&) const {
+  PolyTypePtr type(typedb&) const override {
     static MonoTypePtr tg0(TGen::make(0));
     static MonoTypePtr tg1(TGen::make(1));
     static MonoTypePtr tg2(TGen::make(2));
@@ -253,7 +253,7 @@ class dbstoreVF : public op {
 
 // load unnamed values inside of storage files
 struct dbloadF : public op {
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) override {
     FRefT frt = assumeFRefT(tys[0], es[0]->la());
 
     llvm::Value* db  = c->compileAtGlobalScope(frt.second);
@@ -291,7 +291,7 @@ struct dbloadF : public op {
     });
   }
 
-  PolyTypePtr type(typedb&) const {
+  PolyTypePtr type(typedb&) const override {
     static MonoTypePtr tg0(TGen::make(0));
     static MonoTypePtr tg1(TGen::make(1));
     static PolyTypePtr npty(new PolyType(2, qualtype(Func::make(tuplety(list(fileRefTy(tg0, tg1))), tg0))));
@@ -300,7 +300,7 @@ struct dbloadF : public op {
 };
 
 struct dbloadPF : public op {
-  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr& rty, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr& rty, const Exprs& es) override {
     llvm::Value* db  = c->compile(es[0]);
     llvm::Value* off = c->compile(es[1]);
 
@@ -336,7 +336,7 @@ struct dbloadPF : public op {
     });
   }
 
-  PolyTypePtr type(typedb&) const {
+  PolyTypePtr type(typedb&) const override {
     static MonoTypePtr tg0(TGen::make(0));
     static MonoTypePtr tg1(TGen::make(1));
     static MonoTypePtr tg2(TGen::make(2));
@@ -353,12 +353,12 @@ struct dbloadPF : public op {
 //
 //  but this currently can't be expressed
 struct dbRefFileF : public op {
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) override {
     FRefT frt = assumeFRefT(tys[0], es[0]->la());
     return c->compileAtGlobalScope(frt.second);
   }
 
-  PolyTypePtr type(typedb&) const {
+  PolyTypePtr type(typedb&) const override {
     MonoTypePtr tg0(TGen::make(0));
     MonoTypePtr tg1(TGen::make(1));
     MonoTypePtr tg2(TGen::make(2));
@@ -382,7 +382,7 @@ void dbunloadarr(long db, long ptr, long sz) {
 }
 
 struct dbunloadF : public op {
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) override {
     llvm::Value* db  = c->compile(es[0]);
     return withContext([&](auto&) -> llvm::Value* {
       llvm::Value* val = c->builder()->CreatePtrToInt(c->compile(es[1]), toLLVM(primty("long"), true));
@@ -414,7 +414,7 @@ struct dbunloadF : public op {
     });
   }
 
-  PolyTypePtr type(typedb&) const {
+  PolyTypePtr type(typedb&) const override {
     static MonoTypePtr tg0(TGen::make(0));
     static MonoTypePtr tg1(TGen::make(1));
     static MonoTypePtr tg2(TGen::make(2));
@@ -429,7 +429,7 @@ long dballoc(long db, long datasz, size_t align) {
 }
 
 struct dballocF : public op {
-  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr& rty, const Exprs&) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr& rty, const Exprs&) override {
     FRefT frt = assumeFRefT(rty, LexicalAnnotation::null());
 
     llvm::Value* db  = c->compileAtGlobalScope(frt.second);
@@ -443,14 +443,14 @@ struct dballocF : public op {
     });
   }
 
-  PolyTypePtr type(typedb&) const {
+  PolyTypePtr type(typedb&) const override {
     return PolyTypePtr(new PolyType(2, qualtype(Func::make(tuplety(list(primty("unit"))), fileRefTy(tgen(0), tgen(1))))));
   }
 };
 
 // write a value into a storage file
 struct dbstoreF : public op {
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) override {
     FRefT frt = assumeFRefT(rty, es[0]->la());
 
     llvm::Value* db  = c->compileAtGlobalScope(frt.second);
@@ -479,7 +479,7 @@ struct dbstoreF : public op {
     }
   }
 
-  PolyTypePtr type(typedb&) const {
+  PolyTypePtr type(typedb&) const override {
     static MonoTypePtr tg0(TGen::make(0));
     static MonoTypePtr tg1(TGen::make(1));
     static PolyTypePtr npty(new PolyType(2, qualtype(Func::make(tuplety(list(tg0)), fileRefTy(tg0, tg1)))));
@@ -488,7 +488,7 @@ struct dbstoreF : public op {
 };
 
 struct dbstorePF : public op {
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) override {
     llvm::Value* db  = c->compile(es[0]);
     llvm::Value* v   = c->compile(es[1]);
 
@@ -515,7 +515,7 @@ struct dbstorePF : public op {
     }
   }
 
-  PolyTypePtr type(typedb&) const {
+  PolyTypePtr type(typedb&) const override {
     static MonoTypePtr tg0(TGen::make(0));
     static MonoTypePtr tg1(TGen::make(1));
     static PolyTypePtr npty(new PolyType(2, qualtype(Func::make(tuplety(list(tapp(primty("file"), list(tlong(1), tg0)), tg1)), fileRefTy(tg1)))));
@@ -529,7 +529,7 @@ long dballocarr(long db, long elemsz, long len) {
 }
 
 struct dballocArrF : public op {
-  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr& rty, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr& rty, const Exprs& es) override {
     FRefT frt = assumeFRefT(rty, es[0]->la());
 
     llvm::Value* db  = c->compileAtGlobalScope(frt.second);
@@ -544,7 +544,7 @@ struct dballocArrF : public op {
     });
   }
 
-  PolyTypePtr type(typedb&) const {
+  PolyTypePtr type(typedb&) const override {
     static MonoTypePtr tg0(TGen::make(0));
     static MonoTypePtr tg1(TGen::make(1));
     static PolyTypePtr npty(new PolyType(2, qualtype(Func::make(tuplety(list(primty("long"))), fileRefTy(arrayty(tg0), tg1)))));
@@ -553,7 +553,7 @@ struct dballocArrF : public op {
 };
 
 struct dballocArrPF : public op {
-  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr& rty, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr& rty, const Exprs& es) override {
     llvm::Value* db  = c->compile(es[0]);
     llvm::Value* len = c->compile(es[1]);
 
@@ -566,7 +566,7 @@ struct dballocArrPF : public op {
     });
   }
 
-  PolyTypePtr type(typedb&) const {
+  PolyTypePtr type(typedb&) const override {
     static MonoTypePtr tg0(TGen::make(0));
     static MonoTypePtr tg1(TGen::make(1));
     static PolyTypePtr npty(new PolyType(2, qualtype(Func::make(tuplety(list(tapp(primty("file"), list(tlong(1), tg0)), primty("long"))), fileRefTy(arrayty(tg1))))));
@@ -580,7 +580,7 @@ long dbdarrcapacity(long db, long elemsz, long arrref) {
 }
 
 struct dbarrCapacityF : public op {
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) override {
     FRefT frt = assumeFRefT(tys[0], es[0]->la());
 
     llvm::Value* db  = c->compileAtGlobalScope(frt.second);
@@ -595,7 +595,7 @@ struct dbarrCapacityF : public op {
     });
   }
 
-  PolyTypePtr type(typedb&) const {
+  PolyTypePtr type(typedb&) const override {
     static MonoTypePtr tg0(TGen::make(0));
     static MonoTypePtr tg1(TGen::make(1));
     static PolyTypePtr npty(new PolyType(3, qualtype(Func::make(tuplety(list(fileRefTy(darrayty(tg0), tg1))), primty("long")))));
@@ -604,7 +604,7 @@ struct dbarrCapacityF : public op {
 };
 
 struct dbarrCapacityPF : public op {
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) override {
     llvm::Value* db  = c->compile(es[0]);
     llvm::Value* off = c->compile(es[1]);
 
@@ -617,7 +617,7 @@ struct dbarrCapacityPF : public op {
     });
   }
 
-  PolyTypePtr type(typedb&) const {
+  PolyTypePtr type(typedb&) const override {
     static MonoTypePtr tg0(TGen::make(0));
     static MonoTypePtr tg1(TGen::make(1));
     static MonoTypePtr tg2(TGen::make(2));
@@ -653,7 +653,7 @@ void dbsignalupdate(long db) {
 }
 
 struct signalUpdateF : public op {
-  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) override {
     llvm::Value* db  = c->compile(es[0]);
 
     llvm::Function* f = c->lookupFunction(".dbsignalupdate");
@@ -664,7 +664,7 @@ struct signalUpdateF : public op {
     });
   }
 
-  PolyTypePtr type(typedb&) const {
+  PolyTypePtr type(typedb&) const override {
     return PolyTypePtr(new PolyType(3, qualtype(Func::make(tuplety(list(tapp(primty("file"), list(tlong(1), tgen(0))))), primty("unit")))));
   }
 };
@@ -727,7 +727,7 @@ struct openFileF : public op {
     }
   }
 
-  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr& rty, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr& rty, const Exprs& es) override {
     FileConfig fcfg;
 
     if (!isMonoSingular(rty)) {
@@ -740,7 +740,7 @@ struct openFileF : public op {
     return c->compile(fncall(wfrtfn, list(es[0], constant(encodeTypePtr(fcfg.second), es[0]->la())), es[0]->la()));
   }
 
-  PolyTypePtr type(typedb&) const {
+  PolyTypePtr type(typedb&) const override {
     // writeFile :: [char] -> file(1L, a)
     return polytype(1, qualtype(functy(list(arrayty(primty("char"))), fileType(this->writeable, tgen(0)))));
   }
@@ -757,12 +757,12 @@ struct printFileF : public op {
   printFileF(const std::string& showf) : showf(showf) {
   }
 
-  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) override {
     ExprPtr wfrtfn = var(this->showf, functy(list(primty("long")), primty("unit")), es[0]->la());
     return c->compile(fncall(wfrtfn, list(es[0]), es[0]->la()));
   }
 
-  PolyTypePtr type(typedb&) const {
+  PolyTypePtr type(typedb&) const override {
     // showFile :: file(a, b) -> ()
     return polytype(2, qualtype(functy(list(tapp(primty("file"), list(tgen(0), tgen(1)))), primty("unit"))));
   }
@@ -771,11 +771,11 @@ struct printFileF : public op {
 // resolve variable lookups within storage files
 class DBFieldLookup : public HFEliminator {
 public:
-  bool refine(const TEnvPtr&, const HasField&, MonoTypeUnifier*, Definitions*);
-  bool satisfied(const TEnvPtr&, const HasField&, Definitions*) const;
-  bool satisfiable(const TEnvPtr&, const HasField&, Definitions*) const;
-  ExprPtr unqualify(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*) const;
-  std::string name() const;
+  bool refine(const TEnvPtr&, const HasField&, MonoTypeUnifier*, Definitions*) override;
+  bool satisfied(const TEnvPtr&, const HasField&, Definitions*) const override;
+  bool satisfiable(const TEnvPtr&, const HasField&, Definitions*) const override;
+  ExprPtr unqualify(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*) const override;
+  std::string name() const override;
 };
 
 bool DBFieldLookup::refine(const TEnvPtr&, const HasField& hf, MonoTypeUnifier* u, Definitions*) {
@@ -894,13 +894,13 @@ struct HFDBFLUnqualify : public switchExprTyFn {
     return *ty == *this->ftype;
   }
 
-  ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const {
+  ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const override {
     ExprPtr result(e);
     result->type(removeConstraint(this->constraint, qty));
     return result;
   }
 
-  ExprPtr with(const Fn* v) const {
+  ExprPtr with(const Fn* v) const override {
     const Func* fty = is<Func>(v->type()->monoType());
     if (!fty) {
       throw annotated_error(*v, "Internal error, expected annotated function type");
@@ -914,7 +914,7 @@ struct HFDBFLUnqualify : public switchExprTyFn {
     );
   }
 
-  ExprPtr with(const Let* v) const {
+  ExprPtr with(const Let* v) const override {
     return wrapWithTy(v->type(),
       new Let(
         v->var(),
@@ -925,7 +925,7 @@ struct HFDBFLUnqualify : public switchExprTyFn {
     );
   }
 
-  ExprPtr with(const Proj* v) const {
+  ExprPtr with(const Proj* v) const override {
     // read a file value
     if (this->udir == HasField::Read && hasConstraint(this->constraint, v->type()) && v->field() == this->fname && expectedObjType(v->record()->type()->monoType())) {
       ExprPtr dbfile = switchOf(v->record(), *this);
@@ -937,7 +937,7 @@ struct HFDBFLUnqualify : public switchExprTyFn {
     }
   }
 
-  ExprPtr with(const Assign* v) const {
+  ExprPtr with(const Assign* v) const override {
     ExprPtr lhs = switchOf(v->left(), *this);
     ExprPtr rhs = switchOf(v->right(), *this);
 
@@ -1014,7 +1014,7 @@ public:
     throw std::runtime_error("Internal error, not loadable file load constraint: " + show(cst));
   }
 
-  bool refine(const TEnvPtr&, const ConstraintPtr& cst, MonoTypeUnifier* u, Definitions*) {
+  bool refine(const TEnvPtr&, const ConstraintPtr& cst, MonoTypeUnifier* u, Definitions*) override {
     MonoTypePtr fpath, ftype;
     if (decLF(cst, &fpath, &ftype)) {
       if (const TString* fp = is<TString>(fpath)) {
@@ -1029,7 +1029,7 @@ public:
     return false;
   }
 
-  bool satisfied(const TEnvPtr&, const ConstraintPtr& cst, Definitions*) const {
+  bool satisfied(const TEnvPtr&, const ConstraintPtr& cst, Definitions*) const override {
     MonoTypePtr fpath, ftype;
     if (decLF(cst, &fpath, &ftype)) {
       if (const TString* fp = is<TString>(fpath)) {
@@ -1042,7 +1042,7 @@ public:
     return false;
   }
 
-  bool satisfiable(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions*) const {
+  bool satisfiable(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions*) const override {
     MonoTypePtr fpath, ftype;
     if (decLF(cst, &fpath, &ftype)) {
       if (const TString* fp = is<TString>(fpath)) {
@@ -1057,7 +1057,7 @@ public:
     return false;
   }
 
-  void explain(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*, annmsgs*) {
+  void explain(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*, annmsgs*) override {
   }
 
   struct insertLoadedFileF : public switchExprTyFn {
@@ -1067,11 +1067,11 @@ public:
     insertLoadedFileF(const ConstraintPtr& constraint, long f) : constraint(constraint), f(f) {
     }
 
-    QualTypePtr withTy(const QualTypePtr& qt) const {
+    QualTypePtr withTy(const QualTypePtr& qt) const override {
       return removeConstraint(this->constraint, qt);
     }
 
-    ExprPtr with(const Var* v) const {
+    ExprPtr with(const Var* v) const override {
       if (hasConstraint(this->constraint, v->type())) {
         if (v->value() == READ_FILE_SYM || v->value() == WRITE_FILE_SYM) {
           return constant(this->f, v->la());
@@ -1081,11 +1081,11 @@ public:
     }
   };
 
-  ExprPtr unqualify(const TEnvPtr&, const ConstraintPtr& cst, const ExprPtr& e, Definitions*) const {
+  ExprPtr unqualify(const TEnvPtr&, const ConstraintPtr& cst, const ExprPtr& e, Definitions*) const override {
     return switchOf(e, insertLoadedFileF(cst, reinterpret_cast<long>(loadedFile(cst).file)));
   }
 
-  PolyTypePtr lookup(const std::string& vn) const {
+  PolyTypePtr lookup(const std::string& vn) const override {
     if (vn == READ_FILE_SYM) {
       return polytype(2, qualtype(list(ConstraintPtr(new Constraint("LoadFile", list(tgen(0), fileType(false, tgen(1)))))), fileType(false, tgen(1))));
     } else if (vn == WRITE_FILE_SYM) {
@@ -1095,14 +1095,14 @@ public:
     }
   }
 
-  SymSet bindings() const {
+  SymSet bindings() const override {
     SymSet r;
     r.insert(READ_FILE_SYM);
     r.insert(WRITE_FILE_SYM);
     return r;
   }
 
-  FunDeps dependencies(const ConstraintPtr&) const {
+  FunDeps dependencies(const ConstraintPtr&) const override {
     FunDeps result;
     result.push_back(FunDep(list(0), 1));
     return result;
@@ -1117,11 +1117,11 @@ struct pageEntriesF : public op {
 
   pageEntriesF(const std::string& f) : f(f) {
   }
-  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) override {
     ExprPtr wfrtfn = var(this->f, functy(list(primty("long")), lift<reader::PageEntries*>::type(nulltdb)), es[0]->la());
     return c->compile(fncall(wfrtfn, list(es[0]), es[0]->la()));
   }
-  PolyTypePtr type(typedb&) const {
+  PolyTypePtr type(typedb&) const override {
     return polytype(2, qualtype(functy(list(tapp(primty("file"), list(tgen(0), tgen(1)))), lift<reader::PageEntries*>::type(nulltdb))));
   }
 };

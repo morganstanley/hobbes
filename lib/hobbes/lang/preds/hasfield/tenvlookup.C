@@ -131,13 +131,13 @@ struct HFTEnvLookupUnqualify : public switchExprTyFn {
   HFTEnvLookupUnqualify(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions* defs) : tenv(tenv), constraint(cst), defs(defs) {
   }
 
-  ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const {
+  ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const override {
     ExprPtr result(e);
     result->type(removeConstraint(this->constraint, qty));
     return result;
   }
 
-  ExprPtr with(const Fn* v) const {
+  ExprPtr with(const Fn* v) const override {
     const Func* fty = is<Func>(v->type()->monoType());
     if (!fty) {
       throw annotated_error(*v, "Internal error, expected annotated function type");
@@ -151,7 +151,7 @@ struct HFTEnvLookupUnqualify : public switchExprTyFn {
     );
   }
 
-  ExprPtr with(const App* v) const {
+  ExprPtr with(const App* v) const override {
     // fixup in application position (the preferred position)
     if (const Proj* p = is<Proj>(stripAssumpHead(v->fn()))) {
       if (hasConstraint(this->constraint, p->type())) {
@@ -178,7 +178,7 @@ struct HFTEnvLookupUnqualify : public switchExprTyFn {
     return wrapWithTy(v->type(), new App(switchOf(v->fn(), *this), switchOf(v->args(), *this), v->la()));
   }
 
-  ExprPtr with(const Proj* v) const {
+  ExprPtr with(const Proj* v) const override {
     // this should create a closure
     if (hasConstraint(this->constraint, v->type())) {
       throw annotated_error(*v, "Closure creation from tenv-lookup as record lookup, NYI.");

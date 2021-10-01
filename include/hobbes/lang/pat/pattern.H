@@ -96,15 +96,15 @@ public:
   const ExprPtr&      expression()    const;
   const PrimitivePtr& equivConstant() const;
 
-  void show(std::ostream&) const;
-  bool operator==(const Pattern&) const;
+  void show(std::ostream&) const override;
+  bool operator==(const Pattern&) const override;
 
   static const int type_case_id = 0;
 private:
   PrimitivePtr p;
   ExprPtr      e;
 
-  void assignSubNames(const std::string&);
+  void assignSubNames(const std::string&) override;
 };
 
 // match any value, maybe bind it to a variable name
@@ -114,14 +114,14 @@ public:
 
   const std::string& value() const;
 
-  void show(std::ostream&) const;
-  bool operator==(const Pattern&) const;
+  void show(std::ostream&) const override;
+  bool operator==(const Pattern&) const override;
 
   static const int type_case_id = 1;
 private:
   std::string vn;
 
-  void assignSubNames(const std::string&);
+  void assignSubNames(const std::string&) override;
 };
 
 // match an array of patterns
@@ -136,15 +136,15 @@ public:
   // allow external permutation of array match sequence
   void indexes(const Idxs&);
 
-  void show(std::ostream&) const;
-  bool operator==(const Pattern&) const;
+  void show(std::ostream&) const override;
+  bool operator==(const Pattern&) const override;
 
   static const int type_case_id = 2;
 private:
   Patterns ps;
   Idxs     idxs;
 
-  void assignSubNames(const std::string&);
+  void assignSubNames(const std::string&) override;
 };
 
 // match a regular expression
@@ -158,13 +158,13 @@ public:
 
   static PatternPtr toRegex(const MatchArray&);
 
-  void show(std::ostream&) const;
-  bool operator==(const Pattern&) const;
+  void show(std::ostream&) const override;
+  bool operator==(const Pattern&) const override;
   static const int type_case_id = 3;
 private:
   RegexPtr regex;
 
-  void assignSubNames(const std::string&);
+  void assignSubNames(const std::string&) override;
 };
 
 // match a record of patterns
@@ -182,15 +182,15 @@ public:
   const Fields& fields() const;
   void fields(const Fields&);
 
-  void show(std::ostream&) const;
-  bool operator==(const Pattern&) const;
+  void show(std::ostream&) const override;
+  bool operator==(const Pattern&) const override;
 
   static const int type_case_id = 4;
 private:
   Fields fs;
   Idxs   is;
   
-  void assignSubNames(const std::string&);
+  void assignSubNames(const std::string&) override;
 
   static void show(std::ostream&, const Field& f);
 };
@@ -203,15 +203,15 @@ public:
   const std::string& label() const;
   const PatternPtr&  value() const;
 
-  void show(std::ostream&) const;
-  bool operator==(const Pattern&) const;
+  void show(std::ostream&) const override;
+  bool operator==(const Pattern&) const override;
 
   static const int type_case_id = 5;
 private:
   std::string lbl;
   PatternPtr  p;
   
-  void assignSubNames(const std::string&);
+  void assignSubNames(const std::string&) override;
 };
 
 template <typename Case>

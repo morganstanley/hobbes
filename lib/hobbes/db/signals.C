@@ -250,7 +250,7 @@ void addFileSOSignal(long file, unsigned int so, ChangeSignal f) {
 const MonoTypePtr& frefType(const MonoTypePtr& fref);
 
 struct addFileSignalF : public op {
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) override {
     FRefT frt = assumeFRefT(tys[0], es[0]->la());
 
     llvm::Value* db  = c->compileAtGlobalScope(frt.second);
@@ -276,7 +276,7 @@ struct addFileSignalF : public op {
     });
   }
 
-  PolyTypePtr type(typedb&) const {
+  PolyTypePtr type(typedb&) const override {
     MonoTypePtr tg0(TGen::make(0));
     MonoTypePtr tg1(TGen::make(1));
     MonoTypePtr fr = fileRefTy(tg0, tg1);
@@ -302,11 +302,11 @@ bool pullTypeArg(const std::string& fname, size_t idx, MonoTypePtr* p, const Mon
 
 // alias the file and 'signals' type as a way of getting at top-level file addresses
 class signalsF : public op {
-  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) override {
     return c->compile(es[0]);
   }
 
-  PolyTypePtr type(typedb&) const {
+  PolyTypePtr type(typedb&) const override {
     MonoTypePtr fty = tapp(primty("file"), list(tgen(0), tgen(1)));
     MonoTypePtr sty = tapp(primty("signals", primty("unit")), list(tgen(1)));
     return polytype(2, qualtype(functy(list(fty), sty)));
@@ -316,11 +316,11 @@ class signalsF : public op {
 // add signals for top-level file variables
 class AddDBFieldSignal : public HFEliminator {
 public:
-  bool refine(const TEnvPtr&, const HasField&, MonoTypeUnifier*, Definitions*);
-  bool satisfied(const TEnvPtr&, const HasField&, Definitions*) const;
-  bool satisfiable(const TEnvPtr&, const HasField&, Definitions*) const;
-  ExprPtr unqualify(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*) const;
-  std::string name() const;
+  bool refine(const TEnvPtr&, const HasField&, MonoTypeUnifier*, Definitions*) override;
+  bool satisfied(const TEnvPtr&, const HasField&, Definitions*) const override;
+  bool satisfiable(const TEnvPtr&, const HasField&, Definitions*) const override;
+  ExprPtr unqualify(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*) const override;
+  std::string name() const override;
 };
 
 const Record* signalRecord(const MonoTypePtr& r) {
@@ -454,7 +454,7 @@ struct ADBFSigUnqualify : public switchExprTyFn {
     return *ty == *this->stype;
   }
 
-  ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const {
+  ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const override {
     ExprPtr result(e);
     result->type(removeConstraint(this->constraint, qty));
     ExprPtr aresult(new Assump(result, result->type(), result->la()));
@@ -462,7 +462,7 @@ struct ADBFSigUnqualify : public switchExprTyFn {
     return aresult;
   }
 
-  ExprPtr with(const Fn* v) const {
+  ExprPtr with(const Fn* v) const override {
     const Func* fty = is<Func>(v->type()->monoType());
     if (!fty) {
       throw annotated_error(*v, "Internal error, expected annotated function type");
@@ -476,7 +476,7 @@ struct ADBFSigUnqualify : public switchExprTyFn {
     );
   }
 
-  ExprPtr with(const Let* v) const {
+  ExprPtr with(const Let* v) const override {
     return wrapWithTy(v->type(),
       new Let(
         v->var(),
@@ -487,7 +487,7 @@ struct ADBFSigUnqualify : public switchExprTyFn {
     );
   }
 
-  ExprPtr with(const Assign* v) const {
+  ExprPtr with(const Assign* v) const override {
     const auto& la = v->la();
 
     // set a signal callback

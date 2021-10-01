@@ -110,11 +110,11 @@ struct DBFLUnqualify : public switchExprTyFn {
     }
   }
 
-  QualTypePtr withTy(const QualTypePtr& qt) const {
+  QualTypePtr withTy(const QualTypePtr& qt) const override {
     return removeConstraint(this->constraint, qt);
   }
 
-  ExprPtr with(const Var* vn) const {
+  ExprPtr with(const Var* vn) const override {
     if (vn->value() == REF_LOAD) {
       throw annotated_error(*vn, "load to local function NYI");
     } else {
@@ -122,7 +122,7 @@ struct DBFLUnqualify : public switchExprTyFn {
     }
   }
 
-  ExprPtr with(const App* ap) const {
+  ExprPtr with(const App* ap) const override {
     if (const Var* fn = is<Var>(stripAssumpHead(ap->fn()))) {
       if (fn->value() == REF_LOAD) {
         return wrapWithTy(ap->type(), new App(wrapWithTy(fn->type(), new Var(".dbload", ap->la())), list(switchOf(ap->args()[0], *this)), ap->la()));

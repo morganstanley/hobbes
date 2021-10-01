@@ -454,15 +454,15 @@ struct inferTypeF : public switchPattern<MonoTypePtr> {
   MonoTypeUnifier* s;
   inferTypeF(MonoTypeUnifier* s) : s(s) { }
 
-  MonoTypePtr with(const MatchLiteral* v) const {
+  MonoTypePtr with(const MatchLiteral* v) const override {
     return v->equivConstant()->primType();
   }
 
-  MonoTypePtr with(const MatchAny*) const {
+  MonoTypePtr with(const MatchAny*) const override {
     return freshTypeVar();
   }
 
-  MonoTypePtr with(const MatchArray* v) const {
+  MonoTypePtr with(const MatchArray* v) const override {
     if (v->size() == 0) {
       return arrayty(freshTypeVar());
     } else {
@@ -474,11 +474,11 @@ struct inferTypeF : public switchPattern<MonoTypePtr> {
     }
   }
 
-  MonoTypePtr with(const MatchRegex*) const {
+  MonoTypePtr with(const MatchRegex*) const override {
     return arrayty(primty("char"));
   }
 
-  MonoTypePtr with(const MatchRecord* v) const {
+  MonoTypePtr with(const MatchRecord* v) const override {
     Record::Members ms;
     for (size_t i = 0; i < v->size(); ++i) {
       const MatchRecord::Field& f = v->pattern(i);
@@ -487,7 +487,7 @@ struct inferTypeF : public switchPattern<MonoTypePtr> {
     return MonoTypePtr(Record::make(ms));
   }
 
-  MonoTypePtr with(const MatchVariant*) const {
+  MonoTypePtr with(const MatchVariant*) const override {
     // too broad, but for this purpose should be fine
     return freshTypeVar();
   }
@@ -547,35 +547,35 @@ ExprPtr inLetExp(const str::seq& vns, const Exprs& es, const ExprPtr& b, const L
 struct inferMappingF : public switchPattern<UnitV> {
   VarMapping* vm;
   inferMappingF(VarMapping* vm) : vm(vm) { }
-  UnitV with(const MatchLiteral*) const { return unitv; }
+  UnitV with(const MatchLiteral*) const override { return unitv; }
 
-  UnitV with(const MatchAny* x) const {
+  UnitV with(const MatchAny* x) const override {
     if (x->value() != "_") {
       (*this->vm)[x->value()] = ExprPtr(new Var(x->name(), x->la()));
     }
     return unitv;
   }
 
-  UnitV with(const MatchArray* x) const {
+  UnitV with(const MatchArray* x) const override {
     for (auto i : x->indexes()) {
       switchOf(x->pattern(i), *this);
     }
     return unitv;
   }
 
-  UnitV with(const MatchRegex*) const {
+  UnitV with(const MatchRegex*) const override {
     // regex translation will decide how to conflate binding names
     return unitv;
   }
 
-  UnitV with(const MatchRecord* x) const {
+  UnitV with(const MatchRecord* x) const override {
     for (auto i : x->indexes()) {
       switchOf(x->pattern(i).second, *this);
     }
     return unitv;
   }
 
-  UnitV with(const MatchVariant* x) const {
+  UnitV with(const MatchVariant* x) const override {
     switchOf(x->value(), *this);
     return unitv;
   }
@@ -657,13 +657,13 @@ ExprPtr compileRegexFn(cc* c, const std::string& regex, const LexicalAnnotation&
 
 // a simple test to determine whether or not a pattern can possibly be refuted
 struct refutableP : public switchPattern<bool> {
-  bool with(const MatchLiteral* v) const { return sizeOf(v->equivConstant()->primType()) > 0; } // the only irrefutable literal is unit
-  bool with(const MatchAny*      ) const { return false; }
-  bool with(const MatchArray*    ) const { return true; }
-  bool with(const MatchRegex*    ) const { return true; } // maybe too conservative?  /.*/ is not refutable actually, does it matter?
-  bool with(const MatchVariant*  ) const { return true; }
+  bool with(const MatchLiteral* v) const override { return sizeOf(v->equivConstant()->primType()) > 0; } // the only irrefutable literal is unit
+  bool with(const MatchAny*      ) const override { return false; }
+  bool with(const MatchArray*    ) const override { return true; }
+  bool with(const MatchRegex*    ) const override { return true; } // maybe too conservative?  /.*/ is not refutable actually, does it matter?
+  bool with(const MatchVariant*  ) const override { return true; }
 
-  bool with(const MatchRecord* x) const {
+  bool with(const MatchRecord* x) const override {
     for (auto i : x->indexes()) {
       if (switchOf(x->pattern(i).second, *this)) {
         return true;
@@ -689,36 +689,36 @@ struct accBindingNamesF : public switchPattern<UnitV> {
   str::set* r;
   accBindingNamesF(str::set* r) : r(r) { }
 
-  UnitV with(const MatchLiteral*) const {
+  UnitV with(const MatchLiteral*) const override {
     return unitv;
   }
 
-  UnitV with(const MatchAny* v) const {
+  UnitV with(const MatchAny* v) const override {
     if (v->value().size() > 0 && v->value() != "_" && v->value()[0] != '.') {
       this->r->insert(v->value());
     }
     return unitv;
   }
 
-  UnitV with(const MatchArray* ps) const {
+  UnitV with(const MatchArray* ps) const override {
     for (size_t i = 0; i < ps->size(); ++i) {
       switchOf(ps->pattern(i), *this);
     }
     return unitv;
   }
 
-  UnitV with(const MatchRegex* v) const {
+  UnitV with(const MatchRegex* v) const override {
     auto vbs = bindingNames(v->value());
     this->r->insert(vbs.begin(), vbs.end());
     return unitv;
   }
 
-  UnitV with(const MatchVariant* v) const {
+  UnitV with(const MatchVariant* v) const override {
     switchOf(v->value(), *this);
     return unitv;
   }
 
-  UnitV with(const MatchRecord* ps) const {
+  UnitV with(const MatchRecord* ps) const override {
     for (auto i : ps->indexes()) {
       switchOf(ps->pattern(i).second, *this);
     }

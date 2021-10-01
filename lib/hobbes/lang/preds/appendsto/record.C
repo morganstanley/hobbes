@@ -401,13 +401,13 @@ struct ATRecordUnqualify : public switchExprTyFn {
     }
   }
 
-  ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const {
+  ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const override {
     ExprPtr result(e);
     result->type(removeConstraint(this->constraint, qty));
     return result;
   }
 
-  ExprPtr with(const Var* vn) const {
+  ExprPtr with(const Var* vn) const override {
     if (vn->value() == REF_REC_APPEND) {
       return recordAppendFunction(this->appto.leftType, this->appto.rightType, this->appto.resultType, vn->la());
     } else if (vn->value() == REF_REC_PREFIX) {
@@ -419,7 +419,7 @@ struct ATRecordUnqualify : public switchExprTyFn {
     }
   }
 
-  ExprPtr with(const App* ap) const {
+  ExprPtr with(const App* ap) const override {
     if (const Var* fn = is<Var>(stripAssumpHead(ap->fn()))) {
       if (fn->value() == REF_REC_APPEND) {
         return recordAppendExpr(switchOf(ap->args()[0], *this), switchOf(ap->args()[1], *this));

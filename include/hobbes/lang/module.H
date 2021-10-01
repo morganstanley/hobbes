@@ -42,7 +42,7 @@ public:
   const std::string& path() const;
   const std::string& name() const;
 
-  void show(std::ostream&) const;
+  void show(std::ostream&) const override;
 
   static const int type_case_id = 0;
 private:
@@ -60,7 +60,7 @@ public:
   const str::seq&    arguments() const;
   const QualTypePtr& type() const;
 
-  void show(std::ostream&) const;
+  void show(std::ostream&) const override;
 
   static const int type_case_id = 1;
 private:
@@ -76,7 +76,7 @@ public:
   const std::string& varName() const;
   const QualTypePtr& varType() const;
 
-  void show(std::ostream& out) const;
+  void show(std::ostream& out) const override;
 
   static const int type_case_id = 2;
 private:
@@ -92,7 +92,7 @@ public:
   const str::seq& varWithArgs() const;
   const ExprPtr&  varExpr() const;
 
-  void show(std::ostream& out) const;
+  void show(std::ostream& out) const override;
 
   static const int type_case_id = 3;
 private:
@@ -117,7 +117,7 @@ public:
   const CFunDepDefs   fundeps() const;
   const MVarTypeDefs& members() const;
 
-  void show(std::ostream& out) const;
+  void show(std::ostream& out) const override;
 
   static const int type_case_id = 4;
 private:
@@ -139,7 +139,7 @@ public:
   const MonoTypes&   args() const;
   const MVarDefs&    members() const;
 
-  void show(std::ostream& out) const;
+  void show(std::ostream& out) const override;
 
   static const int type_case_id = 5;
 private:
@@ -154,7 +154,7 @@ typedef std::vector<InstanceDefPtr>  InstanceDefs;
 class MUnsafePragmaDef : public ModuleDefCase<MUnsafePragmaDef> {
 public:
   MUnsafePragmaDef(const std::string& symbol, const LexicalAnnotation& la) : Base(la), symbol(symbol) {}
-  void show(std::ostream& out) const { out << "{-# UNSAFE " << symbol << " #-}"; } ; 
+  void show(std::ostream& out) const override { out << "{-# UNSAFE " << symbol << " #-}"; } ; 
 
   const std::string& symbolValue() const { return symbol; }
   static const int type_case_id = 6;
@@ -166,7 +166,7 @@ private:
 class MSafePragmaDef : public ModuleDefCase<MSafePragmaDef> {
 public:
   MSafePragmaDef(const std::string& symbol, const LexicalAnnotation& la) : Base(la), symbol(symbol) {}
-  void show(std::ostream& out) const { out << "{-# SAFE " << symbol << " #-}"; } ; 
+  void show(std::ostream& out) const override { out << "{-# SAFE " << symbol << " #-}"; } ; 
 
   const std::string& symbolValue() const { return symbol; }
   static const int type_case_id = 7;
@@ -224,14 +224,14 @@ template <typename T>
 struct switchMDefTyFn : switchMDef<ModuleDefPtr> {
   virtual QualTypePtr withTy(const QualTypePtr&) const = 0;
 
-  ModuleDefPtr with(const MImport*)     const;
-  ModuleDefPtr with(const MTypeDef*)    const;
-  ModuleDefPtr with(const MVarTypeDef*) const;
-  ModuleDefPtr with(const MVarDef*)     const;
-  ModuleDefPtr with(const ClassDef*)    const;
-  ModuleDefPtr with(const InstanceDef*) const;
-  ModuleDefPtr with(const MUnsafePragmaDef*)  const;
-  ModuleDefPtr with(const MSafePragmaDef*)  const;
+  ModuleDefPtr with(const MImport*)     const override;
+  ModuleDefPtr with(const MTypeDef*)    const override;
+  ModuleDefPtr with(const MVarTypeDef*) const override;
+  ModuleDefPtr with(const MVarDef*)     const override;
+  ModuleDefPtr with(const ClassDef*)    const override;
+  ModuleDefPtr with(const InstanceDef*) const override;
+  ModuleDefPtr with(const MUnsafePragmaDef*)  const override;
+  ModuleDefPtr with(const MSafePragmaDef*)  const override;
 
 };
 

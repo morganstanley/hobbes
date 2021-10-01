@@ -791,18 +791,18 @@ struct makeSuccStateF : public switchPattern<MStatePtr> {
   size_t c;
   makeSuccStateF(MDFA* dfa, const PatternRows& ps, size_t c) : dfa(dfa), ps(ps), c(c) { }
 
-  MStatePtr with(const MatchAny* ma) const {
+  MStatePtr with(const MatchAny* ma) const override {
     throw annotated_error(*ma, "Internal error, can't deconstruct wildcard columns in match expression");
   }
 
-  MStatePtr with(const MatchLiteral*) const { return makeLiteralState(dfa, ps, c); }
-  MStatePtr with(const MatchRegex*)   const { return makeRegexState(dfa, regexNormalize(ps, c), c); }
-  MStatePtr with(const MatchRecord*)  const { return makeRecordState(dfa, ps, c); }
-  MStatePtr with(const MatchVariant*) const { return makeVariantState(dfa, ps, c); }
+  MStatePtr with(const MatchLiteral*) const override { return makeLiteralState(dfa, ps, c); }
+  MStatePtr with(const MatchRegex*)   const override { return makeRegexState(dfa, regexNormalize(ps, c), c); }
+  MStatePtr with(const MatchRecord*)  const override { return makeRecordState(dfa, ps, c); }
+  MStatePtr with(const MatchVariant*) const override { return makeVariantState(dfa, ps, c); }
 
   // if we have a 'match array' column but it's got a regex somewhere, then we actually
   // need to apply regex match logic (otherwise we can match as an array)
-  MStatePtr with(const MatchArray*) const {
+  MStatePtr with(const MatchArray*) const override {
     for (size_t r = 0; r < ps.size(); ++r) {
       if (is<MatchRegex>(ps[r].patterns[c])) {
         return makeRegexState(dfa, regexNormalize(ps, c), c);
@@ -834,15 +834,15 @@ struct scorePatternF : public switchPattern<size_t> {
   // don't count the same primitive twice
   mutable PrimitiveSet recprims;
 
-  size_t with(const MatchAny*) const {
+  size_t with(const MatchAny*) const override {
     return 0;
   }
 
-  size_t with(const MatchLiteral* ml) const {
+  size_t with(const MatchLiteral* ml) const override {
     return this->recprims.insert(ml->equivConstant()).second ? 1 : 0;
   }
 
-  size_t with(const MatchArray* ma) const {
+  size_t with(const MatchArray* ma) const override {
     size_t s = 1;
     for (size_t i = 0; i < ma->size(); ++i) {
       s += switchOf(ma->pattern(i), *this);
@@ -850,11 +850,11 @@ struct scorePatternF : public switchPattern<size_t> {
     return s;
   }
 
-  size_t with(const MatchRegex*) const {
+  size_t with(const MatchRegex*) const override {
     return 1;
   }
 
-  size_t with(const MatchRecord* mr) const {
+  size_t with(const MatchRecord* mr) const override {
     size_t s = 0;
     for (size_t i = 0; i < mr->size(); ++i) {
       s += switchOf(mr->pattern(i).second, *this);
@@ -862,7 +862,7 @@ struct scorePatternF : public switchPattern<size_t> {
     return s;
   }
 
-  size_t with(const MatchVariant* mv) const {
+  size_t with(const MatchVariant* mv) const override {
     return 1 + switchOf(mv->value(), *this);
   }
 };
@@ -1165,7 +1165,7 @@ struct liftDFAExprF : public switchMState<ExprPtr> {
   MDFA* dfa;
   liftDFAExprF(MDFA* dfa) : dfa(dfa) { }
 
-  ExprPtr with(const LoadVars* x) const {
+  ExprPtr with(const LoadVars* x) const override {
     const LoadVars::Defs& ds = x->defs();
     ExprPtr b = liftDFAExpr(this->dfa, x->nextState());
 
@@ -1176,7 +1176,7 @@ struct liftDFAExprF : public switchMState<ExprPtr> {
     return b;
   }
 
-  ExprPtr with(const SwitchVal* x) const {
+  ExprPtr with(const SwitchVal* x) const override {
     ExprPtr def = x->defaultState() == nullState ? ExprPtr() : liftDFAExpr(this->dfa, x->defaultState());
 
     const SwitchVal::Jumps& jmps = x->jumps();
@@ -1188,7 +1188,7 @@ struct liftDFAExprF : public switchMState<ExprPtr> {
     return ExprPtr(new Switch(varName(this->dfa, x->switchVar()), bs, def, dfa->rootLA));
   }
 
-  ExprPtr with(const SwitchVariant* x) const {
+  ExprPtr with(const SwitchVariant* x) const override {
     ExprPtr def = x->defaultState() == nullState ? ExprPtr() : liftDFAExpr(this->dfa, x->defaultState());
 
     const SwitchVariant::CtorJumps& jmps = x->jumps();
@@ -1200,7 +1200,7 @@ struct liftDFAExprF : public switchMState<ExprPtr> {
     return ExprPtr(new Case(varName(this->dfa, x->switchVar()), bs, def, dfa->rootLA));
   }
 
-  ExprPtr with(const FinishExpr* x) const {
+  ExprPtr with(const FinishExpr* x) const override {
     return x->expr();
   }
 };
@@ -1336,7 +1336,7 @@ struct reachableRowExprsF : public switchMState<UnitV> {
 
   reachableRowExprsF(const MDFA* dfa, RowResults* results) : dfa(dfa), results(results) { }
 
-  UnitV with(const SwitchVal* x) const {
+  UnitV with(const SwitchVal* x) const override {
     if (x->defaultState() != nullState) {
       switchOf(this->dfa->states[x->defaultState()], *this);
     }
@@ -1346,7 +1346,7 @@ struct reachableRowExprsF : public switchMState<UnitV> {
     return unitv;
   }
 
-  UnitV with(const FinishExpr* x) const {
+  UnitV with(const FinishExpr* x) const override {
     auto ei = this->dfa->exprIdxs.find(x->expr().get());
     if (ei == this->dfa->exprIdxs.end()) {
       throw std::runtime_error("Internal error, match DFA returns non-indexed expression");
@@ -1356,12 +1356,12 @@ struct reachableRowExprsF : public switchMState<UnitV> {
     return unitv;
   }
   
-  UnitV with(const LoadVars* x) const {
+  UnitV with(const LoadVars* x) const override {
     switchOf(this->dfa->states[x->nextState()], *this);
     return unitv;
   }
 
-  UnitV with(const SwitchVariant* x) const {
+  UnitV with(const SwitchVariant* x) const override {
     if (x->defaultState() != nullState) {
       switchOf(this->dfa->states[x->defaultState()], *this);
     }
@@ -1402,7 +1402,7 @@ struct makePrimDFASF : public switchMState<UnitV> {
     }
   }
 
-  UnitV with(const SwitchVal* x) const {
+  UnitV with(const SwitchVal* x) const override {
     if (x->defaultState() == nullState) {
       if (x->jumps().size() == 0) {
         throw std::runtime_error("Internal error, empty switch statement in primitive match compilation");
@@ -1431,7 +1431,7 @@ struct makePrimDFASF : public switchMState<UnitV> {
     return unitv;
   }
 
-  UnitV with(const FinishExpr* x) const {
+  UnitV with(const FinishExpr* x) const override {
     auto ei = this->dfa->exprIdxs.find(x->expr().get());
     if (ei == this->dfa->exprIdxs.end()) {
       throw std::runtime_error("Internal error, primitive match DFA returns non-indexed expression");
@@ -1441,11 +1441,11 @@ struct makePrimDFASF : public switchMState<UnitV> {
     return unitv;
   }
 
-  UnitV with(const LoadVars*) const {
+  UnitV with(const LoadVars*) const override {
     throw std::runtime_error("Internal error, not a primitive match table (load vars)");
   }
 
-  UnitV with(const SwitchVariant*) const {
+  UnitV with(const SwitchVariant*) const override {
     throw std::runtime_error("Internal error, not a primitive match table (switch variant)");
   }
 
@@ -1515,11 +1515,11 @@ public:
     this->ftype = polytype(functy(atys, primty("int")));
   }
 
-  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) override {
     return withContext([&](auto&) { return fncall(c->builder(), this->vfn, this->vfn->getFunctionType(), compileArgs(c, es)); });
   }
 
-  PolyTypePtr type(typedb&) const {
+  PolyTypePtr type(typedb&) const override {
     return this->ftype;
   }
 private:

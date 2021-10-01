@@ -46,7 +46,7 @@ template <typename Case>
     ExprCase(const LexicalAnnotation&);
     virtual bool operator==(const Case&) const = 0;
 
-    bool operator==(const Expr& rhs) const {
+    bool operator==(const Expr& rhs) const override {
       if (this == &rhs) {
         return true;
       } else if (const Case* trhs = is<Case>(&rhs)) {
@@ -78,7 +78,7 @@ std::string showAnnotated(const Definition& d);
 
 class Primitive : public Expr {
 public:
-  virtual bool operator==(const Expr&) const = 0;
+  bool operator==(const Expr&) const override = 0;
   virtual bool operator< (const Primitive&) const = 0;
   virtual MonoTypePtr primType() const = 0;
 
@@ -100,7 +100,7 @@ template <typename Case>
     virtual bool equiv(const Case&) const = 0;
     virtual bool lt(const Case&) const = 0;
 
-    bool operator<(const Primitive& rhs) const {
+    bool operator<(const Primitive& rhs) const override {
       if (const Case* trhs = is<Case>(&rhs)) {
         return lt(*trhs);
       } else {
@@ -108,7 +108,7 @@ template <typename Case>
       }
     }
 
-    bool operator==(const Expr& rhs) const {
+    bool operator==(const Expr& rhs) const override {
       if (const Case* trhs = is<Case>(&rhs)) {
         return this->equiv(*trhs);
       } else {
@@ -120,12 +120,12 @@ template <typename Case>
 class Unit : public PrimitiveCase<Unit> {
 public:
   Unit(const LexicalAnnotation&);
-  Expr* clone() const;
-  void show(std::ostream& out) const;
-  void showAnnotated(std::ostream& out) const;
-  bool equiv(const Unit&) const;
-  bool lt(const Unit&) const;
-  MonoTypePtr primType() const;
+  Expr* clone() const override;
+  void show(std::ostream& out) const override;
+  void showAnnotated(std::ostream& out) const override;
+  bool equiv(const Unit&) const override;
+  bool lt(const Unit&) const override;
+  MonoTypePtr primType() const override;
 
   static const int type_case_id = 0;
 };
@@ -135,12 +135,12 @@ public:
   Bool(bool x, const LexicalAnnotation&);
   bool value() const;
   void value(bool);
-  Expr* clone() const;
-  void show(std::ostream& out) const;
-  void showAnnotated(std::ostream& out) const;
-  bool equiv(const Bool&) const;
-  bool lt(const Bool&) const;
-  MonoTypePtr primType() const;
+  Expr* clone() const override;
+  void show(std::ostream& out) const override;
+  void showAnnotated(std::ostream& out) const override;
+  bool equiv(const Bool&) const override;
+  bool lt(const Bool&) const override;
+  MonoTypePtr primType() const override;
 
   static const int type_case_id = 1;
 private:
@@ -152,12 +152,12 @@ public:
   Char(char x, const LexicalAnnotation&);
   char value() const;
   void value(char);
-  Expr* clone() const;
-  void show(std::ostream& out) const;
-  void showAnnotated(std::ostream& out) const;
-  bool equiv(const Char&) const;
-  bool lt(const Char&) const;
-  MonoTypePtr primType() const;
+  Expr* clone() const override;
+  void show(std::ostream& out) const override;
+  void showAnnotated(std::ostream& out) const override;
+  bool equiv(const Char&) const override;
+  bool lt(const Char&) const override;
+  MonoTypePtr primType() const override;
 
   static const int type_case_id = 2;
 private:
@@ -170,12 +170,12 @@ public:
   Byte(unsigned char x, const LexicalAnnotation&);
   unsigned char value() const;
   void value(unsigned char);
-  Expr* clone() const;
-  void show(std::ostream& out) const;
-  void showAnnotated(std::ostream& out) const;
-  bool equiv(const Byte&) const;
-  bool lt(const Byte&) const;
-  MonoTypePtr primType() const;
+  Expr* clone() const override;
+  void show(std::ostream& out) const override;
+  void showAnnotated(std::ostream& out) const override;
+  bool equiv(const Byte&) const override;
+  bool lt(const Byte&) const override;
+  MonoTypePtr primType() const override;
 
   static const int type_case_id = 3;
 private:
@@ -188,12 +188,12 @@ public:
   Short(short x, const LexicalAnnotation&);
   short value() const;
   void value(short);
-  Expr* clone() const;
-  void show(std::ostream& out) const;
-  void showAnnotated(std::ostream& out) const;
-  bool equiv(const Short&) const;
-  bool lt(const Short&) const;
-  MonoTypePtr primType() const;
+  Expr* clone() const override;
+  void show(std::ostream& out) const override;
+  void showAnnotated(std::ostream& out) const override;
+  bool equiv(const Short&) const override;
+  bool lt(const Short&) const override;
+  MonoTypePtr primType() const override;
 
   static const int type_case_id = 4;
 private:
@@ -206,12 +206,12 @@ public:
   Int(int x, const LexicalAnnotation&);
   int value() const;
   void value(int);
-  Expr* clone() const;
-  void show(std::ostream& out) const;
-  void showAnnotated(std::ostream& out) const;
-  bool equiv(const Int&) const;
-  bool lt(const Int&) const;
-  MonoTypePtr primType() const;
+  Expr* clone() const override;
+  void show(std::ostream& out) const override;
+  void showAnnotated(std::ostream& out) const override;
+  bool equiv(const Int&) const override;
+  bool lt(const Int&) const override;
+  MonoTypePtr primType() const override;
 
   static const int type_case_id = 5;
 private:
@@ -224,12 +224,12 @@ public:
   Long(long x, const LexicalAnnotation&);
   long value() const;
   void value(long);
-  Expr* clone() const;
-  void show(std::ostream& out) const;
-  void showAnnotated(std::ostream& out) const;
-  bool equiv(const Long&) const;
-  bool lt(const Long&) const;
-  MonoTypePtr primType() const;
+  Expr* clone() const override;
+  void show(std::ostream& out) const override;
+  void showAnnotated(std::ostream& out) const override;
+  bool equiv(const Long&) const override;
+  bool lt(const Long&) const override;
+  MonoTypePtr primType() const override;
 
   static const int type_case_id = 6;
 private:
@@ -242,12 +242,12 @@ public:
   Float(float x, const LexicalAnnotation&);
   float value() const;
   void value(float);
-  Expr* clone() const;
-  void show(std::ostream& out) const;
-  void showAnnotated(std::ostream& out) const;
-  bool equiv(const Float&) const;
-  bool lt(const Float&) const;
-  MonoTypePtr primType() const;
+  Expr* clone() const override;
+  void show(std::ostream& out) const override;
+  void showAnnotated(std::ostream& out) const override;
+  bool equiv(const Float&) const override;
+  bool lt(const Float&) const override;
+  MonoTypePtr primType() const override;
 
   static const int type_case_id = 7;
 private:
@@ -260,12 +260,12 @@ public:
   Double(double x, const LexicalAnnotation&);
   double value() const;
   void value(double);
-  Expr* clone() const;
-  void show(std::ostream& out) const;
-  void showAnnotated(std::ostream& out) const;
-  bool equiv(const Double&) const;
-  bool lt(const Double&) const;
-  MonoTypePtr primType() const;
+  Expr* clone() const override;
+  void show(std::ostream& out) const override;
+  void showAnnotated(std::ostream& out) const override;
+  bool equiv(const Double&) const override;
+  bool lt(const Double&) const override;
+  MonoTypePtr primType() const override;
 
   static const int type_case_id = 8;
 private:
@@ -284,13 +284,13 @@ template <typename Case>
 class Var : public ExprCase<Var> {
 public:
   Var(const std::string& id, const LexicalAnnotation&);
-  bool operator==(const Var&) const;
+  bool operator==(const Var&) const override;
 
   const std::string& value() const;
   void value(const std::string&);
-  Expr* clone() const;
-  void show(std::ostream& out) const;
-  void showAnnotated(std::ostream& out) const;
+  Expr* clone() const override;
+  void show(std::ostream& out) const override;
+  void showAnnotated(std::ostream& out) const override;
 
   static const int type_case_id = 9;
 private:
@@ -301,7 +301,7 @@ private:
 class Let : public ExprCase<Let> {
 public:
   Let(const std::string& id, const ExprPtr& e, const ExprPtr& b, const LexicalAnnotation&);
-  bool operator==(const Let&) const;
+  bool operator==(const Let&) const override;
 
   const std::string& var() const;
   const ExprPtr&     varExpr() const;
@@ -311,9 +311,9 @@ public:
   void varExpr(const ExprPtr&);
   void bodyExpr(const ExprPtr&);
 
-  Expr* clone() const;
-  void show(std::ostream& out) const;
-  void showAnnotated(std::ostream& out) const;
+  Expr* clone() const override;
+  void show(std::ostream& out) const override;
+  void showAnnotated(std::ostream& out) const override;
 
   static const int type_case_id = 10;
 private:
@@ -329,7 +329,7 @@ public:
   typedef std::vector<Binding> Bindings;
 
   LetRec(const Bindings&, const ExprPtr&, const LexicalAnnotation&);
-  bool operator==(const LetRec&) const;
+  bool operator==(const LetRec&) const override;
 
   const Bindings& bindings() const;
   const ExprPtr& bodyExpr() const;
@@ -338,9 +338,9 @@ public:
   Bindings& bindings();
   void bodyExpr(const ExprPtr&);
 
-  Expr* clone() const;
-  void show(std::ostream&) const;
-  void showAnnotated(std::ostream&) const;
+  Expr* clone() const override;
+  void show(std::ostream&) const override;
+  void showAnnotated(std::ostream&) const override;
 
   static const int type_case_id = 11;
 private:
@@ -354,7 +354,7 @@ public:
   typedef std::vector<std::string> VarNames;
 
   Fn(const VarNames& vs, const ExprPtr& e, const LexicalAnnotation&);
-  bool operator==(const Fn&) const;
+  bool operator==(const Fn&) const override;
 
   const VarNames& varNames() const;
   const ExprPtr&  body() const;
@@ -362,9 +362,9 @@ public:
   VarNames& varNames();
   void body(const ExprPtr&);
 
-  Expr* clone() const;
-  void show(std::ostream& out) const;
-  void showAnnotated(std::ostream& out) const;
+  Expr* clone() const override;
+  void show(std::ostream& out) const override;
+  void showAnnotated(std::ostream& out) const override;
 
   static const int type_case_id = 12;
 private:
@@ -376,7 +376,7 @@ private:
 class App : public ExprCase<App> {
 public:
   App(const ExprPtr& fn, const Exprs& args, const LexicalAnnotation&);
-  bool operator==(const App&) const;
+  bool operator==(const App&) const override;
 
   const ExprPtr& fn() const;
   const Exprs& args() const;
@@ -384,9 +384,9 @@ public:
   void fn(const ExprPtr&);
   Exprs& args();
 
-  Expr* clone() const;
-  void show(std::ostream& out) const;
-  void showAnnotated(std::ostream& out) const;
+  Expr* clone() const override;
+  void show(std::ostream& out) const override;
+  void showAnnotated(std::ostream& out) const override;
 
   static const int type_case_id = 13;
 private:
@@ -398,7 +398,7 @@ private:
 class Assign : public ExprCase<Assign> {
 public:
   Assign(const ExprPtr& lhs, const ExprPtr& rhs, const LexicalAnnotation&);
-  bool operator==(const Assign&) const;
+  bool operator==(const Assign&) const override;
 
   const ExprPtr& left() const;
   const ExprPtr& right() const;
@@ -406,9 +406,9 @@ public:
   void left(const ExprPtr&);
   void right(const ExprPtr&);
 
-  Expr* clone() const;
-  void show(std::ostream& out) const;
-  void showAnnotated(std::ostream& out) const;
+  Expr* clone() const override;
+  void show(std::ostream& out) const override;
+  void showAnnotated(std::ostream& out) const override;
 
   static const int type_case_id = 14;
 private:
@@ -420,14 +420,14 @@ private:
 class MkArray : public ExprCase<MkArray> {
 public:
   MkArray(const Exprs& es, const LexicalAnnotation&);
-  bool operator==(const MkArray&) const;
+  bool operator==(const MkArray&) const override;
 
   const Exprs& values() const;
   Exprs& values();
 
-  Expr* clone() const;
-  void show(std::ostream& out) const;
-  void showAnnotated(std::ostream& out) const;
+  Expr* clone() const override;
+  void show(std::ostream& out) const override;
+  void showAnnotated(std::ostream& out) const override;
 
   static const int type_case_id = 15;
 private:
@@ -438,7 +438,7 @@ private:
 class MkVariant : public ExprCase<MkVariant> {
 public:
   MkVariant(const std::string& lbl, const ExprPtr& e, const LexicalAnnotation&);
-  bool operator==(const MkVariant&) const;
+  bool operator==(const MkVariant&) const override;
 
   const std::string& label() const;
   const ExprPtr& value() const;
@@ -446,9 +446,9 @@ public:
   void label(const std::string&);
   void value(const ExprPtr&);
 
-  Expr* clone() const;
-  void show(std::ostream& out) const;
-  void showAnnotated(std::ostream& out) const;
+  Expr* clone() const override;
+  void show(std::ostream& out) const override;
+  void showAnnotated(std::ostream& out) const override;
 
   static const int type_case_id = 16;
 private:
@@ -463,14 +463,14 @@ public:
   typedef std::vector<FieldDef>           FieldDefs;
 
   MkRecord(const FieldDefs& fs, const LexicalAnnotation&);
-  bool operator==(const MkRecord&) const;
+  bool operator==(const MkRecord&) const override;
 
   const FieldDefs& fields() const;
   FieldDefs& fields();
 
-  Expr* clone() const;
-  void show(std::ostream& out) const;
-  void showAnnotated(std::ostream& out) const;
+  Expr* clone() const override;
+  void show(std::ostream& out) const override;
+  void showAnnotated(std::ostream& out) const override;
 
   static const int type_case_id = 17;
 private:
@@ -487,7 +487,7 @@ private:
 class AIndex : public ExprCase<AIndex> {
 public:
   AIndex(const ExprPtr&, const ExprPtr&, const LexicalAnnotation&);
-  bool operator==(const AIndex&) const;
+  bool operator==(const AIndex&) const override;
 
   const ExprPtr& array() const;
   const ExprPtr& index() const;
@@ -495,9 +495,9 @@ public:
   void array(const ExprPtr&);
   void index(const ExprPtr&);
 
-  Expr* clone() const;
-  void show(std::ostream& out) const;
-  void showAnnotated(std::ostream& out) const;
+  Expr* clone() const override;
+  void show(std::ostream& out) const override;
+  void showAnnotated(std::ostream& out) const override;
 
   static const int type_case_id = 18;
 private:
@@ -520,7 +520,7 @@ public:
 
   Case(const ExprPtr& v, const Bindings& bs, const LexicalAnnotation&);
   Case(const ExprPtr& v, const Bindings& bs, const ExprPtr& def, const LexicalAnnotation&);
-  bool operator==(const Case&) const;
+  bool operator==(const Case&) const override;
 
   const ExprPtr&  variant() const;
   const Bindings& bindings() const;
@@ -533,9 +533,9 @@ public:
   bool hasBinding(const std::string&) const;
   void addBinding(const std::string& selector, const std::string& vname, const ExprPtr& exp);
 
-  Expr* clone() const;
-  void show(std::ostream& out) const;
-  void showAnnotated(std::ostream& out) const;
+  Expr* clone() const override;
+  void show(std::ostream& out) const override;
+  void showAnnotated(std::ostream& out) const override;
 
   static const int type_case_id = 19;
 private:
@@ -558,7 +558,7 @@ public:
 
   Switch(const ExprPtr& v, const Bindings& bs, const LexicalAnnotation&);
   Switch(const ExprPtr& v, const Bindings& bs, const ExprPtr& def, const LexicalAnnotation&);
-  bool operator==(const Switch&) const;
+  bool operator==(const Switch&) const override;
 
   const ExprPtr&  expr()        const;
   const Bindings& bindings()    const;
@@ -568,9 +568,9 @@ public:
   Bindings& bindings();
   void defaultExpr(const ExprPtr&);
 
-  Expr* clone() const;
-  void show(std::ostream&) const;
-  void showAnnotated(std::ostream& out) const;
+  Expr* clone() const override;
+  void show(std::ostream&) const override;
+  void showAnnotated(std::ostream& out) const override;
 
   static const int type_case_id = 20;
 private:
@@ -583,7 +583,7 @@ private:
 class Proj : public ExprCase<Proj> {
 public:
   Proj(const ExprPtr& r, const std::string& fn, const LexicalAnnotation&);
-  bool operator==(const Proj&) const;
+  bool operator==(const Proj&) const override;
 
   const ExprPtr& record() const;
   const std::string& field() const;
@@ -591,9 +591,9 @@ public:
   void record(const ExprPtr&);
   void field(const std::string&);
 
-  Expr* clone() const;
-  void show(std::ostream& out) const;
-  void showAnnotated(std::ostream& out) const;
+  Expr* clone() const override;
+  void show(std::ostream& out) const override;
+  void showAnnotated(std::ostream& out) const override;
 
   static const int type_case_id = 21;
 private:
@@ -605,7 +605,7 @@ private:
 class Assump : public ExprCase<Assump> {
 public:
   Assump(const ExprPtr& e, const QualTypePtr& t, const LexicalAnnotation&);
-  bool operator==(const Assump&) const;
+  bool operator==(const Assump&) const override;
 
   const ExprPtr& expr() const;
   const QualTypePtr& ty() const;
@@ -613,9 +613,9 @@ public:
   void expr(const ExprPtr&);
   void ty(const QualTypePtr&);
 
-  Expr* clone() const;
-  void show(std::ostream& out) const;
-  void showAnnotated(std::ostream& out) const;
+  Expr* clone() const override;
+  void show(std::ostream& out) const override;
+  void showAnnotated(std::ostream& out) const override;
 
   static const int type_case_id = 22;
 private:
@@ -627,14 +627,14 @@ private:
 class Pack : public ExprCase<Pack> {
 public:
   Pack(const ExprPtr& e, const LexicalAnnotation&);
-  bool operator==(const Pack&) const;
+  bool operator==(const Pack&) const override;
 
   const ExprPtr& expr() const;
   void expr(const ExprPtr&);
 
-  Expr* clone() const;
-  void show(std::ostream& out) const;
-  void showAnnotated(std::ostream& out) const;
+  Expr* clone() const override;
+  void show(std::ostream& out) const override;
+  void showAnnotated(std::ostream& out) const override;
 
   static const int type_case_id = 23;
 private:
@@ -645,7 +645,7 @@ private:
 class Unpack : public ExprCase<Unpack> {
 public:
   Unpack(const std::string&, const ExprPtr&, const ExprPtr&, const LexicalAnnotation&);
-  bool operator==(const Unpack&) const;
+  bool operator==(const Unpack&) const override;
 
   const std::string& varName() const;
   const ExprPtr&     package() const;
@@ -655,9 +655,9 @@ public:
   void package(const ExprPtr&);
   void expr(const ExprPtr&);
 
-  Expr* clone() const;
-  void show(std::ostream& out) const;
-  void showAnnotated(std::ostream& out) const;
+  Expr* clone() const override;
+  void show(std::ostream& out) const override;
+  void showAnnotated(std::ostream& out) const override;
 
   static const int type_case_id = 24;
 private:
@@ -672,12 +672,12 @@ public:
   Int128(int128_t x, const LexicalAnnotation&);
   int128_t value() const;
   void value(int128_t);
-  Expr* clone() const;
-  void show(std::ostream& out) const;
-  void showAnnotated(std::ostream& out) const;
-  bool equiv(const Int128&) const;
-  bool lt(const Int128&) const;
-  MonoTypePtr primType() const;
+  Expr* clone() const override;
+  void show(std::ostream& out) const override;
+  void showAnnotated(std::ostream& out) const override;
+  bool equiv(const Int128&) const override;
+  bool lt(const Int128&) const override;
+  MonoTypePtr primType() const override;
 
   static const int type_case_id = 25;
 private:
@@ -1133,34 +1133,34 @@ template <typename T>
   struct switchExprC : public switchExpr<T> {
     virtual ~switchExprC() = default;
     virtual T withConst(const Expr* v)      const = 0;
-    virtual T with     (const Var* v)       const = 0;
-    virtual T with     (const Let* v)       const = 0;
-    virtual T with     (const LetRec* v)    const = 0;
-    virtual T with     (const Fn* v)        const = 0;
-    virtual T with     (const App* v)       const = 0;
-    virtual T with     (const Assign* v)    const = 0;
-    virtual T with     (const MkArray* v)   const = 0;
-    virtual T with     (const MkVariant* v) const = 0;
-    virtual T with     (const MkRecord* v)  const = 0;
-    virtual T with     (const AIndex* v)    const = 0;
-    virtual T with     (const Case* v)      const = 0;
-    virtual T with     (const Switch* v)    const = 0;
-    virtual T with     (const Proj* v)      const = 0;
-    virtual T with     (const Assump* v)    const = 0;
-    virtual T with     (const Pack* v)      const = 0;
-    virtual T with     (const Unpack* v)    const = 0;
+    T with     (const Var* v)       const override = 0;
+    T with     (const Let* v)       const override = 0;
+    T with     (const LetRec* v)    const override = 0;
+    T with     (const Fn* v)        const override = 0;
+    T with     (const App* v)       const override = 0;
+    T with     (const Assign* v)    const override = 0;
+    T with     (const MkArray* v)   const override = 0;
+    T with     (const MkVariant* v) const override = 0;
+    T with     (const MkRecord* v)  const override = 0;
+    T with     (const AIndex* v)    const override = 0;
+    T with     (const Case* v)      const override = 0;
+    T with     (const Switch* v)    const override = 0;
+    T with     (const Proj* v)      const override = 0;
+    T with     (const Assump* v)    const override = 0;
+    T with     (const Pack* v)      const override = 0;
+    T with     (const Unpack* v)    const override = 0;
 
     // implement just the constant 'with' terms to collapse them
-    T with(const Unit*   v) const { return withConst(v); }
-    T with(const Bool*   v) const { return withConst(v); }
-    T with(const Char*   v) const { return withConst(v); }
-    T with(const Byte*   v) const { return withConst(v); }
-    T with(const Short*  v) const { return withConst(v); }
-    T with(const Int*    v) const { return withConst(v); }
-    T with(const Long*   v) const { return withConst(v); }
-    T with(const Int128* v) const { return withConst(v); }
-    T with(const Float*  v) const { return withConst(v); }
-    T with(const Double* v) const { return withConst(v); }
+    T with(const Unit*   v) const override { return withConst(v); }
+    T with(const Bool*   v) const override { return withConst(v); }
+    T with(const Char*   v) const override { return withConst(v); }
+    T with(const Byte*   v) const override { return withConst(v); }
+    T with(const Short*  v) const override { return withConst(v); }
+    T with(const Int*    v) const override { return withConst(v); }
+    T with(const Long*   v) const override { return withConst(v); }
+    T with(const Int128* v) const override { return withConst(v); }
+    T with(const Float*  v) const override { return withConst(v); }
+    T with(const Double* v) const override { return withConst(v); }
   };
 
 bool isConst(const ExprPtr&);
@@ -1323,55 +1323,55 @@ struct switchExprTyFn : public switchExprC<ExprPtr> {
   virtual ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const;
 
   // allocate a fresh expression, updating types as we go
-  ExprPtr withConst(const Expr* v)      const;
-  ExprPtr with     (const Var* v)       const;
-  ExprPtr with     (const Let* v)       const;
-  ExprPtr with     (const LetRec* v)    const;
-  ExprPtr with     (const Fn* v)        const;
-  ExprPtr with     (const App* v)       const;
-  ExprPtr with     (const Assign* v)    const;
-  ExprPtr with     (const MkArray* v)   const;
-  ExprPtr with     (const MkVariant* v) const;
-  ExprPtr with     (const MkRecord* v)  const;
-  ExprPtr with     (const AIndex* v)    const;
-  ExprPtr with     (const Case* v)      const;
-  ExprPtr with     (const Switch* v)    const;
-  ExprPtr with     (const Proj* v)      const;
-  ExprPtr with     (const Assump* v)    const;
-  ExprPtr with     (const Pack* v)      const;
-  ExprPtr with     (const Unpack* v)    const;
+  ExprPtr withConst(const Expr* v)      const override;
+  ExprPtr with     (const Var* v)       const override;
+  ExprPtr with     (const Let* v)       const override;
+  ExprPtr with     (const LetRec* v)    const override;
+  ExprPtr with     (const Fn* v)        const override;
+  ExprPtr with     (const App* v)       const override;
+  ExprPtr with     (const Assign* v)    const override;
+  ExprPtr with     (const MkArray* v)   const override;
+  ExprPtr with     (const MkVariant* v) const override;
+  ExprPtr with     (const MkRecord* v)  const override;
+  ExprPtr with     (const AIndex* v)    const override;
+  ExprPtr with     (const Case* v)      const override;
+  ExprPtr with     (const Switch* v)    const override;
+  ExprPtr with     (const Proj* v)      const override;
+  ExprPtr with     (const Assump* v)    const override;
+  ExprPtr with     (const Pack* v)      const override;
+  ExprPtr with     (const Unpack* v)    const override;
 };
 
 struct switchExprTyFnM : public switchExprM<UnitV> {
   // whatever type transform is being done (default is the identity transform)
   virtual QualTypePtr withTy(const QualTypePtr& qt) const;
 
-  UnitV with(Unit* v);
-  UnitV with(Bool* v);
-  UnitV with(Char* v);
-  UnitV with(Byte* v);
-  UnitV with(Short* v);
-  UnitV with(Int* v);
-  UnitV with(Long* v);
-  UnitV with(Int128* v);
-  UnitV with(Float* v);
-  UnitV with(Double* v);
-  UnitV with(Var* v);
-  UnitV with(Let* v);
-  UnitV with(LetRec* v);
-  UnitV with(Fn* v);
-  UnitV with(App* v);
-  UnitV with(Assign* v);
-  UnitV with(MkArray* v);
-  UnitV with(MkVariant* v);
-  UnitV with(MkRecord* v);
-  UnitV with(AIndex* v);
-  UnitV with(Case* v);
-  UnitV with(Switch* v);
-  UnitV with(Proj* v);
-  UnitV with(Assump* v);
-  UnitV with(Pack* v);
-  UnitV with(Unpack* v);
+  UnitV with(Unit* v) override;
+  UnitV with(Bool* v) override;
+  UnitV with(Char* v) override;
+  UnitV with(Byte* v) override;
+  UnitV with(Short* v) override;
+  UnitV with(Int* v) override;
+  UnitV with(Long* v) override;
+  UnitV with(Int128* v) override;
+  UnitV with(Float* v) override;
+  UnitV with(Double* v) override;
+  UnitV with(Var* v) override;
+  UnitV with(Let* v) override;
+  UnitV with(LetRec* v) override;
+  UnitV with(Fn* v) override;
+  UnitV with(App* v) override;
+  UnitV with(Assign* v) override;
+  UnitV with(MkArray* v) override;
+  UnitV with(MkVariant* v) override;
+  UnitV with(MkRecord* v) override;
+  UnitV with(AIndex* v) override;
+  UnitV with(Case* v) override;
+  UnitV with(Switch* v) override;
+  UnitV with(Proj* v) override;
+  UnitV with(Assump* v) override;
+  UnitV with(Pack* v) override;
+  UnitV with(Unpack* v) override;
 private:
   UnitV updateTy(Expr* e);
 };

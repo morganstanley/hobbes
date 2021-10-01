@@ -17,7 +17,7 @@ typedef uint8_t rchar_t;
 
 // epsilon / the empty string
 struct REps : public Regex {
-  void show(std::ostream& out) const { out << "`"; }
+  void show(std::ostream& out) const override { out << "`"; }
 };
 
 // a range of chars [b,e] (inclusive)
@@ -25,7 +25,7 @@ struct RCharRange : public Regex {
   rchar_t b, e;
   RCharRange(rchar_t b, rchar_t e) : b(b), e(e) { }
 
-  void show(std::ostream& out) const {
+  void show(std::ostream& out) const override {
     if (this->b == this->e) {
       out << this->b;
     } else if (this->b == rchar_t(0) && this->e == rchar_t(255)) {
@@ -41,7 +41,7 @@ struct RStar : public Regex {
   RegexPtr v;
   RStar(const RegexPtr& v) : v(v) { }
 
-  void show(std::ostream& out) const { this->v->show(out); out << "*"; }
+  void show(std::ostream& out) const override { this->v->show(out); out << "*"; }
 };
 
 // A|B (either match A, or match B)
@@ -50,7 +50,7 @@ struct REither : public Regex {
   RegexPtr rhs;
   REither(const RegexPtr& lhs, const RegexPtr& rhs) : lhs(lhs), rhs(rhs) { }
 
-  void show(std::ostream& out) const { this->lhs->show(out); out << "|"; this->rhs->show(out); }
+  void show(std::ostream& out) const override { this->lhs->show(out); out << "|"; this->rhs->show(out); }
 };
 
 // AB (match A, then match B)
@@ -59,7 +59,7 @@ struct RSeq : public Regex {
   RegexPtr rhs;
   RSeq(const RegexPtr& lhs, const RegexPtr& rhs) : lhs(lhs), rhs(rhs) { }
 
-  void show(std::ostream& out) const { this->lhs->show(out); this->rhs->show(out); }
+  void show(std::ostream& out) const override { this->lhs->show(out); this->rhs->show(out); }
 };
 
 // (?<x>E) (match E, bind the substring to a variable "x")
@@ -68,7 +68,7 @@ struct RBind : public Regex {
   RegexPtr    def;
   RBind(const std::string& var, const RegexPtr& def) : var(var), def(def) { }
 
-  void show(std::ostream& out) const {
+  void show(std::ostream& out) const override {
     out << "(?<" << this->var << ">";
     this->def->show(out);
     out << ")";
@@ -348,21 +348,21 @@ struct bnamesF : public switchRegex<UnitV> {
 
   bnamesF(str::set* bnames) : bnames(bnames) { }
 
-  UnitV with(const REps*) const { return unitv; }
-  UnitV with(const RCharRange*) const { return unitv; }
-  UnitV with(const RStar* x) const { return switchOf(x->v, *this); }
+  UnitV with(const REps*) const override { return unitv; }
+  UnitV with(const RCharRange*) const override { return unitv; }
+  UnitV with(const RStar* x) const override { return switchOf(x->v, *this); }
 
-  UnitV with(const REither* x) const {
+  UnitV with(const REither* x) const override {
     switchOf(x->lhs, *this);
     return switchOf(x->rhs, *this);
   }
 
-  UnitV with(const RSeq* x) const {
+  UnitV with(const RSeq* x) const override {
     switchOf(x->lhs, *this);
     return switchOf(x->rhs, *this);
   }
 
-  UnitV with(const RBind* x) const {
+  UnitV with(const RBind* x) const override {
     this->bnames->insert(x->var);
     return switchOf(x->def, *this);
   }
@@ -452,23 +452,23 @@ struct linkStateF : public switchRegex<UnitV> {
 
   state ins(const RegexPtr& p) const { return regexBefore(p, this->succ, this->id, this->nfa); }
 
-  UnitV with(const REps*) const {
+  UnitV with(const REps*) const override {
     s().eps.insert(this->succ);
     return unitv;
   }
 
-  UnitV with(const RCharRange* x) const {
+  UnitV with(const RCharRange* x) const override {
     s().chars.mergeRange(x->b, x->e, [&](stateset& ss){ ss.insert(this->succ); });
     return unitv;
   }
 
-  UnitV with(const RStar* x) const {
+  UnitV with(const RStar* x) const override {
     switchOf(x->v, linkStateF(this->nfa, this->self, this->self, this->id));
     s().eps.insert(this->succ);
     return unitv;
   }
 
-  UnitV with(const REither* x) const {
+  UnitV with(const REither* x) const override {
     state lstate = ins(x->lhs);
     state rstate = ins(x->rhs);
     s().eps.insert(lstate);
@@ -476,13 +476,13 @@ struct linkStateF : public switchRegex<UnitV> {
     return unitv;
   }
 
-  UnitV with(const RSeq* x) const {
+  UnitV with(const RSeq* x) const override {
     state rstate = ins(x->rhs);
     switchOf(x->lhs, linkStateF(this->nfa, this->self, rstate, this->id));
     return unitv;
   }
 
-  UnitV with(const RBind* x) const {
+  UnitV with(const RBind* x) const override {
     s().beginMark(this->id, x->var);
     switchOf(x->def, *this);
     s(this->succ).endMark(this->id, x->var);

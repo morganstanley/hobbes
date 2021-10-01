@@ -129,13 +129,13 @@ struct HFLookupUnqualify : public switchExprTyFn {
   HFLookupUnqualify(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions* defs) : tenv(tenv), constraint(cst), defs(defs) {
   }
 
-  ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const {
+  ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const override {
     ExprPtr result(e);
     result->type(removeConstraint(this->constraint, qty));
     return result;
   }
 
-  ExprPtr with(const Proj* v) const {
+  ExprPtr with(const Proj* v) const override {
     ExprPtr prec = switchOf(v->record(), *this);
 
     if (hasConstraint(this->constraint, v->type()) && rewritesToLookup(this->tenv, prec->type()->monoType(), v->field(), v->type()->monoType(), this->defs)) {

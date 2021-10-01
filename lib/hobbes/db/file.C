@@ -43,7 +43,7 @@ MonoTypePtr darrayty(const MonoTypePtr& t) {
 
 // the representation of file reference types changed after v0
 struct mapFileRefs : public switchTyFn {
-  MonoTypePtr with(const TApp* ap) const {
+  MonoTypePtr with(const TApp* ap) const override {
     if (ap->args().size() == 2) {
       if (const Prim* f = is<Prim>(ap->fn())) {
         if (f->name() == "fileref") {
@@ -57,7 +57,7 @@ struct mapFileRefs : public switchTyFn {
 
 // the representation of stored array types changed after v1
 struct mapStoredArrays : public switchTyFn {
-  MonoTypePtr with(const Array* a) const {
+  MonoTypePtr with(const Array* a) const override {
     return darrayty(switchOf(a->type(), *this));
   }
 };

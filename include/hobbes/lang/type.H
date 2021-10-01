@@ -267,7 +267,7 @@ template <typename Case>
 // or may be an alias for a composite type
 class Prim : public MonoTypeCase<Prim> {
 public:
-  void show(std::ostream& out) const;
+  void show(std::ostream& out) const override;
 
   const std::string& name() const;
   const MonoTypePtr& representation() const;
@@ -286,7 +286,7 @@ private:
 // an opaque pointer to some C++ type
 class OpaquePtr : public MonoTypeCase<OpaquePtr> {
 public:
-  void show(std::ostream& out) const;
+  void show(std::ostream& out) const override;
 
   const std::string& name()               const;
   unsigned int       size()               const;
@@ -311,7 +311,7 @@ MonoTypePtr normIfOpaquePtr(const MonoTypePtr& ty);
 class TVar : public MonoTypeCase<TVar> {
 public:
   const std::string& name() const;
-  void show(std::ostream& out) const;
+  void show(std::ostream& out) const override;
 
   static const int type_case_id = 2;
 
@@ -327,7 +327,7 @@ private:
 class TGen : public MonoTypeCase<TGen> {
 public:
   int id() const;
-  void show(std::ostream& out) const; // should never be shown
+  void show(std::ostream& out) const override; // should never be shown
 
   static const int type_case_id = 3;
 
@@ -342,7 +342,7 @@ private:
 // an array whose length is determined
 class FixedArray : public MonoTypeCase<FixedArray> {
 public:
-  void show(std::ostream& out) const;
+  void show(std::ostream& out) const override;
 
   const MonoTypePtr& type() const;
   const MonoTypePtr& length() const;
@@ -363,7 +363,7 @@ private:
 // an array whose length is not known at compile-time
 class Array : public MonoTypeCase<Array> {
 public:
-  void show(std::ostream& out) const;
+  void show(std::ostream& out) const override;
 
   const MonoTypePtr& type() const;
 
@@ -392,7 +392,7 @@ public:
   };
   typedef std::vector<Member> Members;
 
-  void show(std::ostream& out) const;
+  void show(std::ostream& out) const override;
 
   // get the first visible member and the type of the 'remainder' of the variant after ignoring the first field
   // (these are used for structural decomposition in generic functions)
@@ -442,7 +442,7 @@ public:
   };
   typedef std::vector<Member> Members;
 
-  void show(std::ostream& out) const;
+  void show(std::ostream& out) const override;
 
   const Members& members() const;
   const MonoTypePtr& member(const std::string& mn) const;
@@ -498,7 +498,7 @@ unsigned int alignment(const MonoTypePtr&);
 // a flat (contextless) function type
 class Func : public MonoTypeCase<Func> {
 public:
-  void show(std::ostream& out) const;
+  void show(std::ostream& out) const override;
 
   const MonoTypePtr& argument() const;
   const MonoTypePtr& result() const;
@@ -520,7 +520,7 @@ private:
 // an abstraction of type structure suitable for unifying otherwise distinct types
 class Exists : public MonoTypeCase<Exists> {
 public:
-  void show(std::ostream& out) const;
+  void show(std::ostream& out) const override;
 
   const std::string& absTypeName() const;
   const MonoTypePtr& absType() const;
@@ -544,7 +544,7 @@ QualTypePtr unpackedType(const QualTypePtr& qty);
 // type-level values (the writing is on the wall here -- this is a hack and we are going to need full dependent types)
 class TString : public MonoTypeCase<TString> {
 public:
-  void show(std::ostream& out) const;
+  void show(std::ostream& out) const override;
 
   const std::string& value() const;
 
@@ -560,7 +560,7 @@ private:
 
 class TLong : public MonoTypeCase<TLong> {
 public:
-  void show(std::ostream& out) const;
+  void show(std::ostream& out) const override;
 
   long value() const;
 
@@ -577,7 +577,7 @@ private:
 // a type-level abstraction
 class TAbs : public MonoTypeCase<TAbs> {
 public:
-  void show(std::ostream&) const;
+  void show(std::ostream&) const override;
 
   const str::seq&    args() const;
   const MonoTypePtr& body() const;
@@ -596,7 +596,7 @@ private:
 // a type-level application
 class TApp : public MonoTypeCase<TApp> {
 public:
-  void show(std::ostream&) const;
+  void show(std::ostream&) const override;
 
   const MonoTypePtr& fn() const;
   const MonoTypes&   args() const;
@@ -615,7 +615,7 @@ private:
 // a recursive type
 class Recursive : public MonoTypeCase<Recursive> {
 public:
-  void show(std::ostream&) const;
+  void show(std::ostream&) const override;
 
   const std::string& recTypeName() const;
   const MonoTypePtr& recType() const;
@@ -638,7 +638,7 @@ typedef std::shared_ptr<Expr> ExprPtr;
 
 class TExpr : public MonoTypeCase<TExpr> {
 public:
-  void show(std::ostream&) const;
+  void show(std::ostream&) const override;
 
   const ExprPtr& expr() const;
 
@@ -870,46 +870,46 @@ inline str::seq selectNames(const Record::Members& ms) {
 
 // walk a type structure for a side-effect (override any part to do per-constructor walks)
 struct walkTy : public switchType<UnitV> {
-  UnitV with(const Prim*       v) const;
-  UnitV with(const OpaquePtr*  v) const;
-  UnitV with(const TVar*       v) const;
-  UnitV with(const TGen*       v) const;
-  UnitV with(const TAbs*       v) const;
-  UnitV with(const TApp*       v) const;
-  UnitV with(const FixedArray* v) const;
-  UnitV with(const Array*      v) const;
-  UnitV with(const Variant*    v) const;
-  UnitV with(const Record*     v) const;
-  UnitV with(const Func*       v) const;
-  UnitV with(const Exists*     v) const;
-  UnitV with(const Recursive*  v) const;
-  UnitV with(const TString*    v) const;
-  UnitV with(const TLong*      v) const;
-  UnitV with(const TExpr*      v) const;
+  UnitV with(const Prim*       v) const override;
+  UnitV with(const OpaquePtr*  v) const override;
+  UnitV with(const TVar*       v) const override;
+  UnitV with(const TGen*       v) const override;
+  UnitV with(const TAbs*       v) const override;
+  UnitV with(const TApp*       v) const override;
+  UnitV with(const FixedArray* v) const override;
+  UnitV with(const Array*      v) const override;
+  UnitV with(const Variant*    v) const override;
+  UnitV with(const Record*     v) const override;
+  UnitV with(const Func*       v) const override;
+  UnitV with(const Exists*     v) const override;
+  UnitV with(const Recursive*  v) const override;
+  UnitV with(const TString*    v) const override;
+  UnitV with(const TLong*      v) const override;
+  UnitV with(const TExpr*      v) const override;
 };
 
 // copy a type structure entirely (override any part to do a partial 'Type -> Type' transform)
 struct switchTyFn : public switchType<MonoTypePtr> {
-  MonoTypePtr with(const Prim*       v) const;
-  MonoTypePtr with(const OpaquePtr*  v) const;
-  MonoTypePtr with(const TVar*       v) const;
-  MonoTypePtr with(const TGen*       v) const;
-  MonoTypePtr with(const TAbs*       v) const;
-  MonoTypePtr with(const TApp*       v) const;
-  MonoTypePtr with(const FixedArray* v) const;
-  MonoTypePtr with(const Array*      v) const;
-  MonoTypePtr with(const Variant*    v) const;
-  MonoTypePtr with(const Record*     v) const;
-  MonoTypePtr with(const Func*       v) const;
-  MonoTypePtr with(const Exists*     v) const;
-  MonoTypePtr with(const Recursive*  v) const;
+  MonoTypePtr with(const Prim*       v) const override;
+  MonoTypePtr with(const OpaquePtr*  v) const override;
+  MonoTypePtr with(const TVar*       v) const override;
+  MonoTypePtr with(const TGen*       v) const override;
+  MonoTypePtr with(const TAbs*       v) const override;
+  MonoTypePtr with(const TApp*       v) const override;
+  MonoTypePtr with(const FixedArray* v) const override;
+  MonoTypePtr with(const Array*      v) const override;
+  MonoTypePtr with(const Variant*    v) const override;
+  MonoTypePtr with(const Record*     v) const override;
+  MonoTypePtr with(const Func*       v) const override;
+  MonoTypePtr with(const Exists*     v) const override;
+  MonoTypePtr with(const Recursive*  v) const override;
 
   // bleh
-  MonoTypePtr with(const TString* v) const;
-  MonoTypePtr with(const TLong*   v) const;
+  MonoTypePtr with(const TString* v) const override;
+  MonoTypePtr with(const TLong*   v) const override;
 
   // not quite as bleh
-  MonoTypePtr with(const TExpr*) const;
+  MonoTypePtr with(const TExpr*) const override;
 };
 
 MonoTypePtr clone(const MonoTypePtr&);

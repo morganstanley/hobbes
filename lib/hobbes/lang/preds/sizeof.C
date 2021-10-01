@@ -41,11 +41,11 @@ struct SizeOfPUnqualify : public switchExprTyFn {
   SizeOfPUnqualify(const ConstraintPtr& constraint) : constraint(constraint) {
   }
 
-  QualTypePtr withTy(const QualTypePtr& qt) const {
+  QualTypePtr withTy(const QualTypePtr& qt) const override {
     return removeConstraint(this->constraint, qt);
   }
 
-  ExprPtr with(const Var* vn) const {
+  ExprPtr with(const Var* vn) const override {
     if (vn->value() == REF_SIZEOF) {
       return constant(static_cast<size_t>(sizeOf(this->constraint->arguments()[0])), vn->la());
     } else {

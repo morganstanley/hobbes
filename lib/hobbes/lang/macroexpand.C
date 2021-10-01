@@ -18,28 +18,28 @@ struct macroExpandF : public switchExprC<ExprPtr> {
     return mk(src->type(), out);
   }
 
-  ExprPtr withConst(const Expr* v)  const { return mk(v, v->clone()); }
-  ExprPtr with(const Fn* v)         const { return mk(v, new Fn(v->varNames(), switchOf(v->body(), *this), v->la())); }
-  ExprPtr with(const MkArray* v)    const { return mk(v, new MkArray(switchOf(v->values(), *this), v->la())); }
-  ExprPtr with(const MkVariant* v)  const { return mk(v, new MkVariant(v->label(), switchOf(v->value(), *this), v->la())); }
-  ExprPtr with(const MkRecord* v)   const { return mk(v, new MkRecord(switchOf(v->fields(), *this), v->la())); }
-  ExprPtr with(const AIndex* v)     const { return mk(v, new AIndex(switchOf(v->array(), *this), switchOf(v->index(), *this), v->la())); }
-  ExprPtr with(const Proj* v)       const { return mk(v, new Proj(switchOf(v->record(), *this), v->field(), v->la())); }
-  ExprPtr with(const Assump* v)     const { return mk(v, new Assump(switchOf(v->expr(), *this), v->ty(), v->la())); }
+  ExprPtr withConst(const Expr* v)  const override { return mk(v, v->clone()); }
+  ExprPtr with(const Fn* v)         const override { return mk(v, new Fn(v->varNames(), switchOf(v->body(), *this), v->la())); }
+  ExprPtr with(const MkArray* v)    const override { return mk(v, new MkArray(switchOf(v->values(), *this), v->la())); }
+  ExprPtr with(const MkVariant* v)  const override { return mk(v, new MkVariant(v->label(), switchOf(v->value(), *this), v->la())); }
+  ExprPtr with(const MkRecord* v)   const override { return mk(v, new MkRecord(switchOf(v->fields(), *this), v->la())); }
+  ExprPtr with(const AIndex* v)     const override { return mk(v, new AIndex(switchOf(v->array(), *this), switchOf(v->index(), *this), v->la())); }
+  ExprPtr with(const Proj* v)       const override { return mk(v, new Proj(switchOf(v->record(), *this), v->field(), v->la())); }
+  ExprPtr with(const Assump* v)     const override { return mk(v, new Assump(switchOf(v->expr(), *this), v->ty(), v->la())); }
 
-  ExprPtr with(const Case* v) const {
+  ExprPtr with(const Case* v) const override {
     ExprPtr de = v->defaultExpr();
     if (de.get()) { de = switchOf(de, *this); }
     return mk(v, new Case(switchOf(v->variant(), *this), switchOf(v->bindings(), *this), de, v->la()));
   }
 
-  ExprPtr with(const Switch* v) const {
+  ExprPtr with(const Switch* v) const override {
     ExprPtr de = v->defaultExpr();
     if (de) { de = switchOf(de, *this); }
     return mk(v, new Switch(switchOf(v->expr(), *this), switchOf(v->bindings(), *this), de, v->la()));
   }
 
-  ExprPtr with(const Var* v) const {
+  ExprPtr with(const Var* v) const override {
     if (v->value() == "and") {
       return macroEtaLiftAnd(v->la());
     } else if (v->value() == "or") {
@@ -49,11 +49,11 @@ struct macroExpandF : public switchExprC<ExprPtr> {
     }
   }
 
-  ExprPtr with(const Let* v) const {
+  ExprPtr with(const Let* v) const override {
     return mk(v, new Let(v->var(), switchOf(v->varExpr(), *this), switchOf(v->bodyExpr(), *this), v->la()));
   }
 
-  ExprPtr with(const LetRec* v) const {
+  ExprPtr with(const LetRec* v) const override {
     LetRec::Bindings bs;
     for (const auto& b : v->bindings()) {
       bs.push_back(LetRec::Binding(b.first, switchOf(b.second, *this)));
@@ -61,7 +61,7 @@ struct macroExpandF : public switchExprC<ExprPtr> {
     return mk(v, new LetRec(bs, switchOf(v->bodyExpr(), *this), v->la()));
   }
 
-  ExprPtr with(const App* v) const {
+  ExprPtr with(const App* v) const override {
     Var* fn = is<Var>(v->fn());
     if (fn && fn->value() == "and") {
       return macroExpandAnd(switchOf(v->args(), *this), v->la());
@@ -72,15 +72,15 @@ struct macroExpandF : public switchExprC<ExprPtr> {
     }
   }
 
-  ExprPtr with(const Assign* v) const {
+  ExprPtr with(const Assign* v) const override {
     return mk(v, new Assign(switchOf(v->left(), *this), switchOf(v->right(), *this), v->la()));
   }
 
-  ExprPtr with(const Pack* v) const {
+  ExprPtr with(const Pack* v) const override {
     return mk(v, new Pack(switchOf(v->expr(), *this), v->la()));
   }
 
-  ExprPtr with(const Unpack* v) const {
+  ExprPtr with(const Unpack* v) const override {
     return mk(v, new Unpack(v->varName(), switchOf(v->package(), *this), switchOf(v->expr(), *this), v->la()));
   }
 

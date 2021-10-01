@@ -34,10 +34,10 @@ public:
   character(char x = 0);
   char value() const;
   void value(char);
-  void show(std::ostream&) const;
+  void show(std::ostream&) const override;
 
-  PatternPtr matchPattern() const;
-  ExprPtr matchRefExpr() const;
+  PatternPtr matchPattern() const override;
+  ExprPtr matchRefExpr() const override;
 private:
   char x;
 };
@@ -47,10 +47,10 @@ class symbol : public terminal {
 public:
   symbol(const std::string& sname);
   const std::string& name() const;
-  void show(std::ostream& out) const;
+  void show(std::ostream& out) const override;
 
-  [[noreturn]] PatternPtr matchPattern() const;
-  [[noreturn]] ExprPtr matchRefExpr() const;
+  [[noreturn]] PatternPtr matchPattern() const override;
+  [[noreturn]] ExprPtr matchRefExpr() const override;
 private:
   std::string sname;
 };
@@ -59,11 +59,11 @@ private:
 class endOfFile : public terminal {
 public:
   endOfFile();
-  void show(std::ostream&) const;
+  void show(std::ostream&) const override;
   static terminal* value();
 
-  [[noreturn]] PatternPtr matchPattern() const;
-  [[noreturn]] ExprPtr matchRefExpr() const;
+  [[noreturn]] PatternPtr matchPattern() const override;
+  [[noreturn]] ExprPtr matchRefExpr() const override;
 };
 
 // allow terminals to be ordered by basic precedence / associativity definitions

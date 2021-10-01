@@ -349,12 +349,12 @@ class CCServer : public Server {
 public:
   CCServer(cc *c, ReWriteExprFn const &wrExprFn) : c(c), wrExprFn(wrExprFn) {}
 
-  void connect(int) {}
+  void connect(int) override {}
 
-  ExprPtr readExpr(const std::string &x) { return this->c->readExpr(x); }
+  ExprPtr readExpr(const std::string &x) override { return this->c->readExpr(x); }
 
   MonoTypePtr prepare(int c, exprid eid, const ExprPtr &expr,
-                      const MonoTypePtr &inty) {
+                      const MonoTypePtr &inty) override {
     const auto &la = expr->la();
 
     // E(readFrom(in)::T) :: ?
@@ -382,7 +382,7 @@ public:
     return rty;
   }
 
-  void evaluate(int c, exprid eid) {
+  void evaluate(int c, exprid eid) override {
     auto cfns = this->cnetFns[c];
     auto f = cfns.find(eid);
 
@@ -397,7 +397,7 @@ public:
     }
   }
 
-  void disconnect(int) {}
+  void disconnect(int) override {}
 
 private:
   cc *c;

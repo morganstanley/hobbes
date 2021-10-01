@@ -136,7 +136,7 @@ struct UnqualifySafePackF : public switchExprTyFn {
   UnqualifySafePackF(const ConstraintPtr& cst) : constraint(cst) {
   }
 
-  ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const {
+  ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const override {
     ExprPtr result(e);
     result->type(removeConstraint(this->constraint, qty));
     return result;
@@ -148,13 +148,13 @@ struct StripTransparentPackF : public switchExprTyFn {
   StripTransparentPackF(const ConstraintPtr& cst) : constraint(cst) {
   }
 
-  ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const {
+  ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const override {
     ExprPtr result(e);
     result->type(removeConstraint(this->constraint, qty));
     return result;
   }
 
-  ExprPtr with(const Pack* p) const {
+  ExprPtr with(const Pack* p) const override {
     if (hasConstraint(this->constraint, p->type())) {
       return switchOf(p->expr(), *this);
     } else {

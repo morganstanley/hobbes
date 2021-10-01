@@ -226,11 +226,11 @@ struct RDUnqualify : public switchExprTyFn {
     }
   }
 
-  QualTypePtr withTy(const QualTypePtr& qt) const {
+  QualTypePtr withTy(const QualTypePtr& qt) const override {
     return removeConstraint(this->constraint, qt);
   }
 
-  ExprPtr with(const Assign* v) const {
+  ExprPtr with(const Assign* v) const override {
     if (hasConstraint(this->constraint, v->left()->type())) {
       if (const App* a = is<App>(stripAssumps(v->left()))) {
         if (const Var* f = is<Var>(stripAssumps(a->fn()))) {
@@ -250,7 +250,7 @@ struct RDUnqualify : public switchExprTyFn {
     return wrapWithTy(v->type(), new Assign(switchOf(v->left(), *this), switchOf(v->right(), *this), v->la()));
   }
 
-  ExprPtr with(const Var* v) const {
+  ExprPtr with(const Var* v) const override {
     if (hasConstraint(this->constraint, v->type())) {
       // replace safe functions with 'unsafe' ones
       if (v->value() == REF_REC_LABEL) {

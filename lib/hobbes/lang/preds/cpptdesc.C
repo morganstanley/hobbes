@@ -54,7 +54,7 @@ struct defineCPPTy : public switchType<UnitV> {
     return s.str();
   }
 
-  UnitV with(const Prim* v) const {
+  UnitV with(const Prim* v) const override {
     if (v->representation()) {
       *this->out << "DEFINE_TYPE_ALIAS(" << this->tname << ", " << acc(this->tname+"_repr", v->representation()) << ");\n";
     } else {
@@ -63,28 +63,28 @@ struct defineCPPTy : public switchType<UnitV> {
     return unitv;
   }
 
-  UnitV with(const OpaquePtr* v) const {
+  UnitV with(const OpaquePtr* v) const override {
     *this->out << "typedef " << v->name() << (v->storedContiguously() ? "" : "*") << " " << this->tname << ";\n";
     return unitv;
   }
 
-  UnitV with(const TVar*) const {
+  UnitV with(const TVar*) const override {
     throw annotated_error(this->la, "Can't translate type with variables to C++ type.");
   }
 
-  UnitV with(const TGen*) const {
+  UnitV with(const TGen*) const override {
     throw annotated_error(this->la, "Can't translate polymorphic type to C++ type.");
   }
 
-  UnitV with(const TAbs*) const {
+  UnitV with(const TAbs*) const override {
     throw annotated_error(this->la, "Can't translate type abstraction to C++ type.");
   }
 
-  UnitV with(const TApp*) const {
+  UnitV with(const TApp*) const override {
     throw annotated_error(this->la, "Can't translate type application to C++ type.");
   }
 
-  UnitV with(const FixedArray* v) const {
+  UnitV with(const FixedArray* v) const override {
     if (const auto* n = is<TLong>(v->length())) {
       *this->out << "typedef std::array<" << acc(this->tname+"_elem", v->type()) << ", " << n->value() << "> " << this->tname << ";\n";
     } else {
@@ -93,12 +93,12 @@ struct defineCPPTy : public switchType<UnitV> {
     return unitv;
   }
 
-  UnitV with(const Array* v) const {
+  UnitV with(const Array* v) const override {
     *this->out << "typedef hobbes::array<" << acc(this->tname+"_elem", v->type()) << ">* " << this->tname << ";\n";
     return unitv;
   }
 
-  UnitV with(const Variant* v) const {
+  UnitV with(const Variant* v) const override {
     if (v->members().size() == 0) {
       throw annotated_error(this->la, "An empty variant is impossible to construct.");
     } else if (v->isSum()) {
@@ -120,7 +120,7 @@ struct defineCPPTy : public switchType<UnitV> {
     return unitv;
   }
 
-  UnitV with(const Record* v) const {
+  UnitV with(const Record* v) const override {
     if (v->members().size() == 0) {
       *this->out << "typedef hobbes::unit " << this->tname << ";\n";
     } else if (v->isTuple()) {
@@ -146,7 +146,7 @@ struct defineCPPTy : public switchType<UnitV> {
     return unitv;
   }
 
-  UnitV with(const Func* v) const {
+  UnitV with(const Func* v) const override {
     if (const auto* p = is<Prim>(v->result())) {
       if (p->name() == "unit") {
         *this->out << "typedef void (*" << this->tname << ")(" << acc(this->tname, v->parameters()) << ");\n";
@@ -157,23 +157,23 @@ struct defineCPPTy : public switchType<UnitV> {
     return unitv;
   }
 
-  UnitV with(const Exists*) const {
+  UnitV with(const Exists*) const override {
     throw annotated_error(this->la, "Can't translate existential type to C++ type.");
   }
 
-  UnitV with(const Recursive*) const {
+  UnitV with(const Recursive*) const override {
     throw annotated_error(this->la, "Can't translate recursive type to C++ type.");
   }
 
-  UnitV with(const TString*) const {
+  UnitV with(const TString*) const override {
     throw annotated_error(this->la, "Can't translate type string to C++ type.");
   }
 
-  UnitV with(const TLong*) const {
+  UnitV with(const TLong*) const override {
     throw annotated_error(this->la, "Can't translate type number to C++ type.");
   }
 
-  UnitV with(const TExpr*) const {
+  UnitV with(const TExpr*) const override {
     throw annotated_error(this->la, "Can't translate type expression to C++ type.");
   }
 };
@@ -236,11 +236,11 @@ struct CPPTypeDescUnqualify : public switchExprTyFn {
     this->ty    = constraint->arguments()[1];
   }
 
-  QualTypePtr withTy(const QualTypePtr& qt) const {
+  QualTypePtr withTy(const QualTypePtr& qt) const override {
     return removeConstraint(this->constraint, qt);
   }
 
-  ExprPtr with(const Var* vn) const {
+  ExprPtr with(const Var* vn) const override {
     if (vn->value() == REF_CPPTDESC) {
       return ExprPtr(mkarray(describeCPPType(this->tname, this->ty, vn->la()), vn->la()));
     } else {

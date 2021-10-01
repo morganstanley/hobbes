@@ -75,7 +75,7 @@ struct RewriteMSelect : public switchExprTyFn {
     this->ctor = fn->value();
   }
 
-  ExprPtr with(const App* ap) const {
+  ExprPtr with(const App* ap) const override {
     if (ap->args().size() == 1) {
       if (hasConstraint(this->cst, ap->type())) {
         if (const Var* f = is<Var>(stripAssumpHead(ap->fn()))) {
@@ -90,7 +90,7 @@ struct RewriteMSelect : public switchExprTyFn {
     return wrapWithTy(ap->type(), new App(switchOf(ap->fn(), *this), switchOf(ap->args(), *this), ap->la()));
   }
 
-  ExprPtr with(const Var* v) const {
+  ExprPtr with(const Var* v) const override {
     if (hasConstraint(this->cst, v->type())) {
       if (v->value() == MSELECT_CTOR_FN) {
         std::string vn = freshName();

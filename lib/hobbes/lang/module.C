@@ -213,7 +213,7 @@ ModuleDefPtr switchMDefTyFn::with(const MSafePragmaDef* x) const { return Module
 struct appMTySwitchF : public switchExprTyFn {
   const switchMDefTyFn* f;
   appMTySwitchF(const switchMDefTyFn* f) : f(f) { }
-  QualTypePtr withTy(const QualTypePtr& t) const { if (t) return this->f->withTy(t); else return t; }
+  QualTypePtr withTy(const QualTypePtr& t) const override { if (t) return this->f->withTy(t); else return t; }
 };
 ModuleDefPtr switchMDefTyFn::with(const MVarDef* x) const {
   return ModuleDefPtr(new MVarDef(x->varWithArgs(), switchOf(x->varExpr(), appMTySwitchF(this)), x->la()));

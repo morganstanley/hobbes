@@ -44,7 +44,7 @@ class translateTypeF : public switchType<llvm::Type*> {
 public:
   translateTypeF(bool asArg) : asArg(asArg) { }
 
-  llvm::Type* with(const Prim* v) const {
+  llvm::Type* with(const Prim* v) const override {
     if (v->representation().get()) {
       return switchOf(v->representation(), *this);
     } else {
@@ -52,7 +52,7 @@ public:
     }
   }
 
-  llvm::Type* with(const OpaquePtr* v) const {
+  llvm::Type* with(const OpaquePtr* v) const override {
     if (!asArg && v->storedContiguously()) {
       return arrayType(byteType(), v->size());
     } else {
@@ -60,19 +60,19 @@ public:
     }
   }
 
-  llvm::Type* with(const TVar* v) const {
+  llvm::Type* with(const TVar* v) const override {
     throw std::runtime_error("Internal compiler error: Cannot translate type variable '" + v->name() + "' to LLVM type");
   }
 
-  llvm::Type* with(const TGen*) const {
+  llvm::Type* with(const TGen*) const override {
     throw std::runtime_error("Internal compiler error: Cannot translate polytype instantiation point to LLVM type.");
   }
 
-  llvm::Type* with(const TAbs* v) const {
+  llvm::Type* with(const TAbs* v) const override {
     throw std::runtime_error("Can't translate to LLVM monotype: " + show(v));
   }
 
-  llvm::Type* with(const TApp* v) const {
+  llvm::Type* with(const TApp* v) const override {
     // TODO: fold these special cases into TApp/TFn applications
     if (const Prim* f = is<Prim>(v->fn())) {
       if (f->name() == "->" && v->args().size() == 2) {
@@ -100,21 +100,21 @@ public:
     throw std::runtime_error("Can't translate to LLVM monotype: " + show(v));
   }
 
-  llvm::Type* with(const FixedArray* v) const {
+  llvm::Type* with(const FixedArray* v) const override {
     bool innerPtrs = is<Func>(v->type());
     return asPtrIf(arrayType(switchOf(v->type(), translateTypeF(innerPtrs)), v->requireLength()), asArg);
   }
 
-  llvm::Type* with(const Array* v) const {
+  llvm::Type* with(const Array* v) const override {
     bool innerPtrs = is<OpaquePtr>(v->type()) || is<Func>(v->type());
     return asPtrIf(llvmVarArrType(switchOf(v->type(), translateTypeF(innerPtrs))), true);
   }
 
-  llvm::Type* with(const Variant* v) const {
+  llvm::Type* with(const Variant* v) const override {
     return asPtrIf(arrayType(byteType(), v->size()), asArg);
   }
 
-  llvm::Type* with(const Record* v) const {
+  llvm::Type* with(const Record* v) const override {
     const Record::Members& ams = v->alignedMembers();
 
     Types cms;
@@ -132,27 +132,27 @@ public:
     }
   }
 
-  llvm::Type* with(const Func* v) const {
+  llvm::Type* with(const Func* v) const override {
     return asPtrIf(functionType(toLLVM(v->parameters(), true), toLLVM(v->result(), true)), asArg);
   }
 
-  llvm::Type* with(const Exists* v) const {
+  llvm::Type* with(const Exists* v) const override {
     return toLLVM(unpackedType(v), true);
   }
 
-  llvm::Type* with(const Recursive*) const {
+  llvm::Type* with(const Recursive*) const override {
     return ptrType(byteType());
   }
 
-  llvm::Type* with(const TString* v) const {
+  llvm::Type* with(const TString* v) const override {
     throw std::runtime_error("Internal compiler error: Cannot translate value to LLVM type: '" + v->value() + "'");
   }
 
-  llvm::Type* with(const TLong* v) const {
+  llvm::Type* with(const TLong* v) const override {
     throw std::runtime_error("Internal compiler error: Cannot translate value to LLVM type: " + str::from(v->value()));
   }
 
-  llvm::Type* with(const TExpr* v) const {
+  llvm::Type* with(const TExpr* v) const override {
     throw std::runtime_error("Internal compiler error: Cannot translate expression to LLVM type: " + show(v->expr()));
   }
 private:

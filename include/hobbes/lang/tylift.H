@@ -43,18 +43,18 @@ struct typedb {
 };
 
 struct nulltypedb : public typedb {
-  MonoTypePtr defineNamedType(const std::string& name, const str::seq& argNames, const MonoTypePtr& ty);
-  bool isTypeName(const std::string&) const;
-  [[noreturn]] MonoTypePtr namedTypeRepresentation(const std::string&) const;
+  MonoTypePtr defineNamedType(const std::string& name, const str::seq& argNames, const MonoTypePtr& ty) override;
+  bool isTypeName(const std::string&) const override;
+  [[noreturn]] MonoTypePtr namedTypeRepresentation(const std::string&) const override;
 
-  [[noreturn]] void defineTypeAlias(const std::string& name, const str::seq& argNames, const MonoTypePtr& ty);
-  bool isTypeAliasName(const std::string& name) const;
-  MonoTypePtr replaceTypeAliases(const MonoTypePtr& ty) const;
+  [[noreturn]] void defineTypeAlias(const std::string& name, const str::seq& argNames, const MonoTypePtr& ty) override;
+  bool isTypeAliasName(const std::string& name) const override;
+  MonoTypePtr replaceTypeAliases(const MonoTypePtr& ty) const override;
   
-  [[noreturn]] PolyTypePtr opaquePtrPolyType(const std::type_info&, unsigned int sz, bool inStruct);
-  [[noreturn]] MonoTypePtr opaquePtrMonoType(const std::type_info&, unsigned int sz, bool inStruct);
+  [[noreturn]] PolyTypePtr opaquePtrPolyType(const std::type_info&, unsigned int sz, bool inStruct) override;
+  [[noreturn]] MonoTypePtr opaquePtrMonoType(const std::type_info&, unsigned int sz, bool inStruct) override;
  
-  PolyTypePtr generalize(const MonoTypePtr& mt) const;
+  PolyTypePtr generalize(const MonoTypePtr& mt) const override;
 };
 extern nulltypedb nulltdb;
 
