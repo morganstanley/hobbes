@@ -12088,7 +12088,7 @@ __streams_hob,
 __strings_hob,
 __table_hob,
 __zstorage_hob,
-0 };
+nullptr };
 unsigned int module_lens[] = {
 __amapping_hob_len,
 __arith_hob_len,

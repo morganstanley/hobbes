@@ -49,7 +49,7 @@ template < typename Char = char, typename Traits = std::char_traits<Char> >
 
     raw_istream_buffer(const RawData& d) {
       if (d.size() == 0) {
-        BaseT::setg(0,0,0);
+        BaseT::setg(nullptr,nullptr,nullptr);
       } else {
         Char* b = const_cast<Char*>(reinterpret_cast<const Char*>(&d[0]));
         BaseT::setg(b, b, const_cast<Char*>(reinterpret_cast<const Char*>(&d[0] + d.size())));

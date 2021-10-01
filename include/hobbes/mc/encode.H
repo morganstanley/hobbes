@@ -337,7 +337,7 @@ private:
     return align(x, this->pagesz);
   }
   static uint8_t* allocateBuffer(size_t sz) {
-    auto* r = reinterpret_cast<uint8_t*>(mmap(0, sz, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE, -1, 0));
+    auto* r = reinterpret_cast<uint8_t*>(mmap(nullptr, sz, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE, -1, 0));
     if (r == MAP_FAILED) {
       throw std::runtime_error("Failed to allocate exec buffer memory with error: " + std::string(strerror(errno)));
     }
@@ -435,7 +435,7 @@ template <typename RegisterID>
 class Arg {
 public:
   // invalid argument
-  Arg() : vtag(TReg) { this->variant.vreg = 0; }
+  Arg() : vtag(TReg) { this->variant.vreg = nullptr; }
   
   Arg(const Arg& rhs) {
     copyFrom(rhs);
@@ -465,7 +465,7 @@ public:
   static Arg<RegisterID> ireg(RegisterID name, RegSize rsize) { return reg(name, rsize, Int); }
   static Arg<RegisterID> freg(RegisterID name, RegSize rsize) { return reg(name, rsize, Float); }
 
-  const Reg<RegisterID>* reg() const { return this->vtag == TReg ? this->variant.vreg : 0; }
+  const Reg<RegisterID>* reg() const { return this->vtag == TReg ? this->variant.vreg : nullptr; }
 
   // or it can be an indirect memory reference through a register calculation
   // these register calculations can look like [B+I*S+D] where B and I are registers, S is a scale factor in {0,1,2,4,8}, and D is up to a 32-bit const displacement
@@ -497,7 +497,7 @@ public:
   static Arg<RegisterID> regDeref(RegisterID index, uint8_t scale, int32_t offset, RegSize rsize, RegClass rclass) { return regDeref(RegisterID(), false, index, scale, offset, rsize, rclass); }
   static Arg<RegisterID> regDeref(const Reg<RegisterID>& index, uint8_t scale, int32_t offset, RegSize rsize, RegClass rclass) { return regDeref(RegisterID(), false, index.name, scale, offset, rsize, rclass); }
 
-  const RegDeref<RegisterID>* regDeref() const { return this->vtag == TRegDeref ? this->variant.vregderef : 0; }
+  const RegDeref<RegisterID>* regDeref() const { return this->vtag == TRegDeref ? this->variant.vregderef : nullptr; }
 
   // refer to the label 'label'
   static Arg<RegisterID> labelRef(const LabelRef& lbl) {
@@ -509,7 +509,7 @@ public:
     lref.rsize = rsize;
     return labelRef(lref);
   }
-  const LabelRef* labelRef() const { return this->vtag == TLabelRef ? this->variant.vlabelref : 0; }
+  const LabelRef* labelRef() const { return this->vtag == TLabelRef ? this->variant.vlabelref : nullptr; }
 
   // an immediate value
   static Arg<RegisterID> immediate(const Immediate& i) {
@@ -531,7 +531,7 @@ public:
   static Arg<RegisterID> i64 (int64_t  x) { return immediate(static_cast<int64_t>(x), true,  sizeof(x)); }
   static Arg<RegisterID> ui64(uint64_t x) { return immediate(static_cast<int64_t>(x), false, sizeof(x)); }
 
-  const Immediate* immediate() const { return this->vtag == TImmediate ? this->variant.vimmediate : 0; }
+  const Immediate* immediate() const { return this->vtag == TImmediate ? this->variant.vimmediate : nullptr; }
 
   // the variant view of this data
   enum Tag : uint8_t {
@@ -607,7 +607,7 @@ private:
     this->vtag = rhs.vtag;
     if (!rhs.variant.vreg) {
       // 0-initialize just for a 0-initialized copy
-      this->variant.vreg = 0;
+      this->variant.vreg = nullptr;
       return;
     }
 
@@ -694,7 +694,7 @@ inline const Reg<X86Reg>* maybeMReg(const std::string& name) {
     }
   }
   auto r = mregs.find(name);
-  return (r != mregs.end()) ? &r->second : 0;
+  return (r != mregs.end()) ? &r->second : nullptr;
 }
 inline const Reg<X86Reg>& mreg(const std::string& name) {
   if (const auto* p = maybeMReg(name)) {
@@ -816,14 +816,14 @@ struct Instruction {
     return r;
   }
   const LabelRef* labelDef() const {
-    return this->op=="deflbl" && this->argc==1 ? this->args[0].labelRef() : 0;
+    return this->op=="deflbl" && this->argc==1 ? this->args[0].labelRef() : nullptr;
   }
   const LabelRef* jumpTarget() const {
     // jump instructions start with "j" by convention, should be good enough
     if (this->op.size() > 0 && this->op[0] == 'j' && this->argc == 1) {
       return this->args[0].labelRef();
     } else {
-      return 0;
+      return nullptr;
     }
   }
   bool controlFollows() const {
@@ -947,10 +947,10 @@ public:
     }
   }
   const Reg<X86Reg>* reg() const {
-    return this->isRegister ? this->variant.vreg : 0;
+    return this->isRegister ? this->variant.vreg : nullptr;
   }
   const RegDeref<X86Reg>* regDeref() const {
-    return !this->isRegister ? this->variant.vregderef : 0;
+    return !this->isRegister ? this->variant.vregderef : nullptr;
   }
 private:
   bool isRegister;
@@ -964,7 +964,7 @@ private:
 class Output;
 class MatchFunction {
 public:
-  MatchFunction() : pf(0) { }
+  MatchFunction() : pf(nullptr) { }
   template <typename ... Args>
   MatchFunction(void(*pf)(Output&,const Args&...)) {
     this->pf = reinterpret_cast<void*>(pf);

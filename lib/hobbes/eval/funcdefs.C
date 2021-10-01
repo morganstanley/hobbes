@@ -16,15 +16,15 @@
 
 namespace hobbes {
 
-static __thread region* threadRegionp = 0;
+static __thread region* threadRegionp = nullptr;
 
 using NamedRegion = std::pair<std::string, region *>;
 using Regions = std::vector<NamedRegion>;
-static __thread Regions* threadRegionsp = 0;
+static __thread Regions* threadRegionsp = nullptr;
 static __thread size_t   currentRegion = 0;
 
 region& threadRegion() {
-  if (threadRegionp == 0) {
+  if (threadRegionp == nullptr) {
     threadRegionp  = new region(32768 /* min page size = 32K */);
     threadRegionsp = new Regions();
     threadRegionsp->push_back(NamedRegion("scratch", threadRegionp));
@@ -34,7 +34,7 @@ region& threadRegion() {
 }
 
 static Regions& threadRegions() {
-  if (threadRegionsp == 0) {
+  if (threadRegionsp == nullptr) {
     threadRegion();
   }
   return *threadRegionsp;
@@ -435,7 +435,7 @@ void captureStdout() {
 const array<char>* releaseStdout() {
   const array<char>* result = makeString(stdoutBuffer().str());
   stdoutBuffer().str("");
-  stdoutBufferSwap(0);
+  stdoutBufferSwap(nullptr);
   return result;
 }
 
@@ -495,7 +495,7 @@ void dumpBytes(char* d, long len) {
 // support fd reading/writing
 //  (mark FDs as bad if there are errors rather than raising an exception and killing the process)
 std::set<int>& badFDs() {
-  static __thread std::set<int>* bfds = 0;
+  static __thread std::set<int>* bfds = nullptr;
   if (bfds == nullptr) {
     bfds = new std::set<int>();
   }
@@ -689,7 +689,7 @@ void initStdFuncDefs(cc& ctx) {
   ctx.bind("stdstringAssign", &stdstringAssign);
 
   // a source of randomness (maybe worth revisiting!)
-  srand(::time(0));
+  srand(::time(nullptr));
   ctx.bind("random", &random);
   ctx.bind("lrand",  &lrand);
   ctx.bind("ceil",   &lceil);

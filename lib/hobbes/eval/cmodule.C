@@ -351,7 +351,7 @@ void compile(const ModulePtr &m, cc *e, const InstanceDef *id) {
     UnqualifierPtr tyc = e->typeEnv()->lookupUnqualifier(id->className());
     TClassPtr c = std::dynamic_pointer_cast<TClass>(tyc);
 
-    if (c.get() == 0) {
+    if (c.get() == nullptr) {
       throw std::runtime_error("Cannot define overload in '" + id->className() +
                                "', class does not exist.");
     }

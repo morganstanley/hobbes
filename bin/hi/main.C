@@ -26,7 +26,7 @@ namespace str = hobbes::str;
 namespace hi {
 
 // the one evaluator for this process
-evaluator* eval = 0;
+evaluator* eval = nullptr;
 
 // control color options (these can be tweaked by ~/.hirc)
 ConsoleColors colors;
@@ -217,7 +217,7 @@ char* completionStep(const char*, int state) {
   if (state >= 0 && size_t(state) < completionMatches.size()) {
     return strdup(completionMatches[state].c_str());
   } else {
-    return 0;
+    return nullptr;
   }
 }
 
@@ -229,7 +229,7 @@ char** completions(const char* pfx, int start, int) {
 #ifdef BUILD_LINUX
     rl_bind_key('\t', rl_abort);
 #endif
-    return 0;
+    return nullptr;
   }
 }
 
@@ -281,7 +281,7 @@ void repl(evaluator*) {
     [](int,void*) {
       rl_callback_read_char();
     },
-    0
+    nullptr
   );
 
   // poll for events and dispatch them

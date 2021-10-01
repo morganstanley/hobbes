@@ -9,7 +9,7 @@ std::string DeconstructP::constraintName() {
 }
 
 struct destructType : public switchType<bool> {
-  MonoTypePtr* r = 0;
+  MonoTypePtr* r = nullptr;
   destructType(MonoTypePtr* r) : r(r) { }
 
   bool with(const Prim*) const override {

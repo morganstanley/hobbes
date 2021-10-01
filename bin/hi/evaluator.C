@@ -65,7 +65,7 @@ void bindArguments(hobbes::cc& ctx, const Args::NameVals& args) {
 }
 
 // set up the evaluation environment for our cc
-evaluator::evaluator(const Args& args) : silent(args.silent), wwwd(0), opts(args.opts) {
+evaluator::evaluator(const Args& args) : silent(args.silent), wwwd(nullptr), opts(args.opts) {
   using namespace hobbes;
 
   bindArguments(this->ctx, args.scriptNameVals);

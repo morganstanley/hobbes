@@ -190,10 +190,10 @@ llvm::GlobalVariable* extractGlobal(llvm::Value* e) {
     if (c->isCast() && c->getNumOperands() == 1) {
       return extractGlobal(c->getOperand(0));
     } else {
-      return 0;
+      return nullptr;
     }
   } else {
-    return 0;
+    return nullptr;
   }
 }
 
@@ -433,7 +433,7 @@ void cc::overload(const std::string& tyclass, const MonoTypes& tys) {
   UnqualifierPtr tyc = this->tenv->lookupUnqualifier(tyclass);
   TClassPtr      c   = std::dynamic_pointer_cast<TClass>(tyc);
   
-  if (c.get() == 0) {
+  if (c.get() == nullptr) {
     throw std::runtime_error("Cannot define overload in '" + tyclass + "', class does not exist.");
   } else if (c->members().size() != 0) {
     throw std::runtime_error("Cannot define partial overload for type class '" + tyclass + "', which has " + str::from(c->members().size()) + " members.");
@@ -455,7 +455,7 @@ void cc::overload(const std::string& tyclass, const MonoTypes& tys, const ExprPt
   UnqualifierPtr tyc = this->tenv->lookupUnqualifier(tyclass);
   TClassPtr      c   = std::dynamic_pointer_cast<TClass>(tyc);
   
-  if (c.get() == 0) {
+  if (c.get() == nullptr) {
     throw std::runtime_error("Cannot define overload in '" + tyclass + "', class does not exist.");
   } else if (c->members().size() != 1) {
     throw std::runtime_error("Cannot define partial overload for type class '" + tyclass + "', which has " + str::from(c->members().size()) + " members.");

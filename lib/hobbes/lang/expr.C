@@ -612,7 +612,7 @@ void Case::show(std::ostream& out) const {
     out << ".";
     b->exp->show(out);
   }
-  if (this->def.get() != 0) {
+  if (this->def.get() != nullptr) {
     out << ",default.";
     this->def->show(out);
   }
@@ -1072,7 +1072,7 @@ ExprPtr switchExprTyFn::with(const LetRec* v) const {
 
 ExprPtr switchExprTyFn::with(const Case* v) const {
   ExprPtr de = v->defaultExpr();
-  if (de.get() != 0) { de = switchOf(de, *this); }
+  if (de.get() != nullptr) { de = switchOf(de, *this); }
 
   return wrapWithTy(v->type(), new Case(switchOf(v->variant(), *this), switchOf(v->bindings(), *this), de, v->la()));
 }
@@ -1176,7 +1176,7 @@ UnitV switchExprTyFnM::with(AIndex* v) {
 
 UnitV switchExprTyFnM::with(Case* v) {
   ExprPtr de = v->defaultExpr();
-  if (de.get() != 0) { switchOf(de, *this); }
+  if (de.get() != nullptr) { switchOf(de, *this); }
 
   switchOf(v->variant(), *this);
   switchOf(v->bindings(), *this);

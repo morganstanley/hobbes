@@ -157,7 +157,7 @@ int installHTTPD(int port, HTTPRequestHandler f, void* ud) {
   registerEventHandler(
     s,
     [](int s, void* d) {
-      int c = accept(s, 0, 0);
+      int c = accept(s, nullptr, nullptr);
       if (c != -1) {
         auto* rcb = reinterpret_cast<ReqCB*>(d);
         fcntl(c, F_SETFL, fcntl(c, F_GETFL) | O_NONBLOCK);

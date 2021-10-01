@@ -352,7 +352,7 @@ static void unsafeWriteToSeries(long ss, char* rec) {
 }
 
 static void unsafeWriteUnitToSeries(long ss) {
-  reinterpret_cast<RawStoredSeries*>(ss)->record(0, false);
+  reinterpret_cast<RawStoredSeries*>(ss)->record(nullptr, false);
 }
 
 void RawStoredSeries::bindAs(cc* c, const std::string& vname) {
@@ -709,7 +709,7 @@ static void unsafeWriteToCSeries(long css, char* rec) {
 }
 
 static void unsafeWriteUnitToCSeries(long css) {
-  reinterpret_cast<CompressedStoredSeries*>(css)->record(0, false);
+  reinterpret_cast<CompressedStoredSeries*>(css)->record(nullptr, false);
 }
 
 void CompressedStoredSeries::bindAs(cc* c, const std::string& vname) {

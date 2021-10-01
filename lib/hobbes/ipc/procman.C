@@ -134,7 +134,7 @@ struct ProcManUnqualify : public switchExprTyFn {
         return &(pthis->lp(pid->value()));
       }
     }
-    return 0;
+    return nullptr;
   }
 
   static ConstraintPtr blockCodecCst(const MonoTypePtr& ty) {
@@ -227,7 +227,7 @@ const TLong* pidTy(const MonoTypePtr& mty) {
       }
     }
   }
-  return 0;
+  return nullptr;
 }
 
 MonoTypePtr mkPidTy(long pid) {

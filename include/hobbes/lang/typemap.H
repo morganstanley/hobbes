@@ -67,7 +67,7 @@ template <typename V>
     tmdata d;
 
     bool hasMatch(MonoTypeUnifier& u, typename tmdata::point_t p, const MonoTypes& mts, size_t i) const {
-      if (p == 0) {
+      if (p == nullptr) {
         return false;
       }
 
@@ -96,7 +96,7 @@ template <typename V>
     }
 
     void findMatches(MonoTypeUnifier& u, typename tmdata::point_t p, const MonoTypes& mts, size_t i, std::vector<V>* out) const {
-      if (p == 0) return;
+      if (p == nullptr) return;
 
       if (i == mts.size()) {
         if (const V* v = this->d.valueAt(p)) {
@@ -124,7 +124,7 @@ template <typename V>
     }
 
     void findBidiMatches(MonoTypeUnifier& u, typename tmdata::point_t p, const MonoTypes& mts, size_t i, std::vector<V>* out) const {
-      if (p == 0) return;
+      if (p == nullptr) return;
 
       if (i == mts.size()) {
         if (const V* v = this->d.valueAt(p)) {
@@ -148,7 +148,7 @@ template <typename V>
     }
 
     void findMatches(typename tmdata::point_t p, const MaybePathPoints& path, size_t i, std::vector<V>* out) const {
-      if (p == 0) return;
+      if (p == nullptr) return;
 
       if (i == path.size()) {
         if (const V* v = this->d.valueAt(p)) {

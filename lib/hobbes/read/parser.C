@@ -134,7 +134,7 @@ void runParserOnString(cc* c, int initTok, const char* s) {
 ModulePtr defReadModuleFile(cc* c, const std::string& file) {
   LOCK_PARSER;
 
-  yyParsedModule = 0;
+  yyParsedModule = nullptr;
   yyModulePath = str::rsplit(file, "/").first;
   runParserOnFile(c, TPARSEMODULE, file);
   yyModulePath = "";
@@ -145,7 +145,7 @@ ModulePtr defReadModuleFile(cc* c, const std::string& file) {
 ModulePtr defReadModule(cc* c, const char* text) {
   LOCK_PARSER;
 
-  yyParsedModule = 0;
+  yyParsedModule = nullptr;
   runParserOnString(c, TPARSEMODULE, text);
 
   return checkReturn(yyParsedModule != nullptr ? ModulePtr(yyParsedModule) : ModulePtr());
@@ -159,7 +159,7 @@ ExprDefn defReadExprDefn(cc* c, const std::string& expr) {
   LOCK_PARSER;
 
   yyParsedVar  = "";
-  yyParsedExpr = 0;
+  yyParsedExpr = nullptr;
   runParserOnString(c, TPARSEDEFN, expr.c_str());
 
   return ExprDefn(yyParsedVar, checkReturn(yyParsedExpr != nullptr ? ExprPtr(yyParsedExpr) : ExprPtr()));
@@ -168,7 +168,7 @@ ExprDefn defReadExprDefn(cc* c, const std::string& expr) {
 ExprPtr defReadExpr(cc* c, const std::string& expr) {
   LOCK_PARSER;
 
-  yyParsedExpr = 0;
+  yyParsedExpr = nullptr;
   runParserOnString(c, TPARSEEXPR, expr.c_str());
 
   return checkReturn(yyParsedExpr != nullptr ? ExprPtr(yyParsedExpr) : ExprPtr());

@@ -93,7 +93,7 @@ public:
   llvm::Value* with(const Let* v) const override {
     // compile the bound variable's value
     llvm::Value* var  = compile(v->varExpr());
-    llvm::Value* body = 0;
+    llvm::Value* body = nullptr;
 
     try {
       beginScope(v->var(), var);
@@ -180,7 +180,7 @@ public:
   llvm::Value* with(const MkArray* v) const override {
     MonoTypePtr ty  = requireMonotype(v->type());
     auto*      aty = is<Array>(ty);
-    if (aty == 0) {
+    if (aty == nullptr) {
       throw annotated_error(*v, "Internal compiler error -- can't make array out of non-array type: " + show(ty));
     }
 
@@ -318,7 +318,7 @@ public:
 
   // apply a case expression's default expression across every constructor not accounted for
   void resolveCaseDefault(const Variant* vty, Case* v) const {
-    if (v->defaultExpr().get() != 0) {
+    if (v->defaultExpr().get() != nullptr) {
       std::string pn = freshName();
 
       for (auto vm = vty->members().begin(); vm != vty->members().end(); ++vm) {
@@ -536,7 +536,7 @@ public:
 
   llvm::Value* with(const Unpack* v) const override {
     llvm::Value* var  = compile(v->package());
-    llvm::Value* body = 0;
+    llvm::Value* body = nullptr;
 
     try {
       beginScope(v->varName(), var);
@@ -715,11 +715,11 @@ public:
   }
 
   llvm::Constant* with(const Let*) const override {
-    return 0;
+    return nullptr;
   }
 
   llvm::Constant* with(const LetRec*) const override {
-    return 0;
+    return nullptr;
   }
 
   llvm::Constant* with(const Fn* v) const override {
@@ -740,22 +740,22 @@ public:
   }
 
   llvm::Constant* with(const App*) const override {
-    return 0;
+    return nullptr;
   }
 
   llvm::Constant* with(const Assign*) const override {
-    return 0;
+    return nullptr;
   }
 
   llvm::Constant* with(const MkArray* v) const override {
     MonoTypePtr ty  = requireMonotype(v->type());
     auto*      aty = is<Array>(ty);
-    if (aty == 0) {
+    if (aty == nullptr) {
       throw annotated_error(*v, "Internal compiler error -- can't make array out of non-array type: " + show(ty));
     }
 
     Constants cs = switchOf(v->values(), *this);
-    for (auto c : cs) { if (c == nullptr) return 0; }
+    for (auto c : cs) { if (c == nullptr) return nullptr; }
 
     llvm::Type* elemTy = toLLVM(aty->type(), false);
     llvm::StructType* saty = varArrayType(elemTy, cs.size());
@@ -775,7 +775,7 @@ public:
   }
 
   llvm::Constant* with(const MkVariant*) const override {
-    return 0;
+    return nullptr;
   }
 
   llvm::Constant* with(const MkRecord* v) const override {
@@ -788,26 +788,26 @@ public:
       if (llvm::Constant* c = switchOf(f.second, compileConstExpF(this->c, this->vname+"."+f.first))) {
         rcs.push_back(c);
       } else {
-        return 0;
+        return nullptr;
       }
     }
     return withContext([&](auto&) { return constantRecord(this->c->module(), rcs, rty); });
   }
 
   llvm::Constant* with(const AIndex*) const override {
-    return 0;
+    return nullptr;
   }
 
   llvm::Constant* with(const Case*) const override {
-    return 0;
+    return nullptr;
   }
 
   llvm::Constant* with(const Switch*) const override {
-    return 0;
+    return nullptr;
   }
 
   llvm::Constant* with(const Proj*) const override {
-    return 0;
+    return nullptr;
   }
 
   llvm::Constant* with(const Assump* v) const override {
@@ -815,11 +815,11 @@ public:
   }
 
   llvm::Constant* with(const Pack*) const override {
-    return 0;
+    return nullptr;
   }
 
   llvm::Constant* with(const Unpack*) const override {
-    return 0;
+    return nullptr;
   }
 private:
   jitcc* c;

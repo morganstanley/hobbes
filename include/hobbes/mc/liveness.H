@@ -44,9 +44,9 @@ namespace hobbes { namespace mc {
 // a dynamic bitset, used to represent a set of variables (assuming a mapping of variable name to 0-N index)
 class VarSet {
 public:
-  VarSet() : varc(0), bcount(0), bits(0) {
+  VarSet() : varc(0), bcount(0), bits(nullptr) {
   }
-  VarSet(uint64_t vc) : varc(0), bcount(0), bits(0) {
+  VarSet(uint64_t vc) : varc(0), bcount(0), bits(nullptr) {
     resize(vc);
   }
   VarSet(const VarSet& s) { copyBuffer(s); }

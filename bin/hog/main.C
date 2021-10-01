@@ -86,7 +86,7 @@ void runGroupHost(const size_t sessionHash, const std::string& groupName, const 
     [sg,groupName,&sessionHash,&m,&reg](int s) {
       out() << "new connection for '" << groupName << "'" << std::endl;
 
-      int c = accept(s, 0, 0);
+      int c = accept(s, nullptr, nullptr);
       if (c != -1) {
         try {
           uint32_t version = 0;

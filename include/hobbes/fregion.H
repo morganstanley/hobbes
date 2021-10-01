@@ -601,7 +601,7 @@ inline fregion& createFileRegionMap(imagefile* f, file_pageindex_t page, size_t 
   pages = align<size_t>(pages, f->mmapPageMultiple);
 
   // map the specified file region into memory
-  char* d = reinterpret_cast<char*>(mmap(0, pages * f->page_size, PROT_READ | (f->readonly ? 0 : PROT_WRITE), MAP_SHARED, f->fd, page * f->page_size));
+  char* d = reinterpret_cast<char*>(mmap(nullptr, pages * f->page_size, PROT_READ | (f->readonly ? 0 : PROT_WRITE), MAP_SHARED, f->fd, page * f->page_size));
   if (d == MAP_FAILED) {
     raiseSysError
     (
@@ -2088,7 +2088,7 @@ private:
 // utility to wait for updates to a file (per platform)
 inline long fsWaitTickMS() {
   struct timeval t;
-  if (gettimeofday(&t, 0) == 0) {
+  if (gettimeofday(&t, nullptr) == 0) {
     return (t.tv_sec*1000)+(t.tv_usec/1000);
   } else {
     return 0;
@@ -2166,7 +2166,7 @@ public:
     memset(&evt, 0, sizeof(evt));
     evt.events   = EPOLLIN | EPOLLPRI | EPOLLERR;
     evt.data.fd  = this->ifd;
-    evt.data.ptr = 0;
+    evt.data.ptr = nullptr;
 
     if (epoll_ctl(this->ep, EPOLL_CTL_ADD, this->ifd, &evt) != 0) {
       throw std::runtime_error("Failed to add inotify FD to epoll set: " + std::string(strerror(errno)));

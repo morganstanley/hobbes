@@ -250,7 +250,7 @@ bool TClass::satisfied(const TEnvPtr& tenv, const ConstraintPtr& c, Definitions*
   }
 
   // finally see if we can get an instance
-  return matches(tenv, c->arguments(), 0, ds).size() == 1;
+  return matches(tenv, c->arguments(), nullptr, ds).size() == 1;
 }
 
 bool TClass::satisfiable(const TEnvPtr& tenv, const ConstraintPtr& c, Definitions* ds) const {
@@ -359,7 +359,7 @@ void TClass::explain(const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPt
 
 ExprPtr TClass::unqualify(const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPtr& e, Definitions* ds) const {
   // we can unqualify iff there's one (ONE!) matching instance for this constraint
-  TCInstances tis = matches(tenv, cst, 0, ds);
+  TCInstances tis = matches(tenv, cst, nullptr, ds);
   if (tis.size() != 1) {
     throw annotated_error(*e, "Cannot unqualify ambiguous or unsatisfiable predicate: " + hobbes::show(cst));
   } else {
@@ -435,7 +435,7 @@ const TCInstances& TClass::instances() const {
 }
 
 bool TClass::hasGroundInstanceAt(const MonoTypes& mts) const {
-  return this->tcinstdb.lookup(mts) != 0;
+  return this->tcinstdb.lookup(mts) != nullptr;
 }
 
 const TCInstanceFns& TClass::instanceFns() const {
@@ -809,7 +809,7 @@ Constraints expandHiddenTCs(const TEnvPtr& tenv, const Constraints& cs) {
 
 const TClass* findClass(const TEnvPtr& tenv, const std::string& cname) {
   UnqualifierPtr uq = tenv->lookupUnqualifier(cname);
-  if (uq.get() == 0) {
+  if (uq.get() == nullptr) {
     throw std::runtime_error("No such type class: " + cname);
   }
   const auto* c = dynamic_cast<const TClass*>(uq.get());
@@ -914,11 +914,11 @@ void deserializeGroundClasses(const TEnvPtr& tenv, std::istream& in, Definitions
     std::string cname;
     decode(&cname, in);
 
-    TClass* c = 0;
+    TClass* c = nullptr;
     try {
       c = dynamic_cast<TClass*>(tenv->lookupUnqualifier(cname).get());
     } catch (std::exception&) {
-      c = 0;
+      c = nullptr;
     }
 
     size_t ic = 0;

@@ -25,7 +25,7 @@ int lookupPort(const std::string &x) {
     return str::to<int>(x);
   } else {
     struct servent *s = getservbyname(x.c_str(), "tcp");
-    if (s != 0) {
+    if (s != nullptr) {
       return ntohs(s->s_port);
     } else {
       throw std::runtime_error("Failed to resolve port name: " + x);
@@ -36,9 +36,9 @@ int lookupPort(const std::string &x) {
 // create a listening socket on a given port and a given host
 int allocateServer(int port, const std::string &host) {
   struct addrinfo *addrs = net::lookupAddrInfo(host, std::to_string(port));
-  struct addrinfo *p = NULL;
+  struct addrinfo *p = nullptr;
   int s;
-  for (p = addrs; p != 0; p = p->ai_next) {
+  for (p = addrs; p != nullptr; p = p->ai_next) {
     if (p->ai_family != AF_INET || p->ai_protocol != IPPROTO_TCP)
       continue;
     s = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
@@ -56,7 +56,7 @@ int allocateServer(int port, const std::string &host) {
     close(s);
   }
   freeaddrinfo(addrs);
-  if (p == NULL) {
+  if (p == nullptr) {
     throw std::runtime_error("Unable to bind socket to address: " +
                              std::string(strerror(errno)));
   }
@@ -115,7 +115,7 @@ int connectSocket(int r, sockaddr *saddr, size_t len) {
   FD_ZERO(&wd);
   FD_SET(r, &wd);
 
-  if (select(r + 1, 0, &wd, 0, 0) == -1) {
+  if (select(r + 1, nullptr, &wd, nullptr, nullptr) == -1) {
     std::ostringstream ss;
     ss << "Failed to connect socket while waiting for writeability: "
        << strerror(errno) << std::flush;
@@ -308,7 +308,7 @@ void registerNetREPL(int s, Server *svr) {
   registerEventHandler(
       s,
       [](int s, void *d) {
-        int c = accept(s, 0, 0);
+        int c = accept(s, nullptr, nullptr);
         if (c != -1) {
           try {
             uint32_t version = 0;

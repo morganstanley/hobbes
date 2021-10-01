@@ -134,7 +134,7 @@ const rule& nthRule(const rules* rs, nat n) {
 
 terminal* ruleElement(const rule& r, nat i) {
   if (i >= r.size()) {
-    return 0;
+    return nullptr;
   } else {
     return r[i];
   }
@@ -565,7 +565,7 @@ void apply(const transition_lookahead& tl, parserdef* p) {
   for (auto s = p->states.begin(); s != p->states.end(); ++s) {
     for (auto i = s->first.begin(); i != s->first.end(); ++i) {
       // if this is a completed item, then we need to give it lookahead terminals
-      if (next(p->g, *i) == 0) {
+      if (next(p->g, *i) == nullptr) {
         for (auto tli = tl.begin(); tli != tl.end(); ++tli) {
           if (lookback(*p, s->second, i->agg, nthRule(aggRules(p->g, i->agg), i->r), tli->first)) {
             const_cast<item*>(&(*(i)))->la.insert(tli->second.begin(), tli->second.end());
@@ -592,7 +592,7 @@ terminal* reduceOpTerminal(const parserdef& pd, const action& a) {
       return *e;
     }
   }
-  return 0;
+  return nullptr;
 }
 
 bool shiftInstead(const parserdef& pd, const precedence& px, nat, terminal* t, const action& a) {
@@ -683,7 +683,7 @@ lrtable lalrTable(const parserdef& p, const precedence& px) {
       for (auto i = is.begin(); i != is.end(); ++i) {
         terminal* t = next(p.g, *i);
   
-        if (t == 0) {
+        if (t == nullptr) {
           // reduce
           addReduce(p, ps, i->la, i->agg, i->r, i->p, px);
         } else if (hasRule(p.g, t)) {

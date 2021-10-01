@@ -77,7 +77,7 @@ template <typename K, typename V>
     // (this assumes that we have a valid link at this level)
     slnode<K,V>* loadNext(fregion::imagefile* f, size_t level) const {
       if (this->next[level].index == 0) {
-        return 0;
+        return nullptr;
       } else {
         return this->next[level].load(f);
       }
@@ -207,16 +207,16 @@ template <typename K, typename V>
     fregion::imagefile* f;
     slnode<K,V>*        n;
 
-    sliterator(fregion::imagefile* f=0, slnode<K,V>* n=0) : f(f), n(n) { }
+    sliterator(fregion::imagefile* f=nullptr, slnode<K,V>* n=nullptr) : f(f), n(n) { }
     bool operator==(const sliterator<K,V>& rhs) const { return this->n==rhs.n; }
     std::pair<K,V>& operator*() { return *reinterpret_cast<std::pair<K,V>*>(&this->n->key); }
     std::pair<K,V>* operator->() { return reinterpret_cast<std::pair<K,V>*>(&this->n->key); }
-    operator bool() const { return this->n != 0; }
+    operator bool() const { return this->n != nullptr; }
     
     sliterator<K,V>& operator++() {
       if (this->n->next[0].index==0) {
-        this->f=0;
-        this->n=0;
+        this->f=nullptr;
+        this->n=nullptr;
       } else {
         this->n=this->n->next[0].load(this->f);
       }

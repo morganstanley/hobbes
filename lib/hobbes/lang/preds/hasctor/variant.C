@@ -38,7 +38,7 @@ bool HCVariantEliminator::satisfiable(const TEnvPtr& tenv, const HasCtor& hc, De
   if (const Variant* vty = isMaybeNestedVariant(hc.variant)) {
     if (const TString* fname = is<TString>(hc.ctorlbl)) {
       const Variant::Member* vm = vty->mmember(fname->value());
-      return vm != 0 && unifiable(tenv, vm->type, hc.ctorty);
+      return vm != nullptr && unifiable(tenv, vm->type, hc.ctorty);
     } else {
       return is<TVar>(hc.ctorlbl) != nullptr;
     }

@@ -60,7 +60,7 @@ template <typename K, typename V, typename KMap>
         for (KIter i = begin; i != end; ++i) {
           auto c = r->children.find(*i);
           if (c == r->children.end()) {
-            return 0;
+            return nullptr;
           } else {
             r = c->second;
           }
@@ -83,7 +83,7 @@ template <typename K, typename V, typename KMap>
     template <typename KIter>
       V* lookup(KIter begin, KIter end) const {
         const node_t* n = findNode(begin, end);
-        return n ? const_cast<V*>(get<V>(n->value)) : 0;
+        return n ? const_cast<V*>(get<V>(n->value)) : nullptr;
       }
 
     void insert(const std::vector<K>& k, const V& v) {

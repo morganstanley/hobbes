@@ -5,7 +5,7 @@
 #include "test.H"
 
 using namespace hobbes;
-static cc& c() { static __thread cc* x = 0; if (x == nullptr) { x = new cc(); } return *x; }
+static cc& c() { static __thread cc* x = nullptr; if (x == nullptr) { x = new cc(); } return *x; }
 
 using BufferView = std::pair<const char *, size_t>;
 
@@ -26,13 +26,13 @@ TEST(Compiler, compileToSupportsMoreThanSixArgs) {
                               "occasion", "skill", "drink", "side"),
     expression);
   
-  EXPECT_TRUE(NULL != funPtr);
+  EXPECT_TRUE(nullptr != funPtr);
 }
 
 TEST(Compiler, charArrExpr) {
   char buffer[256];
   strncpy(buffer, "\"hello world\"\0", sizeof(buffer));
-  EXPECT_TRUE(c().compileFn<const array<char>*()>(buffer) != 0);
+  EXPECT_TRUE(c().compileFn<const array<char>*()>(buffer) != nullptr);
 }
 
 class BV { };

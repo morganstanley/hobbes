@@ -24,7 +24,7 @@ void execProcess(const std::string& cmd) {
   }
   if (args.size() == 0) return;
 
-  argv.push_back(0);
+  argv.push_back(nullptr);
   execv(args[0].c_str(), const_cast<char* const*>(&argv[0]));
 }
 
@@ -76,7 +76,7 @@ void spawn(const std::string& cmd, proc* p) {
       memset(&tmout, 0, sizeof(tmout));
       tmout.tv_sec = 30 * 60;
 
-      select(FD_SETSIZE, &fds, NULL, NULL, &tmout);
+      select(FD_SETSIZE, &fds, nullptr, nullptr, &tmout);
 
       if (FD_ISSET(c2p[0], &fds)) {
         int success = 0;
@@ -137,7 +137,7 @@ static int machineREPLLogFD = -1;
 void dbglog(const std::string& msg) {
   if (machineREPLLogFD > 0) {
     char buf[256];
-    time_t t = ::time(0);
+    time_t t = ::time(nullptr);
     strftime(buf, sizeof(buf), "%H:%M:%S", localtime(reinterpret_cast<time_t*>(&t)));
 
     std::string logmsg = std::string(buf) + ": " + msg + "\n";
@@ -541,7 +541,7 @@ void procRead(proc* p, std::ostream* o, uint64_t waitUS) {
     tmout.tv_sec  = waitUS / (1000*1000);
     tmout.tv_usec = waitUS % (1000*1000);
 
-    int rv = select(p->read_fd + 1, &fds, 0, 0, (waitUS > 0) ? &tmout : 0);
+    int rv = select(p->read_fd + 1, &fds, nullptr, nullptr, (waitUS > 0) ? &tmout : nullptr);
 
     if (rv < 0) {
       if (errno != EINTR) {

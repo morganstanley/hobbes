@@ -245,7 +245,7 @@ const hobbes::array< const cstr* >* csplit(const cstr* s, const cstr* ss) {
 }
 
 long unixTime() {
-  return time(0) * (1000 * 1000);
+  return time(nullptr) * (1000 * 1000);
 }
 
 const cstr* formatJSTime(long x) {

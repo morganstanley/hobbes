@@ -306,7 +306,7 @@ template <typename DstVariantT, typename VariantConvF, size_t i, size_t n, typen
           return &ty->ctors[k];
         }
       }
-      return 0;
+      return nullptr;
     }
   };
 

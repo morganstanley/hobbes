@@ -500,15 +500,15 @@ inline llvm::Constant* constant(llvm::Value* v, bool globalPtrRefs) {
       if (globalPtrRefs) {
         return gv;
       } else {
-        return gv->hasInitializer() ? gv->getInitializer() : 0;
+        return gv->hasInitializer() ? gv->getInitializer() : nullptr;
       }
     } else {
-      return 0;
+      return nullptr;
     }
   } else if (auto* c = llvm::dyn_cast<llvm::Constant>(v)) {
     return c;
   } else {
-    return 0;
+    return nullptr;
   }
 }
 
@@ -564,7 +564,7 @@ inline llvm::Constant* constArray(llvm::Module* m, const Constants& cs, llvm::Ty
 inline llvm::Value* tryMkConstVarArray(llvm::IRBuilder<>* b, llvm::Module* m, llvm::Type* elemTy, const Values& vs, bool globalPtrRefs) {
   Constants cs = varArrayConstants(vs, globalPtrRefs);
   if (cs.size() != vs.size()) {
-    return 0;
+    return nullptr;
   } else {
     llvm::StructType* saty = varArrayType(elemTy, cs.size());
     llvm::StructType* caty = varArrayType(elemTy);
@@ -671,7 +671,7 @@ inline llvm::Constant* constantRecord(llvm::Module*, const Constants& cs, const 
 inline llvm::Value* tryMkConstRecord(llvm::IRBuilder<>*, llvm::Module* m, const RecordValue& rv, const Record* rty) {
   Constants crv = recordUZConstants(unzip(rv), rty);
   if (crv.size() != rv.size()) {
-    return 0;
+    return nullptr;
   } else {
     Constants         pcs = mergePadding(crv, rty->alignedMembers());
     llvm::StructType* sty = packedRecordType(types(pcs));

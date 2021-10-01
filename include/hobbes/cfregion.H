@@ -109,7 +109,7 @@ struct cwbitstream {
   size_t* batchNode;
 
   // allocate an initial batch and prepare to write bits
-  cwbitstream(imagefile* file) : file(file), buffer(0), seg(0), batchNode(0) {
+  cwbitstream(imagefile* file) : file(file), buffer(nullptr), seg(nullptr), batchNode(nullptr) {
   }
 
   // initialize a root node from a pair of model states (init and final)
@@ -1251,7 +1251,7 @@ template <typename T>
       }
 
       if (this->batches.size() == 0) {
-        this->readState.buffer = 0;
+        this->readState.buffer = nullptr;
         return false;
       } else {
         // load this compressed data segment

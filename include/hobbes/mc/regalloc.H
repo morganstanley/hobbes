@@ -556,7 +556,7 @@ private:
         }
       }
     }
-    return 0;
+    return nullptr;
   }
 
   void addInterfereEdge(VarID v0, VarID v1) {

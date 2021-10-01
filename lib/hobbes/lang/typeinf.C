@@ -783,7 +783,7 @@ struct expTypeInfF : public switchExprM<UnitV> {
 
   UnitV with(Case* v) override {
     // if a default case is specified, the set of variant constructors is open
-    if (v->defaultExpr().get() != 0) {
+    if (v->defaultExpr().get() != nullptr) {
       return withGenericMeaning(v);
     }
 

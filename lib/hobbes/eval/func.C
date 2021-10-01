@@ -341,7 +341,7 @@ public:
 class asetlen : public op {
   llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) override {
     auto* aty = is<Array>(tys[0]);
-    if (aty == 0) {
+    if (aty == nullptr) {
       throw annotated_error(*es[0], "Internal compiler error -- can't make array out of non-array type: " + show(tys[0]));
     }
 

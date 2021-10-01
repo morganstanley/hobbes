@@ -566,8 +566,8 @@ using TExprMem = unique_refc_map<const TExpr, std::string>;
 using MTypeCtorMaps = unique_refc_maps<PrimMem, OpaquePtrMem, TVarMem, TGenMem, TAbsMem, TAppMem, FixedArrayMem, ArrayMem, VariantMem, RecordMem, FuncMem, ExistsMem, RecursiveMem, TStringMem, TLongMem, TExprMem>;
 
 MTypeCtorMaps* tctorMaps() {
-  static MTypeCtorMaps* x = 0;
-  if (x == 0) {
+  static MTypeCtorMaps* x = nullptr;
+  if (x == nullptr) {
     x = new MTypeCtorMaps();
   }
   return x;
@@ -949,7 +949,7 @@ const Variant::Member* Variant::mmember(const std::string& selector) const {
       return &(*(m));
     }
   }
-  return 0;
+  return nullptr;
 }
 
 Variant::Members tailMembers(const Variant::Members& ms) {
@@ -1365,7 +1365,7 @@ const Record::Member* Record::mmember(const std::string& mn) const {
       return &(*m);
     }
   }
-  return 0;
+  return nullptr;
 }
 
 const Record::Members& Record::members() const {

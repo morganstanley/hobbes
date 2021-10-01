@@ -40,7 +40,7 @@ ATEliminator* AppendsToUnqualifier::findEliminator(const TEnvPtr& tenv, const Ap
       return ate->get();
     }
   }
-  return 0;
+  return nullptr;
 }
 
 bool AppendsToUnqualifier::refine(const TEnvPtr& tenv, const ConstraintPtr& cst, MonoTypeUnifier* s, Definitions*) {
@@ -65,7 +65,7 @@ bool AppendsToUnqualifier::satisfied(const TEnvPtr& tenv, const ConstraintPtr& c
 
 bool AppendsToUnqualifier::satisfiable(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions*) const {
   AppendsTo at;
-  return dec(cst, &at) && findEliminator(tenv, &at) != 0;
+  return dec(cst, &at) && findEliminator(tenv, &at) != nullptr;
 }
 
 void AppendsToUnqualifier::explain(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*, annmsgs*) {

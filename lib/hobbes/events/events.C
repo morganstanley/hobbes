@@ -31,7 +31,7 @@ void registerEventHandler(int fd, eventhandler fn, void* ud, bool f) {
 #ifdef BUILD_LINUX
 thread_local bool           epInitialized = false;
 thread_local int            epFD          = 0;
-thread_local EventClosures* epClosures    = 0;
+thread_local EventClosures* epClosures    = nullptr;
 
 struct timer {
   timerfunc func;

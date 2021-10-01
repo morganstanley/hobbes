@@ -23,7 +23,7 @@ struct DynCumFreqState {
   symbol  esc()         const { return static_cast<symbol>(symbolCount()); }
 
   struct CModel {
-    CModel(uint8_t maxSym) : symbols(0), indexes(0), cfreqs(0) {
+    CModel(uint8_t maxSym) : symbols(nullptr), indexes(nullptr), cfreqs(nullptr) {
       size_t n = static_cast<size_t>(maxSym) + 2; // one extra for the escape symbol
       this->symbols = new symbol[n];
       this->indexes = new index_t[n];
@@ -86,7 +86,7 @@ public:
   using CModel = typename CFS::CModel;
 
   struct PModel {
-    PModel(bool input, uint8_t maxSymbol) : freqs(0), activeFreqs(0), pc(0), input(input), lc(0) {
+    PModel(bool input, uint8_t maxSymbol) : freqs(nullptr), activeFreqs(nullptr), pc(nullptr), input(input), lc(0) {
       if (this->input) {
         size_t n = static_cast<size_t>(maxSymbol) + 1;
         this->freqs       = new arithn::freq[n];
@@ -258,7 +258,7 @@ public:
   }
 
   bool eof() const {
-    return this->readState.buffer == 0;
+    return this->readState.buffer == nullptr;
   }
 
   size_t currentInitModel() const {
@@ -291,7 +291,7 @@ private:
     }
 
     if (this->batches.size() == 0) {
-      this->readState.buffer = 0;
+      this->readState.buffer = nullptr;
       return false;
     } else {
       // load this compressed data segment (the caller will then need to init from `this->readState.buffer->initModel`)

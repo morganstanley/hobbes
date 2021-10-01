@@ -101,7 +101,7 @@ TEST(Structs, Bindings) {
   EXPECT_TRUE(c().compileFn<bool()>("bob.z == \"Hello!\"")());
   EXPECT_TRUE(c().compileFn<bool()>("bob.w == 'c'")());
 
-  EXPECT_TRUE(c().compileFn<array<char>*()>("show(genstruct)") != 0);
+  EXPECT_TRUE(c().compileFn<array<char>*()>("show(genstruct)") != nullptr);
 }
 
 TEST(Structs, NoDuplicateFieldNames) {

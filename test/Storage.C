@@ -44,7 +44,7 @@ template <typename T>
 
 static bool fileExists(const char* fileName) {
   FILE* fd = fopen(fileName, "r");
-  if (fd != NULL) {
+  if (fd != nullptr) {
     fclose(fd);
     return true;
   } else {
@@ -98,7 +98,7 @@ TEST(Storage, Create) {
 
     int n = 1020;
     array<int>* vs = f.define<int>("vs", n);
-    EXPECT_TRUE(vs != 0);
+    EXPECT_TRUE(vs != nullptr);
     EXPECT_TRUE(vs->size == 1020);
 
     initSeq(vs, 0, 0, n);

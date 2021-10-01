@@ -50,7 +50,7 @@ namespace string {
     inline std::string demangle() {
       if (const char* tn = typeid(T).name()) {
         int s = 0;
-        if (char* dmn = abi::__cxa_demangle(tn, 0, 0, &s)) {
+        if (char* dmn = abi::__cxa_demangle(tn, nullptr, nullptr, &s)) {
           std::string r(dmn);
           free(dmn);
           return r;
@@ -669,7 +669,7 @@ template <typename ... Ctors>
         if (this->tag == CtorIndexOf<T, Ctors...>::value) {
           return const_cast<T*>(reinterpret_cast<const T*>(this->storage));
         } else {
-          return 0;
+          return nullptr;
         }
       }
   };

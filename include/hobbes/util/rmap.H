@@ -39,7 +39,7 @@ template <typename K, typename V, typename Ord>
       if (i < this->vs.size()) {
         return &this->vs[i];
       } else {
-        return 0;
+        return nullptr;
       }
     }
 
@@ -51,7 +51,7 @@ template <typename K, typename V, typename Ord>
       if (i == j && i < this->vs.size()) {
         return &this->vs[i];
       } else {
-        return 0;
+        return nullptr;
       }
     }
 

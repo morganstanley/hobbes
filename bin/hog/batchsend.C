@@ -96,7 +96,7 @@ void sendSegmentFiles(NetConnection& connection, const std::string& localdir) {
   OrderedSegFiles segfiles;
 
   glob_t g;
-  if (glob((localdir + "/segment-*.gz").c_str(), GLOB_NOSORT, 0, &g) == 0) {
+  if (glob((localdir + "/segment-*.gz").c_str(), GLOB_NOSORT, nullptr, &g) == 0) {
     for (size_t i = 0; i < g.gl_pathc; ++i) {
       struct stat st;
       if (stat(g.gl_pathv[i], &st) == 0) {
@@ -252,7 +252,7 @@ struct BatchSendSession {
   std::function<void()>    finalizer;
 
   BatchSendSession(const size_t sessionHash, const std::string& groupName, const std::string& dir, size_t clevel, const std::vector<std::string>& sendto, const std::vector<const BatchSendSession*> detached, const std::function<void()> finalizer)
-    : buffer(0), c(0), sz(0), dir(dir), readerAlive(true), detached(detached), finalizer(finalizer) {
+    : buffer(nullptr), c(0), sz(0), dir(dir), readerAlive(true), detached(detached), finalizer(finalizer) {
     for (const auto & hostport : sendto) {
       auto localdir = ensureDirExists(dir + "/" + hostport + "/");
       destinations.push_back(Destination{localdir, hostport});
@@ -337,7 +337,7 @@ struct BatchSendSession {
   bool completed() const {
     return std::all_of(destinations.begin(), destinations.end(), [](const Destination& d) {
       glob_t g;
-      auto ret = glob((d.localdir + "/segment-*.gz").c_str(), GLOB_NOSORT, 0, &g);
+      auto ret = glob((d.localdir + "/segment-*.gz").c_str(), GLOB_NOSORT, nullptr, &g);
       if (ret == 0) {
         auto remaining = g.gl_pathc;
         globfree(&g);

@@ -182,7 +182,7 @@ static inline long sys_futex(volatile uint32_t* p, int op, int v, struct timespe
   return syscall(SYS_futex, p, op, v, timeout, p2, v2);
 }
 static inline void waitForUpdate(volatile uint32_t* p, int eqV) {
-  sys_futex(p, FUTEX_WAIT, eqV, 0, 0, 0);
+  sys_futex(p, FUTEX_WAIT, eqV, nullptr, nullptr, 0);
 }
 static inline void waitForUpdate(volatile uint32_t* p, int eqV, size_t timeoutNS, const std::function<void()>& timeoutF) {
   if (timeoutNS == 0) {
@@ -196,7 +196,7 @@ static inline void waitForUpdate(volatile uint32_t* p, int eqV, size_t timeoutNS
 
   bool c = true;
   while (c) {
-    int r = sys_futex(p, FUTEX_WAIT, eqV, &ts, 0, 0);
+    int r = sys_futex(p, FUTEX_WAIT, eqV, &ts, nullptr, 0);
         c = r < 0 && errno == ETIMEDOUT;
 
     if (c) {
@@ -205,7 +205,7 @@ static inline void waitForUpdate(volatile uint32_t* p, int eqV, size_t timeoutNS
   }
 }
 static inline void wakeN(volatile uint32_t* p, int c) {
-  sys_futex(p, FUTEX_WAKE, c, 0, 0, 0);
+  sys_futex(p, FUTEX_WAKE, c, nullptr, nullptr, 0);
 }
 
 } // namespace futex
@@ -333,7 +333,7 @@ inline int mqconnect(const std::string& fileName) {
   fd_set wd;
   FD_ZERO(&wd);
   FD_SET(r, &wd);
-  if (select(r + 1, 0, &wd, 0, 0) == -1) {
+  if (select(r + 1, nullptr, &wd, nullptr, nullptr) == -1) {
     std::string emsg = "Failed to connect socket while waiting for writeability: " + std::string(strerror(errno));
     close(r);
     throw std::runtime_error(emsg);
@@ -377,7 +377,7 @@ inline int mqlisten(const std::string& fileName) {
 }
 
 inline std::string defaultStoreDir() {
-  const char* td = 0;
+  const char* td = nullptr;
   if ((td = ::getenv("HOBBES_STORE_DIR")) != nullptr) {
     if (::strlen(td) > 0 && ::access(td, W_OK) == 0) {
       return std::string(td);
@@ -466,7 +466,7 @@ inline void reconnectSHM(int* mqserver, const char* groupName, const WaitPolicy 
     tmout.tv_sec = 0;
     tmout.tv_usec = 1;
 
-    auto sr = select(*mqserver+1, &rd, 0, 0, &tmout);
+    auto sr = select(*mqserver+1, &rd, nullptr, nullptr, &tmout);
     if (sr == 1) {
       char b=0;
       if (recv(*mqserver, &b, 1, MSG_PEEK) == 0) {
@@ -497,7 +497,7 @@ inline void reconnectSHM(int* mqserver, const char* groupName, const WaitPolicy 
 
 struct pqueue_config {
   pqueue_config() :
-    valuesz(0), count(0), wstate(0), readerIndex(0), writerIndex(0), data(0) {
+    valuesz(0), count(0), wstate(nullptr), readerIndex(nullptr), writerIndex(nullptr), data(nullptr) {
   }
   
   pqueue_config(size_t valuesz, size_t count, uint32_t* wstate, uint32_t* ri, uint32_t* wi, uint8_t* data) :
@@ -569,7 +569,7 @@ public:
       throw std::runtime_error("Failed to truncate shared memory for '" + shmname + "': " + strerror(errno));
     }
   
-    auto* mem = reinterpret_cast<uint8_t*>(mmap(0, memLen, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_POPULATE, shfd, 0));
+    auto* mem = reinterpret_cast<uint8_t*>(mmap(nullptr, memLen, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_POPULATE, shfd, 0));
     if (mem == MAP_FAILED) {
       throw std::runtime_error("Failed to map bytes out of shared memory for '" + shmname + "': " + strerror(errno));
     }
@@ -637,7 +637,7 @@ public:
   
   uint8_t* pollNext() {
     if (PRIV_HSTORE_UNLIKELY(*readIndex() == nextIndex(writeIndex()))) {
-      return 0;
+      return nullptr;
     } else {
       return value(*writeIndex());
     }
@@ -722,14 +722,14 @@ public:
       this->wq->push();
       this->page = this->wq->next(this->timeoutNS, this->timeoutF);
     } else {
-      if (PRIV_HSTORE_LIKELY(this->page != 0)) {
+      if (PRIV_HSTORE_LIKELY(this->page != nullptr)) {
         markPage(PRIV_HSTORE_PAGE_STATE_COMMIT);
         this->wq->push();
       }
       this->page = this->wq->pollNext();
 
       // allow unreliable producers to process timeout events
-      if (PRIV_HSTORE_UNLIKELY(this->page == 0)) {
+      if (PRIV_HSTORE_UNLIKELY(this->page == nullptr)) {
         if (this->unrtimeNS == 0) {
           this->unrtimeNS = internal::spin::poll_tickNS();
         } else if (internal::spin::poll_tickNS() - this->unrtimeNS >= this->timeoutNS) {
@@ -742,7 +742,7 @@ public:
   }
 
   void rollback() {
-    if (PRIV_HSTORE_LIKELY(this->page != 0)) {
+    if (PRIV_HSTORE_LIKELY(this->page != nullptr)) {
       markPage(PRIV_HSTORE_PAGE_STATE_ROLLBACK);
       this->wq->push();
     }
@@ -828,7 +828,7 @@ inline QueueConnection consumeQueue(const std::string& shmname) {
   }
 
   // map memory for this data, ensure it is in a good state
-  auto* mem = reinterpret_cast<uint8_t*>(mmap(0, msb.st_size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_POPULATE, shfd, 0));
+  auto* mem = reinterpret_cast<uint8_t*>(mmap(nullptr, msb.st_size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_POPULATE, shfd, 0));
   if (mem == MAP_FAILED) {
     close(shfd);
     throw std::runtime_error("Failed to map bytes out of shared memory for '" + shmname + "': " + strerror(errno));
@@ -939,7 +939,7 @@ public:
   // get the next value in the queue if one is present, else null
   uint8_t* pollNext() {
     if (PRIV_HSTORE_UNLIKELY(*writeIndex() == *readIndex())) {
-      return 0;
+      return nullptr;
     } else {
       return value(*readIndex());
     }
@@ -964,7 +964,7 @@ private:
   size_t         pagesz;
   uint32_t       offset;
 public:
-  rpipe(reader* rq) : rq(rq), page(0), pagesz(rq->config().valuesz - sizeof(uint32_t)), offset(0) {
+  rpipe(reader* rq) : rq(rq), page(nullptr), pagesz(rq->config().valuesz - sizeof(uint32_t)), offset(0) {
     if (rq->config().valuesz <= sizeof(uint32_t)) {
       throw std::runtime_error("queue page size too small for use as shared memory pipe");
     }
@@ -1003,7 +1003,7 @@ public:
         // if this page is just a continuation, continue reading
         // else we've terminated a transaction
         this->rq->pop();
-        this->page   = (ps == PRIV_HSTORE_PAGE_STATE_CONT) ? this->rq->pollNext() : 0;
+        this->page   = (ps == PRIV_HSTORE_PAGE_STATE_CONT) ? this->rq->pollNext() : nullptr;
         this->offset = 0;
       }
     }
@@ -1501,7 +1501,7 @@ template <>
 
     using RecSizeF = size_t (*)(const recursion &);
     static RecSizeF& sizeF() {
-      thread_local RecSizeF fn = 0;
+      thread_local RecSizeF fn = nullptr;
       return fn;
     }
     static size_t size(const recursion& x) {
@@ -1510,7 +1510,7 @@ template <>
 
     using RecWriteF = bool (*)(wpipe &, const recursion &);
     static RecWriteF& writeF() {
-      thread_local RecWriteF fn = 0;
+      thread_local RecWriteF fn = nullptr;
       return fn;
     }
     static bool write(wpipe& p, const recursion& x) {
@@ -1872,14 +1872,14 @@ struct StorageGroup {
       // make sure that all identifying parameters are consistent
       bytes ety, xty;
       s->second.tdesc(&ety,0);
-      tdesc(&xty,0);
+      tdesc(&xty,nullptr);
       if (ety != xty) {
         if (isAutoName(namet)) {
           return addStatement(file, line, incrAutoName(name), flags, fmtstr, tdesc);
         } else {
           std::string etd, xtd;
           s->second.tdesc(0,&etd);
-          tdesc(0,&xtd);
+          tdesc(nullptr,&xtd);
 
           std::cerr
             << "fatal error: incompatible types for store statement '" << name << "' between:\n"
@@ -1930,7 +1930,7 @@ struct StorageGroup {
   }
 };
 template <typename Name, CommitMethod cm>
-  thread_local wpipe* StorageGroup<Name, cm>::pipe = 0;
+  thread_local wpipe* StorageGroup<Name, cm>::pipe = nullptr;
 template <typename Name, CommitMethod cm>
   std::vector<ProcThread> StorageGroup<Name, cm>::pts;
 
@@ -2062,7 +2062,7 @@ inline size_t rs(const reader::MetaData& md, size_t o, bytes* s) {
 class Transaction {
 public:
   // a persistent transaction to retain log data between consumer sessions (if necessary)
-  Transaction(std::string fname) : fd(-1), file_size(0), map_size(0), data(0), data_size(0), wi(0), ri(0) {
+  Transaction(std::string fname) : fd(-1), file_size(0), map_size(0), data(nullptr), data_size(nullptr), wi(0), ri(0) {
     for (size_t i = 0; i < fname.size(); ++i) {
       switch (fname[i]) {
       case '/': fname[i]='_'; break;
@@ -2088,7 +2088,7 @@ public:
   }
 
   // a non-persistent transaction over constant data (just used by remote consumers)
-  Transaction(const uint8_t* d, size_t len) : fd(-1), file_size(len), map_size(len), data(const_cast<uint8_t*>(d)), data_size(0), wi(0), ri(0) {
+  Transaction(const uint8_t* d, size_t len) : fd(-1), file_size(len), map_size(len), data(const_cast<uint8_t*>(d)), data_size(nullptr), wi(0), ri(0) {
     this->data_size = &this->map_size;
   }
 
@@ -2169,7 +2169,7 @@ private:
       if (this->data != nullptr) { ::munmap(this->data-sizeof(size_t), this->map_size); }
 
       this->map_size = align<size_t>(sz, /*10MB*/10485760);
-      this->data = reinterpret_cast<uint8_t*>(mmap(0, this->map_size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_POPULATE, this->fd, 0));
+      this->data = reinterpret_cast<uint8_t*>(mmap(nullptr, this->map_size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_POPULATE, this->fd, 0));
       if (this->data == MAP_FAILED) {
         throw std::runtime_error("Failed to map transaction persistence file");
       }

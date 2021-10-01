@@ -1403,7 +1403,7 @@ void jitcc::compileFunctions(const LetRec::Bindings& bs, std::vector<llvm::Funct
 }
 
 void jitcc::compileFunctions(const LetRec::Bindings& bs) {
-  compileFunctions(bs, 0);
+  compileFunctions(bs, nullptr);
 }
 
 void jitcc::unsafeCompileFunctions(UCFS* ufs) {
@@ -1415,7 +1415,7 @@ void jitcc::unsafeCompileFunctions(UCFS* ufs) {
   // prepare the environment for these mutually-recursive definitions
   for (size_t f = 0; f < fs.size(); ++f) {
     llvm::Function* fval = allocFunction(fs[f].name.empty() ? ("/" + freshName()) : fs[f].name, fs[f].argtys, requireMonotype(this->tenv, fs[f].exp));
-    if (fval == 0) {
+    if (fval == nullptr) {
       throw std::runtime_error("Failed to allocate function");
     }
 
@@ -1486,9 +1486,9 @@ void jitcc::unsafeCompileFunctions(UCFS* ufs) {
 
         // and we're done
         this->popScope();
-        if (ibb != 0) { this->builder()->SetInsertPoint(ibb); }
+        if (ibb != nullptr) { this->builder()->SetInsertPoint(ibb); }
       } catch (...) {
-        if (ibb != 0) { this->builder()->SetInsertPoint(ibb); }
+        if (ibb != nullptr) { this->builder()->SetInsertPoint(ibb); }
         this->popScope();
         throw;
       }

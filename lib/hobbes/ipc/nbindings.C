@@ -40,7 +40,7 @@ Client* decodeConnType(const MonoTypePtr& t) {
       }
     }
   }
-  return 0;
+  return nullptr;
 }
 
 bool isPartialConnection(const MonoTypePtr& t) {

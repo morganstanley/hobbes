@@ -1047,7 +1047,7 @@ inline Exprs exprs(const Case::Bindings& bs) {
 //  (NOTE: this does nothing to prevent variable capture, other than respecting shadowing)
 //  (ie: the free variables of the substituted expression should be disjoint with program variables)
 using VarMapping = std::map<std::string, ExprPtr>;
-ExprPtr substitute(const VarMapping& vm, const ExprPtr& e, bool* mapped = 0);
+ExprPtr substitute(const VarMapping& vm, const ExprPtr& e, bool* mapped = nullptr);
 
 // apply a type substitution across an expression
 ExprPtr substitute(const MonoTypeSubst& s, const ExprPtr& e);

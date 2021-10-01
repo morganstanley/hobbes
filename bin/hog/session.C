@@ -37,7 +37,7 @@ const uint8_t* hstoreUnsafeReadFixedArray(storage::Transaction& txn, size_t byte
 }
 
 cc* loggerCompiler() {
-  static cc* c = 0;
+  static cc* c = nullptr;
   if (c == nullptr) {
     c = new cc();
     c->bind("hstoreCanRead",              &hstoreCanRead);
@@ -120,7 +120,7 @@ public:
   std::string ready() {
     std::string fpath = moveToUniqueFilename(this->tmpPath, this->dirPfx, ".log");
     this->tmpPath = "";
-    this->f = 0;
+    this->f = nullptr;
     return fpath;
   }
 
@@ -137,7 +137,7 @@ public:
   AppendFirstMatchingFile(const std::string& dirPfx, storage::CommitMethod cm, const storage::statements& stmts) : dirPfx(dirPfx) {
     this->f = findMatchingFile(dirPfx, cm, stmts);
 
-    if (this->f == 0) {
+    if (this->f == nullptr) {
       this->tmpPath = freshTempFile(dirPfx);
       this->f       = new writer(this->tmpPath);
     }
@@ -159,7 +159,7 @@ public:
       fpath = moveToUniqueFilename(this->tmpPath, this->dirPfx, ".log");
       this->tmpPath = "";
     }
-    this->f = 0;
+    this->f = nullptr;
     return fpath;
   }
 
@@ -171,9 +171,9 @@ private:
 
   static writer* findMatchingFile(const std::string& dirPfx, storage::CommitMethod cm, const storage::statements& stmts) {
     glob_t g;
-    if (glob((dirPfx + "*.log").c_str(), GLOB_NOSORT, 0, &g) == 0) {
+    if (glob((dirPfx + "*.log").c_str(), GLOB_NOSORT, nullptr, &g) == 0) {
       for (size_t i = 0; i < g.gl_pathc; ++i) {
-        writer* f = 0;
+        writer* f = nullptr;
         try {
           f = new writer(g.gl_pathv[i]);
           if (fileMatchesStatements(f, cm, stmts)) {
@@ -188,7 +188,7 @@ private:
       globfree(&g);
     }
 
-    return 0; // couldn't find any matching file
+    return nullptr; // couldn't find any matching file
   }
 
   static bool fileMatchesStatements(writer* f, storage::CommitMethod cm, const storage::statements& stmts) {

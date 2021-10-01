@@ -161,8 +161,8 @@ inline addrinfo* lookupAddrInfo(const std::string& host, const std::string& port
   h.ai_family   = AF_UNSPEC;
   h.ai_socktype = SOCK_STREAM;
 
-  struct addrinfo* addrs = 0;
-  switch (getaddrinfo(host.empty()? 0 : host.c_str(), port.empty() ? 0 : port.c_str(), &h, &addrs)) {
+  struct addrinfo* addrs = nullptr;
+  switch (getaddrinfo(host.empty()? nullptr : host.c_str(), port.empty() ? nullptr : port.c_str(), &h, &addrs)) {
   case 0:              return addrs;
   case EAI_ADDRFAMILY: throw std::runtime_error("Cannot make socket connection to " + host + ":" + port);
   case EAI_AGAIN:      throw std::runtime_error(host + ":" + port + " is temporarily unavailable");
@@ -172,26 +172,26 @@ inline addrinfo* lookupAddrInfo(const std::string& host, const std::string& port
   case EAI_SERVICE:    throw std::runtime_error("Failed to resolve service: " + port);
   default:             throw std::runtime_error("Unknown error while trying to resolve " + host + ":" + port);
   }
-  return 0;
+  return nullptr;
 }
 
 inline int makeConnection(const std::string& localAddr, const std::string& host, const std::string& port) {
-  struct addrinfo* localAddrs = localAddr.empty() ? 0 : lookupAddrInfo(localAddr, "");
+  struct addrinfo* localAddrs = localAddr.empty() ? nullptr : lookupAddrInfo(localAddr, "");
   struct addrinfo* addrs      = lookupAddrInfo(host, port);
 
-  for (auto p = addrs; p != 0; p = p->ai_next) {
+  for (auto p = addrs; p != nullptr; p = p->ai_next) {
     int s = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
     if (s == -1) continue;
 
     auto la = localAddrs;
-    for (; la != 0; la = la->ai_next) {
+    for (; la != nullptr; la = la->ai_next) {
       if (la->ai_family == p->ai_family && la->ai_socktype == p->ai_socktype && la->ai_protocol == p->ai_protocol) {
         if (bind(s, la->ai_addr, la->ai_addrlen) != -1) {
           break;
         }
       }
     }
-    if (la == 0 && localAddrs != 0) continue;
+    if (la == nullptr && localAddrs != nullptr) continue;
 
     if (connect(s, p->ai_addr, p->ai_addrlen) == -1) {
       close(s);

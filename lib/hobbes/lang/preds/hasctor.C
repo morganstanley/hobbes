@@ -33,7 +33,7 @@ HCEliminator* CtorVerifier::findEliminator(const TEnvPtr& tenv, const HasCtor& h
       return hce.get();
     }
   }
-  return 0;
+  return nullptr;
 }
 
 bool CtorVerifier::refine(const TEnvPtr& tenv, const ConstraintPtr& cst, MonoTypeUnifier* s, Definitions* ds) {

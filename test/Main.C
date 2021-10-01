@@ -118,7 +118,7 @@ Args parseArgs(int argc, char** argv) {
     {"list_tests", no_argument,       nullptr, 'l'},
     {"tests",      required_argument, nullptr, 't'},
     {"json",       required_argument, nullptr, 'r'},
-    {0,            no_argument,       nullptr, ' '}
+    {nullptr,            no_argument,       nullptr, ' '}
   };
 
   Args args;

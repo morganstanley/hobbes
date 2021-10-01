@@ -112,7 +112,7 @@ template <typename T, typename S>
     if (s && s->case_id() == T::type_case_id) {
       return rcast<const T*>(s);
     } else {
-      return 0;
+      return nullptr;
     }
   }
 
@@ -121,7 +121,7 @@ template <typename T, typename S>
     if (s && s->case_id() == T::type_case_id) {
       return rcast<T*>(s);
     } else {
-      return 0;
+      return nullptr;
     }
   }
 

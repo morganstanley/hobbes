@@ -331,7 +331,7 @@ const Record* signalRecord(const MonoTypePtr& r) {
       }
     }
   }
-  return 0;
+  return nullptr;
 }
 
 ExprPtr sigFileExpr(const ExprPtr& e) {
@@ -438,7 +438,7 @@ struct ADBFSigUnqualify : public switchExprTyFn {
         this->frec   = signalRecord(this->stype);
         this->findex = this->frec->index(this->fname);
 
-        return this->frec != 0;
+        return this->frec != nullptr;
       }
     }
     return false;

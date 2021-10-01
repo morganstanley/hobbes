@@ -33,7 +33,7 @@ SubtypeEliminator* SubtypeUnqualifier::findEliminator(const TEnvPtr& tenv, const
       return e->get();
     }
   }
-  return 0;
+  return nullptr;
 }
 
 bool SubtypeUnqualifier::refine(const TEnvPtr& tenv, const ConstraintPtr& cst, MonoTypeUnifier* s, Definitions*) {
@@ -58,7 +58,7 @@ bool SubtypeUnqualifier::satisfied(const TEnvPtr& tenv, const ConstraintPtr& cst
 
 bool SubtypeUnqualifier::satisfiable(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions*) const {
   Subtype st;
-  return dec(cst, &st) && findEliminator(tenv, st) != 0;
+  return dec(cst, &st) && findEliminator(tenv, st) != nullptr;
 }
 
 void SubtypeUnqualifier::explain(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*, annmsgs*) {

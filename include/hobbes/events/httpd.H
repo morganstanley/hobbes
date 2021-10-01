@@ -23,7 +23,7 @@ struct HTTPRequest {
 
 using HTTPRequestHandler = void (*)(const HTTPRequest &, int, void *);
 
-int installHTTPD(int port, HTTPRequestHandler, void* ud = 0);
+int installHTTPD(int port, HTTPRequestHandler, void* ud = nullptr);
 
 }
 

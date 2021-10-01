@@ -7,8 +7,8 @@
 namespace hobbes {
 
 LexicalAnnotation::LexicalAnnotation() {
-  static BuffOrFilenamePtr* n = 0;
-  if (n == 0) {
+  static BuffOrFilenamePtr* n = nullptr;
+  if (n == nullptr) {
     n = new BuffOrFilenamePtr(new BuffOrFilename(false, "???"));
   }
   this->bfptr = *n;
@@ -76,7 +76,7 @@ LexicalAnnotation LexicalAnnotation::merge(const LexicalAnnotation& a0, const Le
 using AnnContextStack = std::stack<BuffOrFilenamePtr>;
 
 static AnnContextStack& annotationCtxStack() {
-  static __thread AnnContextStack* actxs = 0;
+  static __thread AnnContextStack* actxs = nullptr;
   if (actxs == nullptr) {
     actxs = new AnnContextStack();
   }

@@ -265,7 +265,7 @@ ExprPtr doAction(const ParserEvalInfo& pei, size_t i, const action& act) {
 }
 
 ExprPtr makeInputParserState(const ParserEvalInfo& pei, size_t i) {
-  const action* eofAct = 0;
+  const action* eofAct = nullptr;
   PatternRows prs;
   for (const auto& sp : pei.table[i]) {
     if (sp.first == endOfFile::value()) {

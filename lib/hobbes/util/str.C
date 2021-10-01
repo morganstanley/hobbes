@@ -184,14 +184,14 @@ std::string showRightAlignedTable(const seqs& tbl) {
 }
 
 std::string demangle(const char* tn) {
-  if (tn == 0) {
+  if (tn == nullptr) {
     return "";
   }
 
   int   s   = 0;
-  char* dmn = abi::__cxa_demangle(tn, 0, 0, &s);
+  char* dmn = abi::__cxa_demangle(tn, nullptr, nullptr, &s);
 
-  if (dmn == 0) {
+  if (dmn == nullptr) {
     return std::string(tn);
   } else {
     std::string r(dmn);
@@ -707,7 +707,7 @@ std::string mustEndWith(const std::string& x, const std::string& sfx) {
 // get a set of filesystem objects matching a pattern
 str::seq paths(const std::string& p) {
   glob_t g;
-  if (glob(p.c_str(), 0, 0, &g) != 0) {
+  if (glob(p.c_str(), 0, nullptr, &g) != 0) {
     return str::seq();
   } else if (g.gl_pathc == 0) {
     globfree(&g);

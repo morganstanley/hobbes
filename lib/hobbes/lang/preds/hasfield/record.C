@@ -47,7 +47,7 @@ bool HFRecordEliminator::satisfiable(const TEnvPtr& tenv, const HasField& hf, De
     std::string fname;
     if (isFieldName(hf.fieldName, &fname)) {
       const Record::Member* rm = r->mmember(fname);
-      return rm != 0 && ((is<TVar>(hf.fieldType) != nullptr) || (is<TVar>(rm->type) != nullptr) || satisfied(tenv, hf, ds));
+      return rm != nullptr && ((is<TVar>(hf.fieldType) != nullptr) || (is<TVar>(rm->type) != nullptr) || satisfied(tenv, hf, ds));
     } else {
       return is<TVar>(hf.fieldName) != nullptr;
     }
