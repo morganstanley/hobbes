@@ -452,7 +452,7 @@ bool unifiable(const TEnvPtr& tenv, const MonoTypePtr& t0, const MonoTypePtr& t1
 bool unifiable(const TEnvPtr& tenv, const MonoTypes& ts0, const MonoTypes& ts1) {
   if (ts0.size() != ts1.size()) {
     return false;
-  } else if (ts0.size() == 0) {
+  } else if (ts0.empty()) {
     return true;
   } else {
     try {

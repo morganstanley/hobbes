@@ -60,7 +60,7 @@ terminalset topLevelSymbols(const grammar& g) {
 
   for (auto t = dsyms.begin(); t != dsyms.end(); ++t) {
     terminalset users = symbolsUsing(g, *t);
-    if (users.size() == 0 || (users.size() == 1 && in(*t, users))) {
+    if (users.empty() || (users.size() == 1 && in(*t, users))) {
       result.insert(*t);
     }
   }
@@ -141,7 +141,7 @@ terminal* ruleElement(const rule& r, nat i) {
 }
 
 bool directlyDerivesNull(const rule& r) {
-  return r.size() == 0;
+  return r.empty();
 }
 
 bool directlyDerivesNull(const grammar& g, terminal* s) {
@@ -238,7 +238,7 @@ void show(std::ostream& out, const grammar& g, const item& i) {
   if (i.p == r.size()) {
     out << "#";
     out << " [";
-    if (i.la.size() > 0) {
+    if (!i.la.empty()) {
       auto lat = i.la.begin();
       (*lat)->show(out);
       ++lat;
@@ -780,7 +780,7 @@ void compile_table_failure::print(std::ostream& out, const item& i) const {
   if (i.p == r.size()) {
     out << "#";
     out << " [";
-    if (i.la.size() > 0) {
+    if (!i.la.empty()) {
       auto lat = i.la.begin();
       showHLTerm(out, *lat, this->t);
       ++lat;

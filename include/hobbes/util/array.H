@@ -69,7 +69,7 @@ template <typename T>
 
     std::ostringstream ss;
     ss << x << " not in [";
-    if (xs.size() > 0) {
+    if (!xs.empty()) {
       ss << xs[0];
       for (size_t i = 1; i < xs.size(); ++i) {
         ss << ", " << xs[i];

@@ -45,7 +45,7 @@ MonoTypePtr variantTypeFromDtor(const Record& rty) {
 }
 
 MonoTypePtr dtorResultFromDtor(const Record& rty) {
-  if (rty.members().size() == 0) {
+  if (rty.members().empty()) {
     throw std::runtime_error("Internal error, impossible variant applicator type: ()");
   } else {
     MonoTypePtr arg, result;

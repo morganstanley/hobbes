@@ -64,7 +64,7 @@ struct Destination {
 
 std::ostream& operator<<(std::ostream& o, const std::vector<Destination>& xs) {
   o << "[";
-  if (xs.size() > 0) {
+  if (!xs.empty()) {
     auto x = xs.begin();
     o << "\"" << x->hostport << "\"";
     ++x;
@@ -260,7 +260,7 @@ struct BatchSendSession {
 
     // start from last segment in directory 
     const auto paths = hobbes::str::paths(dir + "*/segment-*.gz");
-    if (paths.size() > 0) {
+    if (!paths.empty()) {
       this->c = std::stoi(hobbes::str::rsplit(hobbes::str::rsplit(paths.back(), ".gz").first, "segment-").second);
     }
 

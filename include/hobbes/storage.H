@@ -1588,7 +1588,7 @@ template <typename T>
   struct storeNames {
     static void accum(std::vector<std::string>* ns) {
       std::string n = nameAt<T>::template is<store<T>>(0);
-      if (n.size() > 0) {
+      if (!n.empty()) {
         ns->push_back(n);
       }
     }
@@ -1811,7 +1811,7 @@ struct StorageGroup {
       std::string n;
       std::vector<std::string> ns;
       tnhints(&ns);
-      if (ns.size() == 0) {
+      if (ns.empty()) {
         n = x.substr(5);
       } else {
         std::ostringstream nss;

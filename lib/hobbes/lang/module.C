@@ -56,9 +56,9 @@ const QualTypePtr&   MTypeDef::type()       const { return this->t;     }
 
 void MTypeDef::show(std::ostream& out) const {
   if (this->v == Transparent) {
-    out << "type " << this->tname << (this->targs.size() > 0 ? " " : "") << str::cdelim(this->targs, " ") << " = " << hobbes::show(this->t);
+    out << "type " << this->tname << (!this->targs.empty() ? " " : "") << str::cdelim(this->targs, " ") << " = " << hobbes::show(this->t);
   } else {
-    out << "data " << this->tname << (this->targs.size() > 0 ? " " : "") << str::cdelim(this->targs, " ") << " = " << hobbes::show(this->t);
+    out << "data " << this->tname << (!this->targs.empty() ? " " : "") << str::cdelim(this->targs, " ") << " = " << hobbes::show(this->t);
   }
 }
 
@@ -105,7 +105,7 @@ const MVarTypeDefs& ClassDef::members() const { return this->mvtydefs; }
 
 void ClassDef::show(std::ostream& out) const {
   out << "class " << this->cname << " " << str::cdelim(this->tvars, " ");
-  if (this->fdeps.size() > 0) {
+  if (!this->fdeps.empty()) {
     out << " | ";
     out << hobbes::show(this->fdeps);
   }
@@ -182,7 +182,7 @@ std::string show(const CFunDepDef& fundep) {
 }
 
 std::string show(const CFunDepDefs& fundeps) {
-  if (fundeps.size() == 0) {
+  if (fundeps.empty()) {
     return "";
   } else {
     std::ostringstream ss;

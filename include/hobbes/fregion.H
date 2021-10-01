@@ -423,7 +423,7 @@ template <typename T>
 // try to find a page with as much free space as requested
 inline bool findPageWithSpace(imagefile* f, pagetype::code pt, size_t datalen, size_t alignment, file_pageindex_t* idx) {
   const pageseq& pord = f->freespace[pt];
-  if (pord.size() == 0) {
+  if (pord.empty()) {
     return false;
   }
 
@@ -514,7 +514,7 @@ inline void appendTOCData(imagefile* f, const pagetable& newpages) {
   }
 
   // if we added TOC pages while writing the input TOC entries, then TOC entries for those TOC pages need to be added too
-  if (newtocpages.size() > 0) {
+  if (!newtocpages.empty()) {
     appendTOCData(f, newtocpages);
   }
 }
@@ -587,7 +587,7 @@ inline void addBinding(imagefile* f, const std::string& vname, const bytes& type
 // mmap a region out of this file
 inline fregion& createFileRegionMap(imagefile* f, file_pageindex_t page, size_t pages) {
   // leave no gaps in page mappings
-  if (f->mappings.size() > 0) {
+  if (!f->mappings.empty()) {
     fregion& mr = f->mappings.rbegin()->second;
 
     size_t pend = mr.base_page + mr.pages;
@@ -1224,7 +1224,7 @@ template <>
     static size_t alignment() { return sizeof(size_t); }
 
     static void write(imagefile* f, void* p, const std::string& x) {
-      if (x.size() > 0) {
+      if (!x.empty()) {
         auto bc = sizeof(size_t) + x.size();
 
         size_t dloc = findSpace(f, pagetype::data, bc, sizeof(size_t));
@@ -1261,7 +1261,7 @@ template <typename T>
   struct store<std::vector<T>, typename tbool<store<T>::can_memcpy>::type> : public storeVectorDef<T> {
     static const bool can_memcpy = false;
     static void write(imagefile* f, void* p, const std::vector<T>& x) {
-      if (x.size() > 0) {
+      if (!x.empty()) {
         auto bc = sizeof(size_t) + sizeof(T)*x.size();
 
         size_t dloc = findSpace(f, pagetype::data, bc, sizeof(size_t));
@@ -1291,7 +1291,7 @@ template <typename T>
   struct store<std::vector<T>, typename tbool<!store<T>::can_memcpy>::type> : public storeVectorDef<T> {
     static const bool can_memcpy = false;
     static void write(imagefile* f, void* p, const std::vector<T>& x) {
-      if (x.size() > 0) {
+      if (!x.empty()) {
         size_t tsz = store<T>::size();
         auto   bc  = sizeof(size_t) + tsz*x.size();
 
@@ -1334,7 +1334,7 @@ template <>
   struct store<std::vector<bool>> : public storeVectorDef<bool> {
     static const bool can_memcpy = false;
     static void write(imagefile* f, void* p, const std::vector<bool>& x) {
-      if (x.size() > 0) {
+      if (!x.empty()) {
         auto   bc  = sizeof(size_t) + x.size();
 
         size_t dloc = findSpace(f, pagetype::data, bc, sizeof(size_t));

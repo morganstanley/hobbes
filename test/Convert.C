@@ -6,7 +6,7 @@ namespace hobbes {
 template <typename T, size_t N>
   std::ostream& operator<<(std::ostream& o, const std::array<T,N>& x) {
     o << "[";
-    if (x.size() > 0) {
+    if (!x.empty()) {
       o << x[0];
       for (size_t i = 1; i < x.size(); ++i) {
         o << ", " << x[i];

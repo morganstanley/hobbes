@@ -75,7 +75,7 @@ const PIO* pexec(const hobbes::array<char>* cmd) {
     close(c2p[1]);
 
     hobbes::str::seq args = hobbes::str::csplit(hobbes::makeStdString(cmd), " ");
-    if (args.size() == 0) return p;
+    if (args.empty()) return p;
   
     std::vector<const char*> argv;
     for (size_t i = 0; i < args.size(); ++i) {

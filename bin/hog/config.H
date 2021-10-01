@@ -41,7 +41,7 @@ struct RunMode {
 template <typename T>
 inline std::ostream& operator<<(std::ostream& o, const std::vector<T>& xs) {
   o << "[";
-  if (xs.size() > 0) {
+  if (!xs.empty()) {
     auto x = xs.cbegin();
     o << "\"" << *x << "\"";
     ++x;

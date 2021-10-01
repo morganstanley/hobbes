@@ -45,7 +45,7 @@ struct defineCPPTy : public switchType<UnitV> {
   }
   std::string acc(const std::string& pfx, const MonoTypes& ts) const {
     std::ostringstream s;
-    if (ts.size() > 0) {
+    if (!ts.empty()) {
       s << acc(pfx+"_0", ts[0]);
       for (size_t i = 1; i < ts.size(); ++i) {
         s << ", " << acc(pfx+"_"+str::from(i), ts[i]);
@@ -99,7 +99,7 @@ struct defineCPPTy : public switchType<UnitV> {
   }
 
   UnitV with(const Variant* v) const override {
-    if (v->members().size() == 0) {
+    if (v->members().empty()) {
       throw annotated_error(this->la, "An empty variant is impossible to construct.");
     } else if (v->isSum()) {
       *this->out << "typedef hobbes::variant<" << acc(this->tname+"_0", v->members()[0].type);
@@ -121,7 +121,7 @@ struct defineCPPTy : public switchType<UnitV> {
   }
 
   UnitV with(const Record* v) const override {
-    if (v->members().size() == 0) {
+    if (v->members().empty()) {
       *this->out << "typedef hobbes::unit " << this->tname << ";\n";
     } else if (v->isTuple()) {
       if (v->members().size() == 2) {

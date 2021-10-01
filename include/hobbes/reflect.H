@@ -96,7 +96,7 @@ namespace string {
   }
 
   inline std::string cdelim(const seq& ss, const std::string& d) {
-    if (ss.size() > 0) {
+    if (!ss.empty()) {
       std::ostringstream x;
       x << ss[0];
       for (size_t i = 1; i < ss.size(); ++i) {
@@ -1129,7 +1129,7 @@ struct Struct : public D {
 
   Fields fields;
 };
-inline desc record(const Struct::Fields& fields) { return fields.size() == 0 ? prim("unit") : desc(new Struct(fields)); }
+inline desc record(const Struct::Fields& fields) { return fields.empty() ? prim("unit") : desc(new Struct(fields)); }
 
 template <typename ... Tys>
   struct tupAcc { static void acc(Struct::Fields*) { } };
@@ -1267,7 +1267,7 @@ inline desc elimFileRefs(const desc& t) {
     {
       if (papp->f->tid == PRIV_HPPF_TYCTOR_PRIM) {
         if (reinterpret_cast<const Prim*>(papp->f.get())->n == "fileref") {
-          if (papp->args.size() > 0) {
+          if (!papp->args.empty()) {
             return elimFileRefs(papp->args[0]);
           }
         }
@@ -1558,7 +1558,7 @@ inline void describe(const desc& t, std::ostream& o) {
     o << "]";
     break;
   case PRIV_HPPF_TYCTOR_VARIANT:
-    if (pv->ctors.size() == 0) {
+    if (pv->ctors.empty()) {
       o << "void";
     } else {
       // show as sum or variant
@@ -1582,7 +1582,7 @@ inline void describe(const desc& t, std::ostream& o) {
     }
     break;
   case PRIV_HPPF_TYCTOR_STRUCT:
-    if (ps->fields.size() == 0) {
+    if (ps->fields.empty()) {
       o << "()";
     } else {
       // show as product or record
@@ -1609,13 +1609,13 @@ inline void describe(const desc& t, std::ostream& o) {
     o << pn->x;
     break;
   case PRIV_HPPF_TYCTOR_TAPP:
-    if (papp->args.size() > 0 && papp->f->tid == PRIV_HPPF_TYCTOR_PRIM && reinterpret_cast<const ty::Prim*>(papp->f.get())->n == "fileref") {
+    if (!papp->args.empty() && papp->f->tid == PRIV_HPPF_TYCTOR_PRIM && reinterpret_cast<const ty::Prim*>(papp->f.get())->n == "fileref") {
       describe(papp->args[0], o);
       o << "@?";
     } else {
       describe(papp->f, o);
       o << "(";
-      if (papp->args.size() > 0) {
+      if (!papp->args.empty()) {
         describe(papp->args[0], o);
         for (size_t i = 1; i < papp->args.size(); ++i) {
           o << ", ";
@@ -1631,7 +1631,7 @@ inline void describe(const desc& t, std::ostream& o) {
     break;
   case PRIV_HPPF_TYCTOR_TABS:
     o << "\\";
-    if (pfn->args.size() > 0) {
+    if (!pfn->args.empty()) {
       o << pfn->args[0];
       for (size_t i = 1; i < pfn->args.size(); ++i) {
         o << " " << pfn->args[i];
@@ -1773,7 +1773,7 @@ inline size_t alignOf(const desc& t) {
     throw std::runtime_error("Can't determine alignment of variable-length array type: " + show(t));
 
   case PRIV_HPPF_TYCTOR_VARIANT:
-    if (pv->ctors.size() == 0) {
+    if (pv->ctors.empty()) {
       return 1;
     } else {
       size_t maxAlign = 4; // the variant tag is an int
@@ -1784,7 +1784,7 @@ inline size_t alignOf(const desc& t) {
     }
 
   case PRIV_HPPF_TYCTOR_STRUCT:
-    if (ps->fields.size() == 0) {
+    if (ps->fields.empty()) {
       return 1;
     } else {
       size_t maxAlign = 1;
@@ -1843,7 +1843,7 @@ inline size_t sizeOf(const desc& t) {
     throw std::runtime_error("Can't determine size of variable-length array type: " + show(t));
 
   case PRIV_HPPF_TYCTOR_VARIANT:
-    if (pv->ctors.size() == 0) {
+    if (pv->ctors.empty()) {
       return 4;
     } else {
       size_t maxSize  = 4; // the variant tag is an int
@@ -1856,7 +1856,7 @@ inline size_t sizeOf(const desc& t) {
     }
 
   case PRIV_HPPF_TYCTOR_STRUCT:
-    if (ps->fields.size() == 0) {
+    if (ps->fields.empty()) {
       return 1;
     } else {
       size_t maxAlign = 1;

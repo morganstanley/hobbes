@@ -19,7 +19,7 @@ namespace hobbes {
 inline long readTimespan(std::string s) {
   long r = 0;
 
-  while (s.size() > 0) {
+  while (!s.empty()) {
     str::pair p = str::readWhile(&str::isDigit,    s);
     str::pair u = str::readWhile(&str::isNotDigit, p.second);
 

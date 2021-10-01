@@ -106,7 +106,7 @@ seqs rightAlign(const seqs& tbl) {
 }
 
 bool validTable(const seqs& tbl) {
-  if (tbl.size() == 0) {
+  if (tbl.empty()) {
     return false;
   } else {
     size_t rsz = tbl[0].size();
@@ -398,7 +398,7 @@ bool endsWith(const std::string& s, const std::string& sfx) {
 }
 
 std::string show(const set& ss) {
-  if (ss.size() == 0) {
+  if (ss.empty()) {
     return "{}";
   } else {
     std::ostringstream r;
@@ -417,7 +417,7 @@ std::string show(const set& ss) {
 }
 
 std::string show(const named_strings& cfg) {
-  if (cfg.size() == 0) {
+  if (cfg.empty()) {
     return "{}";
   } else {
     std::ostringstream r;
@@ -436,7 +436,7 @@ std::string show(const named_strings& cfg) {
 }
 
 char readCharDef(const std::string& x) {
-  if (x.size() == 0) {
+  if (x.empty()) {
     return 0;
   } else if (x[0] != '\'') {
     return x[0]; // ?
@@ -484,7 +484,7 @@ unsigned int firstFailIndex(bool (*P)(char), const std::string& s) {
 }
 
 std::string cdelim(const seq& ss, const std::string& d) {
-  if (ss.size() == 0) {
+  if (ss.empty()) {
     return "";
   } else {
     std::ostringstream r;
@@ -678,7 +678,7 @@ seq prefix_tree::closestMatches(const std::string& x, size_t maxDist) const {
 size_t editDistance(const std::string& x, const std::string& y) {
   std::map<size_t, seq> r = prefix_tree(strings(y)).rankedMatches(x, std::max<size_t>(x.size(), y.size()));
 
-  if (r.size() > 0) {
+  if (!r.empty()) {
     return r.begin()->first;
   } else {
     return std::max<size_t>(x.size(), y.size()); // seems unlikely ...

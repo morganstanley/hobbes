@@ -123,7 +123,7 @@ static bool asRestruct(const MonoTypePtr& t, MonoTypePtr* rty) {
   if ((r == nullptr) || !r->isTuple()) return false;
 
   const Record::Members& ms = r->members();
-  if (ms.size() == 0) return false;
+  if (ms.empty()) return false;
 
   const TString* ctor = is<TString>(ms[0].type);
   if (ctor == nullptr) return false;

@@ -142,7 +142,7 @@ PolyTypePtr TEnv::lookup(const std::string& vname) const {
       str::seq suggestions = str::closestMatches(vname, boundVariables(), 3);
       if (suggestions.size() == 1) {
         ss << " (did you mean '" << suggestions[0] << "'?)";
-      } else if (suggestions.size() > 0) {
+      } else if (!suggestions.empty()) {
         ss << " (did you mean one of: '" << suggestions[0] << "'";
         for (size_t i = 1; i < suggestions.size(); ++i) {
           ss << ", '" << suggestions[i] << "'";
@@ -387,7 +387,7 @@ Constraints& QualType::constraints() { return this->cs; }
 void QualType::monoType(const MonoTypePtr& nt) { this->mt = nt; }
 
 void QualType::show(std::ostream& out) const {
-  if (this->cs.size() == 0) {
+  if (this->cs.empty()) {
     this->mt->show(out);
   } else if (this->cs.size() == 1) {
     this->cs[0]->show(out);
@@ -656,7 +656,7 @@ TAbs::TAbs(const str::seq& targns, const MonoTypePtr& b) : targns(targns), b(b) 
 }
 
 void TAbs::show(std::ostream& out) const {
-  out << "\\" << (this->targns.size() == 0 ? "()" : str::cdelim(this->targns, " ")) << "." << hobbes::show(this->b);
+  out << "\\" << (this->targns.empty() ? "()" : str::cdelim(this->targns, " ")) << "." << hobbes::show(this->b);
 }
 
 const str::seq&    TAbs::args() const { return this->targns; }
@@ -693,7 +693,7 @@ void TApp::show(std::ostream& out) const {
 
   out << "(";
   this->f->show(out);
-  if (this->targs.size() > 0) {
+  if (!this->targs.empty()) {
     for (size_t i = 0; i < this->targs.size(); ++i) {
       out << " ";
       this->targs[i]->show(out);
@@ -1217,7 +1217,7 @@ unsigned int Record::maxFieldAlignment() const {
 
 unsigned int Record::size() const {
   // a record with no members is equivalent to unit
-  if (this->ms.size() == 0) {
+  if (this->ms.empty()) {
     return 0;
   }
 
@@ -1291,7 +1291,7 @@ void showAsTuple(std::ostream& out, const Record::Members& ms) {
 }
 
 void showAsRecord(std::ostream& out, const Record::Members& ms) {
-  if (ms.size() == 0) {
+  if (ms.empty()) {
     out << "{}";
   } else {
     out << "{ ";
@@ -1342,7 +1342,7 @@ const MonoTypePtr& Record::member(const std::string& mn) const {
   str::seq suggestions = str::closestMatches(mn, selectNames(this->ms), 3);
   if (suggestions.size() == 1) {
     throw std::runtime_error("Field '" + mn + "' (did you mean '" + suggestions[0] + "'?) does not exist in type: " + tdesc.substr(0, truncTyLen) + "...");
-  } else if (suggestions.size() > 0) {
+  } else if (!suggestions.empty()) {
     std::ostringstream ss;
     ss << "Field '" << mn << "' (did you mean one of: '" << suggestions[0] << "'";
     for (size_t i = 1; i < suggestions.size(); ++i) {
@@ -1681,12 +1681,12 @@ MonoTypes tgens(int c) {
 }
 
 // determine whether or not a monotype actually contains references to any type variables or variable generator points
-bool isMonoSingular(const MonoType& mt)    { return mt.freeTVars.size() == 0 && mt.tgenCount == 0; }
+bool isMonoSingular(const MonoType& mt)    { return mt.freeTVars.empty() && mt.tgenCount == 0; }
 bool isMonoSingular(const MonoType* mt)    { return isMonoSingular(*mt); }
 bool isMonoSingular(const MonoTypePtr& mt) { return isMonoSingular(*mt); }
 
 bool isMonoSingular(const QualTypePtr& qt) {
-  return qt->constraints().size() == 0 && isMonoSingular(qt->monoType());
+  return qt->constraints().empty() && isMonoSingular(qt->monoType());
 }
 
 // find the highest TGen reference (useful for deducing the number of type variables required to generalize a mono type)
@@ -2281,7 +2281,7 @@ PolyTypePtr nulltypedb::generalize(const MonoTypePtr& mt) const { return polytyp
 nulltypedb nulltdb;
 
 bool isMonotype(const QualTypePtr& qt) {
-  return qt->constraints().size() == 0;
+  return qt->constraints().empty();
 }
 
 bool isMonotype(const PolyTypePtr& pt) {
@@ -2767,7 +2767,7 @@ void decode(MonoTypePtr* mty, std::istream& in) {
   std::vector<unsigned char> cs;
   decode(&cs, in);
 
-  if (cs.size() == 0) {
+  if (cs.empty()) {
     throw std::runtime_error("Type data corrupted in source file");
   }
 

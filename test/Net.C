@@ -107,7 +107,7 @@ std::ostream &operator<<(std::ostream &os, const NC &nc) {
 template <typename T>
 std::ostream &operator<<(std::ostream &os, const std::vector<T> &xs) {
   os << "[";
-  if (xs.size() > 0) {
+  if (!xs.empty()) {
     os << xs[0];
     for (size_t i = 1; i < xs.size(); ++i)
       os << ", " << xs[i];

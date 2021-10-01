@@ -778,7 +778,7 @@ inline ExprPtr mktunit(const LexicalAnnotation& la) {
 }
 
 inline ExprPtr mkrecord(const MkRecord::FieldDefs& fds, const LexicalAnnotation& la) {
-  if (fds.size() == 0) {
+  if (fds.empty()) {
     return mktunit(la);
   } else {
     ExprPtr result(new MkRecord(fds, la));
@@ -968,7 +968,7 @@ inline Expr* mkarray(const std::string& v, const LexicalAnnotation& la) {
 }
 
 inline ExprPtr switchE(const ExprPtr& e, const Switch::Bindings& bs, const ExprPtr& def, const LexicalAnnotation& la) {
-  if (bs.size() == 0) {
+  if (bs.empty()) {
     return def;
   } else {
     return ExprPtr(new Switch(e, bs, def, la));

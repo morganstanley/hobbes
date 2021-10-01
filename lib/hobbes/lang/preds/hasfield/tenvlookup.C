@@ -107,7 +107,7 @@ bool HFTEnvLookupEliminator::refine(const TEnvPtr& tenv, const HasField& hf, Mon
   if (const TString* fname = is<TString>(fnamet)) {
     if (tenv->hasBinding(fname->value())) {
       const Func* ufty = is<Func>(tenv->lookup(fname->value())->instantiate()->monoType());
-      if ((ufty == nullptr) || ufty->parameters().size() == 0) return false;
+      if ((ufty == nullptr) || ufty->parameters().empty()) return false;
 
       MonoTypePtr uobj     = ufty->parameters()[0];
       MonoTypePtr ufieldty = functy(drop(ufty->parameters(), 1), ufty->result());
@@ -167,7 +167,7 @@ struct HFTEnvLookupUnqualify : public switchExprTyFn {
         ExprPtr napp(new App(f, switchOf(trCons(p->record(), v->args()), *this), v->la()));
         napp->type(qualtype(append(removeConstraint(this->constraint, v->type())->constraints(), nfty->constraints()), v->type()->monoType()));
 
-        if (napp->type()->constraints().size() > 0) {
+        if (!napp->type()->constraints().empty()) {
           return unqualifyTypes(this->tenv, napp, this->defs);
         } else {
           return napp;

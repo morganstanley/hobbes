@@ -295,7 +295,7 @@ void evalLine(char* x) {
     line = str::trim<char>(x);
     free(x);
 
-    if (line.size() > 0) {
+    if (!line.empty()) {
       add_history(line.c_str());
     }
   } else {
@@ -309,7 +309,7 @@ void evalLine(char* x) {
     if (line == ":q") {
       std::cout << resetfmt() << std::flush;
       exit(0);
-    } else if (line == "") {
+    } else if (line.empty()) {
       return;
     } else if (line == ":^") {
       echoCommandHistory();
@@ -437,7 +437,7 @@ template <typename C>
   }
 
 bool isNum(const std::string& x) {
-  return x.size() > 0 && x[0] == '0';
+  return !x.empty() && x[0] == '0';
 }
 
 bool isRegister(const std::string& x) {
@@ -455,7 +455,7 @@ void printASMArg(const std::string& x) {
 }
 
 unsigned int fmtLen(const str::seq& args) {
-  if (args.size() == 0) {
+  if (args.empty()) {
     return 0;
   } else if (args.size() == 1) {
     return args[0].size();
@@ -487,7 +487,7 @@ void printASMTable(const str::seq& insts, const str::seqs& args, unsigned int ma
 
     // show the arguments
     const str::seq& argl = args[i];
-    if (argl.size() > 0) {
+    if (!argl.empty()) {
       printASMArg(argl[0]);
       for (unsigned int k = 1; k < argl.size(); ++k) {
         std::cout << setfgc(colors.argdelimfg) << ", ";
@@ -709,7 +709,7 @@ int main(int argc, char** argv) {
     }
 
     // load any modules passed in
-    if (args.mfiles.size() > 0) {
+    if (!args.mfiles.empty()) {
       for (ModuleFiles::const_iterator m = args.mfiles.begin(); m != args.mfiles.end(); ++m) {
         eval->loadModule(str::expandPath(*m));
       }

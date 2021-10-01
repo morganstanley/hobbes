@@ -290,7 +290,7 @@ private:
       unmapFileData(this->readState.file, reinterpret_cast<const void*>(this->readState.buffer), sizeof(cbatch));
     }
 
-    if (this->batches.size() == 0) {
+    if (this->batches.empty()) {
       this->readState.buffer = nullptr;
       return false;
     } else {

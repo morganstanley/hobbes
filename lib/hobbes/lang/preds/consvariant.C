@@ -62,7 +62,7 @@ bool VariantDeconstructor::refine(const TEnvPtr&, const ConstraintPtr& cst, Mono
   ConsVariant cv;
   if (dec(cst, &cv)) {
     if (const Variant* vty = is<Variant>(cv.variantType)) {
-      if (vty->members().size() > 0) {
+      if (!vty->members().empty()) {
         size_t uc = u->size();
         mgu(tstring(vty->headMember().selector), cv.headCtorName, u);
         mgu(vty->headMember().type,              cv.headType, u);
@@ -91,7 +91,7 @@ bool VariantDeconstructor::satisfied(const TEnvPtr&, const ConstraintPtr& cst, D
   ConsVariant cv;
   if (dec(cst, &cv)) {
     if (const Variant* vty = is<Variant>(cv.variantType)) {
-      return (vty->members().size() > 0)                                &&
+      return (!vty->members().empty())                                &&
              (*cv.headCtorName == *tstring(vty->headMember().selector)) &&
              (*cv.headType == *vty->headMember().type)                  &&
              (*normalizeCtorIDs(cv.tailType) == *normalizeCtorIDs(vty->tailType()));

@@ -125,7 +125,7 @@ public:
       }
     }
 
-    if (cms.size() == 0) {
+    if (cms.empty()) {
       return llvmPrim("unit");
     } else {
       return asPtrIf(packedRecordType(cms), asArg);

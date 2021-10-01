@@ -89,7 +89,7 @@ void runParserOnBuffer(cc* c, int initTok, YY_BUFFER_STATE bs) {
   yy_delete_buffer(bs);
   if (!activeParseBuffers.empty()) { yy_switch_to_buffer(activeParseBuffers.top()); }
 
-  if (yyVexpLexError.size() > 0) {
+  if (!yyVexpLexError.empty()) {
     std::string msg = yyVexpLexError;
     yyVexpLexError = "";
     throw std::runtime_error(msg);

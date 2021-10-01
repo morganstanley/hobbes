@@ -31,7 +31,7 @@ template <typename T>
   std::string show(const std::vector<T*>& ts) {
     std::ostringstream ss;
     ss << "[";
-    if (ts.size() > 0) {
+    if (!ts.empty()) {
       ts[0]->show(ss);
       for (unsigned int i = 1; i < ts.size(); ++i) {
         ss << ", ";

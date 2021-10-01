@@ -650,7 +650,7 @@ public:
       throw std::runtime_error("Internal error, recordHeadValue applied incorrectly");
     }
     auto* rty = is<Record>(tys[0]);
-    if ((rty == nullptr) || rty->members().size() == 0) {
+    if ((rty == nullptr) || rty->members().empty()) {
       throw std::runtime_error("Internal error, recordHeadValue applied to non-record type");
     }
 
@@ -672,7 +672,7 @@ public:
       throw std::runtime_error("Internal error, recordTail applied incorrectly");
     }
     auto* rty = is<Record>(tys[0]);
-    if ((rty == nullptr) || rty->members().size() == 0) {
+    if ((rty == nullptr) || rty->members().empty()) {
       throw std::runtime_error("Internal error, recordTail applied to non-record type");
     }
 

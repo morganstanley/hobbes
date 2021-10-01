@@ -30,11 +30,11 @@ bool isTupleLike(const std::string& fname) {
 }
 
 bool isTupleLike(const Record::Members& ms) {
-  return ms.size() > 0 && isTupleLike(ms[0].field);
+  return !ms.empty() && isTupleLike(ms[0].field);
 }
 
 bool isTupleLike(const MkRecord::FieldDefs& fds) {
-  return fds.size() > 0 && isTupleLike(fds[0].first);
+  return !fds.empty() && isTupleLike(fds[0].first);
 }
 
 Record::Members tupleNormalize(const Record::Members& ms) {
@@ -64,7 +64,7 @@ MkRecord::FieldDefs tupleNormalize(const MkRecord::FieldDefs& fds) {
 }
 
 MonoTypePtr makeRecordType(const Record::Members& ms) {
-  if (ms.size() == 0) {
+  if (ms.empty()) {
     static MonoTypePtr u(Prim::make("unit"));
     return u;
   } else {
@@ -73,7 +73,7 @@ MonoTypePtr makeRecordType(const Record::Members& ms) {
 }
 
 ExprPtr makeRecord(const MkRecord::FieldDefs& fds, const LexicalAnnotation& la) {
-  if (fds.size() == 0) {
+  if (fds.empty()) {
     return mktunit(la);
   } else {
     return mkrecord(tupleNormalize(fds), la);
@@ -347,7 +347,7 @@ ExprPtr recordPrefixFunction(const MonoTypePtr& recty, const MonoTypePtr& resty,
 ExprPtr recordPrefix(const ExprPtr& rec, const MonoTypePtr& resty) {
   const Record::Members& ms = recordMembers(resty);
 
-  if (ms.size() == 0) {
+  if (ms.empty()) {
     return mktunit(rec->la());
   } else if (const MkRecord* r = is<MkRecord>(rec)) {
     MkRecord::FieldDefs fds;
@@ -374,7 +374,7 @@ ExprPtr recordSuffixFunction(const MonoTypePtr& recty, const MonoTypePtr& resty,
 ExprPtr recordSuffix(const ExprPtr& rec, const MonoTypePtr& resty) {
   const Record::Members& ms = recordMembers(resty);
 
-  if (ms.size() == 0) {
+  if (ms.empty()) {
     return mktunit(rec->la());
   } else if (const MkRecord* r = is<MkRecord>(rec)) {
     MkRecord::FieldDefs fds;

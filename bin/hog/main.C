@@ -118,7 +118,7 @@ void run(const RunMode& m, const std::vector<std::string>& args) {
     out() << "hog stat file : " << StatFile::instance().filename() << std::endl;
     hog::StatFile::instance().log(hog::ProcessEnvironment{hobbes::now(), sessionHash, hobbes::string::from(m), args, hog::SessionType::Enum::Normal});
     pullRemoteDataT(m.dir, m.localport, m.consolidate, m.storageMode).join();
-  } else if (m.groups.size() > 0) {
+  } else if (!m.groups.empty()) {
     out() << "hog stat file : " << StatFile::instance().filename() << std::endl;
     hog::StatFile::instance().log(hog::ProcessEnvironment{hobbes::now(), sessionHash, hobbes::string::from(m), args, hog::SessionType::Enum::Normal});
     std::map<std::string, std::map<int, RegInfo>> registry;

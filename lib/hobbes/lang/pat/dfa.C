@@ -86,7 +86,7 @@ MStatePtr makeSwitch(const MDFA* dfa, const std::string& switchVar, const Switch
     // if we've only got a default switch and no cases, just use the default case
     // otherwise if this would be a 'switch' on unit, don't bother (just pass the type equality through)
     //  -- only the first option can match for unit (or default if there's only a default)
-    if (jmps.size() == 0) {
+    if (jmps.empty()) {
       return dfa->states[defState];
     } else if (isUnit(jmps[0].first->primType())) {
       return actAndThen(assume(var(switchVar, dfa->rootLA), primty("unit"), dfa->rootLA), jmps[0].second);
@@ -94,7 +94,7 @@ MStatePtr makeSwitch(const MDFA* dfa, const std::string& switchVar, const Switch
       return MStatePtr(new SwitchVal(switchVar, jmps, defState));
     }
   } else {
-    if (jmps.size() > 0) {
+    if (!jmps.empty()) {
       MonoTypePtr sty = jmps[0].first->primType();
 
       if (const Prim* pty = is<Prim>(sty)) {
@@ -212,7 +212,7 @@ void tableTail(PatternRows* out, const PatternRows& in) {
 
 // eliminate unused columns from a table
 void dropUnusedColumns(PatternRows* out, const PatternRows& in) {
-  if (in.size() == 0) {
+  if (in.empty()) {
     return;
   }
 
@@ -335,7 +335,7 @@ MStatePtr makeSplitState(MDFA* dfa, const PatternRows& ps, size_t c) {
       PatternRows& outrs = bs[sv];
 
       // the first time through this branch, we need to make sure that prior match-any rows are prepended
-      if (outrs.size() == 0) {
+      if (outrs.empty()) {
         for (auto i : anys) {
           makeMatchAnyRow(sv, &outrs, ps[i], c);
         }
@@ -370,7 +370,7 @@ MStatePtr makeSplitState(MDFA* dfa, const PatternRows& ps, size_t c) {
     jmps[bos[b.first]] = Jump(b.first, makeNextState(ps[0].patterns[c]->name(), b.first, dfa, b.second));
   }
 
-  stateidx_t defState = def.size() > 0 ? makeDFAState(dfa, def) : nullState;
+  stateidx_t defState = !def.empty() ? makeDFAState(dfa, def) : nullState;
 
   return makeSwitchState(ps[0].patterns[c]->name(), dfa, jmps, defState);
 }
@@ -772,7 +772,7 @@ MStatePtr makeRegexState(MDFA* dfa, const PatternRows& ps, size_t c) {
   for (auto r : matchAnyRows) {
     copyRowWithoutColumn(&def, ps[r], c);
   }
-  stateidx_t defState = def.size() > 0 ? makeDFAState(dfa, def) : nullState;
+  stateidx_t defState = !def.empty() ? makeDFAState(dfa, def) : nullState;
 
   // and that's our state ... a load for the regex call and a branch on its result
   return MStatePtr(new LoadVars(ds, addState(dfa, makeLSSwitch(rcheckVar, dfa, sjmps, defState))));
@@ -960,7 +960,7 @@ PrimFArgs makePrimFArgs(const PatternRows& ps) {
 // does it make sense and is it worthwhile to decompose this table column-wise?
 bool shouldDecomposeColumnwise(MDFA* dfa, const PatternRows& ps) {
   // it only makes sense to decompose columnwise if the table has at least one row, at least two columns
-  if (ps.size() == 0 || ps[0].patterns.size() <= 1) {
+  if (ps.empty() || ps[0].patterns.size() <= 1) {
     return false;
   }
 
@@ -1066,7 +1066,7 @@ stateidx_t makeColPivotDFAState(MDFA* dfa, const PatternRows& ps) {
 
     PatternRows tail;
     tableTail(&tail, ps);
-    if (tail.size() == 0) {
+    if (tail.empty()) {
       throw annotated_error(*ps[0].guard, "Inexhaustive patterns in match expression after guard");
     }
 
@@ -1140,7 +1140,7 @@ stateidx_t makeDFA(MDFA* dfa, const PatternRows& ps, const LexicalAnnotation& la
       }
     }
 
-    if (unreachableRows.size() > 0) {
+    if (!unreachableRows.empty()) {
       std::ostringstream fss;
       fss << "Unreachable row" << (unreachableRows.size() > 1 ? "s" : "") << " in match expression:\n";
       for (size_t ur : unreachableRows) {
@@ -1209,7 +1209,7 @@ using ExprCheck = std::pair<ExprPtr, PrimitivePtr>;
 using ExprChecks = std::vector<ExprCheck>;
 
 ExprPtr checkExpr(const ExprChecks& cs, const LexicalAnnotation& la) {
-  if (cs.size() == 0) {
+  if (cs.empty()) {
     throw annotated_error(la, "Internal error, can't produce empty check expression");
   } else {
     ExprPtr v = fncall(var("===", la), list(cs[0].first, std::dynamic_pointer_cast<Expr>(cs[0].second)), la);
@@ -1316,7 +1316,7 @@ ExprPtr liftDFAExpr(cc* c, const PatternRows& ps, const LexicalAnnotation& rootL
   stateidx_t initState = makeDFA(&pdfa, ps, rootLA);
   ExprPtr    me        = liftDFAExpr(&pdfa, initState);
 
-  if (pdfa.foldedStates.size() == 0) {
+  if (pdfa.foldedStates.empty()) {
     return me;
   } else {
     LetRec::Bindings bs;
@@ -1404,14 +1404,14 @@ struct makePrimDFASF : public switchMState<UnitV> {
 
   UnitV with(const SwitchVal* x) const override {
     if (x->defaultState() == nullState) {
-      if (x->jumps().size() == 0) {
+      if (x->jumps().empty()) {
         throw std::runtime_error("Internal error, empty switch statement in primitive match compilation");
       } else {
         throw std::runtime_error("Internal error, switches without default states not supported for primitive match compilation (on switch for " + x->switchVar() + " :: " + show(x->jumps()[0].first->primType()) + " with " + str::from(x->jumps().size()) + " cases)");
       }
     }
 
-    if (x->jumps().size() > 0 && (is<Double>(x->jumps().begin()->first) != nullptr)) {
+    if (!x->jumps().empty() && (is<Double>(x->jumps().begin()->first) != nullptr)) {
       llvm::SwitchInst* s = withContext([&](auto&) {
         return this->dfa->c->builder()->CreateSwitch(this->dfa->c->builder()->CreateBitCast(arg(x->switchVar()), longType()), blockForState(x->defaultState()), x->jumps().size());
       });
@@ -1505,7 +1505,7 @@ class primdfafunc : public op {
 public:
   primdfafunc(llvm::Function* vfn, const PrimFArgs& args) : vfn(vfn) {
     MonoTypes atys;
-    if (args.size() == 0) {
+    if (args.empty()) {
       atys.push_back(MonoTypePtr(Prim::make("unit")));
     } else {
       for (const auto& arg : args) {

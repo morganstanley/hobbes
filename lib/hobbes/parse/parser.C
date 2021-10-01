@@ -128,7 +128,7 @@ str::seq varNames(size_t n) {
 
 size_t parseDepth(const ParserEvalInfo& pei, size_t i) {
   auto sd = pei.pdef.state_defs.find(i);
-  if (sd == pei.pdef.state_defs.end() || sd->second.size() == 0) {
+  if (sd == pei.pdef.state_defs.end() || sd->second.empty()) {
     throw std::runtime_error("Internal error, can't find depth for invalid state #" + str::from(i));
   } else {
     size_t d = 0;
@@ -334,7 +334,7 @@ ExprPtr makeParser(cc* c, const Parser& p, terminal* root, const precedence& pre
 }
 
 ExprPtr makeParser(cc* c, const Parser& p, const precedence& prec, const LexicalAnnotation& la) {
-  if (p.size() > 0) {
+  if (!p.empty()) {
     return makeParser(c, p, p[0].symbol, prec, la);
   } else {
     throw std::runtime_error("Internal error, cannot produce parser from empty definition");

@@ -65,7 +65,7 @@ std::set<std::string> varNames(const mc::VarUniverse<mc::RInstM>& vu, const std:
 std::string show(const std::set<std::string>& xs) {
   std::ostringstream ss;
   ss << "{";
-  if (xs.size() > 0) {
+  if (!xs.empty()) {
     auto x = xs.begin();
     ss << "\"" << *x << "\"";
     ++x;

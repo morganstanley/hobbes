@@ -11,7 +11,7 @@
 namespace hobbes {
 
 inline bool isHiddenTCName(const std::string& n) {
-  return n.size() == 0 || n[0] == '.';
+  return n.empty() || n[0] == '.';
 }
 
 FunDeps mergeFundeps(const FunDeps& lhs, const FunDeps& rhs) {
@@ -166,7 +166,7 @@ TCInstances TClass::matches(const TEnvPtr& tenv, const MonoTypes& mts, MonoTypeU
 
   // if no ground instances match, can we generate a ground instance to match?
   //  (this can only work when we can feed back derived type information)
-  if (r.size() == 0) {
+  if (r.empty()) {
     this->testedInstances.insert(mts, true);
 
     TCInstanceFns ifns;
@@ -265,7 +265,7 @@ bool TClass::satisfiable(const TEnvPtr& tenv, const ConstraintPtr& c, Definition
   }
 
   // for empty class definitions, assume allow constraint usage before definitions
-  if (this->tcinstdb.values().size() == 0 && this->tcinstancefns.size() == 0) {
+  if (this->tcinstdb.values().empty() && this->tcinstancefns.empty()) {
     return true;
   }
 
@@ -335,7 +335,7 @@ void TClass::explain(const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPt
       Constraints scs;
       fcs.clear();
       f->explainSatisfiability(tenv, mts, ds, &scs, &fcs);
-      if (scs.size() > maxSuccCount && fcs.size() > 0) {
+      if (scs.size() > maxSuccCount && !fcs.empty()) {
         maxSuccCount = scs.size();
         likelyTarget = f;
       }
@@ -406,7 +406,7 @@ void showFundep(const FunDep& fd, std::ostream& out) {
 
 void TClass::show(std::ostream& out) const {
   out << "class ";
-  if (this->reqs.size() > 0) {
+  if (!this->reqs.empty()) {
     out << "(";
     this->reqs[0]->show(out);
     for (size_t i = 1; i < this->reqs.size(); ++i) {
@@ -416,7 +416,7 @@ void TClass::show(std::ostream& out) const {
     out << ") => ";
   }
   out << this->tcname;
-  if (this->fundeps.size() > 0) {
+  if (!this->fundeps.empty()) {
     out << " | ";
     showFundep(this->fundeps[0], out);
     for (size_t i = 1; i < this->fundeps.size(); ++i) {
@@ -658,7 +658,7 @@ bool TCInstanceFn::apply(const TEnvPtr& tenv, const MonoTypes& tys, const TClass
   // we've definitely found a complete match
   // merge local bindings to the nested unifier scope
   MonoTypeSubst ms = u.substitution();
-  if (ms.size() > 0 && (callsubst != nullptr)) {
+  if (!ms.empty() && (callsubst != nullptr)) {
     for (const auto& m : ms) {
       callsubst->bind(m.first, m.second);
     }
@@ -895,7 +895,7 @@ void serializeGroundClasses(const TEnvPtr& tenv, std::ostream& out) {
 
   for (auto uq = uqs.begin(); uq != uqs.end(); ++uq) {
     if (const auto* c = dynamic_cast<const TClass*>(uq->second.get())) {
-      if (c->instances().size() > 0) {
+      if (!c->instances().empty()) {
         cs.push_back(c);
       }
     }

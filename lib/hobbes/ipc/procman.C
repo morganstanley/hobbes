@@ -96,7 +96,7 @@ struct ProcManUnqualify : public switchExprTyFn {
   ExprPtr annotateTypes(const ExprPtr& e) const {
     ExprPtr sexp = validateType(this->tenv, e, this->defs);
 
-    if (sexp->type()->constraints().size() == 0) {
+    if (sexp->type()->constraints().empty()) {
       return sexp;
     } else {
       return unqualifyTypes(this->tenv, sexp, this->defs);

@@ -138,7 +138,7 @@ bool Objs::isObjType(const MonoTypePtr& mt) const {
 }
 
 std::string show(const PtrAdjustmentPath& p) {
-  if (p.size() == 0) {
+  if (p.empty()) {
     return "[]";
   } else {
     std::string r = "[";
@@ -367,7 +367,7 @@ struct ObjUnqualify : public switchExprTyFn {
     if (ffty == nullptr) return Idxs();
 
     MonoTypes ctys = convFroms(fty->constraints(), convTo);
-    if (ctys.size() == 0) return Idxs();
+    if (ctys.empty()) return Idxs();
 
     Idxs result;
     const MonoTypes& atys = ffty->parameters();

@@ -20,7 +20,7 @@ inline bool hasPointerRep(const MonoTypePtr& t) {
 }
 
 inline bool hasPointerRep(const PolyTypePtr& t) {
-  if (t->typeVariables() > 0 || t->instantiate()->constraints().size() > 0) {
+  if (t->typeVariables() > 0 || !t->instantiate()->constraints().empty()) {
     return false;
   } else {
     return hasPointerRep(requireMonotype(t));

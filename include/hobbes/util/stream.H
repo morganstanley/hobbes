@@ -48,7 +48,7 @@ template < typename Char = char, typename Traits = std::char_traits<Char> >
     using BaseT = std::basic_streambuf<Char, Traits>;
 
     raw_istream_buffer(const RawData& d) {
-      if (d.size() == 0) {
+      if (d.empty()) {
         BaseT::setg(nullptr,nullptr,nullptr);
       } else {
         Char* b = const_cast<Char*>(reinterpret_cast<const Char*>(&d[0]));

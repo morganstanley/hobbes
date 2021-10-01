@@ -57,7 +57,7 @@ static bool dec(const ConstraintPtr& c, ConsRecord* cr) {
         cr->tailType      = c->arguments()[5];
 
         if (const Record* r = is<Record>(cr->recordType)) {
-          if (r->members().size() > 0) {
+          if (!r->members().empty()) {
             auto lpfx = r->members()[r->members().size()-1].field.substr(0,2);
 
             if (lpfx != ".p" && ((lpfx != ".f" && cr->asTuple) || (lpfx == ".f" && !cr->asTuple))) {
@@ -81,7 +81,7 @@ bool RecordDeconstructor::refine(const TEnvPtr&, const ConstraintPtr& cst, MonoT
   ConsRecord cr;
   if (dec(cst, &cr)) {
     if (const Record* rty = is<Record>(cr.recordType)) {
-      if (rty->members().size() > 0) {
+      if (!rty->members().empty()) {
         MonoTypePtr fname(TString::make(rty->headMember().field));
 
         mgu(fname,                  cr.headFieldName, u);

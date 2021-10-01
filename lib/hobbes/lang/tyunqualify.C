@@ -20,7 +20,7 @@ ExprPtr unqualifyTypes(const TEnvPtr& tenv, const ExprPtr& e, Definitions* ds) {
         "Internal compiler error, cannot unqualify expression without explicit type annotations "
         "(did you forget to perform type-inference first?): " + show(result)
       );
-    } else if (eqt->constraints().size() > 0) {
+    } else if (!eqt->constraints().empty()) {
       // resolve satisfiable, satisfied predicates in this expression
       const Constraints& cs = eqt->constraints();
       for (const auto& c : cs) {
@@ -29,7 +29,7 @@ ExprPtr unqualifyTypes(const TEnvPtr& tenv, const ExprPtr& e, Definitions* ds) {
         if (!satisfiable(uq, tenv, c, ds)) {
           annmsgs msgs;
           uq->explain(tenv, c, e, ds, &msgs);
-          if (msgs.size() > 0) {
+          if (!msgs.empty()) {
             throw annotated_error(msgs);
           } else {
             throw annotated_error(*e, "Unsatisfiable predicate: " + show(c));

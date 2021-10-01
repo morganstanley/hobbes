@@ -214,7 +214,7 @@ Expr* LetRec::clone() const {
 }
 
 void LetRec::show(std::ostream& out) const {
-  if (this->bs.size() == 0) {
+  if (this->bs.empty()) {
     out << "letrec {} in ";
     this->e->show(out);
   } else {
@@ -231,7 +231,7 @@ void LetRec::show(std::ostream& out) const {
 }
 
 void LetRec::showAnnotated(std::ostream& out) const {
-  if (this->bs.size() == 0) {
+  if (this->bs.empty()) {
     out << "letrec {} in ";
     this->e->showAnnotated(out);
   } else {
@@ -250,7 +250,7 @@ void LetRec::showAnnotated(std::ostream& out) const {
 Fn::Fn(const VarNames& vs, const ExprPtr& e, const LexicalAnnotation& la) : Base(la), vs(vs), e(e) {
   // to make type-checking homogeneous, we equate the empty parameter list with a parameter list containing just unit
   //   (unit is compiled away to nothing, so it's equivalent)
-  if (this->vs.size() == 0) {
+  if (this->vs.empty()) {
     this->vs.push_back("_");
   }
 }
@@ -291,7 +291,7 @@ void Fn::showAnnotated(std::ostream& out) const {
 App::App(const ExprPtr& fne, const Exprs& argl, const LexicalAnnotation& la) : Base(la), fne(fne), argl(argl) {
   // to make type-checking homogeneous, we equate the empty parameter list with a parameter list containing just unit
   //   (unit is compiled away to nothing, so it's equivalent)
-  if (this->argl.size() == 0) {
+  if (this->argl.empty()) {
     this->argl.push_back(ExprPtr(new Unit(la)));
   }
 }
@@ -326,7 +326,7 @@ void App::show(std::ostream& out) const {
 
   // show the argl part
   out << "(";
-  if (this->argl.size() > 0) {
+  if (!this->argl.empty()) {
     auto e = this->argl.begin();
     (*e)->show(out);
     while (++e != this->argl.end()) {
@@ -344,7 +344,7 @@ void App::showAnnotated(std::ostream& out) const {
 
   // show the argl part
   out << "(";
-  if (this->argl.size() > 0) {
+  if (!this->argl.empty()) {
     auto e = this->argl.begin();
     (*e)->showAnnotated(out);
     while (++e != this->argl.end()) {
@@ -398,7 +398,7 @@ Exprs& MkArray::values() { return this->es; }
 Expr* MkArray::clone() const { return new MkArray(clones(this->es),la()); }
 void MkArray::show(std::ostream& out) const {
   out << "[";
-  if (this->es.size() > 0) {
+  if (!this->es.empty()) {
     this->es[0]->show(out);
     for (size_t i = 1; i < this->es.size(); ++i) {
       out << ", ";
@@ -409,7 +409,7 @@ void MkArray::show(std::ostream& out) const {
 }
 void MkArray::showAnnotated(std::ostream& out) const {
   out << "[";
-  if (this->es.size() > 0) {
+  if (!this->es.empty()) {
     this->es[0]->showAnnotated(out);
     for (size_t i = 1; i < this->es.size(); ++i) {
       out << ", ";
@@ -454,7 +454,7 @@ bool MkRecord::operator==(const MkRecord& rhs) const {
 }
 const MkRecord::FieldDefs& MkRecord::fields() const { return this->fs; }
 MkRecord::FieldDefs& MkRecord::fields() { return this->fs; }
-bool MkRecord::isTuple() const { return this->fs.size() > 0 && this->fs[0].first.size() > 0 && this->fs[0].first[0] == '.'; }
+bool MkRecord::isTuple() const { return !this->fs.empty() && !this->fs[0].first.empty() && this->fs[0].first[0] == '.'; }
 Expr* MkRecord::clone() const {
   FieldDefs cfs;
   for (auto f = this->fs.begin(); f != this->fs.end(); ++f) {
@@ -478,7 +478,7 @@ void MkRecord::showAnnotated(std::ostream& out) const {
 }
 void MkRecord::showRecord(std::ostream& out) const {
   out << "{";
-  if (this->fs.size() > 0) {
+  if (!this->fs.empty()) {
     out << this->fs[0].first << " = "; this->fs[0].second->show(out);
     for (size_t i = 1; i < this->fs.size(); ++i) {
       out << ", " << this->fs[i].first << " = "; this->fs[i].second->show(out);
@@ -488,7 +488,7 @@ void MkRecord::showRecord(std::ostream& out) const {
 }
 void MkRecord::showRecordAnnotated(std::ostream& out) const {
   out << "{";
-  if (this->fs.size() > 0) {
+  if (!this->fs.empty()) {
     out << this->fs[0].first << " = "; this->fs[0].second->showAnnotated(out);
     for (size_t i = 1; i < this->fs.size(); ++i) {
       out << ", " << this->fs[i].first << " = "; this->fs[i].second->showAnnotated(out);
@@ -642,7 +642,7 @@ Switch::Switch(const ExprPtr& v, const Bindings& bs, const ExprPtr& def, const L
   // (only a few primitive types work with no default case)
   bool exhaustive = def != ExprPtr();
 
-  if (bs.size() > 0) {
+  if (!bs.empty()) {
     switch (bs[0].value->case_id()) {
     case Unit::type_case_id:
       exhaustive = true;
@@ -1240,7 +1240,7 @@ const MonoTypePtr& requireMonotype(const TEnvPtr& tenv, const ExprPtr& e) {
     throw annotated_error(*e, "Expression '" + show(e) + "' not explicitly annotated.  Internal compiler error.");
   }
 
-  if (e->type()->constraints().size() > 0) {
+  if (!e->type()->constraints().empty()) {
     Constraints cs = expandHiddenTCs(tenv, simplifyVarNames(e->type())->constraints());
     std::ostringstream ss;
     ss << "Failed to compile expression due to unresolved type constraint" << (cs.size() > 1 ? "s" : "");
@@ -1410,7 +1410,7 @@ ExprPtr fmtFoldExpr(const ExprPtr& e, const std::string& expr) {
 }
 
 ExprPtr mkFormatExpr(const std::string& fmt, const LexicalAnnotation& la) {
-  if (fmt.size() == 0) {
+  if (fmt.empty()) {
     return ExprPtr(mkarray("", la));
   } else {
     return str::foldWithFormat(str::trimq(fmt, '`'), ExprPtr(mkarray("", la)), &fmtFoldConst, &fmtFoldExpr);

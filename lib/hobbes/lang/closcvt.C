@@ -49,7 +49,7 @@ MonoTypePtr concreteClosureEnvType(unsigned int size) {
 }
 
 ExprPtr makeClosureOver(const Fn* f, const VarSet& vs) {
-  if (vs.size() == 0) {
+  if (vs.empty()) {
     return ExprPtr(f->clone());
   } else {
     MonoTypePtr              envty   = concreteClosureEnvType(vs.size());

@@ -160,7 +160,7 @@ int connectFileSocket(const std::string &filepath) {
 }
 
 int connectSocket(const std::string &host, int port) {
-  if (host.size() > 0 && str::isDigit(host[0])) {
+  if (!host.empty() && str::isDigit(host[0])) {
     return connectSocket(gethostbyaddr(host.c_str(), host.size(), AF_INET),
                          port);
   } else {
@@ -170,7 +170,7 @@ int connectSocket(const std::string &host, int port) {
 
 int connectSocket(const std::string &hostport) {
   str::pair p = str::lsplit(hostport, ":");
-  if (p.second.size() > 0)
+  if (!p.second.empty())
     return connectSocket(p.first, lookupPort(p.second));
   else
     return connectFileSocket(p.first);
@@ -208,7 +208,7 @@ void prepareStrExpr(Server *s, int c, exprid eid, const std::string &expr,
                     const MonoTypes &intys, const MonoTypePtr &outty) {
   auto la = LexicalAnnotation::null();
 
-  if (intys.size() == 0 || (intys.size() == 1 && isUnit(intys[0]))) {
+  if (intys.empty() || (intys.size() == 1 && isUnit(intys[0]))) {
     s->prepare(c, eid,
                assume(s->readExpr(expr), functy(tuplety(intys), outty), la),
                tuplety());

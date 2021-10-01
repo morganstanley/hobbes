@@ -74,7 +74,7 @@ void sweepFileWatch(FileWatch& fw) {
       }
     }
 
-    if (brw.fs.size() > 0) {
+    if (!brw.fs.empty()) {
       ++brwi;
     } else {
       fw.byteRangeWatches.erase(brwi++);

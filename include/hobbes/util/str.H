@@ -25,7 +25,7 @@ seq repeat(unsigned int n, const std::string& s);
 
 template <typename C>
   unsigned int maxSize(unsigned int d, const std::vector<C>& vs) {
-    if (vs.size() == 0) {
+    if (vs.empty()) {
       return d;
     } else {
       unsigned int r = vs[0].size();
@@ -38,7 +38,7 @@ template <typename C>
 
 template <typename C>
   unsigned int minSize(unsigned int d, const std::vector<C>& vs) {
-    if (vs.size() == 0) {
+    if (vs.empty()) {
       return d;
     } else {
       unsigned int r = vs[0].size();

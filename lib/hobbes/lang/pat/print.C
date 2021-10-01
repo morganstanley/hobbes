@@ -92,7 +92,7 @@ void printMatchResult(std::ostream& out, const ExprPtr& e) {
 
 // pretty-print a pattern match table
 void printMatchTable(std::ostream& out, const PatternRows& prs) {
-  if (prs.size() == 0) {
+  if (prs.empty()) {
     out << "{}";
   } else {
     str::seqs ps;

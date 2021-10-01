@@ -1058,7 +1058,7 @@ TEST(Storage, AvoidTornRead) {
     while (rlog.next());
 
     // if we get here, we are good
-    EXPECT_TRUE(ss.str().size() > 0);
+    EXPECT_TRUE(!ss.str().empty());
 
     unlink(fname.c_str());
   } catch (...) {

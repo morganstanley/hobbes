@@ -90,7 +90,7 @@ void MatchArray::indexes(const Idxs& idxs) {
 
 void MatchArray::show(std::ostream& out) const {
   out << "[";
-  if (this->ps.size() > 0) {
+  if (!this->ps.empty()) {
     this->ps[0]->show(out);
     for (unsigned int i = 1; i < this->ps.size(); ++i) {
       out << ", ";
@@ -208,7 +208,7 @@ void MatchRecord::fields(const Fields& fs) {
 
 void MatchRecord::show(std::ostream& out) const {
   out << "{";
-  if (this->fs.size() > 0) {
+  if (!this->fs.empty()) {
     show(out, this->fs[0]);
     for (unsigned int i = 1; i < this->fs.size(); ++i) {
       out << ", ";
@@ -296,7 +296,7 @@ std::string show(const PatternPtr& p) {
 
 std::string show(const Patterns& ps) {
   std::ostringstream ss;
-  if (ps.size() > 0) {
+  if (!ps.empty()) {
     ps[0]->show(ss);
     for (size_t i = 1; i < ps.size(); ++i) {
       ss << " ";
@@ -369,7 +369,7 @@ Patterns concatArrayPatterns(const Patterns& ps) {
 }
 
 void normalizeRecAccess(const Patterns& ps) {
-  if (ps.size() == 0) {
+  if (ps.empty()) {
     // nothing to normalize
   } else if (is<MatchRecord>(ps[0]) != nullptr) {
     // this is actually the case we care about
@@ -409,7 +409,7 @@ bool canHoldRecPatterns(const PatternPtr& p) {
 }
 
 void normalizeRecAccess(const PatternRows& prs) {
-  size_t maxc = (prs.size() == 0) ? 0 : prs[0].patterns.size();
+  size_t maxc = (prs.empty()) ? 0 : prs[0].patterns.size();
   for (size_t c = 0; c < maxc; ++c) {
     // gather all patterns across this column, normalize record access within the column
     Patterns ps;
@@ -426,7 +426,7 @@ void normalizeRecAccess(const PatternRows& prs) {
       }
     }
 
-    if (ps.size() > 0) {
+    if (!ps.empty()) {
       normalizeRecAccess(ps);
     }
   }
@@ -434,7 +434,7 @@ void normalizeRecAccess(const PatternRows& prs) {
 
 // make sure that the table is "well formed" (all rows have the same number of columns)
 void validateDimensions(size_t c, const PatternRows& ps, const LexicalAnnotation& la) {
-  if (ps.size() == 0) {
+  if (ps.empty()) {
     throw annotated_error(la, "Internal error, pattern sequence cannot be empty");
   } else {
     for (unsigned int i = 0; i < ps.size(); ++i) {
@@ -602,7 +602,7 @@ void assignNames(const str::seq& vns, PatternRows& ps, bool* mappedVs) {
   // each row expression needs to be renamed consistent with the above name assignment
   for (size_t r = 0; r < ps.size(); ++r) {
     VarMapping vm = varMapping(ps[r].patterns);
-    if (vm.size() > 0) {
+    if (!vm.empty()) {
       *mappedVs = true;
 
       if (ps[r].guard) {
@@ -631,7 +631,7 @@ ExprPtr compileMatch(cc* c, const Exprs& es, const PatternRows& ps, const Lexica
 ExprPtr compileMatchTest(cc* c, const ExprPtr& e, const PatternPtr& p, const LexicalAnnotation& rootLA) {
   auto anames = accessibleBindingNames(p);
 
-  if (anames.size() > 0) {
+  if (!anames.empty()) {
     throw annotated_error(*p, "Inaccessible names in 'matches' test: " + str::cdelim(toVector(anames), ", "));
   } else if (!refutable(p)) {
     return ExprPtr(new Bool(true, rootLA));
@@ -644,7 +644,7 @@ ExprPtr compileRegexFn(cc* c, const std::string& regex, const LexicalAnnotation&
   PatternPtr p(new MatchRegex(regex, rootLA));
 
   auto ns = accessibleBindingNames(p);
-  if (ns.size() == 0) {
+  if (ns.empty()) {
     return fn("x", compileMatchTest(c, var("x", rootLA), p, rootLA), rootLA);
   } else {
     MkRecord::FieldDefs fs;
@@ -694,7 +694,7 @@ struct accBindingNamesF : public switchPattern<UnitV> {
   }
 
   UnitV with(const MatchAny* v) const override {
-    if (v->value().size() > 0 && v->value() != "_" && v->value()[0] != '.') {
+    if (!v->value().empty() && v->value() != "_" && v->value()[0] != '.') {
       this->r->insert(v->value());
     }
     return unitv;
@@ -748,7 +748,7 @@ ExprPtr rpatFunc(cc* c, const PatternPtr& pat, const ExprPtr& cond, const ExprPt
 }
 
 ExprPtr conjoinConds(const Exprs& es, const LexicalAnnotation& la) {
-  if (es.size() == 0) {
+  if (es.empty()) {
     return constant(bool(true), la);
   } else {
     ExprPtr c = es[0];
@@ -761,8 +761,8 @@ ExprPtr conjoinConds(const Exprs& es, const LexicalAnnotation& la) {
 
 ExprPtr desugarComprehension(cc* c, const ExprPtr& e, const CSelection& cs, const LexicalAnnotation& la) {
   if (refutable(cs.pat)) {
-    return fncall(var("ffilterMMap", la), list(rpatFunc(c, cs.pat, cs.conds.size() > 0 ? conjoinConds(cs.conds, la) : ExprPtr(), e, la), cs.seq), la);
-  } else if (cs.conds.size() > 0) {
+    return fncall(var("ffilterMMap", la), list(rpatFunc(c, cs.pat, !cs.conds.empty() ? conjoinConds(cs.conds, la) : ExprPtr(), e, la), cs.seq), la);
+  } else if (!cs.conds.empty()) {
     return fncall(var("ffilterMap", la), list(irpatFunc(c, cs.pat, conjoinConds(cs.conds, la), la), irpatFunc(c, cs.pat, e, la), cs.seq), la);
   } else {
     return fncall(var("fmap", la), list(irpatFunc(c, cs.pat, e, la), cs.seq), la);
@@ -770,7 +770,7 @@ ExprPtr desugarComprehension(cc* c, const ExprPtr& e, const CSelection& cs, cons
 }
 
 Expr* desugarComprehension(cc* c, const ExprPtr& ex, const CSelections& cs, const LexicalAnnotation& la) {
-  if (cs.size() == 0) {
+  if (cs.empty()) {
     return ex->clone();
   } else {
     ExprPtr e = desugarComprehension(c, ex, *cs[cs.size()-1], la);

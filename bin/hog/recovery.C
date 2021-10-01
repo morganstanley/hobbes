@@ -146,7 +146,7 @@ static bool hasBeenRecovered(const std::vector<SessionRecovered>& sessionRecover
 
 static bool hasBeenCorrectlyClosed(const std::vector<SenderState>& senderStates) {
   // Sender states should be temporally ordered earliest->latest
-  return senderStates.size() == 0 ? false : senderStates.back().status.value == SenderStatus::Enum::Closed;
+  return senderStates.empty() ? false : senderStates.back().status.value == SenderStatus::Enum::Closed;
 }
 
 struct RecoveryTask {
@@ -301,7 +301,7 @@ void detectFaultAndRecover() {
 
     const std::vector<RecoveryTask> tasks = getTasksRequiringRecovery(recoveredDetails);
     // ignore groups with no associable tasks
-    if (tasks.size() > 0) {
+    if (!tasks.empty()) {
       recoveryTaskGroups.emplace_back(RecoveryTaskGroup{runMode,
         recoveredDetails.processEnvironment.sessionHash,
         recoveredDetails.processEnvironment.argv,

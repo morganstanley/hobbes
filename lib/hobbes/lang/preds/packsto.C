@@ -79,7 +79,7 @@ bool Existentials::refine(const TEnvPtr& tenv, const ConstraintPtr& cst, MonoTyp
       }
       pt.abstractType = substitute(lus, pt.abstractType);
       upd(cst, pt);
-      return lus.size() > 0;
+      return !lus.empty();
     }
   }
   return false;
@@ -100,7 +100,7 @@ bool Existentials::satisfied(const TEnvPtr& tenv, const ConstraintPtr& cst, Defi
       NameSet utns = tvarNames(pt.underlyingType);
       NameSet atns = tvarNames(e->absType());
 
-      return utns.size() == 0 && atns.size() == 1 && (e->absTypeName() == *atns.begin());
+      return utns.empty() && atns.size() == 1 && (e->absTypeName() == *atns.begin());
     } else {
       return *pt.underlyingType == *pt.abstractType;
     }

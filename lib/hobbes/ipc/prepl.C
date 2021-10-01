@@ -22,7 +22,7 @@ void execProcess(const std::string& cmd) {
       argv.push_back(args[i].c_str());
     }
   }
-  if (args.size() == 0) return;
+  if (args.empty()) return;
 
   argv.push_back(nullptr);
   execv(args[0].c_str(), const_cast<char* const*>(&argv[0]));
@@ -399,7 +399,7 @@ void runMachineREPLStep(cc* c) {
       try {
         std::ostringstream ss;
         auto ses = c->search(expr, ty);
-        if (ses.size() > 0) {
+        if (!ses.empty()) {
           std::map<std::string, std::string> stbl;
           for (const auto& se : ses) {
             stbl[se.sym] = show(se.ty);

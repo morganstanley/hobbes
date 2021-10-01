@@ -75,7 +75,7 @@ static void accumLabels(std::set<std::string>* lbls, const TEnvPtr& tenv) {
     if (!vnt.first.empty() && vnt.first[0] != '.') {
       lbls->insert(vnt.first);
 
-      if (vnt.second->typeVariables() == 0 && vnt.second->qualtype()->constraints().size() == 0) {
+      if (vnt.second->typeVariables() == 0 && vnt.second->qualtype()->constraints().empty()) {
         accumLabels(lbls, vnt.second->qualtype()->monoType());
       }
     }
@@ -177,7 +177,7 @@ bool validSearchResult(const SearchEntry& e, const MonoTypePtr& dst) {
 
 // search for symbols going from one type to another
 SearchEntries search(cc& c, SearchCache& sc, const MonoTypePtr& src, const MonoTypePtr& dst) {
-  if (sc.univByType[src].size() == 0) {
+  if (sc.univByType[src].empty()) {
     sc.univByType[src] = findAll(c, src);
   }
 

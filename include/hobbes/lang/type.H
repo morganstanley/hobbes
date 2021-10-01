@@ -1080,7 +1080,7 @@ inline MonoTypePtr tstring(const std::string& x) {
 }
 
 inline MonoTypePtr tuplety(const MonoTypes& mtys = MonoTypes()) {
-  if (mtys.size() == 0) {
+  if (mtys.empty()) {
     return primty("unit");
   } else {
     Record::Members ms;
@@ -1125,7 +1125,7 @@ inline MonoTypePtr functy(const MonoTypePtr& aty, const MonoTypePtr& rty) {
 }
 
 inline MonoTypePtr functy(const MonoTypes& atys, const MonoTypePtr& rty) {
-  if (atys.size() == 0) {
+  if (atys.empty()) {
     return Func::make(tuplety(list(tuplety())), rty);
   } else {
     return Func::make(tuplety(atys), rty);

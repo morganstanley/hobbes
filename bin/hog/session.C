@@ -62,7 +62,7 @@ DEFINE_STRUCT(
 std::string ensureDirExists(const std::string& dirPfx) {
   hobbes::str::seq ps = hobbes::str::csplit(dirPfx, "/");
   std::ostringstream pfx;
-  if (ps.size() > 0) {
+  if (!ps.empty()) {
     for (size_t i = 0; i < (ps.size()-1); ++i) {
       pfx << ps[i] << "/";
       if (mkdir(pfx.str().c_str(), S_IRWXU | S_IRWXG | S_IRWXO) == -1 && errno != EEXIST) {

@@ -195,7 +195,7 @@ inline void fdwrite(int fd, const std::string& x) {
 template <typename T>
 inline void fdwrite(int fd, const std::vector<T>& xs) {
   fdwrite(fd, xs.size());
-  if (xs.size() > 0) fdwrite(fd, &xs[0], xs.size());
+  if (!xs.empty()) fdwrite(fd, &xs[0], xs.size());
 }
 
 // remove a 'bad' mark for an FD and return true iff it was previously marked bad

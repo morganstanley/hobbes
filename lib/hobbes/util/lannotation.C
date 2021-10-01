@@ -115,7 +115,7 @@ LexicalAnnotation LexicallyAnnotated::make(const Pos& p0, const Pos& p1) {
   auto& s = annotationCtxStack();
 
   LexicalAnnotation r;
-  r.bfptr = s.size() > 0 ? s.top() : BuffOrFilenamePtr(new BuffOrFilename(false, "???"));
+  r.bfptr = !s.empty() ? s.top() : BuffOrFilenamePtr(new BuffOrFilename(false, "???"));
   r.p0    = p0;
   r.p1    = p1;
   return r;

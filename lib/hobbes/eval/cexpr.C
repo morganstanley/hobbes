@@ -269,7 +269,7 @@ public:
     RecordValue vs = compileRecordFields(v->fields());
 
     // for the odd case where all fields are unit
-    if (vs.size() == 0) {
+    if (vs.empty()) {
       return cvalue(true);
     }
 
@@ -403,7 +403,7 @@ public:
     if (f == nullptr) { throw std::runtime_error("Internal compiler error -- no default variant match failure handler defined."); }
 
     auto ltxts = v->la().lines(v->la().p0.first-1, v->la().p1.first);
-    auto ltxt  = ltxts.size() > 0 ? ltxts[0] : "???";
+    auto ltxt  = !ltxts.empty() ? ltxts[0] : "???";
 
     return withContext([&](auto&) -> llvm::Value* {
       builder()->SetInsertPoint(failBlock);

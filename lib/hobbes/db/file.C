@@ -95,7 +95,7 @@ reader::reader(imagefile* f) : fdata(f) {
 
   // and translate bindings
   for (const auto& b : this->fdata->bindings) {
-    if (b.first.size() > 0 && b.first[0] != '.') {
+    if (!b.first.empty() && b.first[0] != '.') {
       SBinding sb;
       sb.type   = decodeBindingByVersion(this->fdata->version, b.second.type);
       sb.offset = this->fdata->version==0 ? b.second.boffset : b.second.offset;

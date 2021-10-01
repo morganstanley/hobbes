@@ -93,7 +93,7 @@ evaluator::~evaluator() {
 }
 
 bool hiddenFileName(const std::string& fname) {
-  return fname.size() == 0 || fname[0] == '.';
+  return fname.empty() || fname[0] == '.';
 }
 
 bool loadSilently(const std::string& mfile) {
@@ -170,7 +170,7 @@ void printConstraint(const hobbes::ConstraintPtr& c) {
 }
 
 void printQualType(const hobbes::Constraints& cs, const hobbes::MonoTypePtr& ty) {
-  if (cs.size() > 0) {
+  if (!cs.empty()) {
     printConstraint(cs[0]);
     for (size_t i = 1; i < cs.size(); ++i) {
       std::cout << setfgc(colors.stdtextfg) << ", ";
@@ -204,7 +204,7 @@ void evaluator::printTypeEnv() {
 }
 
 hobbes::str::seq evaluator::completionsFor(const std::string& prefix) const {
-  if (prefix.size() == 0) {
+  if (prefix.empty()) {
     return hobbes::str::seq();
   } else {
     hobbes::str::seq vars;
@@ -295,7 +295,7 @@ bool evaluator::satisfied(const hobbes::ConstraintPtr& c) {
 }
 
 void showSearchResults(const std::string&, const hobbes::SearchEntries& ses) {
-  if (ses.size() > 0) {
+  if (!ses.empty()) {
     std::map<std::string, std::string> stbl;
     for (const auto& se : ses) {
       stbl[se.sym] = hobbes::show(se.ty);

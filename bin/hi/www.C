@@ -344,7 +344,7 @@ std::string showType(hobbes::cc& c, const hobbes::QualTypePtr& t) {
   hobbes::QualTypePtr st = hobbes::simplifyVarNames(hobbes::qualtype(cs, t->monoType()));
 
   std::ostringstream ss;
-  if (st->constraints().size() > 0) {
+  if (!st->constraints().empty()) {
     ss << htmlEncode(hobbes::show(st->constraints()[0]));
     for (size_t i = 1; i < st->constraints().size(); ++i) {
       ss << ", " << htmlEncode(hobbes::show(st->constraints()[i]));
@@ -361,7 +361,7 @@ void WWWServer::printDefaultPage(int fd) {
 
   b << "<h2>Environment</h2>\n<table>";
   for (auto vty : this->c->typeEnv()->typeEnvTable()) {
-    if (vty.first.size() > 0 && vty.first[0] != '.') {
+    if (!vty.first.empty() && vty.first[0] != '.') {
       b << "<tr><td><b>" << vty.first << "</b></td><td>" << showType(*this->c, vty.second->instantiate()) << "</td></tr>";
     }
   }
@@ -492,7 +492,7 @@ std::string WWWServer::mimeTypeForExt(const std::string& ext) {
       std::string line;
       std::getline(mtypes, line);
 
-      if (line.size() > 0 && line[0] != '#') {
+      if (!line.empty() && line[0] != '#') {
         using namespace hobbes;
 
         str::pair lp = str::lsplit(line, "\t");
@@ -517,7 +517,7 @@ WWWServer::VarBindingDescs* WWWServer::getVarBindingDescs() {
 
   size_t i = 0;
   for (auto vty : tenvTable) {
-    if (vty.first.size() > 0 && vty.first[0] != '.') {
+    if (!vty.first.empty() && vty.first[0] != '.') {
       result->data[i].first  = hobbes::makeString(vty.first);
       result->data[i].second = hobbes::makeString(showType(*this->c, vty.second->instantiate()));
       ++i;

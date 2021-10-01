@@ -145,7 +145,7 @@ RegexPtr sequence(const RegexPtr& p0, const RegexPtr& p1) {
 }
 
 RegexPtr anyOf(const Regexes& rs) {
-  if (rs.size() == 0) {
+  if (rs.empty()) {
     return epsilon();
   } else {
     RegexPtr a = rs[0];
@@ -160,7 +160,7 @@ using CharRange = std::pair<rchar_t, rchar_t>;
 using CharRanges = std::vector<CharRange>;
 
 CharRanges toRanges(const std::set<rchar_t>& cs) {
-  if (cs.size() == 0) {
+  if (cs.empty()) {
     return CharRanges();
   } else {
     auto ci = cs.begin();
@@ -217,7 +217,7 @@ void charRange(rchar_t i, rchar_t e, std::set<rchar_t>* out) {
 
 const std::set<rchar_t>& anyChars() {
   static std::set<rchar_t> r;
-  if (r.size() == 0) {
+  if (r.empty()) {
     charRange(0x00, 0xff, &r);
   }
   return r;
@@ -518,7 +518,7 @@ std::set<rchar_t> usedChars(const NFA& nfa) {
  *****************************/
 std::string descStates(const stateset& ss) {
   std::ostringstream out;
-  if (ss.size() > 0) {
+  if (!ss.empty()) {
     auto s = ss.begin();
     out << *s;
     ++s;
@@ -932,7 +932,7 @@ static ExprPtr transitionMapping(const std::string& fname, const DFAState& s, co
   //   else use a sequence of range tests
   auto rtns = s.chars.mapping();
 
-  if (rtns.size() == 0) {
+  if (rtns.empty()) {
     // shouldn't happen, but it's the right thing to do
     return defaultResult;
   } else if (rtns.size() == 1 && rtns[0].first.first == 0 && rtns[0].first.second == 255) {
@@ -1263,7 +1263,7 @@ MonoTypePtr regexCaptureBufferType(const Regexes& regexes) {
       ms.push_back(Record::Member(str::from(r) + "_end_"   + b, primty("long")));
     }
   }
-  return ms.size() == 0 ? primty("unit") : MonoTypePtr(Record::make(ms));
+  return ms.empty() ? primty("unit") : MonoTypePtr(Record::make(ms));
 }
 
 ExprPtr makeRegexCaptureBuffer(const Regexes& regexes, const LexicalAnnotation& rootLA) {

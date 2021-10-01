@@ -59,14 +59,14 @@ bool importScript(cc *e, const std::string &fname) {
 using ModulePaths = std::vector<std::string>;
 static ModulePaths &modulePaths() {
   static thread_local ModulePaths mps;
-  if (mps.size() == 0) {
+  if (mps.empty()) {
     mps.push_back(".");
   }
   return mps;
 }
 void pushModuleDir(const std::string &d) { modulePaths().push_back(d); }
 void popModuleDir() {
-  if (modulePaths().size() > 0)
+  if (!modulePaths().empty())
     modulePaths().resize(modulePaths().size() - 1);
 }
 
@@ -360,7 +360,7 @@ void compile(const ModulePtr &m, cc *e, const InstanceDef *id) {
 
     NameIndexing tns = nameIndexing(tvarNames(id->args()));
     MonoTypes targs = id->args();
-    bool asfn = id->constraints().size() > 0 || tvarNames(targs).size() > 0;
+    bool asfn = !id->constraints().empty() || !tvarNames(targs).empty();
     MemberMapping ms = compileMembers(m, &u, c, targs, e, id->members(), asfn);
 
     // is this a ground instance or an instance function?
@@ -446,7 +446,7 @@ void compile(const ModulePtr &m, cc *e, const MVarDef *mvd) {
 
   // make sure that globals with inaccessible names (evaluated for side-effects)
   // have monomorphic type (otherwise they'll quietly fail to run)
-  if (mvd->varWithArgs().size() >= 1 && mvd->varWithArgs()[0].size() > 0 &&
+  if (!mvd->varWithArgs().empty() && !mvd->varWithArgs()[0].empty() &&
       mvd->varWithArgs()[0][0] == '.') {
     requireMonotype(e->typeEnv(),
                     e->unsweetenExpression(mvd->varWithArgs()[0], vde));
@@ -595,7 +595,7 @@ struct UnsafeRefs : public SafeExpr::UnsafeDefs {
   auto show(std::ostream &os) -> void {
     os << la().filename() << ", " << la().lineDesc() << ": " << varName()
        << " is not allowed";
-    if (unSafeRefs().size() > 0)
+    if (!unSafeRefs().empty())
       os << ", its transitive closure has disabled expressions: "
          << str::show(unSafeRefs());
     os << "." << exprDef() << std::endl;
@@ -1021,7 +1021,7 @@ ExprPtr translateExprWithOpts(
            [&exceptionFn](std::string const &, const ExprPtr &e) -> ExprPtr {
              auto ms = makeSafe();
              auto r = switchOf(e, ms);
-             if (ms.collectUnsafes.size() != 0) {
+             if (!ms.collectUnsafes.empty()) {
                exceptionFn(ms.show());
              };
              return r;
