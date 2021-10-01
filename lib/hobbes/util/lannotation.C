@@ -83,8 +83,7 @@ static AnnContextStack& annotationCtxStack() {
   return *actxs;
 }
 
-LexicallyAnnotated::LexicallyAnnotated(const LexicallyAnnotated& rhs) : lannotation(rhs.lannotation) {
-}
+LexicallyAnnotated::LexicallyAnnotated(const LexicallyAnnotated& rhs) = default;
 
 LexicallyAnnotated::LexicallyAnnotated(const LexicalAnnotation& la) : lannotation(la) {
 }

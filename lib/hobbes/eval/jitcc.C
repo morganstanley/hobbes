@@ -1602,6 +1602,6 @@ ExprPtr jitcc::inlineGlobals(const ExprPtr& e) {
   return s;
 }
 
-op::~op() { }
+op::~op() = default;
 
 } // namespace hobbes

@@ -59,7 +59,7 @@ array<ArrObjV*>* arrobjs(int n) {
 // verify compilation of simple single-inheritance
 class SIBase {
 public:
-  virtual ~SIBase() { }
+  virtual ~SIBase() = default;
 
   virtual int doblah() {
     return 42;

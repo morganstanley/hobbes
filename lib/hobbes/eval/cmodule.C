@@ -849,7 +849,7 @@ std::vector<std::string> getDefaultOptions() { return str::strings(); }
 struct makeSafe : public switchExprC<ExprPtr> {
   std::map<std::string, UnsafeRefs> collectUnsafes;
 
-  makeSafe() {}
+  makeSafe() = default;
 
   auto show() -> std::string {
     std::stringstream ss;

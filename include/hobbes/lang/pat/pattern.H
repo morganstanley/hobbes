@@ -22,7 +22,7 @@ using PatternPtr = std::shared_ptr<Pattern>;
 using Patterns = std::vector<PatternPtr>;
 
 struct PatternRow {
-  inline PatternRow() { }
+  inline PatternRow() = default;
   inline PatternRow(const Patterns& ps, const ExprPtr& r) : patterns(ps), result(r) { }
   inline PatternRow(const Patterns& ps, const ExprPtr& g, const ExprPtr& r) : patterns(ps), guard(g), result(r) { }
 

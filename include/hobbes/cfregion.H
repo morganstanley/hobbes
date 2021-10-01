@@ -1084,8 +1084,7 @@ template <typename T>
         unmapFileData(this->f, headNode, sizeof(size_t));
       }
     }
-    ~cwseries() {
-    }
+    ~cwseries() = default;
     cwseries(const cwseries<T>&) = delete;
     cwseries<T>& operator=(const cwseries<T>&) = delete;
 
@@ -1189,8 +1188,7 @@ template <typename T>
     }
     crseries(imagefile* f, const std::string& seqname) : crseries(f, seqname, loadBinding(f, seqname)) {
     }
-    ~crseries() {
-    }
+    ~crseries() = default;
 
     const ty::desc& typeDef()  const override { return this->tdef; }
     imagefile*      file()     const { return this->f; }

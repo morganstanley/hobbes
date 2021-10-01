@@ -298,8 +298,7 @@ RawStoredSeries::RawStoredSeries(cc* c, writer* outputFile, ufileref root, const
   }
 }
 
-RawStoredSeries::~RawStoredSeries() {
-}
+RawStoredSeries::~RawStoredSeries() = default;
 
 ufileref RawStoredSeries::rootRef() const {
   return this->rootLoc;

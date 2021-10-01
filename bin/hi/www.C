@@ -284,8 +284,7 @@ WWWServer::WWWServer(int port, hobbes::cc* c) : c(c) {
   hobbes::installHTTPD(port, &WWWServer::evalHTTPRequest, this);
 }
 
-WWWServer::~WWWServer() {
-}
+WWWServer::~WWWServer() = default;
 
 std::string urlDecode(const std::string& x) {
   using namespace hobbes::str;

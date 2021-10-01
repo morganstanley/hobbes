@@ -509,7 +509,7 @@ private:
 class Case : public ExprCase<Case> {
 public:
   struct Binding {
-    Binding() { }
+    Binding() = default;
     Binding(const std::string& selector, const std::string& vname, const ExprPtr& exp) : selector(selector), vname(vname), exp(exp) { }
 
     std::string selector;
@@ -548,7 +548,7 @@ private:
 class Switch : public ExprCase<Switch> {
 public:
   struct Binding {
-    Binding() { }
+    Binding() = default;
     Binding(const PrimitivePtr& value, const ExprPtr& exp) : value(value), exp(exp) { }
 
     PrimitivePtr value;

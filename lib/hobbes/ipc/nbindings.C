@@ -533,8 +533,7 @@ struct printConnectionF : public op {
 };
 
 struct remoteHostF : public op {
-  remoteHostF() {
-  }
+  remoteHostF() = default;
 
   llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) override {
     if (Client* conn = decodeConnType(tys[0])) {

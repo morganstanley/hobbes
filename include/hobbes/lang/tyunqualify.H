@@ -19,7 +19,7 @@ using FunDeps = std::vector<FunDep>;
 // if E :: T and R.satisfied(T), then R.unqualify(E)
 class Unqualifier {
   public:
-    virtual ~Unqualifier(void) {};
+    virtual ~Unqualifier(void) = default;;
     // bind any implied type variables in a constraint
     virtual bool refine(const TEnvPtr& tenv, const ConstraintPtr& cst, MonoTypeUnifier* u, Definitions* ds) = 0;
 

@@ -77,8 +77,7 @@ struct DynDModel0 : DynCumFreqState {
 public:
   DynDModel0(imagefile* f, bool input, uint8_t maxSymbol) : DynCumFreqState(maxSymbol), f(f), pm(input, maxSymbol), cm(maxSymbol) {
   }
-  ~DynDModel0() {
-  }
+  ~DynDModel0() = default;
 
   using CFS = DynCumFreqState;
   using index_t = typename CFS::index_t;

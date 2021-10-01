@@ -796,8 +796,7 @@ void compile_table_failure::print(std::ostream& out, const item& i) const {
 }
 
 // lr tables / actions
-action::action() {
-}
+action::action() = default;
 
 action action::goTo(nat s) {
   action a;

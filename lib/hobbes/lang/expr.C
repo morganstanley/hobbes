@@ -36,7 +36,7 @@ inline void showTy(std::ostream& out, const QualTypePtr& qty) {
 }
 
 Expr::Expr(int cid, const LexicalAnnotation& la) : LexicallyAnnotated(la), cid(cid) { }
-Expr::~Expr() { }
+Expr::~Expr() = default;
 const QualTypePtr& Expr::type() const { return this->annotatedType; }
 void Expr::type(const QualTypePtr& ty) { this->annotatedType = ty; }
 int Expr::case_id() const { return this->cid; }

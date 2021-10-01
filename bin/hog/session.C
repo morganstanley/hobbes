@@ -379,7 +379,7 @@ ProcessTxnF initStorageSession(Session* s, const std::string& dirPfx, storage::P
 // support merging log session data where type structures are identical
 class SessionGroup {
 public:
-  virtual ~SessionGroup() { }
+  virtual ~SessionGroup() = default;
   virtual ProcessTxnF appendStorageSession(const std::string& dirPfx, hobbes::storage::PipeQOS qos, hobbes::storage::CommitMethod cm, const hobbes::storage::statements& stmts) = 0;
 };
 

@@ -17,8 +17,7 @@ void typeSeqForm(const ConstraintPtr& c, MonoTypes* mts) {
   mts->insert(mts->end(), args.begin(), args.end());
 }
 
-ConstraintSet::ConstraintSet() {
-}
+ConstraintSet::ConstraintSet() = default;
 
 MaybePathPoints focusOnFundep(const VarIDs& vs, const MonoTypes& mts) {
   // we have to fudge the input IDs with a +1 offset for constraint names

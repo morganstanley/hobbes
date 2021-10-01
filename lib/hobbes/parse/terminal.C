@@ -37,7 +37,7 @@ void symbol::show(std::ostream& out) const {
 }
 
 // eof
-endOfFile::endOfFile() { }
+endOfFile::endOfFile() = default;
 
 void endOfFile::show(std::ostream& out) const {
   out << "$";

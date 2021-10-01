@@ -250,8 +250,7 @@ public:
   using Var = typename VarM::Var;
   using K = decltype(VarM::key(*reinterpret_cast<Var *>(42)));
 
-  VarUniverse() {
-  }
+  VarUniverse() = default;
 
   void define(const Var& v) {
     auto k = VarM::key(v);

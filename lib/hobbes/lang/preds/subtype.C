@@ -16,8 +16,7 @@ bool dec(const ConstraintPtr& c, Subtype* st) {
 }
 
 // the subtype eliminator
-SubtypeUnqualifier::SubtypeUnqualifier() {
-}
+SubtypeUnqualifier::SubtypeUnqualifier() = default;
 
 std::string SubtypeUnqualifier::constraintName() {
   return "Subtype";

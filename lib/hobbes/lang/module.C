@@ -38,7 +38,7 @@ const std::vector<std::string>& Module::options() const {
 /* module defs */
 ModuleDef::ModuleDef(int cid, const LexicalAnnotation& la) : LexicallyAnnotated(la), cid(cid) { }
 int ModuleDef::case_id() const { return this->cid; }
-ModuleDef::~ModuleDef() { }
+ModuleDef::~ModuleDef() = default;
 
 // module imports
 MImport::MImport(const std::string& p, const std::string& n, const LexicalAnnotation& la) : Base(la), p(p), n(n) { }

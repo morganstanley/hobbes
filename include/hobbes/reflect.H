@@ -316,11 +316,11 @@ template <>
     static const size_t alignment = 1;
     static const size_t size      = 0;
 
-    tuple() { }
-    tuple(const tuple<>&) { }
-    ~tuple() { }
+    tuple() = default;
+    tuple(const tuple<>&) = default;
+    ~tuple() = default;
 
-    tuple<>& operator=(const tuple<>&) { return *this; }
+    tuple<>& operator=(const tuple<>&) = default;
   };
 
 template <typename ... Fields>
@@ -384,7 +384,7 @@ template <typename ... Ts>
 
 // the trivially true proposition -- ie: C's "void" with its one value constructible
 struct unit {
-  unit() { }
+  unit() = default;
   bool operator==(const unit&) const { return true; }
   bool operator< (const unit&) const { return false; }
 };
