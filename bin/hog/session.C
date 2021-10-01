@@ -434,7 +434,7 @@ public:
   }
 
   ProcessTxnF appendStorageSession(const std::string& dirPfx, hobbes::storage::PipeQOS qos, hobbes::storage::CommitMethod cm, const hobbes::storage::statements& stmts) override {
-    Session* s = new Session;
+    auto* s = new Session;
     return initStorageSession<AllocFreshFile>(s, dirPfx, qos, cm, stmts, this->sm);
   }
 private:

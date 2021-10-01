@@ -101,7 +101,7 @@ SCAST_CONVERT("double", double, ("char", char), ("byte", uint8_t), ("short", int
 template <typename T, size_t N>
   struct into<std::array<T, N>> {
     static typename convFn<std::array<T,N>>::type from(const ty::desc& t) {
-      const ty::FArr* pfa  = reinterpret_cast<const ty::FArr*>(t.get());
+      const auto* pfa  = reinterpret_cast<const ty::FArr*>(t.get());
 
       if (t->tid != PRIV_HPPF_TYCTOR_FIXEDARR) {
         throw std::runtime_error("Can't convert from " + ty::show(t) + " to " + hobbes::string::demangle<std::array<T,N>>());
@@ -217,7 +217,7 @@ template <typename ConvFns, size_t i, size_t n, typename ... Ts>
 template <typename T>
   struct into<T, typename tbool<T::is_hmeta_struct>::type> {
     static typename convFn<T>::type from(const ty::desc& t) {
-      const ty::Struct* pr = reinterpret_cast<const ty::Struct*>(t.get());
+      const auto* pr = reinterpret_cast<const ty::Struct*>(t.get());
 
       if (t->tid != PRIV_HPPF_TYCTOR_STRUCT) {
         throw std::runtime_error("Can't convert from " + ty::show(t) + " due to kind mismatch (not a struct)");
@@ -314,7 +314,7 @@ template <typename DstVariantT, typename VariantConvF, size_t i, size_t n, typen
 template <typename T>
   struct into<T, typename tbool<T::is_hmeta_variant>::type> {
     static typename convFn<T>::type from(const ty::desc& t) {
-      const ty::Variant* pv = reinterpret_cast<const ty::Variant*>(t.get());
+      const auto* pv = reinterpret_cast<const ty::Variant*>(t.get());
 
       if (t->tid != PRIV_HPPF_TYCTOR_VARIANT) {
         throw std::runtime_error("Can't convert from " + ty::show(t) + " due to kind mismatch (not a variant)");

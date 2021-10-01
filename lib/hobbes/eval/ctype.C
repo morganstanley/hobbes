@@ -118,7 +118,7 @@ public:
     const Record::Members& ams = v->alignedMembers();
 
     Types cms;
-    for (Record::Members::const_iterator m = ams.begin(); m != ams.end(); ++m) {
+    for (auto m = ams.begin(); m != ams.end(); ++m) {
       // some types go into records as pointers
       if (!isUnit(m->type)) {
         cms.push_back(switchOf(m->type, translateTypeF(is<Func>(m->type) || is<Array>(m->type))));
@@ -173,7 +173,7 @@ llvm::Type* toLLVM(const MonoTypePtr& ty, bool asArg) {
 
 Types toLLVM(const MonoTypes& tys, bool asArg) {
   Types r;
-  for (MonoTypes::const_iterator ty = tys.begin(); ty != tys.end(); ++ty) {
+  for (auto ty = tys.begin(); ty != tys.end(); ++ty) {
     if (!asArg || !isUnit(*ty)) {
       r.push_back(toLLVM(*ty, asArg));
     }

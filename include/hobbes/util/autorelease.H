@@ -40,7 +40,7 @@ template <typename T>
 
     static void reset() {
       Vals& vs = vals();
-      for (typename Vals::iterator i = vs.begin(); i != vs.end(); ++i) {
+      for (auto i = vs.begin(); i != vs.end(); ++i) {
         delete *i;
       }
       vs.clear();

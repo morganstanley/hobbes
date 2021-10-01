@@ -186,7 +186,7 @@ PatternRows normPatternRules(PatternRows rs, const LexicalAnnotation& la) {
 
 Expr* compileNestedLetMatch(const LetBindings& bs, const ExprPtr& e, const LexicalAnnotation& la) {
   ExprPtr r = e;
-  for (LetBindings::const_reverse_iterator b = bs.rbegin(); b != bs.rend(); ++b) {
+  for (auto b = bs.rbegin(); b != bs.rend(); ++b) {
     r = compileMatch(yyParseCC, list(b->second), list(PatternRow(list(b->first), r)), la);
   }
   return r->clone();

@@ -136,8 +136,8 @@ void showShellHelp(const CmdDescs& cds) {
             << std::endl;
 
   double hw  = static_cast<double>(llen - header.size()) / 2.0;
-  size_t lhw = static_cast<size_t>(floor(hw));
-  size_t rhw = static_cast<size_t>(ceil(hw));
+  auto lhw = static_cast<size_t>(floor(hw));
+  auto rhw = static_cast<size_t>(ceil(hw));
 
   std::cout << "| "
               << std::string(lhw, ' ')
@@ -430,7 +430,7 @@ unsigned int digitLen(unsigned int x) {
 template <typename C>
   unsigned int sumSize(const C& cs) {
     unsigned int s = 0;
-    for (typename C::const_iterator c = cs.begin(); c != cs.end(); ++c) {
+    for (auto c = cs.begin(); c != cs.end(); ++c) {
       s += c->size();
     }
     return s;

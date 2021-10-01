@@ -322,7 +322,7 @@ inline int mqconnect(const std::string& fileName) {
   addr.sun_family = AF_UNIX;
   snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", fileName.c_str());
  
-  sockaddr* saddr = reinterpret_cast<sockaddr*>(&addr);
+  auto* saddr = reinterpret_cast<sockaddr*>(&addr);
   size_t    len   = sizeof(addr);
   if (connect(r, saddr, len) == -1) {
     std::string emsg = "Unable to connect socket: " + std::string(strerror(errno));
@@ -339,7 +339,7 @@ inline int mqconnect(const std::string& fileName) {
     throw std::runtime_error(emsg);
   }
 
-  uint32_t version = HSTORE_VERSION;
+  auto version = HSTORE_VERSION;
   mqwrite(r, reinterpret_cast<const uint8_t*>(&version), sizeof(version));
   return r;
 }
@@ -560,8 +560,8 @@ public:
   
     // our meta-data section comes first up to the first page boundary
     // then our data section comes next
-    size_t metaLen = align<size_t>(sizeof(ShQueueHeader) + meta.size(),  pagesz);
-    size_t dataLen = align<size_t>(sizeof(ShQueueData)   + qvalsz*count, pagesz);
+    auto metaLen = align<size_t>(sizeof(ShQueueHeader) + meta.size(),  pagesz);
+    auto dataLen = align<size_t>(sizeof(ShQueueData)   + qvalsz*count, pagesz);
     size_t memLen  = metaLen + dataLen;
   
     // allocate this much data
@@ -569,13 +569,13 @@ public:
       throw std::runtime_error("Failed to truncate shared memory for '" + shmname + "': " + strerror(errno));
     }
   
-    uint8_t* mem = reinterpret_cast<uint8_t*>(mmap(0, memLen, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_POPULATE, shfd, 0));
+    auto* mem = reinterpret_cast<uint8_t*>(mmap(0, memLen, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_POPULATE, shfd, 0));
     if (mem == MAP_FAILED) {
       throw std::runtime_error("Failed to map bytes out of shared memory for '" + shmname + "': " + strerror(errno));
     }
   
     // write meta data
-    ShQueueHeader* hdr = reinterpret_cast<ShQueueHeader*>(mem);
+    auto* hdr = reinterpret_cast<ShQueueHeader*>(mem);
     hdr->valsz  = qvalsz;
     hdr->count  = count;
     hdr->metasz = meta.size();
@@ -585,7 +585,7 @@ public:
     uxchg(&hdr->ready, 1);
   
     // now make this pqueue config
-    ShQueueData* sqd = reinterpret_cast<ShQueueData*>(mem + metaLen);
+    auto* sqd = reinterpret_cast<ShQueueData*>(mem + metaLen);
   
     this->shmname = shmname;
     this->shmfd   = shfd;
@@ -828,7 +828,7 @@ inline QueueConnection consumeQueue(const std::string& shmname) {
   }
 
   // map memory for this data, ensure it is in a good state
-  uint8_t* mem = reinterpret_cast<uint8_t*>(mmap(0, msb.st_size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_POPULATE, shfd, 0));
+  auto* mem = reinterpret_cast<uint8_t*>(mmap(0, msb.st_size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_POPULATE, shfd, 0));
   if (mem == MAP_FAILED) {
     close(shfd);
     throw std::runtime_error("Failed to map bytes out of shared memory for '" + shmname + "': " + strerror(errno));
@@ -871,9 +871,9 @@ private:
 public:
   reader(const QueueConnection& qc, const WaitPolicy wp) : shfd(qc.shfd), waitFn(hobbes::storage::waitFn(wp)), wakeFn(hobbes::storage::wakeFn(wp)) {
     // prepare to read the queue description
-    ShQueueHeader* hdr     = reinterpret_cast<ShQueueHeader*>(qc.data);
-    size_t         metaLen = align<size_t>(sizeof(ShQueueHeader) + hdr->metasz, qc.pagesz);
-    ShQueueData*   sqd     = reinterpret_cast<ShQueueData*>(qc.data + metaLen);
+    auto* hdr     = reinterpret_cast<ShQueueHeader*>(qc.data);
+    auto         metaLen = align<size_t>(sizeof(ShQueueHeader) + hdr->metasz, qc.pagesz);
+    auto*   sqd     = reinterpret_cast<ShQueueData*>(qc.data + metaLen);
 
     // now we should have enough to read out of this queue
     this->metad           = qc.data + sizeof(ShQueueHeader);

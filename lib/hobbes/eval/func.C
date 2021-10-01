@@ -297,7 +297,7 @@ public:
 class aconcatexp : public op {
 public:
   llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) override {
-    Array* aty = is<Array>(tys[0]);
+    auto* aty = is<Array>(tys[0]);
     if (aty == nullptr) {
       throw annotated_error(*es[0], "Internal compiler error -- can't make array out of non-array type: " + show(tys[0]));
     }
@@ -340,7 +340,7 @@ public:
 // unsafe set array length
 class asetlen : public op {
   llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) override {
-    Array* aty = is<Array>(tys[0]);
+    auto* aty = is<Array>(tys[0]);
     if (aty == 0) {
       throw annotated_error(*es[0], "Internal compiler error -- can't make array out of non-array type: " + show(tys[0]));
     }
@@ -457,7 +457,7 @@ public:
       tupv->type(es[1]->type());
 
       Exprs argv;
-      for (Record::Members::const_iterator m = cfty->members().begin(); m != cfty->members().end(); ++m) {
+      for (auto m = cfty->members().begin(); m != cfty->members().end(); ++m) {
         ExprPtr aprj(new Proj(tupv, m->field, tupv->la()));
         aprj->type(qualtype(m->type));
         argv.push_back(aprj);
@@ -649,7 +649,7 @@ public:
     if (tys.size() != 1) {
       throw std::runtime_error("Internal error, recordHeadValue applied incorrectly");
     }
-    Record* rty = is<Record>(tys[0]);
+    auto* rty = is<Record>(tys[0]);
     if (!rty || rty->members().size() == 0) {
       throw std::runtime_error("Internal error, recordHeadValue applied to non-record type");
     }
@@ -671,7 +671,7 @@ public:
     if (tys.size() != 1) {
       throw std::runtime_error("Internal error, recordTail applied incorrectly");
     }
-    Record* rty = is<Record>(tys[0]);
+    auto* rty = is<Record>(tys[0]);
     if (!rty || rty->members().size() == 0) {
       throw std::runtime_error("Internal error, recordTail applied to non-record type");
     }
@@ -793,7 +793,7 @@ public:
     MonoTypePtr vtyv   = tys[0];
     MonoTypePtr tfntyv = tys[2];
 
-    Variant* vty = is<Variant>(vtyv);
+    auto* vty = is<Variant>(vtyv);
     if (!vty) {
       throw annotated_error(*es[0], "Internal error (received non-variant type in varSplit).");
     }

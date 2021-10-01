@@ -37,7 +37,7 @@ void* region::malloc(size_t sz, size_t asz) {
   } else {
     allocpage(sz + asz);
 
-    uint8_t* uresult = reinterpret_cast<uint8_t*>(this->usedp->base);
+    auto* uresult = reinterpret_cast<uint8_t*>(this->usedp->base);
     size_t   afixup  = align(reinterpret_cast<size_t>(uresult), asz) - reinterpret_cast<size_t>(uresult);
     uint8_t* result  = uresult + afixup;
 
@@ -165,7 +165,7 @@ mempage* region::newpage(mempage* succ, size_t sz) {
     abort();
   }
 
-  mempage* p = new mempage;
+  auto* p = new mempage;
   p->size = psz;
   p->base = ::malloc(p->size);
   p->read = 0;

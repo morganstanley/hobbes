@@ -119,14 +119,14 @@ void TEnv::bind(const std::string& vname, const MonoTypePtr& t) {
 }
 
 void TEnv::unbind(const std::string& vname) {
-  PolyTypeEnv::iterator b = this->ptenv.find(vname);
+  auto b = this->ptenv.find(vname);
   if (b != this->ptenv.end()) {
     this->ptenv.erase(b);
   }
 }
 
 PolyTypePtr TEnv::lookup(const std::string& vname) const {
-  PolyTypeEnv::const_iterator t = this->ptenv.find(vname);
+  auto t = this->ptenv.find(vname);
   if (t != this->ptenv.end()) {
     return t->second;
   } else if (this->parent) {
@@ -203,7 +203,7 @@ TEnv::PolyTypeEnv TEnv::typeEnvTable(std::function<std::string const&(std::strin
   } else {
     PolyTypeEnv pte       = this->ptenv;
     SymSet      overloads = this->unquals->bindings();
-    for (SymSet::const_iterator s = overloads.begin(); s != overloads.end(); ++s) {
+    for (auto s = overloads.begin(); s != overloads.end(); ++s) {
       pte[*s] = this->unquals->lookup(reWriteFn(*s));
     }
     return pte;
@@ -306,7 +306,7 @@ bool satisfied(const TEnvPtr& tenv, const ConstraintPtr& c, Definitions* ds) {
 }
 
 bool satisfied(const TEnvPtr& tenv, const Constraints& cs, Definitions* ds) {
-  for (Constraints::const_iterator c = cs.begin(); c != cs.end(); ++c) {
+  for (auto c = cs.begin(); c != cs.end(); ++c) {
     if (!satisfied(tenv, *c, ds)) {
       return false;
     }
@@ -335,7 +335,7 @@ bool satisfiable(const TEnvPtr& tenv, const ConstraintPtr& c, Definitions* ds) {
 }
 
 bool satisfiable(const TEnvPtr& tenv, const Constraints& cs, Definitions* ds) {
-  for (Constraints::const_iterator c = cs.begin(); c != cs.end(); ++c) {
+  for (auto c = cs.begin(); c != cs.end(); ++c) {
     if (!satisfiable(tenv, *c, ds)) {
       return false;
     }
@@ -763,7 +763,7 @@ MonoTypePtr Variant::make(const Members& ms) {
 
 static void resetCtorIDs(Variant::Members* ms) {
   size_t id = 0;
-  for (Variant::Members::iterator m = ms->begin(); m != ms->end(); ++m) {
+  for (auto m = ms->begin(); m != ms->end(); ++m) {
     m->id = id++;
   }
 }
@@ -946,7 +946,7 @@ const MonoTypePtr& Variant::payload(const std::string& selector) const {
 
 unsigned int Variant::index(const std::string& selector) const {
   int i = 0;
-  for (Members::const_iterator m = this->ms.begin(); m != this->ms.end(); ++m, ++i) {
+  for (auto m = this->ms.begin(); m != this->ms.end(); ++m, ++i) {
     if (m->selector == selector) {
       return i;
     }
@@ -954,7 +954,7 @@ unsigned int Variant::index(const std::string& selector) const {
   throw std::runtime_error("No selector named '" + selector + "' in the variant '" + hobbes::show(this) + "'.");
 }
 unsigned int Variant::id(const std::string& selector) const {
-  for (Members::const_iterator m = this->ms.begin(); m != this->ms.end(); ++m) {
+  for (auto m = this->ms.begin(); m != this->ms.end(); ++m) {
     if (m->selector == selector) {
       return m->id;
     }
@@ -963,7 +963,7 @@ unsigned int Variant::id(const std::string& selector) const {
 }
 
 const Variant::Member* Variant::mmember(const std::string& selector) const {
-  for (Members::const_iterator m = this->ms.begin(); m != this->ms.end(); ++m) {
+  for (auto m = this->ms.begin(); m != this->ms.end(); ++m) {
     if (m->selector == selector) {
       return &(*(m));
     }
@@ -1097,7 +1097,7 @@ int findHiddenMember(const std::string& lbl, const Record::Members& ms) {
 }
 
 static void resetFieldOffsets(Record::Members* ms) {
-  for (Record::Members::iterator m = ms->begin(); m != ms->end(); ++m) {
+  for (auto m = ms->begin(); m != ms->end(); ++m) {
     m->offset = -1;
   }
 }
@@ -1121,7 +1121,7 @@ Record::Members consMember(const std::string& lbl, const MonoTypePtr& hty, const
 
 static void normalizeTupleFields(Record::Members* ms) {
   size_t i = 0;
-  for (Record::Members::iterator m = ms->begin(); m != ms->end(); ++m) {
+  for (auto m = ms->begin(); m != ms->end(); ++m) {
     if (m->field.substr(0, 2) != ".p") {
       m->field = ".f" + str::from(i++);
     }
@@ -1183,7 +1183,7 @@ Record::Members Record::withResolvedMemoryLayout(const Members& ms) {
 
   // infer offsets and/or insert padding as necessary
   int o = 0;
-  for (Record::Members::const_iterator m = ms.begin(); m != ms.end(); ++m) {
+  for (auto m = ms.begin(); m != ms.end(); ++m) {
     if (!isMonoSingular(m->type)) {
       return ms;
     }
@@ -1261,7 +1261,7 @@ Record::Members Record::withExplicitPadding(const Members& ms, const std::string
   int     o = 0; // the active determined offset in memory
   int     p = 0; // unique names for pad fields
 
-  for (Record::Members::const_iterator m = ms.begin(); m != ms.end(); ++m) {
+  for (auto m = ms.begin(); m != ms.end(); ++m) {
     if (m->offset > o) {
       r.push_back(Member(pfx + str::from(p++), arrayty(prim<char>(), m->offset - o)));
     }
@@ -1277,7 +1277,7 @@ Record::Members Record::withExplicitPadding(const Members& ms, const std::string
   unsigned int talign = maxFieldAlignmentF(ms);
 
   if (talign > 0) {
-    unsigned int asz = align<unsigned int>(o, talign);
+    auto asz = align<unsigned int>(o, talign);
     if (int(asz) > o) {
       r.push_back(Member(pfx + str::from(p++), arrayty(prim<char>(), asz - o)));
     }
@@ -1379,7 +1379,7 @@ unsigned int Record::index(const std::string& mn) const {
 }
 
 const Record::Member* Record::mmember(const std::string& mn) const {
-  for (Members::const_iterator m = this->ms.begin(); m != this->ms.end(); ++m) {
+  for (auto m = this->ms.begin(); m != this->ms.end(); ++m) {
     if (m->field == mn) {
       return &(*m);
     }
@@ -1401,7 +1401,7 @@ unsigned int Record::alignedIndex(const std::string& mn) const {
 
 unsigned int Record::index(const Members& ms, const std::string& mn) const {
   unsigned int k = 0;
-  for (Members::const_iterator m = ms.begin(); m != ms.end(); ++m) {
+  for (auto m = ms.begin(); m != ms.end(); ++m) {
     // pretend that we don't see fields with unit type
     //   (they don't make it into the final compiled record anyway)
     if (m->field == mn) {
@@ -1601,7 +1601,7 @@ QualTypePtr lookupFieldType(const QualTypePtr& qt, const std::string& fieldName)
 }
 
 MonoTypePtr lookupFieldType(const MonoTypePtr& mt, const std::string& fieldName) {
-  if (Record* rt = is<Record>(mt)) {
+  if (auto* rt = is<Record>(mt)) {
     return rt->member(fieldName);
   } else {
     throw std::runtime_error("Cannot index field '" + fieldName + "' in non-record type: " + show(mt));
@@ -1619,7 +1619,7 @@ Constraints mergeConstraints(const Constraints& lhs, const Constraints& rhs) {
 }
 
 void mergeConstraints(const Constraints& fcs, Constraints* tcs) {
-  for (Constraints::const_iterator c = fcs.begin(); c != fcs.end(); ++c) {
+  for (auto c = fcs.begin(); c != fcs.end(); ++c) {
     tcs->push_back(*c);
   }
 }
@@ -1658,7 +1658,7 @@ MonoTypes freshen(const MonoTypes& ts) {
   MonoTypeSubst s;
 
   NameSet tvns = tvarNames(ts);
-  for (NameSet::const_iterator n = tvns.begin(); n != tvns.end(); ++n) {
+  for (auto n = tvns.begin(); n != tvns.end(); ++n) {
     s[*n] = freshTypeVar();
   }
 
@@ -1668,7 +1668,7 @@ MonoTypes freshen(const MonoTypes& ts) {
 ConstraintPtr freshen(const ConstraintPtr& cst) {
   NameSet cvns = tvarNames(cst);
   MonoTypeSubst s;
-  for (NameSet::const_iterator cvn = cvns.begin(); cvn != cvns.end(); ++cvn) {
+  for (auto cvn = cvns.begin(); cvn != cvns.end(); ++cvn) {
     s[*cvn] = freshTypeVar();
   }
   return substitute(s, cst);
@@ -1677,7 +1677,7 @@ ConstraintPtr freshen(const ConstraintPtr& cst) {
 Constraints freshen(const Constraints& cs) {
   NameSet cvns = tvarNames(cs);
   MonoTypeSubst s;
-  for (NameSet::const_iterator cvn = cvns.begin(); cvn != cvns.end(); ++cvn) {
+  for (auto cvn = cvns.begin(); cvn != cvns.end(); ++cvn) {
     s[*cvn] = freshTypeVar();
   }
   return substitute(s, cs);
@@ -1685,7 +1685,7 @@ Constraints freshen(const Constraints& cs) {
 
 MonoTypes typeVars(const Names& ns) {
   MonoTypes r;
-  for (Names::const_iterator n = ns.begin(); n != ns.end(); ++n) {
+  for (auto n = ns.begin(); n != ns.end(); ++n) {
     r.push_back(TVar::make(*n));
   }
   return r;
@@ -1715,7 +1715,7 @@ int tgenSize(const MonoTypePtr& mt) {
 
 int tgenSize(const MonoTypes& mts) {
   int x = 0;
-  for (MonoTypes::const_iterator mt = mts.begin(); mt != mts.end(); ++mt) {
+  for (auto mt = mts.begin(); mt != mts.end(); ++mt) {
     x = std::max<int>(x, tgenSize(*mt));
   }
   return x;
@@ -1764,7 +1764,7 @@ QualTypePtr instantiate(const MonoTypes& ts, const QualTypePtr& scheme) {
 
 Constraints instantiate(const MonoTypes& ts, const Constraints& cs) {
   Constraints r;
-  for (Constraints::const_iterator c = cs.begin(); c != cs.end(); ++c) {
+  for (auto c = cs.begin(); c != cs.end(); ++c) {
     r.push_back(instantiate(ts, *c));
   }
   return r;
@@ -1850,7 +1850,7 @@ void tvarNames(const QualTypePtr& qt, NameSet* out) {
 }
 
 void tvarNames(const Constraints& cs, NameSet* out) {
-  for (Constraints::const_iterator c = cs.begin(); c != cs.end(); ++c) {
+  for (auto c = cs.begin(); c != cs.end(); ++c) {
     tvarNames(*c, out);
   }
 }
@@ -1893,7 +1893,7 @@ bool hasFreeVariables(const QualTypePtr& qt) {
 }
 
 bool hasFreeVariables(const Constraints& cs) {
-  for (Constraints::const_iterator c = cs.begin(); c != cs.end(); ++c) {
+  for (auto c = cs.begin(); c != cs.end(); ++c) {
     if (hasFreeVariables(*c)) {
       return true;
     }
@@ -1910,7 +1910,7 @@ bool hasFreeVariables(const MonoTypePtr& mt) {
 }
 
 bool hasFreeVariables(const MonoTypes& mts) {
-  for (MonoTypes::const_iterator mt = mts.begin(); mt != mts.end(); ++mt) {
+  for (auto mt = mts.begin(); mt != mts.end(); ++mt) {
     if (hasFreeVariables(*mt)) {
       return true;
     }
@@ -1926,7 +1926,7 @@ std::string show(const MonoTypeSubst& s) {
   stbl[1].push_back("");
   stbl[2].push_back("Type");
 
-  for (MonoTypeSubst::const_iterator si = s.begin(); si != s.end(); ++si) {
+  for (auto si = s.begin(); si != s.end(); ++si) {
     stbl[0].push_back(si->first);
     stbl[1].push_back(" = ");
     stbl[2].push_back(show(si->second));
@@ -1936,7 +1936,7 @@ std::string show(const MonoTypeSubst& s) {
 }
 
 void show(const MonoTypeSubst& s, std::ostream& out) {
-  for (MonoTypeSubst::const_iterator si = s.begin(); si != s.end(); ++si) {
+  for (auto si = s.begin(); si != s.end(); ++si) {
     out << si->first << " = " << std::flush;
     si->second->show(out);
     out << std::endl;
@@ -1949,7 +1949,7 @@ QualTypePtr substitute(const MonoTypeSubst& s, const QualTypePtr& qt) {
 }
 
 inline bool in(const ConstraintPtr& c, const Constraints& cs) {
-  for (Constraints::const_iterator ci = cs.begin(); ci != cs.end(); ++ci) {
+  for (auto ci = cs.begin(); ci != cs.end(); ++ci) {
     if (*c == **ci) {
       return true;
     }
@@ -1959,7 +1959,7 @@ inline bool in(const ConstraintPtr& c, const Constraints& cs) {
 
 Constraints substitute(const MonoTypeSubst& s, const Constraints& cs) {
   Constraints r;
-  for (Constraints::const_iterator c = cs.begin(); c != cs.end(); ++c) {
+  for (auto c = cs.begin(); c != cs.end(); ++c) {
     ConstraintPtr sc = substitute(s, *c);
     if (!in(sc, r)) {
       r.push_back(substitute(s, *c));
@@ -1977,7 +1977,7 @@ public:
   substituteF(bool transitive, const MonoTypeSubst& s) : transitive(transitive), s(s) { }
 
   MonoTypePtr with(const TVar* v) const override {
-    MonoTypeSubst::const_iterator si = this->s.find(v->name());
+    auto si = this->s.find(v->name());
     if (si != this->s.end()) {
       if (this->transitive) {
         return switchOf(si->second, *this);
@@ -2039,7 +2039,7 @@ MonoTypePtr substitute(const MonoTypeSubst& s, const MonoType& mt) {
 
 MonoTypes substitute(const MonoTypeSubst& s, const MonoTypes& ts) {
   MonoTypes r;
-  for (MonoTypes::const_iterator t = ts.begin(); t != ts.end(); ++t) {
+  for (auto t = ts.begin(); t != ts.end(); ++t) {
     r.push_back(substitute(s, *t));
   }
   return r;
@@ -2053,7 +2053,7 @@ PolyTypePtr generalize(const QualTypePtr& qt) {
   // [(v, TGen i) | (v, i) <- zip vnames [0..]]
   MonoTypeSubst s;
   int i = 0;
-  for (NameSet::const_iterator n = fnames.begin(); n != fnames.end(); ++n) {
+  for (auto n = fnames.begin(); n != fnames.end(); ++n) {
     s[*n] = TGen::make(i);
     ++i;
   }
@@ -2074,7 +2074,7 @@ TVName canonicalName(int v) {
 MonoTypeSubst canonicalNameSubst(const NameSet& ns) {
   MonoTypeSubst r;
   int v = 0;
-  for (NameSet::const_iterator n = ns.begin(); n != ns.end(); ++n) {
+  for (auto n = ns.begin(); n != ns.end(); ++n) {
     TVName cn = canonicalName(v);
     // avoid making substitution cycles
     if (*n != cn) {
@@ -2325,7 +2325,7 @@ MonoTypePtr requireMonotype(const PolyTypePtr& pt) {
 
 MonoTypes requireMonotype(const PolyTypes& pts) {
   MonoTypes r;
-  for (PolyTypes::const_iterator pt = pts.begin(); pt != pts.end(); ++pt) {
+  for (auto pt = pts.begin(); pt != pts.end(); ++pt) {
     r.push_back(requireMonotype(*pt));
   }
   return r;
@@ -2506,7 +2506,7 @@ public:
     const Variant::Members& ms = v->members();
     write(ms.size(), this->out);
 
-    for (Variant::Members::const_iterator m = ms.begin(); m != ms.end(); ++m) {
+    for (auto m = ms.begin(); m != ms.end(); ++m) {
       write(m->selector, this->out);
       write(m->id,       this->out);
 
@@ -2522,7 +2522,7 @@ public:
     const Record::Members& ms = v->members();
     write(ms.size(), this->out);
 
-    for (Record::Members::const_iterator m = ms.begin(); m != ms.end(); ++m) {
+    for (auto m = ms.begin(); m != ms.end(); ++m) {
       write(m->field,  this->out);
       write(m->offset, this->out);
 
@@ -2608,7 +2608,7 @@ MonoTypePtr decodePrim(const bytes& in, unsigned int* n) {
 
 MonoTypePtr decodeOpaquePtr(const bytes& in, unsigned int* n) {
   std::string  s  = read<std::string>(in, n);
-  unsigned int sz = read<unsigned int>(in, n);
+  auto sz = read<unsigned int>(in, n);
   bool         sc = read<bool>(in, n);
 
   return OpaquePtr::make(s, sz, sc);
@@ -2631,7 +2631,7 @@ MonoTypePtr decodeTApp(const bytes& in, unsigned int* n) {
   MonoTypePtr f = decodeFrom(in, n);
 
   MonoTypes args;
-  size_t sz = read<size_t>(in, n);
+  auto sz = read<size_t>(in, n);
   for (size_t i = 0; i < sz; ++i) {
     args.push_back(decodeFrom(in, n));
   }
@@ -2661,10 +2661,10 @@ MonoTypePtr decodeArr(const bytes& in, unsigned int* n) {
 MonoTypePtr decodeVariant(const bytes& in, unsigned int* n) {
   Variant::Members ms;
 
-  size_t c = read<size_t>(in, n);
+  auto c = read<size_t>(in, n);
   for (size_t i = 0; i < c; ++i) {
     std::string  ctor = read<std::string>(in, n);
-    unsigned int id   = read<unsigned int>(in, n);
+    auto id   = read<unsigned int>(in, n);
     MonoTypePtr  ty   = decodeFrom(in, n);
 
     ms.push_back(Variant::Member(ctor, ty, id));
@@ -2676,10 +2676,10 @@ MonoTypePtr decodeVariant(const bytes& in, unsigned int* n) {
 MonoTypePtr decodeRecord(const bytes& in, unsigned int* n) {
   Record::Members ms;
 
-  size_t c = read<size_t>(in, n);
+  auto c = read<size_t>(in, n);
   for (size_t i = 0; i < c; ++i) {
     std::string  field  = read<std::string>(in, n);
-    unsigned int offset = read<unsigned int>(in, n);
+    auto offset = read<unsigned int>(in, n);
     MonoTypePtr  ty     = decodeFrom(in, n);
 
     ms.push_back(Record::Member(field, ty, offset));

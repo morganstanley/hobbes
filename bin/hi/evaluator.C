@@ -22,7 +22,7 @@ namespace hi {
 
 // allocate a string in global memory
 hobbes::array<char>* allocGlobalStr(const char* x, size_t len) {
-  hobbes::array<char>* r = reinterpret_cast<hobbes::array<char>*>(malloc(sizeof(long) + len * sizeof(char)));
+  auto* r = reinterpret_cast<hobbes::array<char>*>(malloc(sizeof(long) + len * sizeof(char)));
   memcpy(r->data, x, len * sizeof(char));
   r->size = len;
   return r;
@@ -36,7 +36,7 @@ void bindArguments(hobbes::cc& ctx, const Args::NameVals& args) {
   // type-level binding, for [("foo", "bar"), ...]:
   //   class Argument a b | a -> b
   //   instance Argument "foo" "bar"
-  TClass* tc = new TClass("Argument", 2, TClass::Members(), list(FunDep(list(0), 1)), LexicalAnnotation::null());
+  auto* tc = new TClass("Argument", 2, TClass::Members(), list(FunDep(list(0), 1)), LexicalAnnotation::null());
   Definitions drainDefs;
   for (const auto& arg : args) {
     tc->insert(
@@ -54,7 +54,7 @@ void bindArguments(hobbes::cc& ctx, const Args::NameVals& args) {
   typedef std::pair<array<char>*, array<char>*> StrPair;
   typedef array<StrPair> StrPairs;
 
-  StrPairs* arguments = reinterpret_cast<StrPairs*>(malloc(sizeof(long) + args.size() * sizeof(StrPair)));
+  auto* arguments = reinterpret_cast<StrPairs*>(malloc(sizeof(long) + args.size() * sizeof(StrPair)));
   arguments->size = 0;
   for (auto arg : args) {
     arguments->data[arguments->size].first  = allocGlobalStr(arg.first);
@@ -106,7 +106,7 @@ void evaluator::runMachineREPL() {
 
 void evaluator::showClass(const std::string& cname) {
   hobbes::UnqualifierPtr uq = this->ctx.typeEnv()->lookupUnqualifier(cname);
-  if (const hobbes::TClass* c = dynamic_cast<const hobbes::TClass*>(uq.get())) {
+  if (const auto* c = dynamic_cast<const hobbes::TClass*>(uq.get())) {
     c->show(std::cout);
   } else {
     throw std::runtime_error("Undefined type class: " + cname);
@@ -115,7 +115,7 @@ void evaluator::showClass(const std::string& cname) {
 
 void evaluator::showInstances(const std::string& cname) {
   hobbes::UnqualifierPtr uq = this->ctx.typeEnv()->lookupUnqualifier(cname);
-  if (const hobbes::TClass* c = dynamic_cast<const hobbes::TClass*>(uq.get())) {
+  if (const auto* c = dynamic_cast<const hobbes::TClass*>(uq.get())) {
     for (auto i : c->instances()) {
       i->show(std::cout);
     }
@@ -238,7 +238,7 @@ void evaluator::perfTestExpr(const std::string& expr) {
 
   const size_t numRuns = 1000;
   unsigned long nsCSum = 0;
-  unsigned long nsCMin = static_cast<unsigned long>(-1);
+  auto nsCMin = static_cast<unsigned long>(-1);
   unsigned long nsCMax = 0;
 
   for (size_t i = 0; i < numRuns; ++i) {

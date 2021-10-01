@@ -210,7 +210,7 @@ RegexPtr unescapePatChar(rchar_t x) {
 typedef std::pair<size_t, std::set<rchar_t>> DCharset;
 
 void charRange(rchar_t i, rchar_t e, std::set<rchar_t>* out) {
-  for (size_t x = static_cast<size_t>(i); x <= static_cast<size_t>(e); ++x) {
+  for (auto x = static_cast<size_t>(i); x <= static_cast<size_t>(e); ++x) {
     out->insert(static_cast<rchar_t>(x));
   }
 }

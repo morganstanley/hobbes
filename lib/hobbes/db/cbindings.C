@@ -222,7 +222,7 @@ public:
 
     if (s == dm->esc()) {
       auto escRange = dm->symbolCount();
-      symbol nc = static_cast<symbol>(this->readState.svalue(escRange));
+      auto nc = static_cast<symbol>(this->readState.svalue(escRange));
       this->readState.shift(nc, nc+1, escRange);
       dm->add(nc);
       return static_cast<uint8_t>(nc);
@@ -272,7 +272,7 @@ private:
 
   void loadReadState(uint64_t root) {
     while (root != 0) {
-      uint64_t* d = reinterpret_cast<uint64_t*>(mapFileData(this->readState.file, root, 3*sizeof(uint64_t)));
+      auto* d = reinterpret_cast<uint64_t*>(mapFileData(this->readState.file, root, 3*sizeof(uint64_t)));
       if (d[0] == 0) {
         root = 0;
       } else {
@@ -340,7 +340,7 @@ bool UCWriter::step() {
 
     // allocate/initialize the model for this bitstream segment (from the terminal state of the scratch model for the previous segment)
     uint64_t newScratchModelRef = findSpace(this->out.file, pagetype::data, this->modelSize, sizeof(size_t));
-    uint8_t* newScratchModel    = reinterpret_cast<uint8_t*>(mapFileData(this->out.file, newScratchModelRef, this->modelSize));
+    auto* newScratchModel    = reinterpret_cast<uint8_t*>(mapFileData(this->out.file, newScratchModelRef, this->modelSize));
     memcpy(newScratchModel, this->scratchModel, this->modelSize);
     unmapFileData(this->out.file, this->scratchModel, this->modelSize);
 

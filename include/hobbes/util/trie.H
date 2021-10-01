@@ -29,7 +29,7 @@ template <typename K, typename V, typename KMap>
         vs->push_back(*v);
       }
 
-      for (typename SubkeyMap::const_iterator c = this->children.begin(); c != this->children.end(); ++c) {
+      for (auto c = this->children.begin(); c != this->children.end(); ++c) {
         c->second->values(vs);
       }
     }
@@ -58,7 +58,7 @@ template <typename K, typename V, typename KMap>
       const node_t* findNode(KIter begin, KIter end) const {
         const node_t* r = this->root;
         for (KIter i = begin; i != end; ++i) {
-          typename node_t::SubkeyMap::const_iterator c = r->children.find(*i);
+          auto c = r->children.find(*i);
           if (c == r->children.end()) {
             return 0;
           } else {
@@ -111,7 +111,7 @@ template <typename K, typename V, typename KMap>
 
     point_t moveTo(const K& k, point_t base) const {
       const node_t* n = reinterpret_cast<node_t*>(base);
-      typename node_t::SubkeyMap::const_iterator c = n->children.find(k);
+      auto c = n->children.find(k);
       return (c == n->children.end()) ? 0 : c->second;
     }
 
@@ -135,7 +135,7 @@ template <typename K, typename V, typename KMap>
     void keyPointsAt(KeyPointSeq* kps, point_t base) const {
       const node_t* n = reinterpret_cast<node_t*>(base);
 
-      for (typename node_t::SubkeyMap::const_iterator c = n->children.begin(); c != n->children.end(); ++c) {
+      for (auto c = n->children.begin(); c != n->children.end(); ++c) {
         kps->push_back(KeyPoint(c->first, c->second));
       }
     }

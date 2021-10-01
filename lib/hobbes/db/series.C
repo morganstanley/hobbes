@@ -425,7 +425,7 @@ typedef dbseq<PBatchRef>     PBatchList;
 typedef fileref<PBatchList*> PBatchListRef;
 
 void RawStoredSeries::restartFromBatchNode() {
-  PBatchList* n = reinterpret_cast<PBatchList*>(this->outputFile->unsafeLoad(*this->headNodeRef, sizeof(PBatchList)));
+  auto* n = reinterpret_cast<PBatchList*>(this->outputFile->unsafeLoad(*this->headNodeRef, sizeof(PBatchList)));
   
   // if we somehow get a root node representing the empty list, we're free to start a fresh list
   const PBatchList::cons_t* p = n->head();
@@ -441,14 +441,14 @@ void RawStoredSeries::restartFromBatchNode() {
 }
 
 uint64_t RawStoredSeries::allocBatchNode(writer* file) {
-  PBatchList* b = new (file->store<PBatchList*>()) PBatchList();
+  auto* b = new (file->store<PBatchList*>()) PBatchList();
   uint64_t    r = file->offsetOf(b).index;
   file->unmap(b);
   return r;
 }
 
 uint64_t RawStoredSeries::allocBatchNode(writer* file, uint64_t batchOffset, uint64_t nextNodeOffset) {
-  PBatchList* b = new (file->store<PBatchList*>()) PBatchList(PBatchRef(batchOffset), PBatchListRef(nextNodeOffset));
+  auto* b = new (file->store<PBatchList*>()) PBatchList(PBatchRef(batchOffset), PBatchListRef(nextNodeOffset));
   uint64_t    r = file->offsetOf(b).index;
 
   file->unmap(b);
@@ -525,7 +525,7 @@ size_t makeCRootRef(writer* file, const std::string& fn, const MonoTypePtr& cseq
     encode(cseqType, &cseqTypeEnc);
 
     size_t  headNodeRef = findSpace(fd, pagetype::data, sizeof(size_t), sizeof(size_t));
-    size_t* headNode    = reinterpret_cast<size_t*>(mapFileData(fd, headNodeRef, sizeof(size_t)));
+    auto* headNode    = reinterpret_cast<size_t*>(mapFileData(fd, headNodeRef, sizeof(size_t)));
     *headNode = findSpace(fd, pagetype::data, 3*sizeof(size_t), sizeof(size_t));
     size_t hn = *headNode;
 
@@ -534,7 +534,7 @@ size_t makeCRootRef(writer* file, const std::string& fn, const MonoTypePtr& cseq
 
     return hn;
   } else {
-    size_t* hnr = reinterpret_cast<size_t*>(mapFileData(fd, b->second.offset, sizeof(size_t)));
+    auto* hnr = reinterpret_cast<size_t*>(mapFileData(fd, b->second.offset, sizeof(size_t)));
     size_t  hn  = *hnr;
 
     unmapFileData(fd, hnr, sizeof(size_t));

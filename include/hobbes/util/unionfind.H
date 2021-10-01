@@ -125,7 +125,7 @@ template <typename K, typename V, typename KVLift, typename VPlus>
       if (n != this->nodes.end()) {
         return findRepresentative(n->second.get());
       } else {
-        node_t* n = new node_t(k, KVLift::apply(k));
+        auto* n = new node_t(k, KVLift::apply(k));
         this->nodes[k] = nodep(n);
         return n;
       }

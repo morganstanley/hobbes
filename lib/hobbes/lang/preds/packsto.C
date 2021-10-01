@@ -51,7 +51,7 @@ static bool dec(const ConstraintPtr& c, PacksTo* pt) {
   return false;
 }
 static void upd(const ConstraintPtr& c, const PacksTo& pt) {
-  MonoTypes& args = const_cast<MonoTypes&>(c->arguments());
+  auto& args = const_cast<MonoTypes&>(c->arguments());
   if (args.size() == 2) {
     args[0] = pt.underlyingType;
     args[1] = pt.abstractType;

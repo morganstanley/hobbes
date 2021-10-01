@@ -87,8 +87,8 @@ static cc& c() {
     x.bind("arrobjs", &arrobjs);
 
     static Left*   l = new Left  (1, 2.0, 3);
-    static Right*  r = new Right (4, 5.0, 6);
-    static Bottom* b = new Bottom(7, 8.0, 9);
+    static auto*  r = new Right (4, 5.0, 6);
+    static auto* b = new Bottom(7, 8.0, 9);
 
     x.bind("foo",  memberfn(&Top::foo));
     x.bind("getX", memberfn(&Top::getX));
@@ -103,7 +103,7 @@ static cc& c() {
     x.bind("r", r);
     x.bind("b", b);
 
-    static SIDerived* sid = new SIDerived();
+    static auto* sid = new SIDerived();
     x.bind("doblah", memberfn(&SIBase::doblah));
     x.bind("doit",   memberfn(&SIBase::doit));
     x.bind("sid",    sid);

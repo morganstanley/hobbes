@@ -628,9 +628,9 @@ struct dbarrCapacityPF : public op {
 
 // create a new structured storage file with the given name and the given type structure
 long writeFileRT(const array<char>* fname, long tydef) {
-  writer*       result = new writer(makeStdString(fname));
+  auto*       result = new writer(makeStdString(fname));
   MonoTypeSubst fdefs  = result->signature();
-  const Record* rty    = reinterpret_cast<const Record*>(tydef);
+  const auto* rty    = reinterpret_cast<const Record*>(tydef);
 
   for (const auto& m : rty->members()) {
     auto fdef = fdefs.find(m.field);
@@ -671,9 +671,9 @@ struct signalUpdateF : public op {
 
 // read an existing structured storage file with the given name and the given type structure
 long readFileRT(const array<char>* fname, long tydef) {
-  reader*       result = new reader(makeStdString(fname));
+  auto*       result = new reader(makeStdString(fname));
   MonoTypeSubst fdefs  = result->signature();
-  const Record* rty    = reinterpret_cast<const Record*>(tydef);
+  const auto* rty    = reinterpret_cast<const Record*>(tydef);
 
   for (const auto& m : rty->members()) {
     auto fdef = fdefs.find(m.field);

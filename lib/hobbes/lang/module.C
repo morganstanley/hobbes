@@ -13,7 +13,7 @@ const ModuleDefs&  Module::definitions() const { return this->defs; }
 
 void Module::show(std::ostream& out) const {
   out << "module " << this->mname << " where" << std::endl;
-  for (ModuleDefs::const_iterator md = this->defs.begin(); md != this->defs.end(); ++md) {
+  for (auto md = this->defs.begin(); md != this->defs.end(); ++md) {
     (*md)->show(out);
     out << std::endl;
   }
@@ -110,7 +110,7 @@ void ClassDef::show(std::ostream& out) const {
     out << hobbes::show(this->fdeps);
   }
   out << " where" << std::endl;
-  for (MVarTypeDefs::const_iterator mvtd = this->mvtydefs.begin(); mvtd != this->mvtydefs.end(); ++mvtd) {
+  for (auto mvtd = this->mvtydefs.begin(); mvtd != this->mvtydefs.end(); ++mvtd) {
     out << "  ";
     (*mvtd)->show(out);
     out << std::endl;
@@ -129,7 +129,7 @@ const MVarDefs&    InstanceDef::members()     const { return this->mdefs; }
 
 void InstanceDef::show(std::ostream& out) const {
   out << "instance (" << str::cdelim(hobbes::show(this->cs), ", ") << ") => " << this->cname << " " << str::cdelim(hobbes::show(this->targs), " ") << " where" << std::endl;
-  for (MVarDefs::const_iterator mvd = this->mdefs.begin(); mvd != this->mdefs.end(); ++mvd) {
+  for (auto mvd = this->mdefs.begin(); mvd != this->mdefs.end(); ++mvd) {
     out << "  ";
     (*mvd)->show(out);
     out << std::endl;
@@ -197,7 +197,7 @@ std::string show(const CFunDepDefs& fundeps) {
 
 MVarDefs substitute(const MonoTypeSubst& s, const MVarDefs& vds) {
   MVarDefs result;
-  for (MVarDefs::const_iterator vd = vds.begin(); vd != vds.end(); ++vd) {
+  for (auto vd = vds.begin(); vd != vds.end(); ++vd) {
     result.push_back(MVarDefPtr(new MVarDef((*vd)->varWithArgs(), substitute(s, (*vd)->varExpr()), (*vd)->la())));
   }
   return result;

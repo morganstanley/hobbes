@@ -53,7 +53,7 @@ inline std::string describeNanoTime(long x) {
   static const double seconds = 1000*millis;
   static const double minutes = 60*seconds;
 
-  double t = static_cast<double>(x);
+  auto t = static_cast<double>(x);
   std::ostringstream ss;
 
   if ((t / minutes) >= 1) {

@@ -1234,9 +1234,9 @@ inline desc elimFileRefs(const desc& t) {
   const D*         pd   = t.get();
   const FArr*      pfa  = reinterpret_cast<const FArr*>(pd);
   const Arr*       pa   = reinterpret_cast<const Arr*>(pd);
-  const Variant*   pv   = reinterpret_cast<const Variant*>(pd);
-  const Struct*    ps   = reinterpret_cast<const Struct*>(pd);
-  const Recursive* pr   = reinterpret_cast<const Recursive*>(pd);
+  const auto*   pv   = reinterpret_cast<const Variant*>(pd);
+  const auto*    ps   = reinterpret_cast<const Struct*>(pd);
+  const auto* pr   = reinterpret_cast<const Recursive*>(pd);
   const Fn*        pfn  = reinterpret_cast<const Fn*>(pd);
   const App*       papp = reinterpret_cast<const App*>(pd);
 
@@ -1312,9 +1312,9 @@ inline void encode(const desc& t, bytes* o) {
   const Var*       pvn  = reinterpret_cast<const Var*>(pd);
   const FArr*      pfa  = reinterpret_cast<const FArr*>(pd);
   const Arr*       pa   = reinterpret_cast<const Arr*>(pd);
-  const Variant*   pv   = reinterpret_cast<const Variant*>(pd);
-  const Struct*    ps   = reinterpret_cast<const Struct*>(pd);
-  const Recursive* pr   = reinterpret_cast<const Recursive*>(pd);
+  const auto*   pv   = reinterpret_cast<const Variant*>(pd);
+  const auto*    ps   = reinterpret_cast<const Struct*>(pd);
+  const auto* pr   = reinterpret_cast<const Recursive*>(pd);
   const Fn*        pfn  = reinterpret_cast<const Fn*>(pd);
   const App*       papp = reinterpret_cast<const App*>(pd);
   const Nat*       pn   = reinterpret_cast<const Nat*>(pd);
@@ -1441,7 +1441,7 @@ inline desc decodeFrom(const bytes& bs, size_t* i) {
     }
 
   case PRIV_HPPF_TYCTOR_VARIANT: {
-      size_t n = readValue<size_t>(bs, i);
+      auto n = readValue<size_t>(bs, i);
       Variant::Ctors cs;
       for (size_t k = 0; k < n; ++k) {
         std::string n  = readString(bs, i);
@@ -1454,7 +1454,7 @@ inline desc decodeFrom(const bytes& bs, size_t* i) {
     }
 
   case PRIV_HPPF_TYCTOR_STRUCT: {
-      size_t count = readValue<size_t>(bs, i);
+      auto count = readValue<size_t>(bs, i);
       Struct::Fields fs;
       for (size_t k = 0; k < count; ++k) {
         std::string n = readString(bs, i);
@@ -1472,7 +1472,7 @@ inline desc decodeFrom(const bytes& bs, size_t* i) {
 
   case PRIV_HPPF_TYCTOR_TAPP: {
       desc   f = decodeFrom(bs, i);
-      size_t n = readValue<size_t>(bs, i);
+      auto n = readValue<size_t>(bs, i);
 
       App::Args args;
       for (size_t k = 0; k < n; ++k) {
@@ -1490,7 +1490,7 @@ inline desc decodeFrom(const bytes& bs, size_t* i) {
     }
 
   case PRIV_HPPF_TYCTOR_TABS: {
-      size_t   n = readValue<size_t>(bs, i);
+      auto   n = readValue<size_t>(bs, i);
       Fn::Args args;
       for (size_t k = 0; k < n; ++k) {
         args.push_back(readString(bs, i));
@@ -1527,9 +1527,9 @@ inline void describe(const desc& t, std::ostream& o) {
   const Var*       pvn  = reinterpret_cast<const Var*>(pd);
   const FArr*      pfa  = reinterpret_cast<const FArr*>(pd);
   const Arr*       pa   = reinterpret_cast<const Arr*>(pd);
-  const Variant*   pv   = reinterpret_cast<const Variant*>(pd);
-  const Struct*    ps   = reinterpret_cast<const Struct*>(pd);
-  const Recursive* pr   = reinterpret_cast<const Recursive*>(pd);
+  const auto*   pv   = reinterpret_cast<const Variant*>(pd);
+  const auto*    ps   = reinterpret_cast<const Struct*>(pd);
+  const auto* pr   = reinterpret_cast<const Recursive*>(pd);
   const Fn*        pfn  = reinterpret_cast<const Fn*>(pd);
   const App*       papp = reinterpret_cast<const App*>(pd);
   const Nat*       pn   = reinterpret_cast<const Nat*>(pd);
@@ -1672,8 +1672,8 @@ inline bool equivModOffset(const desc& t0, const desc& t1) {
   case PRIV_HPPF_TYCTOR_ARR:
     return equivModOffset(reinterpret_cast<const Arr*>(pd0)->t, reinterpret_cast<const Arr*>(pd1)->t);
   case PRIV_HPPF_TYCTOR_VARIANT: {
-      const Variant* pv0 = reinterpret_cast<const Variant*>(pd0);
-      const Variant* pv1 = reinterpret_cast<const Variant*>(pd1);
+      const auto* pv0 = reinterpret_cast<const Variant*>(pd0);
+      const auto* pv1 = reinterpret_cast<const Variant*>(pd1);
 
       if (pv0->ctors.size() != pv1->ctors.size()) {
         return false;
@@ -1689,8 +1689,8 @@ inline bool equivModOffset(const desc& t0, const desc& t1) {
       }
     }
   case PRIV_HPPF_TYCTOR_STRUCT: {
-      const Struct* pr0 = reinterpret_cast<const Struct*>(pd0);
-      const Struct* pr1 = reinterpret_cast<const Struct*>(pd1);
+      const auto* pr0 = reinterpret_cast<const Struct*>(pd0);
+      const auto* pr1 = reinterpret_cast<const Struct*>(pd1);
 
       if (pr0->fields.size() != pr1->fields.size()) {
         return false;
@@ -1742,8 +1742,8 @@ inline size_t alignOf(const desc& t) {
   const Prim*      pt   = reinterpret_cast<const Prim*>(pd);
   const Var*       pvn  = reinterpret_cast<const Var*>(pd);
   const FArr*      pfa  = reinterpret_cast<const FArr*>(pd);
-  const Variant*   pv   = reinterpret_cast<const Variant*>(pd);
-  const Struct*    ps   = reinterpret_cast<const Struct*>(pd);
+  const auto*   pv   = reinterpret_cast<const Variant*>(pd);
+  const auto*    ps   = reinterpret_cast<const Struct*>(pd);
 
   switch (t->tid) {
   case PRIV_HPPF_TYCTOR_PRIM:
@@ -1816,8 +1816,8 @@ inline size_t sizeOf(const desc& t) {
   const Prim*      pt   = reinterpret_cast<const Prim*>(pd);
   const Var*       pvn  = reinterpret_cast<const Var*>(pd);
   const FArr*      pfa  = reinterpret_cast<const FArr*>(pd);
-  const Variant*   pv   = reinterpret_cast<const Variant*>(pd);
-  const Struct*    ps   = reinterpret_cast<const Struct*>(pd);
+  const auto*   pv   = reinterpret_cast<const Variant*>(pd);
+  const auto*    ps   = reinterpret_cast<const Struct*>(pd);
 
   switch (t->tid) {
   case PRIV_HPPF_TYCTOR_PRIM:

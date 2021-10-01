@@ -131,11 +131,11 @@ typedef std::vector<RPCDef> RPCDefs;
 
 // initiate a session on a connected socket by sending all of the RPC defs
 inline int initSession(int s, const RPCDefs& rpcds) {
-  uint32_t version = HNET_VERSION;
+  auto version = HNET_VERSION;
   sendData(s, reinterpret_cast<const uint8_t*>(&version), sizeof(version));
 
   for (const auto& rpcd : rpcds) {
-    uint8_t defCmd = HNET_CMD_DEFEXPR;
+    auto defCmd = HNET_CMD_DEFEXPR;
     sendData(s, &defCmd, sizeof(defCmd));
     sendData(s, reinterpret_cast<const uint8_t*>(&rpcd.id), sizeof(rpcd.id));
     sendString(s, rpcd.expr);
@@ -493,7 +493,7 @@ template <typename T, size_t N>
 
     static bool accum(int s, async_read_state* o, T (*x)[N]) {
       const auto len = sizeof(T) * N;
-      uint8_t* buf = reinterpret_cast<uint8_t*>(&((*x)[0]));
+      auto* buf = reinterpret_cast<uint8_t*>(&((*x)[0]));
       o->bytesRead += recvDataPartial(s, buf + o->bytesRead, len - o->bytesRead);
       return o->bytesRead == len;
     }
@@ -574,7 +574,7 @@ template <typename T>
           o->readLen   = false;
         }
       } else {
-        uint8_t* buf = reinterpret_cast<uint8_t*>(&(*x)[0]);
+        auto* buf = reinterpret_cast<uint8_t*>(&(*x)[0]);
         o->bytesRead += recvDataPartial(s, buf + o->bytesRead, o->byteLen - o->bytesRead);
       }
       return !o->readLen && o->bytesRead == o->byteLen;
@@ -742,7 +742,7 @@ template <>
           o->readLen = false;
         }
       } else {
-        uint8_t* buf = reinterpret_cast<uint8_t*>(&(*x)[0]);
+        auto* buf = reinterpret_cast<uint8_t*>(&(*x)[0]);
         o->bytesRead += recvDataPartial(s, buf + o->bytesRead, o->byteLen - o->bytesRead);
       }
       return !o->readLen && o->bytesRead == o->byteLen;

@@ -36,7 +36,7 @@ bool UnqualifierSet::refine(const TEnvPtr& tenv, const ConstraintPtr& cst, MonoT
 }
 
 bool UnqualifierSet::satisfied(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions* ds) const {
-  Unqualifiers::const_iterator uq = this->uqs.find(cst->name());
+  auto uq = this->uqs.find(cst->name());
   if (uq == this->uqs.end()) {
     return false;
   } else {
@@ -45,7 +45,7 @@ bool UnqualifierSet::satisfied(const TEnvPtr& tenv, const ConstraintPtr& cst, De
 }
 
 bool UnqualifierSet::satisfiable(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions* ds) const {
-  Unqualifiers::const_iterator uq = this->uqs.find(cst->name());
+  auto uq = this->uqs.find(cst->name());
   if (uq == this->uqs.end()) {
     return false;
   } else {
@@ -61,7 +61,7 @@ void UnqualifierSet::explain(const TEnvPtr& tenv, const ConstraintPtr& cst, cons
 }
 
 ExprPtr UnqualifierSet::unqualify(const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPtr& e, Definitions* ds) const {
-  Unqualifiers::const_iterator uq = this->uqs.find(cst->name());
+  auto uq = this->uqs.find(cst->name());
   if (uq == this->uqs.end()) {
     throw annotated_error(*e, "Unknown predicate '" + cst->name() + "' can't be unqualified.");
   } else {
@@ -70,7 +70,7 @@ ExprPtr UnqualifierSet::unqualify(const TEnvPtr& tenv, const ConstraintPtr& cst,
 }
 
 PolyTypePtr UnqualifierSet::lookup(const std::string& vn) const {
-  for (Unqualifiers::const_iterator uq = this->uqs.begin(); uq != this->uqs.end(); ++uq) {
+  for (auto uq = this->uqs.begin(); uq != this->uqs.end(); ++uq) {
     PolyTypePtr pt = uq->second->lookup(vn);
     if (pt != PolyTypePtr()) {
       return pt;
@@ -81,7 +81,7 @@ PolyTypePtr UnqualifierSet::lookup(const std::string& vn) const {
 
 SymSet UnqualifierSet::bindings() const {
   SymSet r;
-  for (Unqualifiers::const_iterator uq = this->uqs.begin(); uq != this->uqs.end(); ++uq) {
+  for (auto uq = this->uqs.begin(); uq != this->uqs.end(); ++uq) {
     SymSet qr = uq->second->bindings();
     r.insert(qr.begin(), qr.end());
   }
@@ -89,7 +89,7 @@ SymSet UnqualifierSet::bindings() const {
 }
 
 FunDeps UnqualifierSet::dependencies(const ConstraintPtr& cst) const {
-  Unqualifiers::const_iterator uq = this->uqs.find(cst->name());
+  auto uq = this->uqs.find(cst->name());
   if (uq == this->uqs.end()) {
     return FunDeps();
   } else {
@@ -99,7 +99,7 @@ FunDeps UnqualifierSet::dependencies(const ConstraintPtr& cst) const {
 
 bool hasConstraint(const ConstraintPtr& c, const Constraints& cs) {
   Constraints r;
-  for (Constraints::const_iterator ci = cs.begin(); ci != cs.end(); ++ci) {
+  for (auto ci = cs.begin(); ci != cs.end(); ++ci) {
     if (*c == **ci) {
       return true;
     }
@@ -113,7 +113,7 @@ bool hasConstraint(const ConstraintPtr& c, const QualTypePtr& qt) {
 
 Constraints removeConstraint(const ConstraintPtr& c, const Constraints& cs) {
   Constraints r;
-  for (Constraints::const_iterator ci = cs.begin(); ci != cs.end(); ++ci) {
+  for (auto ci = cs.begin(); ci != cs.end(); ++ci) {
     if (!(*c == **ci)) {
       r.push_back(*ci);
     }

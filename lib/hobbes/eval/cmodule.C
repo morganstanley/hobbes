@@ -34,7 +34,7 @@ bool importObject(cc *e, const std::string &sopath) {
     }
 
     typedef void (*InitF)(cc *);
-    InitF initF = reinterpret_cast<InitF>(dlsym(h, "initialize"));
+    auto initF = reinterpret_cast<InitF>(dlsym(h, "initialize"));
 
     if (!initF) {
       dlclose(h);
@@ -210,7 +210,7 @@ NameIndexing nameIndexing(const std::set<std::string> &ns) {
 }
 
 int nameIndex(const NameIndexing &ns, const std::string &vn) {
-  NameIndexing::const_iterator ni = ns.find(vn);
+  auto ni = ns.find(vn);
   if (ni == ns.end()) {
     throw std::runtime_error("Undefined type name, '" + vn + "'");
   } else {
@@ -220,7 +220,7 @@ int nameIndex(const NameIndexing &ns, const std::string &vn) {
 
 std::vector<int> nameIndex(const NameIndexing &ns, const str::seq &vns) {
   std::vector<int> r;
-  for (str::seq::const_iterator vn = vns.begin(); vn != vns.end(); ++vn) {
+  for (auto vn = vns.begin(); vn != vns.end(); ++vn) {
     r.push_back(nameIndex(ns, *vn));
   }
   return r;
@@ -228,7 +228,7 @@ std::vector<int> nameIndex(const NameIndexing &ns, const str::seq &vns) {
 
 MonoTypeSubst substitution(const NameIndexing &ns) {
   MonoTypeSubst s;
-  for (NameIndexing::const_iterator ni = ns.begin(); ni != ns.end(); ++ni) {
+  for (auto ni = ns.begin(); ni != ns.end(); ++ni) {
     s[ni->first] = MonoTypePtr(TGen::make(ni->second));
   }
   return s;
@@ -236,7 +236,7 @@ MonoTypeSubst substitution(const NameIndexing &ns) {
 
 MonoTypeSubst uvarSubstitution(const NameIndexing &ns) {
   MonoTypeSubst s;
-  for (NameIndexing::const_iterator ni = ns.begin(); ni != ns.end(); ++ni) {
+  for (auto ni = ns.begin(); ni != ns.end(); ++ni) {
     s[ni->first] = freshTypeVar();
   }
   return s;
@@ -246,7 +246,7 @@ MonoTypeSubst uvarSubstitution(const NameIndexing &ns) {
 void resolveNames(const NameIndexing &ns, const CFunDepDef &nfdep,
                   FunDeps *out) {
   VarIDs lhs = nameIndex(ns, nfdep.first);
-  for (str::seq::const_iterator vn = nfdep.second.begin();
+  for (auto vn = nfdep.second.begin();
        vn != nfdep.second.end(); ++vn) {
     out->push_back(FunDep(lhs, nameIndex(ns, *vn)));
   }
@@ -254,7 +254,7 @@ void resolveNames(const NameIndexing &ns, const CFunDepDef &nfdep,
 
 FunDeps resolveNames(const NameIndexing &ns, const CFunDepDefs &nfdeps) {
   FunDeps r;
-  for (CFunDepDefs::const_iterator fd = nfdeps.begin(); fd != nfdeps.end();
+  for (auto fd = nfdeps.begin(); fd != nfdeps.end();
        ++fd) {
     resolveNames(ns, *fd, &r);
   }
@@ -734,7 +734,7 @@ struct buildTransitiveUnsafePragmaClosure : public switchExprC<details::Bool> {
   details::Bool with(const Case *v) const override {
     const Case::Bindings &cbs = v->bindings();
     Case::Bindings rcbs;
-    for (Case::Bindings::const_iterator cb = cbs.begin(); cb != cbs.end();
+    for (auto cb = cbs.begin(); cb != cbs.end();
          ++cb) {
       switchOf(cb->exp, *this);
     }
@@ -934,7 +934,7 @@ struct makeSafe : public switchExprC<ExprPtr> {
   ExprPtr with(const Case *v) const override {
     const Case::Bindings &cbs = v->bindings();
     Case::Bindings rcbs;
-    for (Case::Bindings::const_iterator cb = cbs.begin(); cb != cbs.end();
+    for (auto cb = cbs.begin(); cb != cbs.end();
          ++cb) {
       rcbs.push_back(
           Case::Binding(cb->selector, cb->vname, switchOf(cb->exp, *this)));

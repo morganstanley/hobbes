@@ -337,7 +337,7 @@ private:
     return align(x, this->pagesz);
   }
   static uint8_t* allocateBuffer(size_t sz) {
-    uint8_t* r = reinterpret_cast<uint8_t*>(mmap(0, sz, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE, -1, 0));
+    auto* r = reinterpret_cast<uint8_t*>(mmap(0, sz, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE, -1, 0));
     if (r == MAP_FAILED) {
       throw std::runtime_error("Failed to allocate exec buffer memory with error: " + std::string(strerror(errno)));
     }
@@ -1613,7 +1613,7 @@ public:
         int64_t diff = reinterpret_cast<uint64_t>(faddr) - reinterpret_cast<uint64_t>(rip + 5);
 
         if (canLowerTo<int32_t>(diff)) {
-          int32_t diff32 = static_cast<int32_t>(diff);
+          auto diff32 = static_cast<int32_t>(diff);
 
           // call rel32 = e8 id (5 bytes)
           (*b)[0] = 0xe8;

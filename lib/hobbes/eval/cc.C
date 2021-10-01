@@ -62,7 +62,7 @@ cc::cc() :
   // this seems to want to be a very primitive type class ...
   TClass::Members cvtcms;
   cvtcms["convert"] = functy(list(tgen(0)), tgen(1));
-  TClass* cvtc = new TClass("Convert", 2, cvtcms, FunDeps(), LexicalAnnotation::null());
+  auto* cvtc = new TClass("Convert", 2, cvtcms, FunDeps(), LexicalAnnotation::null());
   this->tenv->bind("Convert", UnqualifierPtr(cvtc));
 
   // support equality constraints
@@ -91,12 +91,12 @@ cc::cc() :
   this->tenv->bind(FixIsoRecur::constraintName(), UnqualifierPtr(new FixIsoRecur()));
 
   // support subtype constraints (including safe upcasting between C++ objects)
-  SubtypeUnqualifier* subuq = new SubtypeUnqualifier();
+  auto* subuq = new SubtypeUnqualifier();
   subuq->addEliminator(this->objs);
   this->tenv->bind(SubtypeUnqualifier::constraintName(), UnqualifierPtr(subuq));
 
   // support constraints on "field projection" (for records, "objects", ...)
-  FieldVerifier* fv = new FieldVerifier();
+  auto* fv = new FieldVerifier();
   this->tenv->bind(FieldVerifier::constraintName(), UnqualifierPtr(fv));
 
   // support constraints on "selective construction" (for variants, ...)
@@ -184,9 +184,9 @@ ExprPtr cc::normalize(const ExprPtr& e) {
 }
 
 llvm::GlobalVariable* extractGlobal(llvm::Value* e) {
-  if (llvm::GlobalVariable* g = llvm::dyn_cast<llvm::GlobalVariable>(e)) {
+  if (auto* g = llvm::dyn_cast<llvm::GlobalVariable>(e)) {
     return g;
-  } else if (llvm::ConstantExpr* c = llvm::dyn_cast<llvm::ConstantExpr>(e)) {
+  } else if (auto* c = llvm::dyn_cast<llvm::ConstantExpr>(e)) {
     if (c->isCast() && c->getNumOperands() == 1) {
       return extractGlobal(c->getOperand(0));
     } else {
@@ -250,7 +250,7 @@ void cc::drainUnqualifyDefs(const Definitions& ds) {
   this->drainingDefs = true;
 
   // forward declare the polymorphic functions, batch letrec compile the monomorphic functions
-  for (Definitions::const_iterator d = ds.begin(); d != ds.end(); ++d) {
+  for (auto d = ds.begin(); d != ds.end(); ++d) {
     const std::string& vname = d->first;
     const ExprPtr&     e     = d->second;
 

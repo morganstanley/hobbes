@@ -184,7 +184,7 @@ public:
   // to speed up dynamic lookups of top-level variables at runtime
   //  (this allows an external user to skip string matching and type structure analysis)
   inline unsigned int pushOffset(uint64_t offset, const MonoTypePtr& ty) {
-    unsigned int r = static_cast<unsigned int>(this->storedOffsets.size());
+    auto r = static_cast<unsigned int>(this->storedOffsets.size());
     this->storedOffsets.push_back(offset);
     if (const Array* a = is<Array>(ty)) {
       this->storedOffElemSizes.push_back(1 + storageSizeOf(a->type()));

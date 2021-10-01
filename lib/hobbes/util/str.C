@@ -71,7 +71,7 @@ seq leftAlign(const seq& col) {
   size_t w = maxStrLen(col);
   seq r;
   r.reserve(col.size());
-  for (seq::const_iterator s = col.begin(); s != col.end(); ++s) {
+  for (auto s = col.begin(); s != col.end(); ++s) {
     r.push_back(leftAlign(w, *s));
   }
   return r;
@@ -81,7 +81,7 @@ seq rightAlign(const seq& col) {
   size_t w = maxStrLen(col);
   seq r;
   r.reserve(col.size());
-  for (seq::const_iterator s = col.begin(); s != col.end(); ++s) {
+  for (auto s = col.begin(); s != col.end(); ++s) {
     r.push_back(rightAlign(w, *s));
   }
   return r;
@@ -90,7 +90,7 @@ seq rightAlign(const seq& col) {
 seqs leftAlign(const seqs& tbl) {
   seqs r;
   r.reserve(tbl.size());
-  for (seqs::const_iterator c = tbl.begin(); c != tbl.end(); ++c) {
+  for (auto c = tbl.begin(); c != tbl.end(); ++c) {
     r.push_back(c == tbl.end()-1 ? *c : leftAlign(*c));
   }
   return r;
@@ -99,7 +99,7 @@ seqs leftAlign(const seqs& tbl) {
 seqs rightAlign(const seqs& tbl) {
   seqs r;
   r.reserve(tbl.size());
-  for (seqs::const_iterator c = tbl.begin(); c != tbl.end(); ++c) {
+  for (auto c = tbl.begin(); c != tbl.end(); ++c) {
     r.push_back(rightAlign(*c));
   }
   return r;
@@ -122,13 +122,13 @@ bool validTable(const seqs& tbl) {
 void printAlignedTable(std::ostream& out, const seqs& tbl) {
   if (validTable(tbl)) {
     // draw the header
-    for (seqs::const_iterator c = tbl.begin(); c != tbl.end(); ++c) {
+    for (auto c = tbl.begin(); c != tbl.end(); ++c) {
       out << (*c)[0] << " ";
     }
     out << "\n";
 
     // draw the divider
-    for (seqs::const_iterator c = tbl.begin(); c != tbl.end(); ++c) {
+    for (auto c = tbl.begin(); c != tbl.end(); ++c) {
       auto N = (c < tbl.end() - 1 ? (*c)[0].size() : maxStrLen(*c));
       out << std::string(N, '-') << " ";
     }
@@ -136,7 +136,7 @@ void printAlignedTable(std::ostream& out, const seqs& tbl) {
 
     // draw the data
     for (size_t r = 1; r < tbl[0].size(); ++r) {
-      for (seqs::const_iterator c = tbl.begin(); c != tbl.end(); ++c) {
+      for (auto c = tbl.begin(); c != tbl.end(); ++c) {
         out << (*c)[r] << " ";
       }
       out << "\n";
@@ -156,7 +156,7 @@ void printHeadlessAlignedTable(std::ostream& out, const seqs& tbl) {
   if (validTable(tbl)) {
     for (size_t r = 0; r < tbl[0].size(); ++r) {
       if (r > 0) out << "\n";
-      for (seqs::const_iterator c = tbl.begin(); c != tbl.end(); ++c) {
+      for (auto c = tbl.begin(); c != tbl.end(); ++c) {
         out << (*c)[r] << " ";
       }
     }
@@ -304,7 +304,7 @@ std::string hex(unsigned char x) {
 std::string hex(const std::vector<unsigned char>& cs) {
   std::ostringstream ss;
   ss << "0x";
-  for (std::vector<unsigned char>::const_iterator c = cs.begin(); c != cs.end(); ++c) {
+  for (auto c = cs.begin(); c != cs.end(); ++c) {
     ss << hex(*c);
   }
   return ss.str();
@@ -403,7 +403,7 @@ std::string show(const set& ss) {
   } else {
     std::ostringstream r;
     r << "{";
-    set::const_iterator s = ss.begin();
+    auto s = ss.begin();
     r << *s;
     ++s;
     while (s != ss.end()) {
@@ -422,7 +422,7 @@ std::string show(const named_strings& cfg) {
   } else {
     std::ostringstream r;
     r << "{";
-    named_strings::const_iterator f = cfg.begin();
+    auto f = cfg.begin();
     r << f->first << "=" << f->second;
     ++f;
     while (f != cfg.end()) {
@@ -556,7 +556,7 @@ public:
       if (child != n->children.end()) {
         n = child->second.get();
       } else {
-        ptnode* nc = new ptnode();
+        auto* nc = new ptnode();
         n->children[c] = std::unique_ptr<ptnode>(nc);
         n = nc;
       }

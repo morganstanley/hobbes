@@ -248,11 +248,11 @@ TEST(Storage, Alignment) {
   std::string fname = mkFName();
   try {
     writer f(fname);
-    short*        s = f.define<short>("s");
+    auto*        s = f.define<short>("s");
     int*          i = f.define<int>("i");
-    double*       d = f.define<double>("d");
+    auto*       d = f.define<double>("d");
     array<int>*   a = f.define<int>("a", 100);
-    fileref<int>* r = f.define<fileref<int>>("r");
+    auto* r = f.define<fileref<int>>("r");
 
     EXPECT_EQ(reinterpret_cast<size_t>(s)%sizeof(short),  size_t(0));
     EXPECT_EQ(reinterpret_cast<size_t>(i)%sizeof(int),    size_t(0));

@@ -19,7 +19,7 @@ bool isAllocatedConnection(Client* c) {
 }
 
 Client* makeConnection(const std::string& hp) {
-  Client* r = new Client(hp);
+  auto* r = new Client(hp);
   connections.insert(r);
   return r;
 }
@@ -176,7 +176,7 @@ public:
     MonoTypePtr ch, expr, inty, outty;
     if (decodeConstraint(cst, &ch, &expr, &inty, &outty)) {
       if (const TLong* chv = is<TLong>(ch)) {
-        if (Client* conn = reinterpret_cast<Client*>(chv->value())) {
+        if (auto* conn = reinterpret_cast<Client*>(chv->value())) {
           if (const TExpr* exprv = is<TExpr>(expr)) {
             if (isAllocatedConnection(conn) && !hasFreeVariables(inty)) {
               size_t uc = u->size();
@@ -194,7 +194,7 @@ public:
     MonoTypePtr ch, expr, inty, outty;
     if (decodeConstraint(cst, &ch, &expr, &inty, &outty)) {
       if (const TLong* chv = is<TLong>(ch)) {
-        if (Client* conn = reinterpret_cast<Client*>(chv->value())) {
+        if (auto* conn = reinterpret_cast<Client*>(chv->value())) {
           if (const TExpr* exprv = is<TExpr>(expr)) {
             if (isAllocatedConnection(conn) && !hasFreeVariables(inty)) {
               return *outty == *conn->output(exprv->expr(), inty);
@@ -212,12 +212,12 @@ public:
     MonoTypePtr ch, expr, inty, outty;
     if (!decodeConstraint(cst, &ch, &expr, &inty, &outty)) { return false; }
 
-    TLong* chv = is<TLong>(ch);
+    auto* chv = is<TLong>(ch);
     if (!chv) { return is<TVar>(ch); }
-    Client* conn = reinterpret_cast<Client*>(chv->value());
+    auto* conn = reinterpret_cast<Client*>(chv->value());
     if (!conn || !isAllocatedConnection(conn)) { return false; }
 
-    TExpr* exprv = is<TExpr>(expr);
+    auto* exprv = is<TExpr>(expr);
     if (!exprv) { return is<TVar>(expr); }
 
     return hasFreeVariables(inty) || satisfied(tenv, cst, ds);
@@ -298,7 +298,7 @@ private:
     MonoTypePtr ch, expr, inty, outty;
     if (decodeConstraint(cst, &ch, &expr, &inty, &outty)) {
       if (const TLong* chv = is<TLong>(ch)) {
-        if (Client* c = reinterpret_cast<Client*>(chv->value())) {
+        if (auto* c = reinterpret_cast<Client*>(chv->value())) {
           if (const TExpr* exprv = is<TExpr>(expr)) {
             if (isAllocatedConnection(c) && !hasFreeVariables(inty)) {
               MonoTypePtr retty = tapp(primty("promise"), list(ch, outty));
@@ -363,7 +363,7 @@ public:
     MonoTypePtr ch, rty;
     if (decodeConstraint(cst, &ch, &rty)) {
       if (const TLong* chv = is<TLong>(ch)) {
-        if (Client* conn = reinterpret_cast<Client*>(chv->value())) {
+        if (auto* conn = reinterpret_cast<Client*>(chv->value())) {
           if (isAllocatedConnection(conn) && !hasFreeVariables(rty)) {
             return hobbes::satisfied(tenv, ConstraintPtr(new Constraint("BlockCodec", list(rty))), ds);
           }
@@ -377,9 +377,9 @@ public:
     MonoTypePtr ch, rty;
     if (!decodeConstraint(cst, &ch, &rty)) { return false; }
 
-    TLong* chv = is<TLong>(ch);
+    auto* chv = is<TLong>(ch);
     if (!chv) { return is<TVar>(ch); }
-    Client* conn = reinterpret_cast<Client*>(chv->value());
+    auto* conn = reinterpret_cast<Client*>(chv->value());
     if (!conn || !isAllocatedConnection(conn)) { return false; }
 
     return hasFreeVariables(rty) || satisfied(tenv, cst, ds);
@@ -456,7 +456,7 @@ private:
     MonoTypePtr ch, ty;
     if (decodeConstraint(cst, &ch, &ty)) {
       if (const TLong* chv = is<TLong>(ch)) {
-        if (Client* c = reinterpret_cast<Client*>(chv->value())) {
+        if (auto* c = reinterpret_cast<Client*>(chv->value())) {
           if (isAllocatedConnection(c) && !hasFreeVariables(ty)) {
             // our receive function is uniquely determined by its connection and result type
             std::string recvFnName = ".cxn.recvFn." + str::from(chv->value()) + "." + str::from(reinterpret_cast<long>(ty.get()));

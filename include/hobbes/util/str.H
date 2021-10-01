@@ -151,7 +151,7 @@ template <typename Char>
 template <typename Char>
   std::vector< std::basic_string<Char> > trim(const std::vector< std::basic_string<Char> >& ss) {
     std::vector< std::basic_string<Char> > result;
-    for (typename std::vector< std::basic_string<Char> >::const_iterator s = ss.begin(); s != ss.end(); ++s) {
+    for (auto s = ss.begin(); s != ss.end(); ++s) {
       result.push_back(trim<Char>(*s));
     }
     return result;

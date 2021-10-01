@@ -30,7 +30,7 @@ void linedb::reset() {
 }
 
 linedb::LineCol linedb::pos(nat i) const {
-  nats::const_iterator np = std::lower_bound(this->lp.begin(), this->lp.end(), i);
+  auto np = std::lower_bound(this->lp.begin(), this->lp.end(), i);
   nat k = std::distance(this->lp.begin(), np);
   
   if (k == 0) {

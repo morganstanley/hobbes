@@ -156,7 +156,7 @@ template <typename V>
         }
       } else {
         // do we need an exact match or any point here?
-        if (const MonoTypePtr* mt = get<MonoTypePtr>(path[i])) {
+        if (const auto* mt = get<MonoTypePtr>(path[i])) {
           findMatches(this->d.moveTo(*mt, p), path, i + 1, out);
         } else {
           typename tmdata::KeyPointSeq kps;

@@ -39,7 +39,7 @@ bool dec(const ConstraintPtr& c, HasField* hf) {
 
 void upd(const ConstraintPtr& c, const HasField& hf) {
   if (c->name() == FieldVerifier::constraintName() && c->arguments().size() == 5) {
-    MonoTypes& mts = const_cast<MonoTypes&>(c->arguments());
+    auto& mts = const_cast<MonoTypes&>(c->arguments());
     mts[0] = tlong(hf.direction == HasField::Read ? 0 : 1);
     mts[1] = hf.recordType;
     mts[2] = hf.fieldName;

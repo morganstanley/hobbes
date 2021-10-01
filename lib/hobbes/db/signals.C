@@ -65,7 +65,7 @@ void sweepFileWatch(FileWatch& fw) {
       size_t ref = brw.offType==BROffsetType::DArray ? (brwp.first - sizeof(size_t)) : brw.offType==BROffsetType::Binding ? newValue : brwp.first;
       brw.oldValue = newValue;
 
-      for (ChangeSignals::iterator f = brw.fs.begin(); f != brw.fs.end();) {
+      for (auto f = brw.fs.begin(); f != brw.fs.end();) {
         if ((*f)(ref)) {
           ++f;
         } else {
@@ -101,7 +101,7 @@ struct SystemWatch {
       fd,
       [](int fd, void* self) {
         char buf[sizeof(inotify_event) + NAME_MAX + 1];
-        inotify_event* event = reinterpret_cast<inotify_event*>(buf);
+        auto* event = reinterpret_cast<inotify_event*>(buf);
         auto rc = read(fd, event, sizeof(inotify_event));
         if (rc > 0 && event->len > 0 ) {
           rc = read(fd, event->name, event->len);

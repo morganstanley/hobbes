@@ -785,7 +785,7 @@ inline ExprPtr mkrecord(const MkRecord::FieldDefs& fds, const LexicalAnnotation&
   
     Constraints     csts;
     Record::Members ms;
-    for (MkRecord::FieldDefs::const_iterator fd = fds.begin(); fd != fds.end(); ++fd) {
+    for (auto fd = fds.begin(); fd != fds.end(); ++fd) {
       if (fd->second->type() == QualTypePtr()) {
         return result;
       } else {
@@ -851,7 +851,7 @@ template <typename ... Cases>
 
 inline Constraints liftConstraints(const Exprs& es) {
   Constraints r;
-  for (Exprs::const_iterator e = es.begin(); e != es.end(); ++e) {
+  for (auto e = es.begin(); e != es.end(); ++e) {
     QualTypePtr qt = (*e)->type();
     if (qt != QualTypePtr()) {
       append(&r, qt->constraints());
@@ -1029,7 +1029,7 @@ inline ExprPtr assign(const ExprPtr& lhs, const ExprPtr& rhs, const LexicalAnnot
 
 inline Exprs exprs(const MkRecord::FieldDefs& ms) {
   Exprs r;
-  for (MkRecord::FieldDefs::const_iterator m = ms.begin(); m != ms.end(); ++m) {
+  for (auto m = ms.begin(); m != ms.end(); ++m) {
     r.push_back(m->second);
   }
   return r;
@@ -1037,7 +1037,7 @@ inline Exprs exprs(const MkRecord::FieldDefs& ms) {
 
 inline Exprs exprs(const Case::Bindings& bs) {
   Exprs r;
-  for (Case::Bindings::const_iterator b = bs.begin(); b != bs.end(); ++b) {
+  for (auto b = bs.begin(); b != bs.end(); ++b) {
     r.push_back(b->exp);
   }
   return r;

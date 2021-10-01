@@ -70,7 +70,7 @@ void unregisterEventHandler(int fd) {
 void registerEventHandler(int fd, const std::function<void(int)>& fn, bool) {
   int epfd = threadEPollFD();
 
-  eventcbclosure* c = new eventcbclosure(fd, fn);
+  auto* c = new eventcbclosure(fd, fn);
   (*epClosures)[fd] = c;
 
   struct epoll_event evt;
@@ -105,7 +105,7 @@ bool stepEventLoop(int timeoutMS) {
     bool status = true;
     if (fds > 0) {
       for (int fd = 0; fd < fds; ++fd) {
-        eventcbclosure* c = reinterpret_cast<eventcbclosure*>(evts[fd].data.ptr);
+        auto* c = reinterpret_cast<eventcbclosure*>(evts[fd].data.ptr);
         (c->fn)(c->fd);
         resetMemoryPool();
       }
@@ -174,7 +174,7 @@ void runEventLoop(int microsecondDuration) {
     int fds = epoll_wait(threadEPollFD(), evts, sizeof(evts)/sizeof(evts[0]), timeout);
     if (fds > 0) {
       for (int fd = 0; fd < fds; ++fd) {
-        eventcbclosure* c = reinterpret_cast<eventcbclosure*>(evts[fd].data.ptr);
+        auto* c = reinterpret_cast<eventcbclosure*>(evts[fd].data.ptr);
         (c->fn)(c->fd);
         resetMemoryPool();
       }

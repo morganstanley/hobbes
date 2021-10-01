@@ -368,7 +368,7 @@ ExprPtr TClass::unqualify(const TEnvPtr& tenv, const ConstraintPtr& cst, const E
 }
 
 PolyTypePtr TClass::lookup(const std::string& vn) const {
-  Members::const_iterator m = this->tcmembers.find(vn);
+  auto m = this->tcmembers.find(vn);
   if (m != this->tcmembers.end()) {
     return PolyTypePtr(new PolyType(this->typeVars(), qualtype(list(ConstraintPtr(new Constraint(this->name(), tgens(this->typeVars())))), m->second)));
   } else {
@@ -377,7 +377,7 @@ PolyTypePtr TClass::lookup(const std::string& vn) const {
 }
 
 MonoTypePtr TClass::memberType(const std::string& vn) const {
-  Members::const_iterator m = this->tcmembers.find(vn);
+  auto m = this->tcmembers.find(vn);
   if (m != this->tcmembers.end()) {
     return m->second;
   } else {
@@ -387,7 +387,7 @@ MonoTypePtr TClass::memberType(const std::string& vn) const {
 
 SymSet TClass::bindings() const {
   SymSet r;
-  for (Members::const_iterator m = this->tcmembers.begin(); m != this->tcmembers.end(); ++m) {
+  for (auto m = this->tcmembers.begin(); m != this->tcmembers.end(); ++m) {
     r.insert(m->first);
   }
   return r;
@@ -425,7 +425,7 @@ void TClass::show(std::ostream& out) const {
     }
   }
   out << " where\n";
-  for (Members::const_iterator m = this->tcmembers.begin(); m != this->tcmembers.end(); ++m) {
+  for (auto m = this->tcmembers.begin(); m != this->tcmembers.end(); ++m) {
     out << "  " << m->first << " :: " << hobbes::show(m->second) << "\n";
   }
 }
@@ -466,7 +466,7 @@ bool TCInstance::hasMapping(const std::string& oname) const {
 }
 
 const TCInstance::ExprPtr& TCInstance::memberMapping(const std::string& oname) const {
-  MemberMapping::const_iterator mm = this->mmap.find(oname);
+  auto mm = this->mmap.find(oname);
   if (mm != this->mmap.end()) {
     return mm->second;
   } else {
@@ -491,7 +491,7 @@ struct TCUnqualify : public switchExprTyFn {
 
   ExprPtr with(const Var* v) const override {
     // if we can resolve this symbol as an overload, replace it
-    MemberMapping::const_iterator mm = inst->memberMapping().find(v->value());
+    auto mm = inst->memberMapping().find(v->value());
 
     if (mm != inst->memberMapping().end() && hasConstraint(this->constraint, v->type())) {
       return mm->second;
@@ -503,7 +503,7 @@ struct TCUnqualify : public switchExprTyFn {
 
 // resolve member definitions ahead of time, so that we can just substitute into use-sites
 void TCInstance::bind(const TEnvPtr& tenv, const TClass* c, Definitions* ds) {
-  for (MemberMapping::iterator mm = this->mmap.begin(); mm != this->mmap.end(); ++mm) {
+  for (auto mm = this->mmap.begin(); mm != this->mmap.end(); ++mm) {
     mm->second = unqualifyTypes(tenv, validateType(tenv, assume(mm->second, instantiate(this->itys, c->memberType(mm->first)), mm->second->la()), ds), ds);
   }
 }
@@ -514,7 +514,7 @@ ExprPtr TCInstance::unqualify(Definitions* ds, const TEnvPtr& tenv, const Constr
 
 void TCInstance::show(std::ostream& out) const {
   out << "instance " << this->tcname << " " << str::cdelim(hobbes::show(this->itys), " ") << " where\n";
-  for (MemberMapping::const_iterator mm = this->mmap.begin(); mm != this->mmap.end(); ++mm) {
+  for (auto mm = this->mmap.begin(); mm != this->mmap.end(); ++mm) {
     out << "  " << mm->first << " = " << hobbes::show(mm->second) << "\n";
   }
 }
@@ -729,7 +729,7 @@ MonoTypes TCInstanceFn::instantiatedArgs(MonoTypeUnifier* s, const MonoTypes& ty
 
 MemberMapping TCInstanceFn::members(const MonoTypeSubst& s) const {
   MemberMapping result;
-  for (MemberMapping::const_iterator mm = this->mmap.begin(); mm != this->mmap.end(); ++mm) {
+  for (auto mm = this->mmap.begin(); mm != this->mmap.end(); ++mm) {
     result[mm->first] = substitute(s, mm->second);
   }
   return result;
@@ -795,7 +795,7 @@ Constraints expandHiddenTCs(const TEnvPtr& tenv, const Constraints& cs) {
       r.push_back(c);
     } else {
       auto uq = tenv->lookupUnqualifier(c->name());
-      if (const TClass* cc = dynamic_cast<const TClass*>(uq.get())) {
+      if (const auto* cc = dynamic_cast<const TClass*>(uq.get())) {
         Constraints ncs = expandHiddenTCs(tenv, instantiate(c->arguments(), cc->constraints()));
         r.insert(r.end(), ncs.begin(), ncs.end());
       } else {
@@ -812,7 +812,7 @@ const TClass* findClass(const TEnvPtr& tenv, const std::string& cname) {
   if (uq.get() == 0) {
     throw std::runtime_error("No such type class: " + cname);
   }
-  const TClass* c = dynamic_cast<const TClass*>(uq.get());
+  const auto* c = dynamic_cast<const TClass*>(uq.get());
   if (!c) {
     throw std::runtime_error("Not a type class: " + cname);
   }
@@ -874,7 +874,7 @@ void serializeGroundInstance(const TEnvPtr&, const TClass*, const TCInstancePtr&
 
 void serializeGroundInstances(const TEnvPtr& tenv, const TClass* c, const TCInstances& insts, std::ostream& out) {
   encode(insts.size(), out);
-  for (TCInstances::const_iterator inst = insts.begin(); inst != insts.end(); ++inst) {
+  for (auto inst = insts.begin(); inst != insts.end(); ++inst) {
     serializeGroundInstance(tenv, c, *inst, out);
   }
 }
@@ -883,7 +883,7 @@ typedef std::vector<const TClass*> Classes;
 
 void serializeGroundClasses(const TEnvPtr& tenv, const Classes& cs, std::ostream& out) {
   encode(cs.size(), out);
-  for (Classes::const_iterator c = cs.begin(); c != cs.end(); ++c) {
+  for (auto c = cs.begin(); c != cs.end(); ++c) {
     encode((*c)->name(), out);
     serializeGroundInstances(tenv, *c, (*c)->instances(), out);
   }
@@ -893,8 +893,8 @@ void serializeGroundClasses(const TEnvPtr& tenv, std::ostream& out) {
   const TEnv::Unqualifiers& uqs = tenv->unqualifiers();
   Classes cs;
 
-  for (TEnv::Unqualifiers::const_iterator uq = uqs.begin(); uq != uqs.end(); ++uq) {
-    if (const TClass* c = dynamic_cast<const TClass*>(uq->second.get())) {
+  for (auto uq = uqs.begin(); uq != uqs.end(); ++uq) {
+    if (const auto* c = dynamic_cast<const TClass*>(uq->second.get())) {
       if (c->instances().size() > 0) {
         cs.push_back(c);
       }

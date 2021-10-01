@@ -130,7 +130,7 @@ bool Objs::isObjName(const std::string& tn) const {
 }
 
 bool Objs::isObjType(const MonoTypePtr& mt) const {
-  if (OpaquePtr* op = is<OpaquePtr>(mt)) {
+  if (auto* op = is<OpaquePtr>(mt)) {
     return isObjName(op->name());
   } else {
     return false;
@@ -157,8 +157,8 @@ void appendPath(PtrAdjustmentPath* p, const PtrAdjustmentPath& sfx) {
 }
 
 PtrAdjustmentPath Objs::adjustment(const MonoTypePtr& derived, const MonoTypePtr& base) const {
-  OpaquePtr* d = is<OpaquePtr>(derived);
-  OpaquePtr* b = is<OpaquePtr>(base);
+  auto* d = is<OpaquePtr>(derived);
+  auto* b = is<OpaquePtr>(base);
 
   if (!d || !b) {
     throw std::runtime_error("Expected class types for pointer adjustment determination, but received '" + show(derived) + " <: " + show(base));
@@ -229,7 +229,7 @@ bool Objs::satisfiable(const TEnvPtr&, const MonoTypePtr& lhs, const MonoTypePtr
 }
 
 bool Objs::mayBeKnown(const MonoTypePtr& mt) const {
-  if (OpaquePtr* op = is<OpaquePtr>(mt)) {
+  if (auto* op = is<OpaquePtr>(mt)) {
     // this is a specific C++ type name
     // we can directly tell if it's known
     return this->classDefs.find(op->name()) != this->classDefs.end();
@@ -383,7 +383,7 @@ struct ObjUnqualify : public switchExprTyFn {
 
   static MonoTypes convFroms(const Constraints& cs, const MonoTypePtr& convTo) {
     MonoTypes result;
-    for (Constraints::const_iterator c = cs.begin(); c != cs.end(); ++c) {
+    for (auto c = cs.begin(); c != cs.end(); ++c) {
       Subtype sc;
       if (dec(*c, &sc)) {
         if (*sc.greater == *convTo) {

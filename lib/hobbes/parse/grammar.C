@@ -33,7 +33,7 @@ terminal* chr(chars* cs, char x) {
 ParseRule::Bindings toParseRuleBindings(symbols* ss, chars* cs, const BoundGrammarValues& gvs) {
   ParseRule::Bindings r;
   for (const auto& gv : gvs) {
-    if (const GSymRef* x = dynamic_cast<const GSymRef*>(gv.element.get())) {
+    if (const auto* x = dynamic_cast<const GSymRef*>(gv.element.get())) {
       r.push_back(ParseRule::Binding(gv.varname, sym(ss, x->value())));
     } else if (const GStr* x = dynamic_cast<const GStr*>(gv.element.get())) {
       for (auto c : x->value()) {

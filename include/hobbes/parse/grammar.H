@@ -53,7 +53,7 @@ template <typename T>
 
 template <typename T>
   T switchOf(const GrammarValuePtr& p, const switchGrammarValue<T>& f) {
-    if (const GSymRef* x = dynamic_cast<const GSymRef*>(p.get())) {
+    if (const auto* x = dynamic_cast<const GSymRef*>(p.get())) {
       return f.with(x);
     } else if (const GStr* x = dynamic_cast<const GStr*>(p.get())) {
       return f.with(x);

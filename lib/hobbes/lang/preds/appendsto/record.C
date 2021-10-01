@@ -41,7 +41,7 @@ Record::Members tupleNormalize(const Record::Members& ms) {
   if (isTupleLike(ms)) {
     Record::Members result;
     size_t i = 0;
-    for (Record::Members::const_iterator m = ms.begin(); m != ms.end(); ++m) {
+    for (auto m = ms.begin(); m != ms.end(); ++m) {
       result.push_back(Record::Member(".f" + str::from(i++), m->type, m->offset));
     }
     return result;
@@ -54,7 +54,7 @@ MkRecord::FieldDefs tupleNormalize(const MkRecord::FieldDefs& fds) {
   if (isTupleLike(fds)) {
     MkRecord::FieldDefs result;
     size_t i = 0;
-    for (MkRecord::FieldDefs::const_iterator fd = fds.begin(); fd != fds.end(); ++fd) {
+    for (auto fd = fds.begin(); fd != fds.end(); ++fd) {
       result.push_back(MkRecord::FieldDef(".f" + str::from(i++), fd->second));
     }
     return result;
@@ -87,7 +87,7 @@ ExprPtr makeRecord(const MkRecord::FieldDefs& fds, const LexicalAnnotation& la) 
 }
 
 void importDefs(const Record::Members& ms, Record::Members* out) {
-  for (Record::Members::const_iterator m = ms.begin(); m != ms.end(); ++m) {
+  for (auto m = ms.begin(); m != ms.end(); ++m) {
     out->push_back(Record::Member(m->field, m->type));
   }
 }
@@ -248,7 +248,7 @@ void insertFieldDefsFromProj(const ExprPtr& rec, const Record* rty, MkRecord::Fi
     throw annotated_error(*rec, "Internal error, can't insert projections out of non-record type: " + show(rec->type()));
   }
 
-  for (Record::Members::const_iterator m = rty->members().begin(); m != rty->members().end(); ++m) {
+  for (auto m = rty->members().begin(); m != rty->members().end(); ++m) {
     out->push_back(MkRecord::FieldDef(m->field, proj(rec, rty, m->field, rec->la())));
   }
 }

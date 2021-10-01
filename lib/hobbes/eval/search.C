@@ -58,7 +58,7 @@ static void accumLabels(std::set<std::string>* lbls, const TEnvPtr& tenv) {
   // (it might be reasonable to gather labels across types in _all_ ground type class instances)
   try {
     auto uq = tenv->lookupUnqualifier("SLookup");
-    if (const TClass* c = dynamic_cast<const TClass*>(uq.get())) {
+    if (const auto* c = dynamic_cast<const TClass*>(uq.get())) {
       for (auto i : c->instances()) {
         if (i->types().size() > 2) {
           if (const TString* s = is<TString>(i->types()[1])) {

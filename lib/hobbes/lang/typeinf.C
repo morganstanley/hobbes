@@ -60,13 +60,13 @@ void MonoTypeUnifier::suppress(const std::string& vn) {
 }
 
 void MonoTypeUnifier::suppress(const str::seq& vns) {
-  for (str::seq::const_iterator vn = vns.begin(); vn != vns.end(); ++vn) {
+  for (auto vn = vns.begin(); vn != vns.end(); ++vn) {
     suppress(*vn);
   }
 }
 
 void MonoTypeUnifier::unsuppress(const std::string& vn) {
-  SuppressVarCounts::iterator vnc = this->suppressVarCounts.find(vn);
+  auto vnc = this->suppressVarCounts.find(vn);
 
   if (vnc != this->suppressVarCounts.end()) {
     if (--vnc->second == 0) {
@@ -76,13 +76,13 @@ void MonoTypeUnifier::unsuppress(const std::string& vn) {
 }
 
 void MonoTypeUnifier::unsuppress(const str::seq& vns) {
-  for (str::seq::const_iterator vn = vns.begin(); vn != vns.end(); ++vn) {
+  for (auto vn = vns.begin(); vn != vns.end(); ++vn) {
     unsuppress(*vn);
   }
 }
 
 bool MonoTypeUnifier::suppressed(const std::string& vn) const {
-  SuppressVarCounts::const_iterator vnc = this->suppressVarCounts.find(vn);
+  auto vnc = this->suppressVarCounts.find(vn);
   return vnc != this->suppressVarCounts.end() && vnc->second > 0;
 }
 
@@ -154,7 +154,7 @@ struct encodeCtorForm : public switchType<std::string> {
   std::string with(const Variant* v) const override {
     std::ostringstream vn;
     vn << "variant:";
-    for (Variant::Members::const_iterator c = v->members().begin(); c != v->members().end(); ++c) {
+    for (auto c = v->members().begin(); c != v->members().end(); ++c) {
       vn << c->selector << "=" << ";";
       this->targs->push_back(c->type);
     }
@@ -164,7 +164,7 @@ struct encodeCtorForm : public switchType<std::string> {
   std::string with(const Record* v) const override {
     std::ostringstream rn;
     rn << "record:";
-    for (Record::Members::const_iterator f = v->members().begin(); f != v->members().end(); ++f) {
+    for (auto f = v->members().begin(); f != v->members().end(); ++f) {
       rn << f->field << "=" << ";";
       this->targs->push_back(f->type);
     }
@@ -357,7 +357,7 @@ MonoTypePtr MonoTypeUnifier::substitute(const MonoTypePtr& ty) {
 
 MonoTypes MonoTypeUnifier::substitute(const MonoTypes& ts) {
   MonoTypes result;
-  for (MonoTypes::const_iterator t = ts.begin(); t != ts.end(); ++t) {
+  for (auto t = ts.begin(); t != ts.end(); ++t) {
     result.push_back(substitute(*t));
   }
   return result;
@@ -395,7 +395,7 @@ MonoTypePtr substitute(MonoTypeUnifier* u, const MonoTypePtr& ty) {
 
 MonoTypes substitute(MonoTypeUnifier* u, const MonoTypes& tys) {
   MonoTypes r;
-  for (MonoTypes::const_iterator ty = tys.begin(); ty != tys.end(); ++ty) {
+  for (auto ty = tys.begin(); ty != tys.end(); ++ty) {
     r.push_back(u->substitute(*ty));
   }
   return r;
@@ -407,7 +407,7 @@ ConstraintPtr substitute(MonoTypeUnifier* u, const ConstraintPtr& cst) {
 }
 
 Constraints substitute(MonoTypeUnifier* u, const Constraints& cs) {
-  for (Constraints::const_iterator c = cs.begin(); c != cs.end(); ++c) {
+  for (auto c = cs.begin(); c != cs.end(); ++c) {
     substitute(u, *c);
   }
   return cs;
@@ -504,7 +504,7 @@ bool refine(const TEnvPtr& tenv, const Constraints& cs, MonoTypeUnifier* s, Defi
   bool upd = true;
   while (upd) {
     upd = false;
-    for (Constraints::const_iterator c = cs.begin(); c != cs.end(); ++c) {
+    for (auto c = cs.begin(); c != cs.end(); ++c) {
       upd |= refine(tenv, *c, s, ds);
     }
   }
@@ -535,7 +535,7 @@ bool refine(const TEnvPtr& tenv, const ExprPtr& e, MonoTypeUnifier* s, Definitio
 Record::Members makeRecordMembers(const MkRecord::FieldDefs& fds, const MonoTypes& mts) {
   Record::Members r;
   int i = 0;
-  for (MkRecord::FieldDefs::const_iterator f = fds.begin(); f != fds.end(); ++f, ++i) {
+  for (auto f = fds.begin(); f != fds.end(); ++f, ++i) {
     r.push_back(Record::Member(f->first, mts[i]));
   }
   return r;
@@ -628,7 +628,7 @@ struct expTypeInfF : public switchExprM<UnitV> {
     mergeConstraints(v->fn()->type()->constraints(), &csts);
 
     MonoTypes atys;
-    for (Exprs::iterator a = v->args().begin(); a != v->args().end(); ++a) {
+    for (auto a = v->args().begin(); a != v->args().end(); ++a) {
       switchOf(*a, *this);
       mergeConstraints((*a)->type()->constraints(), &csts);
       atys.push_back((*a)->type()->monoType());
@@ -693,7 +693,7 @@ struct expTypeInfF : public switchExprM<UnitV> {
     MonoTypePtr ety  = freshTypeVar();
     QualTypePtr qety = qualtype(ety);
 
-    for (Exprs::iterator e = v->values().begin(); e != v->values().end(); ++e) {
+    for (auto e = v->values().begin(); e != v->values().end(); ++e) {
       switchOf(*e, *this);
       mgu(*e, qety, this->u);
       cs = mergeConstraints((*e)->type()->constraints(), cs);
@@ -794,7 +794,7 @@ struct expTypeInfF : public switchExprM<UnitV> {
     Constraints      cs;
     int              cidx = 0;
 
-    for (Case::Bindings::iterator b = v->bindings().begin(); b != v->bindings().end(); ++b) {
+    for (auto b = v->bindings().begin(); b != v->bindings().end(); ++b) {
       MonoTypePtr bty = freshTypeVar();
       switchOf(b->exp, expTypeInfF(bindFrame(this->tenv, b->vname, bty), this->u, this->ds));
 
@@ -1017,7 +1017,7 @@ void mgu(const ConstraintPtr& c0, const ConstraintPtr& c1, MonoTypeUnifier* u) {
 // utilities for dealing with qualified types
 QualLiftedMonoTypes liftQualifiers(const QualTypes& qts) {
   QualLiftedMonoTypes r;
-  for (QualTypes::const_iterator qt = qts.begin(); qt != qts.end(); ++qt) {
+  for (auto qt = qts.begin(); qt != qts.end(); ++qt) {
     mergeConstraints((*qt)->constraints(), &r.first);
     r.second.push_back((*qt)->monoType());
   }

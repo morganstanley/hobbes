@@ -66,9 +66,9 @@ public:
   }
 
   void resize(uint64_t sz) {
-    uint64_t  asz   = align<uint64_t>(sz, 64);
+    auto  asz   = align<uint64_t>(sz, 64);
     uint64_t  bc    = asz / 64;
-    uint64_t* nbits = new uint64_t[bc];
+    auto* nbits = new uint64_t[bc];
 
     if (bc <= this->bcount) {
       memcpy(nbits, this->bits, bc * sizeof(uint64_t));

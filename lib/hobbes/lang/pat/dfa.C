@@ -148,7 +148,7 @@ ExprPtr varName(MDFA* dfa, const std::string& vn) {
 ExprPtr arrayElement(MDFA* dfa, const std::string& vn, size_t i) {
   VarArrayElem::const_iterator ae = dfa->elementExps.find(vn);
   if (ae != dfa->elementExps.end()) {
-    ArrayElem::const_iterator ie = ae->second.find(i);
+    auto ie = ae->second.find(i);
     if (ie != ae->second.end()) {
       return ie->second;
     }
@@ -162,7 +162,7 @@ ExprPtr arrayElement(MDFA* dfa, const std::string& vn, size_t i) {
 ExprPtr charArrElement(MDFA* dfa, const std::string& packFn, const std::string& vn, size_t i) {
   VarArrayElem::const_iterator ae = dfa->elementExps.find(vn);
   if (ae != dfa->elementExps.end()) {
-    ArrayElem::const_iterator ie = ae->second.find(i);
+    auto ie = ae->second.find(i);
     if (ie != ae->second.end()) {
       return ie->second;
     }
@@ -191,7 +191,7 @@ ExprPtr arraySize(MDFA* dfa, const std::string& vn) {
 ExprPtr field(MDFA* dfa, const std::string& vn, const std::string& fn) {
   VarStructField::const_iterator vsf = dfa->fieldExps.find(vn);
   if (vsf != dfa->fieldExps.end()) {
-    StructField::const_iterator sf = vsf->second.find(fn);
+    auto sf = vsf->second.find(fn);
     if (sf != vsf->second.end()) {
       return sf->second;
     }
@@ -347,7 +347,7 @@ MStatePtr makeSplitState(MDFA* dfa, const PatternRows& ps, size_t c) {
       // record where this match-any came from, then append it to all states recorded so far
       anys.push_back(r);
 
-      for (typename Branches::iterator b = bs.begin(); b != bs.end(); ++b) {
+      for (auto b = bs.begin(); b != bs.end(); ++b) {
         makeMatchAnyRow(b->first, &b->second, ps[r], c);
       }
     } else {
@@ -554,7 +554,7 @@ MStatePtr makeCharArrayState(MDFA* dfa, const PatternRows& ps, size_t c) {
   static MonoTypePtr longTy(Prim::make("long"));
 
   std::string arrayVar = ps[0].patterns[c]->name();
-  size_t      mlen     = align<size_t>(maxStringLen(ps, c) + 1, 8);
+  auto      mlen     = align<size_t>(maxStringLen(ps, c) + 1, 8);
   size_t      cs       = mlen;
   
   LoadVars::Defs ds;
@@ -1641,7 +1641,7 @@ IDFATransitions* transitions(const ArgPos& argpos, MDFA* dfa, const SwitchVal::J
   }
 
   size_t msz = sizeof(long) + (ssvj.size() * sizeof(std::pair<long, IDFATransition>));
-  IDFATransitions* result = reinterpret_cast<IDFATransitions*>(malloc(msz));
+  auto* result = reinterpret_cast<IDFATransitions*>(malloc(msz));
   memset(reinterpret_cast<void*>(result), 0, msz);
   result->size = ssvj.size();
   size_t i = 0;
@@ -1687,7 +1687,7 @@ void makeInterpretedPrimMatchFunction(const std::string& fname, MDFA* dfa, state
 
   // construct the DFA description in a consumable format
   size_t msz = sizeof(long) + (localstate.size() + sizeof(IDFAState));
-  array<IDFAState>* dfaStates = reinterpret_cast<array<IDFAState>*>(malloc(msz));
+  auto* dfaStates = reinterpret_cast<array<IDFAState>*>(malloc(msz));
   memset(reinterpret_cast<void*>(dfaStates), 0, msz);
   dfaStates->size = localstate.size();
 

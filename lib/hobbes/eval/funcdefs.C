@@ -171,7 +171,7 @@ scoped_pool_reset::~scoped_pool_reset() {
 }
 
 const array<char>* makeString(region& m, const char* s, size_t len) {
-  array<char>* r = reinterpret_cast<array<char>*>(m.malloc(sizeof(long) + len));
+  auto* r = reinterpret_cast<array<char>*>(m.malloc(sizeof(long) + len));
   r->size = len;
   memcpy(r->data, s, len);
   return r;

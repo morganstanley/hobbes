@@ -36,7 +36,7 @@ void MatchLiteral::show(std::ostream& out) const {
 }
 
 bool MatchLiteral::operator==(const Pattern& rhs) const {
-  if (const MatchLiteral* lrhs = is<MatchLiteral>(&rhs)) {
+  if (const auto* lrhs = is<MatchLiteral>(&rhs)) {
     return *this->p == *lrhs->p;
   } else {
     return false;
@@ -51,7 +51,7 @@ const std::string& MatchAny::value() const { return this->vn; }
 void MatchAny::show(std::ostream& out) const { out << this->vn; }
 
 bool MatchAny::operator==(const Pattern& rhs) const {
-  if (const MatchAny* arhs = is<MatchAny>(&rhs)) {
+  if (const auto* arhs = is<MatchAny>(&rhs)) {
     return this->vn == arhs->vn;
   } else {
     return false;
@@ -101,7 +101,7 @@ void MatchArray::show(std::ostream& out) const {
 }
 
 bool MatchArray::operator==(const Pattern& rhs) const {
-  const MatchArray* arhs = is<MatchArray>(&rhs);
+  const auto* arhs = is<MatchArray>(&rhs);
   if (!arhs || this->ps.size() != arhs->ps.size()) return false;
 
   for (unsigned int i = 0; i < this->ps.size(); ++i) {
@@ -141,7 +141,7 @@ void MatchRegex::show(std::ostream& out) const {
 }
 
 bool MatchRegex::operator==(const Pattern& rhs) const {
-  if (const MatchRegex* trhs = is<MatchRegex>(&rhs)) {
+  if (const auto* trhs = is<MatchRegex>(&rhs)) {
     return text() == trhs->text();
   }
   return false;
@@ -223,7 +223,7 @@ void MatchRecord::show(std::ostream& out, const Field& f) {
 }
 
 bool MatchRecord::operator==(const Pattern& rhs) const {
-  const MatchRecord* rrhs = hobbes::is<MatchRecord>(&rhs);
+  const auto* rrhs = hobbes::is<MatchRecord>(&rhs);
   if (!rrhs || this->fs.size() != rrhs->fs.size()) return false;
 
   for (unsigned int i = 0; i < this->fs.size(); ++i) {
@@ -254,7 +254,7 @@ void MatchVariant::show(std::ostream& out) const {
 }
 
 bool MatchVariant::operator==(const Pattern& rhs) const {
-  if (const MatchVariant* vrhs = is<MatchVariant>(&rhs)) {
+  if (const auto* vrhs = is<MatchVariant>(&rhs)) {
     return this->lbl == vrhs->lbl && *this->p == *vrhs->p;
   } else {
     return false;
@@ -325,7 +325,7 @@ void normalizeRecPatterns(MatchRecord* r, const std::set<std::string>& fnames) {
 
 void normalizeRecPatterns(const Patterns& ps, const std::set<std::string>& fnames) {
   for (const auto& p : ps) {
-    if (MatchRecord* r = is<MatchRecord>(p)) {
+    if (auto* r = is<MatchRecord>(p)) {
       normalizeRecPatterns(r, fnames);
     }
   }
@@ -500,7 +500,7 @@ MonoTypes matchRowType(const TEnvPtr& tenv, const PatternRows& ps) {
   // determine the initial row type
   MonoTypes ts;
   const Patterns& pr = ps[0].patterns;
-  for (Patterns::const_iterator p = pr.begin(); p != pr.end(); ++p) {
+  for (auto p = pr.begin(); p != pr.end(); ++p) {
     ts.push_back(switchOf(*p, inferTypeF(&u)));
   }
 

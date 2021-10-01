@@ -31,7 +31,7 @@ template <typename T, typename ... Args>
     size_t compact() {
       size_t c = 0;
       std::lock_guard<std::recursive_mutex> lock(mutex);
-      for (typename Values::iterator v = this->values.begin(); v != this->values.end();) {
+      for (auto v = this->values.begin(); v != this->values.end();) {
         if (v->second.use_count() == 1) {
           v = this->values.erase(v);
           ++c;

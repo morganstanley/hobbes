@@ -224,7 +224,7 @@ void prepareStrExpr(Server *s, int c, exprid eid, const std::string &expr,
 }
 
 void evaluateNetREPLRequest(int c, void *d) {
-  Server *s = reinterpret_cast<Server *>(d);
+  auto *s = reinterpret_cast<Server *>(d);
 
   try {
     uint8_t cmd = 0;

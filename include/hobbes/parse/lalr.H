@@ -183,7 +183,7 @@ template <typename X, typename Y, typename Fp, typename A, typename R>
       Xstack s;
       Xidxs  n = freshIdxs(this->xs);
 
-      for (typename Xs::const_iterator x = this->xs.begin(); x != this->xs.end(); ++x) {
+      for (auto x = this->xs.begin(); x != this->xs.end(); ++x) {
         if (n[*x] == 0) {
           traverse(*x, &s, &n, &f);
         }
@@ -201,7 +201,7 @@ template <typename X, typename Y, typename Fp, typename A, typename R>
       (*f)[x] = this->fp(x);
 
       // and the values of any nodes in the input relation
-      for (typename Xs::const_iterator y = this->xs.begin(); y != this->xs.end(); ++y) {
+      for (auto y = this->xs.begin(); y != this->xs.end(); ++y) {
         if (this->r(x, *y)) {
           // the node y is in the relation
           // if it hasn't been visited yet, then recurse into it to determine its value
@@ -231,7 +231,7 @@ template <typename X, typename Y, typename Fp, typename A, typename R>
 
     static Xidxs freshIdxs(const Xs& xs) {
       Xidxs r;
-      for (typename Xs::const_iterator x = xs.begin(); x != xs.end(); ++x) {
+      for (auto x = xs.begin(); x != xs.end(); ++x) {
         r[*x] = 0;
       }
       return r;

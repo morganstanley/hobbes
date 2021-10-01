@@ -495,7 +495,7 @@ inline llvm::GlobalVariable* prepgv(llvm::GlobalVariable* gv, unsigned int align
 // constant :: Value -> Bool -> Const
 //   try to extract a constant from a value (either by value or reference)
 inline llvm::Constant* constant(llvm::Value* v, bool globalPtrRefs) {
-  if (llvm::GlobalVariable* gv = llvm::dyn_cast<llvm::GlobalVariable>(v)) {
+  if (auto* gv = llvm::dyn_cast<llvm::GlobalVariable>(v)) {
     if (gv->isConstant()) {
       if (globalPtrRefs) {
         return gv;
@@ -505,7 +505,7 @@ inline llvm::Constant* constant(llvm::Value* v, bool globalPtrRefs) {
     } else {
       return 0;
     }
-  } else if (llvm::Constant* c = llvm::dyn_cast<llvm::Constant>(v)) {
+  } else if (auto* c = llvm::dyn_cast<llvm::Constant>(v)) {
     return c;
   } else {
     return 0;
@@ -529,7 +529,7 @@ inline llvm::Constant* liftAsGlobalRef(llvm::Module* m, llvm::Constant* c) {
 //   try to extract constants from a set of compiled values -- if even one value is not constant, fail by returning an empty list
 inline Constants varArrayConstants(const Values& vs, bool globalPtrRefs) {
   Constants r;
-  for (Values::const_iterator v = vs.begin(); v != vs.end(); ++v) {
+  for (auto v = vs.begin(); v != vs.end(); ++v) {
     if (llvm::Constant* c = constant(*v, globalPtrRefs)) {
       r.push_back(c);
     } else {
@@ -608,11 +608,11 @@ inline llvm::Value* memCopy(llvm::IRBuilder<>* b, llvm::Value* dst, uint32_t dst
 inline Constants mergePadding(const Constants& cs, const Record::Members& ms) {
   Constants r;
   size_t i = 0;
-  Record::Members::const_iterator m = ms.begin();
+  auto m = ms.begin();
   while (m != ms.end()) {
     if (m->field[0] == '.' && m->field[1] == 'p') {
       size_t plen = 0;
-      if (FixedArray* fa = is<FixedArray>(m->type)) {
+      if (auto* fa = is<FixedArray>(m->type)) {
         long asz = fa->requireLength();
         plen = asz < 0 ? 0 : static_cast<size_t>(asz);
       } else {

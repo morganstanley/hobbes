@@ -850,7 +850,7 @@ public:
   size_t size() const { return this->sz; }
   void NotifyObjectEmitted(const llvm::object::ObjectFile& o, const llvm::RuntimeDyld::LoadedObjectInfo&) {
     for (auto s : o.symbols()) {
-      const llvm::object::ELFSymbolRef* esr = reinterpret_cast<const llvm::object::ELFSymbolRef*>(&s);
+      const auto* esr = reinterpret_cast<const llvm::object::ELFSymbolRef*>(&s);
 
       if (esr) {
         auto nr = esr->getName();
@@ -1206,7 +1206,7 @@ void jitcc::defineGlobal(const std::string& vn, const ExprPtr& ue) {
 
     // compile and run this function, it should then perform the global variable assignment
     // (make sure that any allocation happens in the global context iff we need it)
-    Thunk f = reinterpret_cast<Thunk>(getMachineCode(initfn));
+    auto f = reinterpret_cast<Thunk>(getMachineCode(initfn));
 
     if (hasPointerRep(uety)) {
       size_t oldregion = pushGlobalRegion();
@@ -1560,7 +1560,7 @@ void* jitcc::reifyMachineCodeForFn(const MonoTypePtr&, const str::seq& names, co
 // compilation shorthand
 Values compile(jitcc* c, const Exprs& es) {
   Values r;
-  for (Exprs::const_iterator exp = es.begin(); exp != es.end(); ++exp) {
+  for (auto exp = es.begin(); exp != es.end(); ++exp) {
     r.push_back(c->compile(*exp));
   }
   return r;

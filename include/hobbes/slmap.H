@@ -125,7 +125,7 @@ template <typename K, typename V>
     //   in a uniformly distributed random number
     //    (1/2 end in 1b, 1/4 end in 11b, 1/8 end in 111b, etc)
     static level chooseLevel() {
-      level bv = static_cast<level>(rand());
+      auto bv = static_cast<level>(rand());
       level r = 1;
       while (bv&1) {
         ++r;

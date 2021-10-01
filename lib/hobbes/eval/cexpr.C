@@ -28,7 +28,7 @@ Values removeUnit(const Values& vs, const MonoTypes& mts) {
 
 MonoTypes removeUnit(const MonoTypes& mts) {
   MonoTypes r;
-  for (MonoTypes::const_iterator mt = mts.begin(); mt != mts.end(); ++mt) {
+  for (auto mt = mts.begin(); mt != mts.end(); ++mt) {
     if (!isUnit(*mt)) {
       r.push_back(*mt);
     }
@@ -38,7 +38,7 @@ MonoTypes removeUnit(const MonoTypes& mts) {
 
 Record::Members removeUnit(const Record::Members& ms) {
   Record::Members r;
-  for (Record::Members::const_iterator m = ms.begin(); m != ms.end(); ++m) {
+  for (auto m = ms.begin(); m != ms.end(); ++m) {
     if (!isUnit(m->type)) {
       r.push_back(*m);
     }
@@ -179,7 +179,7 @@ public:
 
   llvm::Value* with(const MkArray* v) const override {
     MonoTypePtr ty  = requireMonotype(v->type());
-    Array*      aty = is<Array>(ty);
+    auto*      aty = is<Array>(ty);
     if (aty == 0) {
       throw annotated_error(*v, "Internal compiler error -- can't make array out of non-array type: " + show(ty));
     }
@@ -263,7 +263,7 @@ public:
 
   llvm::Value* with(const MkRecord* v) const override {
     MonoTypePtr mrty = requireMonotype(v->type());
-    Record*     rty  = is<Record>(mrty);
+    auto*     rty  = is<Record>(mrty);
     if (!rty) { throw annotated_error(*v, "Internal compiler error, compiling record without record type: " + show(v) + " :: " + show(v->type())); }
 
     RecordValue vs = compileRecordFields(v->fields());
@@ -321,7 +321,7 @@ public:
     if (v->defaultExpr().get() != 0) {
       std::string pn = freshName();
 
-      for (Variant::Members::const_iterator vm = vty->members().begin(); vm != vty->members().end(); ++vm) {
+      for (auto vm = vty->members().begin(); vm != vty->members().end(); ++vm) {
         if (!v->hasBinding(vm->selector)) {
           v->addBinding(vm->selector, pn, v->defaultExpr());
         }
@@ -332,7 +332,7 @@ public:
   llvm::Value* with(const Case* v) const override {
     MonoTypePtr casety = requireMonotype(v->type());
     MonoTypePtr varty  = requireMonotype(v->variant()->type());
-    Variant*    vty    = is<Variant>(varty);
+    auto*    vty    = is<Variant>(varty);
     if (!vty) {
       throw annotated_error(*v, "Internal compiler error (received non-variant type in case).");
     }
@@ -363,7 +363,7 @@ public:
     typedef std::vector<MergeLink> MergeLinks;
     MergeLinks mergeLinks;
 
-    for (Case::Bindings::const_iterator b = v->bindings().begin(); b != v->bindings().end(); ++b) {
+    for (auto b = v->bindings().begin(); b != v->bindings().end(); ++b) {
       unsigned int      caseID    = vty->id(b->selector);
       withContext([&](llvm::LLVMContext& c) {
         llvm::BasicBlock* caseBlock = llvm::BasicBlock::Create(c, "case_" + str::from(caseID), thisFn);
@@ -491,7 +491,7 @@ public:
   }
 
   llvm::Value* with(const Proj* v) const override {
-    Record* rty = is<Record>(requireMonotype(v->record()->type()));
+    auto* rty = is<Record>(requireMonotype(v->record()->type()));
     if (!rty) {
       throw annotated_error(*v, "Internal compiler error (received non-record type in projection).");
     }
@@ -508,7 +508,7 @@ public:
     llvm::Value* rp = structFieldPtr(rec, rty->alignedIndex(v->field()));
 
     return withContext([&](auto&) -> llvm::Value* {
-      if (OpaquePtr* op = is<OpaquePtr>(fty)) {
+      if (auto* op = is<OpaquePtr>(fty)) {
         if (op->storedContiguously()) {
           return builder()->CreateBitCast(rp, ptrType(byteType()));
         } else {
@@ -602,7 +602,7 @@ private:
 
   RecordValue compileRecordFields(const MkRecord::FieldDefs& fs) const {
     RecordValue r;
-    for (MkRecord::FieldDefs::const_iterator f = fs.begin(); f != fs.end(); ++f) {
+    for (auto f = fs.begin(); f != fs.end(); ++f) {
       if (!isUnit(requireMonotype(f->second->type()))) {
         llvm::Value* v = compile(f->second);
         r.push_back(FieldValue(f->first, v));
@@ -641,7 +641,7 @@ private:
 
       return p;
     } else if (const Proj* rp = is<Proj>(e)) {
-      Record* rty = is<Record>(requireMonotype(rp->record()->type()));
+      auto* rty = is<Record>(requireMonotype(rp->record()->type()));
       if (!rty) {
         throw annotated_error(*e, "Internal compiler error (received non-record type in projection).");
       }
@@ -652,7 +652,7 @@ private:
       // switched to using packed records and manually-determined padding
       llvm::Value* p = structFieldPtr(rec, rty->alignedIndex(rp->field()));
 
-      if (OpaquePtr* op = is<OpaquePtr>(fty)) {
+      if (auto* op = is<OpaquePtr>(fty)) {
         if (op->storedContiguously()) {
           return withContext([&](llvm::LLVMContext& c) {
             llvm::PointerType* bty = llvm::PointerType::getUnqual(llvm::Type::getInt8Ty(c));
@@ -749,7 +749,7 @@ public:
 
   llvm::Constant* with(const MkArray* v) const override {
     MonoTypePtr ty  = requireMonotype(v->type());
-    Array*      aty = is<Array>(ty);
+    auto*      aty = is<Array>(ty);
     if (aty == 0) {
       throw annotated_error(*v, "Internal compiler error -- can't make array out of non-array type: " + show(ty));
     }
@@ -780,7 +780,7 @@ public:
 
   llvm::Constant* with(const MkRecord* v) const override {
     MonoTypePtr mrty = requireMonotype(v->type());
-    Record*     rty  = is<Record>(mrty);
+    auto*     rty  = is<Record>(mrty);
     if (!rty) { throw annotated_error(*v, "Internal compiler error, compiling record without record type: " + show(v) + " :: " + show(v->type())); }
 
     Constants rcs;

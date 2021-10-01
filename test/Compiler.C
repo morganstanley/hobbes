@@ -28,7 +28,7 @@ TEST(Compiler, compileToSupportsMoreThanSixArgs) {
   
   hobbes::cc compiler;
 
-  MatchFunPtr funPtr = hobbes::compileTo<MatchFunPtr>(
+  auto funPtr = hobbes::compileTo<MatchFunPtr>(
     &compiler,
     hobbes::list<std::string>("vegetables", "spices", "fruits",
                               "meat","cheese", "technique",

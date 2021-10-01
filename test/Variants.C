@@ -12,7 +12,7 @@ const char leftLBL[] = "left";
 const char rightLBL[] = "right";
 
 int intCastVariant(const variant<leftCtor, rightCtor>* bv) {
-  if (const leftCtor* lv = bv->get<leftCtor>()) {
+  if (const auto* lv = bv->get<leftCtor>()) {
     return lv->value;
   } else {
     return static_cast<int>(bv->get<rightCtor>()->value);

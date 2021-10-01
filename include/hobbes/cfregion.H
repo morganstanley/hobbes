@@ -126,7 +126,7 @@ struct cwbitstream {
 
     // seek to the last buffer (where the next pointer goes to the null batch node)
     if (this->batchNode[0] == 1) {
-      size_t* nextNode = reinterpret_cast<size_t*>(mapFileData(this->file, this->batchNode[2], 3*sizeof(size_t)));
+      auto* nextNode = reinterpret_cast<size_t*>(mapFileData(this->file, this->batchNode[2], 3*sizeof(size_t)));
       while (nextNode[0] == 1) {
         unmapFileData(this->file, this->batchNode, 3*sizeof(size_t));
         this->batchNode = nextNode;
@@ -167,7 +167,7 @@ struct cwbitstream {
   // start a new segment within the current batch
   void stepSegment() {
     this->seg->nextRef = findSpace(this->file, pagetype::data, sizeof(cbatchseg), sizeof(size_t));
-    cbatchseg* newseg = reinterpret_cast<cbatchseg*>(mapFileData(this->file, this->seg->nextRef, sizeof(cbatchseg)));
+    auto* newseg = reinterpret_cast<cbatchseg*>(mapFileData(this->file, this->seg->nextRef, sizeof(cbatchseg)));
     unmapFileData(this->file, this->seg, sizeof(cbatchseg));
     this->seg = newseg;
     this->buffer->bitIndex = 0;
@@ -197,7 +197,7 @@ struct cwbitstream {
     // allocate a new node to hold this new batch
     size_t  nodeSize = 3 * sizeof(size_t);
     size_t  nodeLoc  = findSpace(this->file, pagetype::data, nodeSize, sizeof(size_t));
-    size_t* newNode  = reinterpret_cast<size_t*>(mapFileData(this->file, nodeLoc, nodeSize));
+    auto* newNode  = reinterpret_cast<size_t*>(mapFileData(this->file, nodeLoc, nodeSize));
 
     newNode[0] = 1;
     newNode[1] = batchRef;
@@ -621,7 +621,7 @@ template <uint8_t maxSym, typename AsSym>
     }
 
     static void write(cwbitstream* bits, PModel* pm, CModel* cm, AsSym s) {
-      uint8_t c = static_cast<uint8_t>(s);
+      auto c = static_cast<uint8_t>(s);
       arithn::code clow, chigh;
       if (M::find(cm, c, &clow, &chigh)) {
         bits->write(clow, chigh, M::interval(cm));
@@ -641,7 +641,7 @@ template <uint8_t maxSym, typename AsSym>
       rbits->shift(clow, chigh, M::interval(cm));
 
       if (s == M::esc) {
-        symbol nc = static_cast<symbol>(rbits->svalue(escRange));
+        auto nc = static_cast<symbol>(rbits->svalue(escRange));
         rbits->shift(nc, nc+1, escRange);
         M::add(pm, cm, nc);
         *c = static_cast<AsSym>(static_cast<uint8_t>(nc));
@@ -963,7 +963,7 @@ inline ty::desc storedBitSeqType() {
   ty::desc bt = store<cbatchseg>::storeType();
 
   if (bt->tid == PRIV_HPPF_TYCTOR_STRUCT) {
-    ty::Struct* s = reinterpret_cast<ty::Struct*>(bt.get());
+    auto* s = reinterpret_cast<ty::Struct*>(bt.get());
     size_t pc = 0;
 
     for (auto& f : s->fields) {
@@ -986,7 +986,7 @@ inline ty::desc storedCompressedSeqTypeDef(const ty::desc& t, const ty::desc& mo
   ty::desc bt = store<cbatch>::storeType();
 
   if (bt->tid == PRIV_HPPF_TYCTOR_STRUCT) {
-    ty::Struct* s = reinterpret_cast<ty::Struct*>(bt.get());
+    auto* s = reinterpret_cast<ty::Struct*>(bt.get());
     size_t pc = 0;
 
     for (auto& f : s->fields) {
@@ -1068,7 +1068,7 @@ template <typename T>
 
         // define the sequence and prepare to write to it
         size_t  headNodeRef = findSpace(this->f, pagetype::data, sizeof(size_t), sizeof(size_t));
-        size_t* headNode    = reinterpret_cast<size_t*>(mapFileData(this->f, headNodeRef, sizeof(size_t)));
+        auto* headNode    = reinterpret_cast<size_t*>(mapFileData(this->f, headNodeRef, sizeof(size_t)));
         *headNode = this->out.initFresh(initModelRef, this->scratchModelRef);
         addBinding(this->f, this->seqname, ty::encoding(this->stdef), headNodeRef);
         unmapFileData(this->f, headNode, sizeof(size_t));
@@ -1076,7 +1076,7 @@ template <typename T>
         throw std::runtime_error("Can't write to sequence " + seqname + " as type '" + ty::show(this->stdef) + "', already defined as type '" + ty::show(ty::decode(b->second.type)) + "'");
       } else {
         // load the head batch and initialize from it
-        size_t* headNode      = reinterpret_cast<size_t*>(mapFileData(this->f, b->second.offset, sizeof(size_t)));
+        auto* headNode      = reinterpret_cast<size_t*>(mapFileData(this->f, b->second.offset, sizeof(size_t)));
         this->scratchModelRef = this->out.initFromRoot(*headNode, sizeof(PModel));
         this->scratchModel    = reinterpret_cast<PModel*>(mapFileData(this->f, this->scratchModelRef, sizeof(PModel)));
 
@@ -1102,7 +1102,7 @@ template <typename T>
 
         // allocate/initialize the model for this bitstream segment (from the terminal state of the scratch model for the previous segment)
         uint64_t newScratchModelRef = findSpace(this->f, pagetype::data, sizeof(PModel), sizeof(size_t));
-        PModel*  newScratchModel    = reinterpret_cast<PModel*>(mapFileData(this->f, newScratchModelRef, sizeof(PModel)));
+        auto*  newScratchModel    = reinterpret_cast<PModel*>(mapFileData(this->f, newScratchModelRef, sizeof(PModel)));
         memcpy(reinterpret_cast<void*>(newScratchModel), this->scratchModel, sizeof(PModel));
         unmapFileData(this->f, this->scratchModel, sizeof(PModel));
 
@@ -1232,7 +1232,7 @@ template <typename T>
 
     void loadReadState(uint64_t root) {
       while (root != 0) {
-        uint64_t* d = reinterpret_cast<uint64_t*>(mapFileData(this->f, root, 3*sizeof(uint64_t)));
+        auto* d = reinterpret_cast<uint64_t*>(mapFileData(this->f, root, 3*sizeof(uint64_t)));
         if (d[0] == 0) {
           root = 0;
         } else {
@@ -1258,7 +1258,7 @@ template <typename T>
         this->readState.reset(reinterpret_cast<const cbatch*>(mapFileData(this->f, this->batches.front(), sizeof(cbatch))));
 
         // initialize the model for this batch
-        const uint8_t* modelState = reinterpret_cast<const uint8_t*>(mapFileData(this->f, this->readState.buffer->initModel, sizeof(PModel)));
+        const auto* modelState = reinterpret_cast<const uint8_t*>(mapFileData(this->f, this->readState.buffer->initModel, sizeof(PModel)));
         memcpy(reinterpret_cast<void*>(&this->scratchModel), modelState, sizeof(PModel));
         unmapFileData(this->f, reinterpret_cast<const void*>(modelState), sizeof(PModel));
         compress<T>::init(this->scratchModel, &this->scratchModelState);

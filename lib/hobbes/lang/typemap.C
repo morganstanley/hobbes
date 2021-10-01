@@ -57,7 +57,7 @@ struct mtyLT : public switchType<bool> {
   }
 
   bool with(const OpaquePtr* v) const override {
-    const OpaquePtr* r = right<OpaquePtr>();
+    const auto* r = right<OpaquePtr>();
 
     if (v->name() != r->name()) {
       return v->name() < r->name();
@@ -71,7 +71,7 @@ struct mtyLT : public switchType<bool> {
   }
 
   bool with(const FixedArray* v) const override {
-    const FixedArray* r = right<FixedArray>();
+    const auto* r = right<FixedArray>();
 
     if (MonoTypeLT()(v->type(), r->type())) {
       return true;
@@ -103,7 +103,7 @@ struct mtyLT : public switchType<bool> {
   }
 
   bool with(const Variant* v) const override {
-    const Variant* r = right<Variant>();
+    const auto* r = right<Variant>();
 
     if (v->members().size() != r->members().size()) {
       return v->members().size() < r->members().size();
@@ -127,7 +127,7 @@ struct mtyLT : public switchType<bool> {
   }
 
   bool with(const Record* v) const override {
-    const Record* r = right<Record>();
+    const auto* r = right<Record>();
 
     if (v->members().size() != r->members().size()) {
       return v->members().size() < r->members().size();
@@ -151,7 +151,7 @@ struct mtyLT : public switchType<bool> {
   }
 
   bool with(const Exists* v) const override {
-    const Exists* r = right<Exists>();
+    const auto* r = right<Exists>();
 
     if (v->absTypeName() != r->absTypeName()) {
       return v->absTypeName() < r->absTypeName();
@@ -161,7 +161,7 @@ struct mtyLT : public switchType<bool> {
   }
 
   bool with(const Recursive* v) const override {
-    const Recursive* r = right<Recursive>();
+    const auto* r = right<Recursive>();
 
     if (v->recTypeName() != r->recTypeName()) {
       return v->recTypeName() < r->recTypeName();
@@ -171,7 +171,7 @@ struct mtyLT : public switchType<bool> {
   }
 
   bool with(const TExpr* v) const override {
-    const TExpr* r = right<TExpr>();
+    const auto* r = right<TExpr>();
 
     // this may not be sound ...
     if (v->expr().get() == r->expr().get()) {
