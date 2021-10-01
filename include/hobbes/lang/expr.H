@@ -889,7 +889,7 @@ inline ExprPtr closcall(const ExprPtr& c, const Exprs& args, const LexicalAnnota
   }
 
   const Exists* ety = is<Exists>(qt->monoType());
-  if (!ety) {
+  if (ety == nullptr) {
     throw annotated_error(*c, "Expected existential type in closure application");
   }
 
@@ -904,7 +904,7 @@ inline ExprPtr closcall(const ExprPtr& c, const Exprs& args, const LexicalAnnota
 // op :: (a0..aN) -> r => \(a0..aN).op(a0..aN)
 inline ExprPtr etaLift(const std::string& opname, const MonoTypePtr& oty, const LexicalAnnotation& la) {
   Func* fty = is<Func>(oty);
-  if (!fty) { throw annotated_error(la, "Internal compiler error while eta-expanding primitive op: " + opname); }
+  if (fty == nullptr) { throw annotated_error(la, "Internal compiler error while eta-expanding primitive op: " + opname); }
 
   ExprPtr op = var(opname, oty, la);
 

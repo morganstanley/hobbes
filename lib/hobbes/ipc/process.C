@@ -51,9 +51,9 @@ bool ProcessP::satisfied(const TEnvPtr&, const ConstraintPtr& cst, Definitions*)
 bool ProcessP::satisfiable(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions* ds) const {
   MonoTypePtr cmdt, pidt;
   if (dec(cst, &cmdt, &pidt)) {
-    if (is<TVar>(cmdt)) {
+    if (is<TVar>(cmdt) != nullptr) {
       return true;
-    } else if (is<TVar>(pidt)) {
+    } else if (is<TVar>(pidt) != nullptr) {
       return true;
     } else {
       return satisfied(tenv, cst, ds);
@@ -76,7 +76,7 @@ struct ProcessPUnqualify : public switchExprTyFn {
       throw std::runtime_error("Internal error, invalid constraint for process resolution");
     }
     const TLong* tpid = pidTy(pidt);
-    if (!tpid) { throw std::runtime_error("Internal error, unresolved process constraint for resolution"); }
+    if (tpid == nullptr) { throw std::runtime_error("Internal error, unresolved process constraint for resolution"); }
     this->pid = tpid->value();
   }
 

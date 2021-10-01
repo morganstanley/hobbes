@@ -20,7 +20,7 @@ int intCastVariant(const variant<leftCtor, rightCtor>* bv) {
 }
 
 int sumCtorID(const variant<char, unsigned char>* bv) {
-  if (bv->get<char>()) {
+  if (bv->get<char>() != nullptr) {
     return 0;
   } else {
     return 1;

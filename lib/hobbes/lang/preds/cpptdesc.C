@@ -214,7 +214,7 @@ bool CPPTypeDescP::refine(const TEnvPtr&, const ConstraintPtr&, MonoTypeUnifier*
 
 bool CPPTypeDescP::satisfied(const TEnvPtr&, const ConstraintPtr& cst, Definitions*) const {
   if (cst->arguments().size() == 2 && !hasFreeVariables(cst->arguments()[0])) {
-    return is<TString>(cst->arguments()[0]);
+    return is<TString>(cst->arguments()[0]) != nullptr;
   }
   return false;
 }

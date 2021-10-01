@@ -59,7 +59,7 @@ Expr* Bool::clone() const { return new Bool(this->x,la()); }
 void Bool::show(std::ostream& out)          const { out << (this->x ? "true" : "false"); }
 void Bool::showAnnotated(std::ostream& out) const { show(out); showTy(out, type()); }
 bool Bool::equiv(const Bool& rhs)           const { return this->x == rhs.x; }
-bool Bool::lt(const Bool& rhs)              const { return this->x < rhs.x; }
+bool Bool::lt(const Bool& rhs)              const { return static_cast<int>(this->x) < static_cast<int>(rhs.x); }
 MonoTypePtr Bool::primType() const { return MonoTypePtr(Prim::make("bool")); }
 
 Char::Char(char x, const LexicalAnnotation& la) : Base(la), x(x) { }
@@ -550,11 +550,11 @@ bool Case::operator==(const Case& rhs) const {
   if ((this->bs.size() != rhs.bs.size()) || !(*this->v == *rhs.v)) {
     return false;
   } else {
-    if (this->def.get()) {
-      if (!rhs.def.get() || !(*this->def == *rhs.def)) {
+    if (this->def.get() != nullptr) {
+      if ((rhs.def.get() == nullptr) || !(*this->def == *rhs.def)) {
         return false;
       }
-    } else if (rhs.def.get()) {
+    } else if (rhs.def.get() != nullptr) {
       return false;
     }
 
@@ -595,7 +595,7 @@ Expr* Case::clone() const {
   for (auto b = this->bs.begin(); b != this->bs.end(); ++b) {
     cbs.push_back(Binding(b->selector, b->vname, ExprPtr(b->exp->clone())));
   }
-  return new Case(ExprPtr(this->v->clone()), cbs, this->def.get() ? ExprPtr(this->def->clone()) : ExprPtr(),la());
+  return new Case(ExprPtr(this->v->clone()), cbs, this->def.get() != nullptr ? ExprPtr(this->def->clone()) : ExprPtr(),la());
 }
 void Case::show(std::ostream& out) const {
   out << "case (";
@@ -688,11 +688,11 @@ bool Switch::operator==(const Switch& rhs) const {
   if (this->bs.size() != rhs.bs.size() || !(*this->v == *rhs.v)) {
     return false;
   } else {
-    if (this->def.get()) {
-      if (!rhs.def.get() || !(*this->def == *rhs.def)) {
+    if (this->def.get() != nullptr) {
+      if ((rhs.def.get() == nullptr) || !(*this->def == *rhs.def)) {
         return false;
       }
-    } else if (rhs.def.get()) {
+    } else if (rhs.def.get() != nullptr) {
       return false;
     }
 
@@ -887,7 +887,7 @@ struct substVarF : public switchExprC<ExprPtr> {
     if (ve == this->vm.end()) {
       return ExprPtr(v->clone());
     } else {
-      if (mapped) *mapped = true;
+      if (mapped != nullptr) *mapped = true;
 
       return ve->second;
     }
@@ -941,7 +941,7 @@ struct substVarF : public switchExprC<ExprPtr> {
       rcbs.push_back(Case::Binding(cb->selector, cb->vname, withoutNames(cb->vname, cb->exp)));
     }
     ExprPtr de = v->defaultExpr();
-    if (de.get()) {
+    if (de.get() != nullptr) {
       de = switchOf(de, *this);
     }
     return ExprPtr(new Case(switchOf(v->variant(), *this), rcbs, de, v->la()));
@@ -1315,7 +1315,7 @@ struct freeVarF : public switchExprC<VarSet> {
     for (auto b = v->bindings().begin(); b != v->bindings().end(); ++b) {
       fvs.push_back(setDifference(freeVars(b->exp), toSet(list(b->vname))));
     }
-    if (v->defaultExpr().get()) {
+    if (v->defaultExpr().get() != nullptr) {
       fvs.push_back(freeVars(v->defaultExpr()));
     }
     return setUnion(fvs);
@@ -1376,7 +1376,7 @@ struct etvarNamesF : public switchExprC<UnitV> {
     for (auto b = v->bindings().begin(); b != v->bindings().end(); ++b) {
       switchOf(b->exp, *this);
     }
-    if (v->defaultExpr().get()) {
+    if (v->defaultExpr().get() != nullptr) {
       switchOf(v->defaultExpr(), *this);
     }
     return an(v);
@@ -2022,7 +2022,7 @@ struct hasSingularTypeF : public switchExprC<bool> {
     return d(v) && r(v->package()) && r(v->expr());
   }
 private:
-  bool d(const Expr*    v) const { return v->type().get() && isMonoSingular(v->type()); }
+  bool d(const Expr*    v) const { return (v->type().get() != nullptr) && isMonoSingular(v->type()); }
   bool r(const ExprPtr& v) const { return switchOf(v, *this); }
 };
 
@@ -2126,7 +2126,7 @@ struct tgenSizeExprF : public switchExprC<int> {
     return c(c(d(v), r(v->package())), r(v->expr()));
   }
 private:
-  int d(const Expr*    v) const { return v->type().get() ? tgenSize(v->type()) : 0; }
+  int d(const Expr*    v) const { return v->type().get() != nullptr ? tgenSize(v->type()) : 0; }
   int r(const ExprPtr& v) const { return switchOf(v, *this); }
   int c(int x, int y)     const { return std::max<int>(x, y); }
 };

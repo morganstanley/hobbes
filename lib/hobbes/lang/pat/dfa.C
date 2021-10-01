@@ -220,7 +220,7 @@ void dropUnusedColumns(PatternRows* out, const PatternRows& in) {
   for (size_t c = 0; c < in[0].patterns.size(); ++c) {
     bool hasUse = false;
     for (size_t r = 0; r < in.size(); ++r) {
-      if (!is<MatchAny>(in[r].patterns[c])) {
+      if (is<MatchAny>(in[r].patterns[c]) == nullptr) {
         hasUse = true;
         break;
       }
@@ -588,14 +588,14 @@ bool canMakeCharArrayState(const PatternRows& ps, size_t c) {
     if (const MatchArray* ma = is<MatchArray>(ps[r].patterns[c])) {
       for (size_t i = 0; i < ma->size(); ++i) {
         if (const MatchLiteral* ml = is<MatchLiteral>(ma->pattern(i))) {
-          if (is<Char>(ml->equivConstant())) {
+          if (is<Char>(ml->equivConstant()) != nullptr) {
             seemsLegit = true;
           }
         } else {
           return false;
         }
       }
-    } else if (!is<MatchAny>(ps[r].patterns[c])) {
+    } else if (is<MatchAny>(ps[r].patterns[c]) == nullptr) {
       return false;
     }
   }
@@ -636,7 +636,7 @@ MStatePtr makeRecordState(MDFA* dfa, const PatternRows& ps, size_t c) {
     if (const MatchRecord* mr = is<MatchRecord>(ps[r].patterns[c])) {
       copyRowWithoutColumn(&cdef, ps[r], c);
       prependPatterns(&cdef.back(), recordFieldPatterns(*mr));
-    } else if (is<MatchAny>(ps[r].patterns[c])) {
+    } else if (is<MatchAny>(ps[r].patterns[c]) != nullptr) {
       copyRowWithoutColumn(&cdef, ps[r], c);
       prependPatterns(&cdef.back(), arrayAnyMatches(defs.size()));
     } else {
@@ -693,7 +693,7 @@ MStatePtr makeRegexState(MDFA* dfa, const PatternRows& ps, size_t c) {
   for (size_t r = 0; r < ps.size(); ++r) {
     if (const MatchRegex* mr = is<MatchRegex>(ps[r].patterns[c])) {
       regexes.push_back(mr->value());
-    } else if (is<MatchAny>(ps[r].patterns[c])) {
+    } else if (is<MatchAny>(ps[r].patterns[c]) != nullptr) {
       matchAnyRows.insert(r);
       regexes.push_back(parseRegex(""));
     } else {
@@ -804,7 +804,7 @@ struct makeSuccStateF : public switchPattern<MStatePtr> {
   // need to apply regex match logic (otherwise we can match as an array)
   MStatePtr with(const MatchArray*) const override {
     for (size_t r = 0; r < ps.size(); ++r) {
-      if (is<MatchRegex>(ps[r].patterns[c])) {
+      if (is<MatchRegex>(ps[r].patterns[c]) != nullptr) {
         return makeRegexState(dfa, regexNormalize(ps, c), c);
       }
     }
@@ -884,14 +884,14 @@ size_t choosePivotColumn(const PatternRows& ps) {
   size_t bestArrayScore  = std::numeric_limits<size_t>::max();
 
   for (size_t c = 0; c < ps[0].patterns.size(); ++c) {
-    if (!is<MatchAny>(ps[0].patterns[c])) {
+    if (is<MatchAny>(ps[0].patterns[c]) == nullptr) {
       size_t csc = 1 + columnScore(ps, c);
       if (csc < currentScore) {
         chosenColumn = c;
         currentScore = csc;
       }
 
-      if (is<MatchArray>(ps[0].patterns[c]) && csc < bestArrayScore) {
+      if ((is<MatchArray>(ps[0].patterns[c]) != nullptr) && csc < bestArrayScore) {
         bestArrayColumn = c;
         bestArrayScore  = csc;
       }
@@ -934,7 +934,7 @@ bool isPrimSelection(bool alwaysLowerPrimMatchTables, const PatternRows& ps) {
           seemsLegit = true;
           break;
         }
-      } else if (!is<MatchAny>(ps[r].patterns[c])) {
+      } else if (is<MatchAny>(ps[r].patterns[c]) == nullptr) {
         return false;
       }
     }
@@ -1272,7 +1272,7 @@ bool shouldInlineState(const MDFA* dfa, stateidx_t state) {
   } else if (s->refs <= 1) {
     return true;
   } else if (const FinishExpr* fe = is<FinishExpr>(s)) {
-    return isConst(fe->expr()) || is<Var>(fe->expr());
+    return isConst(fe->expr()) || (is<Var>(fe->expr()) != nullptr);
   } else {
     return false;
   }
@@ -1411,7 +1411,7 @@ struct makePrimDFASF : public switchMState<UnitV> {
       }
     }
 
-    if (x->jumps().size() > 0 && is<Double>(x->jumps().begin()->first)) {
+    if (x->jumps().size() > 0 && (is<Double>(x->jumps().begin()->first) != nullptr)) {
       llvm::SwitchInst* s = withContext([&](auto&) {
         return this->dfa->c->builder()->CreateSwitch(this->dfa->c->builder()->CreateBitCast(arg(x->switchVar()), longType()), blockForState(x->defaultState()), x->jumps().size());
       });
@@ -1578,7 +1578,7 @@ void mapStatesFrom(MDFA* dfa, stateidx_t state, GlobalToLocalState* localstate) 
         throw std::runtime_error("Internal error, primitive DFAs without default states not supported for interpretation");
       }
       mapStatesFrom(dfa, sv->defaultState(), localstate);
-    } else if (!is<FinishExpr>(dfa->states[state])) {
+    } else if (is<FinishExpr>(dfa->states[state]) == nullptr) {
       throw std::runtime_error("Internal error, invalid primitive DFA for interpretation");
     }
   }
@@ -1616,7 +1616,7 @@ void copyStateDef(const ArgPos& argpos, MDFA* dfa, stateidx_t state, const Globa
   const SwitchVal* sv     = is<SwitchVal>(dfa->states[state]);
   size_t           statei = localState(localstate, state);
 
-  if (!sv) {
+  if (sv == nullptr) {
     throw std::runtime_error("Internal error, expected primitive switch for interpreted DFA");
   }
 

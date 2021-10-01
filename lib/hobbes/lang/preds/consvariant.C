@@ -107,8 +107,8 @@ bool VariantDeconstructor::satisfiable(const TEnvPtr& tenv, const ConstraintPtr&
   ConsVariant cv;
   if (dec(cst, &cv)) {
     return satisfied(tenv, cst, ds) ||
-           is<TVar>(cv.variantType) ||
-           (is<Variant>(cv.variantType) && (is<TVar>(cv.headCtorName) || is<TVar>(cv.headType) || is<TVar>(cv.tailType)));
+           (is<TVar>(cv.variantType) != nullptr) ||
+           ((is<Variant>(cv.variantType) != nullptr) && ((is<TVar>(cv.headCtorName) != nullptr) || (is<TVar>(cv.headType) != nullptr) || (is<TVar>(cv.tailType) != nullptr)));
   } else {
     return false;
   }

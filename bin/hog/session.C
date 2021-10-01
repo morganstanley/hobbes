@@ -38,7 +38,7 @@ const uint8_t* hstoreUnsafeReadFixedArray(storage::Transaction& txn, size_t byte
 
 cc* loggerCompiler() {
   static cc* c = 0;
-  if (!c) {
+  if (c == nullptr) {
     c = new cc();
     c->bind("hstoreCanRead",              &hstoreCanRead);
     c->bind("hstoreUnsafeRead",           &hstoreUnsafeRead);

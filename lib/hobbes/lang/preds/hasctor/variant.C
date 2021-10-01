@@ -40,10 +40,10 @@ bool HCVariantEliminator::satisfiable(const TEnvPtr& tenv, const HasCtor& hc, De
       const Variant::Member* vm = vty->mmember(fname->value());
       return vm != 0 && unifiable(tenv, vm->type, hc.ctorty);
     } else {
-      return is<TVar>(hc.ctorlbl);
+      return is<TVar>(hc.ctorlbl) != nullptr;
     }
   }
-  return is<TVar>(hc.variant);
+  return is<TVar>(hc.variant) != nullptr;
 }
 
 bool HCVariantEliminator::refine(const TEnvPtr&, const HasCtor& hc, MonoTypeUnifier* s, Definitions*) {

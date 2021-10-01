@@ -106,7 +106,7 @@ void printAnnotatedError(const hobbes::annotated_error& ae, const hobbes::Constr
   for (const auto& m : ae.messages()) {
     std::cout << setbold() << setfgc(colors.errorfg) << m.second.lineDesc() << ": " << m.first << "\n";
     for (const auto& c : cs) {
-      if (eval && !eval->satisfied(c)) {
+      if ((eval != nullptr) && !eval->satisfied(c)) {
         std::cout << "  " << hobbes::show(c) << std::endl;
       }
     }
@@ -194,7 +194,7 @@ void showUnsafeSymbols() {
 void echoCommandHistory() {
   const int history_max = 10;
   HIST_ENTRY** history = history_list();
-  if (history) {
+  if (history != nullptr) {
     // take the last history_max elements of history
     int startIndex = history_length > history_max ? history_length - history_max : 0;
     for (int i = startIndex; i < history_length; ++i) {
@@ -291,7 +291,7 @@ void repl(evaluator*) {
 void evalLine(char* x) {
   // preprocess this line from readline
   std::string line;
-  if (x) {
+  if (x != nullptr) {
     line = str::trim<char>(x);
     free(x);
 
@@ -572,7 +572,7 @@ void runProcess(const std::string& cmd, std::ostream& out) {
 
   char buf[4096];
   int n;
-  while ((n = read(pio[0], buf, sizeof(buf)))) {
+  while ((n = read(pio[0], buf, sizeof(buf))) != 0) {
     out.write(buf, n);
   }
   close(pio[0]);

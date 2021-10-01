@@ -99,7 +99,7 @@ bool HFLookupEliminator::satisfiable(const TEnvPtr& tenv, const HasField& hf, De
   if (decFieldName(hf.fieldName, &fname)) {
     return mightRewriteToLookup(tenv, rty, fname, fty, ds);
   } else {
-    return is<TVar>(hf.fieldName);
+    return is<TVar>(hf.fieldName) != nullptr;
   }
 }
 

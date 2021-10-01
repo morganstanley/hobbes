@@ -2282,7 +2282,7 @@ template <typename T>
 
       // if we're in the left '()' case, our state is "null"
       // else our state can be set to load the 'carray T n' batch in this node
-      if (d[0]) {
+      if (d[0] != 0u) {
         this->headLen     = reinterpret_cast<const uint64_t*>(mapFileData(this->f, d[1], bsz));
         this->head        = reinterpret_cast<const uint8_t*>(this->headLen) + sizeof(uint64_t);
         this->nextNodeRef = d[2];
@@ -2338,7 +2338,7 @@ template <typename T>
           }
         }
       }
-      while ((maxWaitMS = fwatch.wait(maxWaitMS)));
+      while ((maxWaitMS = fwatch.wait(maxWaitMS)) != 0);
 
       // we just couldn't get there
       return false;

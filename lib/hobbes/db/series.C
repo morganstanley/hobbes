@@ -230,7 +230,7 @@ MonoTypePtr storeAs(cc* c, const MonoTypePtr& ty) {
 //  (currently we have to account for the fact that we might be storing primitive values
 //   in that case, we'll just entuple them and write them as records)
 static void* storageFunction(cc*c, const MonoTypePtr& ty, const MonoTypePtr& storageType, const LexicalAnnotation& la) {
-  if (is<Record>(storageType)) {
+  if (is<Record>(storageType) != nullptr) {
     return c->unsafeCompileFn(
       primty("unit"),
       str::strings("f", "v", "d"),
@@ -375,7 +375,7 @@ void RawStoredSeries::bindAs(cc* c, const std::string& vname) {
         nla
       )
     );
-  } else if(is<Record>(this->recordType)) {
+  } else if(is<Record>(this->recordType) != nullptr) {
     // vname = \x.unsafeWriteToSeries(this, unsafeCast(x :: ty))
     c->define(
       vname,
@@ -429,7 +429,7 @@ void RawStoredSeries::restartFromBatchNode() {
   
   // if we somehow get a root node representing the empty list, we're free to start a fresh list
   const PBatchList::cons_t* p = n->head();
-  if (!p) {
+  if (p == nullptr) {
     consBatchNode(allocBatchNode(this->outputFile));
     return;
   }
@@ -552,7 +552,7 @@ static CompressedStoredSeries::CWriteFn compressedWriteFunction(cc* c, const Mon
   auto la = LexicalAnnotation::null();
   auto mt = decideModelType(c, t);
 
-  if (is<Record>(t)) {
+  if (is<Record>(t) != nullptr) {
     return reinterpret_cast<CompressedStoredSeries::CWriteFn>(
       c->unsafeCompileFn(
         primty("unit"),
@@ -571,7 +571,7 @@ static CompressedStoredSeries::CAllocM compressedMAllocFn(cc* c, const MonoTypeP
   auto la = LexicalAnnotation::null();
   auto mt = decideModelType(c, t);
 
-  if (is<Record>(t)) {
+  if (is<Record>(t) != nullptr) {
     return reinterpret_cast<CompressedStoredSeries::CAllocM>(
       c->unsafeCompileFn(
         mt.second,
@@ -590,7 +590,7 @@ static CompressedStoredSeries::CPrepM compressedMPrepFn(cc* c, const MonoTypePtr
   auto la = LexicalAnnotation::null();
   auto mt = decideModelType(c, t);
 
-  if (is<Record>(t)) {
+  if (is<Record>(t) != nullptr) {
     // (ucPrepModel::(UCModel t sm dm)=>_)(unsafeCast(ucWriterModelData(w))::sm, dm);
     return reinterpret_cast<CompressedStoredSeries::CPrepM>(
       c->unsafeCompileFn(
@@ -613,7 +613,7 @@ static CompressedStoredSeries::CDeallocM compressedMDeallocFn(cc* c, const MonoT
   auto la = LexicalAnnotation::null();
   auto mt = decideModelType(c, t);
 
-  if (is<Record>(t)) {
+  if (is<Record>(t) != nullptr) {
     return reinterpret_cast<CompressedStoredSeries::CDeallocM>(
       c->unsafeCompileFn(
         primty("unit"),
@@ -732,7 +732,7 @@ void CompressedStoredSeries::bindAs(cc* c, const std::string& vname) {
         nla
       )
     );
-  } else if(is<Record>(this->recordType)) {
+  } else if(is<Record>(this->recordType) != nullptr) {
     // vname = \x.unsafeWriteToSeries(this, unsafeCast(x :: ty))
     c->define(
       vname,

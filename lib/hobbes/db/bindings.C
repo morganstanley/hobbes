@@ -187,7 +187,7 @@ class dbloadVF : public op {
     }
 
     llvm::Function* f = c->lookupFunction(".dbloado");
-    if (!f) { throw std::runtime_error("Expected 'dbloado' function as call"); }
+    if (f == nullptr) { throw std::runtime_error("Expected 'dbloado' function as call"); }
 
     return withContext([&](auto&) -> llvm::Value* {
       llvm::Value* allocv = fncall(c->builder(), f, f->getFunctionType(), list<llvm::Value*>(db, off));
@@ -223,7 +223,7 @@ class dbstoreVF : public op {
     }
 
     llvm::Function* f = c->lookupFunction(".dbloado");
-    if (!f) { throw std::runtime_error("Expected 'dbloado' function as call"); }
+    if (f == nullptr) { throw std::runtime_error("Expected 'dbloado' function as call"); }
 
     return withContext([&](auto&) -> llvm::Value* {
       llvm::Value* allocv = fncall(c->builder(), f, f->getFunctionType(), list<llvm::Value*>(db, off));
@@ -435,7 +435,7 @@ struct dballocF : public op {
     llvm::Value* db  = c->compileAtGlobalScope(frt.second);
 
     llvm::Function* f = c->lookupFunction(".dballoc");
-    if (!f) { throw std::runtime_error("Expected 'dballoc' function as call"); }
+    if (f == nullptr) { throw std::runtime_error("Expected 'dballoc' function as call"); }
 
     size_t sz = storageSizeOf(frefType(rty));
     return withContext([&](auto&) {
@@ -456,14 +456,14 @@ struct dbstoreF : public op {
     llvm::Value* db  = c->compileAtGlobalScope(frt.second);
     llvm::Value* v   = c->compile(es[0]);
 
-    if (is<Array>(tys[0])) {
+    if (is<Array>(tys[0]) != nullptr) {
       throw annotated_error(*es[0], "store array nyi");
     } else {
       llvm::Function* f = c->lookupFunction(".dballoc");
-      if (!f) { throw std::runtime_error("Expected 'dballoc' function as call"); }
+      if (f == nullptr) { throw std::runtime_error("Expected 'dballoc' function as call"); }
 
       llvm::Function* dblf = c->lookupFunction(".dbloadv");
-      if (!dblf) { throw std::runtime_error("Expected 'dbloadv' function as call"); }
+      if (dblf == nullptr) { throw std::runtime_error("Expected 'dbloadv' function as call"); }
 
       size_t sz = storageSizeOf(frefType(rty));
       return withContext([&](auto&) {
@@ -492,14 +492,14 @@ struct dbstorePF : public op {
     llvm::Value* db  = c->compile(es[0]);
     llvm::Value* v   = c->compile(es[1]);
 
-    if (is<Array>(tys[1])) {
+    if (is<Array>(tys[1]) != nullptr) {
       throw annotated_error(*es[1], "store array nyi");
     } else {
       llvm::Function* f = c->lookupFunction(".dballoc");
-      if (!f) { throw std::runtime_error("Expected 'dballoc' function as call"); }
+      if (f == nullptr) { throw std::runtime_error("Expected 'dballoc' function as call"); }
 
       llvm::Function* dblf = c->lookupFunction(".dbloadv");
-      if (!dblf) { throw std::runtime_error("Expected 'dbloadv' function as call"); }
+      if (dblf == nullptr) { throw std::runtime_error("Expected 'dbloadv' function as call"); }
 
       size_t sz = storageSizeOf(frefType(rty));
       return withContext([&](auto&) {
@@ -536,7 +536,7 @@ struct dballocArrF : public op {
     llvm::Value* len = c->compile(es[0]);
 
     llvm::Function* f = c->lookupFunction(".dballocarr");
-    if (!f) { throw std::runtime_error("Expected 'dballocarr' function as call"); }
+    if (f == nullptr) { throw std::runtime_error("Expected 'dballocarr' function as call"); }
 
     size_t elemsz = storageSizeOf(arrType(frt.first));
     return withContext([&](auto&) {
@@ -558,7 +558,7 @@ struct dballocArrPF : public op {
     llvm::Value* len = c->compile(es[1]);
 
     llvm::Function* f = c->lookupFunction(".dballocarr");
-    if (!f) { throw std::runtime_error("Expected 'dballocarr' function as call"); }
+    if (f == nullptr) { throw std::runtime_error("Expected 'dballocarr' function as call"); }
 
     size_t elemsz = storageSizeOf(arrType(frefType(rty)));
     return withContext([&](auto&) {
@@ -587,7 +587,7 @@ struct dbarrCapacityF : public op {
     llvm::Value* off = c->compile(es[0]);
 
     llvm::Function* f = c->lookupFunction(".dbdarrcapacity");
-    if (!f) { throw std::runtime_error("Expected 'dbdarrcapacity' function as call"); }
+    if (f == nullptr) { throw std::runtime_error("Expected 'dbdarrcapacity' function as call"); }
 
     size_t elemsz = storageSizeOf(darrType(frt.first));
     return withContext([&](auto&) {
@@ -609,7 +609,7 @@ struct dbarrCapacityPF : public op {
     llvm::Value* off = c->compile(es[1]);
 
     llvm::Function* f = c->lookupFunction(".dbdarrcapacity");
-    if (!f) { throw std::runtime_error("Expected 'dbdarrcapacity' function as call"); }
+    if (f == nullptr) { throw std::runtime_error("Expected 'dbdarrcapacity' function as call"); }
 
     size_t elemsz = storageSizeOf(darrType(frefType(tys[1])));
     return withContext([&](auto&) {
@@ -657,7 +657,7 @@ struct signalUpdateF : public op {
     llvm::Value* db  = c->compile(es[0]);
 
     llvm::Function* f = c->lookupFunction(".dbsignalupdate");
-    if (!f) { throw std::runtime_error("Expected 'dbsignalupdate' function as call"); }
+    if (f == nullptr) { throw std::runtime_error("Expected 'dbsignalupdate' function as call"); }
 
     return withContext([&](auto&) {
       return fncall(c->builder(), f, f->getFunctionType(), list<llvm::Value*>(db));
@@ -843,15 +843,15 @@ bool DBFieldLookup::satisfiable(const TEnvPtr& tenv, const HasField& hf, Definit
 
       return unifiable(tenv, fty, frtype);
     } else {
-      return is<TVar>(fname);
+      return is<TVar>(fname) != nullptr;
     }
   } else {
     if (const TApp* ap = is<TApp>(rty)) {
       if (ap->args().size() == 2) {
         if (const Prim* f = is<Prim>(ap->fn())) {
           if (f->name() == "file") {
-            if (is<TVar>(ap->args()[0]) || isFileMode(ap->args()[0])) {
-              return is<TVar>(ap->args()[1]) || is<Record>(ap->args()[1]);
+            if ((is<TVar>(ap->args()[0]) != nullptr) || isFileMode(ap->args()[0])) {
+              return (is<TVar>(ap->args()[1]) != nullptr) || (is<Record>(ap->args()[1]) != nullptr);
             }
           }
         }
@@ -902,7 +902,7 @@ struct HFDBFLUnqualify : public switchExprTyFn {
 
   ExprPtr with(const Fn* v) const override {
     const Func* fty = is<Func>(v->type()->monoType());
-    if (!fty) {
+    if (fty == nullptr) {
       throw annotated_error(*v, "Internal error, expected annotated function type");
     }
     return wrapWithTy(v->type(),
@@ -1051,7 +1051,7 @@ public:
           return unifiable(tenv, ftype, loadedFile(ufcfg.first, fp->value()).type);
         }
       } else {
-        return is<TVar>(fpath);
+        return is<TVar>(fpath) != nullptr;
       }
     }
     return false;

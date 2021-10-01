@@ -108,10 +108,10 @@ void spawn(const std::string& cmd, proc* p) {
       p->read_fd  = c2p[0];
     }
   } catch (...) {
-    if (p2c[0]) close(p2c[0]);
-    if (p2c[1]) close(p2c[1]);
-    if (c2p[0]) close(c2p[0]);
-    if (c2p[1]) close(c2p[1]);
+    if (p2c[0] != 0) close(p2c[0]);
+    if (p2c[1] != 0) close(p2c[1]);
+    if (c2p[0] != 0) close(c2p[0]);
+    if (c2p[1] != 0) close(c2p[1]);
     throw;
   }
 }
@@ -202,7 +202,7 @@ void printAnnotatedError(cc* eval, std::ostream& out, const hobbes::annotated_er
   for (const auto& m : ae.messages()) {
     out << m.second.lineDesc() << ": " << m.first << "\n";
     for (const auto& c : cs) {
-      if (eval && !satisfied(eval, c)) {
+      if ((eval != nullptr) && !satisfied(eval, c)) {
         out << "  " << hobbes::show(c) << std::endl;
       }
     }

@@ -641,7 +641,7 @@ typedef std::pair<std::vector<std::string>, Values> UnzRecValues;
 inline Constants recordUZConstants(const UnzRecValues& rps, const Record* rty) {
   Constants r;
   for (size_t i = 0; i < rps.second.size(); ++i) {
-    if (llvm::Constant* c = constant(rps.second[i], is<Array>(rty->member(rps.first[i])))) { // not pretty ...
+    if (llvm::Constant* c = constant(rps.second[i], is<Array>(rty->member(rps.first[i])) != nullptr)) { // not pretty ...
       r.push_back(c);
     } else {
       return Constants();
@@ -655,7 +655,7 @@ llvm::Type* toLLVM(const MonoTypePtr&, bool);
 inline Constants liftArraysAsGlobals(llvm::Module* m, const Constants& cs, const MonoTypes& tys) {
   Constants r;
   for (size_t i = 0; i < std::min<size_t>(cs.size(), tys.size()); ++i) {
-    if (is<Array>(tys[i])) {
+    if (is<Array>(tys[i]) != nullptr) {
       r.push_back(llvm::ConstantExpr::getBitCast(liftAsGlobalRef(m, cs[i]), toLLVM(tys[i], true)));
     } else {
       r.push_back(cs[i]);
@@ -734,7 +734,7 @@ inline llvm::ExecutionEngine* makeExecutionEngine(llvm::Module* m, llvm::Section
       .setMCJITMemoryManager(std::unique_ptr<llvm::SectionMemoryManager>(smm))
       .create();
 
-  if (!ee) {
+  if (ee == nullptr) {
     throw std::runtime_error("Internal error, failed to allocate execution engine with error: " + err);
   }
   return ee;

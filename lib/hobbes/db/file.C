@@ -81,7 +81,7 @@ static MonoTypePtr decodeBindingByVersion(uint16_t version, const binding& b) {
 
 // for storage, we need to make sure that size is computed slightly differently than for memory
 size_t storageSizeOf(const MonoTypePtr& mty) {
-  if (is<Recursive>(mty)) {
+  if (is<Recursive>(mty) != nullptr) {
     return sizeOf(unroll(mty));
   } else {
     return sizeOf(mty);

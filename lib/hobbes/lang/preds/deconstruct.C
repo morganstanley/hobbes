@@ -120,13 +120,13 @@ static bool asDestruct(const MonoTypePtr& t, MonoTypePtr* dty) {
 
 static bool asRestruct(const MonoTypePtr& t, MonoTypePtr* rty) {
   const Record* r = is<Record>(t);
-  if (!r || !r->isTuple()) return false;
+  if ((r == nullptr) || !r->isTuple()) return false;
 
   const Record::Members& ms = r->members();
   if (ms.size() == 0) return false;
 
   const TString* ctor = is<TString>(ms[0].type);
-  if (!ctor) return false;
+  if (ctor == nullptr) return false;
 
   if (ctor->value() == "->" && ms.size() == 3) {
     *rty = MonoTypePtr(Func::make(tuplety(list(ms[1].type)), ms[2].type));
@@ -175,7 +175,7 @@ bool DeconstructP::satisfied(const TEnvPtr&, const ConstraintPtr& c, Definitions
     return false;
   }
 
-  if (is<TVar>(c->arguments()[0])) {
+  if (is<TVar>(c->arguments()[0]) != nullptr) {
     return false;
   } else {
     MonoTypePtr dty, rty;
@@ -192,7 +192,7 @@ bool DeconstructP::satisfiable(const TEnvPtr& tenv, const ConstraintPtr& c, Defi
     return false;
   }
 
-  if (is<TVar>(c->arguments()[0]) || is<TVar>(c->arguments()[1])) {
+  if ((is<TVar>(c->arguments()[0]) != nullptr) || (is<TVar>(c->arguments()[1]) != nullptr)) {
     return true;
   } else {
     return satisfied(tenv, c, ds);

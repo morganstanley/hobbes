@@ -23,7 +23,7 @@ const UTypeRec& MoreDefinedType::apply(const UTypeRec& lhs, const UTypeRec& rhs)
       return rhs;
     }
   } else {
-    if (is<TVar>(rhs.ty)) {
+    if (is<TVar>(rhs.ty) != nullptr) {
       return lhs;
     } else {
       return (tvarNames(lhs.ty).size() < tvarNames(rhs.ty).size()) ? lhs : rhs;
@@ -217,7 +217,7 @@ void MonoTypeUnifier::unify(const MonoTypePtr& lhs, const MonoTypePtr& rhs) {
 
   if (lhsv != rhsv) {
     // unify the constituents of these types (if applicable)
-    if (!is<TVar>(lhsv) && !is<TVar>(rhsv)) {
+    if ((is<TVar>(lhsv) == nullptr) && (is<TVar>(rhsv) == nullptr)) {
       str::seq ignvs;
 
       std::string lhscn;

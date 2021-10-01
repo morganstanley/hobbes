@@ -277,7 +277,7 @@ struct BatchSendSession {
 
     auto idleFn = [this, groupName]() {
       static thread_local uint64_t count = 0;
-      if (++count % 16) return; // not checking on each idle cycle
+      if ((++count % 16) != 0u) return; // not checking on each idle cycle
 
       if (!readerAlive && completed()) {
         this->finalizer();

@@ -360,7 +360,7 @@ class asetlen : public op {
 class salenexp : public op {
   llvm::Value* apply(jitcc*, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) override {
     const FixedArray* aty = is<FixedArray>(tys[0]);
-    if (!aty) { throw annotated_error(*es[0], "Cannot determine length, not a fixed-length array: " + show(tys[0])); }
+    if (aty == nullptr) { throw annotated_error(*es[0], "Cannot determine length, not a fixed-length array: " + show(tys[0])); }
 
     return cvalue(aty->requireLength());
   }
@@ -379,7 +379,7 @@ class salenexp : public op {
 class saelem : public op {
   llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) override {
     const FixedArray* aty = is<FixedArray>(tys[0]);
-    if (!aty) { throw annotated_error(*es[0], "Cannot index element, not a fixed-length array: " + show(tys[0])); }
+    if (aty == nullptr) { throw annotated_error(*es[0], "Cannot index element, not a fixed-length array: " + show(tys[0])); }
 
     if (isUnit(rty)) {
       c->compile(es[0]);
@@ -411,7 +411,7 @@ class saelem : public op {
 class saacopy : public op {
   llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) override {
     const FixedArray* aty = is<FixedArray>(tys[0]);
-    if (!aty) { throw annotated_error(*es[0], "Cannot determine length, not a fixed-length array: " + show(tys[0])); }
+    if (aty == nullptr) { throw annotated_error(*es[0], "Cannot determine length, not a fixed-length array: " + show(tys[0])); }
 
     llvm::Value* farr = c->compile(es[0]);
 
@@ -449,7 +449,7 @@ public:
       std::string   tn   = freshName();
       const Record* cfty = is<Record>(requireMonotype(es[1]->type()));
 
-      if (!cfty) {
+      if (cfty == nullptr) {
         throw annotated_error(*es[1], "Internal error, misapplication of low-level function application.");
       }
 
@@ -547,7 +547,7 @@ class newArrayfn : public op {
 public:
   llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr& rty, const Exprs& es) override {
     const Array* aty = is<Array>(rty);
-    if (!aty) {
+    if (aty == nullptr) {
       throw annotated_error(*es[0], "Invalid usage, newArray called for non-array type");
     }
 
@@ -628,7 +628,7 @@ public:
       throw std::runtime_error("Internal error, recordHeadLabel applied incorrectly");
     }
     const Record* rty = is<Record>(tys[0]);
-    if (!rty) {
+    if (rty == nullptr) {
       throw std::runtime_error("Internal error, recordHeadLabel applied to non-record type");
     }
 
@@ -650,7 +650,7 @@ public:
       throw std::runtime_error("Internal error, recordHeadValue applied incorrectly");
     }
     auto* rty = is<Record>(tys[0]);
-    if (!rty || rty->members().size() == 0) {
+    if ((rty == nullptr) || rty->members().size() == 0) {
       throw std::runtime_error("Internal error, recordHeadValue applied to non-record type");
     }
 
@@ -672,7 +672,7 @@ public:
       throw std::runtime_error("Internal error, recordTail applied incorrectly");
     }
     auto* rty = is<Record>(tys[0]);
-    if (!rty || rty->members().size() == 0) {
+    if ((rty == nullptr) || rty->members().size() == 0) {
       throw std::runtime_error("Internal error, recordTail applied to non-record type");
     }
 
@@ -701,7 +701,7 @@ public:
       throw std::runtime_error("Internal error, varHLabel applied incorrectly");
     }
     const Variant* vty = is<Variant>(tys[0]);
-    if (!vty) {
+    if (vty == nullptr) {
       throw std::runtime_error("Internal error, varHLabel applied to non-variant type");
     }
 
@@ -725,7 +725,7 @@ class varInjH : public op {
       throw std::runtime_error("Internal error, varInjH applied incorrectly");
     }
     const Variant* vty = is<Variant>(rty);
-    if (!vty) {
+    if (vty == nullptr) {
       throw std::runtime_error("Internal error, varInjH applied to non-variant type");
     }
 
@@ -794,7 +794,7 @@ public:
     MonoTypePtr tfntyv = tys[2];
 
     auto* vty = is<Variant>(vtyv);
-    if (!vty) {
+    if (vty == nullptr) {
       throw annotated_error(*es[0], "Internal error (received non-variant type in varSplit).");
     }
 

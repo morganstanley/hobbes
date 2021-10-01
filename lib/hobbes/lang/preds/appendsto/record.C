@@ -11,7 +11,7 @@ namespace hobbes {
 #define REF_REC_SUFFIX "recordSuffix"
 
 bool isRecordLike(const MonoTypePtr& mt) {
-  return is<Record>(mt) || isUnit(mt);
+  return (is<Record>(mt) != nullptr) || isUnit(mt);
 }
 
 const Record::Members& recordMembers(const MonoTypePtr& mt) {
@@ -162,7 +162,7 @@ bool ATRecordEliminator::satisfied(const TEnvPtr&, const MonoTypePtr& lhs, const
 }
 
 void checkSatisfiable(const MonoTypePtr& ty) {
-  if (!isRecordLike(ty) && !is<TVar>(ty)) {
+  if (!isRecordLike(ty) && (is<TVar>(ty) == nullptr)) {
     throw std::runtime_error("Not eligible for record-append relationship: " + show(ty));
   }
 }
@@ -244,7 +244,7 @@ void insertFieldDefsSfx(const MkRecord::FieldDefs& ifds, size_t c, MkRecord::Fie
 }
 
 void insertFieldDefsFromProj(const ExprPtr& rec, const Record* rty, MkRecord::FieldDefs* out) {
-  if (!rty) {
+  if (rty == nullptr) {
     throw annotated_error(*rec, "Internal error, can't insert projections out of non-record type: " + show(rec->type()));
   }
 

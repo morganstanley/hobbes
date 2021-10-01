@@ -332,7 +332,7 @@ void gclosure(const grammar& g, itemset* is) {
 
     terminalset ts = next(g, *is);
     for (auto t = ts.begin(); t != ts.end(); ++t) {
-      if (*t && hasRule(g, *t)) {
+      if ((*t != nullptr) && hasRule(g, *t)) {
         changed |= ruleItems(g, *t, is);
       }
     }
@@ -598,7 +598,7 @@ terminal* reduceOpTerminal(const parserdef& pd, const action& a) {
 bool shiftInstead(const parserdef& pd, const precedence& px, nat, terminal* t, const action& a) {
   terminal* u = reduceOpTerminal(pd, a);
 
-  if (!u) {
+  if (u == nullptr) {
     throw ambiguity_conflict("Unable to resolve shift/reduce conflict in grammar", t);
   }
 
@@ -893,7 +893,7 @@ terminals dispOrd(const terminalset& ts) {
         } else {
           return true;
         }
-      } else if (dynamic_cast<character*>(b)) {
+      } else if (dynamic_cast<character*>(b) != nullptr) {
         return false;
       } else {
         std::ostringstream as, bs;

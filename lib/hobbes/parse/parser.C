@@ -281,7 +281,7 @@ ExprPtr makeInputParserState(const ParserEvalInfo& pei, size_t i) {
     fn(append(str::strings(".arr", ".i", ".sd"), varNames(parseDepth(pei, i))),
       // if (i == size(arr)) then eval-$ else eval-char
       fncall(var("if", pei.la), list(fncall(var("leq", pei.la), list(var(".i", pei.la), lengthOf(assume(var(".arr", pei.la), pei.arrty, pei.la), pei.la)), pei.la),
-        eofAct ? doAction(pei, i, *eofAct) : parseFailure(pei, i),
+        eofAct != nullptr ? doAction(pei, i, *eofAct) : parseFailure(pei, i),
         compileMatch(pei.c, list(elementOf(var(".arr", pei.la), var(".i", pei.la), pei.la)), prs, pei.la)
       ), pei.la),
       pei.la

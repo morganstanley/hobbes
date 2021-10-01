@@ -8,7 +8,7 @@ namespace hobbes { namespace str {
 
 std::string env(const std::string& varname) {
   char* gv = getenv(varname.c_str());
-  return gv ? std::string(gv) : std::string("");
+  return gv != nullptr ? std::string(gv) : std::string("");
 }
 
 void env(const std::string& varname, const std::string& value) {

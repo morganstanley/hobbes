@@ -77,7 +77,7 @@ typedef std::stack<BuffOrFilenamePtr> AnnContextStack;
 
 static AnnContextStack& annotationCtxStack() {
   static __thread AnnContextStack* actxs = 0;
-  if (!actxs) {
+  if (actxs == nullptr) {
     actxs = new AnnContextStack();
   }
   return *actxs;

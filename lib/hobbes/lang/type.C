@@ -511,7 +511,7 @@ bool isFileRef(const MonoTypePtr& mt) {
 unsigned int alignment(const MonoTypePtr& pty) {
   MonoTypePtr ty = repType(pty);
 
-  if (is<Prim>(ty)) {
+  if (is<Prim>(ty) != nullptr) {
     if (isUnit(ty)) {
       return 1;
     } else {
@@ -525,7 +525,7 @@ unsigned int alignment(const MonoTypePtr& pty) {
     }
   } else if (const FixedArray* farr = is<FixedArray>(ty)) {
     return alignment(farr->type());
-  } else if (is<OpaquePtr>(ty) || is<Array>(ty) || is<Func>(ty)) {
+  } else if ((is<OpaquePtr>(ty) != nullptr) || (is<Array>(ty) != nullptr) || (is<Func>(ty) != nullptr)) {
     return sizeof(void*);
   } else if (const Record* rty = is<Record>(ty)) {
     size_t a = 1;
@@ -533,7 +533,7 @@ unsigned int alignment(const MonoTypePtr& pty) {
       a = std::max<unsigned int>(a, alignment(f.type));
     }
     return a;
-  } else if (is<Recursive>(ty)) {
+  } else if (is<Recursive>(ty) != nullptr) {
     return sizeof(void*);
   } else if (isFileRef(ty)) {
     return sizeof(uint64_t);
@@ -1430,7 +1430,7 @@ const MonoTypePtr& Func::result() const { return this->rty; }
 MonoTypes Func::parameters() const {
   // simplify multi-argument lookup
   const Record* arty = is<Record>(this->aty);
-  if (arty && arty->isTuple()) {
+  if ((arty != nullptr) && arty->isTuple()) {
     return selectTypes(arty->members());
   } else {
     return list(this->aty);
@@ -2810,7 +2810,7 @@ MonoTypePtr unalias(const MonoTypePtr& ty) {
   if (isMonoSingular(ty)) {
     return switchOf(ty, unaliasPrimTypesF());
   } else {
-    if (!ty->unaliasedType.get()) {
+    if (ty->unaliasedType.get() == nullptr) {
       ty->unaliasedType = switchOf(ty, unaliasPrimTypesF());
     }
     return ty->unaliasedType;

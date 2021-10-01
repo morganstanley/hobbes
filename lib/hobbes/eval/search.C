@@ -181,7 +181,7 @@ SearchEntries search(cc& c, SearchCache& sc, const MonoTypePtr& src, const MonoT
     sc.univByType[src] = findAll(c, src);
   }
 
-  if (is<TVar>(dst)) {
+  if (is<TVar>(dst) != nullptr) {
     // searching for everything, we already have it
     return sc.univByType[src];
   } else {

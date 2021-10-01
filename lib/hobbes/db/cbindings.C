@@ -233,7 +233,7 @@ public:
   }
 
   bool step() {
-    if (this->readState.buffer) {
+    if (this->readState.buffer != nullptr) {
       ++this->readState.count;
 
       bool f = false;
@@ -286,7 +286,7 @@ private:
   }
 
   bool loadNextNode() {
-    if (this->readState.buffer) {
+    if (this->readState.buffer != nullptr) {
       unmapFileData(this->readState.file, reinterpret_cast<const void*>(this->readState.buffer), sizeof(cbatch));
     }
 

@@ -65,11 +65,11 @@ bool ProcManager::satisfiable(const TEnvPtr& tenv, const HasField& hf, Definitio
 
   if (dir == HasField::Write) { return false; }
 
-  if (is<TVar>(rty)) {
+  if (is<TVar>(rty) != nullptr) {
     return true;
-  } else if (!pidTy(rty)) {
+  } else if (pidTy(rty) == nullptr) {
     return false;
-  } else if (is<TVar>(fname) || !isMonoSingular(hasty)) {
+  } else if ((is<TVar>(fname) != nullptr) || !isMonoSingular(hasty)) {
     return true;
   } else {
     return satisfied(tenv, hf, ds);
@@ -105,7 +105,7 @@ struct ProcManUnqualify : public switchExprTyFn {
 
   ExprPtr with(const Fn* v) const override {
     const Func* fty = is<Func>(v->type()->monoType());
-    if (!fty) {
+    if (fty == nullptr) {
       throw std::runtime_error("Internal error, expected annotated function type");
     }
     return wrapWithTy(v->type(),
@@ -160,7 +160,7 @@ struct ProcManUnqualify : public switchExprTyFn {
   //   readFrom(FD) :: rty
   ExprPtr makeInvocation(const proc* p, const ExprPtr& pe, const std::string& fname, const MonoTypePtr& ftyv, const Exprs& args) const {
     const Func* fty = is<Func>(ftyv);
-    if (!fty) { throw std::runtime_error("Internal error, process RPC call expected function type, not: " + show(ftyv)); }
+    if (fty == nullptr) { throw std::runtime_error("Internal error, process RPC call expected function type, not: " + show(ftyv)); }
 
     MkRecord::FieldDefs argtupv;
     for (size_t i = 0; i < args.size(); ++i) {

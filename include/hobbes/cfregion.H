@@ -176,7 +176,7 @@ struct cwbitstream {
   // start a new buffer with a given initial model
   uint64_t stepBuffer(uint64_t initModel, uint64_t scratchModel) {
     // release the old batch
-    if (this->buffer) {
+    if (this->buffer != nullptr) {
       unmapFileData(this->file, this->buffer, sizeof(cbatch));
     }
 
@@ -382,7 +382,7 @@ struct crbitstream {
       this->seg      = reinterpret_cast<cbatchseg*>(mapFileData(this->file, this->seg->nextRef, sizeof(cbatchseg)));
       this->bitIndex = 0;
     }
-    bool bit = this->seg->bits[this->bitIndex>>3]&(1<<((this->bitIndex)%8));
+    bool bit = (this->seg->bits[this->bitIndex>>3]&(1<<((this->bitIndex)%8))) != 0;
     ++this->bitIndex;
     return bit;
   }

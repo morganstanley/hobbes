@@ -119,12 +119,12 @@ bool RecordDeconstructor::satisfied(const TEnvPtr&, const ConstraintPtr& cst, De
   }
 
   const TString* fname = is<TString>(cr.headFieldName);
-  if (!fname) {
+  if (fname == nullptr) {
     return false;
   }
 
   const Record* rty = is<Record>(cr.recordType);
-  if (!rty) {
+  if (rty == nullptr) {
     return false;
   }
   if (cr.asTuple != rty->isTuple()) {
@@ -132,18 +132,18 @@ bool RecordDeconstructor::satisfied(const TEnvPtr&, const ConstraintPtr& cst, De
   }
 
   const Record* tty = is<Record>(cr.tailType);
-  if (!tty && !isUnit(cr.tailType)) {
+  if ((tty == nullptr) && !isUnit(cr.tailType)) {
     return false;
   }
 
   if (cr.asTuple) {
-    if (tty) {
+    if (tty != nullptr) {
       return *stripHiddenFields(rty) == *stripHiddenFields(Record::make(cr.headType, tty->members()));
     } else {
       return *rty->headMember().type == *cr.headType;
     }
   } else {
-    if (tty) {
+    if (tty != nullptr) {
       return *stripHiddenFields(rty) == *stripHiddenFields(Record::make(fname->value(), cr.headType, tty->members()));
     } else {
       return rty->headMember().field == fname->value() && *rty->headMember().type == *cr.headType;
@@ -154,7 +154,7 @@ bool RecordDeconstructor::satisfied(const TEnvPtr&, const ConstraintPtr& cst, De
 bool RecordDeconstructor::satisfiable(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions* ds) const {
   ConsRecord cr;
   if (dec(cst, &cr)) {
-    return satisfied(tenv, cst, ds) || is<TVar>(cr.recordType) || is<TVar>(cr.headFieldName) || (is<Record>(cr.recordType) && (is<TVar>(cr.headType) || is<TVar>(cr.tailType)));
+    return satisfied(tenv, cst, ds) || (is<TVar>(cr.recordType) != nullptr) || (is<TVar>(cr.headFieldName) != nullptr) || ((is<Record>(cr.recordType) != nullptr) && ((is<TVar>(cr.headType) != nullptr) || (is<TVar>(cr.tailType) != nullptr)));
   } else {
     return false;
   }

@@ -112,18 +112,18 @@ void TClass::insert(const TCInstanceFnPtr& ifp) {
     std::ostringstream ss;
     size_t errors = 0;
     for (const auto& tcm : this->tcmembers) {
-      if (!mm.count(tcm.first)) {
-        ss << (errors?", ":"") << "expected definition of '" << tcm.first << "'";
+      if (mm.count(tcm.first) == 0u) {
+        ss << (errors != 0u?", ":"") << "expected definition of '" << tcm.first << "'";
         ++errors;
       }
     }
     for (const auto& m : mm) {
-      if (!this->tcmembers.count(m.first)) {
-        ss << (errors?", ":"") << "unexpected definition of '" << m.first << "'";
+      if (this->tcmembers.count(m.first) == 0u) {
+        ss << (errors != 0u?", ":"") << "unexpected definition of '" << m.first << "'";
         ++errors;
       }
     }
-    if (errors) {
+    if (errors != 0u) {
       std::ostringstream ess;
       ess << "Can't introduce instance generator for '" << this->tcname << "': " << ss.str();
       throw annotated_error(*ifp, ess.str());
@@ -179,7 +179,7 @@ TCInstances TClass::matches(const TEnvPtr& tenv, const MonoTypes& mts, MonoTypeU
         const_cast<TClass*>(this)->insert(tenv, ninst, ds);
         r.push_back(ninst);
         break;
-      } else if (ninst.get()) {
+      } else if (ninst.get() != nullptr) {
         r.push_back(ninst);
         break;
       }
@@ -230,7 +230,7 @@ bool TClass::refine(const TEnvPtr& tenv, const ConstraintPtr& c, const FunDep& f
 }
 
 bool isLiteralFnTerm(const ExprPtr& e) {
-  return is<Fn>(stripAssumpHead(e));
+  return is<Fn>(stripAssumpHead(e)) != nullptr;
 }
 
 bool TClass::satisfied(const TEnvPtr& tenv, const ConstraintPtr& c, Definitions* ds) const {
@@ -658,7 +658,7 @@ bool TCInstanceFn::apply(const TEnvPtr& tenv, const MonoTypes& tys, const TClass
   // we've definitely found a complete match
   // merge local bindings to the nested unifier scope
   MonoTypeSubst ms = u.substitution();
-  if (ms.size() > 0 && callsubst) {
+  if (ms.size() > 0 && (callsubst != nullptr)) {
     for (const auto& m : ms) {
       callsubst->bind(m.first, m.second);
     }
@@ -813,7 +813,7 @@ const TClass* findClass(const TEnvPtr& tenv, const std::string& cname) {
     throw std::runtime_error("No such type class: " + cname);
   }
   const auto* c = dynamic_cast<const TClass*>(uq.get());
-  if (!c) {
+  if (c == nullptr) {
     throw std::runtime_error("Not a type class: " + cname);
   }
   return c;
@@ -931,7 +931,7 @@ void deserializeGroundClasses(const TEnvPtr& tenv, std::istream& in, Definitions
       MemberMapping mm;
       decode(&mm, in);
 
-      if (c) {
+      if (c != nullptr) {
         if (!c->hasGroundInstanceAt(mts)) {
           c->insert(tenv, TCInstancePtr(new TCInstance(cname, mts, mm, c->la())), ds);
         }

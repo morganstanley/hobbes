@@ -102,7 +102,7 @@ void MatchArray::show(std::ostream& out) const {
 
 bool MatchArray::operator==(const Pattern& rhs) const {
   const auto* arhs = is<MatchArray>(&rhs);
-  if (!arhs || this->ps.size() != arhs->ps.size()) return false;
+  if ((arhs == nullptr) || this->ps.size() != arhs->ps.size()) return false;
 
   for (unsigned int i = 0; i < this->ps.size(); ++i) {
     if (!(*this->ps[i] == *arhs->ps[i])) {
@@ -224,7 +224,7 @@ void MatchRecord::show(std::ostream& out, const Field& f) {
 
 bool MatchRecord::operator==(const Pattern& rhs) const {
   const auto* rrhs = hobbes::is<MatchRecord>(&rhs);
-  if (!rrhs || this->fs.size() != rrhs->fs.size()) return false;
+  if ((rrhs == nullptr) || this->fs.size() != rrhs->fs.size()) return false;
 
   for (unsigned int i = 0; i < this->fs.size(); ++i) {
     if (this->fs[i].first != rrhs->fs[i].first) {
@@ -371,7 +371,7 @@ Patterns concatArrayPatterns(const Patterns& ps) {
 void normalizeRecAccess(const Patterns& ps) {
   if (ps.size() == 0) {
     // nothing to normalize
-  } else if (is<MatchRecord>(ps[0])) {
+  } else if (is<MatchRecord>(ps[0]) != nullptr) {
     // this is actually the case we care about
     // first recursively normalize within each field's pattern
     auto gs = groupRecordPatterns(ps);
@@ -381,9 +381,9 @@ void normalizeRecAccess(const Patterns& ps) {
 
     // then normalize within patterns
     normalizeRecPatterns(ps, keys(gs));
-  } else if (is<MatchArray>(ps[0])) {
+  } else if (is<MatchArray>(ps[0]) != nullptr) {
     normalizeRecAccess(concatArrayPatterns(ps));
-  } else if (is<MatchVariant>(ps[0])) {
+  } else if (is<MatchVariant>(ps[0]) != nullptr) {
     for (const auto& g : groupVariantPatterns(ps)) {
       normalizeRecAccess(g.second);
     }
@@ -400,7 +400,7 @@ bool canHoldRecPatterns(const PatternPtr& p) {
       }
     }
     return true;
-  } else if (is<MatchLiteral>(p) || is<MatchRegex>(p)) {
+  } else if ((is<MatchLiteral>(p) != nullptr) || (is<MatchRegex>(p) != nullptr)) {
     // prim matches obviously can't contain record patterns
     return false;
   } else {
@@ -421,7 +421,7 @@ void normalizeRecAccess(const PatternRows& prs) {
       if (!canHoldRecPatterns(p)) {
         ps.clear();
         break;
-      } else if (!is<MatchAny>(p)) {
+      } else if (is<MatchAny>(p) == nullptr) {
         ps.push_back(p);
       }
     }

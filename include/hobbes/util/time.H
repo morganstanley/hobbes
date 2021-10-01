@@ -164,7 +164,7 @@ inline long timeFromDateTime(long x) {
   int64_t us = x % (1000L * 1000L);
   tm*     t  = localtime(reinterpret_cast<time_t*>(&s));
 
-  if (t) {
+  if (t != nullptr) {
     return mkTime(t->tm_hour, t->tm_min, t->tm_sec, us);
   } else {
     return mkTime(0, 0, 0, 0);

@@ -122,7 +122,7 @@ public:
 
   llvm::Value* with(const Fn* v) const override {
     Func* fty = is<Func>(requireMonotype(v->type()));
-    if (!fty) {
+    if (fty == nullptr) {
       throw annotated_error(*v, "Internal compiler error, not a function type: " + show(v->type()));
     }
 
@@ -189,7 +189,7 @@ public:
     if (llvm::Value* cr = compileConstArray(aty->type(), vs)) {
       return cr;
     } else {
-      bool         isStoredPtr = is<OpaquePtr>(aty->type()) || is<Func>(aty->type()); // consistent with ctype.C, store opaque ptrs and functions in arrays as pointers
+      bool         isStoredPtr = (is<OpaquePtr>(aty->type()) != nullptr) || (is<Func>(aty->type()) != nullptr); // consistent with ctype.C, store opaque ptrs and functions in arrays as pointers
       llvm::Type*  elemTy      = toLLVM(aty->type(), isStoredPtr);
       llvm::Value* p           = compileAllocStmt(sizeof(long) + sizeOf(aty->type()) * vs.size(), std::max<size_t>(sizeof(long), alignment(aty->type())), ptrType(llvmVarArrType(elemTy)));
 
@@ -233,7 +233,7 @@ public:
         });
       }
     }
-    if (!vty) { throw annotated_error(*v, "Internal compiler error, compiling variant without penum/variant type: " + show(v) + " :: " + show(v->type())); }
+    if (vty == nullptr) { throw annotated_error(*v, "Internal compiler error, compiling variant without penum/variant type: " + show(v) + " :: " + show(v->type())); }
 
     llvm::Value* p  = compileAllocStmt(sizeOf(mvty), alignment(mvty), ptrType(byteType()));
     llvm::Value* tg = cvalue(vty->id(v->label()));
@@ -264,7 +264,7 @@ public:
   llvm::Value* with(const MkRecord* v) const override {
     MonoTypePtr mrty = requireMonotype(v->type());
     auto*     rty  = is<Record>(mrty);
-    if (!rty) { throw annotated_error(*v, "Internal compiler error, compiling record without record type: " + show(v) + " :: " + show(v->type())); }
+    if (rty == nullptr) { throw annotated_error(*v, "Internal compiler error, compiling record without record type: " + show(v) + " :: " + show(v->type())); }
 
     RecordValue vs = compileRecordFields(v->fields());
 
@@ -333,7 +333,7 @@ public:
     MonoTypePtr casety = requireMonotype(v->type());
     MonoTypePtr varty  = requireMonotype(v->variant()->type());
     auto*    vty    = is<Variant>(varty);
-    if (!vty) {
+    if (vty == nullptr) {
       throw annotated_error(*v, "Internal compiler error (received non-variant type in case).");
     }
     resolveCaseDefault(vty, const_cast<Case*>(v));
@@ -377,7 +377,7 @@ public:
           } else {
             // otherwise the data here is available inline
             // (and functions are stored as pointers)
-            llvm::Type*  lty      = toLLVM(valty, is<Func>(valty));
+            llvm::Type*  lty      = toLLVM(valty, is<Func>(valty) != nullptr);
             llvm::Value* pointval = builder()->CreateBitCast(pval, ptrType(lty));
             llvm::Value* val      = isLargeType(valty) ? pointval : builder()->CreateLoad(pointval, false);
 
@@ -400,7 +400,7 @@ public:
 
     // fill in the default (failure) target for variant matching
     llvm::Function* f = this->c->lookupFunction(".failvarmatch");
-    if (!f) { throw std::runtime_error("Internal compiler error -- no default variant match failure handler defined."); }
+    if (f == nullptr) { throw std::runtime_error("Internal compiler error -- no default variant match failure handler defined."); }
 
     auto ltxts = v->la().lines(v->la().p0.first-1, v->la().p1.first);
     auto ltxt  = ltxts.size() > 0 ? ltxts[0] : "???";
@@ -492,7 +492,7 @@ public:
 
   llvm::Value* with(const Proj* v) const override {
     auto* rty = is<Record>(requireMonotype(v->record()->type()));
-    if (!rty) {
+    if (rty == nullptr) {
       throw annotated_error(*v, "Internal compiler error (received non-record type in projection).");
     }
 
@@ -554,7 +554,7 @@ private:
   std::string vname;
 
   llvm::Value* compileConstArray(const MonoTypePtr& ty, const Values& vs) const {
-    auto elemTy = is<Func>(ty) ? ptrType(toLLVM(ty)) : toLLVM(ty);
+    auto elemTy = is<Func>(ty) != nullptr ? ptrType(toLLVM(ty)) : toLLVM(ty);
     return withContext([&](auto&) {
        // take care to refer to global array constants by reference (a bit awkward!)
        return tryMkConstVarArray(builder(), this->c->module(), elemTy, vs, is<Array>(ty));
@@ -622,7 +622,7 @@ private:
       MonoTypePtr  vty = requireMonotype(gv->type());
       llvm::Value* vl  = this->c->lookupVarRef(gv->value());
 
-      if (!vl) {
+      if (vl == nullptr) {
         throw annotated_error(*e, "Failed to get reference to global variable: " + gv->value());
       }
 
@@ -642,7 +642,7 @@ private:
       return p;
     } else if (const Proj* rp = is<Proj>(e)) {
       auto* rty = is<Record>(requireMonotype(rp->record()->type()));
-      if (!rty) {
+      if (rty == nullptr) {
         throw annotated_error(*e, "Internal compiler error (received non-record type in projection).");
       }
 
@@ -724,7 +724,7 @@ public:
 
   llvm::Constant* with(const Fn* v) const override {
     Func* fty = is<Func>(requireMonotype(v->type()));
-    if (!fty) {
+    if (fty == nullptr) {
       throw annotated_error(*v, "Internal compiler error, not a function type: " + show(v->type()));
     }
 
@@ -755,7 +755,7 @@ public:
     }
 
     Constants cs = switchOf(v->values(), *this);
-    for (auto c : cs) { if (!c) return 0; }
+    for (auto c : cs) { if (c == nullptr) return 0; }
 
     llvm::Type* elemTy = toLLVM(aty->type(), false);
     llvm::StructType* saty = varArrayType(elemTy, cs.size());
@@ -781,7 +781,7 @@ public:
   llvm::Constant* with(const MkRecord* v) const override {
     MonoTypePtr mrty = requireMonotype(v->type());
     auto*     rty  = is<Record>(mrty);
-    if (!rty) { throw annotated_error(*v, "Internal compiler error, compiling record without record type: " + show(v) + " :: " + show(v->type())); }
+    if (rty == nullptr) { throw annotated_error(*v, "Internal compiler error, compiling record without record type: " + show(v) + " :: " + show(v->type())); }
 
     Constants rcs;
     for (auto f : v->fields()) {

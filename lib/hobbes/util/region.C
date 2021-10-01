@@ -87,20 +87,20 @@ size_t sumAttr(const mempage* p, pattr::E a) {
   size_t r = 0;
   switch (a) {
   case pattr::allocated:
-    while (p) {
+    while (p != nullptr) {
       r += p->size;
       p = p->succ;
     }
     break;
   case pattr::used:
-    while (p) {
+    while (p != nullptr) {
       r += p->read;
       p = p->succ;
     }
     break;
   case pattr::wasted:
-    p = p ? p->succ : p;
-    while (p) {
+    p = p != nullptr ? p->succ : p;
+    while (p != nullptr) {
       r += p->size - p->read;
       p = p->succ;
     }

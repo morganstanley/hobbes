@@ -29,7 +29,7 @@ struct macroExpandF : public switchExprC<ExprPtr> {
 
   ExprPtr with(const Case* v) const override {
     ExprPtr de = v->defaultExpr();
-    if (de.get()) { de = switchOf(de, *this); }
+    if (de.get() != nullptr) { de = switchOf(de, *this); }
     return mk(v, new Case(switchOf(v->variant(), *this), switchOf(v->bindings(), *this), de, v->la()));
   }
 
@@ -63,9 +63,9 @@ struct macroExpandF : public switchExprC<ExprPtr> {
 
   ExprPtr with(const App* v) const override {
     Var* fn = is<Var>(v->fn());
-    if (fn && fn->value() == "and") {
+    if ((fn != nullptr) && fn->value() == "and") {
       return macroExpandAnd(switchOf(v->args(), *this), v->la());
-    } else if (fn && fn->value() == "or") {
+    } else if ((fn != nullptr) && fn->value() == "or") {
       return macroExpandOr(switchOf(v->args(), *this), v->la());
     } else {
       return mk(v, new App(switchOf(v->fn(), *this), switchOf(v->args(), *this), v->la()));

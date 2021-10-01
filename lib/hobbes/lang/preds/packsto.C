@@ -112,7 +112,7 @@ bool Existentials::satisfied(const TEnvPtr& tenv, const ConstraintPtr& cst, Defi
 bool Existentials::satisfiable(const TEnvPtr&, const ConstraintPtr& cst, Definitions*) const {
   PacksTo pt;
   if (dec(cst, &pt)) {
-    if (is<TVar>(pt.abstractType)) {
+    if (is<TVar>(pt.abstractType) != nullptr) {
       return true;
     } else if (const Exists* e = is<Exists>(pt.abstractType)) {
       if (!isSafeExistentialType(e)) {
@@ -168,7 +168,7 @@ ExprPtr Existentials::unqualify(const TEnvPtr&, const ConstraintPtr& cst, const 
   // else, just remove the constraint from terms and let final compilation determine how to do the packing
   PacksTo pt;
   if (dec(cst, &pt)) {
-    if (is<Exists>(pt.abstractType)) {
+    if (is<Exists>(pt.abstractType) != nullptr) {
       return switchOf(e, UnqualifySafePackF(cst));
     } else {
       return switchOf(e, StripTransparentPackF(cst));

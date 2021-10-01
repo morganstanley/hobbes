@@ -45,7 +45,7 @@ public:
   translateTypeF(bool asArg) : asArg(asArg) { }
 
   llvm::Type* with(const Prim* v) const override {
-    if (v->representation().get()) {
+    if (v->representation().get() != nullptr) {
       return switchOf(v->representation(), *this);
     } else {
       return llvmPrim(v->name());
@@ -101,12 +101,12 @@ public:
   }
 
   llvm::Type* with(const FixedArray* v) const override {
-    bool innerPtrs = is<Func>(v->type());
+    bool innerPtrs = is<Func>(v->type()) != nullptr;
     return asPtrIf(arrayType(switchOf(v->type(), translateTypeF(innerPtrs)), v->requireLength()), asArg);
   }
 
   llvm::Type* with(const Array* v) const override {
-    bool innerPtrs = is<OpaquePtr>(v->type()) || is<Func>(v->type());
+    bool innerPtrs = (is<OpaquePtr>(v->type()) != nullptr) || (is<Func>(v->type()) != nullptr);
     return asPtrIf(llvmVarArrType(switchOf(v->type(), translateTypeF(innerPtrs))), true);
   }
 
@@ -121,7 +121,7 @@ public:
     for (auto m = ams.begin(); m != ams.end(); ++m) {
       // some types go into records as pointers
       if (!isUnit(m->type)) {
-        cms.push_back(switchOf(m->type, translateTypeF(is<Func>(m->type) || is<Array>(m->type))));
+        cms.push_back(switchOf(m->type, translateTypeF((is<Func>(m->type) != nullptr) || (is<Array>(m->type) != nullptr))));
       }
     }
 

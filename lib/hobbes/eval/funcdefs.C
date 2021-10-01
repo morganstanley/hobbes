@@ -421,7 +421,7 @@ std::ostringstream& stdoutBuffer() {
 
 void stdoutBufferSwap(std::ostream* os) {
   static std::streambuf* b = std::cout.rdbuf();
-  if (os) {
+  if (os != nullptr) {
     std::cout.rdbuf(os->rdbuf());
   } else {
     std::cout.rdbuf(b);
@@ -496,7 +496,7 @@ void dumpBytes(char* d, long len) {
 //  (mark FDs as bad if there are errors rather than raising an exception and killing the process)
 std::set<int>& badFDs() {
   static __thread std::set<int>* bfds = 0;
-  if (!bfds) {
+  if (bfds == nullptr) {
     bfds = new std::set<int>();
   }
   return *bfds;

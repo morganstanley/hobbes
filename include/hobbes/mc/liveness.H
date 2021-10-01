@@ -60,7 +60,7 @@ public:
   }
 
   void clear() {
-    if (this->bits) {
+    if (this->bits != nullptr) {
       memset(this->bits, 0, this->bcount * sizeof(uint64_t));
     }
   }
@@ -150,7 +150,7 @@ public:
       uint64_t k = b;
 
       // gather members in 4-bit steps
-      while (v) {
+      while (v != 0u) {
         switch (v & 0x0f) {
         default: 
         case 0:                                                            break; // 0000
@@ -356,7 +356,7 @@ public:
               pc < insts.size()             && // pc is valid
               instM.follows(insts, pc)      && // control follows straight from pc to pc+1
               !instM.jumpsTo(insts, pc, &n) && // pc doesn't jump anywhere else
-              !jumpTargets.count(pc+1)         // and the next instruction is only reachable from this one
+              (jumpTargets.count(pc+1) == 0u)         // and the next instruction is only reachable from this one
             )
       {
         // the next instruction is in the block

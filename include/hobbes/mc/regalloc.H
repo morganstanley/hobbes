@@ -102,7 +102,7 @@ inline const std::set<Reg<X86Reg>>& callerSaveRegs() {
       i.name   = static_cast<X86Reg>(r);
       i.rsize  = 8;
       i.rclass = RegClass::Int;
-      if (r != 4 && !saved.count(i)) {
+      if (r != 4 && (saved.count(i) == 0u)) {
         regs.insert(i);
       }
 
@@ -110,7 +110,7 @@ inline const std::set<Reg<X86Reg>>& callerSaveRegs() {
       f.name   = static_cast<X86Reg>(r);
       f.rsize  = 8;
       f.rclass = RegClass::Float;
-      if (!saved.count(f)) {
+      if (saved.count(f) == 0u) {
         regs.insert(f);
       }
     }
@@ -205,7 +205,7 @@ inline std::set<std::string> regUses(const RInst& ri) {
     rmapInto(lm, &r, ma);
   }
   for (const auto& ma : defs(mi)) {
-    if (!ma.reg()) {
+    if (ma.reg() == nullptr) {
       rmapInto(lm, &r, ma);
     }
   }
@@ -670,7 +670,7 @@ private:
         for (VarID mv : this->ig->moves(v)) {
           Move mvid = moveID(v, mv);
 
-          if (this->delayedMoves.erase(mvid)) {
+          if (this->delayedMoves.erase(mvid) != 0u) {
             this->moves.insert(mvid);
           }
         }
@@ -946,7 +946,7 @@ inline RInst subst(const RRSubst& s, const RInst& i) {
   return
     i.mapRegs<std::string>(
       [&](const std::string& rname, RegSize, RegClass) -> std::string {
-        if (maybeMReg(rname)) {
+        if (maybeMReg(rname) != nullptr) {
           return rname;
         } else {
           auto k = s.find(rname);
@@ -1166,7 +1166,7 @@ inline RRSubst spillSubst(size_t pc, const std::set<VarID>& spillVars, const Pro
   RRSubst r;
   for (const std::string& v : vs) {
     VarID vid = live.id(v);
-    if (spillVars.count(vid)) {
+    if (spillVars.count(vid) != 0u) {
       std::ostringstream vns;
       vns << ".spill." << vid << "." << pc;
       r[v] = vns.str();

@@ -982,7 +982,7 @@ YY_DECL
 	char *yy_cp, *yy_bp;
 	int yy_act;
     
-	if ( !(yy_init) )
+	if ( (yy_init) == 0 )
 		{
 		(yy_init) = 1;
 
@@ -991,18 +991,18 @@ YY_DECL
 #endif
 
     /* Create the reject buffer large enough to save one state per allowed character. */
-    if ( ! (yy_state_buf) )
+    if ( (yy_state_buf) == nullptr )
       (yy_state_buf) = (yy_state_type *)yyalloc(YY_STATE_BUF_SIZE  );
-    if ( ! (yy_state_buf) )
+    if ( (yy_state_buf) == nullptr )
       YY_FATAL_ERROR( "out of dynamic memory in yylex()" );
 
-		if ( ! (yy_start) )
+		if ( (yy_start) == 0 )
 			(yy_start) = 1;	/* first start state */
 
-		if ( ! yyin )
+		if ( yyin == nullptr )
 			yyin = stdin;
 
-		if ( ! yyout )
+		if ( yyout == nullptr )
 			yyout = stdout;
 
 		if ( ! YY_CURRENT_BUFFER ) {
@@ -1021,7 +1021,7 @@ YY_DECL
 
 #line 75 "hexpr.l"
   /* simulate multiple start symbols in our grammar by supporting a distinguished prefix token to switch on pseudo-start symbol productions */
-  if (yyInitToken) {
+  if (yyInitToken != 0) {
     int r = yyInitToken;
     yyInitToken = 0;
     return r;
@@ -1030,7 +1030,7 @@ YY_DECL
 
 #line 1031 "hexpr.lex.C"
 
-	while ( /*CONSTCOND*/1 )		/* loops until end-of-file is reached */
+	while ( /*CONSTCOND*/true )		/* loops until end-of-file is reached */
 		{
 		yy_cp = (yy_c_buf_p);
 
@@ -1069,11 +1069,11 @@ yy_find_action:
 find_rule: /* we branch to this label when backing up */
 		for ( ; ; ) /* until we find what rule we matched */
 			{
-			if ( (yy_lp) && (yy_lp) < yy_accept[yy_current_state + 1] )
+			if ( ((yy_lp) != 0) && (yy_lp) < yy_accept[yy_current_state + 1] )
 				{
 				yy_act = yy_acclist[(yy_lp)];
-				if ( yy_act & YY_TRAILING_HEAD_MASK ||
-				     (yy_looking_for_trail_begin) )
+				if ( ((yy_act & YY_TRAILING_HEAD_MASK) != 0) ||
+				     ((yy_looking_for_trail_begin) != 0) )
 					{
 					if ( yy_act == (yy_looking_for_trail_begin) )
 						{
@@ -1082,7 +1082,7 @@ find_rule: /* we branch to this label when backing up */
 						break;
 						}
 					}
-				else if ( yy_act & YY_TRAILING_MASK )
+				else if ( (yy_act & YY_TRAILING_MASK) != 0 )
 					{
 					(yy_looking_for_trail_begin) = yy_act & ~YY_TRAILING_MASK;
 					(yy_looking_for_trail_begin) |= YY_TRAILING_HEAD_MASK;
@@ -1104,7 +1104,7 @@ find_rule: /* we branch to this label when backing up */
 
 		YY_DO_BEFORE_ACTION;
 
-		if ( yy_act != YY_END_OF_BUFFER && yy_rule_can_match_eol[yy_act] )
+		if ( yy_act != YY_END_OF_BUFFER && (yy_rule_can_match_eol[yy_act] != 0) )
 			{
 			int yyl;
 			for ( yyl = 0; yyl < yyleng; ++yyl )
@@ -1788,7 +1788,7 @@ ECHO;
 
 			yy_bp = (yytext_ptr) + YY_MORE_ADJ;
 
-			if ( yy_next_state )
+			if ( yy_next_state != 0 )
 				{
 				/* Consume the NUL. */
 				yy_cp = ++(yy_c_buf_p);
@@ -1828,7 +1828,7 @@ ECHO;
 
 				else
 					{
-					if ( ! (yy_did_buffer_switch_on_eof) )
+					if ( (yy_did_buffer_switch_on_eof) == 0 )
 						YY_NEW_FILE;
 					}
 				break;
@@ -1992,7 +1992,7 @@ static int yy_get_next_buffer (void)
 
 	for ( yy_cp = (yytext_ptr) + YY_MORE_ADJ; yy_cp < (yy_c_buf_p); ++yy_cp )
 		{
-		YY_CHAR yy_c = (*yy_cp ? yy_ec[YY_SC_TO_UI(*yy_cp)] : 1);
+		YY_CHAR yy_c = (*yy_cp != 0 ? yy_ec[YY_SC_TO_UI(*yy_cp)] : 1);
 		while ( yy_chk[yy_base[yy_current_state] + yy_c] != yy_current_state )
 			{
 			yy_current_state = (int) yy_def[yy_current_state];
@@ -2023,11 +2023,11 @@ static int yy_get_next_buffer (void)
 			yy_c = yy_meta[yy_c];
 		}
 	yy_current_state = yy_nxt[yy_base[yy_current_state] + yy_c];
-	yy_is_jam = (yy_current_state == 280);
-	if ( ! yy_is_jam )
+	yy_is_jam = static_cast<int>(yy_current_state == 280);
+	if ( yy_is_jam == 0 )
 		*(yy_state_ptr)++ = yy_current_state;
 
-  return yy_is_jam ? 0 : yy_current_state;
+  return yy_is_jam != 0 ? 0 : yy_current_state;
 }
 
 #ifndef YY_NO_UNPUT
@@ -2226,7 +2226,7 @@ static void yy_load_buffer_state  (void)
 	YY_BUFFER_STATE b;
     
 	b = (YY_BUFFER_STATE) yyalloc( sizeof( struct yy_buffer_state )  );
-	if ( ! b )
+	if ( b == nullptr )
 		YY_FATAL_ERROR( "out of dynamic memory in yy_create_buffer()" );
 
 	b->yy_buf_size = size;
@@ -2235,7 +2235,7 @@ static void yy_load_buffer_state  (void)
 	 * we need to put in 2 end-of-buffer characters.
 	 */
 	b->yy_ch_buf = (char *) yyalloc( (yy_size_t) (b->yy_buf_size + 2)  );
-	if ( ! b->yy_ch_buf )
+	if ( b->yy_ch_buf == nullptr )
 		YY_FATAL_ERROR( "out of dynamic memory in yy_create_buffer()" );
 
 	b->yy_is_our_buffer = 1;
@@ -2252,13 +2252,13 @@ static void yy_load_buffer_state  (void)
     void yy_delete_buffer (YY_BUFFER_STATE  b )
 {
     
-	if ( ! b )
+	if ( b == nullptr )
 		return;
 
 	if ( b == YY_CURRENT_BUFFER ) /* Not sure if we should pop here. */
 		YY_CURRENT_BUFFER_LVALUE = (YY_BUFFER_STATE) 0;
 
-	if ( b->yy_is_our_buffer )
+	if ( b->yy_is_our_buffer != 0 )
 		yyfree( (void *) b->yy_ch_buf  );
 
 	yyfree( (void *) b  );
@@ -2287,7 +2287,7 @@ static void yy_load_buffer_state  (void)
         b->yy_bs_column = 0;
     }
 
-        b->yy_is_interactive = file ? (isatty( fileno(file) ) > 0) : 0;
+        b->yy_is_interactive = file != nullptr ? static_cast<int>(isatty( fileno(file) ) > 0) : 0;
     
 	errno = oerrno;
 }
@@ -2298,7 +2298,7 @@ static void yy_load_buffer_state  (void)
  */
     void yy_flush_buffer (YY_BUFFER_STATE  b )
 {
-    	if ( ! b )
+    	if ( b == nullptr )
 		return;
 
 	b->yy_n_chars = 0;
@@ -2378,7 +2378,7 @@ static void yyensure_buffer_stack (void)
 {
 	yy_size_t num_to_alloc;
     
-	if (!(yy_buffer_stack)) {
+	if ((yy_buffer_stack) == nullptr) {
 
 		/* First allocation is just for 2 elements, since we don't know if this
 		 * scanner will even need a stack. We use 2 instead of 1 to avoid an
@@ -2388,7 +2388,7 @@ static void yyensure_buffer_stack (void)
 		(yy_buffer_stack) = (struct yy_buffer_state**)yyalloc
 								(num_to_alloc * sizeof(struct yy_buffer_state*)
 								);
-		if ( ! (yy_buffer_stack) )
+		if ( (yy_buffer_stack) == nullptr )
 			YY_FATAL_ERROR( "out of dynamic memory in yyensure_buffer_stack()" );
 
 		memset((yy_buffer_stack), 0, num_to_alloc * sizeof(struct yy_buffer_state*));
@@ -2408,7 +2408,7 @@ static void yyensure_buffer_stack (void)
 								((yy_buffer_stack),
 								num_to_alloc * sizeof(struct yy_buffer_state*)
 								);
-		if ( ! (yy_buffer_stack) )
+		if ( (yy_buffer_stack) == nullptr )
 			YY_FATAL_ERROR( "out of dynamic memory in yyensure_buffer_stack()" );
 
 		/* zero only the new slots.*/
@@ -2434,7 +2434,7 @@ YY_BUFFER_STATE yy_scan_buffer  (char * base, yy_size_t  size )
 		return NULL;
 
 	b = (YY_BUFFER_STATE) yyalloc( sizeof( struct yy_buffer_state )  );
-	if ( ! b )
+	if ( b == nullptr )
 		YY_FATAL_ERROR( "out of dynamic memory in yy_scan_buffer()" );
 
 	b->yy_buf_size = (int) (size - 2);	/* "- 2" to take care of EOB's */
@@ -2483,7 +2483,7 @@ YY_BUFFER_STATE yy_scan_bytes  (const char * yybytes, int  _yybytes_len )
 	/* Get memory for full buffer, including space for trailing EOB's. */
 	n = (yy_size_t) (_yybytes_len + 2);
 	buf = (char *) yyalloc( n  );
-	if ( ! buf )
+	if ( buf == nullptr )
 		YY_FATAL_ERROR( "out of dynamic memory in yy_scan_bytes()" );
 
 	for ( i = 0; i < _yybytes_len; ++i )
@@ -2492,7 +2492,7 @@ YY_BUFFER_STATE yy_scan_bytes  (const char * yybytes, int  _yybytes_len )
 	buf[_yybytes_len] = buf[_yybytes_len+1] = YY_END_OF_BUFFER_CHAR;
 
 	b = yy_scan_buffer( buf, n );
-	if ( ! b )
+	if ( b == nullptr )
 		YY_FATAL_ERROR( "bad buffer in yy_scan_bytes()" );
 
 	/* It's okay to grow etc. this buffer, and we should throw it

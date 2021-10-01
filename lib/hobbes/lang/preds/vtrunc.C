@@ -61,10 +61,10 @@ bool VariantTruncP::satisfied(const TEnvPtr&, const ConstraintPtr& cst, Definiti
 bool VariantTruncP::satisfiable(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions* ds) const {
   VariantTruncD vt;
   if (dec(cst, &vt)) {
-    if (!hasFreeVariables(vt.variantType) && is<Variant>(vt.variantType)) {
-      return is<TVar>(vt.enumType) || satisfied(tenv, cst, ds);
+    if (!hasFreeVariables(vt.variantType) && (is<Variant>(vt.variantType) != nullptr)) {
+      return (is<TVar>(vt.enumType) != nullptr) || satisfied(tenv, cst, ds);
     } else {
-      return is<TVar>(vt.variantType);
+      return is<TVar>(vt.variantType) != nullptr;
     }
   }
   return false;

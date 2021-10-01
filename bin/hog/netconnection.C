@@ -102,7 +102,7 @@ bool DefaultNetConnection::sendFile(int fd) {
   off_t size = sb.st_size;
   off_t offset = 0;
 
-  while (size) {
+  while (size != 0) {
     const ssize_t sent = sendfile(this->fd, fd, &offset, size);
     if (sent >= 0) {
       size -= sent;

@@ -40,7 +40,7 @@ void ConstraintSet::insert(const TEnvPtr& tenv, const ConstraintPtr& c, MonoType
   typeSeqForm(c, &cpath);
 
   // if this constraint is already stored, we don't need to insert
-  if (this->csts.lookup(cpath)) {
+  if (this->csts.lookup(cpath) != nullptr) {
     return;
   }
 
@@ -64,7 +64,7 @@ void ConstraintSet::insert(const TEnvPtr& tenv, const ConstraintPtr& c, MonoType
   }
 
   // now only store the constraint if it's still unique
-  if (!this->csts.lookup(cpath)) {
+  if (this->csts.lookup(cpath) == nullptr) {
     this->csts.insert(cpath, c);
   }
 }

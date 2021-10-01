@@ -258,7 +258,7 @@ struct addFileSignalF : public op {
     llvm::Value* sfn = c->compile(es[1]);
 
     llvm::Function* f = c->lookupFunction(".addFileSignal");
-    if (!f) { throw std::runtime_error("Expected 'addFileSignal' function as call"); }
+    if (f == nullptr) { throw std::runtime_error("Expected 'addFileSignal' function as call"); }
 
     size_t      sz     = 0;
     MonoTypePtr refty  = frefType(tys[0]);
@@ -404,14 +404,14 @@ bool AddDBFieldSignal::satisfiable(const TEnvPtr& tenv, const HasField& hf, Defi
 
   if (dir != HasField::Write) return false;
 
-  if (is<TString>(fname)) {
+  if (is<TString>(fname) != nullptr) {
     if (hf.recordExpr) {
       return !isMonoSingular(fty) || satisfied(tenv, hf, ds);
     } else {
-      return is<TVar>(rty);
+      return is<TVar>(rty) != nullptr;
     }
   } else {
-    return is<TVar>(fname);
+    return is<TVar>(fname) != nullptr;
   }
 }
 
@@ -464,7 +464,7 @@ struct ADBFSigUnqualify : public switchExprTyFn {
 
   ExprPtr with(const Fn* v) const override {
     const Func* fty = is<Func>(v->type()->monoType());
-    if (!fty) {
+    if (fty == nullptr) {
       throw annotated_error(*v, "Internal error, expected annotated function type");
     }
     return wrapWithTy(v->type(),

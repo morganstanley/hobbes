@@ -98,7 +98,7 @@ void runParserOnBuffer(cc* c, int initTok, YY_BUFFER_STATE bs) {
 
 void runParserOnFile(cc* c, int initTok, const std::string& fname) {
   FILE* f = fopen(fname.c_str(), "r");
-  if (!f) {
+  if (f == nullptr) {
     throw std::runtime_error("Failed to open file for reading, '" + fname + "'");
   }
   try {
@@ -139,7 +139,7 @@ ModulePtr defReadModuleFile(cc* c, const std::string& file) {
   runParserOnFile(c, TPARSEMODULE, file);
   yyModulePath = "";
 
-  return checkReturn(yyParsedModule ? ModulePtr(yyParsedModule) : ModulePtr());
+  return checkReturn(yyParsedModule != nullptr ? ModulePtr(yyParsedModule) : ModulePtr());
 }
 
 ModulePtr defReadModule(cc* c, const char* text) {
@@ -148,7 +148,7 @@ ModulePtr defReadModule(cc* c, const char* text) {
   yyParsedModule = 0;
   runParserOnString(c, TPARSEMODULE, text);
 
-  return checkReturn(yyParsedModule ? ModulePtr(yyParsedModule) : ModulePtr());
+  return checkReturn(yyParsedModule != nullptr ? ModulePtr(yyParsedModule) : ModulePtr());
 }
 
 ModulePtr defReadModule(cc* c, const std::string& text) {
@@ -162,7 +162,7 @@ ExprDefn defReadExprDefn(cc* c, const std::string& expr) {
   yyParsedExpr = 0;
   runParserOnString(c, TPARSEDEFN, expr.c_str());
 
-  return ExprDefn(yyParsedVar, checkReturn(yyParsedExpr ? ExprPtr(yyParsedExpr) : ExprPtr()));
+  return ExprDefn(yyParsedVar, checkReturn(yyParsedExpr != nullptr ? ExprPtr(yyParsedExpr) : ExprPtr()));
 }
 
 ExprPtr defReadExpr(cc* c, const std::string& expr) {
@@ -171,7 +171,7 @@ ExprPtr defReadExpr(cc* c, const std::string& expr) {
   yyParsedExpr = 0;
   runParserOnString(c, TPARSEEXPR, expr.c_str());
 
-  return checkReturn(yyParsedExpr ? ExprPtr(yyParsedExpr) : ExprPtr());
+  return checkReturn(yyParsedExpr != nullptr ? ExprPtr(yyParsedExpr) : ExprPtr());
 }
 
 // allow variable and pattern variable overloading

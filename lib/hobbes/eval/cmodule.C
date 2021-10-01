@@ -17,7 +17,7 @@ namespace hobbes {
 bool fileExists(const std::string &fname) {
   // not the most elegant, but it does the job
   FILE *f = fopen(fname.c_str(), "r");
-  if (!f)
+  if (f == nullptr)
     return false;
   fclose(f);
   return true;
@@ -28,7 +28,7 @@ bool importObject(cc *e, const std::string &sopath) {
     return false;
   } else {
     void *h = dlopen(sopath.c_str(), RTLD_NOW);
-    if (!h) {
+    if (h == nullptr) {
       throw std::runtime_error(std::string("Failed to load .so file: ") +
                                dlerror());
     }
@@ -36,7 +36,7 @@ bool importObject(cc *e, const std::string &sopath) {
     typedef void (*InitF)(cc *);
     auto initF = reinterpret_cast<InitF>(dlsym(h, "initialize"));
 
-    if (!initF) {
+    if (initF == nullptr) {
       dlclose(h);
       throw std::runtime_error(std::string("Failed to load .so file init: ") +
                                dlerror());
@@ -739,7 +739,7 @@ struct buildTransitiveUnsafePragmaClosure : public switchExprC<details::Bool> {
       switchOf(cb->exp, *this);
     }
     ExprPtr de = v->defaultExpr();
-    if (de.get()) {
+    if (de.get() != nullptr) {
       switchOf(de, *this);
     }
     switchOf(v->variant(), *this);
@@ -940,7 +940,7 @@ struct makeSafe : public switchExprC<ExprPtr> {
           Case::Binding(cb->selector, cb->vname, switchOf(cb->exp, *this)));
     }
     ExprPtr de = v->defaultExpr();
-    if (de.get()) {
+    if (de.get() != nullptr) {
       de = switchOf(de, *this);
     }
     return ExprPtr(new Case(switchOf(v->variant(), *this), rcbs, de, v->la()));

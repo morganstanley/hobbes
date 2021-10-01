@@ -68,7 +68,7 @@ struct gzbuffer {
   void decompressChunk() {
     this->zin.next_out  = outb->data();
     this->zin.avail_out = outb->size();
-    checkZLibRC(inflate(&this->zin, Z_NO_FLUSH) < 0);
+    checkZLibRC(static_cast<int>(inflate(&this->zin, Z_NO_FLUSH) < 0));
     this->off   = 0;
     this->avail = this->outb->size() - this->zin.avail_out;
   }

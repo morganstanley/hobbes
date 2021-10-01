@@ -2370,7 +2370,7 @@ yypcontext_expected_tokens (const yypcontext_t *yyctx,
         if (yycheck[yyx + yyn] == yyx && yyx != YYSYMBOL_YYerror
             && !yytable_value_is_error (yytable[yyx + yyn]))
           {
-            if (!yyarg)
+            if (yyarg == nullptr)
               ++yycount;
             else if (yycount == yyargn)
               return 0;
@@ -2378,7 +2378,7 @@ yypcontext_expected_tokens (const yypcontext_t *yyctx,
               yyarg[yycount++] = YY_CAST (yysymbol_kind_t, yyx);
           }
     }
-  if (yyarg && yycount == 0 && 0 < yyargn)
+  if ((yyarg != nullptr) && yycount == 0 && 0 < yyargn)
     yyarg[0] = YYSYMBOL_YYEMPTY;
   return yycount;
 }
@@ -2452,20 +2452,20 @@ yytnamerr (char *yyres, const char *yystr)
 
           append:
           default:
-            if (yyres)
+            if (yyres != nullptr)
               yyres[yyn] = *yyp;
             yyn++;
             break;
 
           case '"':
-            if (yyres)
+            if (yyres != nullptr)
               yyres[yyn] = '\0';
             return yyn;
           }
     do_not_strip_quotes: ;
     }
 
-  if (yyres)
+  if (yyres != nullptr)
     return yystpcpy (yyres, yystr) - yyres;
   else
     return yystrlen (yystr);
@@ -2505,11 +2505,11 @@ yy_syntax_error_arguments (const yypcontext_t *yyctx,
   if (yyctx->yytoken != YYSYMBOL_YYEMPTY)
     {
       int yyn;
-      if (yyarg)
+      if (yyarg != nullptr)
         yyarg[yycount] = yyctx->yytoken;
       ++yycount;
       yyn = yypcontext_expected_tokens (yyctx,
-                                        yyarg ? yyarg + 1 : yyarg, yyargn - 1);
+                                        yyarg != nullptr ? yyarg + 1 : yyarg, yyargn - 1);
       if (yyn == YYENOMEM)
         return YYENOMEM;
       else
@@ -2617,7 +2617,7 @@ yydestruct (const char *yymsg,
 {
   YY_USE (yyvaluep);
   YY_USE (yylocationp);
-  if (!yymsg)
+  if (yymsg == nullptr)
     yymsg = "Deleting";
   YY_SYMBOL_PRINT (yymsg, yykind, yyvaluep, yylocationp);
 
@@ -2861,7 +2861,7 @@ yybackup:
 
   /* Count tokens shifted since error; after three, turn off error
      status.  */
-  if (yyerrstatus)
+  if (yyerrstatus != 0)
     yyerrstatus--;
 
   /* Shift the lookahead token.  */
@@ -5139,7 +5139,7 @@ yyreduce:
 
   case 371: /* mpvar: id "(" "boolV" ")"  */
 #line 1038 "hexpr.y"
-                           { (yyval.mpvar) = autorelease(new Variant::Member(*(yyvsp[-3].string), Prim::make("unit"), (yyvsp[-1].boolv))); }
+                           { (yyval.mpvar) = autorelease(new Variant::Member(*(yyvsp[-3].string), Prim::make("unit"), static_cast<unsigned int>((yyvsp[-1].boolv)))); }
 #line 5144 "hexpr.parse.C"
     break;
 
@@ -5201,7 +5201,7 @@ yyerrlab:
      user semantic actions for why this is necessary.  */
   yytoken = yychar == YYEMPTY ? YYSYMBOL_YYEMPTY : YYTRANSLATE (yychar);
   /* If not already recovering from an error, report this error.  */
-  if (!yyerrstatus)
+  if (yyerrstatus == 0)
     {
       ++yynerrs;
       {
@@ -5218,7 +5218,7 @@ yyerrlab:
               YYSTACK_FREE (yymsg);
             yymsg = YY_CAST (char *,
                              YYSTACK_ALLOC (YY_CAST (YYSIZE_T, yymsg_alloc)));
-            if (yymsg)
+            if (yymsg != nullptr)
               {
                 yysyntax_error_status
                   = yysyntax_error (&yymsg_alloc, &yymsg, &yyctx);
@@ -5268,7 +5268,7 @@ yyerrlab:
 yyerrorlab:
   /* Pacify compilers when the user code never invokes YYERROR and the
      label yyerrorlab therefore never appears in user code.  */
-  if (0)
+  if (false)
     YYERROR;
 
   /* Do not reclaim the symbols of the rule whose action triggered

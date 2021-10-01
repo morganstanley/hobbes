@@ -24,7 +24,7 @@ static MonoTypePtr impliedType(const MonoTypePtr& fieldName) {
 }
 
 bool mightRewriteToSLookup(const TEnvPtr& tenv, const MonoTypePtr& rty, const MonoTypePtr& fieldName, const MonoTypePtr& fty, Definitions* ds) {
-  if (is<TVar>(rty)) {
+  if (is<TVar>(rty) != nullptr) {
     return true;
   }
 
@@ -75,7 +75,7 @@ bool HFSLookupEliminator::satisfied(const TEnvPtr& tenv, const HasField& hf, Def
   auto fnamet = hf.fieldName;
   auto fty    = hf.fieldType;
 
-  if (is<TString>(fnamet) || is<TLong>(fnamet)) {
+  if ((is<TString>(fnamet) != nullptr) || (is<TLong>(fnamet) != nullptr)) {
     MonoTypePtr efty = rewritesToSLookup(tenv, rty, fnamet, fty, ds);
     return efty != MonoTypePtr() && isMonoSingular(efty) && *efty == *fty;
   } else {
@@ -96,7 +96,7 @@ bool HFSLookupEliminator::refine(const TEnvPtr& tenv, const HasField& hf, MonoTy
   auto fnamet = hf.fieldName;
   auto fty    = hf.fieldType;
 
-  if (is<TString>(fnamet) || is<TLong>(fnamet)) {
+  if ((is<TString>(fnamet) != nullptr) || (is<TLong>(fnamet) != nullptr)) {
     MonoTypePtr efty = rewritesToSLookup(tenv, rty, fnamet, fty, ds);
 
     if (efty != MonoTypePtr() && isMonoSingular(efty)) {

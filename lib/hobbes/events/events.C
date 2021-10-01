@@ -112,7 +112,7 @@ bool stepEventLoop(int timeoutMS) {
     } else if (fds < 0) {
       if (errno != EINTR) {
         status = false;
-      } else if (epClosures) {
+      } else if (epClosures != nullptr) {
         auto f = epClosures->find(-1);
         if (f != epClosures->end()) {
           f->second->fn(-1);

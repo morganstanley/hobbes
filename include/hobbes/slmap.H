@@ -127,7 +127,7 @@ template <typename K, typename V>
     static level chooseLevel() {
       auto bv = static_cast<level>(rand());
       level r = 1;
-      while (bv&1) {
+      while ((bv&1) != 0) {
         ++r;
         bv>>=1;
       }

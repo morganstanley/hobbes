@@ -62,7 +62,7 @@ struct mtyLT : public switchType<bool> {
     if (v->name() != r->name()) {
       return v->name() < r->name();
     } else if (v->storedContiguously() != r->storedContiguously()) {
-      return v->storedContiguously() < r->storedContiguously();
+      return static_cast<int>(v->storedContiguously()) < static_cast<int>(r->storedContiguously());
     } else if (v->storedContiguously()) {
       return v->size() < r->size();
     } else {

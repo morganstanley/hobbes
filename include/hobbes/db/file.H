@@ -191,7 +191,7 @@ public:
     } else {
       this->storedOffElemSizes.push_back(0);
     }
-    this->storedOffSizes.push_back((is<Array>(ty)||storedAsDArray(ty)) ? 0 : storageSizeOf(ty));
+    this->storedOffSizes.push_back(((is<Array>(ty) != nullptr)||storedAsDArray(ty)) ? 0 : storageSizeOf(ty));
     return r;
   }
 

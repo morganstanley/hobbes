@@ -378,17 +378,17 @@ inline int mqlisten(const std::string& fileName) {
 
 inline std::string defaultStoreDir() {
   const char* td = 0;
-  if ((td = ::getenv("HOBBES_STORE_DIR"))) {
+  if ((td = ::getenv("HOBBES_STORE_DIR")) != nullptr) {
     if (::strlen(td) > 0 && ::access(td, W_OK) == 0) {
       return std::string(td);
     }
   }
-  if ((td = ::getenv("TMPDIR"))) {
+  if ((td = ::getenv("TMPDIR")) != nullptr) {
     if (::strlen(td) > 0 && ::access(td, W_OK) == 0) {
       return std::string(td);
     }
   }
-  if ((td = ::getenv("TMP"))) {
+  if ((td = ::getenv("TMP")) != nullptr) {
     if (::strlen(td) > 0 && ::access(td, W_OK) == 0) {
       return std::string(td);
     }
@@ -701,11 +701,11 @@ private:
       markPage(PRIV_HSTORE_PAGE_STATE_TENTATIVE);
       this->wq->push();
       uint8_t* npage = this->wq->pollNext();
-      markPage(npage ? PRIV_HSTORE_PAGE_STATE_CONT : PRIV_HSTORE_PAGE_STATE_ROLLBACK);
+      markPage(npage != nullptr ? PRIV_HSTORE_PAGE_STATE_CONT : PRIV_HSTORE_PAGE_STATE_ROLLBACK);
 
       this->page   = npage;
       this->offset = 0;
-      return npage;
+      return npage != nullptr;
     }
   }
 public:
@@ -751,7 +751,7 @@ public:
   }
 
   bool hasSpaceFor(size_t sz) const {
-    return this->page && sz < (this->pagesz - this->offset);
+    return (this->page != nullptr) && sz < (this->pagesz - this->offset);
   }
 
   // write a block of bytes within a frame
@@ -783,7 +783,7 @@ public:
       this->offset = this->pagesz;
       so += this->pagesz;
     }
-    if (!this->page) {
+    if (this->page == nullptr) {
       return false;
     } else {
       if (so < sz) {
@@ -834,7 +834,7 @@ inline QueueConnection consumeQueue(const std::string& shmname) {
     throw std::runtime_error("Failed to map bytes out of shared memory for '" + shmname + "': " + strerror(errno));
   }
 
-  if (!reinterpret_cast<ShQueueHeader*>(mem)->ready) {
+  if (reinterpret_cast<ShQueueHeader*>(mem)->ready == 0u) {
     munmap(mem, msb.st_size);
     close(shfd);
     throw std::runtime_error("Not ready to consume shared memory for '" + shmname + "'");
@@ -972,13 +972,13 @@ public:
 
   // read a range of bytes out of the 'pipe' into a user-supplied buffer
   size_t read(uint8_t* dst, size_t sz, uint8_t* state, size_t timeoutNS, const std::function<void()>& timeoutF) {
-    if (!this->page) {
+    if (this->page == nullptr) {
       this->page = this->rq->next(timeoutNS, timeoutF);
     }
   
     size_t doff = 0;
   
-    while (sz != 0 && this->page) {
+    while (sz != 0 && (this->page != nullptr)) {
       // how much can we copy out of the current page into the dest buffer?
       const volatile uint32_t* pend      = reinterpret_cast<const uint32_t*>(this->page + this->pagesz);
       size_t                   rpagesz   = *pend & ~(0xFF << 24);
@@ -998,7 +998,7 @@ public:
         // wait for the producer to decide what state the page is in
         while ((*pend >> 24) == PRIV_HSTORE_PAGE_STATE_TENTATIVE);
         uint8_t ps = *pend >> 24;
-        if (state) *state = ps;
+        if (state != nullptr) *state = ps;
 
         // if this page is just a continuation, continue reading
         // else we've terminated a transaction
@@ -2166,7 +2166,7 @@ private:
     this->file_size = sz;
 
     if (sz > this->map_size) {
-      if (this->data) { ::munmap(this->data-sizeof(size_t), this->map_size); }
+      if (this->data != nullptr) { ::munmap(this->data-sizeof(size_t), this->map_size); }
 
       this->map_size = align<size_t>(sz, /*10MB*/10485760);
       this->data = reinterpret_cast<uint8_t*>(mmap(0, this->map_size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_POPULATE, this->fd, 0));

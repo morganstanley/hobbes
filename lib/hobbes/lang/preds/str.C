@@ -57,13 +57,13 @@ public:
     const TString* delim = is<TString>(c->arguments()[1]);
     const Record*  ss    = is<Record>(c->arguments()[2]);
   
-    if (str && delim && ss) {
+    if ((str != nullptr) && (delim != nullptr) && (ss != nullptr)) {
       return satisfied(tenv, c, ds);
-    } else if (!str && !is<TVar>(c->arguments()[0])) {
+    } else if ((str == nullptr) && (is<TVar>(c->arguments()[0]) == nullptr)) {
       return false;
-    } else if (!delim && !is<TVar>(c->arguments()[1])) {
+    } else if ((delim == nullptr) && (is<TVar>(c->arguments()[1]) == nullptr)) {
       return false;
-    } else if (!ss && !is<TVar>(c->arguments()[2])) {
+    } else if ((ss == nullptr) && (is<TVar>(c->arguments()[2]) == nullptr)) {
       return false;
     } else {
       return true;
@@ -176,7 +176,7 @@ public:
   }
 
   bool satisfiable(const TEnvPtr& tenv, const ConstraintPtr& c, Definitions* ds) const override {
-    return c->arguments().size() == 2 && (is<TVar>(c->arguments()[0]) || is<TVar>(c->arguments()[1]) || satisfied(tenv, c, ds));
+    return c->arguments().size() == 2 && ((is<TVar>(c->arguments()[0]) != nullptr) || (is<TVar>(c->arguments()[1]) != nullptr) || satisfied(tenv, c, ds));
   }
 
   void explain(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*, annmsgs*) override {

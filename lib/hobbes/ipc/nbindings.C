@@ -49,7 +49,7 @@ bool isPartialConnection(const MonoTypePtr& t) {
       if (const Prim* apn = is<Prim>(ap->fn())) {
         return apn->name() == "connection";
       } else {
-        return is<TVar>(ap->fn());
+        return is<TVar>(ap->fn()) != nullptr;
       }
     }
   }
@@ -103,8 +103,8 @@ public:
     MonoTypePtr handle;
     
     return decodeConstraint(cst, &hostport, &handle) &&
-           (is<TVar>(hostport) || is<TString>(hostport)) &&
-           (is<TVar>(handle) || isPartialConnection(handle));
+           ((is<TVar>(hostport) != nullptr) || (is<TString>(hostport) != nullptr)) &&
+           ((is<TVar>(handle) != nullptr) || isPartialConnection(handle));
   }
 
   void explain(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*, annmsgs*) override {
@@ -213,12 +213,12 @@ public:
     if (!decodeConstraint(cst, &ch, &expr, &inty, &outty)) { return false; }
 
     auto* chv = is<TLong>(ch);
-    if (!chv) { return is<TVar>(ch); }
+    if (chv == nullptr) { return is<TVar>(ch) != nullptr; }
     auto* conn = reinterpret_cast<Client*>(chv->value());
-    if (!conn || !isAllocatedConnection(conn)) { return false; }
+    if ((conn == nullptr) || !isAllocatedConnection(conn)) { return false; }
 
     auto* exprv = is<TExpr>(expr);
-    if (!exprv) { return is<TVar>(expr); }
+    if (exprv == nullptr) { return is<TVar>(expr) != nullptr; }
 
     return hasFreeVariables(inty) || satisfied(tenv, cst, ds);
   }
@@ -378,9 +378,9 @@ public:
     if (!decodeConstraint(cst, &ch, &rty)) { return false; }
 
     auto* chv = is<TLong>(ch);
-    if (!chv) { return is<TVar>(ch); }
+    if (chv == nullptr) { return is<TVar>(ch) != nullptr; }
     auto* conn = reinterpret_cast<Client*>(chv->value());
-    if (!conn || !isAllocatedConnection(conn)) { return false; }
+    if ((conn == nullptr) || !isAllocatedConnection(conn)) { return false; }
 
     return hasFreeVariables(rty) || satisfied(tenv, cst, ds);
   }

@@ -132,14 +132,14 @@ bool VariantAppP::satisfied(const TEnvPtr&, const ConstraintPtr& cst, Definition
 bool VariantAppP::satisfiable(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions* ds) const {
   VariantAppD va;
   if (dec(cst, &va)) {
-    if (is<Variant>(va.variantType)) {
-      if (is<Record>(va.recordDtorType)) {
+    if (is<Variant>(va.variantType) != nullptr) {
+      if (is<Record>(va.recordDtorType) != nullptr) {
         return hasFreeVariables(va.variantType) || hasFreeVariables(va.recordDtorType) || hasFreeVariables(va.resultType) || satisfied(tenv, cst, ds);
       } else {
-        return is<TVar>(va.recordDtorType);
+        return is<TVar>(va.recordDtorType) != nullptr;
       }
     } else {
-      return is<TVar>(va.variantType);
+      return is<TVar>(va.variantType) != nullptr;
     }
   }
   return false;
@@ -187,7 +187,7 @@ struct VAUnqualify : public switchExprTyFn {
         auto urty = this->constraint->arguments()[1];
 
         if (const Variant* vty = is<Variant>(uvty)) {
-          if (is<Record>(urty)) {
+          if (is<Record>(urty) != nullptr) {
             Case::Bindings cs;
             for (const auto& vm : vty->members()) {
               cs.push_back(Case::Binding(vm.selector, ".x", closcall(proj(var(".f", urty, v->la()), vm.selector, v->la()), list(var(".x", vm.type, v->la())), v->la())));

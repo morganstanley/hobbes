@@ -58,7 +58,7 @@ bool CtorVerifier::satisfied(const TEnvPtr& tenv, const ConstraintPtr& cst, Defi
 
 bool CtorVerifier::satisfiable(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions* ds) const {
   HasCtor hc;
-  return dec(cst, &hc) && findEliminator(tenv, hc, ds);
+  return dec(cst, &hc) && (findEliminator(tenv, hc, ds) != nullptr);
 }
 
 void CtorVerifier::explain(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*, annmsgs*) {
@@ -71,7 +71,7 @@ struct RewriteMSelect : public switchExprTyFn {
 
   RewriteMSelect(const HasCtor& hc, const ConstraintPtr& cst) : hc(hc), cst(cst) {
     const TString* fn = is<TString>(hc.ctorlbl);
-    if (!fn) { throw std::runtime_error("Internal error, invalid hasctor constraint for unqualification"); }
+    if (fn == nullptr) { throw std::runtime_error("Internal error, invalid hasctor constraint for unqualification"); }
     this->ctor = fn->value();
   }
 

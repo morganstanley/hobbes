@@ -852,7 +852,7 @@ public:
     for (auto s : o.symbols()) {
       const auto* esr = reinterpret_cast<const llvm::object::ELFSymbolRef*>(&s);
 
-      if (esr) {
+      if (esr != nullptr) {
         auto nr = esr->getName();
         if (nr) {
           std::string n(nr.get().data(), nr.get().size());
@@ -1292,7 +1292,7 @@ llvm::Value* jitcc::lookupVar(const std::string& vn, const MonoTypePtr& vty) {
   }
 
   // maybe it's an op?
-  if (lookupOp(vn)) {
+  if (lookupOp(vn) != nullptr) {
     return compile(etaLift(vn, vty, LexicalAnnotation::null()));
   }
 
@@ -1395,7 +1395,7 @@ void jitcc::compileFunctions(const LetRec::Bindings& bs, std::vector<llvm::Funct
 
   unsafeCompileFunctions(&fs);
 
-  if (result) {
+  if (result != nullptr) {
     for (const auto& f : fs) {
       result->push_back(f.result);
     }
@@ -1456,7 +1456,7 @@ void jitcc::unsafeCompileFunctions(UCFS* ufs) {
         a->setName(ucf.argns[i]);
 
         llvm::Value* argv = &*a;
-        if (is<FixedArray>(ucf.argtys[i])) {
+        if (is<FixedArray>(ucf.argtys[i]) != nullptr) {
           argv = withContext([&](auto&) {
             return cast(this->builder(), ptrType(toLLVM(ucf.argtys[i], false)), argv);
           });
@@ -1498,7 +1498,7 @@ void jitcc::unsafeCompileFunctions(UCFS* ufs) {
 
 llvm::Value* jitcc::compileAllocStmt(llvm::Value* sz, llvm::Value* asz, llvm::Type* mty, bool zeroMem) {
   llvm::Function* f = lookupFunction(zeroMem ? "mallocz" : "malloc");
-  if (!f) throw std::runtime_error("Expected heap allocation function as call.");
+  if (f == nullptr) throw std::runtime_error("Expected heap allocation function as call.");
   return withContext([&](auto&) {
     return builder()->CreateBitCast(fncall(builder(), f, f->getFunctionType(), list(sz, asz)), mty);
   });
@@ -1578,7 +1578,7 @@ Values compileArgs(jitcc* c, const Exprs& es) {
       }
     }
 
-    if (is<Array>(et)) {
+    if (is<Array>(et) != nullptr) {
       // variable-length arrays need to be cast to a single type to pass LLVM's check
       r.push_back(withContext([&](auto&) {
           return c->builder()->CreateBitCast(ev, toLLVM(et));
