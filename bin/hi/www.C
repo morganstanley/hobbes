@@ -70,11 +70,7 @@ bool catPathToFSPath(const std::string& cat, const std::string& cpath, std::stri
   }
   
   *fsPath = exeDir() + "/../../common/www/" + cat + "/" + cpath;
-  if (fileExists(*fsPath)) {
-    return true;
-  }
-
-  return false;
+  return fileExists(*fsPath);
 }
 
 // find a www 'system' file

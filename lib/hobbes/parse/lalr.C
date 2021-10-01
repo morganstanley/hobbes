@@ -614,11 +614,7 @@ bool shiftInstead(const parserdef& pd, const precedence& px, nat, terminal* t, c
   } else if (up->second.level < tp->second.level) {
     return true;
   } else if (tp->second.asc == up->second.asc && tp->second.asc != assoc::non) {
-    if (tp->second.asc == assoc::left) {
-      return false;
-    } else {
-      return true;
-    }
+    return tp->second.asc != assoc::left;
   } else {
     throw ambiguity_conflict("Unable to resolve shift/reduce conflict in grammar", t);
   }

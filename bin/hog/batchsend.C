@@ -442,7 +442,7 @@ void pushLocalData(const hobbes::storage::QueueConnection& qc, const size_t sess
   }
 
   auto timeoutF = [&](const hobbes::storage::reader& reader) {
-    if (conn == false && *reader.config().wstate == PRIV_HSTORE_STATE_READER_WAITING) {
+    if (!conn && *reader.config().wstate == PRIV_HSTORE_STATE_READER_WAITING) {
       // if we are here, the client is disconnected and the queue is drained
       // detach tcp send session synchronously and shut down the reader
       SenderGroup::detach(sn);

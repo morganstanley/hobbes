@@ -643,7 +643,7 @@ struct Bool {
   Bool(bool v) : i(v ? 1 : 0) {}
   auto operator=(Bool const &) -> Bool & = default;
   auto operator=(bool v) -> Bool & { return (*this = Bool(v)); }
-  operator bool() const { return (i == 0 ? false : true); }
+  operator bool() const { return (i != 0); }
 
 private:
   Bool(int i) : i(i) {}
