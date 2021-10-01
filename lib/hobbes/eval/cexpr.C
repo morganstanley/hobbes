@@ -454,7 +454,7 @@ public:
 
     return withContext([&](auto& c) -> llvm::Value* {
       size_t i = 0;
-      for (auto b : v->bindings()) {
+      for (const auto& b : v->bindings()) {
         size_t caseID = i++;
         llvm::BasicBlock* caseBlock = llvm::BasicBlock::Create(c, "case_" + str::from(caseID), thisFn);
 
@@ -784,7 +784,7 @@ public:
     if (rty == nullptr) { throw annotated_error(*v, "Internal compiler error, compiling record without record type: " + show(v) + " :: " + show(v->type())); }
 
     Constants rcs;
-    for (auto f : v->fields()) {
+    for (const auto& f : v->fields()) {
       if (llvm::Constant* c = switchOf(f.second, compileConstExpF(this->c, this->vname+"."+f.first))) {
         rcs.push_back(c);
       } else {

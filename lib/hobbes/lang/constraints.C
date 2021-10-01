@@ -46,11 +46,11 @@ void ConstraintSet::insert(const TEnvPtr& tenv, const ConstraintPtr& c, MonoType
   // OK, the constraint seems not to be stored
   // let's apply functional dependencies from this constraint across other constraints in this set
   // that may produce unifications that can further eliminate this constraint
-  for (auto fd : tenv->lookupUnqualifier(c)->dependencies(c)) {
+  for (const auto& fd : tenv->lookupUnqualifier(c)->dependencies(c)) {
     Constraints mcs;
     this->csts.find(focusOnFundep(fd.first, cpath), &mcs);
 
-    for (auto mc : mcs) {
+    for (const auto& mc : mcs) {
       MonoTypes mcpath;
       typeSeqForm(mc, &mcpath);
       mgu(cpath[fd.second+1], mcpath[fd.second+1], s);

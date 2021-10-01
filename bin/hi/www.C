@@ -355,7 +355,7 @@ void WWWServer::printDefaultPage(int fd) {
   b << "<html><head><title>hi process</title></head><body><pre>";
 
   b << "<h2>Environment</h2>\n<table>";
-  for (auto vty : this->c->typeEnv()->typeEnvTable()) {
+  for (const auto& vty : this->c->typeEnv()->typeEnvTable()) {
     if (!vty.first.empty() && vty.first[0] != '.') {
       b << "<tr><td><b>" << vty.first << "</b></td><td>" << showType(*this->c, vty.second->instantiate()) << "</td></tr>";
     }
@@ -511,7 +511,7 @@ WWWServer::VarBindingDescs* WWWServer::getVarBindingDescs() {
   auto*       result    = hobbes::makeArray<VarBindingDesc>(tenvTable.size());
 
   size_t i = 0;
-  for (auto vty : tenvTable) {
+  for (const auto& vty : tenvTable) {
     if (!vty.first.empty() && vty.first[0] != '.') {
       result->data[i].first  = hobbes::makeString(vty.first);
       result->data[i].second = hobbes::makeString(showType(*this->c, vty.second->instantiate()));

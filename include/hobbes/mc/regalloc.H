@@ -466,7 +466,7 @@ public:
         // in the case of a reg move, remember that we can coalesce the two vars involved
         // add interference edges for all _other_ vars live out here
         VarID sv = live.id(src->name);
-        for (auto rd : regDefs(inst)) {
+        for (const auto& rd : regDefs(inst)) {
           VarID d = live.id(rd);
 
           addMoveEdge(d, sv);
@@ -479,7 +479,7 @@ public:
       } else {
         // generic instruction,
         // add interference edges for all vars live out here
-        for (auto rd : regDefs(inst)) {
+        for (const auto& rd : regDefs(inst)) {
           VarID d = live.id(rd);
 
           for (auto o : i.liveOut()) {

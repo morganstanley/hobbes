@@ -46,7 +46,7 @@ FunDeps inferFundeps(const TEnvPtr& tenv, const Constraints& cs) {
     UnqualifierPtr uq = tenv->lookupUnqualifier(c);
 
     FunDeps cdeps = uq->dependencies(c);
-    for (auto cdep : cdeps) {
+    for (const auto& cdep : cdeps) {
       includeFundep(*c, cdep, &result);
     }
   }
@@ -790,7 +790,7 @@ void definePrivateClass(const TEnvPtr& tenv, const std::string& memberName, cons
 // reverse "hidden" type classes to get the original set of constraints
 Constraints expandHiddenTCs(const TEnvPtr& tenv, const Constraints& cs) {
   Constraints r;
-  for (auto c : cs) {
+  for (const auto& c : cs) {
     if (!isHiddenTCName(c->name())) {
       r.push_back(c);
     } else {

@@ -25,7 +25,7 @@ stateidx_t LoadVars::nextState() const { return this->next; }
 std::string LoadVars::stamp() {
   std::ostringstream ss;
   ss << "l";
-  for (auto d : this->ds) {
+  for (const auto& d : this->ds) {
     ss << "." << d.first << "=" << reinterpret_cast<void*>(d.second.get()); // assumes that we deliberately share equivalent expressions
   }
   ss << "." << this->next;
@@ -40,7 +40,7 @@ stateidx_t SwitchVal::defaultState() const { return this->def; }
 std::string SwitchVal::stamp() {
   std::ostringstream ss;
   ss << "s." << this->var;
-  for (auto j : this->jmps) {
+  for (const auto& j : this->jmps) {
     ss << ".";
     j.first->show(ss);
     ss << ":" << j.second;
@@ -57,7 +57,7 @@ stateidx_t SwitchVariant::defaultState() const { return this->def; }
 std::string SwitchVariant::stamp() {
   std::ostringstream ss;
   ss << "c." << this->var;
-  for (auto j : this->jmps) {
+  for (const auto& j : this->jmps) {
     ss << "." << j.first << "=" << j.second;
   }
   ss << "." << this->def;
@@ -1120,7 +1120,7 @@ stateidx_t makeDFA(MDFA* dfa, const PatternRows& ps, const LexicalAnnotation& la
 
   // start by adding 0-ref states and placeholder parameters for each final expression
   std::vector<stateidx_t> finalStates;
-  for (auto pr : ps) {
+  for (const auto& pr : ps) {
     stateidx_t fst = addState(dfa, MStatePtr(new FinishExpr(pr.result)), false);
     finalStates.push_back(fst);
     dfa->exprIdxs[pr.result.get()] = fst;

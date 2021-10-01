@@ -123,7 +123,7 @@ void run(const RunMode& m, const std::vector<std::string>& args) {
     hog::StatFile::instance().log(hog::ProcessEnvironment{hobbes::now(), sessionHash, hobbes::string::from(m), args, hog::SessionType::Enum::Normal});
     std::map<std::string, std::map<int, RegInfo>> registry;
 
-    for (auto g : m.groups) {
+    for (const auto& g : m.groups) {
       try {
         out() << "install a monitor for the '" << g << "' group" << std::endl;
         runGroupHost(sessionHash, g, m, registry[g]);

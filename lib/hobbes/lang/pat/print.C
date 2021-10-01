@@ -70,7 +70,7 @@ void printMatchResult(const std::string& indent, std::ostream& out, const ExprPt
     out << indent << "switch (";
     printMatchExp(out, sw->expr());
     out << ") {\n";
-    for (auto b : sw->bindings()) {
+    for (const auto& b : sw->bindings()) {
       out << indent;
       b.value->show(out);
       out << " =>\n";

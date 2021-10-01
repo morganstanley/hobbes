@@ -74,7 +74,7 @@ void MVarTypeDef::show(std::ostream& out) const {
 // variable expression bindings
 str::seq nameBlanks(const str::seq& xs) {
   str::seq r;
-  for (auto x : xs) {
+  for (const auto& x : xs) {
     if (x == "_") {
       r.push_back(freshName());
     } else {

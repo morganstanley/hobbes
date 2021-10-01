@@ -570,7 +570,7 @@ jitcc::jitcc(const TEnvPtr& tenv)
 
 jitcc::~jitcc() {
   // release low-level functions
-  for (auto f : this->fenv) {
+  for (const auto& f : this->fenv) {
     delete f.second;
   }
 }
@@ -1568,7 +1568,7 @@ Values compile(jitcc* c, const Exprs& es) {
 
 Values compileArgs(jitcc* c, const Exprs& es) {
   Values r;
-  for (auto e : es) {
+  for (const auto& e : es) {
     MonoTypePtr  et = requireMonotype(c->typeEnv(), e);
     llvm::Value* ev = c->compile(e);
 

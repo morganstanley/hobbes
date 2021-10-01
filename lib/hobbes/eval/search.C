@@ -59,7 +59,7 @@ static void accumLabels(std::set<std::string>* lbls, const TEnvPtr& tenv) {
   try {
     auto uq = tenv->lookupUnqualifier("SLookup");
     if (const auto* c = dynamic_cast<const TClass*>(uq.get())) {
-      for (auto i : c->instances()) {
+      for (const auto& i : c->instances()) {
         if (i->types().size() > 2) {
           if (const TString* s = is<TString>(i->types()[1])) {
             lbls->insert(s->value());

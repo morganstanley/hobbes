@@ -56,7 +56,7 @@ void bindArguments(hobbes::cc& ctx, const Args::NameVals& args) {
 
   auto* arguments = reinterpret_cast<StrPairs*>(malloc(sizeof(long) + args.size() * sizeof(StrPair)));
   arguments->size = 0;
-  for (auto arg : args) {
+  for (const auto& arg : args) {
     arguments->data[arguments->size].first  = allocGlobalStr(arg.first);
     arguments->data[arguments->size].second = allocGlobalStr(arg.second);
     ++arguments->size;
@@ -116,10 +116,10 @@ void evaluator::showClass(const std::string& cname) {
 void evaluator::showInstances(const std::string& cname) {
   hobbes::UnqualifierPtr uq = this->ctx.typeEnv()->lookupUnqualifier(cname);
   if (const auto* c = dynamic_cast<const hobbes::TClass*>(uq.get())) {
-    for (auto i : c->instances()) {
+    for (const auto& i : c->instances()) {
       i->show(std::cout);
     }
-    for (auto i : c->instanceFns()) {
+    for (const auto& i : c->instanceFns()) {
       i->show(std::cout);
     }
   } else {

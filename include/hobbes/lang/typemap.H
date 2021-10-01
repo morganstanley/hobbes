@@ -162,7 +162,7 @@ template <typename V>
           typename tmdata::KeyPointSeq kps;
           this->d.keyPointsAt(&kps, p);
 
-          for (auto kp : kps) {
+          for (const auto& kp : kps) {
             findMatches(kp.second, path, i + 1, out);
           }
         }

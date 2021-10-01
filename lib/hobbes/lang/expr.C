@@ -719,7 +719,7 @@ void Switch::defaultExpr(const ExprPtr& x) { this->def = x; }
 Expr* Switch::clone() const {
   ExprPtr cdef = this->def ? ExprPtr(this->def->clone()) : ExprPtr();
   Bindings cbs;
-  for (auto b : this->bs) {
+  for (const auto& b : this->bs) {
     cbs.push_back(Binding(PrimitivePtr(reinterpret_cast<Primitive*>(b.value->clone())), ExprPtr(b.exp->clone())));
   }
   return new Switch(ExprPtr(this->v->clone()), cbs, cdef, la());
@@ -729,7 +729,7 @@ void Switch::show(std::ostream& out) const {
   out << "switch (";
   this->v->show(out);
   out << ") {";
-  for (auto b : this->bs) {
+  for (const auto& b : this->bs) {
     b.value->show(out);
     out << " => ";
     b.exp->show(out);
@@ -747,7 +747,7 @@ void Switch::showAnnotated(std::ostream& out) const {
   out << "switch (";
   this->v->showAnnotated(out);
   out << ") {";
-  for (auto b : this->bs) {
+  for (const auto& b : this->bs) {
     b.value->show(out);
     out << " => ";
     b.exp->showAnnotated(out);
@@ -949,7 +949,7 @@ struct substVarF : public switchExprC<ExprPtr> {
 
   ExprPtr with(const Switch* v) const override {
     Switch::Bindings rsbs;
-    for (auto sb : v->bindings()) {
+    for (const auto& sb : v->bindings()) {
       rsbs.push_back(Switch::Binding(sb.value, switchOf(sb.exp, *this)));
     }
     ExprPtr de = v->defaultExpr();
@@ -1041,7 +1041,7 @@ Case::Bindings switchOf(const Case::Bindings& bs, const switchExpr<ExprPtr>& f) 
 
 Switch::Bindings switchOf(const Switch::Bindings& bs, const switchExpr<ExprPtr>& f) {
   Switch::Bindings r;
-  for (auto b : bs) {
+  for (const auto& b : bs) {
     r.push_back(Switch::Binding(b.value, switchOf(b.exp, f)));
   }
   return r;
@@ -1093,7 +1093,7 @@ UnitV switchOf(const Case::Bindings& bs, const switchExprTyFnM& f) {
 }
 
 UnitV switchOf(const Switch::Bindings& bs, const switchExprTyFnM& f) {
-  for (auto b : bs) {
+  for (const auto& b : bs) {
     switchOf(b.exp, const_cast<switchExprTyFnM&>(f));
   }
   return unitv;
@@ -1252,7 +1252,7 @@ const MonoTypePtr& requireMonotype(const TEnvPtr& tenv, const ExprPtr& e) {
 
 MonoTypes requireMonotype(const TEnvPtr& tenv, const Exprs& es) {
   MonoTypes r;
-  for (auto e : es) {
+  for (const auto& e : es) {
     r.push_back(requireMonotype(tenv, e));
   }
   return r;
@@ -1324,7 +1324,7 @@ struct freeVarF : public switchExprC<VarSet> {
   VarSet with(const Switch* v) const override {
     std::vector<VarSet> fvs;
     fvs.push_back(freeVars(v->expr()));
-    for (auto sb : v->bindings()) {
+    for (const auto& sb : v->bindings()) {
       fvs.push_back(freeVars(sb.exp));
     }
     if (v->defaultExpr()) {
@@ -1384,7 +1384,7 @@ struct etvarNamesF : public switchExprC<UnitV> {
 
   UnitV with(const Switch* v) const override {
     switchOf(v->expr(), *this);
-    for (auto sb : v->bindings()) {
+    for (const auto& sb : v->bindings()) {
       switchOf(sb.exp, *this);
     }
     if (v->defaultExpr()) {
@@ -1939,7 +1939,7 @@ struct hasSingularTypeF : public switchExprC<bool> {
   bool with(const LetRec* v) const override {
     if (!d(v) || !r(v->bodyExpr())) return false;
 
-    for (auto b : v->bindings()) {
+    for (const auto& b : v->bindings()) {
       if (!r(b.second)) {
         return false;
       }
@@ -1954,7 +1954,7 @@ struct hasSingularTypeF : public switchExprC<bool> {
   bool with(const App* v) const override {
     if (!d(v) || !r(v->fn())) return false;
 
-    for (auto a : v->args()) {
+    for (const auto& a : v->args()) {
       if (!r(a)) {
         return false;
       }
@@ -1968,7 +1968,7 @@ struct hasSingularTypeF : public switchExprC<bool> {
 
   bool with(const MkArray* v) const override {
     if (!d(v)) return false;
-    for (auto val : v->values()) {
+    for (const auto& val : v->values()) {
       if (!r(val)) return false;
     }
     return true;
@@ -1980,7 +1980,7 @@ struct hasSingularTypeF : public switchExprC<bool> {
 
   bool with(const MkRecord* v) const override {
     if (!d(v)) return false;
-    for (auto f : v->fields()) {
+    for (const auto& f : v->fields()) {
       if (!r(f.second)) return false;
     }
     return true;
@@ -1992,7 +1992,7 @@ struct hasSingularTypeF : public switchExprC<bool> {
 
   bool with(const Case* v) const override {
     if (!d(v) || !r(v->variant()) || (v->defaultExpr() && !r(v->defaultExpr()))) return false;
-    for (auto b : v->bindings()) {
+    for (const auto& b : v->bindings()) {
       if (!r(b.exp)) return false;
     }
     return true;
@@ -2000,7 +2000,7 @@ struct hasSingularTypeF : public switchExprC<bool> {
 
   bool with(const Switch* v) const override {
     if (!d(v) || !r(v->expr()) || (v->defaultExpr() && !r(v->defaultExpr()))) return false;
-    for (auto b : v->bindings()) {
+    for (const auto& b : v->bindings()) {
       if (!r(b.exp)) return false;
     }
     return true;
@@ -2046,7 +2046,7 @@ struct tgenSizeExprF : public switchExprC<int> {
 
   int with(const LetRec* v) const override {
     int x = c(d(v), r(v->bodyExpr()));
-    for (auto b : v->bindings()) {
+    for (const auto& b : v->bindings()) {
       x = c(x, r(b.second));
     }
     return x;
@@ -2058,7 +2058,7 @@ struct tgenSizeExprF : public switchExprC<int> {
 
   int with(const App* v) const override {
     int x = c(d(v), r(v->fn()));
-    for (auto a : v->args()) {
+    for (const auto& a : v->args()) {
       x = c(x, r(a));
     }
     return x;
@@ -2070,7 +2070,7 @@ struct tgenSizeExprF : public switchExprC<int> {
 
   int with(const MkArray* v) const override {
     int x = d(v);
-    for (auto val : v->values()) {
+    for (const auto& val : v->values()) {
       x = c(x, r(val));
     }
     return x;
@@ -2082,7 +2082,7 @@ struct tgenSizeExprF : public switchExprC<int> {
 
   int with(const MkRecord* v) const override {
     int x = d(v);
-    for (auto f : v->fields()) {
+    for (const auto& f : v->fields()) {
       x = c(x, r(f.second));
     }
     return x;
@@ -2095,7 +2095,7 @@ struct tgenSizeExprF : public switchExprC<int> {
   int with(const Case* v) const override {
     int x = c(d(v), r(v->variant()));
     if (v->defaultExpr()) x = c(x, r(v->defaultExpr()));
-    for (auto b : v->bindings()) {
+    for (const auto& b : v->bindings()) {
       x = c(x, r(b.exp));
     }
     return x;
@@ -2104,7 +2104,7 @@ struct tgenSizeExprF : public switchExprC<int> {
   int with(const Switch* v) const override {
     int x = c(d(v), r(v->expr()));
     if (v->defaultExpr()) x = c(x, r(v->defaultExpr()));
-    for (auto b : v->bindings()) {
+    for (const auto& b : v->bindings()) {
       x = c(x, r(b.exp));
     }
     return x;

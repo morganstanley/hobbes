@@ -526,7 +526,7 @@ void cc::dumpTypeEnv(std::function<std::string const&(std::string const&)> const
 }
 
 void cc::dumpTypeEnv(str::seq* syms, str::seq* types, std::function<std::string const&(std::string const&)> const& rewriteFn) const {
-  for (auto te : this->tenv->typeEnvTable(rewriteFn)) {
+  for (const auto& te : this->tenv->typeEnvTable(rewriteFn)) {
     // don't show hidden symbols since they're not meant for users
     if (!te.first.empty() && te.first[0] != '.') {
       syms->push_back(te.first);

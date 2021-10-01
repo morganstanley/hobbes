@@ -747,7 +747,7 @@ struct buildTransitiveUnsafePragmaClosure : public switchExprC<details::Bool> {
   }
   details::Bool with(const Switch *v) const override {
     Switch::Bindings rsbs;
-    for (auto sb : v->bindings()) {
+    for (const auto& sb : v->bindings()) {
       switchOf(sb.exp, *this);
     }
     ExprPtr de = v->defaultExpr();
@@ -797,7 +797,7 @@ void compile(const ModulePtr &, cc *, const MSafePragmaDef *mpd) {
 // environment
 //   (this disallows things like mutual recursion)
 void compile(cc *e, const ModulePtr &m) {
-  for (auto tmd : m->definitions()) {
+  for (const auto& tmd : m->definitions()) {
     auto md = applyTypeDefns(m, e, tmd);
 
     if (const MImport *imp = is<MImport>(md)) {
@@ -822,21 +822,21 @@ void compile(cc *e, const ModulePtr &m) {
   }
 
   // compile unsafe pragma
-  for (auto tmd : m->definitions()) {
+  for (const auto& tmd : m->definitions()) {
     if (const MUnsafePragmaDef *vpd = is<MUnsafePragmaDef>(tmd)) {
       compile(m, e, vpd);
     }
   }
 
   // compile safe pragma
-  for (auto tmd : m->definitions()) {
+  for (const auto& tmd : m->definitions()) {
     if (const MSafePragmaDef *vpd = is<MSafePragmaDef>(tmd)) {
       compile(m, e, vpd);
     }
   }
 
   // generate unsafe transitive closure
-  for (auto tmd : m->definitions()) {
+  for (const auto& tmd : m->definitions()) {
     if (const MVarDef *vd = is<MVarDef>(tmd)) {
       switchOf(vd->varExpr(), buildTransitiveUnsafePragmaClosure(*vd));
     }
@@ -948,7 +948,7 @@ struct makeSafe : public switchExprC<ExprPtr> {
 
   ExprPtr with(const Switch *v) const override {
     Switch::Bindings rsbs;
-    for (auto sb : v->bindings()) {
+    for (const auto& sb : v->bindings()) {
       rsbs.push_back(Switch::Binding(sb.value, switchOf(sb.exp, *this)));
     }
     ExprPtr de = v->defaultExpr();

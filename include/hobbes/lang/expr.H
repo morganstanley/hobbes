@@ -1274,7 +1274,7 @@ template <typename T>
 template <typename T>
   std::vector<T> switchOf(const Exprs& es, const switchExpr<T>& f) {
     std::vector<T> result;
-    for (auto e : es) {
+    for (const auto& e : es) {
       result.push_back(switchOf(e, f));
     }
     return result;
@@ -1283,7 +1283,7 @@ template <typename T>
 template <typename T>
   std::vector<T> switchOf(const Exprs& es, const switchExprM<T>& f) {
     std::vector<T> result;
-    for (auto e : es) {
+    for (const auto& e : es) {
       result.push_back(switchOf(e, const_cast<switchExprM<T>&>(f)));
     }
     return result;
@@ -1294,7 +1294,7 @@ template <typename K, typename T>
     using KT = std::pair<K, T>;
     using KTS = std::vector<KT>;
     KTS kts;
-    for (auto ke : kes) {
+    for (const auto& ke : kes) {
       kts.push_back(KT(ke.first, switchOf(ke.second, f)));
     }
     return kts;
@@ -1305,7 +1305,7 @@ template <typename K, typename T>
     using KT = std::pair<K, T>;
     using KTS = std::vector<KT>;
     KTS kts;
-    for (auto ke : kes) {
+    for (const auto& ke : kes) {
       kts.push_back(KT(ke.first, switchOf(ke.second, const_cast<switchExprM<T>&>(f))));
     }
     return kts;

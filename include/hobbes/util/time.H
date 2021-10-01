@@ -47,7 +47,7 @@ inline long readTimespan(std::string s) {
 
 inline long readTimespan(const str::seq& ss) {
   long r = 0;
-  for (auto s : ss) {
+  for (const auto& s : ss) {
     r += readTimespan(s);
   }
   return r;

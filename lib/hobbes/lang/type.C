@@ -160,7 +160,7 @@ void TEnv::bind(const std::string& predName, const UnqualifierPtr& uq) {
     this->parent->bind(predName, uq);
   } else {
     // add this unqualifier only if it doesn't introduce conflicting variable definitions
-    for (auto vn : uq->bindings()) {
+    for (const auto& vn : uq->bindings()) {
       if (hasBinding(vn)) {
         throw std::runtime_error("Variable already defined: " + vn);
       }
@@ -529,7 +529,7 @@ unsigned int alignment(const MonoTypePtr& pty) {
     return sizeof(void*);
   } else if (const Record* rty = is<Record>(ty)) {
     size_t a = 1;
-    for (auto f : rty->members()) {
+    for (const auto& f : rty->members()) {
       a = std::max<unsigned int>(a, alignment(f.type));
     }
     return a;
@@ -988,7 +988,7 @@ MonoTypePtr Variant::tailType() const {
 // we should try to unify this logic with record alignment-determination logic
 unsigned int Variant::payloadOffset() const {
   unsigned int o = sizeof(int);
-  for (auto m : this->ms) {
+  for (const auto& m : this->ms) {
     o = std::max<unsigned int>(o, align<unsigned int>(sizeof(int), alignment(m.type)));
   }
   return o;
@@ -997,7 +997,7 @@ unsigned int Variant::payloadOffset() const {
 unsigned int Variant::payloadSize() const {
   if (this->payloadSizeM == static_cast<unsigned int>(-1)) {
     this->payloadSizeM = 0;
-    for (auto m : this->ms) {
+    for (const auto& m : this->ms) {
       this->payloadSizeM = std::max(this->payloadSizeM, sizeOf(m.type));
     }
   }
@@ -1007,7 +1007,7 @@ unsigned int Variant::payloadSize() const {
 unsigned int Variant::size() const {
   // align to strictest field
   unsigned int malign = sizeof(int);
-  for (auto m : this->ms) {
+  for (const auto& m : this->ms) {
     malign = std::max<unsigned int>(malign, alignment(m.type));
   }
   return align<unsigned int>(payloadOffset() + payloadSize(), malign);
@@ -1506,11 +1506,11 @@ UnitV walkTy::with(const OpaquePtr*   ) const { return unitv; }
 UnitV walkTy::with(const TVar*        ) const { return unitv; }
 UnitV walkTy::with(const TGen*        ) const { return unitv; }
 UnitV walkTy::with(const TAbs*       v) const { switchOf(v->body(), *this); return unitv; }
-UnitV walkTy::with(const TApp*       v) const { switchOf(v->fn(), *this); for (auto a : v->args()) { switchOf(a, *this); } return unitv; }
+UnitV walkTy::with(const TApp*       v) const { switchOf(v->fn(), *this); for (const auto& a : v->args()) { switchOf(a, *this); } return unitv; }
 UnitV walkTy::with(const FixedArray* v) const { switchOf(v->type(), *this); switchOf(v->length(), *this); return unitv; }
 UnitV walkTy::with(const Array*      v) const { switchOf(v->type(), *this); return unitv; }
-UnitV walkTy::with(const Variant*    v) const { for (auto c : v->members()) { switchOf(c.type, *this); } return unitv; }
-UnitV walkTy::with(const Record*     v) const { for (auto f : v->members()) { switchOf(f.type, *this); } return unitv; }
+UnitV walkTy::with(const Variant*    v) const { for (const auto& c : v->members()) { switchOf(c.type, *this); } return unitv; }
+UnitV walkTy::with(const Record*     v) const { for (const auto& f : v->members()) { switchOf(f.type, *this); } return unitv; }
 UnitV walkTy::with(const Func*       v) const { switchOf(v->argument(), *this); switchOf(v->result(), *this); return unitv; }
 UnitV walkTy::with(const Exists*     v) const { switchOf(v->absType(), *this); return unitv; }
 UnitV walkTy::with(const Recursive*  v) const { switchOf(v->recType(), *this); return unitv; }
@@ -1776,7 +1776,7 @@ MonoTypePtr instantiate(const MonoTypes& ts, const MonoTypePtr& mt) {
 
 MonoTypes instantiate(const MonoTypes& ts, const MonoTypes& sts) {
   MonoTypes result;
-  for (auto st : sts) {
+  for (const auto& st : sts) {
     result.push_back(instantiate(ts, st));
   }
   return result;

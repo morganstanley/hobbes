@@ -43,7 +43,7 @@ inline void decode(std::string* x, std::istream& in) {
 template <typename T>
   inline void encode(const std::vector<T>& xs, std::ostream& out) {
     encode(static_cast<size_t>(xs.size()), out);
-    for (auto x : xs) {
+    for (const auto& x : xs) {
       encode(x, out);
     }
   }
@@ -75,7 +75,7 @@ template <typename U, typename V>
 template <typename K, typename V>
   inline void encode(const std::map<K, V>& m, std::ostream& out) {
     encode(m.size(), out);
-    for (auto p : m) {
+    for (const auto& p : m) {
       encode(p, out);
     }
   }

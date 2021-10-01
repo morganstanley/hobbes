@@ -150,7 +150,7 @@ template <typename T>
 template <typename CT>
   std::set<typename CT::value_type> toSet(const CT& xs) {
     std::set<typename CT::value_type> r;
-    for (auto x : xs) {
+    for (const auto& x : xs) {
       r.insert(x);
     }
     return r;

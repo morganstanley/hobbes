@@ -261,7 +261,7 @@ ProcessTxnF initStorageSession(Session* s, const std::string& dirPfx, storage::P
   // allocate space for every log statement
   Variant::Members txnEntries;
 
-  for (auto stmt : stmts) {
+  for (const auto& stmt : stmts) {
     MonoTypePtr pty = decode(stmt.type);
     out << " ==> " << stmt.name << " :: " << show(pty) << " (#" << stmt.id << ")" << std::endl;
     if (s->streams.size() <= stmt.id) {

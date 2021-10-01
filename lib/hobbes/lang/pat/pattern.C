@@ -317,7 +317,7 @@ std::string show(const PatternRow& pr) {
 // allow incomplete sets of field patterns in record cells by expanding all such cases to 'match any' patterns for unnamed fields
 void normalizeRecPatterns(MatchRecord* r, const std::set<std::string>& fnames) {
   MatchRecord::Fields nfs = r->fields();
-  for (auto f : setDifference(fnames, toSet(first(r->fields())))) {
+  for (const auto& f : setDifference(fnames, toSet(first(r->fields())))) {
     nfs.push_back(MatchRecord::Field(f, PatternPtr(new MatchAny(freshName(), r->la()))));
   }
   r->fields(nfs);
@@ -585,7 +585,7 @@ VarMapping varMapping(const Patterns& ps) {
   // assuming that the input patterns have assigned names,
   // our renaming finds user-names in the input patterns and renames them to assigned names
   VarMapping r;
-  for (auto p : ps) {
+  for (const auto& p : ps) {
     switchOf(p, inferMappingF(&r));
   }
   return r;
@@ -648,7 +648,7 @@ ExprPtr compileRegexFn(cc* c, const std::string& regex, const LexicalAnnotation&
     return fn("x", compileMatchTest(c, var("x", rootLA), p, rootLA), rootLA);
   } else {
     MkRecord::FieldDefs fs;
-    for (auto n : ns) {
+    for (const auto& n : ns) {
       fs.push_back(MkRecord::FieldDef(n, var(n, rootLA)));
     }
     return fn("x", compileMatch(c, list(var("x", rootLA)), list(PatternRow(list(p), fncall(var("just", rootLA), mkrecord(fs, rootLA), rootLA)), PatternRow(list(PatternPtr(new MatchAny("_", rootLA))), var("nothing", rootLA))), rootLA), rootLA);

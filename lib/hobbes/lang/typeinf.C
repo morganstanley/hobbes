@@ -514,7 +514,7 @@ bool refine(const TEnvPtr& tenv, const Constraints& cs, MonoTypeUnifier* s, Defi
 bool refine(const TEnvPtr& tenv, const QualTypePtr& qty, MonoTypeUnifier* s, Definitions* ds) {
   // first reduce this set of constraints as much as possible
   ConstraintSet cs;
-  for (auto c : qty->constraints()) {
+  for (const auto& c : qty->constraints()) {
     cs.insert(tenv, c, s);
   }
 
