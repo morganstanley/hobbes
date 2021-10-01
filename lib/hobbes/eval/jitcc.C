@@ -179,14 +179,14 @@ template <typename... Ts> struct VariantLite {
     return *this;
   }
 
-  VariantLite(VariantLite &&rhs) {
+  VariantLite(VariantLite &&rhs) noexcept {
     tag = rhs.tag;
     if (isValid()) {
       VariantLiteMoveCreator<Ts...>::act(N, rhs.tag, &storage, &rhs.storage);
     }
   }
 
-  VariantLite &operator=(VariantLite &&rhs) & {
+  VariantLite &operator=(VariantLite &&rhs) & noexcept {
     if (isValid()) {
       VariantLiteDeletor<Ts...>::act(N, tag, &storage);
     }
