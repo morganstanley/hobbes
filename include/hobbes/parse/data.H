@@ -73,7 +73,6 @@ ldblines load(const linedb::ptr& ldb, const linedb::LineCol& i, const linedb::Li
 
 template <typename K, typename V>
   V mapLookup(const std::map<K, V>& m, const K& k) {
-    typedef typename std::map<K, V>::const_iterator CI;
     auto i = m.find(k);
     if (i == m.end()) {
       throw std::runtime_error("Unexpected map index undefined");
