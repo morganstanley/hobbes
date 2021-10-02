@@ -2,6 +2,7 @@
 #include <hobbes/ipc/procman.H>
 #include <hobbes/lang/preds/class.H>
 #include <hobbes/util/str.H>
+#include <memory>
 
 namespace hobbes {
 
@@ -138,7 +139,7 @@ struct ProcManUnqualify : public switchExprTyFn {
   }
 
   static ConstraintPtr blockCodecCst(const MonoTypePtr& ty) {
-    return ConstraintPtr(new Constraint("BlockCodec", list(ty)));
+    return std::make_shared<Constraint>("BlockCodec", list(ty));
   }
 
   ExprPtr blockWrite(const proc* p, const ExprPtr& e) const {

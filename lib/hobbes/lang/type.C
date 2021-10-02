@@ -1,19 +1,20 @@
 
 #include <algorithm>
-#include <hobbes/lang/type.H>
+#include <atomic>
+#include <cstring>
+#include <hobbes/lang/constraints.H>
 #include <hobbes/lang/expr.H>
 #include <hobbes/lang/tylift.H>
+#include <hobbes/lang/type.H>
 #include <hobbes/lang/typepreds.H>
-#include <hobbes/lang/constraints.H>
 #include <hobbes/util/array.H>
 #include <hobbes/util/codec.H>
-#include <hobbes/util/str.H>
 #include <hobbes/util/perf.H>
+#include <hobbes/util/str.H>
+#include <memory>
 #include <sstream>
 #include <stdexcept>
-#include <cstring>
 #include <unordered_map>
-#include <atomic>
 
 namespace hobbes {
 
@@ -421,7 +422,7 @@ std::string        Constraint::name()      const { return this->cat; }
 const MonoTypes&   Constraint::arguments() const { return this->mts; }
 
 ConstraintPtr Constraint::instantiate(const MonoTypes& ts) const {
-  return ConstraintPtr(new Constraint(this->name(), hobbes::instantiate(ts, this->arguments())));
+  return std::make_shared<Constraint>(this->name(), hobbes::instantiate(ts, this->arguments()));
 }
 
 NameSet Constraint::tvarNames() const {
@@ -435,7 +436,7 @@ bool Constraint::hasFreeVariables() const {
 }
 
 ConstraintPtr Constraint::substitute(const MonoTypeSubst& s) const {
-  return ConstraintPtr(new Constraint(this->name(), hobbes::substitute(s, this->arguments())));
+  return std::make_shared<Constraint>(this->name(), hobbes::substitute(s, this->arguments()));
 }
 
 void Constraint::update(MonoTypeUnifier* u) {
@@ -1578,7 +1579,7 @@ MonoTypePtr cloneP(const MonoTypePtr& p) {
 ///////////////////
 QualTypePtr lookupFieldType(const QualTypePtr& qt, const std::string& fieldName) {
   MonoTypePtr mt = lookupFieldType(qt->monoType(), fieldName);
-  return QualTypePtr(new QualType(qt->constraints(), mt));
+  return std::make_shared<QualType>(qt->constraints(), mt);
 }
 
 MonoTypePtr lookupFieldType(const MonoTypePtr& mt, const std::string& fieldName) {
@@ -1740,7 +1741,7 @@ MonoTypePtr   instantiate(int vs, const MonoTypePtr& mt)     { if (vs == 0 || is
 MonoTypes     instantiate(int vs, const MonoTypes& ts)       { if (vs == 0)                       { return ts;     } else { return instantiate(freshTypeVars(vs), ts);     } }
 
 QualTypePtr instantiate(const MonoTypes& ts, const QualTypePtr& scheme) {
-  return QualTypePtr(new QualType(instantiate(ts, scheme->constraints()), instantiate(ts, scheme->monoType())));
+  return std::make_shared<QualType>(instantiate(ts, scheme->constraints()), instantiate(ts, scheme->monoType()));
 }
 
 Constraints instantiate(const MonoTypes& ts, const Constraints& cs) {
@@ -1926,7 +1927,7 @@ void show(const MonoTypeSubst& s, std::ostream& out) {
 
 // simplifying substitution from free type variables
 QualTypePtr substitute(const MonoTypeSubst& s, const QualTypePtr& qt) {
-  return QualTypePtr(new QualType(substitute(s, qt->constraints()), substitute(s, qt->monoType())));
+  return std::make_shared<QualType>(substitute(s, qt->constraints()), substitute(s, qt->monoType()));
 }
 
 inline bool in(const ConstraintPtr& c, const Constraints& cs) {
@@ -2039,7 +2040,7 @@ PolyTypePtr generalize(const QualTypePtr& qt) {
     ++i;
   }
 
-  return PolyTypePtr(new PolyType(fnames.size(), substitute(s, qt)));
+  return std::make_shared<PolyType>(fnames.size(), substitute(s, qt));
 }
 
 // simplify ugly generated variable names
@@ -2068,9 +2069,9 @@ MonoTypeSubst canonicalNameSubst(const NameSet& ns) {
 
 QualTypePtr   simplifyVarNames(const PolyType&      t) { return simplifyVarNames(t.instantiate()); }
 QualTypePtr   simplifyVarNames(const PolyTypePtr&   t) { return simplifyVarNames(*t); }
-ConstraintPtr simplifyVarNames(const Constraint&    c) { return simplifyVarNames(ConstraintPtr(new Constraint(c))); }
+ConstraintPtr simplifyVarNames(const Constraint&    c) { return simplifyVarNames(std::make_shared<Constraint>(c)); }
 ConstraintPtr simplifyVarNames(const ConstraintPtr& c) { return substitute(canonicalNameSubst(tvarNames(c)), c); }
-QualTypePtr   simplifyVarNames(const QualType&      t) { return simplifyVarNames(QualTypePtr(new QualType(t.constraints(), t.monoType()))); }
+QualTypePtr   simplifyVarNames(const QualType&      t) { return simplifyVarNames(std::make_shared<QualType>(t.constraints(), t.monoType())); }
 QualTypePtr   simplifyVarNames(const QualTypePtr&   t) { return substitute(canonicalNameSubst(tvarNames(t)), t); }
 MonoTypePtr   simplifyVarNames(const MonoType&      t) { return substitute(canonicalNameSubst(tvarNames(t)), t); }
 MonoTypePtr   simplifyVarNames(const MonoTypePtr&   t) { return substitute(canonicalNameSubst(tvarNames(t)), t); }

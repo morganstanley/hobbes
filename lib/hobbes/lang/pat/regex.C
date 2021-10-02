@@ -5,6 +5,7 @@
 #include <hobbes/util/str.H>
 #include <hobbes/util/rmap.H>
 
+#include <memory>
 #include <queue>
 
 namespace hobbes {
@@ -974,8 +975,8 @@ void makeExprDFAFunc(cc* c, const std::string& fname, const MonoTypePtr& capture
   //   ...
   Switch::Bindings bs;
   MonoTypePtr arrT = freshTypeVar();
-  QualTypePtr qarrElemTy = qualtype(list(ConstraintPtr(new Constraint("Array", list(arrT, primty("char"))))), functy(list(arrT, primty("long")), primty("char")));
-  QualTypePtr qarrT = qualtype(list(ConstraintPtr(new Constraint("Array", list(arrT, primty("char"))))), arrT);
+  QualTypePtr qarrElemTy = qualtype(list(std::make_shared<Constraint>("Array", list(arrT, primty("char")))), functy(list(arrT, primty("long")), primty("char")));
+  QualTypePtr qarrT = qualtype(list(std::make_shared<Constraint>("Array", list(arrT, primty("char")))), arrT);
 
   for (size_t s = 0; s < dfa.size(); ++s) {
     // all transitions out of this state
@@ -1074,8 +1075,8 @@ array<DFAStateRep>* makeDFARep(cc* c, const DFA& dfa) {
 
 void makeInterpDFAFunc(cc* c, const std::string& fname, const MonoTypePtr& captureTy, const DFA& dfa, const LexicalAnnotation& rootLA) {
   MonoTypePtr arrT = freshTypeVar();
-  QualTypePtr qarrElemTy = qualtype(list(ConstraintPtr(new Constraint("Array", list(arrT, primty("char"))))), functy(list(arrT, primty("long")), primty("char")));
-  QualTypePtr qarrT = qualtype(list(ConstraintPtr(new Constraint("Array", list(arrT, primty("char"))))), arrT);
+  QualTypePtr qarrElemTy = qualtype(list(std::make_shared<Constraint>("Array", list(arrT, primty("char")))), functy(list(arrT, primty("long")), primty("char")));
+  QualTypePtr qarrT = qualtype(list(std::make_shared<Constraint>("Array", list(arrT, primty("char")))), arrT);
 
   std::string regexDFADef = ".regexDFA." + freshName();
   c->bind(regexDFADef, makeDFARep(c, dfa));

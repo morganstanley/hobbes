@@ -1,10 +1,11 @@
 
-#include <hobbes/lang/preds/subtype/obj.H>
-#include <hobbes/lang/preds/class.H>
 #include <hobbes/lang/expr.H>
+#include <hobbes/lang/preds/class.H>
+#include <hobbes/lang/preds/subtype/obj.H>
 #include <hobbes/lang/typeinf.H>
-#include <hobbes/util/str.H>
 #include <hobbes/util/os.H>
+#include <hobbes/util/str.H>
+#include <memory>
 
 namespace hobbes {
 
@@ -191,7 +192,7 @@ PolyTypePtr Objs::generalize(const MonoTypePtr& mt) const {
     if (isObjType(faty)) {
       MonoTypePtr tgv(TGen::make(tvs));
       nfatys.push_back(tgv);
-      cs.push_back(ConstraintPtr(new Constraint(SubtypeUnqualifier::constraintName(), list(tgv, faty))));
+      cs.push_back(std::make_shared<Constraint>(SubtypeUnqualifier::constraintName(), list(tgv, faty)));
       ++tvs;
     } else {
       nfatys.push_back(faty);

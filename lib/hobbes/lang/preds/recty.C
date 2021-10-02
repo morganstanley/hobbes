@@ -1,7 +1,8 @@
 
-#include <hobbes/lang/preds/recty.H>
 #include <hobbes/lang/preds/class.H>
+#include <hobbes/lang/preds/recty.H>
 #include <hobbes/lang/typeinf.H>
+#include <memory>
 
 namespace hobbes {
 
@@ -100,9 +101,9 @@ ExprPtr FixIsoRecur::unqualify(const TEnvPtr&, const ConstraintPtr& cst, const E
 
 PolyTypePtr FixIsoRecur::lookup(const std::string& vn) const {
   if (vn == RECTY_ROLL) {
-    return polytype(2, qualtype(list(ConstraintPtr(new Constraint(FixIsoRecur::constraintName(), list(tgen(0), tgen(1))))), functy(list(tgen(1)), tgen(0))));
+    return polytype(2, qualtype(list(std::make_shared<Constraint>(FixIsoRecur::constraintName(), list(tgen(0), tgen(1)))), functy(list(tgen(1)), tgen(0))));
   } else if (vn == RECTY_UNROLL) {
-    return polytype(2, qualtype(list(ConstraintPtr(new Constraint(FixIsoRecur::constraintName(), list(tgen(0), tgen(1))))), functy(list(tgen(0)), tgen(1))));
+    return polytype(2, qualtype(list(std::make_shared<Constraint>(FixIsoRecur::constraintName(), list(tgen(0), tgen(1)))), functy(list(tgen(0)), tgen(1))));
   } else {
     return PolyTypePtr();
   }

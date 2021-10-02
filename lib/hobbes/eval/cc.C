@@ -24,10 +24,11 @@
 #include <csignal>
 #include <cstdlib>
 
+#include <fstream>
+#include <memory>
+#include <mutex>
 #include <stdexcept>
 #include <unordered_map>
-#include <fstream>
-#include <mutex>
 
 namespace hobbes {
 
@@ -443,7 +444,7 @@ void cc::overload(const std::string& tyclass, const MonoTypes& tys) {
 
   if (tgenSize(tys) == 0) {
     Definitions ds;
-    c->insert(typeEnv(), TCInstancePtr(new TCInstance(tyclass, tys, insts, LexicalAnnotation::null())), &ds);
+    c->insert(typeEnv(), std::make_shared<TCInstance>(tyclass, tys, insts, LexicalAnnotation::null()), &ds);
     drainUnqualifyDefs(ds);
   } else {
     throw std::runtime_error("cc::overload forgot how to produce instance functions");
@@ -466,7 +467,7 @@ void cc::overload(const std::string& tyclass, const MonoTypes& tys, const ExprPt
 
   if (tgenSize(tys) == 0) {
     Definitions ds;
-    c->insert(typeEnv(), TCInstancePtr(new TCInstance(tyclass, tys, insts, e->la())), &ds);
+    c->insert(typeEnv(), std::make_shared<TCInstance>(tyclass, tys, insts, e->la()), &ds);
     drainUnqualifyDefs(ds);
   } else {
     throw std::runtime_error("cc::overload forgot how to produce instance functions");

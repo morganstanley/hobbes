@@ -2,17 +2,17 @@
 #ifndef HOBBES_LANG_TYPE_HPP_INCLUDED
 #define HOBBES_LANG_TYPE_HPP_INCLUDED
 
-#include <hobbes/util/hash.H>
-#include <hobbes/util/ptr.H>
 #include <hobbes/util/array.H>
-#include <hobbes/util/str.H>
+#include <hobbes/util/hash.H>
 #include <hobbes/util/lannotation.H>
-#include <string>
-#include <vector>
-#include <set>
+#include <hobbes/util/ptr.H>
+#include <hobbes/util/str.H>
 #include <map>
 #include <memory>
+#include <set>
 #include <stdexcept>
+#include <string>
+#include <vector>
 
 namespace hobbes {
 
@@ -1028,7 +1028,7 @@ inline MonoTypePtr primty(const char* x, const MonoTypePtr& aty) {
 }
 
 inline QualTypePtr qualtype(const Constraints& cs, const MonoTypePtr& p) {
-  return QualTypePtr(new QualType(cs, p));
+  return std::make_shared<QualType>(cs, p);
 }
 
 inline QualTypePtr qualtype(const Constraints& cs, MonoType* mt) {
@@ -1036,11 +1036,11 @@ inline QualTypePtr qualtype(const Constraints& cs, MonoType* mt) {
 }
 
 inline QualTypePtr qualtype(const MonoTypePtr& p) {
-  return QualTypePtr(new QualType(p));
+  return std::make_shared<QualType>(p);
 }
 
 inline QualTypePtr qualtype(MonoType* mt) {
-  return QualTypePtr(new QualType(MonoTypePtr(mt)));
+  return std::make_shared<QualType>(MonoTypePtr(mt));
 }
 
 inline QualTypePtr qualtype(const char* x) {
@@ -1048,11 +1048,11 @@ inline QualTypePtr qualtype(const char* x) {
 }
 
 inline PolyTypePtr polytype(int tvs, const QualTypePtr& qt) {
-  return PolyTypePtr(new PolyType(tvs, qt));
+  return std::make_shared<PolyType>(tvs, qt);
 }
 
 inline PolyTypePtr polytype(const QualTypePtr& qt) {
-  return PolyTypePtr(new PolyType(qt));
+  return std::make_shared<PolyType>(qt);
 }
 
 inline PolyTypePtr polytype(const MonoTypePtr& p) {

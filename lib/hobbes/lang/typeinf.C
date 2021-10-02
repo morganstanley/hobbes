@@ -1,8 +1,9 @@
+#include <hobbes/lang/constraints.H>
 #include <hobbes/lang/typeinf.H>
 #include <hobbes/lang/typepreds.H>
-#include <hobbes/lang/constraints.H>
 #include <hobbes/util/array.H>
 #include <hobbes/util/perf.H>
+#include <memory>
 
 namespace hobbes {
 
@@ -708,7 +709,7 @@ struct expTypeInfF : public switchExprM<UnitV> {
     switchOf(v->value(), *this);
 
     MonoTypePtr   vty  = freshTypeVar();
-    ConstraintPtr c    = ConstraintPtr(new Constraint(CtorVerifier::constraintName(), list(vty, MonoTypePtr(TString::make(v->label())), v->value()->type()->monoType())));
+    ConstraintPtr c    = std::make_shared<Constraint>(CtorVerifier::constraintName(), list(vty, MonoTypePtr(TString::make(v->label())), v->value()->type()->monoType()));
     Constraints   cs   = mergeConstraints(v->value()->type()->constraints(), list(c));
 
     v->type(qt(cs, vty));
@@ -766,7 +767,7 @@ struct expTypeInfF : public switchExprM<UnitV> {
 
       cbs.push_back(Case::Binding(b->selector, b->vname, b->exp));
       cs = mergeConstraints(cs, b->exp->type()->constraints());
-      vcs.push_back(ConstraintPtr(new Constraint(CtorVerifier::constraintName(), list(v->variant()->type()->monoType(), MonoTypePtr(TString::make(b->selector)), bty))));
+      vcs.push_back(std::make_shared<Constraint>(CtorVerifier::constraintName(), list(v->variant()->type()->monoType(), MonoTypePtr(TString::make(b->selector)), bty)));
     }
     v->variant()->type(qt(mergeConstraints(vcs, v->variant()->type()->constraints()), v->variant()->type()->monoType()));
 
@@ -903,7 +904,7 @@ struct expTypeInfF : public switchExprM<UnitV> {
     switchOf(v->expr(), *this);
 
     MonoTypePtr   packedType = freshTypeVar();
-    ConstraintPtr pcst       = ConstraintPtr(new Constraint(Existentials::constraintName(), list(v->expr()->type()->monoType(), packedType)));
+    ConstraintPtr pcst       = std::make_shared<Constraint>(Existentials::constraintName(), list(v->expr()->type()->monoType(), packedType));
 
     Constraints cs = mergeConstraints(v->expr()->type()->constraints(), list(pcst));
     v->type(qt(cs, packedType));

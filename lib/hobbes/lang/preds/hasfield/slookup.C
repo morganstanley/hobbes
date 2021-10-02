@@ -1,9 +1,10 @@
 
-#include <hobbes/lang/preds/hasfield/slookup.H>
 #include <hobbes/lang/preds/class.H>
-#include <hobbes/lang/tyunqualify.H>
+#include <hobbes/lang/preds/hasfield/slookup.H>
 #include <hobbes/lang/typeinf.H>
+#include <hobbes/lang/tyunqualify.H>
 #include <hobbes/util/array.H>
+#include <memory>
 
 namespace hobbes {
 
@@ -62,7 +63,7 @@ ExprPtr rewriteSLookup(const TEnvPtr& tenv, const ExprPtr& r, const std::string&
     unqualifyTypes(
       tenv,
       fncall(
-        var("slookup", qualtype(list(ConstraintPtr(new Constraint("SLookup", list(rty, xty, fty)))), functy(list(rty), fty)), la),
+        var("slookup", qualtype(list(std::make_shared<Constraint>("SLookup", list(rty, xty, fty))), functy(list(rty), fty)), la),
         list(r),
         la
       ),

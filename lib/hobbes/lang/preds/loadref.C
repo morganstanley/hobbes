@@ -1,7 +1,8 @@
 
-#include <hobbes/lang/preds/loadref.H>
 #include <hobbes/lang/preds/class.H>
+#include <hobbes/lang/preds/loadref.H>
 #include <hobbes/lang/typeinf.H>
+#include <memory>
 
 namespace hobbes {
 
@@ -139,7 +140,7 @@ ExprPtr DBFileRefLoader::unqualify(const TEnvPtr&, const ConstraintPtr& cst, con
 
 PolyTypePtr DBFileRefLoader::lookup(const std::string& vn) const {
   if (vn == REF_LOAD) {
-    return polytype(2, qualtype(list(ConstraintPtr(new Constraint(DBFileRefLoader::constraintName(), list(tgen(0), tgen(1))))), functy(list(tgen(0)), tgen(1))));
+    return polytype(2, qualtype(list(std::make_shared<Constraint>(DBFileRefLoader::constraintName(), list(tgen(0), tgen(1)))), functy(list(tgen(0)), tgen(1))));
   } else {
     return PolyTypePtr();
   }

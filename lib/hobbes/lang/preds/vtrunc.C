@@ -1,10 +1,11 @@
 
-#include <hobbes/lang/preds/vtrunc.H>
-#include <hobbes/lang/preds/class.H>
 #include <hobbes/lang/expr.H>
+#include <hobbes/lang/preds/class.H>
+#include <hobbes/lang/preds/vtrunc.H>
 #include <hobbes/lang/tylift.H>
 #include <hobbes/lang/typeinf.H>
 #include <hobbes/util/array.H>
+#include <memory>
 
 namespace hobbes {
 
@@ -76,7 +77,7 @@ void VariantTruncP::explain(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&
 PolyTypePtr VariantTruncP::lookup(const std::string& vn) const {
   if (vn == REF_VAR_TRUNC) {
     // trunc :: (VariantTrunc v e) => v -> e
-    return polytype(2, qualtype(list(ConstraintPtr(new Constraint(VariantTruncP::constraintName(), list(tgen(0), tgen(1))))), functy(list(tgen(0)), tgen(1))));
+    return polytype(2, qualtype(list(std::make_shared<Constraint>(VariantTruncP::constraintName(), list(tgen(0), tgen(1)))), functy(list(tgen(0)), tgen(1))));
   } else {
     return PolyTypePtr();
   }

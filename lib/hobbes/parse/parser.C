@@ -6,6 +6,7 @@
 
 // useful for debugging generated expressions
 #include <hobbes/lang/pat/print.H>
+#include <memory>
 
 namespace hobbes {
 
@@ -328,7 +329,7 @@ ExprPtr makeParser(cc* c, const Parser& p, terminal* root, const precedence& pre
   return
     assume(
       fn(str::strings(".arr"), e, la),
-      qualtype(list(ConstraintPtr(new Constraint("Array", list(pei.arrty, primty("char"))))), functy(list(pei.arrty), parseResultType(pei))),
+      qualtype(list(std::make_shared<Constraint>("Array", list(pei.arrty, primty("char")))), functy(list(pei.arrty), parseResultType(pei))),
       la
     );
 }

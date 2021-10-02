@@ -3,14 +3,15 @@
 #include "funcdefs.H"
 #include "cio.H"
 
-#include <hobbes/eval/cmodule.H>
-#include <hobbes/lang/preds/class.H>
 #include <hobbes/db/file.H>
+#include <hobbes/eval/cmodule.H>
 #include <hobbes/ipc/net.H>
+#include <hobbes/lang/preds/class.H>
 #include <hobbes/util/perf.H>
 #include <hobbes/util/str.H>
 #include <hobbes/util/time.H>
 #include <iostream>
+#include <memory>
 
 namespace {
 void defPrintUnreachableMatches(const hobbes::cc::UnreachableMatches& m) {
@@ -41,7 +42,7 @@ void bindArguments(hobbes::cc& ctx, const Args::NameVals& args) {
   for (const auto& arg : args) {
     tc->insert(
       ctx.typeEnv(),
-      TCInstancePtr(new TCInstance("Argument", list(MonoTypePtr(TString::make(arg.first)), MonoTypePtr(TString::make(arg.second))), MemberMapping(), LexicalAnnotation::null())),
+      std::make_shared<TCInstance>("Argument", list(MonoTypePtr(TString::make(arg.first)), MonoTypePtr(TString::make(arg.second))), MemberMapping(), LexicalAnnotation::null()),
       &drainDefs
     );
   }

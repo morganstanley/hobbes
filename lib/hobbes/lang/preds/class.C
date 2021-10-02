@@ -1,12 +1,13 @@
 
-#include <hobbes/lang/preds/class.H>
 #include <hobbes/lang/expr.H>
-#include <hobbes/lang/tyunqualify.H>
+#include <hobbes/lang/preds/class.H>
 #include <hobbes/lang/typeinf.H>
 #include <hobbes/lang/typepreds.H>
+#include <hobbes/lang/tyunqualify.H>
 #include <hobbes/util/array.H>
 #include <hobbes/util/codec.H>
 #include <hobbes/util/perf.H>
+#include <memory>
 
 namespace hobbes {
 
@@ -370,7 +371,7 @@ ExprPtr TClass::unqualify(const TEnvPtr& tenv, const ConstraintPtr& cst, const E
 PolyTypePtr TClass::lookup(const std::string& vn) const {
   auto m = this->tcmembers.find(vn);
   if (m != this->tcmembers.end()) {
-    return PolyTypePtr(new PolyType(this->typeVars(), qualtype(list(ConstraintPtr(new Constraint(this->name(), tgens(this->typeVars())))), m->second)));
+    return std::make_shared<PolyType>(this->typeVars(), qualtype(list(std::make_shared<Constraint>(this->name(), tgens(this->typeVars()))), m->second));
   } else {
     return PolyTypePtr();
   }
@@ -694,7 +695,7 @@ bool TCInstanceFn::apply(const TEnvPtr& tenv, const MonoTypes& tys, const TClass
   }
 
   // that's it, we've got a new ground type class instance
-  *out = TCInstancePtr(new TCInstance(this->tcname, nitys, mm, la()));
+  *out = std::make_shared<TCInstance>(this->tcname, nitys, mm, la());
   return true;
 }
 
@@ -782,7 +783,7 @@ void definePrivateClass(const TEnvPtr& tenv, const std::string& memberName, cons
   MemberMapping mm;
   mm[memberName] = expr;
 
-  nclass->insert(TCInstanceFnPtr(new TCInstanceFn(tcname, Constraints(), gtvars, mm, expr->la())));
+  nclass->insert(std::make_shared<TCInstanceFn>(tcname, Constraints(), gtvars, mm, expr->la()));
 
   tenv->bind(tcname, nclass);
 }
@@ -820,11 +821,11 @@ const TClass* findClass(const TEnvPtr& tenv, const std::string& cname) {
 }
 
 bool isClassSatisfied(const TEnvPtr& tenv, const std::string& cname, const MonoTypes& tys, Definitions* ds) {
-  return findClass(tenv, cname)->satisfied(tenv, ConstraintPtr(new Constraint(cname, tys)), ds);
+  return findClass(tenv, cname)->satisfied(tenv, std::make_shared<Constraint>(cname, tys), ds);
 }
 
 bool isClassSatisfiable(const TEnvPtr& tenv, const std::string& cname, const MonoTypes& tys, Definitions* ds) {
-  return findClass(tenv, cname)->satisfiable(tenv, ConstraintPtr(new Constraint(cname, tys)), ds);
+  return findClass(tenv, cname)->satisfiable(tenv, std::make_shared<Constraint>(cname, tys), ds);
 }
 
 ExprPtr unqualifyClass(const TEnvPtr& tenv, const std::string& cname, const MonoTypes& tys, const ExprPtr& e, Definitions* ds) {
@@ -933,7 +934,7 @@ void deserializeGroundClasses(const TEnvPtr& tenv, std::istream& in, Definitions
 
       if (c != nullptr) {
         if (!c->hasGroundInstanceAt(mts)) {
-          c->insert(tenv, TCInstancePtr(new TCInstance(cname, mts, mm, c->la())), ds);
+          c->insert(tenv, std::make_shared<TCInstance>(cname, mts, mm, c->la()), ds);
         }
       }
     }

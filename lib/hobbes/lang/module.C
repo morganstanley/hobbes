@@ -2,6 +2,7 @@
 #include <hobbes/lang/module.H>
 #include <hobbes/util/array.H>
 #include <hobbes/util/lannotation.H>
+#include <memory>
 #include <sstream>
 
 namespace hobbes {
@@ -198,7 +199,7 @@ std::string show(const CFunDepDefs& fundeps) {
 MVarDefs substitute(const MonoTypeSubst& s, const MVarDefs& vds) {
   MVarDefs result;
   for (const auto &vd : vds) {
-    result.push_back(MVarDefPtr(new MVarDef(vd->varWithArgs(), substitute(s, vd->varExpr()), vd->la())));
+    result.push_back(std::make_shared<MVarDef>(vd->varWithArgs(), substitute(s, vd->varExpr()), vd->la()));
   }
   return result;
 }
@@ -229,14 +230,14 @@ MonoTypes appMTyTys(const switchMDefTyFn* f, const MonoTypes& ts) {
 Constraints appMTyCS(const switchMDefTyFn* f, const Constraints& cs) {
   Constraints r;
   for (const auto& c : cs) {
-    r.push_back(ConstraintPtr(new Constraint(c->name(), appMTyTys(f, c->arguments()))));
+    r.push_back(std::make_shared<Constraint>(c->name(), appMTyTys(f, c->arguments())));
   }
   return r;
 }
 MVarTypeDefs appMTyMVTDs(const switchMDefTyFn* f, const MVarTypeDefs& tds) {
   MVarTypeDefs r;
   for (const auto& td : tds) {
-    r.push_back(MVarTypeDefPtr(new MVarTypeDef(td->varName(), f->withTy(td->varType()), td->la())));
+    r.push_back(std::make_shared<MVarTypeDef>(td->varName(), f->withTy(td->varType()), td->la()));
   }
   return r;
 }
@@ -247,7 +248,7 @@ ModuleDefPtr switchMDefTyFn::with(const ClassDef* x) const {
 MVarDefs appMTyMVDs(const switchMDefTyFn* f, const MVarDefs& vds) {
   MVarDefs r;
   for (const auto& vd : vds) {
-    r.push_back(MVarDefPtr(new MVarDef(vd->varWithArgs(), switchOf(vd->varExpr(), appMTySwitchF(f)), vd->la())));
+    r.push_back(std::make_shared<MVarDef>(vd->varWithArgs(), switchOf(vd->varExpr(), appMTySwitchF(f)), vd->la()));
   }
   return r;
 }

@@ -1,11 +1,12 @@
 
+#include <hobbes/lang/expr.H>
+#include <hobbes/lang/preds/class.H>
 #include <hobbes/lang/preds/consrecord.H>
 #include <hobbes/lang/preds/hasfield.H>
-#include <hobbes/lang/preds/class.H>
-#include <hobbes/lang/expr.H>
 #include <hobbes/lang/tylift.H>
 #include <hobbes/lang/typeinf.H>
 #include <hobbes/util/array.H>
+#include <memory>
 
 namespace hobbes {
 
@@ -165,13 +166,13 @@ void RecordDeconstructor::explain(const TEnvPtr&, const ConstraintPtr&, const Ex
 
 PolyTypePtr RecordDeconstructor::lookup(const std::string& vn) const {
   if (vn == REF_REC_LABEL) {
-    return polytype(4, qualtype(list(ConstraintPtr(new Constraint(RecordDeconstructor::constraintName(), list(tlong(1), tlong(0), tgen(0), tgen(1), tgen(2), tgen(3))))), functy(list(tgen(0)), arrayty(prim<char>()))));
+    return polytype(4, qualtype(list(std::make_shared<Constraint>(RecordDeconstructor::constraintName(), list(tlong(1), tlong(0), tgen(0), tgen(1), tgen(2), tgen(3)))), functy(list(tgen(0)), arrayty(prim<char>()))));
   } else if (vn == REF_REC_VALUE) {
-    return polytype(4, qualtype(list(ConstraintPtr(new Constraint(RecordDeconstructor::constraintName(), list(tlong(1), tlong(0), tgen(0), tgen(1), tgen(2), tgen(3))))), functy(list(tgen(0)), tgen(2))));
+    return polytype(4, qualtype(list(std::make_shared<Constraint>(RecordDeconstructor::constraintName(), list(tlong(1), tlong(0), tgen(0), tgen(1), tgen(2), tgen(3)))), functy(list(tgen(0)), tgen(2))));
   } else if (vn == REF_REC_TAIL) {
-    return polytype(4, qualtype(list(ConstraintPtr(new Constraint(RecordDeconstructor::constraintName(), list(tlong(1), tlong(0), tgen(0), tgen(1), tgen(2), tgen(3))))), functy(list(tgen(0)), tgen(3))));
+    return polytype(4, qualtype(list(std::make_shared<Constraint>(RecordDeconstructor::constraintName(), list(tlong(1), tlong(0), tgen(0), tgen(1), tgen(2), tgen(3)))), functy(list(tgen(0)), tgen(3))));
   } else if (vn == REF_TUP_TAIL) {
-    return polytype(4, qualtype(list(ConstraintPtr(new Constraint(RecordDeconstructor::constraintName(), list(tlong(1), tlong(1), tgen(0), tgen(1), tgen(2), tgen(3))))), functy(list(tgen(0)), tgen(3))));
+    return polytype(4, qualtype(list(std::make_shared<Constraint>(RecordDeconstructor::constraintName(), list(tlong(1), tlong(1), tgen(0), tgen(1), tgen(2), tgen(3)))), functy(list(tgen(0)), tgen(3))));
   } else {
     return PolyTypePtr();
   }

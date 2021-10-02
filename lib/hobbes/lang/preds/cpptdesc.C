@@ -1,7 +1,8 @@
 
-#include <hobbes/lang/preds/cpptdesc.H>
 #include <hobbes/lang/preds/class.H>
+#include <hobbes/lang/preds/cpptdesc.H>
 #include <hobbes/lang/typeinf.H>
+#include <memory>
 
 namespace hobbes {
 
@@ -255,7 +256,7 @@ ExprPtr CPPTypeDescP::unqualify(const TEnvPtr&, const ConstraintPtr& cst, const 
 
 PolyTypePtr CPPTypeDescP::lookup(const std::string& vn) const {
   if (vn == REF_CPPTDESC) {
-    return polytype(2, qualtype(list(ConstraintPtr(new Constraint(CPPTypeDescP::constraintName(), list(tgen(0), tgen(1))))), arrayty(primty("char"))));
+    return polytype(2, qualtype(list(std::make_shared<Constraint>(CPPTypeDescP::constraintName(), list(tgen(0), tgen(1)))), arrayty(primty("char"))));
   } else {
     return PolyTypePtr();
   }

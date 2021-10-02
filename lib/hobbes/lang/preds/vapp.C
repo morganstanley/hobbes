@@ -1,10 +1,11 @@
 
-#include <hobbes/lang/preds/vapp.H>
-#include <hobbes/lang/preds/class.H>
 #include <hobbes/lang/expr.H>
+#include <hobbes/lang/preds/class.H>
+#include <hobbes/lang/preds/vapp.H>
 #include <hobbes/lang/tylift.H>
 #include <hobbes/lang/typeinf.H>
 #include <hobbes/util/array.H>
+#include <memory>
 
 namespace hobbes {
 
@@ -151,7 +152,7 @@ void VariantAppP::explain(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, 
 PolyTypePtr VariantAppP::lookup(const std::string& vn) const {
   if (vn == REF_VAR_APP) {
     // variantApp :: (VariantApp v f r) => (v,f) -> r
-    return polytype(3, qualtype(list(ConstraintPtr(new Constraint(VariantAppP::constraintName(), list(tgen(0), tgen(1), tgen(2))))), functy(list(tgen(0), tgen(1)), tgen(2))));
+    return polytype(3, qualtype(list(std::make_shared<Constraint>(VariantAppP::constraintName(), list(tgen(0), tgen(1), tgen(2)))), functy(list(tgen(0), tgen(1)), tgen(2))));
   } else {
     return PolyTypePtr();
   }

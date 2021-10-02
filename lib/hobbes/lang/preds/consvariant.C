@@ -1,10 +1,11 @@
 
-#include <hobbes/lang/preds/consvariant.H>
-#include <hobbes/lang/preds/class.H>
 #include <hobbes/lang/expr.H>
+#include <hobbes/lang/preds/class.H>
+#include <hobbes/lang/preds/consvariant.H>
 #include <hobbes/lang/tylift.H>
 #include <hobbes/lang/typeinf.H>
 #include <hobbes/util/array.H>
+#include <memory>
 
 namespace hobbes {
 
@@ -120,13 +121,13 @@ void VariantDeconstructor::explain(const TEnvPtr&, const ConstraintPtr&, const E
 PolyTypePtr VariantDeconstructor::lookup(const std::string& vn) const {
   if (vn == REF_VAR_LABEL) {
     // variantHeadLabel :: (v=|a+vt|) => v -> [char]
-    return polytype(4, qualtype(list(ConstraintPtr(new Constraint(VariantDeconstructor::constraintName(), list(tlong(1), tgen(0), tgen(1), tgen(2), tgen(3))))), functy(list(tgen(0)), arrayty(prim<char>()))));
+    return polytype(4, qualtype(list(std::make_shared<Constraint>(VariantDeconstructor::constraintName(), list(tlong(1), tgen(0), tgen(1), tgen(2), tgen(3)))), functy(list(tgen(0)), arrayty(prim<char>()))));
   } else if (vn == REF_VAR_SPLIT) {
     // variantSplit :: (v=|a+vt|) => (v, closure a c, closure vt c) -> c
     return
       polytype(5,
         qualtype(
-          list(ConstraintPtr(new Constraint(VariantDeconstructor::constraintName(), list(tlong(1), tgen(0), tgen(1), tgen(2), tgen(3))))),
+          list(std::make_shared<Constraint>(VariantDeconstructor::constraintName(), list(tlong(1), tgen(0), tgen(1), tgen(2), tgen(3)))),
           functy(list(tgen(0), closty(list(tgen(2)), tgen(4)), closty(list(tgen(3)), tgen(4))), tgen(4))
         )
       );
@@ -135,7 +136,7 @@ PolyTypePtr VariantDeconstructor::lookup(const std::string& vn) const {
     return
       polytype(4,
         qualtype(
-          list(ConstraintPtr(new Constraint(VariantDeconstructor::constraintName(), list(tlong(1), tgen(0), tgen(1), tgen(2), tgen(3))))),
+          list(std::make_shared<Constraint>(VariantDeconstructor::constraintName(), list(tlong(1), tgen(0), tgen(1), tgen(2), tgen(3)))),
           functy(list(tgen(2)), tgen(0))
         )
       );
@@ -144,7 +145,7 @@ PolyTypePtr VariantDeconstructor::lookup(const std::string& vn) const {
     return
       polytype(4,
         qualtype(
-          list(ConstraintPtr(new Constraint(VariantDeconstructor::constraintName(), list(tlong(1), tgen(0), tgen(1), tgen(2), tgen(3))))),
+          list(std::make_shared<Constraint>(VariantDeconstructor::constraintName(), list(tlong(1), tgen(0), tgen(1), tgen(2), tgen(3)))),
           functy(list(tgen(3)), tgen(0))
         )
       );

@@ -1,10 +1,11 @@
 
 #include <hobbes/hobbes.H>
-#include <hobbes/lang/preds/class.H>
-#include <hobbes/lang/tyunqualify.H>
 #include <hobbes/ipc/nbindings.H>
 #include <hobbes/ipc/net.H>
+#include <hobbes/lang/preds/class.H>
+#include <hobbes/lang/tyunqualify.H>
 #include <map>
+#include <memory>
 
 namespace hobbes {
 
@@ -137,7 +138,7 @@ public:
 
   PolyTypePtr lookup(const std::string& vn) const override {
     if (vn == connectVar()) {
-      return polytype(2, qualtype(list(ConstraintPtr(new Constraint(constraintName(), list(tgen(0), tgen(1))))), tgen(1)));
+      return polytype(2, qualtype(list(std::make_shared<Constraint>(constraintName(), list(tgen(0), tgen(1)))), tgen(1)));
     } else {
       return PolyTypePtr();
     }
@@ -198,8 +199,8 @@ public:
           if (const TExpr* exprv = is<TExpr>(expr)) {
             if (isAllocatedConnection(conn) && !hasFreeVariables(inty)) {
               return *outty == *conn->output(exprv->expr(), inty);
-                     hobbes::satisfied(tenv, ConstraintPtr(new Constraint("BlockCodec", list(inty))), ds) &&
-                     hobbes::satisfied(tenv, ConstraintPtr(new Constraint("BlockCodec", list(outty))), ds);
+                     hobbes::satisfied(tenv, std::make_shared<Constraint>("BlockCodec", list(inty)), ds) &&
+                     hobbes::satisfied(tenv, std::make_shared<Constraint>("BlockCodec", list(outty)), ds);
             }
           }
         }
@@ -257,7 +258,7 @@ public:
     if (vn == netInvoke()) {
       // invoke :: (Invoke ch expr inty outty) => (connection ch, quote expr, inty) -> (promise ch outty)
       return polytype(4,
-        qualtype(list(ConstraintPtr(new Constraint(constraintName(), list(tgen(0), tgen(1), tgen(2), tgen(3))))),
+        qualtype(list(std::make_shared<Constraint>(constraintName(), list(tgen(0), tgen(1), tgen(2), tgen(3)))),
           functy(
             list(
               tapp(primty("connection"), list(tgen(0))),
@@ -309,8 +310,8 @@ private:
               MonoTypePtr urfnty = functy(list(intt), opaqueptr<char>(false));
               MonoTypePtr rfnty  = functy(list(intt), tuplety(list(outty)));
 
-              ConstraintPtr incst  = ConstraintPtr(new Constraint("BlockCodec", list(inty)));
-              ConstraintPtr outcst = ConstraintPtr(new Constraint("BlockCodec", list(tuplety(list(outty)))));
+              ConstraintPtr incst  = std::make_shared<Constraint>("BlockCodec", list(inty));
+              ConstraintPtr outcst = std::make_shared<Constraint>("BlockCodec", list(tuplety(list(outty))));
               ExprPtr qinvokeFn =
                 fn(str::strings(".ch", ".expr", ".x"),
                   // write the 'invoke expression' indicator byte
@@ -365,7 +366,7 @@ public:
       if (const TLong* chv = is<TLong>(ch)) {
         if (auto* conn = reinterpret_cast<Client*>(chv->value())) {
           if (isAllocatedConnection(conn) && !hasFreeVariables(rty)) {
-            return hobbes::satisfied(tenv, ConstraintPtr(new Constraint("BlockCodec", list(rty))), ds);
+            return hobbes::satisfied(tenv, std::make_shared<Constraint>("BlockCodec", list(rty)), ds);
           }
         }
       }
@@ -419,7 +420,7 @@ public:
     if (vn == receive()) {
       // receive :: (Receive ch outty) => (promise ch ty) -> ty
       return polytype(2,
-        qualtype(list(ConstraintPtr(new Constraint(constraintName(), list(tgen(0), tgen(1))))),
+        qualtype(list(std::make_shared<Constraint>(constraintName(), list(tgen(0), tgen(1)))),
           functy(
             list(
               tapp(primty("promise"), list(tgen(0), tgen(1)))

@@ -1,11 +1,12 @@
 
-#include <hobbes/hobbes.H>
 #include "test.H"
+#include <hobbes/hobbes.H>
+#include <memory>
 
 using namespace hobbes;
 
 TEST(TypeInf, Unification) {
-  MonoTypeUnifier u(TEnvPtr(new TEnv()));
+  MonoTypeUnifier u(std::make_shared<TEnv>());
 
   // test unification and substitution between recursive types
   MonoTypePtr t0(Recursive::make("x", sumtype(primty("unit"), tuplety(list(tvar("a"), tvar("x"))))));

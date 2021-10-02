@@ -5,6 +5,7 @@
 #include <hobbes/db/signals.H>
 #include <hobbes/eval/cc.H>
 #include <hobbes/eval/funcdefs.H>
+#include <memory>
 #include <unordered_map>
 
 namespace hobbes {
@@ -444,7 +445,7 @@ struct dballocF : public op {
   }
 
   PolyTypePtr type(typedb&) const override {
-    return PolyTypePtr(new PolyType(2, qualtype(Func::make(tuplety(list(primty("unit"))), fileRefTy(tgen(0), tgen(1))))));
+    return std::make_shared<PolyType>(2, qualtype(Func::make(tuplety(list(primty("unit"))), fileRefTy(tgen(0), tgen(1)))));
   }
 };
 
@@ -665,7 +666,7 @@ struct signalUpdateF : public op {
   }
 
   PolyTypePtr type(typedb&) const override {
-    return PolyTypePtr(new PolyType(3, qualtype(Func::make(tuplety(list(tapp(primty("file"), list(tlong(1), tgen(0))))), primty("unit")))));
+    return std::make_shared<PolyType>(3, qualtype(Func::make(tuplety(list(tapp(primty("file"), list(tlong(1), tgen(0))))), primty("unit"))));
   }
 };
 
@@ -1087,9 +1088,9 @@ public:
 
   PolyTypePtr lookup(const std::string& vn) const override {
     if (vn == READ_FILE_SYM) {
-      return polytype(2, qualtype(list(ConstraintPtr(new Constraint("LoadFile", list(tgen(0), fileType(false, tgen(1)))))), fileType(false, tgen(1))));
+      return polytype(2, qualtype(list(std::make_shared<Constraint>("LoadFile", list(tgen(0), fileType(false, tgen(1))))), fileType(false, tgen(1))));
     } else if (vn == WRITE_FILE_SYM) {
-      return polytype(2, qualtype(list(ConstraintPtr(new Constraint("LoadFile", list(tgen(0), fileType(true, tgen(1)))))), fileType(true, tgen(1))));
+      return polytype(2, qualtype(list(std::make_shared<Constraint>("LoadFile", list(tgen(0), fileType(true, tgen(1))))), fileType(true, tgen(1))));
     } else {
       return PolyTypePtr();
     }

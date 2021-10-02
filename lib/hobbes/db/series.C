@@ -1,6 +1,7 @@
 
-#include <hobbes/db/series.H>
 #include <atomic>
+#include <hobbes/db/series.H>
+#include <memory>
 
 namespace hobbes {
 
@@ -576,7 +577,7 @@ static CompressedStoredSeries::CAllocM compressedMAllocFn(cc* c, const MonoTypeP
         mt.second,
         str::strings("f"),
         list(tapp(primty("file"), list(primty("unit"), primty("unit")))),
-        fncall(assume(var("ucAllocModel", la), qualtype(list(ConstraintPtr(new Constraint("UCModel", list(t, freshTypeVar(), freshTypeVar())))), freshTypeVar()), la), list(var("f", la), constant(false, la)), la)
+        fncall(assume(var("ucAllocModel", la), qualtype(list(std::make_shared<Constraint>("UCModel", list(t, freshTypeVar(), freshTypeVar()))), freshTypeVar()), la), list(var("f", la), constant(false, la)), la)
       )
     );
   } else {
@@ -596,7 +597,7 @@ static CompressedStoredSeries::CPrepM compressedMPrepFn(cc* c, const MonoTypePtr
         primty("unit"),
         str::strings("w", "dm"),
         list(lift<UCWriter*>::type(*c), mt.second),
-        fncall(assume(var("ucPrepModel", la), qualtype(list(ConstraintPtr(new Constraint("UCModel", list(t, mt.first, mt.second)))), freshTypeVar()), la), list(
+        fncall(assume(var("ucPrepModel", la), qualtype(list(std::make_shared<Constraint>("UCModel", list(t, mt.first, mt.second))), freshTypeVar()), la), list(
           fncall(var("unsafeCast", la), list(fncall(var("ucWriterModelData", la), var("w", la), la)), la),
           var("dm", la)
         ), la)
@@ -618,7 +619,7 @@ static CompressedStoredSeries::CDeallocM compressedMDeallocFn(cc* c, const MonoT
         primty("unit"),
         str::strings("m"),
         list(mt.second),
-        fncall(assume(var("ucDeallocModel", la), qualtype(list(ConstraintPtr(new Constraint("UCModel", list(t, freshTypeVar(), freshTypeVar())))), freshTypeVar()), la), list(var("m", la)), la)
+        fncall(assume(var("ucDeallocModel", la), qualtype(list(std::make_shared<Constraint>("UCModel", list(t, freshTypeVar(), freshTypeVar()))), freshTypeVar()), la), list(var("m", la)), la)
       )
     );
   } else {

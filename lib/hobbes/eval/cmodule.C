@@ -10,6 +10,7 @@
 #include <hobbes/lang/typeinf.H>
 #include <hobbes/util/array.H>
 #include <hobbes/util/str.H>
+#include <memory>
 #include <stdexcept>
 
 namespace hobbes {
@@ -141,10 +142,10 @@ MonoTypes applyTypeDefns(const ModulePtr &m, cc *e, const MonoTypes &ts) {
 QualTypePtr applyTypeDefns(const ModulePtr &m, cc *e, const QualTypePtr &t) {
   Constraints cs;
   for (const auto &c : t->constraints()) {
-    cs.push_back(ConstraintPtr(
-        new Constraint(c->name(), applyTypeDefns(m, e, c->arguments()))));
+    cs.push_back(std::make_shared<Constraint>(
+        c->name(), applyTypeDefns(m, e, c->arguments())));
   }
-  return QualTypePtr(new QualType(cs, applyTypeDefns(m, e, t->monoType())));
+  return std::make_shared<QualType>(cs, applyTypeDefns(m, e, t->monoType()));
 }
 
 struct appTyDefnEF : public switchExprTyFn {
@@ -186,8 +187,8 @@ ModuleDefs applyTypeDefns(const ModulePtr &m, cc *e, const ModuleDefs &mds) {
 }
 
 ModulePtr applyTypeDefns(cc *e, const ModulePtr &m) {
-  return ModulePtr(
-      new Module(m->name(), applyTypeDefns(m, e, m->definitions())));
+  return std::make_shared<Module>(
+      m->name(), applyTypeDefns(m, e, m->definitions()));
 }
 
 // index type variables and sanity check names to ensure no duplicates
@@ -367,7 +368,7 @@ void compile(const ModulePtr &m, cc *e, const InstanceDef *id) {
       try {
         c->insert(
             e->typeEnv(),
-            TCInstancePtr(new TCInstance(id->className(), targs, ms, id->la())),
+            std::make_shared<TCInstance>(id->className(), targs, ms, id->la()),
             &ds);
         e->drainUnqualifyDefs(ds);
       } catch (...) {
@@ -375,8 +376,8 @@ void compile(const ModulePtr &m, cc *e, const InstanceDef *id) {
         throw;
       }
     } else {
-      c->insert(TCInstanceFnPtr(new TCInstanceFn(
-          id->className(), id->constraints(), targs, ms, id->la())));
+      c->insert(std::make_shared<TCInstanceFn>(
+          id->className(), id->constraints(), targs, ms, id->la()));
     }
   } catch (annotated_error &) {
     throw;

@@ -1,7 +1,8 @@
 
 #include <hobbes/lang/preds/appendsto/record.H>
-#include <hobbes/lang/typeinf.H>
 #include <hobbes/lang/preds/class.H>
+#include <hobbes/lang/typeinf.H>
+#include <memory>
 #include <sstream>
 
 namespace hobbes {
@@ -213,11 +214,11 @@ bool ATRecordEliminator::refine(const TEnvPtr& tenv, const MonoTypePtr& lhs, con
 
 PolyTypePtr ATRecordEliminator::lookup(const std::string& vn) const {
   if (vn == REF_REC_APPEND) {
-    return polytype(3, qualtype(list(ConstraintPtr(new Constraint(AppendsToUnqualifier::constraintName(), list(tgen(0), tgen(1), tgen(2))))), functy(list(tgen(0), tgen(1)), tgen(2))));
+    return polytype(3, qualtype(list(std::make_shared<Constraint>(AppendsToUnqualifier::constraintName(), list(tgen(0), tgen(1), tgen(2)))), functy(list(tgen(0), tgen(1)), tgen(2))));
   } else if (vn == REF_REC_PREFIX) {
-    return polytype(3, qualtype(list(ConstraintPtr(new Constraint(AppendsToUnqualifier::constraintName(), list(tgen(0), tgen(1), tgen(2))))), functy(list(tgen(2)), tgen(0))));
+    return polytype(3, qualtype(list(std::make_shared<Constraint>(AppendsToUnqualifier::constraintName(), list(tgen(0), tgen(1), tgen(2)))), functy(list(tgen(2)), tgen(0))));
   } else if (vn == REF_REC_SUFFIX) {
-    return polytype(3, qualtype(list(ConstraintPtr(new Constraint(AppendsToUnqualifier::constraintName(), list(tgen(0), tgen(1), tgen(2))))), functy(list(tgen(2)), tgen(1))));
+    return polytype(3, qualtype(list(std::make_shared<Constraint>(AppendsToUnqualifier::constraintName(), list(tgen(0), tgen(1), tgen(2)))), functy(list(tgen(2)), tgen(1))));
   } else {
     return PolyTypePtr();
   }

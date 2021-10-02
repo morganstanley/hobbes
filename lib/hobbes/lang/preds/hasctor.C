@@ -122,7 +122,7 @@ PolyTypePtr CtorVerifier::lookup(const std::string& vn) const {
   if (vn == MSELECT_CTOR_FN) {
     // select either the given constructor payload from a variant, or nothing
     // :: (|c/p|::v) => v -> (()+p)
-    return polytype(3, qualtype(list(ConstraintPtr(new Constraint(CtorVerifier::constraintName(), list(tgen(0), tgen(1), tgen(2))))), functy(list(tgen(0)), maybety(tgen(2)))));
+    return polytype(3, qualtype(list(std::make_shared<Constraint>(CtorVerifier::constraintName(), list(tgen(0), tgen(1), tgen(2)))), functy(list(tgen(0)), maybety(tgen(2)))));
   } else {
     return PolyTypePtr();
   }
