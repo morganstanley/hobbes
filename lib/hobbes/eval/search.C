@@ -12,7 +12,7 @@ struct findLabelsF : public switchType<unit> {
 
   unit with(const TString* v) const override {
     this->lbls->insert(v->value());
-    return unit();
+    return {};
   }
 
   unit with(const Variant* v) const override {
@@ -22,7 +22,7 @@ struct findLabelsF : public switchType<unit> {
       }
       switchOf(m.type, *this);
     }
-    return unit();
+    return {};
   }
 
   unit with(const Record* v) const override {
@@ -32,23 +32,23 @@ struct findLabelsF : public switchType<unit> {
       }
       switchOf(m.type, *this);
     }
-    return unit();
+    return {};
   }
 
   unit with(const TAbs*       v) const override { return switchOf(v->body(), *this); }
-  unit with(const TApp*       v) const override { switchOf(v->fn(), *this); switchOf(v->args(), *this); return unit(); }
+  unit with(const TApp*       v) const override { switchOf(v->fn(), *this); switchOf(v->args(), *this); return {}; }
   unit with(const FixedArray* v) const override { switchOf(v->type(), *this); return switchOf(v->length(), *this); }
   unit with(const Array*      v) const override { return switchOf(v->type(), *this); }
   unit with(const Func*       v) const override { switchOf(v->argument(), *this); return switchOf(v->result(), *this); }
   unit with(const Exists*     v) const override { return switchOf(v->absType(), *this); }
   unit with(const Recursive*  v) const override { return switchOf(v->recType(), *this); }
   
-  unit with(const Prim*        ) const override { return unit(); }
-  unit with(const OpaquePtr*   ) const override { return unit(); }
-  unit with(const TVar*        ) const override { return unit(); }
-  unit with(const TGen*        ) const override { return unit(); }
-  unit with(const TLong*       ) const override { return unit(); }
-  unit with(const TExpr*       ) const override { return unit(); }
+  unit with(const Prim*        ) const override { return {}; }
+  unit with(const OpaquePtr*   ) const override { return {}; }
+  unit with(const TVar*        ) const override { return {}; }
+  unit with(const TGen*        ) const override { return {}; }
+  unit with(const TLong*       ) const override { return {}; }
+  unit with(const TExpr*       ) const override { return {}; }
 };
 static void accumLabels(std::set<std::string>* lbls, const MonoTypePtr& t) {
   switchOf(t, findLabelsF(lbls));

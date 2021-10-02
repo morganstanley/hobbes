@@ -998,39 +998,39 @@ public:
   // we use these patterns for instructions that have specializations to work with a specific register (usually r0 aka "rax")
   static P reg(const std::string& name) {
     const auto& nreg = mreg(name);
-    return P(MLitReg, nreg.name, nreg.rsize, nreg.rclass);
+    return {MLitReg, nreg.name, nreg.rsize, nreg.rclass};
   }
 
   // partial register mapping
   // (match size and class, but leave 'name' free)
-  static P r8 () { return P(MReg, 1, RegClass::Int); }
-  static P r16() { return P(MReg, 2, RegClass::Int); }
-  static P r32() { return P(MReg, 4, RegClass::Int); }
-  static P r64() { return P(MReg, 8, RegClass::Int); }
+  static P r8 () { return {MReg, 1, RegClass::Int}; }
+  static P r16() { return {MReg, 2, RegClass::Int}; }
+  static P r32() { return {MReg, 4, RegClass::Int}; }
+  static P r64() { return {MReg, 8, RegClass::Int}; }
 
-  static P rf32() { return P(MReg, 4, RegClass::Float); }
-  static P rf64() { return P(MReg, 8, RegClass::Float); }
+  static P rf32() { return {MReg, 4, RegClass::Float}; }
+  static P rf64() { return {MReg, 8, RegClass::Float}; }
 
   // RM matching (accepting either register or memory arguments)
-  static P rm8()  { return P(MRM, 1, RegClass::Int); }
-  static P rm16() { return P(MRM, 2, RegClass::Int); }
-  static P rm32() { return P(MRM, 4, RegClass::Int); }
-  static P rm64() { return P(MRM, 8, RegClass::Int); }
+  static P rm8()  { return {MRM, 1, RegClass::Int}; }
+  static P rm16() { return {MRM, 2, RegClass::Int}; }
+  static P rm32() { return {MRM, 4, RegClass::Int}; }
+  static P rm64() { return {MRM, 8, RegClass::Int}; }
 
-  static P rmf32() { return P(MRM, 4, RegClass::Float); }
-  static P rmf64() { return P(MRM, 8, RegClass::Float); }
+  static P rmf32() { return {MRM, 4, RegClass::Float}; }
+  static P rmf64() { return {MRM, 8, RegClass::Float}; }
 
   // label references
-  static P lbl(RegSize sz = 4) { return P(MLabelRef, sz, RegClass::Int); }
+  static P lbl(RegSize sz = 4) { return {MLabelRef, sz, RegClass::Int}; }
 
   // exact immediate values (some instructions like SHL are specialized for exact value arguments)
-  static P imm8(int8_t x) { return P(MLitImm, x, 1, RegClass::Int); }
+  static P imm8(int8_t x) { return {MLitImm, x, 1, RegClass::Int}; }
 
   // immediate values matching by size
-  static P imm8 () { return P(MImm, 1, RegClass::Int); }
-  static P imm16() { return P(MImm, 2, RegClass::Int); }
-  static P imm32() { return P(MImm, 4, RegClass::Int); }
-  static P imm64() { return P(MImm, 8, RegClass::Int); }
+  static P imm8 () { return {MImm, 1, RegClass::Int}; }
+  static P imm16() { return {MImm, 2, RegClass::Int}; }
+  static P imm32() { return {MImm, 4, RegClass::Int}; }
+  static P imm64() { return {MImm, 8, RegClass::Int}; }
 
   // does an argument match this pattern?
   bool matches(const MArg& arg) const {
