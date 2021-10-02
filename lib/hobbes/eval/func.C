@@ -457,9 +457,9 @@ public:
       tupv->type(es[1]->type());
 
       Exprs argv;
-      for (auto m = cfty->members().begin(); m != cfty->members().end(); ++m) {
-        ExprPtr aprj(new Proj(tupv, m->field, tupv->la()));
-        aprj->type(qualtype(m->type));
+      for (const auto &m : cfty->members()) {
+        ExprPtr aprj(new Proj(tupv, m.field, tupv->la()));
+        aprj->type(qualtype(m.type));
         argv.push_back(aprj);
       }
 

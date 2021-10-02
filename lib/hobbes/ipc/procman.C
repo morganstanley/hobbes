@@ -197,11 +197,11 @@ struct ProcManUnqualify : public switchExprTyFn {
       str::seq  vns;
       Exprs     args;
 
-      for (size_t i = 0; i < argtys.size(); ++i) {
+      for (const auto &argty : argtys) {
         std::string vname = freshName();
 
         vns.push_back(vname);
-        args.push_back(var(vname, qualtype(argtys[i]), v->la()));
+        args.push_back(var(vname, qualtype(argty), v->la()));
       }
 
       return wrapWithTy(v->type(), new Fn(vns, makeInvocation(p, switchOf(v->record(), *this), v->field(), v->type()->monoType(), args), v->la()));

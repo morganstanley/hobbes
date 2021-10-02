@@ -250,9 +250,9 @@ void cc::drainUnqualifyDefs(const Definitions& ds) {
   this->drainingDefs = true;
 
   // forward declare the polymorphic functions, batch letrec compile the monomorphic functions
-  for (auto d = ds.begin(); d != ds.end(); ++d) {
-    const std::string& vname = d->first;
-    const ExprPtr&     e     = d->second;
+  for (const auto &d : ds) {
+    const std::string& vname = d.first;
+    const ExprPtr&     e     = d.second;
 
     bool forwardDeclared = this->tenv->hasBinding(vname) && !hasValueBinding(vname);
 

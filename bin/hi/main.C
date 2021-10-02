@@ -710,8 +710,8 @@ int main(int argc, char** argv) {
 
     // load any modules passed in
     if (!args.mfiles.empty()) {
-      for (ModuleFiles::const_iterator m = args.mfiles.begin(); m != args.mfiles.end(); ++m) {
-        eval->loadModule(str::expandPath(*m));
+      for (const auto &mfile : args.mfiles) {
+        eval->loadModule(str::expandPath(mfile));
       }
     }
 

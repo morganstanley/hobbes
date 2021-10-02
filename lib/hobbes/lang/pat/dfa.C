@@ -219,8 +219,8 @@ void dropUnusedColumns(PatternRows* out, const PatternRows& in) {
   std::set<size_t> usedColumns;
   for (size_t c = 0; c < in[0].patterns.size(); ++c) {
     bool hasUse = false;
-    for (size_t r = 0; r < in.size(); ++r) {
-      if (is<MatchAny>(in[r].patterns[c]) == nullptr) {
+    for (const auto &r : in) {
+      if (is<MatchAny>(r.patterns[c]) == nullptr) {
         hasUse = true;
         break;
       }
@@ -233,12 +233,12 @@ void dropUnusedColumns(PatternRows* out, const PatternRows& in) {
   if (usedColumns.size() == in[0].patterns.size()) {
     *out = in;
   } else {
-    for (size_t r = 0; r < in.size(); ++r) {
+    for (const auto &r : in) {
       Patterns ps;
-      for (auto c : usedColumns) {
-        ps.push_back(in[r].patterns[c]);
+      for (const auto c : usedColumns) {
+        ps.push_back(r.patterns[c]);
       }
-      out->push_back(PatternRow(ps, in[r].guard, in[r].result));
+      out->push_back(PatternRow(ps, r.guard, r.result));
     }
   }
 }
@@ -489,8 +489,8 @@ MStatePtr makeArrayState(MDFA* dfa, const PatternRows& ps, size_t c) {
 // split on string matching
 size_t maxStringLen(const PatternRows& ps, size_t c) {
   size_t mlen = 0;
-  for (size_t r = 0; r < ps.size(); ++r) {
-    if (const MatchArray* ma = is<MatchArray>(ps[r].patterns[c])) {
+  for (const auto &p : ps) {
+    if (const MatchArray* ma = is<MatchArray>(p.patterns[c])) {
       mlen = std::max<size_t>(ma->size(), mlen);
     }
   }
@@ -574,8 +574,8 @@ MStatePtr makeCharArrayState(MDFA* dfa, const PatternRows& ps, size_t c) {
 
   // generate the successor table
   PatternRows nps;
-  for (size_t r = 0; r < ps.size(); ++r) {
-    addSATableRow(mlen, ps[r], c, &nps);
+  for (const auto &p : ps) {
+    addSATableRow(mlen, p, c, &nps);
   }
 
   // and that's it!
@@ -584,8 +584,8 @@ MStatePtr makeCharArrayState(MDFA* dfa, const PatternRows& ps, size_t c) {
 
 bool canMakeCharArrayState(const PatternRows& ps, size_t c) {
   bool seemsLegit = false;
-  for (size_t r = 0; r < ps.size(); ++r) {
-    if (const MatchArray* ma = is<MatchArray>(ps[r].patterns[c])) {
+  for (const auto &p : ps) {
+    if (const MatchArray* ma = is<MatchArray>(p.patterns[c])) {
       for (size_t i = 0; i < ma->size(); ++i) {
         if (const MatchLiteral* ml = is<MatchLiteral>(ma->pattern(i))) {
           if (is<Char>(ml->equivConstant()) != nullptr) {
@@ -595,7 +595,7 @@ bool canMakeCharArrayState(const PatternRows& ps, size_t c) {
           return false;
         }
       }
-    } else if (is<MatchAny>(ps[r].patterns[c]) == nullptr) {
+    } else if (is<MatchAny>(p.patterns[c]) == nullptr) {
       return false;
     }
   }
@@ -632,15 +632,15 @@ MStatePtr makeRecordState(MDFA* dfa, const PatternRows& ps, size_t c) {
   // eliminate this column and add new columns for field patterns
   PatternRows cdef;
 
-  for (size_t r = 0; r < ps.size(); ++r) {
-    if (const MatchRecord* mr = is<MatchRecord>(ps[r].patterns[c])) {
-      copyRowWithoutColumn(&cdef, ps[r], c);
+  for (const auto &p : ps) {
+    if (const MatchRecord* mr = is<MatchRecord>(p.patterns[c])) {
+      copyRowWithoutColumn(&cdef, p, c);
       prependPatterns(&cdef.back(), recordFieldPatterns(*mr));
-    } else if (is<MatchAny>(ps[r].patterns[c]) != nullptr) {
-      copyRowWithoutColumn(&cdef, ps[r], c);
+    } else if (is<MatchAny>(p.patterns[c]) != nullptr) {
+      copyRowWithoutColumn(&cdef, p, c);
       prependPatterns(&cdef.back(), arrayAnyMatches(defs.size()));
     } else {
-      throw annotated_error(*ps[r].patterns[c], "Internal error, invalid pattern table received");
+      throw annotated_error(*p.patterns[c], "Internal error, invalid pattern table received");
     }
   }
 
@@ -803,8 +803,8 @@ struct makeSuccStateF : public switchPattern<MStatePtr> {
   // if we have a 'match array' column but it's got a regex somewhere, then we actually
   // need to apply regex match logic (otherwise we can match as an array)
   MStatePtr with(const MatchArray*) const override {
-    for (size_t r = 0; r < ps.size(); ++r) {
-      if (is<MatchRegex>(ps[r].patterns[c]) != nullptr) {
+    for (const auto &p : ps) {
+      if (is<MatchRegex>(p.patterns[c]) != nullptr) {
         return makeRegexState(dfa, regexNormalize(ps, c), c);
       }
     }
@@ -815,9 +815,9 @@ struct makeSuccStateF : public switchPattern<MStatePtr> {
   // (this allows mixing of literal matches and regex matches in a single column)
   static PatternRows regexNormalize(const PatternRows& ps, size_t c) {
     PatternRows nps = ps;
-    for (size_t r = 0; r < nps.size(); ++r) {
-      if (const MatchArray* ma = is<MatchArray>(nps[r].patterns[c])) {
-        nps[r].patterns[c] = MatchRegex::toRegex(*ma);
+    for (auto &np : nps) {
+      if (const MatchArray* ma = is<MatchArray>(np.patterns[c])) {
+        np.patterns[c] = MatchRegex::toRegex(*ma);
       }
     }
     return nps;
@@ -914,8 +914,8 @@ bool isPrimSelection(bool alwaysLowerPrimMatchTables, const PatternRows& ps) {
   }
 
   // there can't be any guards in a primitive selection
-  for (size_t r = 0; r < ps.size(); ++r) {
-    if (ps[r].guard) {
+  for (const auto &p : ps) {
+    if (p.guard) {
       return false;
     }
   }
@@ -925,8 +925,8 @@ bool isPrimSelection(bool alwaysLowerPrimMatchTables, const PatternRows& ps) {
   bool seemsLegit = false;
 
   for (size_t c = 0; c < ps[0].patterns.size(); ++c) {
-    for (size_t r = 0; r < ps.size(); ++r) {
-      if (const MatchLiteral* ml = is<MatchLiteral>(ps[r].patterns[c])) {
+    for (const auto &p : ps) {
+      if (const MatchLiteral* ml = is<MatchLiteral>(p.patterns[c])) {
         if (ml->expression()) {
           return false;
         } else {
@@ -934,7 +934,7 @@ bool isPrimSelection(bool alwaysLowerPrimMatchTables, const PatternRows& ps) {
           seemsLegit = true;
           break;
         }
-      } else if (is<MatchAny>(ps[r].patterns[c]) == nullptr) {
+      } else if (is<MatchAny>(p.patterns[c]) == nullptr) {
         return false;
       }
     }
@@ -947,8 +947,8 @@ bool isPrimSelection(bool alwaysLowerPrimMatchTables, const PatternRows& ps) {
 PrimFArgs makePrimFArgs(const PatternRows& ps) {
   PrimFArgs args;
   for (size_t c = 0; c < ps[0].patterns.size(); ++c) {
-    for (size_t r = 0; r < ps.size(); ++r) {
-      if (const MatchLiteral* ml = is<MatchLiteral>(ps[r].patterns[c])) {
+    for (const auto & p : ps) {
+      if (const MatchLiteral* ml = is<MatchLiteral>(p.patterns[c])) {
         args.push_back(PrimFArg(ml->name(), ml->equivConstant()->primType()));
         break;
       }
@@ -1485,12 +1485,12 @@ llvm::Function* makePrimMatchDFAFunc(const std::string& fname, MDFA* dfa, statei
 
   Args fargs;
   llvm::Function::arg_iterator a = result->arg_begin();
-  for (unsigned int i = 0; i < args.size(); ++i) {
-    if (isUnit(args[i].second)) {
-      fargs[args[i].first] = cvalue(true);
+  for (const auto &arg : args) {
+    if (isUnit(arg.second)) {
+      fargs[arg.first] = cvalue(true);
     } else {
-      a->setName(args[i].first);
-      fargs[args[i].first] = &*a;
+      a->setName(arg.first);
+      fargs[arg.first] = &*a;
       ++a;
     }
   }

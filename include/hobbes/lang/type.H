@@ -793,16 +793,16 @@ template <typename T>
 template <typename T>
   std::vector<T> switchOf(const MonoTypes& ts, const switchType<T>& f) {
     std::vector<T> result;
-    for (auto t = ts.begin(); t != ts.end(); ++t) {
-      result.push_back(switchOf(*t, f));
+    for (const auto &t : ts) {
+      result.push_back(switchOf(t, f));
     }
     return result;
   }
 
 template <typename T>
   T switchOf(const MonoTypes& ts, T s, T (*appendF)(T,T), const switchType<T>& f) {
-    for (auto t = ts.begin(); t != ts.end(); ++t) {
-      s = appendF(s, switchOf(*t, f));
+    for (const auto &t : ts) {
+      s = appendF(s, switchOf(t, f));
     }
     return s;
   }
@@ -821,8 +821,8 @@ template <typename K, typename T>
 template <typename T>
   Variant::Members switchOf(const Variant::Members& ms, const switchType<T>& f) {
     Variant::Members r;
-    for (auto m = ms.begin(); m != ms.end(); ++m) {
-      r.push_back(Variant::Member(m->selector, switchOf(m->type, f), m->id));
+    for (const auto &m : ms) {
+      r.push_back(Variant::Member(m.selector, switchOf(m.type, f), m.id));
     }
     return r;
   }
@@ -830,16 +830,16 @@ template <typename T>
 template <typename T>
   Record::Members switchOf(const Record::Members& ms, const switchType<T>& f) {
     Record::Members r;
-    for (auto m = ms.begin(); m != ms.end(); ++m) {
-      r.push_back(Record::Member(m->field, switchOf(m->type, f), m->offset));
+    for (const auto &m : ms) {
+      r.push_back(Record::Member(m.field, switchOf(m.type, f), m.offset));
     }
     return r;
   }
 
 inline MonoTypes selectTypes(const Variant::Members& ms) {
   MonoTypes r;
-  for (auto m = ms.begin(); m != ms.end(); ++m) {
-    r.push_back(m->type);
+  for (const auto &m : ms) {
+    r.push_back(m.type);
   }
   return r;
 }
@@ -854,8 +854,8 @@ inline str::seq selectNames(const Variant::Members& ms) {
 
 inline MonoTypes selectTypes(const Record::Members& ms) {
   MonoTypes r;
-  for (auto m = ms.begin(); m != ms.end(); ++m) {
-    r.push_back(m->type);
+  for (const auto &m : ms) {
+    r.push_back(m.type);
   }
   return r;
 }

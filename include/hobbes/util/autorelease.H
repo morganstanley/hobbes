@@ -24,8 +24,8 @@ struct AutoreleaseSet {
 
   static void reset() {
     ResetFns& rfs = resetFns();
-    for (ResetFns::const_iterator f = rfs.begin(); f != rfs.end(); ++f) {
-      (*f)();
+    for (auto rf : rfs) {
+      rf();
     }
   }
 };

@@ -41,8 +41,8 @@ unsigned int maxStrLen(const seq& col) {
 
 lengths maxStrLen(const seqs& tbl) {
   lengths r;
-  for (unsigned int c = 0; c < tbl.size(); ++c) {
-    r.push_back(maxStrLen(tbl[c]));
+  for (const auto &c : tbl) {
+    r.push_back(maxStrLen(c));
   }
   return r;
 }
@@ -71,8 +71,8 @@ seq leftAlign(const seq& col) {
   size_t w = maxStrLen(col);
   seq r;
   r.reserve(col.size());
-  for (auto s = col.begin(); s != col.end(); ++s) {
-    r.push_back(leftAlign(w, *s));
+  for (const auto &s : col) {
+    r.push_back(leftAlign(w, s));
   }
   return r;
 }
@@ -81,8 +81,8 @@ seq rightAlign(const seq& col) {
   size_t w = maxStrLen(col);
   seq r;
   r.reserve(col.size());
-  for (auto s = col.begin(); s != col.end(); ++s) {
-    r.push_back(rightAlign(w, *s));
+  for (const auto &s : col) {
+    r.push_back(rightAlign(w, s));
   }
   return r;
 }
@@ -99,8 +99,8 @@ seqs leftAlign(const seqs& tbl) {
 seqs rightAlign(const seqs& tbl) {
   seqs r;
   r.reserve(tbl.size());
-  for (auto c = tbl.begin(); c != tbl.end(); ++c) {
-    r.push_back(rightAlign(*c));
+  for (const auto &c : tbl) {
+    r.push_back(rightAlign(c));
   }
   return r;
 }
@@ -122,8 +122,8 @@ bool validTable(const seqs& tbl) {
 void printAlignedTable(std::ostream& out, const seqs& tbl) {
   if (validTable(tbl)) {
     // draw the header
-    for (auto c = tbl.begin(); c != tbl.end(); ++c) {
-      out << (*c)[0] << " ";
+    for (const auto &c : tbl) {
+      out << c[0] << " ";
     }
     out << "\n";
 
@@ -136,8 +136,8 @@ void printAlignedTable(std::ostream& out, const seqs& tbl) {
 
     // draw the data
     for (size_t r = 1; r < tbl[0].size(); ++r) {
-      for (auto c = tbl.begin(); c != tbl.end(); ++c) {
-        out << (*c)[r] << " ";
+      for (const auto &c : tbl) {
+        out << c[r] << " ";
       }
       out << "\n";
     }
@@ -156,8 +156,8 @@ void printHeadlessAlignedTable(std::ostream& out, const seqs& tbl) {
   if (validTable(tbl)) {
     for (size_t r = 0; r < tbl[0].size(); ++r) {
       if (r > 0) out << "\n";
-      for (auto c = tbl.begin(); c != tbl.end(); ++c) {
-        out << (*c)[r] << " ";
+      for (const auto &c : tbl) {
+        out << c[r] << " ";
       }
     }
   }
@@ -304,8 +304,8 @@ std::string hex(unsigned char x) {
 std::string hex(const std::vector<unsigned char>& cs) {
   std::ostringstream ss;
   ss << "0x";
-  for (auto c = cs.begin(); c != cs.end(); ++c) {
-    ss << hex(*c);
+  for (const unsigned char c : cs) {
+    ss << hex(c);
   }
   return ss.str();
 }

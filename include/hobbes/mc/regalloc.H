@@ -1045,9 +1045,9 @@ inline RInsts saveCalleeSaveRegs(const RInsts& insts) {
 
   if (csaveInsts.empty()) {
     const auto& csaveRegs = calleeSaveRegs();
-    for (auto r = csaveRegs.begin(); r != csaveRegs.end(); ++r) {
-      std::string n = ".save." + regName(*r);
-      csaveInsts.push_back(RInst::make("mov", RArg::reg(n, r->rsize, r->rclass), RArg::reg(stdRegName(r->name, r->rclass), r->rsize, r->rclass)));
+    for (const auto &csaveReg : csaveRegs) {
+      std::string n = ".save." + regName(csaveReg);
+      csaveInsts.push_back(RInst::make("mov", RArg::reg(n, csaveReg.rsize, csaveReg.rclass), RArg::reg(stdRegName(csaveReg.name, csaveReg.rclass), csaveReg.rsize, csaveReg.rclass)));
     }
     for (auto r = csaveRegs.rbegin(); r != csaveRegs.rend(); ++r) {
       std::string n = ".save." + regName(*r);

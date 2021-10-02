@@ -70,8 +70,8 @@ ExprPtr UnqualifierSet::unqualify(const TEnvPtr& tenv, const ConstraintPtr& cst,
 }
 
 PolyTypePtr UnqualifierSet::lookup(const std::string& vn) const {
-  for (auto uq = this->uqs.begin(); uq != this->uqs.end(); ++uq) {
-    PolyTypePtr pt = uq->second->lookup(vn);
+  for (const auto &uq : this->uqs) {
+    PolyTypePtr pt = uq.second->lookup(vn);
     if (pt != PolyTypePtr()) {
       return pt;
     }
@@ -81,8 +81,8 @@ PolyTypePtr UnqualifierSet::lookup(const std::string& vn) const {
 
 SymSet UnqualifierSet::bindings() const {
   SymSet r;
-  for (auto uq = this->uqs.begin(); uq != this->uqs.end(); ++uq) {
-    SymSet qr = uq->second->bindings();
+  for (const auto &uq : this->uqs) {
+    SymSet qr = uq.second->bindings();
     r.insert(qr.begin(), qr.end());
   }
   return r;
@@ -99,8 +99,8 @@ FunDeps UnqualifierSet::dependencies(const ConstraintPtr& cst) const {
 
 bool hasConstraint(const ConstraintPtr& c, const Constraints& cs) {
   Constraints r;
-  for (auto ci = cs.begin(); ci != cs.end(); ++ci) {
-    if (*c == **ci) {
+  for (const auto &ci : cs) {
+    if (*c == *ci) {
       return true;
     }
   }
@@ -113,9 +113,9 @@ bool hasConstraint(const ConstraintPtr& c, const QualTypePtr& qt) {
 
 Constraints removeConstraint(const ConstraintPtr& c, const Constraints& cs) {
   Constraints r;
-  for (auto ci = cs.begin(); ci != cs.end(); ++ci) {
-    if (!(*c == **ci)) {
-      r.push_back(*ci);
+  for (const auto &ci : cs) {
+    if (!(*c == *ci)) {
+      r.push_back(ci);
     }
   }
   return r;

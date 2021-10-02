@@ -28,9 +28,9 @@ Values removeUnit(const Values& vs, const MonoTypes& mts) {
 
 MonoTypes removeUnit(const MonoTypes& mts) {
   MonoTypes r;
-  for (auto mt = mts.begin(); mt != mts.end(); ++mt) {
-    if (!isUnit(*mt)) {
-      r.push_back(*mt);
+  for (const auto &mt : mts) {
+    if (!isUnit(mt)) {
+      r.push_back(mt);
     }
   }
   return r;
@@ -38,9 +38,9 @@ MonoTypes removeUnit(const MonoTypes& mts) {
 
 Record::Members removeUnit(const Record::Members& ms) {
   Record::Members r;
-  for (auto m = ms.begin(); m != ms.end(); ++m) {
-    if (!isUnit(m->type)) {
-      r.push_back(*m);
+  for (const auto &m : ms) {
+    if (!isUnit(m.type)) {
+      r.push_back(m);
     }
   }
   return r;
@@ -278,10 +278,10 @@ public:
     } else {
       llvm::Value* p = compileAllocStmt(sizeOf(mrty), alignment(mrty), toLLVM(mrty, true));
 
-      for (RecordValue::const_iterator rv = vs.begin(); rv != vs.end(); ++rv) {
-        llvm::Value* fv  = rv->second;
-        llvm::Value* fp  = structFieldPtr(p, rty->alignedIndex(rv->first));
-        MonoTypePtr  fty = rty->member(rv->first);
+      for (const auto &v : vs) {
+        llvm::Value* fv  = v.second;
+        llvm::Value* fp  = structFieldPtr(p, rty->alignedIndex(v.first));
+        MonoTypePtr  fty = rty->member(v.first);
 
         withContext([&](auto&) {
           if (isLargeType(fty)) {
@@ -321,9 +321,9 @@ public:
     if (v->defaultExpr().get() != nullptr) {
       std::string pn = freshName();
 
-      for (auto vm = vty->members().begin(); vm != vty->members().end(); ++vm) {
-        if (!v->hasBinding(vm->selector)) {
-          v->addBinding(vm->selector, pn, v->defaultExpr());
+      for (const auto &vm : vty->members()) {
+        if (!v->hasBinding(vm.selector)) {
+          v->addBinding(vm.selector, pn, v->defaultExpr());
         }
       }
     }
@@ -363,17 +363,17 @@ public:
     using MergeLinks = std::vector<MergeLink>;
     MergeLinks mergeLinks;
 
-    for (auto b = v->bindings().begin(); b != v->bindings().end(); ++b) {
-      unsigned int      caseID    = vty->id(b->selector);
+    for (const auto &b : v->bindings()) {
+      unsigned int      caseID    = vty->id(b.selector);
       withContext([&](llvm::LLVMContext& c) {
         llvm::BasicBlock* caseBlock = llvm::BasicBlock::Create(c, "case_" + str::from(caseID), thisFn);
 
         builder()->SetInsertPoint(caseBlock);
         try {
-          MonoTypePtr valty = vty->payload(b->selector);
+          MonoTypePtr valty = vty->payload(b.selector);
 
           if (isUnit(valty)) {
-            beginScope(b->vname, cvalue(true)); // this is unit, so should never be looked at
+            beginScope(b.vname, cvalue(true)); // this is unit, so should never be looked at
           } else {
             // otherwise the data here is available inline
             // (and functions are stored as pointers)
@@ -381,10 +381,10 @@ public:
             llvm::Value* pointval = builder()->CreateBitCast(pval, ptrType(lty));
             llvm::Value* val      = isLargeType(valty) ? pointval : builder()->CreateLoad(pointval, false);
 
-            beginScope(b->vname, val);
+            beginScope(b.vname, val);
           }
 
-          llvm::Value* caseValue = switchOf(b->exp, compileExpF("", this->c));
+          llvm::Value* caseValue = switchOf(b.exp, compileExpF("", this->c));
           mergeLinks.push_back(MergeLink(caseValue, builder()->GetInsertBlock()));
           builder()->CreateBr(mergeBlock);
           endScope();
@@ -421,8 +421,8 @@ public:
         return cvalue(true);
       } else {
         llvm::PHINode* pn = builder()->CreatePHI(toLLVM(casety, true), mergeLinks.size());
-        for (MergeLinks::const_iterator ml = mergeLinks.begin(); ml != mergeLinks.end(); ++ml) {
-          pn->addIncoming(ml->first, ml->second);
+        for (const auto &mergeLink : mergeLinks) {
+          pn->addIncoming(mergeLink.first, mergeLink.second);
         }
         return pn;
       }
@@ -482,8 +482,8 @@ public:
         return cvalue(true);
       } else {
         llvm::PHINode* pn = builder()->CreatePHI(toLLVM(casety, true), mergeLinks.size());
-        for (MergeLinks::const_iterator ml = mergeLinks.begin(); ml != mergeLinks.end(); ++ml) {
-          pn->addIncoming(ml->first, ml->second);
+        for (const auto &mergeLink : mergeLinks) {
+          pn->addIncoming(mergeLink.first, mergeLink.second);
         }
         return pn;
       }
@@ -602,10 +602,10 @@ private:
 
   RecordValue compileRecordFields(const MkRecord::FieldDefs& fs) const {
     RecordValue r;
-    for (auto f = fs.begin(); f != fs.end(); ++f) {
-      if (!isUnit(requireMonotype(f->second->type()))) {
-        llvm::Value* v = compile(f->second);
-        r.push_back(FieldValue(f->first, v));
+    for (const auto &f : fs) {
+      if (!isUnit(requireMonotype(f.second->type()))) {
+        llvm::Value* v = compile(f.second);
+        r.push_back(FieldValue(f.first, v));
       }
     }
     return r;

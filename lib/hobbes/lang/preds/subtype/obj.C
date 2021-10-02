@@ -187,14 +187,14 @@ PolyTypePtr Objs::generalize(const MonoTypePtr& mt) const {
   int                tvs = 0;
   Constraints        cs;
 
-  for (unsigned int a = 0; a < fatys.size(); ++a) {
-    if (isObjType(fatys[a])) {
+  for (const auto &faty : fatys) {
+    if (isObjType(faty)) {
       MonoTypePtr tgv(TGen::make(tvs));
       nfatys.push_back(tgv);
-      cs.push_back(ConstraintPtr(new Constraint(SubtypeUnqualifier::constraintName(), list(tgv, fatys[a]))));
+      cs.push_back(ConstraintPtr(new Constraint(SubtypeUnqualifier::constraintName(), list(tgv, faty))));
       ++tvs;
     } else {
-      nfatys.push_back(fatys[a]);
+      nfatys.push_back(faty);
     }
   }
 
@@ -277,8 +277,8 @@ ExprPtr applyAdjustment(const PtrAdjustment& p, const ExprPtr& e) {
 
 ExprPtr applyAdjustments(const PtrAdjustmentPath& p, const ExprPtr& e) {
   ExprPtr r = e;
-  for (unsigned int i = 0; i < p.size(); ++i) {
-    r = applyAdjustment(p[i], r);
+  for (const auto &i : p) {
+    r = applyAdjustment(i, r);
   }
   return r;
 }
@@ -347,9 +347,9 @@ struct ObjUnqualify : public switchExprTyFn {
       Exprs   args = switchOf(v->args(), *this);
       Idxs    ixs  = coercionIndexes(this->tenv, v->fn(), this->isa.greater, this->ds);
 
-      for (Idxs::const_iterator ix = ixs.begin(); ix != ixs.end(); ++ix) {
-        if (*args[*ix]->type()->monoType() == *this->isa.lower) {
-          args[*ix] = applyAdjustments(this->objs->adjustment(this->constraint), args[*ix]);
+      for (const unsigned long ix : ixs) {
+        if (*args[ix]->type()->monoType() == *this->isa.lower) {
+          args[ix] = applyAdjustments(this->objs->adjustment(this->constraint), args[ix]);
         }
       }
 
@@ -372,8 +372,8 @@ struct ObjUnqualify : public switchExprTyFn {
     Idxs result;
     const MonoTypes& atys = ffty->parameters();
     for (size_t i = 0; i < atys.size(); ++i) {
-      for (MonoTypes::const_iterator cty = ctys.begin(); cty != ctys.end(); ++cty) {
-        if (*atys[i] == **cty) {
+      for (const auto &cty : ctys) {
+        if (*atys[i] == *cty) {
           result.push_back(i);
         }
       }
@@ -383,9 +383,9 @@ struct ObjUnqualify : public switchExprTyFn {
 
   static MonoTypes convFroms(const Constraints& cs, const MonoTypePtr& convTo) {
     MonoTypes result;
-    for (auto c = cs.begin(); c != cs.end(); ++c) {
+    for (const auto &c : cs) {
       Subtype sc;
-      if (dec(*c, &sc)) {
+      if (dec(c, &sc)) {
         if (*sc.greater == *convTo) {
           result.push_back(sc.lower);
         }

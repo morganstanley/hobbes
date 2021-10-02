@@ -15,10 +15,10 @@ void removeRuleDefs(terminal* s, grammar* g) {
 }
 
 void removeRuleRefs(terminal* s, grammar* g) {
-  for (auto sd = g->begin(); sd != g->end(); ++sd) {
-    for (nat r = 0; r < sd->second.size();) {
-      if (in(s, sd->second[r])) {
-        sd->second.erase(sd->second.begin() + r);
+  for (auto &sd : *g) {
+    for (nat r = 0; r < sd.second.size();) {
+      if (in(s, sd.second[r])) {
+        sd.second.erase(sd.second.begin() + r);
       } else {
         ++r;
       }
@@ -58,10 +58,10 @@ terminalset topLevelSymbols(const grammar& g) {
   terminalset result;
   terminalset dsyms = definedSymbols(g);
 
-  for (auto t = dsyms.begin(); t != dsyms.end(); ++t) {
-    terminalset users = symbolsUsing(g, *t);
-    if (users.empty() || (users.size() == 1 && in(*t, users))) {
-      result.insert(*t);
+  for (auto *dsym : dsyms) {
+    terminalset users = symbolsUsing(g, dsym);
+    if (users.empty() || (users.size() == 1 && in(dsym, users))) {
+      result.insert(dsym);
     }
   }
 
@@ -69,19 +69,19 @@ terminalset topLevelSymbols(const grammar& g) {
 }
 
 void symbolsUsed(const grammar& g, const rule& r, terminalset* ss) {
-  for (auto t = r.begin(); t != r.end(); ++t) {
-    if (hasRule(g, *t)) {
-      if (!in(*t, *ss)) {
-        ss->insert(*t);
-        symbolsUsed(g, *t, ss);
+  for (auto *t : r) {
+    if (hasRule(g, t)) {
+      if (!in(t, *ss)) {
+        ss->insert(t);
+        symbolsUsed(g, t, ss);
       }
     }
   }
 }
 
 void symbolsUsed(const grammar& g, const rules& rs, terminalset* ss) {
-  for (auto r = rs.begin(); r != rs.end(); ++r) {
-    symbolsUsed(g, *r, ss);
+  for (const auto &r : rs) {
+    symbolsUsed(g, r, ss);
   }
 }
 
@@ -102,9 +102,9 @@ terminalset symbolsUsing(const grammar& g, terminal* s) {
   terminalset result;
   terminalset dsyms = definedSymbols(g);
 
-  for (auto t = dsyms.begin(); t != dsyms.end(); ++t) {
-    if (in(s, symbolsUsed(g, *t))) {
-      result.insert(*t);
+  for (auto *dsym : dsyms) {
+    if (in(s, symbolsUsed(g, dsym))) {
+      result.insert(dsym);
     }
   }
 
@@ -146,8 +146,8 @@ bool directlyDerivesNull(const rule& r) {
 
 bool directlyDerivesNull(const grammar& g, terminal* s) {
   const rules* rs = aggRules(g, s);
-  for (auto r = rs->begin(); r != rs->end(); ++r) {
-    if (directlyDerivesNull(*r)) {
+  for (const auto &r : *rs) {
+    if (directlyDerivesNull(r)) {
       return true;
     }
   }
@@ -155,8 +155,8 @@ bool directlyDerivesNull(const grammar& g, terminal* s) {
 }
 
 bool derivesNull(const terminalset& nullAggs, const rule& r) {
-  for (auto v = r.begin(); v != r.end(); ++v) {
-    if (nullAggs.find(*v) == nullAggs.end()) {
+  for (auto *v : r) {
+    if (nullAggs.find(v) == nullAggs.end()) {
       return false;
     }
   }
@@ -165,8 +165,8 @@ bool derivesNull(const terminalset& nullAggs, const rule& r) {
 
 bool derivesNull(const grammar& g, const terminalset& nullAggs, terminal* s) {
   const rules* rs = aggRules(g, s);
-  for (auto r = rs->begin(); r != rs->end(); ++r) {
-    if (derivesNull(nullAggs, *r)) {
+  for (const auto & r : *rs) {
+    if (derivesNull(nullAggs, r)) {
       return true;
     }
   }
@@ -174,8 +174,8 @@ bool derivesNull(const grammar& g, const terminalset& nullAggs, terminal* s) {
 }
 
 bool derivesNull(const grammar& g, const terminalset& nullAggs, const terminals& ss) {
-  for (auto s = ss.begin(); s != ss.end(); ++s) {
-    if (!derivesNull(g, nullAggs, *s)) {
+  for (auto *s : ss) {
+    if (!derivesNull(g, nullAggs, s)) {
       return false;
     }
   }
@@ -254,8 +254,8 @@ void show(std::ostream& out, const grammar& g, const item& i) {
 }
 
 void show(std::ostream& out, const grammar& g, const itemset& is) {
-  for (auto i = is.begin(); i != is.end(); ++i) {
-    show(out, g, *i);
+  for (const auto &i : is) {
+    show(out, g, i);
   }
 }
 
@@ -286,8 +286,8 @@ terminal* next(const grammar& g, const item& i) {
 
 terminalset next(const grammar& g, const itemset& is) {
   terminalset r;
-  for (auto i = is.begin(); i != is.end(); ++i) {
-    if (terminal* t = next(g, *i)) {
+  for (const auto &i : is) {
+    if (terminal* t = next(g, i)) {
       r.insert(t);
     }
   }
@@ -296,8 +296,8 @@ terminalset next(const grammar& g, const itemset& is) {
 
 terminalset nextPrim(const grammar& g, const itemset& is) {
   terminalset r;
-  for (auto i = is.begin(); i != is.end(); ++i) {
-    if (terminal* v = next(g, *i)) {
+  for (const auto &i : is) {
+    if (terminal* v = next(g, i)) {
       if (!hasRule(g, v)) {
         r.insert(v);
       }
@@ -308,9 +308,9 @@ terminalset nextPrim(const grammar& g, const itemset& is) {
 
 itemset follow(const grammar& g, const itemset& is, terminal* v) {
   itemset r;
-  for (auto i = is.begin(); i != is.end(); ++i) {
-    if (next(g, *i) == v) {
-      r.insert(succ(*i));
+  for (const auto &i : is) {
+    if (next(g, i) == v) {
+      r.insert(succ(i));
     }
   }
   return r;
@@ -318,8 +318,8 @@ itemset follow(const grammar& g, const itemset& is, terminal* v) {
 
 itemsets follow(const grammar& g, const itemset& is, const terminals& vs) {
   itemsets r;
-  for (auto v = vs.begin(); v != vs.end(); ++v) {
-    r.push_back(follow(g, is, *v));
+  for (auto *v : vs) {
+    r.push_back(follow(g, is, v));
   }
   return r;
 }
@@ -331,9 +331,9 @@ void gclosure(const grammar& g, itemset* is) {
     changed = false;
 
     terminalset ts = next(g, *is);
-    for (auto t = ts.begin(); t != ts.end(); ++t) {
-      if ((*t != nullptr) && hasRule(g, *t)) {
-        changed |= ruleItems(g, *t, is);
+    for (auto *t : ts) {
+      if ((t != nullptr) && hasRule(g, t)) {
+        changed |= ruleItems(g, t, is);
       }
     }
   }
@@ -368,9 +368,9 @@ const itemset& parserStateDef(const parserdef& p, nat n) {
 
 state_transitions follow(const grammar& g, const itemset& is, const terminalset& vs, parserdef* p) {
   state_transitions r;
-  for (auto v = vs.begin(); v != vs.end(); ++v) {
-    if (*v != endOfFile::value()) {
-      r[*v] = parserState(gclosure(g, follow(g, is, *v)), p);
+  for (auto *v : vs) {
+    if (v != endOfFile::value()) {
+      r[v] = parserState(gclosure(g, follow(g, is, v)), p);
     }
   }
   return r;
@@ -452,8 +452,8 @@ nat follow(const parserdef& p, const transition& x) {
 
 nat follow(const parserdef& p, nat s, const terminals& ts) {
   nat r = s;
-  for (auto t = ts.begin(); t != ts.end(); ++t) {
-    r = follow(p, r, *t);
+  for (auto *t : ts) {
+    r = follow(p, r, t);
   }
   return r;
 }
@@ -464,10 +464,10 @@ bool lookback(const parserdef& p, nat q, terminal* r, const rule& w, const trans
     return false;
   } else {
     nat s = t.first;
-    for (auto t = w.begin(); t != w.end(); ++t) {
+    for (auto *t : w) {
       const state_transitions& st = transitions(p, s);
-      if (follows(st, *t)) {
-        s = follow(st, *t);
+      if (follows(st, t)) {
+        s = follow(st, t);
       } else {
         return false;
       }
@@ -498,10 +498,10 @@ prefixes endingAt(const parserdef& p, const rule& w, terminal* a) {
 // x=(s,A) includes y=(s',B) if B -> wAg, g =>* eps, and s' --w--> s
 bool includes(const parserdef& p, const transition& x, const transition& y) {
   const rules* rs = aggRules(p.g, y.second);
-  for (auto r = rs->begin(); r != rs->end(); ++r) {
-    prefixes pr = endingAt(p, *r, x.second);
-    for (prefixes::const_iterator pfx = pr.begin(); pfx != pr.end(); ++pfx) {
-      if (follow(p, y.first, *pfx) == x.first) {
+  for (const auto &r : *rs) {
+    prefixes pr = endingAt(p, r, x.second);
+    for (const auto & pfx : pr) {
+      if (follow(p, y.first, pfx) == x.first) {
         return true;
       }
     }
@@ -566,9 +566,9 @@ void apply(const transition_lookahead& tl, parserdef* p) {
     for (auto i = s->first.begin(); i != s->first.end(); ++i) {
       // if this is a completed item, then we need to give it lookahead terminals
       if (next(p->g, *i) == nullptr) {
-        for (auto tli = tl.begin(); tli != tl.end(); ++tli) {
-          if (lookback(*p, s->second, i->agg, nthRule(aggRules(p->g, i->agg), i->r), tli->first)) {
-            const_cast<item*>(&(*(i)))->la.insert(tli->second.begin(), tli->second.end());
+        for (const auto &tli : tl) {
+          if (lookback(*p, s->second, i->agg, nthRule(aggRules(p->g, i->agg), i->r), tli.first)) {
+            const_cast<item*>(&(*(i)))->la.insert(tli.second.begin(), tli.second.end());
           }
         }
       }
@@ -651,8 +651,8 @@ void addAccept(lrstate& s, terminal* t) {
 }
 
 void addReduce(const parserdef& pd, lrstate& s, const terminalset& ts, terminal* agg, nat rule, nat len, const precedence& px) {
-  for (auto t = ts.begin(); t != ts.end(); ++t) {
-    addAction(pd, s, *t, action::reduce(agg, rule, len), px);
+  for (auto *t : ts) {
+    addAction(pd, s, t, action::reduce(agg, rule, len), px);
   }
 }
 
@@ -676,12 +676,12 @@ lrtable lalrTable(const parserdef& p, const precedence& px) {
 
     // if we fail to compile a table row, report the itemset that failed
     try {
-      for (auto i = is.begin(); i != is.end(); ++i) {
-        terminal* t = next(p.g, *i);
+      for (const auto & i : is) {
+        terminal* t = next(p.g, i);
   
         if (t == nullptr) {
           // reduce
-          addReduce(p, ps, i->la, i->agg, i->r, i->p, px);
+          addReduce(p, ps, i.la, i.agg, i.r, i.p, px);
         } else if (hasRule(p.g, t)) {
           // goto
           addGoto(ps, t, follow(p, n, t));
@@ -728,9 +728,9 @@ inline bool referencesSym(const grammar& g, const item& i, terminal* t) {
 }
 
 void compile_table_failure::print(std::ostream& out) const {
-  for (auto i = this->faileditems.begin(); i != this->faileditems.end(); ++i) {
-    if (referencesSym(this->g, *i, this->t)) {
-      print(out, *i);
+  for (const auto &faileditem : this->faileditems) {
+    if (referencesSym(this->g, faileditem, this->t)) {
+      print(out, faileditem);
     }
   }
 }

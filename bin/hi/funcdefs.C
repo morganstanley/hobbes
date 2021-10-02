@@ -78,8 +78,8 @@ const PIO* pexec(const hobbes::array<char>* cmd) {
     if (args.empty()) return p;
   
     std::vector<const char*> argv;
-    for (size_t i = 0; i < args.size(); ++i) {
-      argv.push_back(args[i].c_str());
+    for (const auto &arg : args) {
+      argv.push_back(arg.c_str());
     }
     argv.push_back(nullptr);
   

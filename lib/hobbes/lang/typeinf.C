@@ -60,8 +60,8 @@ void MonoTypeUnifier::suppress(const std::string& vn) {
 }
 
 void MonoTypeUnifier::suppress(const str::seq& vns) {
-  for (auto vn = vns.begin(); vn != vns.end(); ++vn) {
-    suppress(*vn);
+  for (const auto &vn : vns) {
+    suppress(vn);
   }
 }
 
@@ -76,8 +76,8 @@ void MonoTypeUnifier::unsuppress(const std::string& vn) {
 }
 
 void MonoTypeUnifier::unsuppress(const str::seq& vns) {
-  for (auto vn = vns.begin(); vn != vns.end(); ++vn) {
-    unsuppress(*vn);
+  for (const auto &vn : vns) {
+    unsuppress(vn);
   }
 }
 
@@ -154,9 +154,9 @@ struct encodeCtorForm : public switchType<std::string> {
   std::string with(const Variant* v) const override {
     std::ostringstream vn;
     vn << "variant:";
-    for (auto c = v->members().begin(); c != v->members().end(); ++c) {
-      vn << c->selector << "=" << ";";
-      this->targs->push_back(c->type);
+    for (const auto &c : v->members()) {
+      vn << c.selector << "=" << ";";
+      this->targs->push_back(c.type);
     }
     return vn.str();
   }
@@ -164,9 +164,9 @@ struct encodeCtorForm : public switchType<std::string> {
   std::string with(const Record* v) const override {
     std::ostringstream rn;
     rn << "record:";
-    for (auto f = v->members().begin(); f != v->members().end(); ++f) {
-      rn << f->field << "=" << ";";
-      this->targs->push_back(f->type);
+    for (const auto &f : v->members()) {
+      rn << f.field << "=" << ";";
+      this->targs->push_back(f.type);
     }
     return rn.str();
   }
@@ -357,8 +357,8 @@ MonoTypePtr MonoTypeUnifier::substitute(const MonoTypePtr& ty) {
 
 MonoTypes MonoTypeUnifier::substitute(const MonoTypes& ts) {
   MonoTypes result;
-  for (auto t = ts.begin(); t != ts.end(); ++t) {
-    result.push_back(substitute(*t));
+  for (const auto &t : ts) {
+    result.push_back(substitute(t));
   }
   return result;
 }
@@ -395,8 +395,8 @@ MonoTypePtr substitute(MonoTypeUnifier* u, const MonoTypePtr& ty) {
 
 MonoTypes substitute(MonoTypeUnifier* u, const MonoTypes& tys) {
   MonoTypes r;
-  for (auto ty = tys.begin(); ty != tys.end(); ++ty) {
-    r.push_back(u->substitute(*ty));
+  for (const auto &ty : tys) {
+    r.push_back(u->substitute(ty));
   }
   return r;
 }
@@ -407,8 +407,8 @@ ConstraintPtr substitute(MonoTypeUnifier* u, const ConstraintPtr& cst) {
 }
 
 Constraints substitute(MonoTypeUnifier* u, const Constraints& cs) {
-  for (auto c = cs.begin(); c != cs.end(); ++c) {
-    substitute(u, *c);
+  for (const auto &c : cs) {
+    substitute(u, c);
   }
   return cs;
 }
@@ -504,8 +504,8 @@ bool refine(const TEnvPtr& tenv, const Constraints& cs, MonoTypeUnifier* s, Defi
   bool upd = true;
   while (upd) {
     upd = false;
-    for (auto c = cs.begin(); c != cs.end(); ++c) {
-      upd |= refine(tenv, *c, s, ds);
+    for (const auto &c : cs) {
+      upd |= refine(tenv, c, s, ds);
     }
   }
   return false;
@@ -628,10 +628,10 @@ struct expTypeInfF : public switchExprM<UnitV> {
     mergeConstraints(v->fn()->type()->constraints(), &csts);
 
     MonoTypes atys;
-    for (auto a = v->args().begin(); a != v->args().end(); ++a) {
-      switchOf(*a, *this);
-      mergeConstraints((*a)->type()->constraints(), &csts);
-      atys.push_back((*a)->type()->monoType());
+    for (auto &a : v->args()) {
+      switchOf(a, *this);
+      mergeConstraints(a->type()->constraints(), &csts);
+      atys.push_back(a->type()->monoType());
     }
 
     MonoTypePtr irty = freshTypeVar();
@@ -693,10 +693,10 @@ struct expTypeInfF : public switchExprM<UnitV> {
     MonoTypePtr ety  = freshTypeVar();
     QualTypePtr qety = qualtype(ety);
 
-    for (auto e = v->values().begin(); e != v->values().end(); ++e) {
-      switchOf(*e, *this);
-      mgu(*e, qety, this->u);
-      cs = mergeConstraints((*e)->type()->constraints(), cs);
+    for (auto &e : v->values()) {
+      switchOf(e, *this);
+      mgu(e, qety, this->u);
+      cs = mergeConstraints(e->type()->constraints(), cs);
     }
 
     v->type(qt(cs, arrayty(ety)));
@@ -794,15 +794,15 @@ struct expTypeInfF : public switchExprM<UnitV> {
     Constraints      cs;
     int              cidx = 0;
 
-    for (auto b = v->bindings().begin(); b != v->bindings().end(); ++b) {
+    for (auto &b : v->bindings()) {
       MonoTypePtr bty = freshTypeVar();
-      switchOf(b->exp, expTypeInfF(bindFrame(this->tenv, b->vname, bty), this->u, this->ds));
+      switchOf(b.exp, expTypeInfF(bindFrame(this->tenv, b.vname, bty), this->u, this->ds));
 
-      mgu(b->exp, qualtype(rty), this->u);
+      mgu(b.exp, qualtype(rty), this->u);
 
-      cbs.push_back(Case::Binding(b->selector, b->vname, b->exp));
-      vms.push_back(Variant::Member(b->selector, bty, cidx++));
-      cs = mergeConstraints(cs, b->exp->type()->constraints());
+      cbs.push_back(Case::Binding(b.selector, b.vname, b.exp));
+      vms.push_back(Variant::Member(b.selector, bty, cidx++));
+      cs = mergeConstraints(cs, b.exp->type()->constraints());
     }
 
     switchOf(v->variant(), *this);
@@ -810,9 +810,9 @@ struct expTypeInfF : public switchExprM<UnitV> {
     // now we need to infer the variant type, but as a bit of a hack, let's see if the lhs actually has a type on it
     // and if so then we can patch up the inferred constructor IDs
     if (const Variant* vty = is<Variant>(v->variant()->type()->monoType())) {
-      for (size_t i = 0; i < vms.size(); ++i) {
+      for (auto &vm : vms) {
         try {
-          vms[i].id = vty->id(vms[i].selector);
+          vm.id = vty->id(vm.selector);
         } catch (...) {
         }
       }
@@ -1017,9 +1017,9 @@ void mgu(const ConstraintPtr& c0, const ConstraintPtr& c1, MonoTypeUnifier* u) {
 // utilities for dealing with qualified types
 QualLiftedMonoTypes liftQualifiers(const QualTypes& qts) {
   QualLiftedMonoTypes r;
-  for (auto qt = qts.begin(); qt != qts.end(); ++qt) {
-    mergeConstraints((*qt)->constraints(), &r.first);
-    r.second.push_back((*qt)->monoType());
+  for (const auto &qt : qts) {
+    mergeConstraints(qt->constraints(), &r.first);
+    r.second.push_back(qt->monoType());
   }
   return r;
 }

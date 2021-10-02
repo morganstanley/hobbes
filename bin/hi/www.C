@@ -312,9 +312,7 @@ std::string htmlEncode(const std::string& x) {
   using namespace hobbes::str;
 
   std::ostringstream ss;
-  for (size_t i = 0; i < x.size(); ++i) {
-    char c = x[i];
-
+  for (const char c : x) {
     switch (c) {
     case '&':
       ss << "&amp;";

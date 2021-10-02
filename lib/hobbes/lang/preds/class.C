@@ -206,8 +206,8 @@ bool TClass::refine(const TEnvPtr& tenv, const ConstraintPtr& cst, MonoTypeUnifi
   }
 
   // apply refinement across all fundeps
-  for (FunDeps::const_iterator fd = this->fundeps.begin(); fd != this->fundeps.end(); ++fd) {
-    r |= refine(tenv, cst, *fd, s, ds);
+  for (const auto &fundep : this->fundeps) {
+    r |= refine(tenv, cst, fundep, s, ds);
   }
   return r;
 }
@@ -387,8 +387,8 @@ MonoTypePtr TClass::memberType(const std::string& vn) const {
 
 SymSet TClass::bindings() const {
   SymSet r;
-  for (auto m = this->tcmembers.begin(); m != this->tcmembers.end(); ++m) {
-    r.insert(m->first);
+  for (const auto &tcmember : this->tcmembers) {
+    r.insert(tcmember.first);
   }
   return r;
 }
@@ -425,8 +425,8 @@ void TClass::show(std::ostream& out) const {
     }
   }
   out << " where\n";
-  for (auto m = this->tcmembers.begin(); m != this->tcmembers.end(); ++m) {
-    out << "  " << m->first << " :: " << hobbes::show(m->second) << "\n";
+  for (const auto &tcmember : this->tcmembers) {
+    out << "  " << tcmember.first << " :: " << hobbes::show(tcmember.second) << "\n";
   }
 }
 
@@ -503,8 +503,8 @@ struct TCUnqualify : public switchExprTyFn {
 
 // resolve member definitions ahead of time, so that we can just substitute into use-sites
 void TCInstance::bind(const TEnvPtr& tenv, const TClass* c, Definitions* ds) {
-  for (auto mm = this->mmap.begin(); mm != this->mmap.end(); ++mm) {
-    mm->second = unqualifyTypes(tenv, validateType(tenv, assume(mm->second, instantiate(this->itys, c->memberType(mm->first)), mm->second->la()), ds), ds);
+  for (auto &mm : this->mmap) {
+    mm.second = unqualifyTypes(tenv, validateType(tenv, assume(mm.second, instantiate(this->itys, c->memberType(mm.first)), mm.second->la()), ds), ds);
   }
 }
 
@@ -514,8 +514,8 @@ ExprPtr TCInstance::unqualify(Definitions* ds, const TEnvPtr& tenv, const Constr
 
 void TCInstance::show(std::ostream& out) const {
   out << "instance " << this->tcname << " " << str::cdelim(hobbes::show(this->itys), " ") << " where\n";
-  for (auto mm = this->mmap.begin(); mm != this->mmap.end(); ++mm) {
-    out << "  " << mm->first << " = " << hobbes::show(mm->second) << "\n";
+  for (const auto &mm : this->mmap) {
+    out << "  " << mm.first << " = " << hobbes::show(mm.second) << "\n";
   }
 }
 
@@ -729,8 +729,8 @@ MonoTypes TCInstanceFn::instantiatedArgs(MonoTypeUnifier* s, const MonoTypes& ty
 
 MemberMapping TCInstanceFn::members(const MonoTypeSubst& s) const {
   MemberMapping result;
-  for (auto mm = this->mmap.begin(); mm != this->mmap.end(); ++mm) {
-    result[mm->first] = substitute(s, mm->second);
+  for (const auto &mm : this->mmap) {
+    result[mm.first] = substitute(s, mm.second);
   }
   return result;
 }
@@ -874,8 +874,8 @@ void serializeGroundInstance(const TEnvPtr&, const TClass*, const TCInstancePtr&
 
 void serializeGroundInstances(const TEnvPtr& tenv, const TClass* c, const TCInstances& insts, std::ostream& out) {
   encode(insts.size(), out);
-  for (auto inst = insts.begin(); inst != insts.end(); ++inst) {
-    serializeGroundInstance(tenv, c, *inst, out);
+  for (const auto &inst : insts) {
+    serializeGroundInstance(tenv, c, inst, out);
   }
 }
 
@@ -883,9 +883,9 @@ using Classes = std::vector<const TClass *>;
 
 void serializeGroundClasses(const TEnvPtr& tenv, const Classes& cs, std::ostream& out) {
   encode(cs.size(), out);
-  for (auto c = cs.begin(); c != cs.end(); ++c) {
-    encode((*c)->name(), out);
-    serializeGroundInstances(tenv, *c, (*c)->instances(), out);
+  for (const auto *c : cs) {
+    encode(c->name(), out);
+    serializeGroundInstances(tenv, c, c->instances(), out);
   }
 }
 
@@ -893,8 +893,8 @@ void serializeGroundClasses(const TEnvPtr& tenv, std::ostream& out) {
   const TEnv::Unqualifiers& uqs = tenv->unqualifiers();
   Classes cs;
 
-  for (auto uq = uqs.begin(); uq != uqs.end(); ++uq) {
-    if (const auto* c = dynamic_cast<const TClass*>(uq->second.get())) {
+  for (const auto &uq : uqs) {
+    if (const auto* c = dynamic_cast<const TClass*>(uq.second.get())) {
       if (!c->instances().empty()) {
         cs.push_back(c);
       }

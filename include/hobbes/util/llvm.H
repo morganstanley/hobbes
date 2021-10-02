@@ -529,8 +529,8 @@ inline llvm::Constant* liftAsGlobalRef(llvm::Module* m, llvm::Constant* c) {
 //   try to extract constants from a set of compiled values -- if even one value is not constant, fail by returning an empty list
 inline Constants varArrayConstants(const Values& vs, bool globalPtrRefs) {
   Constants r;
-  for (auto v = vs.begin(); v != vs.end(); ++v) {
-    if (llvm::Constant* c = constant(*v, globalPtrRefs)) {
+  for (auto v : vs) {
+    if (llvm::Constant* c = constant(v, globalPtrRefs)) {
       r.push_back(c);
     } else {
       return Constants();
@@ -630,8 +630,8 @@ inline Constants mergePadding(const Constants& cs, const Record::Members& ms) {
 
 inline Types types(const Constants& cs) {
   Types r;
-  for (unsigned int c = 0; c < cs.size(); ++c) {
-    r.push_back(cs[c]->getType());
+  for (auto *c : cs) {
+    r.push_back(c->getType());
   }
   return r;
 }

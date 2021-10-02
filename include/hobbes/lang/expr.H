@@ -785,12 +785,12 @@ inline ExprPtr mkrecord(const MkRecord::FieldDefs& fds, const LexicalAnnotation&
   
     Constraints     csts;
     Record::Members ms;
-    for (auto fd = fds.begin(); fd != fds.end(); ++fd) {
-      if (fd->second->type() == QualTypePtr()) {
+    for (const auto &fd : fds) {
+      if (fd.second->type() == QualTypePtr()) {
         return result;
       } else {
-        mergeConstraints(fd->second->type()->constraints(), &csts);
-        ms.push_back(Record::Member(fd->first, fd->second->type()->monoType()));
+        mergeConstraints(fd.second->type()->constraints(), &csts);
+        ms.push_back(Record::Member(fd.first, fd.second->type()->monoType()));
       }
     }
 
@@ -851,8 +851,8 @@ template <typename ... Cases>
 
 inline Constraints liftConstraints(const Exprs& es) {
   Constraints r;
-  for (auto e = es.begin(); e != es.end(); ++e) {
-    QualTypePtr qt = (*e)->type();
+  for (const auto &e : es) {
+    QualTypePtr qt = e->type();
     if (qt != QualTypePtr()) {
       append(&r, qt->constraints());
     }
@@ -931,8 +931,8 @@ inline Expr* mkarray(const std::vector<unsigned char>& v, const LexicalAnnotatio
   QualTypePtr aty = qualtype(arrayty(bty));
 
   Exprs cs;
-  for (size_t b = 0; b < v.size(); ++b) {
-    ExprPtr be(new Byte(v[b], la));
+  for (const unsigned char b : v) {
+    ExprPtr be(new Byte(b, la));
     be->type(ety);
     cs.push_back(be);
   }
@@ -952,8 +952,8 @@ inline Expr* mkarray(const std::string& v, const LexicalAnnotation& la) {
   QualTypePtr aty = qualtype(arrayty(cty));
 
   Exprs cs;
-  for (size_t c = 0; c < v.size(); ++c) {
-    ExprPtr ce(new Char(v[c], la));
+  for (const char c : v) {
+    ExprPtr ce(new Char(c, la));
     ce->type(ety);
     cs.push_back(ce);
   }
@@ -1029,16 +1029,16 @@ inline ExprPtr assign(const ExprPtr& lhs, const ExprPtr& rhs, const LexicalAnnot
 
 inline Exprs exprs(const MkRecord::FieldDefs& ms) {
   Exprs r;
-  for (auto m = ms.begin(); m != ms.end(); ++m) {
-    r.push_back(m->second);
+  for (const auto &m : ms) {
+    r.push_back(m.second);
   }
   return r;
 }
 
 inline Exprs exprs(const Case::Bindings& bs) {
   Exprs r;
-  for (auto b = bs.begin(); b != bs.end(); ++b) {
-    r.push_back(b->exp);
+  for (const auto &b : bs) {
+    r.push_back(b.exp);
   }
   return r;
 }

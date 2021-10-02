@@ -220,24 +220,24 @@ int nameIndex(const NameIndexing &ns, const std::string &vn) {
 
 std::vector<int> nameIndex(const NameIndexing &ns, const str::seq &vns) {
   std::vector<int> r;
-  for (auto vn = vns.begin(); vn != vns.end(); ++vn) {
-    r.push_back(nameIndex(ns, *vn));
+  for (const auto &vn : vns) {
+    r.push_back(nameIndex(ns, vn));
   }
   return r;
 }
 
 MonoTypeSubst substitution(const NameIndexing &ns) {
   MonoTypeSubst s;
-  for (auto ni = ns.begin(); ni != ns.end(); ++ni) {
-    s[ni->first] = MonoTypePtr(TGen::make(ni->second));
+  for (const auto &n : ns) {
+    s[n.first] = MonoTypePtr(TGen::make(n.second));
   }
   return s;
 }
 
 MonoTypeSubst uvarSubstitution(const NameIndexing &ns) {
   MonoTypeSubst s;
-  for (auto ni = ns.begin(); ni != ns.end(); ++ni) {
-    s[ni->first] = freshTypeVar();
+  for (const auto &n : ns) {
+    s[n.first] = freshTypeVar();
   }
   return s;
 }
@@ -246,17 +246,15 @@ MonoTypeSubst uvarSubstitution(const NameIndexing &ns) {
 void resolveNames(const NameIndexing &ns, const CFunDepDef &nfdep,
                   FunDeps *out) {
   VarIDs lhs = nameIndex(ns, nfdep.first);
-  for (auto vn = nfdep.second.begin();
-       vn != nfdep.second.end(); ++vn) {
-    out->push_back(FunDep(lhs, nameIndex(ns, *vn)));
+  for (const auto &vn : nfdep.second) {
+    out->push_back(FunDep(lhs, nameIndex(ns, vn)));
   }
 }
 
 FunDeps resolveNames(const NameIndexing &ns, const CFunDepDefs &nfdeps) {
   FunDeps r;
-  for (auto fd = nfdeps.begin(); fd != nfdeps.end();
-       ++fd) {
-    resolveNames(ns, *fd, &r);
+  for (const auto &nfdep : nfdeps) {
+    resolveNames(ns, nfdep, &r);
   }
   return r;
 }
@@ -734,9 +732,8 @@ struct buildTransitiveUnsafePragmaClosure : public switchExprC<details::Bool> {
   details::Bool with(const Case *v) const override {
     const Case::Bindings &cbs = v->bindings();
     Case::Bindings rcbs;
-    for (auto cb = cbs.begin(); cb != cbs.end();
-         ++cb) {
-      switchOf(cb->exp, *this);
+    for (const auto &cb : cbs) {
+      switchOf(cb.exp, *this);
     }
     ExprPtr de = v->defaultExpr();
     if (de.get() != nullptr) {
@@ -934,10 +931,9 @@ struct makeSafe : public switchExprC<ExprPtr> {
   ExprPtr with(const Case *v) const override {
     const Case::Bindings &cbs = v->bindings();
     Case::Bindings rcbs;
-    for (auto cb = cbs.begin(); cb != cbs.end();
-         ++cb) {
+    for (const auto &cb : cbs) {
       rcbs.push_back(
-          Case::Binding(cb->selector, cb->vname, switchOf(cb->exp, *this)));
+          Case::Binding(cb.selector, cb.vname, switchOf(cb.exp, *this)));
     }
     ExprPtr de = v->defaultExpr();
     if (de.get() != nullptr) {

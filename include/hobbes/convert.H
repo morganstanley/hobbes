@@ -301,9 +301,9 @@ template <typename DstVariantT, typename VariantConvF, size_t i, size_t n, typen
 
     // find the definition of the named ctor in the source variant (or return null if there is no such ctor)
     static const ty::Variant::Ctor* namedCtor(const ty::Variant* ty, const std::string& cname) {
-      for (size_t k = 0; k < ty->ctors.size(); ++k) {
-        if (ty->ctors[k].at<0>() == cname) {
-          return &ty->ctors[k];
+      for (const auto &ctor : ty->ctors) {
+        if (ctor.at<0>() == cname) {
+          return &ctor;
         }
       }
       return nullptr;

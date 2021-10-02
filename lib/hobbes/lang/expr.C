@@ -11,8 +11,8 @@ namespace hobbes {
 
 Exprs clones(const Exprs& es) {
   Exprs r;
-  for (auto e = es.begin(); e != es.end(); ++e) {
-    r.push_back(ExprPtr((*e)->clone()));
+  for (const auto &e : es) {
+    r.push_back(ExprPtr(e->clone()));
   }
   return r;
 }
@@ -457,8 +457,8 @@ MkRecord::FieldDefs& MkRecord::fields() { return this->fs; }
 bool MkRecord::isTuple() const { return !this->fs.empty() && !this->fs[0].first.empty() && this->fs[0].first[0] == '.'; }
 Expr* MkRecord::clone() const {
   FieldDefs cfs;
-  for (auto f = this->fs.begin(); f != this->fs.end(); ++f) {
-    cfs.push_back(FieldDef(f->first, ExprPtr(f->second->clone())));
+  for (const auto &f : this->fs) {
+    cfs.push_back(FieldDef(f.first, ExprPtr(f.second->clone())));
   }
   return new MkRecord(cfs,la());
 }
@@ -580,8 +580,8 @@ Case::Bindings& Case::bindings()                       { return this->bs; }
 void            Case::defaultExpr(const ExprPtr& ndef) { this->def = ndef; }
 
 bool Case::hasBinding(const std::string& bn) const {
-  for (auto b = this->bs.begin(); b != this->bs.end(); ++b) {
-    if (b->selector == bn) {
+  for (const auto &b : this->bs) {
+    if (b.selector == bn) {
       return true;
     }
   }
@@ -592,8 +592,8 @@ void Case::addBinding(const std::string& selector, const std::string& vname, con
 }
 Expr* Case::clone() const {
   Bindings cbs;
-  for (auto b = this->bs.begin(); b != this->bs.end(); ++b) {
-    cbs.push_back(Binding(b->selector, b->vname, ExprPtr(b->exp->clone())));
+  for (const auto &b : this->bs) {
+    cbs.push_back(Binding(b.selector, b.vname, ExprPtr(b.exp->clone())));
   }
   return new Case(ExprPtr(this->v->clone()), cbs, this->def.get() != nullptr ? ExprPtr(this->def->clone()) : ExprPtr(),la());
 }
@@ -669,14 +669,14 @@ Switch::Switch(const ExprPtr& v, const Bindings& bs, const ExprPtr& def, const L
   // ensure unambiguous selection
   PrimitiveSet selectors;
 
-  for (size_t i = 0; i < bs.size(); ++i) {
-    if (selectors.find(bs[i].value) != selectors.end()) {
+  for (const auto &b : bs) {
+    if (selectors.find(b.value) != selectors.end()) {
       std::ostringstream ss;
       ss << "Duplicate selector in switch expression:\n";
       show(ss);
       throw annotated_error(la, ss.str());
     } else {
-      selectors.insert(bs[i].value);
+      selectors.insert(b.value);
     }
   }
 }
@@ -937,8 +937,8 @@ struct substVarF : public switchExprC<ExprPtr> {
   ExprPtr with(const Case* v) const override {
     const Case::Bindings& cbs = v->bindings();
     Case::Bindings rcbs;
-    for (auto cb = cbs.begin(); cb != cbs.end(); ++cb) {
-      rcbs.push_back(Case::Binding(cb->selector, cb->vname, withoutNames(cb->vname, cb->exp)));
+    for (const auto &cb : cbs) {
+      rcbs.push_back(Case::Binding(cb.selector, cb.vname, withoutNames(cb.vname, cb.exp)));
     }
     ExprPtr de = v->defaultExpr();
     if (de.get() != nullptr) {
@@ -1033,8 +1033,8 @@ ExprPtr switchExprTyFn::wrapWithTy(const QualTypePtr& qty, Expr* e) const {
 
 Case::Bindings switchOf(const Case::Bindings& bs, const switchExpr<ExprPtr>& f) {
   Case::Bindings r;
-  for (auto b = bs.begin(); b != bs.end(); ++b) {
-    r.push_back(Case::Binding(b->selector, b->vname, switchOf(b->exp, f)));
+  for (const auto &b : bs) {
+    r.push_back(Case::Binding(b.selector, b.vname, switchOf(b.exp, f)));
   }
   return r;
 }
@@ -1086,8 +1086,8 @@ ExprPtr switchExprTyFn::with(const Switch* v) const {
 
 // mutable type-translation in terms
 UnitV switchOf(const Case::Bindings& bs, const switchExprTyFnM& f) {
-  for (auto b = bs.begin(); b != bs.end(); ++b) {
-    switchOf(b->exp, const_cast<switchExprTyFnM&>(f));
+  for (const auto &b : bs) {
+    switchOf(b.exp, const_cast<switchExprTyFnM&>(f));
   }
   return unitv;
 }
@@ -1312,8 +1312,8 @@ struct freeVarF : public switchExprC<VarSet> {
   VarSet with(const Case* v) const override {
     std::vector<VarSet> fvs;
     fvs.push_back(freeVars(v->variant()));
-    for (auto b = v->bindings().begin(); b != v->bindings().end(); ++b) {
-      fvs.push_back(setDifference(freeVars(b->exp), toSet(list(b->vname))));
+    for (const auto &b : v->bindings()) {
+      fvs.push_back(setDifference(freeVars(b.exp), toSet(list(b.vname))));
     }
     if (v->defaultExpr().get() != nullptr) {
       fvs.push_back(freeVars(v->defaultExpr()));
@@ -1373,8 +1373,8 @@ struct etvarNamesF : public switchExprC<UnitV> {
 
   UnitV with(const Case* v) const override {
     switchOf(v->variant(), *this);
-    for (auto b = v->bindings().begin(); b != v->bindings().end(); ++b) {
-      switchOf(b->exp, *this);
+    for (const auto &b : v->bindings()) {
+      switchOf(b.exp, *this);
     }
     if (v->defaultExpr().get() != nullptr) {
       switchOf(v->defaultExpr(), *this);

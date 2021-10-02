@@ -203,8 +203,8 @@ TEnv::PolyTypeEnv TEnv::typeEnvTable(std::function<std::string const&(std::strin
   } else {
     PolyTypeEnv pte       = this->ptenv;
     SymSet      overloads = this->unquals->bindings();
-    for (auto s = overloads.begin(); s != overloads.end(); ++s) {
-      pte[*s] = this->unquals->lookup(reWriteFn(*s));
+    for (const auto &overload : overloads) {
+      pte[overload] = this->unquals->lookup(reWriteFn(overload));
     }
     return pte;
   }
@@ -306,8 +306,8 @@ bool satisfied(const TEnvPtr& tenv, const ConstraintPtr& c, Definitions* ds) {
 }
 
 bool satisfied(const TEnvPtr& tenv, const Constraints& cs, Definitions* ds) {
-  for (auto c = cs.begin(); c != cs.end(); ++c) {
-    if (!satisfied(tenv, *c, ds)) {
+  for (const auto &c : cs) {
+    if (!satisfied(tenv, c, ds)) {
       return false;
     }
   }
@@ -335,8 +335,8 @@ bool satisfiable(const TEnvPtr& tenv, const ConstraintPtr& c, Definitions* ds) {
 }
 
 bool satisfiable(const TEnvPtr& tenv, const Constraints& cs, Definitions* ds) {
-  for (auto c = cs.begin(); c != cs.end(); ++c) {
-    if (!satisfiable(tenv, *c, ds)) {
+  for (const auto &c : cs) {
+    if (!satisfiable(tenv, c, ds)) {
       return false;
     }
   }
@@ -466,9 +466,9 @@ void Constraint::show(std::ostream& out) const {
     this->mts[3]->show(out);
   } else {
     out << this->cat;
-    for (size_t i = 0; i < this->mts.size(); ++i) {
+    for (const auto &mt : this->mts) {
       out << " ";
-      this->mts[i]->show(out);
+      mt->show(out);
     }
   }
 }
@@ -694,9 +694,9 @@ void TApp::show(std::ostream& out) const {
   out << "(";
   this->f->show(out);
   if (!this->targs.empty()) {
-    for (size_t i = 0; i < this->targs.size(); ++i) {
+    for (const auto &targ : this->targs) {
       out << " ";
-      this->targs[i]->show(out);
+      targ->show(out);
     }
   }
   out << ")";
@@ -744,8 +744,8 @@ MonoTypePtr Variant::make(const Members& ms) {
 
 static void resetCtorIDs(Variant::Members* ms) {
   size_t id = 0;
-  for (auto m = ms->begin(); m != ms->end(); ++m) {
-    m->id = id++;
+  for (auto &m : *ms) {
+    m.id = id++;
   }
 }
 
@@ -878,8 +878,8 @@ void showSum(const Variant::Members& ms, std::ostream& out) {
 }
 
 bool looksLikeSum(const Variant::Members& ms) {
-  for (size_t i = 0; i < ms.size(); ++i) {
-    if (ms[i].selector.size() > 1 && ms[i].selector[0] == '.' && ms[i].selector[1] == 'f') {
+  for (const auto &m : ms) {
+    if (m.selector.size() > 1 && m.selector[0] == '.' && m.selector[1] == 'f') {
       return true;
     }
   }
@@ -935,18 +935,18 @@ unsigned int Variant::index(const std::string& selector) const {
   throw std::runtime_error("No selector named '" + selector + "' in the variant '" + hobbes::show(this) + "'.");
 }
 unsigned int Variant::id(const std::string& selector) const {
-  for (auto m = this->ms.begin(); m != this->ms.end(); ++m) {
-    if (m->selector == selector) {
-      return m->id;
+  for (const auto &m : this->ms) {
+    if (m.selector == selector) {
+      return m.id;
     }
   }
   throw std::runtime_error("No selector named '" + selector + "' in the variant '" + hobbes::show(this) + "'.");
 }
 
 const Variant::Member* Variant::mmember(const std::string& selector) const {
-  for (auto m = this->ms.begin(); m != this->ms.end(); ++m) {
-    if (m->selector == selector) {
-      return &(*(m));
+  for (const auto &m : this->ms) {
+    if (m.selector == selector) {
+      return &m;
     }
   }
   return nullptr;
@@ -1078,8 +1078,8 @@ int findHiddenMember(const std::string& lbl, const Record::Members& ms) {
 }
 
 static void resetFieldOffsets(Record::Members* ms) {
-  for (auto m = ms->begin(); m != ms->end(); ++m) {
-    m->offset = -1;
+  for (auto &m : *ms) {
+    m.offset = -1;
   }
 }
 
@@ -1102,9 +1102,9 @@ Record::Members consMember(const std::string& lbl, const MonoTypePtr& hty, const
 
 static void normalizeTupleFields(Record::Members* ms) {
   size_t i = 0;
-  for (auto m = ms->begin(); m != ms->end(); ++m) {
-    if (m->field.substr(0, 2) != ".p") {
-      m->field = ".f" + str::from(i++);
+  for (auto &m : *ms) {
+    if (m.field.substr(0, 2) != ".p") {
+      m.field = ".f" + str::from(i++);
     }
   }
 }
@@ -1242,15 +1242,15 @@ Record::Members Record::withExplicitPadding(const Members& ms, const std::string
   int     o = 0; // the active determined offset in memory
   int     p = 0; // unique names for pad fields
 
-  for (auto m = ms.begin(); m != ms.end(); ++m) {
-    if (m->offset > o) {
-      r.push_back(Member(pfx + str::from(p++), arrayty(prim<char>(), m->offset - o)));
+  for (const auto &m : ms) {
+    if (m.offset > o) {
+      r.push_back(Member(pfx + str::from(p++), arrayty(prim<char>(), m.offset - o)));
     }
-    size_t msz = sizeOf(m->type);
-    o = m->offset + msz;
+    size_t msz = sizeOf(m.type);
+    o = m.offset + msz;
 
     if (msz > 0) {
-      r.push_back(*m);
+      r.push_back(m);
     }
   }
 
@@ -1268,8 +1268,8 @@ Record::Members Record::withExplicitPadding(const Members& ms, const std::string
 }
 
 bool isTupleDesc(const Record::Members& ms) {
-  for (unsigned int i = 0; i < ms.size(); ++i) {
-    if (ms[i].field.substr(0, 2) == ".f") {
+  for (const auto &m : ms) {
+    if (m.field.substr(0, 2) == ".f") {
       return true;
     }
   }
@@ -1280,10 +1280,10 @@ void showAsTuple(std::ostream& out, const Record::Members& ms) {
   bool once = false;
 
   out << "(";
-  for (size_t i = 0; i < ms.size(); ++i) {
+  for (const auto &m : ms) {
     if (once) { out << " * "; }
-    if (ms[i].field.size() > 2 && ms[i].field[1] != 'p') {
-      ms[i].type->show(out);
+    if (m.field.size() > 2 && m.field[1] != 'p') {
+      m.type->show(out);
       once = true;
     }
   }
@@ -1360,9 +1360,9 @@ unsigned int Record::index(const std::string& mn) const {
 }
 
 const Record::Member* Record::mmember(const std::string& mn) const {
-  for (auto m = this->ms.begin(); m != this->ms.end(); ++m) {
-    if (m->field == mn) {
-      return &(*m);
+  for (const auto &m : this->ms) {
+    if (m.field == mn) {
+      return &m;
     }
   }
   return nullptr;
@@ -1382,13 +1382,13 @@ unsigned int Record::alignedIndex(const std::string& mn) const {
 
 unsigned int Record::index(const Members& ms, const std::string& mn) const {
   unsigned int k = 0;
-  for (auto m = ms.begin(); m != ms.end(); ++m) {
+  for (const auto &m : ms) {
     // pretend that we don't see fields with unit type
     //   (they don't make it into the final compiled record anyway)
-    if (m->field == mn) {
+    if (m.field == mn) {
       return k;
     }
-    if (!isUnit(m->type)) {
+    if (!isUnit(m.type)) {
       ++k;
     }
   }
@@ -1600,8 +1600,8 @@ Constraints mergeConstraints(const Constraints& lhs, const Constraints& rhs) {
 }
 
 void mergeConstraints(const Constraints& fcs, Constraints* tcs) {
-  for (auto c = fcs.begin(); c != fcs.end(); ++c) {
-    tcs->push_back(*c);
+  for (const auto &fc : fcs) {
+    tcs->push_back(fc);
   }
 }
 
@@ -1639,8 +1639,8 @@ MonoTypes freshen(const MonoTypes& ts) {
   MonoTypeSubst s;
 
   NameSet tvns = tvarNames(ts);
-  for (auto n = tvns.begin(); n != tvns.end(); ++n) {
-    s[*n] = freshTypeVar();
+  for (const auto &tvn : tvns) {
+    s[tvn] = freshTypeVar();
   }
 
   return substitute(s, ts);
@@ -1649,8 +1649,8 @@ MonoTypes freshen(const MonoTypes& ts) {
 ConstraintPtr freshen(const ConstraintPtr& cst) {
   NameSet cvns = tvarNames(cst);
   MonoTypeSubst s;
-  for (auto cvn = cvns.begin(); cvn != cvns.end(); ++cvn) {
-    s[*cvn] = freshTypeVar();
+  for (const auto &cvn : cvns) {
+    s[cvn] = freshTypeVar();
   }
   return substitute(s, cst);
 }
@@ -1658,16 +1658,16 @@ ConstraintPtr freshen(const ConstraintPtr& cst) {
 Constraints freshen(const Constraints& cs) {
   NameSet cvns = tvarNames(cs);
   MonoTypeSubst s;
-  for (auto cvn = cvns.begin(); cvn != cvns.end(); ++cvn) {
-    s[*cvn] = freshTypeVar();
+  for (const auto &cvn : cvns) {
+    s[cvn] = freshTypeVar();
   }
   return substitute(s, cs);
 }
 
 MonoTypes typeVars(const Names& ns) {
   MonoTypes r;
-  for (auto n = ns.begin(); n != ns.end(); ++n) {
-    r.push_back(TVar::make(*n));
+  for (const auto &n : ns) {
+    r.push_back(TVar::make(n));
   }
   return r;
 }
@@ -1696,8 +1696,8 @@ int tgenSize(const MonoTypePtr& mt) {
 
 int tgenSize(const MonoTypes& mts) {
   int x = 0;
-  for (auto mt = mts.begin(); mt != mts.end(); ++mt) {
-    x = std::max<int>(x, tgenSize(*mt));
+  for (const auto &mt : mts) {
+    x = std::max<int>(x, tgenSize(mt));
   }
   return x;
 }
@@ -1745,8 +1745,8 @@ QualTypePtr instantiate(const MonoTypes& ts, const QualTypePtr& scheme) {
 
 Constraints instantiate(const MonoTypes& ts, const Constraints& cs) {
   Constraints r;
-  for (auto c = cs.begin(); c != cs.end(); ++c) {
-    r.push_back(instantiate(ts, *c));
+  for (const auto &c : cs) {
+    r.push_back(instantiate(ts, c));
   }
   return r;
 }
@@ -1831,8 +1831,8 @@ void tvarNames(const QualTypePtr& qt, NameSet* out) {
 }
 
 void tvarNames(const Constraints& cs, NameSet* out) {
-  for (auto c = cs.begin(); c != cs.end(); ++c) {
-    tvarNames(*c, out);
+  for (const auto &c : cs) {
+    tvarNames(c, out);
   }
 }
 
@@ -1874,8 +1874,8 @@ bool hasFreeVariables(const QualTypePtr& qt) {
 }
 
 bool hasFreeVariables(const Constraints& cs) {
-  for (auto c = cs.begin(); c != cs.end(); ++c) {
-    if (hasFreeVariables(*c)) {
+  for (const auto &c : cs) {
+    if (hasFreeVariables(c)) {
       return true;
     }
   }
@@ -1891,8 +1891,8 @@ bool hasFreeVariables(const MonoTypePtr& mt) {
 }
 
 bool hasFreeVariables(const MonoTypes& mts) {
-  for (auto mt = mts.begin(); mt != mts.end(); ++mt) {
-    if (hasFreeVariables(*mt)) {
+  for (const auto &mt : mts) {
+    if (hasFreeVariables(mt)) {
       return true;
     }
   }
@@ -1907,19 +1907,19 @@ std::string show(const MonoTypeSubst& s) {
   stbl[1].push_back("");
   stbl[2].push_back("Type");
 
-  for (auto si = s.begin(); si != s.end(); ++si) {
-    stbl[0].push_back(si->first);
+  for (const auto &si : s) {
+    stbl[0].push_back(si.first);
     stbl[1].push_back(" = ");
-    stbl[2].push_back(show(si->second));
+    stbl[2].push_back(show(si.second));
   }
 
   return str::showLeftAlignedTable(stbl);
 }
 
 void show(const MonoTypeSubst& s, std::ostream& out) {
-  for (auto si = s.begin(); si != s.end(); ++si) {
-    out << si->first << " = " << std::flush;
-    si->second->show(out);
+  for (const auto &si : s) {
+    out << si.first << " = " << std::flush;
+    si.second->show(out);
     out << std::endl;
   }
 }
@@ -1930,8 +1930,8 @@ QualTypePtr substitute(const MonoTypeSubst& s, const QualTypePtr& qt) {
 }
 
 inline bool in(const ConstraintPtr& c, const Constraints& cs) {
-  for (auto ci = cs.begin(); ci != cs.end(); ++ci) {
-    if (*c == **ci) {
+  for (const auto &ci : cs) {
+    if (*c == *ci) {
       return true;
     }
   }
@@ -1940,10 +1940,10 @@ inline bool in(const ConstraintPtr& c, const Constraints& cs) {
 
 Constraints substitute(const MonoTypeSubst& s, const Constraints& cs) {
   Constraints r;
-  for (auto c = cs.begin(); c != cs.end(); ++c) {
-    ConstraintPtr sc = substitute(s, *c);
+  for (const auto &c : cs) {
+    ConstraintPtr sc = substitute(s, c);
     if (!in(sc, r)) {
-      r.push_back(substitute(s, *c));
+      r.push_back(substitute(s, c));
     }
   }
   return r;
@@ -2020,8 +2020,8 @@ MonoTypePtr substitute(const MonoTypeSubst& s, const MonoType& mt) {
 
 MonoTypes substitute(const MonoTypeSubst& s, const MonoTypes& ts) {
   MonoTypes r;
-  for (auto t = ts.begin(); t != ts.end(); ++t) {
-    r.push_back(substitute(s, *t));
+  for (const auto &t : ts) {
+    r.push_back(substitute(s, t));
   }
   return r;
 }
@@ -2034,8 +2034,8 @@ PolyTypePtr generalize(const QualTypePtr& qt) {
   // [(v, TGen i) | (v, i) <- zip vnames [0..]]
   MonoTypeSubst s;
   int i = 0;
-  for (auto n = fnames.begin(); n != fnames.end(); ++n) {
-    s[*n] = TGen::make(i);
+  for (const auto &fname : fnames) {
+    s[fname] = TGen::make(i);
     ++i;
   }
 
@@ -2055,11 +2055,11 @@ TVName canonicalName(int v) {
 MonoTypeSubst canonicalNameSubst(const NameSet& ns) {
   MonoTypeSubst r;
   int v = 0;
-  for (auto n = ns.begin(); n != ns.end(); ++n) {
+  for (const auto &n : ns) {
     TVName cn = canonicalName(v);
     // avoid making substitution cycles
-    if (*n != cn) {
-      r[*n] = TVar::make(cn);
+    if (n != cn) {
+      r[n] = TVar::make(cn);
     }
     ++v;
   }
@@ -2248,8 +2248,8 @@ bool isPrimName(const std::string& tn) {
     "->", "closure", "fseq", "file"
   };
   
-  for (unsigned int i = 0; i < sizeof(prims)/sizeof(prims[0]); ++i) {
-    if (tn == prims[i]) {
+  for (const auto &prim : prims) {
+    if (tn == prim) {
       return true;
     }
   }
@@ -2306,8 +2306,8 @@ MonoTypePtr requireMonotype(const PolyTypePtr& pt) {
 
 MonoTypes requireMonotype(const PolyTypes& pts) {
   MonoTypes r;
-  for (auto pt = pts.begin(); pt != pts.end(); ++pt) {
-    r.push_back(requireMonotype(*pt));
+  for (const auto &pt : pts) {
+    r.push_back(requireMonotype(pt));
   }
   return r;
 }
@@ -2487,11 +2487,11 @@ public:
     const Variant::Members& ms = v->members();
     write(ms.size(), this->out);
 
-    for (auto m = ms.begin(); m != ms.end(); ++m) {
-      write(m->selector, this->out);
-      write(m->id,       this->out);
+    for (const auto &m : ms) {
+      write(m.selector, this->out);
+      write(m.id,       this->out);
 
-      switchOf(m->type, *this);
+      switchOf(m.type, *this);
     }
 
     return unitv;
@@ -2503,11 +2503,11 @@ public:
     const Record::Members& ms = v->members();
     write(ms.size(), this->out);
 
-    for (auto m = ms.begin(); m != ms.end(); ++m) {
-      write(m->field,  this->out);
-      write(m->offset, this->out);
+    for (const auto &m : ms) {
+      write(m.field,  this->out);
+      write(m.offset, this->out);
 
-      switchOf(m->type, *this);
+      switchOf(m.type, *this);
     }
 
     return unitv;

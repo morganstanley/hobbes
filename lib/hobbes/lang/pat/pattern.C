@@ -414,8 +414,8 @@ void normalizeRecAccess(const PatternRows& prs) {
     // gather all patterns across this column, normalize record access within the column
     Patterns ps;
 
-    for (size_t r = 0; r < prs.size(); ++r) {
-      const PatternPtr& p = prs[r].patterns[c];
+    for (const auto &pr : prs) {
+      const PatternPtr& p = pr.patterns[c];
 
       // (we can trivially ignore this column if it matches a literal value)
       if (!canHoldRecPatterns(p)) {
@@ -500,8 +500,8 @@ MonoTypes matchRowType(const TEnvPtr& tenv, const PatternRows& ps) {
   // determine the initial row type
   MonoTypes ts;
   const Patterns& pr = ps[0].patterns;
-  for (auto p = pr.begin(); p != pr.end(); ++p) {
-    ts.push_back(switchOf(*p, inferTypeF(&u)));
+  for (const auto &p : pr) {
+    ts.push_back(switchOf(p, inferTypeF(&u)));
   }
 
   // unify with subsequent rows
@@ -593,23 +593,23 @@ VarMapping varMapping(const Patterns& ps) {
 
 void assignNames(const str::seq& vns, PatternRows& ps, bool* mappedVs) {
   // each row needs to be assigned the same names across columns
-  for (size_t r = 0; r < ps.size(); ++r) {
-    for (size_t c = 0; c < ps[r].patterns.size(); ++c) {
-      ps[r].patterns[c]->name(vns[c]);
+  for (auto &p : ps) {
+    for (size_t c = 0; c < p.patterns.size(); ++c) {
+      p.patterns[c]->name(vns[c]);
     }
   }
 
   // each row expression needs to be renamed consistent with the above name assignment
-  for (size_t r = 0; r < ps.size(); ++r) {
-    VarMapping vm = varMapping(ps[r].patterns);
+  for (auto &p : ps) {
+    VarMapping vm = varMapping(p.patterns);
     if (!vm.empty()) {
       *mappedVs = true;
 
-      if (ps[r].guard) {
-        ps[r].guard = substitute(vm, ps[r].guard);
+      if (p.guard) {
+        p.guard = substitute(vm, p.guard);
       }
 
-      ps[r].result = substitute(vm, ps[r].result);
+      p.result = substitute(vm, p.result);
     }
   }
 }

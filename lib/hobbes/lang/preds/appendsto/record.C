@@ -41,8 +41,8 @@ Record::Members tupleNormalize(const Record::Members& ms) {
   if (isTupleLike(ms)) {
     Record::Members result;
     size_t i = 0;
-    for (auto m = ms.begin(); m != ms.end(); ++m) {
-      result.push_back(Record::Member(".f" + str::from(i++), m->type, m->offset));
+    for (const auto &m : ms) {
+      result.push_back(Record::Member(".f" + str::from(i++), m.type, m.offset));
     }
     return result;
   } else {
@@ -54,8 +54,8 @@ MkRecord::FieldDefs tupleNormalize(const MkRecord::FieldDefs& fds) {
   if (isTupleLike(fds)) {
     MkRecord::FieldDefs result;
     size_t i = 0;
-    for (auto fd = fds.begin(); fd != fds.end(); ++fd) {
-      result.push_back(MkRecord::FieldDef(".f" + str::from(i++), fd->second));
+    for (const auto &fd : fds) {
+      result.push_back(MkRecord::FieldDef(".f" + str::from(i++), fd.second));
     }
     return result;
   } else {
@@ -87,8 +87,8 @@ ExprPtr makeRecord(const MkRecord::FieldDefs& fds, const LexicalAnnotation& la) 
 }
 
 void importDefs(const Record::Members& ms, Record::Members* out) {
-  for (auto m = ms.begin(); m != ms.end(); ++m) {
-    out->push_back(Record::Member(m->field, m->type));
+  for (const auto &m : ms) {
+    out->push_back(Record::Member(m.field, m.type));
   }
 }
 

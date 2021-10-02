@@ -1413,24 +1413,24 @@ void jitcc::unsafeCompileFunctions(UCFS* ufs) {
   llvm::BasicBlock* ibb = withContext([this](auto&) { return this->builder()->GetInsertBlock(); });
 
   // prepare the environment for these mutually-recursive definitions
-  for (size_t f = 0; f < fs.size(); ++f) {
-    llvm::Function* fval = allocFunction(fs[f].name.empty() ? ("/" + freshName()) : fs[f].name, fs[f].argtys, requireMonotype(this->tenv, fs[f].exp));
+  for (auto &f : fs) {
+    llvm::Function* fval = allocFunction(f.name.empty() ? ("/" + freshName()) : f.name, f.argtys, requireMonotype(this->tenv, f.exp));
     if (fval == nullptr) {
       throw std::runtime_error("Failed to allocate function");
     }
 
 #if LLVM_VERSION_MAJOR >= 11
-    this->bindScope(fs[f].name, fval);
+    this->bindScope(f.name, fval);
 #else
     this->vtenv.back()[fs[f].name] = fval;
 #endif
-    fs[f].result = fval;
+    f.result = fval;
   }
 
   // now compile each function
-  for (size_t f = 0; f < fs.size(); ++f) {
-    llvm::Function*   fval = fs[f].result;
-    const UCF&        ucf  = fs[f];
+  for (const auto &f : fs) {
+    llvm::Function*   fval = f.result;
+    const UCF&        ucf  = f;
     MonoTypePtr       rty  = requireMonotype(this->tenv, ucf.exp);
     llvm::BasicBlock* bb = withContext(
         [fval](llvm::LLVMContext& c) { return llvm::BasicBlock::Create(c, "entry", fval); });
@@ -1560,8 +1560,8 @@ void* jitcc::reifyMachineCodeForFn(const MonoTypePtr&, const str::seq& names, co
 // compilation shorthand
 Values compile(jitcc* c, const Exprs& es) {
   Values r;
-  for (auto exp = es.begin(); exp != es.end(); ++exp) {
-    r.push_back(c->compile(*exp));
+  for (const auto &e : es) {
+    r.push_back(c->compile(e));
   }
   return r;
 }

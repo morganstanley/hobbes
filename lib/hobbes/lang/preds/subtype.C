@@ -27,9 +27,9 @@ void SubtypeUnqualifier::addEliminator(const std::shared_ptr<SubtypeEliminator>&
 }
 
 SubtypeEliminator* SubtypeUnqualifier::findEliminator(const TEnvPtr& tenv, const Subtype& st) const {
-  for (auto e = this->eliminators.begin(); e != this->eliminators.end(); ++e) {
-    if ((*e)->satisfiable(tenv, st.lower, st.greater)) {
-      return e->get();
+  for (const auto &eliminator : this->eliminators) {
+    if (eliminator->satisfiable(tenv, st.lower, st.greater)) {
+      return eliminator.get();
     }
   }
   return nullptr;
@@ -74,8 +74,8 @@ ExprPtr SubtypeUnqualifier::unqualify(const TEnvPtr& tenv, const ConstraintPtr& 
 }
 
 PolyTypePtr SubtypeUnqualifier::lookup(const std::string& vn) const {
-  for (auto e = this->eliminators.begin(); e != this->eliminators.end(); ++e) {
-    PolyTypePtr r = (*e)->lookup(vn);
+  for (const auto &eliminator : this->eliminators) {
+    PolyTypePtr r = eliminator->lookup(vn);
     if (r) {
       return r;
     }
@@ -85,8 +85,8 @@ PolyTypePtr SubtypeUnqualifier::lookup(const std::string& vn) const {
 
 SymSet SubtypeUnqualifier::bindings() const {
   SymSet r;
-  for (auto e = this->eliminators.begin(); e != this->eliminators.end(); ++e) {
-    SymSet x = (*e)->bindings();
+  for (const auto &eliminator : this->eliminators) {
+    SymSet x = eliminator->bindings();
     r.insert(x.begin(), x.end());
   }
   return r;

@@ -2063,13 +2063,10 @@ class Transaction {
 public:
   // a persistent transaction to retain log data between consumer sessions (if necessary)
   Transaction(std::string fname) : fd(-1), file_size(0), map_size(0), data(nullptr), data_size(nullptr), wi(0), ri(0) {
-    for (size_t i = 0; i < fname.size(); ++i) {
-      switch (fname[i]) {
-      case '/': fname[i]='_'; break;
-      case ':': fname[i]='_'; break;
-      case '[': fname[i]='_'; break;
-      case ']': fname[i]='_'; break;
-      default:                break;
+    for (char &i : fname) {
+      switch (i) {
+      case '/': case ':': case '[': case ']': i='_'; break;
+      default: break;
       }
     }
     fname = "." + fname + ".txn";
