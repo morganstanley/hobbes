@@ -7,14 +7,14 @@
 #include <hobbes/util/os.H>
 #include <hobbes/util/perf.H>
 
-#include <iostream>
-#include <map>
-#include <thread>
-#include <mutex>
 #include <atomic>
 #include <functional>
-#include <vector>
+#include <iostream>
+#include <map>
 #include <memory>
+#include <mutex>
+#include <thread>
+#include <vector>
 
 #include <glob.h>
 #include <zlib.h>
@@ -406,7 +406,7 @@ struct SenderGroup {
     auto it = std::find_if_not(detached.begin(), detached.end(), [](const BatchSendSession* s) { return s->completed(); });
     detached.erase(detached.begin(), it);
 
-    senders.push_back(std::unique_ptr<BatchSendSession>(new BatchSendSession{sessionHash, name, dir, clevel, sendto, detached, finalizeSenderF}));
+    senders.push_back(std::make_unique<BatchSendSession>(sessionHash, name, dir, clevel, sendto, detached, finalizeSenderF));
 
     return senders.back().get();
   }
