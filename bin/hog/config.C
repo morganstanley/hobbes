@@ -112,7 +112,7 @@ RunMode config(int argc, const char** argv) {
 
       ++i;
       while (i < argc && argv[i][0] != '-') {
-        r.sendto.push_back(argv[i]);
+        r.sendto.emplace_back(argv[i]);
         ++i;
       }
       --i;

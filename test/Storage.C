@@ -583,9 +583,9 @@ TEST(Storage, FRegionCompatibility) {
       FRTest t;
       t.x = static_cast<int>(i);
       t.y = 3.14159*static_cast<double>(i);
-      t.z.push_back("a");
-      t.z.push_back("b");
-      t.z.push_back("c");
+      t.z.emplace_back("a");
+      t.z.emplace_back("b");
+      t.z.emplace_back("c");
       t.u = FRTestFood::HotDog();
       t.v = MStr::just("chicken");
       t.w[0] = "a";

@@ -111,7 +111,7 @@ static std::vector<RecoveredDetails> recoverSessionInformation() {
       for (const std::vector<ReaderRegistration>::const_iterator& rr : readerRegistrations) {
         if (sr->readerId == rr->readerId) {
           // pair together reader and sender regs with matching reader ids
-          details.readerSenderRegs.push_back(std::make_pair(*rr, *sr));
+          details.readerSenderRegs.emplace_back(*rr, *sr);
         }
       }
     }

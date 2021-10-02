@@ -255,7 +255,7 @@ struct BatchSendSession {
     : buffer(nullptr), c(0), sz(0), dir(dir), readerAlive(true), detached(detached), finalizer(finalizer) {
     for (const auto & hostport : sendto) {
       auto localdir = ensureDirExists(dir + "/" + hostport + "/");
-      destinations.push_back(Destination{localdir, hostport});
+      destinations.emplace_back(localdir, hostport);
     }
 
     // start from last segment in directory 
