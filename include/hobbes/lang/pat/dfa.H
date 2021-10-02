@@ -22,7 +22,7 @@ using PrimFArgs = std::vector<PrimFArg>;
 // the various states of pattern matching
 class MState {
 public:
-  virtual ~MState(void) = default;  
+  virtual ~MState() = default;
   virtual std::string stamp() = 0;
 
   // how many times is this state referenced?
@@ -129,7 +129,7 @@ using MStates = std::vector<MStatePtr>;
 // destruction-side for high-level pattern representations
 template <typename T>
 struct switchMState {
-    virtual ~switchMState(void) = default;
+    virtual ~switchMState() = default;
     virtual T with(const LoadVars*)      const = 0;
     virtual T with(const SwitchVal*)     const = 0;
     virtual T with(const SwitchVariant*) const = 0;

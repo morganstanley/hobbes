@@ -35,7 +35,7 @@ class cc;
  *     rstates : a mapping of F return codes to input regex indexes
  */
 struct Regex {
-  virtual ~Regex(void) = default;
+  virtual ~Regex() = default;
   virtual void show(std::ostream&) const = 0;
 };
 using RegexPtr = std::shared_ptr<Regex>;
