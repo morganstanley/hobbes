@@ -2,14 +2,14 @@
 #ifndef HOBBES_UTIL_STR_HPP_INCLUDED
 #define HOBBES_UTIL_STR_HPP_INCLUDED
 
-#include <hobbes/util/array.H>
-#include <string>
-#include <sstream>
-#include <vector>
+#include <cstdlib>
 #include <cxxabi.h>
-#include <stdlib.h>
-#include <set>
+#include <hobbes/util/array.H>
 #include <map>
+#include <set>
+#include <sstream>
+#include <string>
+#include <vector>
 
 namespace hobbes { namespace str {
 

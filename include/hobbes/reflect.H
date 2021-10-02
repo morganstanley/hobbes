@@ -12,17 +12,17 @@
 #ifndef HOBBES_REFLECT_H_INCLUDED
 #define HOBBES_REFLECT_H_INCLUDED
 
-#include <memory>
-#include <string>
-#include <vector>
-#include <map>
-#include <iostream>
-#include <sstream>
+#include <cassert>
 #include <cstring>
-#include <assert.h>
-#include <stdexcept>
-#include <type_traits>
 #include <cxxabi.h>
+#include <iostream>
+#include <map>
+#include <memory>
+#include <sstream>
+#include <stdexcept>
+#include <string>
+#include <type_traits>
+#include <vector>
 
 #if defined(__APPLE__) && defined(__MACH__)
 #include <fcntl.h>

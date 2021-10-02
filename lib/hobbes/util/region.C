@@ -1,9 +1,9 @@
 
+#include <algorithm>
+#include <cstdlib>
+#include <hobbes/util/ptr.H>
 #include <hobbes/util/region.H>
 #include <hobbes/util/str.H>
-#include <hobbes/util/ptr.H>
-#include <stdlib.h>
-#include <algorithm>
 
 namespace hobbes {
 

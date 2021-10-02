@@ -92,22 +92,22 @@ typedef struct YYLTYPE {
   }
 #line 25 "hexpr.y"
 
-#include <hobbes/lang/module.H>
+#include <cstdio>
+#include <hobbes/db/bindings.H>
 #include <hobbes/lang/expr.H>
+#include <hobbes/lang/module.H>
 #include <hobbes/lang/pat/pattern.H>
 #include <hobbes/lang/type.H>
 #include <hobbes/lang/typepreds.H>
-#include <hobbes/db/bindings.H>
-#include <hobbes/util/autorelease.H>
-#include <hobbes/util/str.H>
-#include <hobbes/util/array.H>
 #include <hobbes/parse/grammar.H>
 #include <hobbes/parse/lalr.H>
 #include <hobbes/read/pgen/hexpr.parse.H>
-#include <string>
+#include <hobbes/util/array.H>
+#include <hobbes/util/autorelease.H>
+#include <hobbes/util/str.H>
 #include <stdexcept>
+#include <string>
 #include <vector>
-#include <stdio.h>
 
 using namespace hobbes;
 

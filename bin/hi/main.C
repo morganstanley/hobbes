@@ -6,20 +6,20 @@
 #include <hobbes/util/os.H>
 #include <hobbes/eval/cmodule.H>
 
-#include <iostream>
+#include <csetjmp>
+#include <csignal>
+#include <cstdlib>
+#include <ctime>
 #include <fstream>
-#include <time.h>
+#include <iostream>
 #include <unistd.h>
-#include <stdlib.h>
-#include <signal.h>
-#include <setjmp.h>
 
 #include "cio.H"
 #include "evaluator.H"
 
-#include <stdio.h>
-#include <readline/readline.h>
+#include <cstdio>
 #include <readline/history.h>
+#include <readline/readline.h>
 
 namespace str = hobbes::str;
 

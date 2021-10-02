@@ -32,12 +32,12 @@
 #ifndef HMC_LIVENESS_H_INCLUDED
 #define HMC_LIVENESS_H_INCLUDED
 
-#include <set>
-#include <vector>
+#include <cassert>
 #include <map>
-#include <unordered_map>
+#include <set>
 #include <stdexcept>
-#include <assert.h>
+#include <unordered_map>
+#include <vector>
 
 namespace hobbes { namespace mc {
 

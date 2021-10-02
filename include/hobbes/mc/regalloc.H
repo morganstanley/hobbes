@@ -42,11 +42,11 @@
 
 #include "encode.H"
 #include "liveness.H"
+#include <cassert>
+#include <map>
 #include <set>
 #include <stack>
-#include <map>
 #include <stdexcept>
-#include <assert.h>
 
 namespace hobbes { namespace mc {
 

@@ -53,10 +53,10 @@
 #include <stdexcept>
 #include <sstream>
 
+#include <cmath>
+#include <cstring>
 #include <sys/mman.h>
 #include <unistd.h>
-#include <cstring>
-#include <math.h>
 
 namespace hobbes { namespace mc {
 

@@ -2,11 +2,11 @@
 #ifndef HOBBES_UTIL_CODEC_HPP_INCLUDED
 #define HOBBES_UTIL_CODEC_HPP_INCLUDED
 
+#include <cstring>
 #include <iostream>
-#include <vector>
 #include <map>
 #include <unistd.h>
-#include <string.h>
+#include <vector>
 
 namespace hobbes {
 

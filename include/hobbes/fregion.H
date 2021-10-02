@@ -48,13 +48,13 @@
 #include <array>
 #include <type_traits>
 
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/mman.h>
+#include <cassert>
+#include <cstring>
 #include <fcntl.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <unistd.h>
-#include <string.h>
-#include <assert.h>
 
 // filesystem waits depend on platform details
 #include <sys/time.h>

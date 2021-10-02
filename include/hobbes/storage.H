@@ -11,21 +11,21 @@
 #ifndef HSTORE_H_INCLUDED
 #define HSTORE_H_INCLUDED
 
-#include <map>
-#include <vector>
 #include <array>
-#include <string>
-#include <string.h>
-#include <tuple>
+#include <atomic>
+#include <cassert>
+#include <cstdint>
+#include <cstdlib>
+#include <cstring>
 #include <functional>
 #include <iostream>
-#include <sstream>
-#include <atomic>
+#include <map>
 #include <mutex>
+#include <sstream>
 #include <stdexcept>
-#include <stdlib.h>
-#include <stdint.h>
-#include <assert.h>
+#include <string>
+#include <tuple>
+#include <vector>
 
 #include <unistd.h>
 #include <sys/types.h>

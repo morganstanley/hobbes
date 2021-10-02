@@ -7,10 +7,10 @@
 
 #include <sstream>
 
+#include <cstring>
 #include <fcntl.h>
 #include <netdb.h>
 #include <netinet/in.h>
-#include <string.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <sys/types.h>

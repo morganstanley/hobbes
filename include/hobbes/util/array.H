@@ -2,14 +2,14 @@
 #ifndef HOBBES_UTIL_ARRAY_HPP_INCLUDED
 #define HOBBES_UTIL_ARRAY_HPP_INCLUDED
 
+#include <algorithm>
+#include <cstring>
+#include <functional>
 #include <map>
 #include <set>
-#include <vector>
-#include <stdexcept>
-#include <algorithm>
-#include <functional>
 #include <sstream>
-#include <string.h>
+#include <stdexcept>
+#include <vector>
 
 namespace hobbes {
 

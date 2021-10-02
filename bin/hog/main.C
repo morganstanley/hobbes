@@ -17,7 +17,7 @@
 #include "path.H"
 #include "out.H"
 
-#include <signal.h>
+#include <csignal>
 
 namespace hog {
 

@@ -1,14 +1,14 @@
 
-#include <hobbes/db/signals.H>
-#include <hobbes/db/file.H>
-#include <hobbes/events/events.H>
-#include <hobbes/util/os.H>
-#include <hobbes/hobbes.H>
-#include <vector>
-#include <set>
 #include <atomic>
-#include <string.h>
-#include <errno.h>
+#include <cerrno>
+#include <cstring>
+#include <hobbes/db/file.H>
+#include <hobbes/db/signals.H>
+#include <hobbes/events/events.H>
+#include <hobbes/hobbes.H>
+#include <hobbes/util/os.H>
+#include <set>
+#include <vector>
 
 #ifdef BUILD_LINUX
 #include <sys/inotify.h>

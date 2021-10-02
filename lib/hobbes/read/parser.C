@@ -1,18 +1,18 @@
 
-#include <hobbes/lang/module.H>
+#include <cstdio>
+#include <fstream>
 #include <hobbes/lang/expr.H>
+#include <hobbes/lang/module.H>
 #include <hobbes/lang/pat/pattern.H>
 #include <hobbes/parse/grammar.H>
-#include <hobbes/read/pgen/hexpr.parse.H>
 #include <hobbes/read/parser.H>
+#include <hobbes/read/pgen/hexpr.parse.H>
 #include <hobbes/util/autorelease.H>
-#include <mutex>
-#include <string>
-#include <stdexcept>
-#include <stack>
 #include <iostream>
-#include <fstream>
-#include <stdio.h>
+#include <mutex>
+#include <stack>
+#include <stdexcept>
+#include <string>
 
 // protect access to lexer/parser globals (blech)
 static std::recursive_mutex parse_mutex;

@@ -2,11 +2,11 @@
 #ifndef HOBBES_UTIL_PERF_HPP_INCLUDED
 #define HOBBES_UTIL_PERF_HPP_INCLUDED
 
+#include <ctime>
 #include <hobbes/util/os.H>
-#include <string>
-#include <sstream>
 #include <iostream>
-#include <time.h>
+#include <sstream>
+#include <string>
 #include <sys/time.h>
 
 namespace hobbes {
