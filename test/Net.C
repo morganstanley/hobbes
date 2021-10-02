@@ -39,7 +39,7 @@ static void runTestServer(int ps, int pe) {
 int testServerPort() {
   if (serverPort < 0) {
     std::unique_lock<std::mutex> lk(serverMtx);
-    std::thread serverProc(std::bind(&runTestServer, 8765, 9500));
+    std::thread serverProc([] { return runTestServer(8765, 9500); });
     serverProc.detach();
     serverStartup.wait(lk);
     if (serverPort < 0) {
@@ -76,7 +76,7 @@ int testServerWithHostPort(const std::string &host = "") {
   if (serverPortWithHost < 0) {
     std::unique_lock<std::mutex> lk(serverMtxWithHost);
     std::thread serverWithHostProc(
-        std::bind(&runTestServerWithHost, 9501, 10500, host));
+        [host] { return runTestServerWithHost(9501, 10500, host); });
     serverWithHostProc.detach();
     serverWithHostStartup.wait(lk);
     if (serverPortWithHost < 0) {
