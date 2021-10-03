@@ -101,7 +101,7 @@ ClassDef::ClassDef(const Constraints& cs, const std::string& cname, const str::s
 const Constraints&  ClassDef::constraints() const { return this->cs; }
 const std::string&  ClassDef::name() const { return this->cname; }
 const str::seq&     ClassDef::vars() const { return this->tvars; }
-const CFunDepDefs   ClassDef::fundeps() const { return this->fdeps; }
+CFunDepDefs         ClassDef::fundeps() const { return this->fdeps; }
 const MVarTypeDefs& ClassDef::members() const { return this->mvtydefs; }
 
 void ClassDef::show(std::ostream& out) const {

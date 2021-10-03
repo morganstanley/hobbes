@@ -114,7 +114,7 @@ public:
   const Constraints&  constraints() const;
   const std::string&  name() const;
   const str::seq&     vars() const;
-  const CFunDepDefs   fundeps() const;
+  CFunDepDefs         fundeps() const;
   const MVarTypeDefs& members() const;
 
   void show(std::ostream& out) const override;
