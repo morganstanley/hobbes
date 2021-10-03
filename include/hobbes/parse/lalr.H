@@ -252,7 +252,7 @@ parserdef lalr1parser(const grammar& g, terminal* s);
 // an ambiguity conflict on a particular terminal
 class ambiguity_conflict : public std::runtime_error {
 public:
-  ambiguity_conflict(const std::string& ex, terminal* t) throw();
+  ambiguity_conflict(const std::string& ex, terminal* t) noexcept;
 
   terminal* failedTerminal() const;
 private:
@@ -262,7 +262,7 @@ private:
 // a failure to compile a grammar to an LALR table, with cause
 class compile_table_failure : public std::runtime_error {
 public:
-  compile_table_failure(const std::string& msg, const grammar& g, const itemset& faileditems, terminal* t) throw();
+  compile_table_failure(const std::string& msg, const grammar& g, const itemset& faileditems, terminal* t) noexcept;
 
   const grammar& failedGrammar() const;
   const itemset& failedItems() const;

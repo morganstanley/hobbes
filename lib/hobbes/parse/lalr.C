@@ -701,14 +701,14 @@ lrtable lalrTable(const parserdef& p, const precedence& px) {
   return r;
 }
 
-ambiguity_conflict::ambiguity_conflict(const std::string& ex, terminal* t) throw() : std::runtime_error(ex), t(t) {
+ambiguity_conflict::ambiguity_conflict(const std::string& ex, terminal* t) noexcept : std::runtime_error(ex), t(t) {
 }
 
 terminal* ambiguity_conflict::failedTerminal() const {
   return this->t;
 }
 
-compile_table_failure::compile_table_failure(const std::string& msg, const grammar& g, const itemset& faileditems, terminal* t) throw() : std::runtime_error(msg), g(g), faileditems(faileditems), t(t) {
+compile_table_failure::compile_table_failure(const std::string& msg, const grammar& g, const itemset& faileditems, terminal* t) noexcept : std::runtime_error(msg), g(g), faileditems(faileditems), t(t) {
 }
 
 const grammar& compile_table_failure::failedGrammar() const {
