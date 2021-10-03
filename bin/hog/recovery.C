@@ -43,7 +43,7 @@ template<typename T>
 static std::vector<T> retrieveFromStats(hobbes::fregion::reader& r) {
   std::vector<T> ts;
 
-  auto& data = r.series<T>(T::_hmeta_struct_type_name().c_str());
+  auto& data = r.series<T>(T::_hmeta_struct_type_name());
   T t;
   while (data.next(&t)) {
     ts.emplace_back(std::move(t));
