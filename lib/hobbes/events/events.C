@@ -43,7 +43,7 @@ bool operator>(const timer& a, const timer& b) {
   return a.callTime > b.callTime;
 }
 
-thread_local std::priority_queue<timer, std::vector<timer>, std::greater<timer>> timers;
+thread_local std::priority_queue<timer, std::vector<timer>, std::greater<>> timers;
 
 int threadEPollFD() {
   if (!epInitialized) {
