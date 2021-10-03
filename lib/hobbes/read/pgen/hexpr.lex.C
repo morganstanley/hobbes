@@ -17,10 +17,10 @@
 /* First, we deal with  platform-specific or compiler-specific issues. */
 
 /* begin standard C headers. */
-#include <cerrno>
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
+#include <stdio.h>
+#include <string.h>
+#include <errno.h>
+#include <stdlib.h>
 
 /* end standard C headers. */
 
@@ -991,10 +991,10 @@ YY_DECL
 #endif
 
         /* Create the reject buffer large enough to save one state per allowed character. */
-        if ( ! (yy_state_buf) )
-            (yy_state_buf) = (yy_state_type *)yyalloc(YY_STATE_BUF_SIZE  );
-            if ( ! (yy_state_buf) )
-                YY_FATAL_ERROR( "out of dynamic memory in yylex()" );
+      if ( ! (yy_state_buf) )
+        (yy_state_buf) = (yy_state_type *)yyalloc(YY_STATE_BUF_SIZE  );
+      if ( ! (yy_state_buf) )
+        YY_FATAL_ERROR( "out of dynamic memory in yylex()" );
 
 		if ( ! (yy_start) )
 			(yy_start) = 1;	/* first start state */
@@ -2027,7 +2027,7 @@ static int yy_get_next_buffer (void)
 	if ( ! yy_is_jam )
 		*(yy_state_ptr)++ = yy_current_state;
 
-		return yy_is_jam ? 0 : yy_current_state;
+  return yy_is_jam ? 0 : yy_current_state;
 }
 
 #ifndef YY_NO_UNPUT
