@@ -141,7 +141,7 @@ DEFINE_STRUCT(
   (int,               remotePort)
 );
 
-void runRecvConnection(SessionGroup* sg, NetConnection* pc, std::string dir) {
+void runRecvConnection(SessionGroup* sg, NetConnection* pc, const std::string& dir) {
   std::unique_ptr<NetConnection> connection(pc);
   std::vector<uint8_t> inb, outb, txn;
   outb.resize(1 * 1024 * 1024); // reserve 1MB for buffering
@@ -193,7 +193,7 @@ void runRecvConnection(SessionGroup* sg, NetConnection* pc, std::string dir) {
   }
 }
 
-[[noreturn]] void runRecvServer(std::unique_ptr<NetServer> server, std::string dir, bool consolidate, hobbes::StoredSeries::StorageMode sm) {
+[[noreturn]] void runRecvServer(std::unique_ptr<NetServer> server, const std::string& dir, bool consolidate, hobbes::StoredSeries::StorageMode sm) {
   SessionGroup* sg = makeSessionGroup(consolidate, sm);
   std::vector<std::thread> cthreads;
 

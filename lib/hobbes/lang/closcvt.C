@@ -63,7 +63,7 @@ ExprPtr makeClosureOver(const Fn* f, const VarSet& vs) {
 
 using TEnvs = std::set<TEnvPtr>;
 
-static bool hasRootBinding(const std::string& vn, const TEnvPtr& tenv, const TEnvs roots) {
+static bool hasRootBinding(const std::string& vn, const TEnvPtr& tenv, const TEnvs& roots) {
   if (!tenv) {
     return true;
   } else if (tenv->hasImmediateBinding(vn)) {

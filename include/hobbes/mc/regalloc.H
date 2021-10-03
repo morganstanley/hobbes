@@ -160,7 +160,7 @@ inline std::string rmap(const std::map<X86Reg, std::string>& m, X86Reg r, RegCla
     return k->second;
   }
 }
-inline void rmapInto(const std::map<X86Reg, std::string>& m, std::set<std::string>* s, MArg ma) {
+inline void rmapInto(const std::map<X86Reg, std::string>& m, std::set<std::string>* s, const MArg& ma) {
   if (const auto* reg = ma.reg()) {
     s->insert(rmap(m, reg->name, reg->rclass));
   } else if (const auto* rd = ma.regDeref()) {

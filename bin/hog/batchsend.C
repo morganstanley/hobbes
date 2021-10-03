@@ -14,6 +14,7 @@
 #include <memory>
 #include <mutex>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include <glob.h>
@@ -155,7 +156,7 @@ void sendInitMessageToAll(const std::string& groupName, std::vector<Destination>
 using IdleFn = std::function<void()>;
 using ReadyFn = std::function<bool()>;
 
-void sendSegmentFilesToAll(std::vector<Destination>& destinations, IdleFn idleFn) {
+void sendSegmentFilesToAll(std::vector<Destination>& destinations, const IdleFn& idleFn) {
   bool yield = false;
   while (!yield) {
     for (auto & d : destinations) {
@@ -175,7 +176,7 @@ void sendSegmentFilesToAll(std::vector<Destination>& destinations, IdleFn idleFn
   }
 }
 
-void runConnectedSegmentSendingProcess(const std::string& groupName, std::vector<Destination>& destinations, IdleFn idleFn) {
+void runConnectedSegmentSendingProcess(const std::string& groupName, std::vector<Destination>& destinations, const IdleFn& idleFn) {
   try {
     sendInitMessageToAll(groupName, destinations);
     sendSegmentFilesToAll(destinations, idleFn);
@@ -199,7 +200,7 @@ void connect(std::vector<Destination>& destinations) {
   }
 }
 
-void runSegmentSendingProcess(const size_t sessionHash, const std::string groupName, std::vector<Destination>& destinations, ReadyFn readyFn, IdleFn idleFn) {
+void runSegmentSendingProcess(const size_t sessionHash, const std::string& groupName, std::vector<Destination>& destinations, const ReadyFn& readyFn, const IdleFn& idleFn) {
   if (destinations.empty()) {
     out() << "no batchsend host specified, compressed segment files will accumulate locally" << std::endl;
   } else {
@@ -251,7 +252,7 @@ struct BatchSendSession {
   std::vector<const BatchSendSession*> detached;
   std::function<void()>    finalizer;
 
-  BatchSendSession(const size_t sessionHash, const std::string& groupName, const std::string& dir, size_t clevel, const std::vector<std::string>& sendto, const std::vector<const BatchSendSession*> detached, const std::function<void()> finalizer)
+  BatchSendSession(const size_t sessionHash, const std::string& groupName, const std::string& dir, size_t clevel, const std::vector<std::string>& sendto, const std::vector<const BatchSendSession*>& detached, const std::function<void()>& finalizer)
     : buffer(nullptr), c(0), sz(0), dir(dir), readerAlive(true), detached(detached), finalizer(finalizer) {
     for (const auto & hostport : sendto) {
       auto localdir = ensureDirExists(dir + "/" + hostport + "/");
@@ -289,7 +290,7 @@ struct BatchSendSession {
     this->sendingThread = std::thread([this, sessionHash, groupName, dir, readerId, readyFn, idleFn]() {
       const auto senderId = hobbes::storage::thisProcThread();
       std::vector<std::string> senderqueue;
-      for (auto s : this->detached) {
+      for (const auto *s : this->detached) {
         senderqueue.push_back(s->dir);
       }
       StatFile::instance().log(SenderRegistration{hobbes::now(), sessionHash, readerId, senderId, this->dir, senderqueue});

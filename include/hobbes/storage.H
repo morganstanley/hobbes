@@ -1839,7 +1839,7 @@ struct StorageGroup {
     return fnss.str();
   }
 
-  uint32_t addStatement(const std::string file, uint32_t line, const std::string& name, size_t flags, const std::string& fmtstr, tydescfn tdesc) {
+  uint32_t addStatement(const std::string& file, uint32_t line, const std::string& name, size_t flags, const std::string& fmtstr, tydescfn tdesc) {
     if (this->statements->find(name) != this->statements->end()) {
       std::cerr
         << "fatal error: duplicate log name in use (" << name << ")"

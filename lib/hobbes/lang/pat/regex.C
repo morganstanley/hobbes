@@ -1128,7 +1128,7 @@ void mergeCharRangesAndEqResults(DFA* dfa, const RStates& fstates, RStates* rsta
  **************************/
 using EqStates = std::map<state, state>;
 
-void visitGraph(const std::vector<std::vector<state>>& g, state m, std::vector<bool>& visited, std::function<void(state)> visitFn) {
+void visitGraph(const std::vector<std::vector<state>>& g, state m, std::vector<bool>& visited, const std::function<void(state)>& visitFn) {
   std::queue<state> q;
 
   q.push(m);
