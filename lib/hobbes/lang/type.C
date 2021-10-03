@@ -90,7 +90,7 @@ str::seq showNoSimpl(const Constraints& cs) {
 TEnv::TEnv(const TEnvPtr& parent) : parent(parent), dbgCstRefine(false) {
 }
 
-TEnv::TEnv() : parent(), unquals(new UnqualifierSet()), dbgCstRefine(false)  {
+TEnv::TEnv() :  unquals(new UnqualifierSet()), dbgCstRefine(false)  {
 }
 bool TEnv::debugConstraintRefine() const { return this->dbgCstRefine || (parent && parent->debugConstraintRefine()); }
 void TEnv::debugConstraintRefine(bool f) { this->dbgCstRefine = f; }
@@ -801,7 +801,7 @@ MonoTypePtr Variant::make(const std::string& lbl, const MonoTypePtr& hty, const 
 }
 
 Variant::Member::Member(const std::string& selector, const MonoTypePtr& type, unsigned int id) : selector(selector), type(type), id(id) { }
-Variant::Member::Member() : selector(""), type(), id(0) { }
+Variant::Member::Member() :   id(0) { }
 bool Variant::Member::operator==(const Variant::Member& rhs) const { return this->selector == rhs.selector && *this->type == *rhs.type && this->id == rhs.id; }
 
 bool Variant::Member::operator<(const Variant::Member& rhs) const {
@@ -1016,7 +1016,7 @@ unsigned int Variant::size() const {
 
 // record types
 Record::Member::Member(const std::string& field, const MonoTypePtr& type, int offset) : field(field), type(type), offset(offset) { }
-Record::Member::Member() : field(""), type(), offset(0) { }
+Record::Member::Member() :   offset(0) { }
 bool Record::Member::operator==(const Record::Member& rhs) const { return this->field == rhs.field && *this->type == *rhs.type && this->offset == rhs.offset; }
 
 bool Record::Member::operator<(const Record::Member& rhs) const {

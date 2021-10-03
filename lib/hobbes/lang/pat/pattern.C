@@ -22,7 +22,7 @@ void Pattern::name(const std::string& x) {
 }
 
 // match literal (constant) values
-MatchLiteral::MatchLiteral(const PrimitivePtr& proxy, const LexicalAnnotation& la) : Base(la), p(proxy), e() {
+MatchLiteral::MatchLiteral(const PrimitivePtr& proxy, const LexicalAnnotation& la) : Base(la), p(proxy) {
 }
 
 MatchLiteral::MatchLiteral(const PrimitivePtr& proxy, const ExprPtr& value, const LexicalAnnotation& la) : Base(la), p(proxy), e(value) {
