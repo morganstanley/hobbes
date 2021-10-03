@@ -106,7 +106,7 @@ public:
     bool          input;
     arithn::freq  lc;
 
-    arithn::freq& c() { return *this->pc; }
+    arithn::freq& c() const { return *this->pc; }
   };
 
   imagefile* f;

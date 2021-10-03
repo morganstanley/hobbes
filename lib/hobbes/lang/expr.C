@@ -1103,7 +1103,7 @@ QualTypePtr switchExprTyFnM::withTy(const QualTypePtr& qt) const {
   return qt;
 }
 
-UnitV switchExprTyFnM::updateTy(Expr* e) {
+UnitV switchExprTyFnM::updateTy(Expr* e) const {
   if (e->type() != QualTypePtr()) {
     e->type(withTy(e->type()));
   }

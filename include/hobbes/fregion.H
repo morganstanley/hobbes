@@ -2175,7 +2175,7 @@ public:
     close(this->ifd);
   }
 
-  int wait(int maxWaitMS) {
+  int wait(int maxWaitMS) const {
     if (maxWaitMS == 0) {
       return 0;
     } else if (maxWaitMS < 0) {

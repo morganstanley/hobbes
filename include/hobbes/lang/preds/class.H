@@ -135,10 +135,10 @@ public:
   size_t arity() const;
 
   // can we immediately exclude this instance generator for this type list?
-  bool satisfiable(const TEnvPtr&, const MonoTypes&, Definitions*);
+  bool satisfiable(const TEnvPtr&, const MonoTypes&, Definitions*) const;
 
   // assuming we're not satisfiable, what are the constraints that aren't satisfiable?
-  void explainSatisfiability(const TEnvPtr&, const MonoTypes&, Definitions*, Constraints*, Constraints*);
+  void explainSatisfiability(const TEnvPtr&, const MonoTypes&, Definitions*, Constraints*, Constraints*) const;
 
   // (possibly) produce a type class instance from this generator
   bool apply(const TEnvPtr& tenv, const MonoTypes& tys, const TClass* c, MonoTypeUnifier*, Definitions* rdefs, TCInstancePtr* out) const;

@@ -124,7 +124,7 @@ public:
   }
 
   uint8_t* base() { return this->mem; }
-  size_t   size() { return this->sz; }
+  size_t   size() const { return this->sz; }
 
   // allocate some number of additional bytes at the tail of the buffer
   // return the address where those bytes can be written (this is how machine code is accumulated)

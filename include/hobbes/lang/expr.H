@@ -1373,7 +1373,7 @@ struct switchExprTyFnM : public switchExprM<UnitV> {
   UnitV with(Pack* v) override;
   UnitV with(Unpack* v) override;
 private:
-  UnitV updateTy(Expr* e);
+  UnitV updateTy(Expr* e) const;
 };
 
 Case::Bindings switchOf(const Case::Bindings& bs, const switchExpr<ExprPtr>& f);

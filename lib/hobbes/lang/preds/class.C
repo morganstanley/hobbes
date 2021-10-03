@@ -532,7 +532,7 @@ size_t TCInstanceFn::arity() const {
   return this->itys.size();
 }
 
-bool TCInstanceFn::satisfiable(const TEnvPtr& tenv, const MonoTypes& tys, Definitions* rdefs) {
+bool TCInstanceFn::satisfiable(const TEnvPtr& tenv, const MonoTypes& tys, Definitions* rdefs) const {
   // immediately reject arity mismatch (though this should never happen)
   if (this->itys.size() != tys.size()) {
     return false;
@@ -571,7 +571,7 @@ bool TCInstanceFn::satisfiable(const TEnvPtr& tenv, const MonoTypes& tys, Defini
   return true;
 }
 
-void TCInstanceFn::explainSatisfiability(const TEnvPtr& tenv, const MonoTypes& tys, Definitions* rdefs, Constraints* scs, Constraints* fcs) {
+void TCInstanceFn::explainSatisfiability(const TEnvPtr& tenv, const MonoTypes& tys, Definitions* rdefs, Constraints* scs, Constraints* fcs) const {
   if (this->itys.size() != tys.size()) {
     return;
   }
