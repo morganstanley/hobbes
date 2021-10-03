@@ -1058,7 +1058,7 @@ DEFINE_STRUCT(
 );
 
 array<DFAStateRep>* makeDFARep(cc* c, const DFA& dfa) {
-  auto result = c->makeArray<DFAStateRep>(dfa.size());
+  auto *result = c->makeArray<DFAStateRep>(dfa.size());
   for (size_t i = 0; i < dfa.size(); ++i) {
     DFAStateRep& s = result->data[i];
     auto ctnm = dfa[i].chars.mapping();

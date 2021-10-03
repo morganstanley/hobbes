@@ -135,7 +135,7 @@ public:
       growBuffer(std::max<size_t>(newsz, this->allocsz * 2));
     }
 
-    auto r = this->mem + this->sz;
+    auto *r = this->mem + this->sz;
     this->sz += segsz;
     return r;
   }
@@ -169,7 +169,7 @@ public:
     // this is additionally complicated by the fact that this initial allocation
     // can cause a buffer move itself
     while (true) {
-      auto        rip = this->mem + this->sz;
+      auto *      rip = this->mem + this->sz;
       PatchBuffer b;
       uint32_t    n = 0;
 

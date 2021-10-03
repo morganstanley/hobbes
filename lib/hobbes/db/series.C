@@ -517,7 +517,7 @@ size_t makeCRootRef(writer* file, const MonoTypePtr&) {
 size_t makeCRootRef(writer* file, const std::string& fn, const MonoTypePtr& cseqType) {
   using namespace hobbes::fregion;
 
-  auto fd = file->fileData();
+  auto *fd = file->fileData();
   auto b  = fd->bindings.find(fn);
 
   if (b == fd->bindings.end()) {

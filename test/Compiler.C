@@ -88,7 +88,7 @@ TEST(Compiler, ccInManyThreads) {
       badChecks += c.compileFn<int()>("sum([1..100])-100*101/2")(); // just 0, but complex enough to hit many areas of the compiler
     })));
   }
-  for (auto p : ps) { p->join(); delete p; }
+  for (auto *p : ps) { p->join(); delete p; }
   EXPECT_EQ(badChecks, size_t(0));
 }
 

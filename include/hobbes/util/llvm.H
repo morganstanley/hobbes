@@ -529,7 +529,7 @@ inline llvm::Constant* liftAsGlobalRef(llvm::Module* m, llvm::Constant* c) {
 //   try to extract constants from a set of compiled values -- if even one value is not constant, fail by returning an empty list
 inline Constants varArrayConstants(const Values& vs, bool globalPtrRefs) {
   Constants r;
-  for (auto v : vs) {
+  for (auto *v : vs) {
     if (llvm::Constant* c = constant(v, globalPtrRefs)) {
       r.push_back(c);
     } else {
@@ -541,7 +541,7 @@ inline Constants varArrayConstants(const Values& vs, bool globalPtrRefs) {
 
 inline Constants liftAsGlobalRefs(llvm::Module* m, const Constants& cs) {
   Constants r;
-  for (auto c : cs) {
+  for (auto *c : cs) {
     r.push_back(liftAsGlobalRef(m, c));
   }
   return r;

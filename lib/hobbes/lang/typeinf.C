@@ -267,7 +267,7 @@ struct substituteInto : public switchTyFn {
     this->uty.visited = true;
     MonoTypePtr f = this->s->substitute(v->fn());
     MonoTypes args;
-    for (auto& arg : v->args()) {
+    for (const auto& arg : v->args()) {
       args.push_back(this->s->substitute(arg));
     }
     this->uty.visited = false;

@@ -563,7 +563,7 @@ struct UnsafeRefs : public SafeExpr::UnsafeDefs {
     SafeExpr::template with<void>(
         e,
         [&](const SafeExpr::UnsafeDefs &unsafeDef) {
-          for (auto &f : unsafeDef.unSafeRefs()) {
+          for (const auto &f : unsafeDef.unSafeRefs()) {
             if (v.second.find(f) == v.second.end()) {
               v.first.push_back(f);
             }
@@ -864,7 +864,7 @@ struct makeSafe : public switchExprC<ExprPtr> {
         v->value(),
         [&, this](const SafeExpr::UnsafeDefs &unsafeDef) {
           ExprPtr vc(v->clone());
-          if (auto vcc = is<Var>(vc.get())) {
+          if (const auto *vcc = is<Var>(vc.get())) {
             if (not unsafeDef.safeFn().empty()) {
               const_cast<Var *>(vcc)->value(unsafeDef.safeFn());
             } else {
@@ -981,7 +981,7 @@ struct makeSafeArrays : public makeSafe {
       thread_local Map safeArrayTable{
           Map{{{"element", {"element", "elementM"}}}}};
       ExprPtr vc(v->clone());
-      if (auto vcc = is<Var>(vc.get())) {
+      if (const auto *vcc = is<Var>(vc.get())) {
         auto iter = safeArrayTable.find(v->value());
         if (iter != std::end(safeArrayTable)) {
           const_cast<Var *>(vcc)->value(iter->second.safeFn());

@@ -15,7 +15,7 @@ MonoTypePtr fileType(bool writeable, const MonoTypePtr& stype) {
 }
 
 static uint32_t fileModeFlags(const MonoTypePtr& t) {
-  if (auto n = is<TLong>(t)) {
+  if (auto *n = is<TLong>(t)) {
     return n->value()+1;
   }
   return 0;

@@ -554,7 +554,7 @@ private:
   std::string vname;
 
   llvm::Value* compileConstArray(const MonoTypePtr& ty, const Values& vs) const {
-    auto elemTy = is<Func>(ty) != nullptr ? ptrType(toLLVM(ty)) : toLLVM(ty);
+    auto *elemTy = is<Func>(ty) != nullptr ? ptrType(toLLVM(ty)) : toLLVM(ty);
     return withContext([&](auto&) {
        // take care to refer to global array constants by reference (a bit awkward!)
        return tryMkConstVarArray(builder(), this->c->module(), elemTy, vs, is<Array>(ty));
@@ -755,7 +755,7 @@ public:
     }
 
     Constants cs = switchOf(v->values(), *this);
-    for (auto c : cs) { if (c == nullptr) return nullptr; }
+    for (auto *c : cs) { if (c == nullptr) return nullptr; }
 
     llvm::Type* elemTy = toLLVM(aty->type(), false);
     llvm::StructType* saty = varArrayType(elemTy, cs.size());

@@ -1025,7 +1025,7 @@ inline size_t inferCompressedBatchSize(const bytes& bs) {
   ty::desc t = ty::decode(bs);
 
   if (t->tid == PRIV_HPPF_TYCTOR_TAPP) {
-    auto ap = reinterpret_cast<const ty::App*>(t.get());
+    const auto *ap = reinterpret_cast<const ty::App*>(t.get());
 
     if (ap->f->tid == PRIV_HPPF_TYCTOR_PRIM && ap->args.size() == 3) {
       if (reinterpret_cast<const ty::Prim*>(ap->f.get())->n == "cseq") {

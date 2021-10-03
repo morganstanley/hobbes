@@ -1329,7 +1329,7 @@ bool Record::isTuple() const {
 }
 
 const MonoTypePtr& Record::member(const std::string& mn) const {
-  if (auto m = mmember(mn)) {
+  if (const auto *m = mmember(mn)) {
     return m->type;
   }
 

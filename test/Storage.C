@@ -924,7 +924,7 @@ TEST(Storage, FRegionCArrays) {
     // expect to be able to read back the carray data from C++
     hobbes::fregion::reader r(fname);
 
-    auto& rxs = *r.definition<XS>("xs");
+    const auto& rxs = *r.definition<XS>("xs");
     EXPECT_EQ(rxs.size, 10UL);
     for (size_t i = 0; i < rxs.size; ++i) {
       EXPECT_EQ(rxs[i].first, static_cast<int>(i));

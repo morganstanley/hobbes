@@ -2103,7 +2103,7 @@ public:
 
   template <typename T>
     const T* read() {
-      auto p = reinterpret_cast<const T*>(ptr());
+      const auto *p = reinterpret_cast<const T*>(ptr());
       skip(sizeof(T));
       return p;
     }

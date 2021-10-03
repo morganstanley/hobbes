@@ -284,7 +284,7 @@ void runMachineREPLStep(cc* c) {
 
       // buffer the result to remove any accidental internal terminators
       std::ostringstream ss;
-      auto stdoutbuffer = std::cout.rdbuf(ss.rdbuf());
+      auto *stdoutbuffer = std::cout.rdbuf(ss.rdbuf());
       try {
         c->compileFn<void()>("print(" + expr + ")")();
         resetMemoryPool();
@@ -316,7 +316,7 @@ void runMachineREPLStep(cc* c) {
 
       // buffer the result to remove any accidental internal terminators
       std::ostringstream ss;
-      auto stdoutbuffer = std::cout.rdbuf(ss.rdbuf());
+      auto *stdoutbuffer = std::cout.rdbuf(ss.rdbuf());
 
       try {
         std::cout << show(simplifyVarNames(c->unsweetenExpression(c->readExpr(expr))->type()));
@@ -364,7 +364,7 @@ void runMachineREPLStep(cc* c) {
 
       // buffer the result to remove any accidental internal terminators
       std::ostringstream ss;
-      auto stdoutbuffer = std::cout.rdbuf(ss.rdbuf());
+      auto *stdoutbuffer = std::cout.rdbuf(ss.rdbuf());
 
       try {
         c->define(vname, expr);

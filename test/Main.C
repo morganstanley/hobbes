@@ -103,7 +103,7 @@ std::string TestCoord::toJSON() {
 }
 
 void listTest() {
-  for (auto & test : TestCoord::instance().testGroupNames()) {
+  for (const auto & test : TestCoord::instance().testGroupNames()) {
     std::cout << test << std::endl;
   }
 }

@@ -904,7 +904,7 @@ terminals dispOrd(const terminalset& ts) {
 void show(std::ostream& out, const lrtable& tbl) {
   auto      ts = dispOrd(definedSymbols(tbl));
   str::seqs stbl;
-  for (auto t : ts) {
+  for (auto *t : ts) {
     stbl.push_back(str::seq());
     str::seq& c = stbl.back();
 

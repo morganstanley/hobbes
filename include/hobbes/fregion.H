@@ -1299,7 +1299,7 @@ template <typename T>
         auto* d = reinterpret_cast<uint8_t*>(mapFileData(f, dloc, bc));
         *reinterpret_cast<size_t*>(d) = x.size();
 
-        auto dc = d + sizeof(size_t);
+        auto *dc = d + sizeof(size_t);
         for (const auto& xv : x) {
           store<T>::write(f, dc, xv);
           dc += tsz;
@@ -1341,7 +1341,7 @@ template <>
         auto* d = reinterpret_cast<uint8_t*>(mapFileData(f, dloc, bc));
         *reinterpret_cast<size_t*>(d) = x.size();
 
-        auto dc = d + sizeof(size_t);
+        auto *dc = d + sizeof(size_t);
         for (const auto& xv : x) {
           store<bool>::write(f, dc, xv);
           dc += 1;

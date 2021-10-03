@@ -179,11 +179,11 @@ inline int makeConnection(const std::string& localAddr, const std::string& host,
   struct addrinfo* localAddrs = localAddr.empty() ? nullptr : lookupAddrInfo(localAddr, "");
   struct addrinfo* addrs      = lookupAddrInfo(host, port);
 
-  for (auto p = addrs; p != nullptr; p = p->ai_next) {
+  for (auto *p = addrs; p != nullptr; p = p->ai_next) {
     int s = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
     if (s == -1) continue;
 
-    auto la = localAddrs;
+    auto *la = localAddrs;
     for (; la != nullptr; la = la->ai_next) {
       if (la->ai_family == p->ai_family && la->ai_socktype == p->ai_socktype && la->ai_protocol == p->ai_protocol) {
         if (bind(s, la->ai_addr, la->ai_addrlen) != -1) {

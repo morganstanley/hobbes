@@ -22,7 +22,7 @@ bool hstoreCanRead(storage::Transaction& txn, size_t n) {
 }
 
 const uint8_t* hstoreUnsafeRead(storage::Transaction& txn, size_t n) {
-  auto p = txn.ptr();
+  const auto *p = txn.ptr();
   txn.skip(n);
   return p;
 }
@@ -269,7 +269,7 @@ ProcessTxnF initStorageSession(Session* s, const std::string& dirPfx, storage::P
       s->writeFns.resize(stmt.id + 1);
     }
 
-    auto ss = new StoredSeries(c, s->db, stmt.name, pty, 10000, sm);
+    auto *ss = new StoredSeries(c, s->db, stmt.name, pty, 10000, sm);
     std::string writefn = "write_" + str::from(hobbes::time()) + "_" + stmt.name;
     ss->bindAs(c, writefn);
 

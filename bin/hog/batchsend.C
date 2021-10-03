@@ -424,7 +424,7 @@ std::vector<const BatchSendSession*> SenderGroup::detached;
 std::mutex SenderGroup::mutex;
 
 void pushLocalData(const hobbes::storage::QueueConnection& qc, const size_t sessionHash, const std::string& groupName, const std::string& partialDir, const std::string& fullDir, const hobbes::storage::ProcThread& readerId, const hobbes::storage::WaitPolicy wp, const RunMode& runMode, std::atomic<bool>& conn, const std::function<void()>& finalizeSenderF) {
-  auto sn = SenderGroup::create(sessionHash, groupName, fullDir, runMode.clevel, runMode.sendto, finalizeSenderF);
+  auto *sn = SenderGroup::create(sessionHash, groupName, fullDir, runMode.clevel, runMode.sendto, finalizeSenderF);
   const long batchsendtime = runMode.batchsendtime * 1000;
   const size_t batchsendsize = std::max<size_t>(10*1024*1024, runMode.batchsendsize);
   long t0 = hobbes::time();
