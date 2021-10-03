@@ -222,7 +222,7 @@ inline int makeConnection(const std::string& host, size_t port) {
 }
 
 inline int makeConnection(const std::string& hostport) {
-  auto p = hostport.find(":");
+  auto p = hostport.find(':');
   if (p == std::string::npos) {
     throw std::runtime_error("Failed to determine port: " + hostport);
   } else {
