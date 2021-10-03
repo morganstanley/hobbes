@@ -17,11 +17,11 @@ namespace hobbes {
 
 class GrammarValue : public LexicallyAnnotated {
 public:
+  GrammarValue() = delete;
+
   GrammarValue(const LexicallyAnnotated&);
   virtual ~GrammarValue() = default;
   virtual void show(std::ostream&) const = 0;
-private:
-  GrammarValue();
 };
 using GrammarValuePtr = std::shared_ptr<GrammarValue>;
 

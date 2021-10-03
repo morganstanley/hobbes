@@ -377,10 +377,8 @@ public:
   // compiler-local type structure caches for internal use
   std::unordered_map<MonoType *, MonoTypePtr> unappTyDefns;
 
-private:
-  // disable copying
-  cc(const cc &);
-  void operator=(const cc &);
+  cc(const cc &) = delete;
+  void operator=(const cc &) = delete;
 };
 
 #define LIFTCTY(cc, e) (cc).liftMonoType<decltype(e)>()

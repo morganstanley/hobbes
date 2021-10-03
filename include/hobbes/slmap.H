@@ -315,13 +315,13 @@ template <typename K, typename V>
     iterator find(const K& k) {
       return iterator(this->f, this->d->lookup(this->f, k));
     }
+
+    slmap() = delete;
+    slmap(const slmap<K,V>&) = delete;
+    slmap<K,V>& operator=(const slmap<K,V>&) = delete;
   private:
     fregion::imagefile* f;
     slmapdata<K,V>* d;
-  private:
-    slmap();
-    slmap(const slmap<K,V>&);
-    slmap<K,V>& operator=(const slmap<K,V>&);
   };
 
 template <typename K>
@@ -366,13 +366,13 @@ template <typename K>
     iterator find(const K& k) {
       return iterator(this->f, this->d->lookup(this->f, k));
     }
+
+    slrefmap() = delete;
+    slrefmap(const slrefmap<K>&) = delete;
+    slrefmap<K>& operator=(const slrefmap<K>&) = delete;
   private:
     fregion::imagefile* f;
     slmapdata<K,ufileref>* d;
-  private:
-    slrefmap();
-    slrefmap(const slrefmap<K>&);
-    slrefmap<K>& operator=(const slrefmap<K>&);
   };
 
 }

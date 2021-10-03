@@ -32,14 +32,14 @@ template < typename Char = char, typename Traits = std::char_traits<Char> >
 template < typename Char = char, typename Traits = std::char_traits<Char> >
   class raw_ostream : public std::basic_ostream<Char, Traits> {
   public:
+    raw_ostream() = delete;
+    raw_ostream(const raw_ostream<Char, Traits>&) = delete;
+    raw_ostream<Char, Traits>& operator=(const raw_ostream<Char,Traits>&) = delete;
+
     raw_ostream(RawData* d) : std::basic_ostream<Char, Traits>(&buffer), buffer(d) {
     }
   private:
     raw_ostream_buffer<Char, Traits> buffer;
-
-    raw_ostream();
-    raw_ostream(const raw_ostream<Char, Traits>&);
-    raw_ostream<Char, Traits>& operator=(const raw_ostream<Char,Traits>&);
   };
 
 template < typename Char = char, typename Traits = std::char_traits<Char> >
@@ -60,14 +60,14 @@ template < typename Char = char, typename Traits = std::char_traits<Char> >
 template < typename Char = char, typename Traits = std::char_traits<Char> >
   class raw_istream : public std::basic_istream<Char, Traits> {
   public:
+    raw_istream() = delete;
+    raw_istream(const raw_istream<Char, Traits>&) = delete;
+    raw_istream<Char, Traits>& operator=(const raw_istream<Char,Traits>&) = delete;
+
     raw_istream(const RawData& d) : std::basic_istream<Char, Traits>(&buffer), buffer(d) {
     }
   private:
     raw_istream_buffer<Char, Traits> buffer;
-
-    raw_istream();
-    raw_istream(const raw_istream<Char, Traits>&);
-    raw_istream<Char, Traits>& operator=(const raw_istream<Char,Traits>&);
   };
 
 }}

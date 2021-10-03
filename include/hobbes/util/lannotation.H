@@ -35,6 +35,8 @@ struct LexicalAnnotation {
 
 class LexicallyAnnotated {
 public:
+  LexicallyAnnotated() = delete;
+
   LexicallyAnnotated(const LexicallyAnnotated&);
   LexicallyAnnotated(const LexicalAnnotation&);
   LexicallyAnnotated(const LexRange&);
@@ -50,8 +52,6 @@ public:
   static LexicalAnnotation make(const Pos&, const Pos&);
 private:
   LexicalAnnotation lannotation;
-
-  LexicallyAnnotated();
 };
 
 using annmsg = std::pair<std::string, LexicalAnnotation>;
