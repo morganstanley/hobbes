@@ -1422,7 +1422,7 @@ void jitcc::unsafeCompileFunctions(UCFS* ufs) {
 #if LLVM_VERSION_MAJOR >= 11
     this->bindScope(f.name, fval);
 #else
-    this->vtenv.back()[fs[f].name] = fval;
+    this->vtenv.back()[f.name] = fval;
 #endif
     f.result = fval;
   }
