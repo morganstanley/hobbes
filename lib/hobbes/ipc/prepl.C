@@ -1,30 +1,30 @@
 
+#include <cstring>
+#include <fcntl.h>
 #include <hobbes/hobbes.H>
 #include <hobbes/ipc/prepl.H>
 #include <hobbes/util/codec.H>
 #include <hobbes/util/os.H>
 #include <sstream>
-#include <unistd.h>
-#include <string.h>
-#include <sys/wait.h>
-#include <sys/types.h>
-#include <sys/stat.h>
 #include <sys/mman.h>
-#include <fcntl.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
 namespace hobbes {
 
 void execProcess(const std::string& cmd) {
   str::seq args = str::trim(str::csplit(cmd, " "));
   std::vector<const char*> argv;
-  for (size_t i = 0; i < args.size(); ++i) {
-    if (!args[i].empty()) {
-      argv.push_back(args[i].c_str());
+  for (const auto &arg : args) {
+    if (!arg.empty()) {
+      argv.push_back(arg.c_str());
     }
   }
-  if (args.size() == 0) return;
+  if (args.empty()) return;
 
-  argv.push_back(0);
+  argv.push_back(nullptr);
   execv(args[0].c_str(), const_cast<char* const*>(&argv[0]));
 }
 
@@ -76,7 +76,7 @@ void spawn(const std::string& cmd, proc* p) {
       memset(&tmout, 0, sizeof(tmout));
       tmout.tv_sec = 30 * 60;
 
-      select(FD_SETSIZE, &fds, NULL, NULL, &tmout);
+      select(FD_SETSIZE, &fds, nullptr, nullptr, &tmout);
 
       if (FD_ISSET(c2p[0], &fds)) {
         int success = 0;
@@ -108,10 +108,10 @@ void spawn(const std::string& cmd, proc* p) {
       p->read_fd  = c2p[0];
     }
   } catch (...) {
-    if (p2c[0]) close(p2c[0]);
-    if (p2c[1]) close(p2c[1]);
-    if (c2p[0]) close(c2p[0]);
-    if (c2p[1]) close(c2p[1]);
+    if (p2c[0] != 0) close(p2c[0]);
+    if (p2c[1] != 0) close(p2c[1]);
+    if (c2p[0] != 0) close(c2p[0]);
+    if (c2p[1] != 0) close(c2p[1]);
     throw;
   }
 }
@@ -129,15 +129,15 @@ long ProcManager::spawnedPid(const std::string& cmd) {
   }
 }
 
-typedef void (*ThunkF)();
-typedef std::vector<ThunkF> ThunkFs;
+using ThunkF = void (*)();
+using ThunkFs = std::vector<ThunkF>;
 
 static int machineREPLLogFD = -1;
 
 void dbglog(const std::string& msg) {
   if (machineREPLLogFD > 0) {
     char buf[256];
-    time_t t = ::time(0);
+    time_t t = ::time(nullptr);
     strftime(buf, sizeof(buf), "%H:%M:%S", localtime(reinterpret_cast<time_t*>(&t)));
 
     std::string logmsg = std::string(buf) + ": " + msg + "\n";
@@ -202,7 +202,7 @@ void printAnnotatedError(cc* eval, std::ostream& out, const hobbes::annotated_er
   for (const auto& m : ae.messages()) {
     out << m.second.lineDesc() << ": " << m.first << "\n";
     for (const auto& c : cs) {
-      if (eval && !satisfied(eval, c)) {
+      if ((eval != nullptr) && !satisfied(eval, c)) {
         out << "  " << hobbes::show(c) << std::endl;
       }
     }
@@ -284,7 +284,7 @@ void runMachineREPLStep(cc* c) {
 
       // buffer the result to remove any accidental internal terminators
       std::ostringstream ss;
-      auto stdoutbuffer = std::cout.rdbuf(ss.rdbuf());
+      auto *stdoutbuffer = std::cout.rdbuf(ss.rdbuf());
       try {
         c->compileFn<void()>("print(" + expr + ")")();
         resetMemoryPool();
@@ -316,7 +316,7 @@ void runMachineREPLStep(cc* c) {
 
       // buffer the result to remove any accidental internal terminators
       std::ostringstream ss;
-      auto stdoutbuffer = std::cout.rdbuf(ss.rdbuf());
+      auto *stdoutbuffer = std::cout.rdbuf(ss.rdbuf());
 
       try {
         std::cout << show(simplifyVarNames(c->unsweetenExpression(c->readExpr(expr))->type()));
@@ -364,7 +364,7 @@ void runMachineREPLStep(cc* c) {
 
       // buffer the result to remove any accidental internal terminators
       std::ostringstream ss;
-      auto stdoutbuffer = std::cout.rdbuf(ss.rdbuf());
+      auto *stdoutbuffer = std::cout.rdbuf(ss.rdbuf());
 
       try {
         c->define(vname, expr);
@@ -399,7 +399,7 @@ void runMachineREPLStep(cc* c) {
       try {
         std::ostringstream ss;
         auto ses = c->search(expr, ty);
-        if (ses.size() > 0) {
+        if (!ses.empty()) {
           std::map<std::string, std::string> stbl;
           for (const auto& se : ses) {
             stbl[se.sym] = show(se.ty);
@@ -439,7 +439,7 @@ void runMachineREPLStep(cc* c) {
   }
 }
 
-typedef std::map<int,const char*> Signames;
+using Signames = std::map<int, const char *>;
 static Signames rsignames;
 static void deadlySignal [[noreturn]] (int sig, siginfo_t*, void*) {
   if (machineREPLLogFD > 0) {
@@ -541,7 +541,7 @@ void procRead(proc* p, std::ostream* o, uint64_t waitUS) {
     tmout.tv_sec  = waitUS / (1000*1000);
     tmout.tv_usec = waitUS % (1000*1000);
 
-    int rv = select(p->read_fd + 1, &fds, 0, 0, (waitUS > 0) ? &tmout : 0);
+    int rv = select(p->read_fd + 1, &fds, nullptr, nullptr, (waitUS > 0) ? &tmout : nullptr);
 
     if (rv < 0) {
       if (errno != EINTR) {

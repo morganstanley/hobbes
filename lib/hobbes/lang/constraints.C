@@ -17,8 +17,7 @@ void typeSeqForm(const ConstraintPtr& c, MonoTypes* mts) {
   mts->insert(mts->end(), args.begin(), args.end());
 }
 
-ConstraintSet::ConstraintSet() {
-}
+ConstraintSet::ConstraintSet() = default;
 
 MaybePathPoints focusOnFundep(const VarIDs& vs, const MonoTypes& mts) {
   // we have to fudge the input IDs with a +1 offset for constraint names
@@ -40,18 +39,18 @@ void ConstraintSet::insert(const TEnvPtr& tenv, const ConstraintPtr& c, MonoType
   typeSeqForm(c, &cpath);
 
   // if this constraint is already stored, we don't need to insert
-  if (this->csts.lookup(cpath)) {
+  if (this->csts.lookup(cpath) != nullptr) {
     return;
   }
 
   // OK, the constraint seems not to be stored
   // let's apply functional dependencies from this constraint across other constraints in this set
   // that may produce unifications that can further eliminate this constraint
-  for (auto fd : tenv->lookupUnqualifier(c)->dependencies(c)) {
+  for (const auto& fd : tenv->lookupUnqualifier(c)->dependencies(c)) {
     Constraints mcs;
     this->csts.find(focusOnFundep(fd.first, cpath), &mcs);
 
-    for (auto mc : mcs) {
+    for (const auto& mc : mcs) {
       MonoTypes mcpath;
       typeSeqForm(mc, &mcpath);
       mgu(cpath[fd.second+1], mcpath[fd.second+1], s);
@@ -64,7 +63,7 @@ void ConstraintSet::insert(const TEnvPtr& tenv, const ConstraintPtr& c, MonoType
   }
 
   // now only store the constraint if it's still unique
-  if (!this->csts.lookup(cpath)) {
+  if (this->csts.lookup(cpath) == nullptr) {
     this->csts.insert(cpath, c);
   }
 }

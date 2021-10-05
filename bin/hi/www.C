@@ -70,11 +70,7 @@ bool catPathToFSPath(const std::string& cat, const std::string& cpath, std::stri
   }
   
   *fsPath = exeDir() + "/../../common/www/" + cat + "/" + cpath;
-  if (fileExists(*fsPath)) {
-    return true;
-  }
-
-  return false;
+  return fileExists(*fsPath);
 }
 
 // find a www 'system' file
@@ -219,7 +215,7 @@ void WWWServer::evalHxpFile(const hobbes::HTTPRequest&, int fd, const std::strin
 }
 
 // utility functions for web processes
-typedef hobbes::array<char> cstr;
+using cstr = hobbes::array<char>;
 
 const cstr* linkTarget(const cstr* p) {
   using namespace hobbes;
@@ -232,7 +228,7 @@ const cstr* slurpFile(const cstr* fpath) {
   return makeString(str::slurp(f));
 }
 
-typedef std::pair<const cstr*, const cstr*> cstrpair;
+using cstrpair = std::pair<const cstr *, const cstr *>;
 
 const hobbes::array< const cstr* >* csplit(const cstr* s, const cstr* ss) {
   using namespace hobbes;
@@ -245,7 +241,7 @@ const hobbes::array< const cstr* >* csplit(const cstr* s, const cstr* ss) {
 }
 
 long unixTime() {
-  return time(0) * (1000 * 1000);
+  return time(nullptr) * (1000 * 1000);
 }
 
 const cstr* formatJSTime(long x) {
@@ -284,8 +280,7 @@ WWWServer::WWWServer(int port, hobbes::cc* c) : c(c) {
   hobbes::installHTTPD(port, &WWWServer::evalHTTPRequest, this);
 }
 
-WWWServer::~WWWServer() {
-}
+WWWServer::~WWWServer() = default;
 
 std::string urlDecode(const std::string& x) {
   using namespace hobbes::str;
@@ -317,9 +312,7 @@ std::string htmlEncode(const std::string& x) {
   using namespace hobbes::str;
 
   std::ostringstream ss;
-  for (size_t i = 0; i < x.size(); ++i) {
-    char c = x[i];
-
+  for (const char c : x) {
     switch (c) {
     case '&':
       ss << "&amp;";
@@ -344,7 +337,7 @@ std::string showType(hobbes::cc& c, const hobbes::QualTypePtr& t) {
   hobbes::QualTypePtr st = hobbes::simplifyVarNames(hobbes::qualtype(cs, t->monoType()));
 
   std::ostringstream ss;
-  if (st->constraints().size() > 0) {
+  if (!st->constraints().empty()) {
     ss << htmlEncode(hobbes::show(st->constraints()[0]));
     for (size_t i = 1; i < st->constraints().size(); ++i) {
       ss << ", " << htmlEncode(hobbes::show(st->constraints()[i]));
@@ -360,8 +353,8 @@ void WWWServer::printDefaultPage(int fd) {
   b << "<html><head><title>hi process</title></head><body><pre>";
 
   b << "<h2>Environment</h2>\n<table>";
-  for (auto vty : this->c->typeEnv()->typeEnvTable()) {
-    if (vty.first.size() > 0 && vty.first[0] != '.') {
+  for (const auto& vty : this->c->typeEnv()->typeEnvTable()) {
+    if (!vty.first.empty() && vty.first[0] != '.') {
       b << "<tr><td><b>" << vty.first << "</b></td><td>" << showType(*this->c, vty.second->instantiate()) << "</td></tr>";
     }
   }
@@ -377,7 +370,7 @@ void WWWServer::printDefaultPage(int fd) {
 
 void WWWServer::printQueryResult(int fd, const std::string& expr) {
   try {
-    typedef void (*pprintF)();
+    using pprintF = void (*)();
     pprintF f = this->c->compileFn<void()>("print(" + expr + ")");
 
     // redirect stdout for this evaluation
@@ -492,7 +485,7 @@ std::string WWWServer::mimeTypeForExt(const std::string& ext) {
       std::string line;
       std::getline(mtypes, line);
 
-      if (line.size() > 0 && line[0] != '#') {
+      if (!line.empty() && line[0] != '#') {
         using namespace hobbes;
 
         str::pair lp = str::lsplit(line, "\t");
@@ -516,8 +509,8 @@ WWWServer::VarBindingDescs* WWWServer::getVarBindingDescs() {
   auto*       result    = hobbes::makeArray<VarBindingDesc>(tenvTable.size());
 
   size_t i = 0;
-  for (auto vty : tenvTable) {
-    if (vty.first.size() > 0 && vty.first[0] != '.') {
+  for (const auto& vty : tenvTable) {
+    if (!vty.first.empty() && vty.first[0] != '.') {
       result->data[i].first  = hobbes::makeString(vty.first);
       result->data[i].second = hobbes::makeString(showType(*this->c, vty.second->instantiate()));
       ++i;

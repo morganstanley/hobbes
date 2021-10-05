@@ -33,9 +33,9 @@ std::string remoteHostname(int socket);
 int remotePort(int socket);
 
 // run a REPL server at some port, either indirectly or directly with a compiler
-typedef std::vector<uint8_t> RawData;
-typedef uint32_t             exprid;
-typedef std::function<ExprPtr(ExprPtr const&)> ReWriteExprFn;
+using RawData = std::vector<uint8_t>;
+using exprid = uint32_t;
+using ReWriteExprFn = std::function<ExprPtr (const ExprPtr &)>;
 
 struct Server {
   virtual void        connect   (int conn) = 0;
@@ -81,11 +81,11 @@ private:
     MonoTypePtr inty;
     MonoTypePtr outty;
   };
-  typedef std::map<exprid, ExprDef> ExprDefs;
+  using ExprDefs = std::map<exprid, ExprDef>;
   ExprDefs exprDefs;
 
-  typedef std::pair<const void*,const void*> ExprTy;
-  typedef std::map<ExprTy, exprid> ExprTyToID;
+  using ExprTy = std::pair<const void *, const void *>;
+  using ExprTyToID = std::map<ExprTy, exprid>;
   ExprTyToID exprTyToID;
 public:
   /* run-time methods */
@@ -93,7 +93,7 @@ public:
 
   // append a receive function to the end of the sequence of receive handlers
   // these functions will be applied in order to read values from the remote process
-  typedef char* (*ReadFn)(int);
+  using ReadFn = char *(*)(int);
   size_t appendReadFn(ReadFn);
 
   // read a result (reading and discarding any intermediate results)
@@ -103,7 +103,7 @@ public:
   static size_t unsafeAppendReadFn(size_t, ReadFn);
   static char* unsafeRead(size_t, size_t);
 private:
-  typedef std::queue<ReadFn> ReadFns;
+  using ReadFns = std::queue<ReadFn>;
   ReadFns readFns;
   size_t rbno;
   size_t reno;

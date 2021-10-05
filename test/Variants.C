@@ -6,13 +6,13 @@ using namespace hobbes;
 
 extern const char leftLBL[];
 extern const char rightLBL[];
-typedef label<leftLBL, int> leftCtor;
-typedef label<rightLBL, double> rightCtor;
+using leftCtor = label<leftLBL, int>;
+using rightCtor = label<rightLBL, double>;
 const char leftLBL[] = "left";
 const char rightLBL[] = "right";
 
 int intCastVariant(const variant<leftCtor, rightCtor>* bv) {
-  if (const leftCtor* lv = bv->get<leftCtor>()) {
+  if (const auto* lv = bv->get<leftCtor>()) {
     return lv->value;
   } else {
     return static_cast<int>(bv->get<rightCtor>()->value);
@@ -20,7 +20,7 @@ int intCastVariant(const variant<leftCtor, rightCtor>* bv) {
 }
 
 int sumCtorID(const variant<char, unsigned char>* bv) {
-  if (bv->get<char>()) {
+  if (bv->get<char>() != nullptr) {
     return 0;
   } else {
     return 1;
@@ -75,8 +75,8 @@ TEST(Variants, Binding) {
 TEST(Variants, MemoryLayout) {
   typedef unsigned char uuid[16];
 
-  typedef variant<unit, char> MChar;
-  typedef variant<unit, uuid> MUuid;
+  using MChar = variant<unit, char>;
+  using MUuid = variant<unit, uuid>;
 
   EXPECT_EQ(sizeof(MChar), sizeOf(lift<const MChar*>::type(nulltdb)));
   EXPECT_EQ(sizeof(MUuid), sizeOf(lift<const MUuid*>::type(nulltdb)));
@@ -119,7 +119,7 @@ TEST(Variants, WithFunctions) {
   EXPECT_TRUE(c().compileFn<bool()>("either((\\|1=f|.f(1L,0L))(just(if (0 > 0) then llt else lgt)), false, id)")());
 }
 
-typedef variant<unit, std::pair<const char*, size_t>*> BadT;
+using BadT = variant<unit, std::pair<const char *, size_t> *>;
 TEST(Variants, DontLiftInlineRefs) {
   EXPECT_NEQ(show(lift<const BadT*>::type(c())), "(() + (<char> * long))");
 }

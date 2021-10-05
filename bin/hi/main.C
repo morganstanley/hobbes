@@ -6,27 +6,27 @@
 #include <hobbes/util/os.H>
 #include <hobbes/eval/cmodule.H>
 
-#include <iostream>
+#include <csetjmp>
+#include <csignal>
+#include <cstdlib>
+#include <ctime>
 #include <fstream>
-#include <time.h>
+#include <iostream>
 #include <unistd.h>
-#include <stdlib.h>
-#include <signal.h>
-#include <setjmp.h>
 
 #include "cio.H"
 #include "evaluator.H"
 
-#include <stdio.h>
-#include <readline/readline.h>
+#include <cstdio>
 #include <readline/history.h>
+#include <readline/readline.h>
 
 namespace str = hobbes::str;
 
 namespace hi {
 
 // the one evaluator for this process
-evaluator* eval = 0;
+evaluator* eval = nullptr;
 
 // control color options (these can be tweaked by ~/.hirc)
 ConsoleColors colors;
@@ -106,7 +106,7 @@ void printAnnotatedError(const hobbes::annotated_error& ae, const hobbes::Constr
   for (const auto& m : ae.messages()) {
     std::cout << setbold() << setfgc(colors.errorfg) << m.second.lineDesc() << ": " << m.first << "\n";
     for (const auto& c : cs) {
-      if (eval && !eval->satisfied(c)) {
+      if ((eval != nullptr) && !eval->satisfied(c)) {
         std::cout << "  " << hobbes::show(c) << std::endl;
       }
     }
@@ -118,8 +118,8 @@ void printAnnotatedError(const hobbes::annotated_error& ae, const hobbes::Constr
 void printASM(void*,size_t);
 
 // show help on supported prompt commands
-typedef std::pair<std::string, std::string> CmdDesc;
-typedef std::vector<CmdDesc>                CmdDescs;
+using CmdDesc = std::pair<std::string, std::string>;
+using CmdDescs = std::vector<CmdDesc>;
 
 void showShellHelp(const CmdDescs& cds) {
   std::string header = "Supported hi commands";
@@ -136,8 +136,8 @@ void showShellHelp(const CmdDescs& cds) {
             << std::endl;
 
   double hw  = static_cast<double>(llen - header.size()) / 2.0;
-  size_t lhw = static_cast<size_t>(floor(hw));
-  size_t rhw = static_cast<size_t>(ceil(hw));
+  auto lhw = static_cast<size_t>(floor(hw));
+  auto rhw = static_cast<size_t>(ceil(hw));
 
   std::cout << "| "
               << std::string(lhw, ' ')
@@ -194,7 +194,7 @@ void showUnsafeSymbols() {
 void echoCommandHistory() {
   const int history_max = 10;
   HIST_ENTRY** history = history_list();
-  if (history) {
+  if (history != nullptr) {
     // take the last history_max elements of history
     int startIndex = history_length > history_max ? history_length - history_max : 0;
     for (int i = startIndex; i < history_length; ++i) {
@@ -217,7 +217,7 @@ char* completionStep(const char*, int state) {
   if (state >= 0 && size_t(state) < completionMatches.size()) {
     return strdup(completionMatches[state].c_str());
   } else {
-    return 0;
+    return nullptr;
   }
 }
 
@@ -229,7 +229,7 @@ char** completions(const char* pfx, int start, int) {
 #ifdef BUILD_LINUX
     rl_bind_key('\t', rl_abort);
 #endif
-    return 0;
+    return nullptr;
   }
 }
 
@@ -281,7 +281,7 @@ void repl(evaluator*) {
     [](int,void*) {
       rl_callback_read_char();
     },
-    0
+    nullptr
   );
 
   // poll for events and dispatch them
@@ -291,11 +291,11 @@ void repl(evaluator*) {
 void evalLine(char* x) {
   // preprocess this line from readline
   std::string line;
-  if (x) {
+  if (x != nullptr) {
     line = str::trim<char>(x);
     free(x);
 
-    if (line.size() > 0) {
+    if (!line.empty()) {
       add_history(line.c_str());
     }
   } else {
@@ -309,7 +309,7 @@ void evalLine(char* x) {
     if (line == ":q") {
       std::cout << resetfmt() << std::flush;
       exit(0);
-    } else if (line == "") {
+    } else if (line.empty()) {
       return;
     } else if (line == ":^") {
       echoCommandHistory();
@@ -430,14 +430,14 @@ unsigned int digitLen(unsigned int x) {
 template <typename C>
   unsigned int sumSize(const C& cs) {
     unsigned int s = 0;
-    for (typename C::const_iterator c = cs.begin(); c != cs.end(); ++c) {
+    for (auto c = cs.begin(); c != cs.end(); ++c) {
       s += c->size();
     }
     return s;
   }
 
 bool isNum(const std::string& x) {
-  return x.size() > 0 && x[0] == '0';
+  return !x.empty() && x[0] == '0';
 }
 
 bool isRegister(const std::string& x) {
@@ -455,7 +455,7 @@ void printASMArg(const std::string& x) {
 }
 
 unsigned int fmtLen(const str::seq& args) {
-  if (args.size() == 0) {
+  if (args.empty()) {
     return 0;
   } else if (args.size() == 1) {
     return args[0].size();
@@ -487,7 +487,7 @@ void printASMTable(const str::seq& insts, const str::seqs& args, unsigned int ma
 
     // show the arguments
     const str::seq& argl = args[i];
-    if (argl.size() > 0) {
+    if (!argl.empty()) {
       printASMArg(argl[0]);
       for (unsigned int k = 1; k < argl.size(); ++k) {
         std::cout << setfgc(colors.argdelimfg) << ", ";
@@ -572,7 +572,7 @@ void runProcess(const std::string& cmd, std::ostream& out) {
 
   char buf[4096];
   int n;
-  while ((n = read(pio[0], buf, sizeof(buf)))) {
+  while ((n = read(pio[0], buf, sizeof(buf))) != 0) {
     out.write(buf, n);
   }
   close(pio[0]);
@@ -709,9 +709,9 @@ int main(int argc, char** argv) {
     }
 
     // load any modules passed in
-    if (args.mfiles.size() > 0) {
-      for (ModuleFiles::const_iterator m = args.mfiles.begin(); m != args.mfiles.end(); ++m) {
-        eval->loadModule(str::expandPath(*m));
+    if (!args.mfiles.empty()) {
+      for (const auto &mfile : args.mfiles) {
+        eval->loadModule(str::expandPath(mfile));
       }
     }
 

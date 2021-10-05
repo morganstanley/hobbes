@@ -19,17 +19,17 @@ private:
   void printQueryResult(int, const std::string&);
   void printFileContents(int, const std::string&);
 
-  typedef void (*PrintPageFn)(int fd, const hobbes::array<char>* queryString);
+  using PrintPageFn = void (*)(int, const hobbes::array<char> *);
   struct HxpFile {
     time_t      ftime;
     PrintPageFn f;
   };
-  typedef std::unordered_map<std::string, HxpFile> HxpFiles;
+  using HxpFiles = std::unordered_map<std::string, HxpFile>;
   HxpFiles hxpFiles;
   const HxpFile& hxpFile(const std::string& fpath);
   void evalHxpFile(const hobbes::HTTPRequest&, int fd, const std::string& fpath, const std::string& queryString);
 
-  typedef std::map<std::string, std::string> MIMETypes;
+  using MIMETypes = std::map<std::string, std::string>;
   MIMETypes mimeTypes;
   std::string mimeType(const std::string& fpath);
   std::string mimeTypeForExt(const std::string& ext);
@@ -38,8 +38,8 @@ private:
   static void evalHTTPRequest(const hobbes::HTTPRequest& req, int fd, void* ud);
 
   // useful bindings
-  typedef std::pair<const hobbes::array<char>*, const hobbes::array<char>*> VarBindingDesc;
-  typedef hobbes::array<VarBindingDesc> VarBindingDescs;
+  using VarBindingDesc = std::pair<const hobbes::array<char> *, const hobbes::array<char> *>;
+  using VarBindingDescs = hobbes::array<VarBindingDesc>;
   VarBindingDescs* getVarBindingDescs();
 };
 

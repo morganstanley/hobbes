@@ -10,10 +10,10 @@
 namespace hobbes {
 
 // add a read event handler for a file descriptor
-typedef void (*eventhandler)(int fd, void* ud);
+using eventhandler = void (*)(int, void *);
 
 // return true to automatically repeat after an interval
-typedef bool (*timerfunc)();
+using timerfunc = bool (*)();
 
 void addTimer(timerfunc f, int millisecInterval);
 

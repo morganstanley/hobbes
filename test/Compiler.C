@@ -5,9 +5,9 @@
 #include "test.H"
 
 using namespace hobbes;
-static cc& c() { static __thread cc* x = 0; if (!x) { x = new cc(); } return *x; }
+static cc& c() { static __thread cc* x = nullptr; if (x == nullptr) { x = new cc(); } return *x; }
 
-typedef std::pair<const char*, size_t> BufferView;
+using BufferView = std::pair<const char *, size_t>;
 
 TEST(Compiler, compileToSupportsMoreThanSixArgs) {
   std::string expression =
@@ -15,33 +15,24 @@ TEST(Compiler, compileToSupportsMoreThanSixArgs) {
     "| \"carrots\" \"parsley\" \"lemon\" \"ossobuco\" _ \"braising\" \"everyday\" \"basic\" \"wine\" \"polenta\" -> 10 \n"
     "| _ _ _ _ _ _ _ _ _ _ -> -1";
 
-  typedef int (*MatchFunPtr)(const BufferView*,   // vegetables
-                             const BufferView*,   // spices
-                             const BufferView*,   // fruits
-                             const BufferView*,   // meat
-                             const BufferView*,   // cheese
-                             const BufferView*,   // technique
-                             const BufferView*,   // occasion
-                             const BufferView*,   // skill
-                             const BufferView*,   // drink
-                             const BufferView*);  // side
+  using MatchFunPtr = int (*)(const BufferView *, const BufferView *, const BufferView *, const BufferView *, const BufferView *, const BufferView *, const BufferView *, const BufferView *, const BufferView *, const BufferView *);  // side
   
   hobbes::cc compiler;
 
-  MatchFunPtr funPtr = hobbes::compileTo<MatchFunPtr>(
+  auto funPtr = hobbes::compileTo<MatchFunPtr>(
     &compiler,
     hobbes::list<std::string>("vegetables", "spices", "fruits",
                               "meat","cheese", "technique",
                               "occasion", "skill", "drink", "side"),
     expression);
   
-  EXPECT_TRUE(NULL != funPtr);
+  EXPECT_TRUE(nullptr != funPtr);
 }
 
 TEST(Compiler, charArrExpr) {
   char buffer[256];
   strncpy(buffer, "\"hello world\"\0", sizeof(buffer));
-  EXPECT_TRUE(c().compileFn<const array<char>*()>(buffer) != 0);
+  EXPECT_TRUE(c().compileFn<const array<char>*()>(buffer) != nullptr);
 }
 
 class BV { };
@@ -97,12 +88,12 @@ TEST(Compiler, ccInManyThreads) {
       badChecks += c.compileFn<int()>("sum([1..100])-100*101/2")(); // just 0, but complex enough to hit many areas of the compiler
     })));
   }
-  for (auto p : ps) { p->join(); delete p; }
+  for (auto *p : ps) { p->join(); delete p; }
   EXPECT_EQ(badChecks, size_t(0));
 }
 
-typedef std::array<int,10> IArr;
-typedef std::array<IArr,10> IMat;
+using IArr = std::array<int, 10>;
+using IMat = std::array<IArr, 10>;
 
 DEFINE_STRUCT(ArrTest,
   (short,  a),
@@ -128,7 +119,7 @@ TEST(Compiler, liftStdArray) {
   EXPECT_EQ((c().compileFn<int(ArrTest*)>("s","sum(concat([[x|x<-xs[0:]]|xs<-s.xss[0:]]))")(&atst)), 900);
 }
 
-typedef std::chrono::duration<int64_t, std::micro> ctimespanT;
+using ctimespanT = std::chrono::duration<int64_t, std::micro>;
 
 std::ostream& operator<<(std::ostream& out, ctimespanT dt) {
   out << *reinterpret_cast<int64_t*>(&dt) << "us";
@@ -142,7 +133,7 @@ TEST(Compiler, liftChronoTimespan) {
 
 // verify that types are lifted as expected for values without "return value optimization" (or "copy elision")
 TEST(Compiler, liftWithoutRVO) {
-  typedef hobbes::fileref<const hobbes::array<char>*> strref;
+  using strref = hobbes::fileref<const hobbes::array<char> *>;
 
   EXPECT_EQ(c().compileFn<strref(int)>("x", "unsafeCast(42L)")(0).index, strref(42UL).index);
 }

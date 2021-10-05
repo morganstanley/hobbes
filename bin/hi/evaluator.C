@@ -3,14 +3,15 @@
 #include "funcdefs.H"
 #include "cio.H"
 
-#include <hobbes/eval/cmodule.H>
-#include <hobbes/lang/preds/class.H>
 #include <hobbes/db/file.H>
+#include <hobbes/eval/cmodule.H>
 #include <hobbes/ipc/net.H>
+#include <hobbes/lang/preds/class.H>
 #include <hobbes/util/perf.H>
 #include <hobbes/util/str.H>
 #include <hobbes/util/time.H>
 #include <iostream>
+#include <memory>
 
 namespace {
 void defPrintUnreachableMatches(const hobbes::cc::UnreachableMatches& m) {
@@ -22,7 +23,7 @@ namespace hi {
 
 // allocate a string in global memory
 hobbes::array<char>* allocGlobalStr(const char* x, size_t len) {
-  hobbes::array<char>* r = reinterpret_cast<hobbes::array<char>*>(malloc(sizeof(long) + len * sizeof(char)));
+  auto* r = reinterpret_cast<hobbes::array<char>*>(malloc(sizeof(long) + len * sizeof(char)));
   memcpy(r->data, x, len * sizeof(char));
   r->size = len;
   return r;
@@ -36,12 +37,12 @@ void bindArguments(hobbes::cc& ctx, const Args::NameVals& args) {
   // type-level binding, for [("foo", "bar"), ...]:
   //   class Argument a b | a -> b
   //   instance Argument "foo" "bar"
-  TClass* tc = new TClass("Argument", 2, TClass::Members(), list(FunDep(list(0), 1)), LexicalAnnotation::null());
+  auto* tc = new TClass("Argument", 2, TClass::Members(), list(FunDep(list(0), 1)), LexicalAnnotation::null());
   Definitions drainDefs;
   for (const auto& arg : args) {
     tc->insert(
       ctx.typeEnv(),
-      TCInstancePtr(new TCInstance("Argument", list(MonoTypePtr(TString::make(arg.first)), MonoTypePtr(TString::make(arg.second))), MemberMapping(), LexicalAnnotation::null())),
+      std::make_shared<TCInstance>("Argument", list(MonoTypePtr(TString::make(arg.first)), MonoTypePtr(TString::make(arg.second))), MemberMapping(), LexicalAnnotation::null()),
       &drainDefs
     );
   }
@@ -51,12 +52,12 @@ void bindArguments(hobbes::cc& ctx, const Args::NameVals& args) {
   // value-level binding
   //   arguments :: [[char]*[char]]
   //   arguments = [("foo", "bar"), ...]
-  typedef std::pair<array<char>*, array<char>*> StrPair;
-  typedef array<StrPair> StrPairs;
+  using StrPair = std::pair<array<char> *, array<char> *>;
+  using StrPairs = array<StrPair>;
 
-  StrPairs* arguments = reinterpret_cast<StrPairs*>(malloc(sizeof(long) + args.size() * sizeof(StrPair)));
+  auto* arguments = reinterpret_cast<StrPairs*>(malloc(sizeof(long) + args.size() * sizeof(StrPair)));
   arguments->size = 0;
-  for (auto arg : args) {
+  for (const auto& arg : args) {
     arguments->data[arguments->size].first  = allocGlobalStr(arg.first);
     arguments->data[arguments->size].second = allocGlobalStr(arg.second);
     ++arguments->size;
@@ -65,7 +66,7 @@ void bindArguments(hobbes::cc& ctx, const Args::NameVals& args) {
 }
 
 // set up the evaluation environment for our cc
-evaluator::evaluator(const Args& args) : silent(args.silent), wwwd(0), opts(args.opts) {
+evaluator::evaluator(const Args& args) : silent(args.silent), wwwd(nullptr), opts(args.opts) {
   using namespace hobbes;
 
   bindArguments(this->ctx, args.scriptNameVals);
@@ -93,7 +94,7 @@ evaluator::~evaluator() {
 }
 
 bool hiddenFileName(const std::string& fname) {
-  return fname.size() == 0 || fname[0] == '.';
+  return fname.empty() || fname[0] == '.';
 }
 
 bool loadSilently(const std::string& mfile) {
@@ -106,7 +107,7 @@ void evaluator::runMachineREPL() {
 
 void evaluator::showClass(const std::string& cname) {
   hobbes::UnqualifierPtr uq = this->ctx.typeEnv()->lookupUnqualifier(cname);
-  if (const hobbes::TClass* c = dynamic_cast<const hobbes::TClass*>(uq.get())) {
+  if (const auto* c = dynamic_cast<const hobbes::TClass*>(uq.get())) {
     c->show(std::cout);
   } else {
     throw std::runtime_error("Undefined type class: " + cname);
@@ -115,11 +116,11 @@ void evaluator::showClass(const std::string& cname) {
 
 void evaluator::showInstances(const std::string& cname) {
   hobbes::UnqualifierPtr uq = this->ctx.typeEnv()->lookupUnqualifier(cname);
-  if (const hobbes::TClass* c = dynamic_cast<const hobbes::TClass*>(uq.get())) {
-    for (auto i : c->instances()) {
+  if (const auto* c = dynamic_cast<const hobbes::TClass*>(uq.get())) {
+    for (const auto& i : c->instances()) {
       i->show(std::cout);
     }
-    for (auto i : c->instanceFns()) {
+    for (const auto& i : c->instanceFns()) {
       i->show(std::cout);
     }
   } else {
@@ -170,7 +171,7 @@ void printConstraint(const hobbes::ConstraintPtr& c) {
 }
 
 void printQualType(const hobbes::Constraints& cs, const hobbes::MonoTypePtr& ty) {
-  if (cs.size() > 0) {
+  if (!cs.empty()) {
     printConstraint(cs[0]);
     for (size_t i = 1; i < cs.size(); ++i) {
       std::cout << setfgc(colors.stdtextfg) << ", ";
@@ -204,7 +205,7 @@ void evaluator::printTypeEnv() {
 }
 
 hobbes::str::seq evaluator::completionsFor(const std::string& prefix) const {
-  if (prefix.size() == 0) {
+  if (prefix.empty()) {
     return hobbes::str::seq();
   } else {
     hobbes::str::seq vars;
@@ -232,13 +233,13 @@ void evaluator::printAssembly(const std::string& expr, void (*f)(void*,size_t)) 
 }
 
 void evaluator::perfTestExpr(const std::string& expr) {
-  typedef void (*pvthunk)();
+  using pvthunk = void (*)();
   pvthunk f = this->ctx.compileFn<void()>(readExpr("let x = (" + expr + ") in ()"));
   f();
 
   const size_t numRuns = 1000;
   unsigned long nsCSum = 0;
-  unsigned long nsCMin = static_cast<unsigned long>(-1);
+  auto nsCMin = static_cast<unsigned long>(-1);
   unsigned long nsCMax = 0;
 
   for (size_t i = 0; i < numRuns; ++i) {
@@ -265,7 +266,7 @@ void evaluator::breakdownEvalExpr(const std::string& expr) {
   long ust = hobbes::tick() - t0;
 
   t0 = hobbes::tick();
-  typedef void (*pvthunk)();
+  using pvthunk = void (*)();
   pvthunk f = this->ctx.compileFn<void()>(e);
   long ct = hobbes::tick() - t0;
 
@@ -295,7 +296,7 @@ bool evaluator::satisfied(const hobbes::ConstraintPtr& c) {
 }
 
 void showSearchResults(const std::string&, const hobbes::SearchEntries& ses) {
-  if (ses.size() > 0) {
+  if (!ses.empty()) {
     std::map<std::string, std::string> stbl;
     for (const auto& se : ses) {
       stbl[se.sym] = hobbes::show(se.ty);

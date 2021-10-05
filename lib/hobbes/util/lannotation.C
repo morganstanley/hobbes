@@ -1,14 +1,15 @@
 
-#include <hobbes/util/lannotation.H>
-#include <stack>
-#include <sstream>
 #include <fstream>
+#include <hobbes/util/lannotation.H>
+#include <memory>
+#include <sstream>
+#include <stack>
 
 namespace hobbes {
 
 LexicalAnnotation::LexicalAnnotation() {
-  static BuffOrFilenamePtr* n = 0;
-  if (n == 0) {
+  static BuffOrFilenamePtr* n = nullptr;
+  if (n == nullptr) {
     n = new BuffOrFilenamePtr(new BuffOrFilename(false, "???"));
   }
   this->bfptr = *n;
@@ -73,18 +74,17 @@ LexicalAnnotation LexicalAnnotation::merge(const LexicalAnnotation& a0, const Le
   return r;
 }
 
-typedef std::stack<BuffOrFilenamePtr> AnnContextStack;
+using AnnContextStack = std::stack<BuffOrFilenamePtr>;
 
 static AnnContextStack& annotationCtxStack() {
-  static __thread AnnContextStack* actxs = 0;
-  if (!actxs) {
+  static __thread AnnContextStack* actxs = nullptr;
+  if (actxs == nullptr) {
     actxs = new AnnContextStack();
   }
   return *actxs;
 }
 
-LexicallyAnnotated::LexicallyAnnotated(const LexicallyAnnotated& rhs) : lannotation(rhs.lannotation) {
-}
+LexicallyAnnotated::LexicallyAnnotated(const LexicallyAnnotated& rhs) = default;
 
 LexicallyAnnotated::LexicallyAnnotated(const LexicalAnnotation& la) : lannotation(la) {
 }
@@ -100,11 +100,11 @@ const LexicalAnnotation& LexicallyAnnotated::la() const {
 }
 
 void LexicallyAnnotated::pushFileContext(const std::string& fname) {
-  annotationCtxStack().push(BuffOrFilenamePtr(new BuffOrFilename(true, fname)));
+  annotationCtxStack().push(std::make_shared<BuffOrFilename>(true, fname));
 }
 
 void LexicallyAnnotated::pushLiteralContext(const std::string& txt) {
-  annotationCtxStack().push(BuffOrFilenamePtr(new BuffOrFilename(false, txt)));
+  annotationCtxStack().push(std::make_shared<BuffOrFilename>(false, txt));
 }
 
 void LexicallyAnnotated::popContext() {
@@ -115,7 +115,7 @@ LexicalAnnotation LexicallyAnnotated::make(const Pos& p0, const Pos& p1) {
   auto& s = annotationCtxStack();
 
   LexicalAnnotation r;
-  r.bfptr = s.size() > 0 ? s.top() : BuffOrFilenamePtr(new BuffOrFilename(false, "???"));
+  r.bfptr = !s.empty() ? s.top() : std::make_shared<BuffOrFilename>(false, "???");
   r.p0    = p0;
   r.p1    = p1;
   return r;
@@ -145,7 +145,7 @@ std::string annotated_error::plainDesc(const annmsgs& amsgs) {
 
 annotated_error annotated_error::fileError(const std::string& fn, const Pos& p0, const Pos& p1, const std::string& etxt) {
   LexicalAnnotation a;
-  a.bfptr = BuffOrFilenamePtr(new BuffOrFilename(true, fn));
+  a.bfptr = std::make_shared<BuffOrFilename>(true, fn);
   a.p0    = p0;
   a.p1    = p1;
   return annotated_error(list(annmsg(etxt, a)));
@@ -153,7 +153,7 @@ annotated_error annotated_error::fileError(const std::string& fn, const Pos& p0,
 
 annotated_error annotated_error::bufferError(const std::string& b, const Pos& p0, const Pos& p1, const std::string& etxt) {
   LexicalAnnotation a;
-  a.bfptr = BuffOrFilenamePtr(new BuffOrFilename(false, b));
+  a.bfptr = std::make_shared<BuffOrFilename>(false, b);
   a.p0    = p0;
   a.p1    = p1;
   return annotated_error(list(annmsg(etxt, a)));

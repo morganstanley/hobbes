@@ -53,10 +53,10 @@
 #include <stdexcept>
 #include <sstream>
 
+#include <cmath>
+#include <cstring>
 #include <sys/mman.h>
 #include <unistd.h>
-#include <cstring>
-#include <math.h>
 
 namespace hobbes { namespace mc {
 
@@ -124,7 +124,7 @@ public:
   }
 
   uint8_t* base() { return this->mem; }
-  size_t   size() { return this->sz; }
+  size_t   size() const { return this->sz; }
 
   // allocate some number of additional bytes at the tail of the buffer
   // return the address where those bytes can be written (this is how machine code is accumulated)
@@ -135,7 +135,7 @@ public:
       growBuffer(std::max<size_t>(newsz, this->allocsz * 2));
     }
 
-    auto r = this->mem + this->sz;
+    auto *r = this->mem + this->sz;
     this->sz += segsz;
     return r;
   }
@@ -159,8 +159,8 @@ public:
   // this is useful for deciding an efficient form of call instruction just if we are within 32-bits of the target
   // but need to degrade to a less efficient (larger code size) call if not
 # define HMC_MAX_PATCH_LEN 16
-  typedef std::array<uint8_t, HMC_MAX_PATCH_LEN>                     PatchBuffer;
-  typedef std::function<void(const uint8_t*,PatchBuffer*,uint32_t*)> PatchFn;
+  using PatchBuffer = std::array<uint8_t, 16>;
+  using PatchFn = std::function<void (const uint8_t *, PatchBuffer *, uint32_t *)>;
 
   void patchWithRIP(const PatchFn& pfn) {
     // make the initial patch and remember how many bytes it used initially
@@ -169,7 +169,7 @@ public:
     // this is additionally complicated by the fact that this initial allocation
     // can cause a buffer move itself
     while (true) {
-      auto        rip = this->mem + this->sz;
+      auto *      rip = this->mem + this->sz;
       PatchBuffer b;
       uint32_t    n = 0;
 
@@ -190,7 +190,7 @@ public:
   }
 
   // finalize the buffer so that we can execute its code
-  typedef void (*ThunkF)();
+  using ThunkF = void (*)();
 
   ThunkF finalize() {
     resolveLabelReferences();
@@ -210,8 +210,8 @@ private:
   uint8_t* mem;
 
   // label defs/refs
-  typedef std::map<std::string, size_t>              LabelDefs;
-  typedef std::map<std::string, std::vector<size_t>> LabelRefs;
+  using LabelDefs = std::map<std::string, size_t>;
+  using LabelRefs = std::map<std::string, std::vector<size_t>>;
 
   LabelDefs labelDefs;
   LabelRefs labelRefs;
@@ -237,8 +237,8 @@ private:
   }
 
   // keep track of RIP-dependent patches and re-derive them when we grow our buffer (which should be an infrequent event)
-  typedef std::pair<PatchFn, uint32_t> Patch;
-  typedef std::map<const uint8_t*, Patch> Patches;
+  using Patch = std::pair<PatchFn, uint32_t>;
+  using Patches = std::map<const uint8_t *, Patch>;
 
   Patches ripPatches;
 
@@ -305,7 +305,7 @@ private:
   // apply cumulative adjustments at fixed offsets to source offsets
   // this allows us to make insertions in exec buffers and "fix up" references to offsets in the original buffer
   // (e.g. if we had an offset to 5 before, but inserted 2 bytes at 3, then our offset should be adjusted to 7)
-  typedef std::map<size_t, int> CumAdjustments;
+  using CumAdjustments = std::map<size_t, int>;
 
   static size_t applyCumAdjustments(const CumAdjustments& cadj, size_t offset) {
     auto leb = cadj.lower_bound(offset);
@@ -337,7 +337,7 @@ private:
     return align(x, this->pagesz);
   }
   static uint8_t* allocateBuffer(size_t sz) {
-    uint8_t* r = reinterpret_cast<uint8_t*>(mmap(0, sz, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE, -1, 0));
+    auto* r = reinterpret_cast<uint8_t*>(mmap(nullptr, sz, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE, -1, 0));
     if (r == MAP_FAILED) {
       throw std::runtime_error("Failed to allocate exec buffer memory with error: " + std::string(strerror(errno)));
     }
@@ -358,7 +358,7 @@ private:
  *
  *       Where 'sz' means value size in bytes and 'ty' means register class (int or float).
  */
-typedef uint8_t RegSize; // 1,2,4,8
+using RegSize = uint8_t; // 1,2,4,8
 enum RegClass { Int, Float };
 
 template <typename RegisterID>
@@ -435,7 +435,7 @@ template <typename RegisterID>
 class Arg {
 public:
   // invalid argument
-  Arg() : vtag(TReg) { this->variant.vreg = 0; }
+  Arg() : vtag(TReg) { this->variant.vreg = nullptr; }
   
   Arg(const Arg& rhs) {
     copyFrom(rhs);
@@ -465,7 +465,7 @@ public:
   static Arg<RegisterID> ireg(RegisterID name, RegSize rsize) { return reg(name, rsize, Int); }
   static Arg<RegisterID> freg(RegisterID name, RegSize rsize) { return reg(name, rsize, Float); }
 
-  const Reg<RegisterID>* reg() const { return this->vtag == TReg ? this->variant.vreg : 0; }
+  const Reg<RegisterID>* reg() const { return this->vtag == TReg ? this->variant.vreg : nullptr; }
 
   // or it can be an indirect memory reference through a register calculation
   // these register calculations can look like [B+I*S+D] where B and I are registers, S is a scale factor in {0,1,2,4,8}, and D is up to a 32-bit const displacement
@@ -497,7 +497,7 @@ public:
   static Arg<RegisterID> regDeref(RegisterID index, uint8_t scale, int32_t offset, RegSize rsize, RegClass rclass) { return regDeref(RegisterID(), false, index, scale, offset, rsize, rclass); }
   static Arg<RegisterID> regDeref(const Reg<RegisterID>& index, uint8_t scale, int32_t offset, RegSize rsize, RegClass rclass) { return regDeref(RegisterID(), false, index.name, scale, offset, rsize, rclass); }
 
-  const RegDeref<RegisterID>* regDeref() const { return this->vtag == TRegDeref ? this->variant.vregderef : 0; }
+  const RegDeref<RegisterID>* regDeref() const { return this->vtag == TRegDeref ? this->variant.vregderef : nullptr; }
 
   // refer to the label 'label'
   static Arg<RegisterID> labelRef(const LabelRef& lbl) {
@@ -509,7 +509,7 @@ public:
     lref.rsize = rsize;
     return labelRef(lref);
   }
-  const LabelRef* labelRef() const { return this->vtag == TLabelRef ? this->variant.vlabelref : 0; }
+  const LabelRef* labelRef() const { return this->vtag == TLabelRef ? this->variant.vlabelref : nullptr; }
 
   // an immediate value
   static Arg<RegisterID> immediate(const Immediate& i) {
@@ -531,7 +531,7 @@ public:
   static Arg<RegisterID> i64 (int64_t  x) { return immediate(static_cast<int64_t>(x), true,  sizeof(x)); }
   static Arg<RegisterID> ui64(uint64_t x) { return immediate(static_cast<int64_t>(x), false, sizeof(x)); }
 
-  const Immediate* immediate() const { return this->vtag == TImmediate ? this->variant.vimmediate : 0; }
+  const Immediate* immediate() const { return this->vtag == TImmediate ? this->variant.vimmediate : nullptr; }
 
   // the variant view of this data
   enum Tag : uint8_t {
@@ -607,7 +607,7 @@ private:
     this->vtag = rhs.vtag;
     if (!rhs.variant.vreg) {
       // 0-initialize just for a 0-initialized copy
-      this->variant.vreg = 0;
+      this->variant.vreg = nullptr;
       return;
     }
 
@@ -635,7 +635,7 @@ enum X86Reg : uint8_t {
 };
 
 // an instruction argument using x86 machine register IDs is a 'machine arg'
-typedef Arg<X86Reg> MArg;
+using MArg = Arg<X86Reg>;
 
 // by tradition, there are some special names for some of the registers
 // we should be consistent with those naming standards when interfacing with humans
@@ -694,7 +694,7 @@ inline const Reg<X86Reg>* maybeMReg(const std::string& name) {
     }
   }
   auto r = mregs.find(name);
-  return (r != mregs.end()) ? &r->second : 0;
+  return (r != mregs.end()) ? &r->second : nullptr;
 }
 inline const Reg<X86Reg>& mreg(const std::string& name) {
   if (const auto* p = maybeMReg(name)) {
@@ -816,14 +816,14 @@ struct Instruction {
     return r;
   }
   const LabelRef* labelDef() const {
-    return this->op=="deflbl" && this->argc==1 ? this->args[0].labelRef() : 0;
+    return this->op=="deflbl" && this->argc==1 ? this->args[0].labelRef() : nullptr;
   }
   const LabelRef* jumpTarget() const {
     // jump instructions start with "j" by convention, should be good enough
     if (this->op.size() > 0 && this->op[0] == 'j' && this->argc == 1) {
       return this->args[0].labelRef();
     } else {
-      return 0;
+      return nullptr;
     }
   }
   bool controlFollows() const {
@@ -850,8 +850,8 @@ template <typename RegisterID>
 using Instructions = std::vector<Instruction<RegisterID>>;
 
 // an instruction using x86 machine registers is a 'machine instruction'
-typedef Instruction<X86Reg> MInst;
-typedef std::vector<MInst>  MInsts;
+using MInst = Instruction<X86Reg>;
+using MInsts = std::vector<MInst>;
 
 // print instructions and instruction sequences for human display
 template <typename RegisterID>
@@ -947,10 +947,10 @@ public:
     }
   }
   const Reg<X86Reg>* reg() const {
-    return this->isRegister ? this->variant.vreg : 0;
+    return this->isRegister ? this->variant.vreg : nullptr;
   }
   const RegDeref<X86Reg>* regDeref() const {
-    return !this->isRegister ? this->variant.vregderef : 0;
+    return !this->isRegister ? this->variant.vregderef : nullptr;
   }
 private:
   bool isRegister;
@@ -964,7 +964,7 @@ private:
 class Output;
 class MatchFunction {
 public:
-  MatchFunction() : pf(0) { }
+  MatchFunction() : pf(nullptr) { }
   template <typename ... Args>
   MatchFunction(void(*pf)(Output&,const Args&...)) {
     this->pf = reinterpret_cast<void*>(pf);
@@ -998,39 +998,39 @@ public:
   // we use these patterns for instructions that have specializations to work with a specific register (usually r0 aka "rax")
   static P reg(const std::string& name) {
     const auto& nreg = mreg(name);
-    return P(MLitReg, nreg.name, nreg.rsize, nreg.rclass);
+    return {MLitReg, nreg.name, nreg.rsize, nreg.rclass};
   }
 
   // partial register mapping
   // (match size and class, but leave 'name' free)
-  static P r8 () { return P(MReg, 1, RegClass::Int); }
-  static P r16() { return P(MReg, 2, RegClass::Int); }
-  static P r32() { return P(MReg, 4, RegClass::Int); }
-  static P r64() { return P(MReg, 8, RegClass::Int); }
+  static P r8 () { return {MReg, 1, RegClass::Int}; }
+  static P r16() { return {MReg, 2, RegClass::Int}; }
+  static P r32() { return {MReg, 4, RegClass::Int}; }
+  static P r64() { return {MReg, 8, RegClass::Int}; }
 
-  static P rf32() { return P(MReg, 4, RegClass::Float); }
-  static P rf64() { return P(MReg, 8, RegClass::Float); }
+  static P rf32() { return {MReg, 4, RegClass::Float}; }
+  static P rf64() { return {MReg, 8, RegClass::Float}; }
 
   // RM matching (accepting either register or memory arguments)
-  static P rm8()  { return P(MRM, 1, RegClass::Int); }
-  static P rm16() { return P(MRM, 2, RegClass::Int); }
-  static P rm32() { return P(MRM, 4, RegClass::Int); }
-  static P rm64() { return P(MRM, 8, RegClass::Int); }
+  static P rm8()  { return {MRM, 1, RegClass::Int}; }
+  static P rm16() { return {MRM, 2, RegClass::Int}; }
+  static P rm32() { return {MRM, 4, RegClass::Int}; }
+  static P rm64() { return {MRM, 8, RegClass::Int}; }
 
-  static P rmf32() { return P(MRM, 4, RegClass::Float); }
-  static P rmf64() { return P(MRM, 8, RegClass::Float); }
+  static P rmf32() { return {MRM, 4, RegClass::Float}; }
+  static P rmf64() { return {MRM, 8, RegClass::Float}; }
 
   // label references
-  static P lbl(RegSize sz = 4) { return P(MLabelRef, sz, RegClass::Int); }
+  static P lbl(RegSize sz = 4) { return {MLabelRef, sz, RegClass::Int}; }
 
   // exact immediate values (some instructions like SHL are specialized for exact value arguments)
-  static P imm8(int8_t x) { return P(MLitImm, x, 1, RegClass::Int); }
+  static P imm8(int8_t x) { return {MLitImm, x, 1, RegClass::Int}; }
 
   // immediate values matching by size
-  static P imm8 () { return P(MImm, 1, RegClass::Int); }
-  static P imm16() { return P(MImm, 2, RegClass::Int); }
-  static P imm32() { return P(MImm, 4, RegClass::Int); }
-  static P imm64() { return P(MImm, 8, RegClass::Int); }
+  static P imm8 () { return {MImm, 1, RegClass::Int}; }
+  static P imm16() { return {MImm, 2, RegClass::Int}; }
+  static P imm32() { return {MImm, 4, RegClass::Int}; }
+  static P imm64() { return {MImm, 8, RegClass::Int}; }
 
   // does an argument match this pattern?
   bool matches(const MArg& arg) const {
@@ -1271,8 +1271,8 @@ private:
 // we should also be able to infer which arguments are in/out/inout here
 class Match {
 public:
-  typedef std::vector<Rule> RuleSeq;
-  typedef std::vector<int>  VarRefs;
+  using RuleSeq = std::vector<Rule>;
+  using VarRefs = std::vector<int>;
 
   Match() { /* invalid */ }
   Match(const RuleSeq& rules) {
@@ -1613,7 +1613,7 @@ public:
         int64_t diff = reinterpret_cast<uint64_t>(faddr) - reinterpret_cast<uint64_t>(rip + 5);
 
         if (canLowerTo<int32_t>(diff)) {
-          int32_t diff32 = static_cast<int32_t>(diff);
+          auto diff32 = static_cast<int32_t>(diff);
 
           // call rel32 = e8 id (5 bytes)
           (*b)[0] = 0xe8;
@@ -1651,14 +1651,14 @@ private:
 
 #ifndef HMC_ENCODE_NO_INLINE_CODETABLES
 
-typedef std::map<std::string, Match> EncodingTable;
+using EncodingTable = std::map<std::string, Match>;
 
 inline void bootEncodingTable(EncodingTable& t) {
-  typedef Output&            O;
-  typedef const Reg<X86Reg>& R;
-  typedef const RM&          RM;
-  typedef const Immediate&   I;
-  typedef const LabelRef&    LR;
+  using O = Output &;
+  using R = const Reg<X86Reg> &;
+  using RM = const RM &;
+  using I = const Immediate &;
+  using LR = const LabelRef &;
 
   t["add"] = Match({
     Rule(io(P::reg("al")),  P::imm8(),  [](O o, I ib){o(        ui8(0x04), ui8(ib));}),

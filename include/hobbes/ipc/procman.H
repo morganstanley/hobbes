@@ -13,15 +13,15 @@ public:
   bool isSpawnedPid(const std::string&, long) const;
 
   // hf eliminator interface
-  bool satisfied(const TEnvPtr&, const HasField&, Definitions*) const;
-  bool satisfiable(const TEnvPtr&, const HasField&, Definitions*) const;
-  bool refine(const TEnvPtr&, const HasField&, MonoTypeUnifier*, Definitions*);
-  ExprPtr unqualify(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*) const;
-  std::string name() const;
+  bool satisfied(const TEnvPtr&, const HasField&, Definitions*) const override;
+  bool satisfiable(const TEnvPtr&, const HasField&, Definitions*) const override;
+  bool refine(const TEnvPtr&, const HasField&, MonoTypeUnifier*, Definitions*) override;
+  ExprPtr unqualify(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*) const override;
+  std::string name() const override;
 private:
   friend struct ProcManUnqualify;
 
-  typedef std::map<std::string, proc> SpawnedProcs;
+  using SpawnedProcs = std::map<std::string, proc>;
   SpawnedProcs procs;
 
   const proc& lp(long) const;

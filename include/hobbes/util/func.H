@@ -10,21 +10,21 @@ template <typename T> struct func {};
 
 template <typename R, typename... Args> struct func<R(Args...)> {
   static const std::size_t arity = sizeof...(Args);
-  typedef R (*type)(Args...);
-  typedef R result_type;
+  using type = R (*)(Args...);
+  using result_type = R;
 };
 
 template <typename R, typename... Args> struct func<R (*)(Args...)> {
   static const std::size_t arity = sizeof...(Args);
-  typedef R (*type)(Args...);
-  typedef R result_type;
+  using type = R (*)(Args...);
+  using result_type = R;
 };
 
 template <typename R, typename C, typename... Args>
 struct func<R (C::*)(Args...)> {
   static const std::size_t arity = sizeof...(Args);
-  typedef R (*type)(C *, Args...);
-  typedef R result_type;
+  using type = R (*)(C *, Args...);
+  using result_type = R;
 };
 
 template <typename T> struct mfnTraits {};
@@ -32,15 +32,15 @@ template <typename T> struct mfnTraits {};
 template <typename R, typename C, typename... Args>
 struct mfnTraits<R (C::*)(Args...) const> {
   static const int arity = sizeof...(Args);
-  typedef R result_type;
-  typedef C class_type;
+  using result_type = R;
+  using class_type = C;
 };
 
 template <typename R, typename C, typename... Args>
 struct mfnTraits<R (C::*)(Args...)> {
   static const int arity = sizeof...(Args);
-  typedef R result_type;
-  typedef C class_type;
+  using result_type = R;
+  using class_type = C;
 };
 
 template <typename T> struct boolSafeFn : public func<T> {

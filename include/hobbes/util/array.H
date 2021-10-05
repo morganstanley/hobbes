@@ -2,23 +2,23 @@
 #ifndef HOBBES_UTIL_ARRAY_HPP_INCLUDED
 #define HOBBES_UTIL_ARRAY_HPP_INCLUDED
 
+#include <algorithm>
+#include <cstring>
+#include <functional>
 #include <map>
 #include <set>
-#include <vector>
-#include <stdexcept>
-#include <algorithm>
-#include <functional>
 #include <sstream>
-#include <string.h>
+#include <stdexcept>
+#include <vector>
 
 namespace hobbes {
 
 // a unit value, since C++ doesn't handle 'void' correctly
-typedef unsigned char UnitV;
+using UnitV = unsigned char;
 static const UnitV unitv = 0x00;
 
 // byte sequences, a common type of array
-typedef std::vector<uint8_t> bytes;
+using bytes = std::vector<uint8_t>;
 
 // shorthand for list construction (maybe not necessary with C++ initializer lists)
 template <typename T>
@@ -51,7 +51,7 @@ template <typename T>
 // x in (xs :: vector T)
 template <typename T>
   bool in(T x, const std::vector<T>& xs) {
-    for (typename std::vector<T>::const_iterator xi = xs.begin(); xi != xs.end(); ++xi) {
+    for (auto xi = xs.begin(); xi != xs.end(); ++xi) {
       if (*xi == x) {
         return true;
       }
@@ -69,7 +69,7 @@ template <typename T>
 
     std::ostringstream ss;
     ss << x << " not in [";
-    if (xs.size() > 0) {
+    if (!xs.empty()) {
       ss << xs[0];
       for (size_t i = 1; i < xs.size(); ++i) {
         ss << ", " << xs[i];
@@ -105,7 +105,7 @@ template <typename T, typename I>
 template <typename T, typename I>
   std::vector<T> select(const std::vector<T>& xs, const std::vector<I>& is) {
     std::vector<T> r;
-    for (typename std::vector<I>::const_iterator i = is.begin(); i != is.end(); ++i) {
+    for (auto i = is.begin(); i != is.end(); ++i) {
       r.push_back(select(xs, *i));
     }
     return r;
@@ -134,7 +134,7 @@ template <typename K, typename V>
 template <typename K, typename V>
   std::map<K, V> drop(const std::map<K, V>& m, const std::set<K>& ks) {
     std::map<K, V> result;
-    for (typename std::map<K,V>::const_iterator p = m.begin(); p != m.end(); ++p) {
+    for (auto p = m.begin(); p != m.end(); ++p) {
       if (ks.find(p->first) == ks.end()) {
         result[p->first] = p->second;
       }
@@ -150,7 +150,7 @@ template <typename T>
 template <typename CT>
   std::set<typename CT::value_type> toSet(const CT& xs) {
     std::set<typename CT::value_type> r;
-    for (auto x : xs) {
+    for (const auto& x : xs) {
       r.insert(x);
     }
     return r;
@@ -175,7 +175,7 @@ template <typename T>
 template <typename T>
   std::set<T> setUnion(const std::vector< std::set<T> >& ss) {
     std::set<T> r;
-    for (typename std::vector< std::set<T> >::const_iterator s = ss.begin(); s != ss.end(); ++s) {
+    for (auto s = ss.begin(); s != ss.end(); ++s) {
       r.insert(s->begin(), s->end());
     }
     return r;
@@ -198,7 +198,7 @@ template <typename T>
 template <typename K, typename V>
   std::set<K> keys(const std::map<K, V>& m) {
     std::set<K> r;
-    for (typename std::map<K, V>::const_iterator kv = m.begin(); kv != m.end(); ++kv) {
+    for (auto kv = m.begin(); kv != m.end(); ++kv) {
       r.insert(kv->first);
     }
     return r;
@@ -208,7 +208,7 @@ template <typename L, typename R>
   std::vector<L> first(const std::vector< std::pair<L, R> >& xs) {
     std::vector<L> result;
     result.reserve(xs.size());
-    for (typename std::vector< std::pair<L, R> >::const_iterator x = xs.begin(); x != xs.end(); ++x) {
+    for (auto x = xs.begin(); x != xs.end(); ++x) {
       result.push_back(x->first);
     }
     return result;
@@ -228,7 +228,7 @@ template <typename L, typename R>
   std::vector<R> second(const std::vector< std::pair<L, R> >& xs) {
     std::vector<R> result;
     result.reserve(xs.size());
-    for (typename std::vector< std::pair<L, R> >::const_iterator x = xs.begin(); x != xs.end(); ++x) {
+    for (auto x = xs.begin(); x != xs.end(); ++x) {
       result.push_back(x->second);
     }
     return result;
@@ -313,7 +313,7 @@ template <typename T>
 // basic bit-packed 2D bool array (maybe there's already something that does this job?)
 class bit_table {
 public:
-  inline bit_table() : data(0), rowc(0), colc(0) {
+  inline bit_table() : data(nullptr), rowc(0), colc(0) {
   }
   inline bit_table(size_t rowc, size_t colc, bool s) : rowc(rowc), colc(colc) {
     size_t msz = 1+((rowc*colc)/8);

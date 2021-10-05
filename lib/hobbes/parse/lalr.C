@@ -8,17 +8,17 @@ namespace hobbes {
  * basic grammar/rule analysis
  */
 void removeRuleDefs(terminal* s, grammar* g) {
-  grammar::iterator r = g->find(s);
+  auto r = g->find(s);
   if (r != g->end()) {
     g->erase(r);
   }
 }
 
 void removeRuleRefs(terminal* s, grammar* g) {
-  for (grammar::iterator sd = g->begin(); sd != g->end(); ++sd) {
-    for (nat r = 0; r < sd->second.size();) {
-      if (in(s, sd->second[r])) {
-        sd->second.erase(sd->second.begin() + r);
+  for (auto &sd : *g) {
+    for (nat r = 0; r < sd.second.size();) {
+      if (in(s, sd.second[r])) {
+        sd.second.erase(sd.second.begin() + r);
       } else {
         ++r;
       }
@@ -58,10 +58,10 @@ terminalset topLevelSymbols(const grammar& g) {
   terminalset result;
   terminalset dsyms = definedSymbols(g);
 
-  for (terminalset::const_iterator t = dsyms.begin(); t != dsyms.end(); ++t) {
-    terminalset users = symbolsUsing(g, *t);
-    if (users.size() == 0 || (users.size() == 1 && in(*t, users))) {
-      result.insert(*t);
+  for (auto *dsym : dsyms) {
+    terminalset users = symbolsUsing(g, dsym);
+    if (users.empty() || (users.size() == 1 && in(dsym, users))) {
+      result.insert(dsym);
     }
   }
 
@@ -69,24 +69,24 @@ terminalset topLevelSymbols(const grammar& g) {
 }
 
 void symbolsUsed(const grammar& g, const rule& r, terminalset* ss) {
-  for (rule::const_iterator t = r.begin(); t != r.end(); ++t) {
-    if (hasRule(g, *t)) {
-      if (!in(*t, *ss)) {
-        ss->insert(*t);
-        symbolsUsed(g, *t, ss);
+  for (auto *t : r) {
+    if (hasRule(g, t)) {
+      if (!in(t, *ss)) {
+        ss->insert(t);
+        symbolsUsed(g, t, ss);
       }
     }
   }
 }
 
 void symbolsUsed(const grammar& g, const rules& rs, terminalset* ss) {
-  for (rules::const_iterator r = rs.begin(); r != rs.end(); ++r) {
-    symbolsUsed(g, *r, ss);
+  for (const auto &r : rs) {
+    symbolsUsed(g, r, ss);
   }
 }
 
 void symbolsUsed(const grammar& g, terminal* s, terminalset* ss) {
-  grammar::const_iterator sd = g.find(s);
+  auto sd = g.find(s);
   if (sd != g.end()) {
     symbolsUsed(g, sd->second, ss);
   }
@@ -102,9 +102,9 @@ terminalset symbolsUsing(const grammar& g, terminal* s) {
   terminalset result;
   terminalset dsyms = definedSymbols(g);
 
-  for (terminalset::const_iterator t = dsyms.begin(); t != dsyms.end(); ++t) {
-    if (in(s, symbolsUsed(g, *t))) {
-      result.insert(*t);
+  for (auto *dsym : dsyms) {
+    if (in(s, symbolsUsed(g, dsym))) {
+      result.insert(dsym);
     }
   }
 
@@ -116,7 +116,7 @@ bool hasRule(const grammar& g, terminal* t) {
 }
 
 const rules* aggRules(const grammar& g, terminal* t) {
-  grammar::const_iterator ad = g.find(t);
+  auto ad = g.find(t);
   if (ad == g.end()) {
     throw std::runtime_error("Internal error, no such aggregate defined.");
   } else {
@@ -134,20 +134,20 @@ const rule& nthRule(const rules* rs, nat n) {
 
 terminal* ruleElement(const rule& r, nat i) {
   if (i >= r.size()) {
-    return 0;
+    return nullptr;
   } else {
     return r[i];
   }
 }
 
 bool directlyDerivesNull(const rule& r) {
-  return r.size() == 0;
+  return r.empty();
 }
 
 bool directlyDerivesNull(const grammar& g, terminal* s) {
   const rules* rs = aggRules(g, s);
-  for (rules::const_iterator r = rs->begin(); r != rs->end(); ++r) {
-    if (directlyDerivesNull(*r)) {
+  for (const auto &r : *rs) {
+    if (directlyDerivesNull(r)) {
       return true;
     }
   }
@@ -155,8 +155,8 @@ bool directlyDerivesNull(const grammar& g, terminal* s) {
 }
 
 bool derivesNull(const terminalset& nullAggs, const rule& r) {
-  for (rule::const_iterator v = r.begin(); v != r.end(); ++v) {
-    if (nullAggs.find(*v) == nullAggs.end()) {
+  for (auto *v : r) {
+    if (nullAggs.find(v) == nullAggs.end()) {
       return false;
     }
   }
@@ -165,8 +165,8 @@ bool derivesNull(const terminalset& nullAggs, const rule& r) {
 
 bool derivesNull(const grammar& g, const terminalset& nullAggs, terminal* s) {
   const rules* rs = aggRules(g, s);
-  for (rules::const_iterator r = rs->begin(); r != rs->end(); ++r) {
-    if (derivesNull(nullAggs, *r)) {
+  for (const auto & r : *rs) {
+    if (derivesNull(nullAggs, r)) {
       return true;
     }
   }
@@ -174,8 +174,8 @@ bool derivesNull(const grammar& g, const terminalset& nullAggs, terminal* s) {
 }
 
 bool derivesNull(const grammar& g, const terminalset& nullAggs, const terminals& ss) {
-  for (terminals::const_iterator s = ss.begin(); s != ss.end(); ++s) {
-    if (!derivesNull(g, nullAggs, *s)) {
+  for (auto *s : ss) {
+    if (!derivesNull(g, nullAggs, s)) {
       return false;
     }
   }
@@ -193,7 +193,7 @@ terminalset symbolsDerivingNull(const grammar& g) {
 
   while (changed) {
     changed = false;
-    for (terminalset::const_iterator s = potentials.begin(); s != potentials.end(); ++s) {
+    for (auto s = potentials.begin(); s != potentials.end(); ++s) {
       if (nulls.find(*s) == nulls.end() && derivesNull(g, nulls, *s)) {
         nulls.insert(*s);
         potentials.erase(*s);
@@ -238,8 +238,8 @@ void show(std::ostream& out, const grammar& g, const item& i) {
   if (i.p == r.size()) {
     out << "#";
     out << " [";
-    if (i.la.size() > 0) {
-      terminalset::const_iterator lat = i.la.begin();
+    if (!i.la.empty()) {
+      auto lat = i.la.begin();
       (*lat)->show(out);
       ++lat;
       while (lat != i.la.end()) {
@@ -254,8 +254,8 @@ void show(std::ostream& out, const grammar& g, const item& i) {
 }
 
 void show(std::ostream& out, const grammar& g, const itemset& is) {
-  for (itemset::const_iterator i = is.begin(); i != is.end(); ++i) {
-    show(out, g, *i);
+  for (const auto &i : is) {
+    show(out, g, i);
   }
 }
 
@@ -286,8 +286,8 @@ terminal* next(const grammar& g, const item& i) {
 
 terminalset next(const grammar& g, const itemset& is) {
   terminalset r;
-  for (itemset::const_iterator i = is.begin(); i != is.end(); ++i) {
-    if (terminal* t = next(g, *i)) {
+  for (const auto &i : is) {
+    if (terminal* t = next(g, i)) {
       r.insert(t);
     }
   }
@@ -296,8 +296,8 @@ terminalset next(const grammar& g, const itemset& is) {
 
 terminalset nextPrim(const grammar& g, const itemset& is) {
   terminalset r;
-  for (itemset::const_iterator i = is.begin(); i != is.end(); ++i) {
-    if (terminal* v = next(g, *i)) {
+  for (const auto &i : is) {
+    if (terminal* v = next(g, i)) {
       if (!hasRule(g, v)) {
         r.insert(v);
       }
@@ -308,9 +308,9 @@ terminalset nextPrim(const grammar& g, const itemset& is) {
 
 itemset follow(const grammar& g, const itemset& is, terminal* v) {
   itemset r;
-  for (itemset::const_iterator i = is.begin(); i != is.end(); ++i) {
-    if (next(g, *i) == v) {
-      r.insert(succ(*i));
+  for (const auto &i : is) {
+    if (next(g, i) == v) {
+      r.insert(succ(i));
     }
   }
   return r;
@@ -318,8 +318,8 @@ itemset follow(const grammar& g, const itemset& is, terminal* v) {
 
 itemsets follow(const grammar& g, const itemset& is, const terminals& vs) {
   itemsets r;
-  for (terminals::const_iterator v = vs.begin(); v != vs.end(); ++v) {
-    r.push_back(follow(g, is, *v));
+  for (auto *v : vs) {
+    r.push_back(follow(g, is, v));
   }
   return r;
 }
@@ -331,9 +331,9 @@ void gclosure(const grammar& g, itemset* is) {
     changed = false;
 
     terminalset ts = next(g, *is);
-    for (terminalset::const_iterator t = ts.begin(); t != ts.end(); ++t) {
-      if (*t && hasRule(g, *t)) {
-        changed |= ruleItems(g, *t, is);
+    for (auto *t : ts) {
+      if ((t != nullptr) && hasRule(g, t)) {
+        changed |= ruleItems(g, t, is);
       }
     }
   }
@@ -358,7 +358,7 @@ nat parserState(const itemset& s, parserdef* p) {
 }
 
 const itemset& parserStateDef(const parserdef& p, nat n) {
-  state_definitions::const_iterator sd = p.state_defs.find(n);
+  auto sd = p.state_defs.find(n);
   if (sd == p.state_defs.end()) {
     throw std::runtime_error("Internal error, invalid state referenced.");
   } else {
@@ -368,9 +368,9 @@ const itemset& parserStateDef(const parserdef& p, nat n) {
 
 state_transitions follow(const grammar& g, const itemset& is, const terminalset& vs, parserdef* p) {
   state_transitions r;
-  for (terminalset::const_iterator v = vs.begin(); v != vs.end(); ++v) {
-    if (*v != endOfFile::value()) {
-      r[*v] = parserState(gclosure(g, follow(g, is, *v)), p);
+  for (auto *v : vs) {
+    if (v != endOfFile::value()) {
+      r[v] = parserState(gclosure(g, follow(g, is, v)), p);
     }
   }
   return r;
@@ -406,8 +406,8 @@ parserdef lr0parser(const grammar& g, terminal* s) {
 
 transitionset transitions(const parserdef& p) {
   transitionset r;
-  for (parser_state_transitions::const_iterator pst = p.transitions.begin(); pst != p.transitions.end(); ++pst) {
-    for (state_transitions::const_iterator st = pst->second.begin(); st != pst->second.end(); ++st) {
+  for (auto pst = p.transitions.begin(); pst != p.transitions.end(); ++pst) {
+    for (auto st = pst->second.begin(); st != pst->second.end(); ++st) {
       if (hasRule(p.g, st->first)) {
         r.insert(transition(pst->first, st->first));
       }
@@ -417,7 +417,7 @@ transitionset transitions(const parserdef& p) {
 }
 
 const state_transitions& transitions(const parserdef& p, nat q) {
-  parser_state_transitions::const_iterator r = p.transitions.find(q);
+  auto r = p.transitions.find(q);
   if (r == p.transitions.end()) {
     throw std::runtime_error("Internal error, invalid state given for finding transitions.");
   } else {
@@ -434,7 +434,7 @@ bool follows(const parserdef& p, nat q, terminal* t) {
 }
 
 nat follow(const state_transitions& st, terminal* t) {
-  state_transitions::const_iterator x = st.find(t);
+  auto x = st.find(t);
   if (x == st.end()) {
     throw std::runtime_error("Internal error, invalid symbol given for determining state transition.");
   } else {
@@ -452,8 +452,8 @@ nat follow(const parserdef& p, const transition& x) {
 
 nat follow(const parserdef& p, nat s, const terminals& ts) {
   nat r = s;
-  for (terminals::const_iterator t = ts.begin(); t != ts.end(); ++t) {
-    r = follow(p, r, *t);
+  for (auto *t : ts) {
+    r = follow(p, r, t);
   }
   return r;
 }
@@ -464,10 +464,10 @@ bool lookback(const parserdef& p, nat q, terminal* r, const rule& w, const trans
     return false;
   } else {
     nat s = t.first;
-    for (rule::const_iterator t = w.begin(); t != w.end(); ++t) {
+    for (auto *t : w) {
       const state_transitions& st = transitions(p, s);
-      if (follows(st, *t)) {
-        s = follow(st, *t);
+      if (follows(st, t)) {
+        s = follow(st, t);
       } else {
         return false;
       }
@@ -477,7 +477,7 @@ bool lookback(const parserdef& p, nat q, terminal* r, const rule& w, const trans
 }
 
 // for a rule w and sym A, find all prefixes b such that w = bAs, s =>* eps
-typedef std::vector<terminals> prefixes;
+using prefixes = std::vector<terminals>;
 
 prefixes endingAt(const parserdef& p, const rule& w, terminal* a) {
   prefixes r;
@@ -498,10 +498,10 @@ prefixes endingAt(const parserdef& p, const rule& w, terminal* a) {
 // x=(s,A) includes y=(s',B) if B -> wAg, g =>* eps, and s' --w--> s
 bool includes(const parserdef& p, const transition& x, const transition& y) {
   const rules* rs = aggRules(p.g, y.second);
-  for (rules::const_iterator r = rs->begin(); r != rs->end(); ++r) {
-    prefixes pr = endingAt(p, *r, x.second);
-    for (prefixes::const_iterator pfx = pr.begin(); pfx != pr.end(); ++pfx) {
-      if (follow(p, y.first, *pfx) == x.first) {
+  for (const auto &r : *rs) {
+    prefixes pr = endingAt(p, r, x.second);
+    for (const auto & pfx : pr) {
+      if (follow(p, y.first, pfx) == x.first) {
         return true;
       }
     }
@@ -522,7 +522,7 @@ terminalset directReads(const parserdef& p, const transition& x) {
 // a utility to make it easier to create closures
 template <typename E, typename X0, typename R>
   struct clos1 {
-    typedef R (*PFN)(const E&, const X0&);
+    using PFN = R (*)(const E &, const X0 &);
     const E& env;
     PFN      fn;
     
@@ -532,7 +532,7 @@ template <typename E, typename X0, typename R>
 
 template <typename E, typename X0, typename X1, typename R>
   struct clos2 {
-    typedef R (*PFN)(const E&, const X0&, const X1&);
+    using PFN = R (*)(const E &, const X0 &, const X1 &);
     const E& env;
     PFN      fn;
 
@@ -541,13 +541,13 @@ template <typename E, typename X0, typename X1, typename R>
   };
 
 // typedefs to work around type inference failure for the below digraph expressions
-typedef terminalset (*ptsappend)(const terminalset&, const terminalset&);
+using ptsappend = terminalset (*)(const terminalset &, const terminalset &);
 
-typedef clos1<parserdef, transition,             terminalset> DRT;
-typedef clos2<parserdef, transition, transition, bool>        readsT;
+using DRT = clos1<parserdef, transition, terminalset>;
+using readsT = clos2<parserdef, transition, transition, bool>;
 
-typedef clos1<transition_lookahead, transition,             terminalset> RT;
-typedef clos2<parserdef,            transition, transition, bool>        includesT;
+using RT = clos1<transition_lookahead, transition, terminalset>;
+using includesT = clos2<parserdef, transition, transition, bool>;
 
 // compute Read(x=(s,A)) = directReads(s,A) + (Read(q,B) | (s,A) reads (q,B))
 transition_lookahead Reads(const parserdef& p, const transitionset& ts) {
@@ -562,13 +562,13 @@ transition_lookahead Follow(const parserdef& p, const transitionset& ts) {
 
 // apply transition lookahead to every applicable completed item in an LR(0) parser
 void apply(const transition_lookahead& tl, parserdef* p) {
-  for (parser_states::iterator s = p->states.begin(); s != p->states.end(); ++s) {
-    for (itemset::iterator i = s->first.begin(); i != s->first.end(); ++i) {
+  for (auto s = p->states.begin(); s != p->states.end(); ++s) {
+    for (auto i = s->first.begin(); i != s->first.end(); ++i) {
       // if this is a completed item, then we need to give it lookahead terminals
-      if (next(p->g, *i) == 0) {
-        for (transition_lookahead::const_iterator tli = tl.begin(); tli != tl.end(); ++tli) {
-          if (lookback(*p, s->second, i->agg, nthRule(aggRules(p->g, i->agg), i->r), tli->first)) {
-            const_cast<item*>(&(*(i)))->la.insert(tli->second.begin(), tli->second.end());
+      if (next(p->g, *i) == nullptr) {
+        for (const auto &tli : tl) {
+          if (lookback(*p, s->second, i->agg, nthRule(aggRules(p->g, i->agg), i->r), tli.first)) {
+            const_cast<item*>(&(*(i)))->la.insert(tli.second.begin(), tli.second.end());
           }
         }
       }
@@ -587,23 +587,23 @@ parserdef lalr1parser(const grammar& g, terminal* s) {
 
 terminal* reduceOpTerminal(const parserdef& pd, const action& a) {
   const rule& r = nthRule(aggRules(pd.g, a.reduceSym()), a.reduceRule());
-  for (rule::const_reverse_iterator e = r.rbegin(); e != r.rend(); ++e) {
+  for (auto e = r.rbegin(); e != r.rend(); ++e) {
     if (!hasRule(pd.g, *e)) {
       return *e;
     }
   }
-  return 0;
+  return nullptr;
 }
 
 bool shiftInstead(const parserdef& pd, const precedence& px, nat, terminal* t, const action& a) {
   terminal* u = reduceOpTerminal(pd, a);
 
-  if (!u) {
+  if (u == nullptr) {
     throw ambiguity_conflict("Unable to resolve shift/reduce conflict in grammar", t);
   }
 
-  precedence::const_iterator tp = px.find(t);
-  precedence::const_iterator up = px.find(u);
+  auto tp = px.find(t);
+  auto up = px.find(u);
 
   if (tp == px.end() || up == px.end()) {
     throw ambiguity_conflict("Unable to resolve shift/reduce conflict in grammar", t);
@@ -614,11 +614,7 @@ bool shiftInstead(const parserdef& pd, const precedence& px, nat, terminal* t, c
   } else if (up->second.level < tp->second.level) {
     return true;
   } else if (tp->second.asc == up->second.asc && tp->second.asc != assoc::non) {
-    if (tp->second.asc == assoc::left) {
-      return false;
-    } else {
-      return true;
-    }
+    return tp->second.asc != assoc::left;
   } else {
     throw ambiguity_conflict("Unable to resolve shift/reduce conflict in grammar", t);
   }
@@ -630,7 +626,7 @@ lrtable lalrTable(const grammar& g, terminal* s, const precedence& px) {
 }
 
 void addAction(const parserdef& pd, lrstate& s, terminal* t, const action& a, const precedence& px) {
-  lrstate::iterator sc = s.find(t);
+  auto sc = s.find(t);
   if (sc == s.end()) {
     s.insert(std::make_pair(t, a));
   } else if (sc->second != a) {
@@ -655,8 +651,8 @@ void addAccept(lrstate& s, terminal* t) {
 }
 
 void addReduce(const parserdef& pd, lrstate& s, const terminalset& ts, terminal* agg, nat rule, nat len, const precedence& px) {
-  for (terminalset::const_iterator t = ts.begin(); t != ts.end(); ++t) {
-    addAction(pd, s, *t, action::reduce(agg, rule, len), px);
+  for (auto *t : ts) {
+    addAction(pd, s, t, action::reduce(agg, rule, len), px);
   }
 }
 
@@ -672,7 +668,7 @@ lrtable lalrTable(const parserdef& p, const precedence& px) {
   lrtable r;
   r.resize(p.states.size());
 
-  for (parser_states::const_iterator s = p.states.begin(); s != p.states.end(); ++s) {
+  for (auto s = p.states.begin(); s != p.states.end(); ++s) {
     // each item in this state's set translates to an LR parser action (goto, shift, reduce, or accept)
     const itemset& is = s->first;
     nat            n  = s->second;
@@ -680,12 +676,12 @@ lrtable lalrTable(const parserdef& p, const precedence& px) {
 
     // if we fail to compile a table row, report the itemset that failed
     try {
-      for (itemset::const_iterator i = is.begin(); i != is.end(); ++i) {
-        terminal* t = next(p.g, *i);
+      for (const auto & i : is) {
+        terminal* t = next(p.g, i);
   
-        if (t == 0) {
+        if (t == nullptr) {
           // reduce
-          addReduce(p, ps, i->la, i->agg, i->r, i->p, px);
+          addReduce(p, ps, i.la, i.agg, i.r, i.p, px);
         } else if (hasRule(p.g, t)) {
           // goto
           addGoto(ps, t, follow(p, n, t));
@@ -705,14 +701,14 @@ lrtable lalrTable(const parserdef& p, const precedence& px) {
   return r;
 }
 
-ambiguity_conflict::ambiguity_conflict(const std::string& ex, terminal* t) throw() : std::runtime_error(ex), t(t) {
+ambiguity_conflict::ambiguity_conflict(const std::string& ex, terminal* t) noexcept : std::runtime_error(ex), t(t) {
 }
 
 terminal* ambiguity_conflict::failedTerminal() const {
   return this->t;
 }
 
-compile_table_failure::compile_table_failure(const std::string& msg, const grammar& g, const itemset& faileditems, terminal* t) throw() : std::runtime_error(msg), g(g), faileditems(faileditems), t(t) {
+compile_table_failure::compile_table_failure(const std::string& msg, const grammar& g, const itemset& faileditems, terminal* t) noexcept : std::runtime_error(msg), g(g), faileditems(faileditems), t(t) {
 }
 
 const grammar& compile_table_failure::failedGrammar() const {
@@ -732,9 +728,9 @@ inline bool referencesSym(const grammar& g, const item& i, terminal* t) {
 }
 
 void compile_table_failure::print(std::ostream& out) const {
-  for (itemset::const_iterator i = this->faileditems.begin(); i != this->faileditems.end(); ++i) {
-    if (referencesSym(this->g, *i, this->t)) {
-      print(out, *i);
+  for (const auto &faileditem : this->faileditems) {
+    if (referencesSym(this->g, faileditem, this->t)) {
+      print(out, faileditem);
     }
   }
 }
@@ -780,8 +776,8 @@ void compile_table_failure::print(std::ostream& out, const item& i) const {
   if (i.p == r.size()) {
     out << "#";
     out << " [";
-    if (i.la.size() > 0) {
-      terminalset::const_iterator lat = i.la.begin();
+    if (!i.la.empty()) {
+      auto lat = i.la.begin();
       showHLTerm(out, *lat, this->t);
       ++lat;
       while (lat != i.la.end()) {
@@ -796,8 +792,7 @@ void compile_table_failure::print(std::ostream& out, const item& i) const {
 }
 
 // lr tables / actions
-action::action() {
-}
+action::action() = default;
 
 action action::goTo(nat s) {
   action a;
@@ -893,7 +888,7 @@ terminals dispOrd(const terminalset& ts) {
         } else {
           return true;
         }
-      } else if (dynamic_cast<character*>(b)) {
+      } else if (dynamic_cast<character*>(b) != nullptr) {
         return false;
       } else {
         std::ostringstream as, bs;
@@ -909,7 +904,7 @@ terminals dispOrd(const terminalset& ts) {
 void show(std::ostream& out, const lrtable& tbl) {
   auto      ts = dispOrd(definedSymbols(tbl));
   str::seqs stbl;
-  for (auto t : ts) {
+  for (auto *t : ts) {
     stbl.push_back(str::seq());
     str::seq& c = stbl.back();
 

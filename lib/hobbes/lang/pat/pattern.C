@@ -22,7 +22,7 @@ void Pattern::name(const std::string& x) {
 }
 
 // match literal (constant) values
-MatchLiteral::MatchLiteral(const PrimitivePtr& proxy, const LexicalAnnotation& la) : Base(la), p(proxy), e() {
+MatchLiteral::MatchLiteral(const PrimitivePtr& proxy, const LexicalAnnotation& la) : Base(la), p(proxy) {
 }
 
 MatchLiteral::MatchLiteral(const PrimitivePtr& proxy, const ExprPtr& value, const LexicalAnnotation& la) : Base(la), p(proxy), e(value) {
@@ -36,7 +36,7 @@ void MatchLiteral::show(std::ostream& out) const {
 }
 
 bool MatchLiteral::operator==(const Pattern& rhs) const {
-  if (const MatchLiteral* lrhs = is<MatchLiteral>(&rhs)) {
+  if (const auto* lrhs = is<MatchLiteral>(&rhs)) {
     return *this->p == *lrhs->p;
   } else {
     return false;
@@ -51,7 +51,7 @@ const std::string& MatchAny::value() const { return this->vn; }
 void MatchAny::show(std::ostream& out) const { out << this->vn; }
 
 bool MatchAny::operator==(const Pattern& rhs) const {
-  if (const MatchAny* arhs = is<MatchAny>(&rhs)) {
+  if (const auto* arhs = is<MatchAny>(&rhs)) {
     return this->vn == arhs->vn;
   } else {
     return false;
@@ -90,7 +90,7 @@ void MatchArray::indexes(const Idxs& idxs) {
 
 void MatchArray::show(std::ostream& out) const {
   out << "[";
-  if (this->ps.size() > 0) {
+  if (!this->ps.empty()) {
     this->ps[0]->show(out);
     for (unsigned int i = 1; i < this->ps.size(); ++i) {
       out << ", ";
@@ -101,8 +101,8 @@ void MatchArray::show(std::ostream& out) const {
 }
 
 bool MatchArray::operator==(const Pattern& rhs) const {
-  const MatchArray* arhs = is<MatchArray>(&rhs);
-  if (!arhs || this->ps.size() != arhs->ps.size()) return false;
+  const auto* arhs = is<MatchArray>(&rhs);
+  if ((arhs == nullptr) || this->ps.size() != arhs->ps.size()) return false;
 
   for (unsigned int i = 0; i < this->ps.size(); ++i) {
     if (!(*this->ps[i] == *arhs->ps[i])) {
@@ -141,7 +141,7 @@ void MatchRegex::show(std::ostream& out) const {
 }
 
 bool MatchRegex::operator==(const Pattern& rhs) const {
-  if (const MatchRegex* trhs = is<MatchRegex>(&rhs)) {
+  if (const auto* trhs = is<MatchRegex>(&rhs)) {
     return text() == trhs->text();
   }
   return false;
@@ -208,7 +208,7 @@ void MatchRecord::fields(const Fields& fs) {
 
 void MatchRecord::show(std::ostream& out) const {
   out << "{";
-  if (this->fs.size() > 0) {
+  if (!this->fs.empty()) {
     show(out, this->fs[0]);
     for (unsigned int i = 1; i < this->fs.size(); ++i) {
       out << ", ";
@@ -223,8 +223,8 @@ void MatchRecord::show(std::ostream& out, const Field& f) {
 }
 
 bool MatchRecord::operator==(const Pattern& rhs) const {
-  const MatchRecord* rrhs = hobbes::is<MatchRecord>(&rhs);
-  if (!rrhs || this->fs.size() != rrhs->fs.size()) return false;
+  const auto* rrhs = hobbes::is<MatchRecord>(&rhs);
+  if ((rrhs == nullptr) || this->fs.size() != rrhs->fs.size()) return false;
 
   for (unsigned int i = 0; i < this->fs.size(); ++i) {
     if (this->fs[i].first != rrhs->fs[i].first) {
@@ -254,7 +254,7 @@ void MatchVariant::show(std::ostream& out) const {
 }
 
 bool MatchVariant::operator==(const Pattern& rhs) const {
-  if (const MatchVariant* vrhs = is<MatchVariant>(&rhs)) {
+  if (const auto* vrhs = is<MatchVariant>(&rhs)) {
     return this->lbl == vrhs->lbl && *this->p == *vrhs->p;
   } else {
     return false;
@@ -296,7 +296,7 @@ std::string show(const PatternPtr& p) {
 
 std::string show(const Patterns& ps) {
   std::ostringstream ss;
-  if (ps.size() > 0) {
+  if (!ps.empty()) {
     ps[0]->show(ss);
     for (size_t i = 1; i < ps.size(); ++i) {
       ss << " ";
@@ -317,7 +317,7 @@ std::string show(const PatternRow& pr) {
 // allow incomplete sets of field patterns in record cells by expanding all such cases to 'match any' patterns for unnamed fields
 void normalizeRecPatterns(MatchRecord* r, const std::set<std::string>& fnames) {
   MatchRecord::Fields nfs = r->fields();
-  for (auto f : setDifference(fnames, toSet(first(r->fields())))) {
+  for (const auto& f : setDifference(fnames, toSet(first(r->fields())))) {
     nfs.push_back(MatchRecord::Field(f, PatternPtr(new MatchAny(freshName(), r->la()))));
   }
   r->fields(nfs);
@@ -325,13 +325,13 @@ void normalizeRecPatterns(MatchRecord* r, const std::set<std::string>& fnames) {
 
 void normalizeRecPatterns(const Patterns& ps, const std::set<std::string>& fnames) {
   for (const auto& p : ps) {
-    if (MatchRecord* r = is<MatchRecord>(p)) {
+    if (auto* r = is<MatchRecord>(p)) {
       normalizeRecPatterns(r, fnames);
     }
   }
 }
 
-typedef std::map<std::string, Patterns> NamedPatternGroups;
+using NamedPatternGroups = std::map<std::string, Patterns>;
 
 NamedPatternGroups groupRecordPatterns(const Patterns& ps) {
   NamedPatternGroups r;
@@ -369,9 +369,9 @@ Patterns concatArrayPatterns(const Patterns& ps) {
 }
 
 void normalizeRecAccess(const Patterns& ps) {
-  if (ps.size() == 0) {
+  if (ps.empty()) {
     // nothing to normalize
-  } else if (is<MatchRecord>(ps[0])) {
+  } else if (is<MatchRecord>(ps[0]) != nullptr) {
     // this is actually the case we care about
     // first recursively normalize within each field's pattern
     auto gs = groupRecordPatterns(ps);
@@ -381,9 +381,9 @@ void normalizeRecAccess(const Patterns& ps) {
 
     // then normalize within patterns
     normalizeRecPatterns(ps, keys(gs));
-  } else if (is<MatchArray>(ps[0])) {
+  } else if (is<MatchArray>(ps[0]) != nullptr) {
     normalizeRecAccess(concatArrayPatterns(ps));
-  } else if (is<MatchVariant>(ps[0])) {
+  } else if (is<MatchVariant>(ps[0]) != nullptr) {
     for (const auto& g : groupVariantPatterns(ps)) {
       normalizeRecAccess(g.second);
     }
@@ -400,7 +400,7 @@ bool canHoldRecPatterns(const PatternPtr& p) {
       }
     }
     return true;
-  } else if (is<MatchLiteral>(p) || is<MatchRegex>(p)) {
+  } else if ((is<MatchLiteral>(p) != nullptr) || (is<MatchRegex>(p) != nullptr)) {
     // prim matches obviously can't contain record patterns
     return false;
   } else {
@@ -409,24 +409,24 @@ bool canHoldRecPatterns(const PatternPtr& p) {
 }
 
 void normalizeRecAccess(const PatternRows& prs) {
-  size_t maxc = (prs.size() == 0) ? 0 : prs[0].patterns.size();
+  size_t maxc = (prs.empty()) ? 0 : prs[0].patterns.size();
   for (size_t c = 0; c < maxc; ++c) {
     // gather all patterns across this column, normalize record access within the column
     Patterns ps;
 
-    for (size_t r = 0; r < prs.size(); ++r) {
-      const PatternPtr& p = prs[r].patterns[c];
+    for (const auto &pr : prs) {
+      const PatternPtr& p = pr.patterns[c];
 
       // (we can trivially ignore this column if it matches a literal value)
       if (!canHoldRecPatterns(p)) {
         ps.clear();
         break;
-      } else if (!is<MatchAny>(p)) {
+      } else if (is<MatchAny>(p) == nullptr) {
         ps.push_back(p);
       }
     }
 
-    if (ps.size() > 0) {
+    if (!ps.empty()) {
       normalizeRecAccess(ps);
     }
   }
@@ -434,7 +434,7 @@ void normalizeRecAccess(const PatternRows& prs) {
 
 // make sure that the table is "well formed" (all rows have the same number of columns)
 void validateDimensions(size_t c, const PatternRows& ps, const LexicalAnnotation& la) {
-  if (ps.size() == 0) {
+  if (ps.empty()) {
     throw annotated_error(la, "Internal error, pattern sequence cannot be empty");
   } else {
     for (unsigned int i = 0; i < ps.size(); ++i) {
@@ -454,15 +454,15 @@ struct inferTypeF : public switchPattern<MonoTypePtr> {
   MonoTypeUnifier* s;
   inferTypeF(MonoTypeUnifier* s) : s(s) { }
 
-  MonoTypePtr with(const MatchLiteral* v) const {
+  MonoTypePtr with(const MatchLiteral* v) const override {
     return v->equivConstant()->primType();
   }
 
-  MonoTypePtr with(const MatchAny*) const {
+  MonoTypePtr with(const MatchAny*) const override {
     return freshTypeVar();
   }
 
-  MonoTypePtr with(const MatchArray* v) const {
+  MonoTypePtr with(const MatchArray* v) const override {
     if (v->size() == 0) {
       return arrayty(freshTypeVar());
     } else {
@@ -474,11 +474,11 @@ struct inferTypeF : public switchPattern<MonoTypePtr> {
     }
   }
 
-  MonoTypePtr with(const MatchRegex*) const {
+  MonoTypePtr with(const MatchRegex*) const override {
     return arrayty(primty("char"));
   }
 
-  MonoTypePtr with(const MatchRecord* v) const {
+  MonoTypePtr with(const MatchRecord* v) const override {
     Record::Members ms;
     for (size_t i = 0; i < v->size(); ++i) {
       const MatchRecord::Field& f = v->pattern(i);
@@ -487,7 +487,7 @@ struct inferTypeF : public switchPattern<MonoTypePtr> {
     return MonoTypePtr(Record::make(ms));
   }
 
-  MonoTypePtr with(const MatchVariant*) const {
+  MonoTypePtr with(const MatchVariant*) const override {
     // too broad, but for this purpose should be fine
     return freshTypeVar();
   }
@@ -500,8 +500,8 @@ MonoTypes matchRowType(const TEnvPtr& tenv, const PatternRows& ps) {
   // determine the initial row type
   MonoTypes ts;
   const Patterns& pr = ps[0].patterns;
-  for (Patterns::const_iterator p = pr.begin(); p != pr.end(); ++p) {
-    ts.push_back(switchOf(*p, inferTypeF(&u)));
+  for (const auto &p : pr) {
+    ts.push_back(switchOf(p, inferTypeF(&u)));
   }
 
   // unify with subsequent rows
@@ -547,35 +547,35 @@ ExprPtr inLetExp(const str::seq& vns, const Exprs& es, const ExprPtr& b, const L
 struct inferMappingF : public switchPattern<UnitV> {
   VarMapping* vm;
   inferMappingF(VarMapping* vm) : vm(vm) { }
-  UnitV with(const MatchLiteral*) const { return unitv; }
+  UnitV with(const MatchLiteral*) const override { return unitv; }
 
-  UnitV with(const MatchAny* x) const {
+  UnitV with(const MatchAny* x) const override {
     if (x->value() != "_") {
       (*this->vm)[x->value()] = ExprPtr(new Var(x->name(), x->la()));
     }
     return unitv;
   }
 
-  UnitV with(const MatchArray* x) const {
+  UnitV with(const MatchArray* x) const override {
     for (auto i : x->indexes()) {
       switchOf(x->pattern(i), *this);
     }
     return unitv;
   }
 
-  UnitV with(const MatchRegex*) const {
+  UnitV with(const MatchRegex*) const override {
     // regex translation will decide how to conflate binding names
     return unitv;
   }
 
-  UnitV with(const MatchRecord* x) const {
+  UnitV with(const MatchRecord* x) const override {
     for (auto i : x->indexes()) {
       switchOf(x->pattern(i).second, *this);
     }
     return unitv;
   }
 
-  UnitV with(const MatchVariant* x) const {
+  UnitV with(const MatchVariant* x) const override {
     switchOf(x->value(), *this);
     return unitv;
   }
@@ -585,7 +585,7 @@ VarMapping varMapping(const Patterns& ps) {
   // assuming that the input patterns have assigned names,
   // our renaming finds user-names in the input patterns and renames them to assigned names
   VarMapping r;
-  for (auto p : ps) {
+  for (const auto& p : ps) {
     switchOf(p, inferMappingF(&r));
   }
   return r;
@@ -593,23 +593,23 @@ VarMapping varMapping(const Patterns& ps) {
 
 void assignNames(const str::seq& vns, PatternRows& ps, bool* mappedVs) {
   // each row needs to be assigned the same names across columns
-  for (size_t r = 0; r < ps.size(); ++r) {
-    for (size_t c = 0; c < ps[r].patterns.size(); ++c) {
-      ps[r].patterns[c]->name(vns[c]);
+  for (auto &p : ps) {
+    for (size_t c = 0; c < p.patterns.size(); ++c) {
+      p.patterns[c]->name(vns[c]);
     }
   }
 
   // each row expression needs to be renamed consistent with the above name assignment
-  for (size_t r = 0; r < ps.size(); ++r) {
-    VarMapping vm = varMapping(ps[r].patterns);
-    if (vm.size() > 0) {
+  for (auto &p : ps) {
+    VarMapping vm = varMapping(p.patterns);
+    if (!vm.empty()) {
       *mappedVs = true;
 
-      if (ps[r].guard) {
-        ps[r].guard = substitute(vm, ps[r].guard);
+      if (p.guard) {
+        p.guard = substitute(vm, p.guard);
       }
 
-      ps[r].result = substitute(vm, ps[r].result);
+      p.result = substitute(vm, p.result);
     }
   }
 }
@@ -631,7 +631,7 @@ ExprPtr compileMatch(cc* c, const Exprs& es, const PatternRows& ps, const Lexica
 ExprPtr compileMatchTest(cc* c, const ExprPtr& e, const PatternPtr& p, const LexicalAnnotation& rootLA) {
   auto anames = accessibleBindingNames(p);
 
-  if (anames.size() > 0) {
+  if (!anames.empty()) {
     throw annotated_error(*p, "Inaccessible names in 'matches' test: " + str::cdelim(toVector(anames), ", "));
   } else if (!refutable(p)) {
     return ExprPtr(new Bool(true, rootLA));
@@ -644,11 +644,11 @@ ExprPtr compileRegexFn(cc* c, const std::string& regex, const LexicalAnnotation&
   PatternPtr p(new MatchRegex(regex, rootLA));
 
   auto ns = accessibleBindingNames(p);
-  if (ns.size() == 0) {
+  if (ns.empty()) {
     return fn("x", compileMatchTest(c, var("x", rootLA), p, rootLA), rootLA);
   } else {
     MkRecord::FieldDefs fs;
-    for (auto n : ns) {
+    for (const auto& n : ns) {
       fs.push_back(MkRecord::FieldDef(n, var(n, rootLA)));
     }
     return fn("x", compileMatch(c, list(var("x", rootLA)), list(PatternRow(list(p), fncall(var("just", rootLA), mkrecord(fs, rootLA), rootLA)), PatternRow(list(PatternPtr(new MatchAny("_", rootLA))), var("nothing", rootLA))), rootLA), rootLA);
@@ -657,13 +657,13 @@ ExprPtr compileRegexFn(cc* c, const std::string& regex, const LexicalAnnotation&
 
 // a simple test to determine whether or not a pattern can possibly be refuted
 struct refutableP : public switchPattern<bool> {
-  bool with(const MatchLiteral* v) const { return sizeOf(v->equivConstant()->primType()) > 0; } // the only irrefutable literal is unit
-  bool with(const MatchAny*      ) const { return false; }
-  bool with(const MatchArray*    ) const { return true; }
-  bool with(const MatchRegex*    ) const { return true; } // maybe too conservative?  /.*/ is not refutable actually, does it matter?
-  bool with(const MatchVariant*  ) const { return true; }
+  bool with(const MatchLiteral* v) const override { return sizeOf(v->equivConstant()->primType()) > 0; } // the only irrefutable literal is unit
+  bool with(const MatchAny*      ) const override { return false; }
+  bool with(const MatchArray*    ) const override { return true; }
+  bool with(const MatchRegex*    ) const override { return true; } // maybe too conservative?  /.*/ is not refutable actually, does it matter?
+  bool with(const MatchVariant*  ) const override { return true; }
 
-  bool with(const MatchRecord* x) const {
+  bool with(const MatchRecord* x) const override {
     for (auto i : x->indexes()) {
       if (switchOf(x->pattern(i).second, *this)) {
         return true;
@@ -689,36 +689,36 @@ struct accBindingNamesF : public switchPattern<UnitV> {
   str::set* r;
   accBindingNamesF(str::set* r) : r(r) { }
 
-  UnitV with(const MatchLiteral*) const {
+  UnitV with(const MatchLiteral*) const override {
     return unitv;
   }
 
-  UnitV with(const MatchAny* v) const {
-    if (v->value().size() > 0 && v->value() != "_" && v->value()[0] != '.') {
+  UnitV with(const MatchAny* v) const override {
+    if (!v->value().empty() && v->value() != "_" && v->value()[0] != '.') {
       this->r->insert(v->value());
     }
     return unitv;
   }
 
-  UnitV with(const MatchArray* ps) const {
+  UnitV with(const MatchArray* ps) const override {
     for (size_t i = 0; i < ps->size(); ++i) {
       switchOf(ps->pattern(i), *this);
     }
     return unitv;
   }
 
-  UnitV with(const MatchRegex* v) const {
+  UnitV with(const MatchRegex* v) const override {
     auto vbs = bindingNames(v->value());
     this->r->insert(vbs.begin(), vbs.end());
     return unitv;
   }
 
-  UnitV with(const MatchVariant* v) const {
+  UnitV with(const MatchVariant* v) const override {
     switchOf(v->value(), *this);
     return unitv;
   }
 
-  UnitV with(const MatchRecord* ps) const {
+  UnitV with(const MatchRecord* ps) const override {
     for (auto i : ps->indexes()) {
       switchOf(ps->pattern(i).second, *this);
     }
@@ -748,7 +748,7 @@ ExprPtr rpatFunc(cc* c, const PatternPtr& pat, const ExprPtr& cond, const ExprPt
 }
 
 ExprPtr conjoinConds(const Exprs& es, const LexicalAnnotation& la) {
-  if (es.size() == 0) {
+  if (es.empty()) {
     return constant(bool(true), la);
   } else {
     ExprPtr c = es[0];
@@ -761,8 +761,8 @@ ExprPtr conjoinConds(const Exprs& es, const LexicalAnnotation& la) {
 
 ExprPtr desugarComprehension(cc* c, const ExprPtr& e, const CSelection& cs, const LexicalAnnotation& la) {
   if (refutable(cs.pat)) {
-    return fncall(var("ffilterMMap", la), list(rpatFunc(c, cs.pat, cs.conds.size() > 0 ? conjoinConds(cs.conds, la) : ExprPtr(), e, la), cs.seq), la);
-  } else if (cs.conds.size() > 0) {
+    return fncall(var("ffilterMMap", la), list(rpatFunc(c, cs.pat, !cs.conds.empty() ? conjoinConds(cs.conds, la) : ExprPtr(), e, la), cs.seq), la);
+  } else if (!cs.conds.empty()) {
     return fncall(var("ffilterMap", la), list(irpatFunc(c, cs.pat, conjoinConds(cs.conds, la), la), irpatFunc(c, cs.pat, e, la), cs.seq), la);
   } else {
     return fncall(var("fmap", la), list(irpatFunc(c, cs.pat, e, la), cs.seq), la);
@@ -770,7 +770,7 @@ ExprPtr desugarComprehension(cc* c, const ExprPtr& e, const CSelection& cs, cons
 }
 
 Expr* desugarComprehension(cc* c, const ExprPtr& ex, const CSelections& cs, const LexicalAnnotation& la) {
-  if (cs.size() == 0) {
+  if (cs.empty()) {
     return ex->clone();
   } else {
     ExprPtr e = desugarComprehension(c, ex, *cs[cs.size()-1], la);

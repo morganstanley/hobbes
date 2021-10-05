@@ -10,6 +10,7 @@
 #include <hobbes/lang/typeinf.H>
 #include <hobbes/util/array.H>
 #include <hobbes/util/str.H>
+#include <memory>
 #include <stdexcept>
 
 namespace hobbes {
@@ -17,7 +18,7 @@ namespace hobbes {
 bool fileExists(const std::string &fname) {
   // not the most elegant, but it does the job
   FILE *f = fopen(fname.c_str(), "r");
-  if (!f)
+  if (f == nullptr)
     return false;
   fclose(f);
   return true;
@@ -28,15 +29,15 @@ bool importObject(cc *e, const std::string &sopath) {
     return false;
   } else {
     void *h = dlopen(sopath.c_str(), RTLD_NOW);
-    if (!h) {
+    if (h == nullptr) {
       throw std::runtime_error(std::string("Failed to load .so file: ") +
                                dlerror());
     }
 
-    typedef void (*InitF)(cc *);
-    InitF initF = reinterpret_cast<InitF>(dlsym(h, "initialize"));
+    using InitF = void (*)(cc *);
+    auto initF = reinterpret_cast<InitF>(dlsym(h, "initialize"));
 
-    if (!initF) {
+    if (initF == nullptr) {
       dlclose(h);
       throw std::runtime_error(std::string("Failed to load .so file init: ") +
                                dlerror());
@@ -56,17 +57,17 @@ bool importScript(cc *e, const std::string &fname) {
   }
 }
 
-typedef std::vector<std::string> ModulePaths;
+using ModulePaths = std::vector<std::string>;
 static ModulePaths &modulePaths() {
   static thread_local ModulePaths mps;
-  if (mps.size() == 0) {
+  if (mps.empty()) {
     mps.push_back(".");
   }
   return mps;
 }
 void pushModuleDir(const std::string &d) { modulePaths().push_back(d); }
 void popModuleDir() {
-  if (modulePaths().size() > 0)
+  if (!modulePaths().empty())
     modulePaths().resize(modulePaths().size() - 1);
 }
 
@@ -98,7 +99,7 @@ struct appTyDefnF : public switchTyFn {
   ModulePtr m;
   cc *e;
   appTyDefnF(const ModulePtr &m, cc *e) : m(m), e(e) {}
-  MonoTypePtr with(const TVar *v) const {
+  MonoTypePtr with(const TVar *v) const override {
     const auto &tn = v->name();
 
     if (isPrimName(tn) || e->isTypeAliasName(tn)) {
@@ -110,12 +111,12 @@ struct appTyDefnF : public switchTyFn {
     }
   }
 
-  MonoTypePtr with(const TApp *ap) const {
+  MonoTypePtr with(const TApp *ap) const override {
     return e->replaceTypeAliases(
         TApp::make(switchOf(ap->fn(), *this), switchOf(ap->args(), *this)));
   }
 
-  MonoTypePtr with(const TExpr *x) const {
+  MonoTypePtr with(const TExpr *x) const override {
     return TExpr::make(applyTypeDefns(
         this->m, this->e, translateExprWithOpts(m->options(), x->expr())));
   }
@@ -141,17 +142,17 @@ MonoTypes applyTypeDefns(const ModulePtr &m, cc *e, const MonoTypes &ts) {
 QualTypePtr applyTypeDefns(const ModulePtr &m, cc *e, const QualTypePtr &t) {
   Constraints cs;
   for (const auto &c : t->constraints()) {
-    cs.push_back(ConstraintPtr(
-        new Constraint(c->name(), applyTypeDefns(m, e, c->arguments()))));
+    cs.push_back(std::make_shared<Constraint>(
+        c->name(), applyTypeDefns(m, e, c->arguments())));
   }
-  return QualTypePtr(new QualType(cs, applyTypeDefns(m, e, t->monoType())));
+  return std::make_shared<QualType>(cs, applyTypeDefns(m, e, t->monoType()));
 }
 
 struct appTyDefnEF : public switchExprTyFn {
   ModulePtr m;
   cc *e;
   appTyDefnEF(const ModulePtr &m, cc *e) : m(m), e(e) {}
-  QualTypePtr withTy(const QualTypePtr &t) const {
+  QualTypePtr withTy(const QualTypePtr &t) const override {
     if (t)
       return applyTypeDefns(this->m, this->e, t);
     else
@@ -166,7 +167,7 @@ struct appTyDefnMF : public switchMDefTyFn {
   ModulePtr m;
   cc *e;
   appTyDefnMF(const ModulePtr &m, cc *e) : m(m), e(e) {}
-  QualTypePtr withTy(const QualTypePtr &t) const {
+  QualTypePtr withTy(const QualTypePtr &t) const override {
     if (t)
       return applyTypeDefns(this->m, this->e, t);
     else
@@ -186,12 +187,12 @@ ModuleDefs applyTypeDefns(const ModulePtr &m, cc *e, const ModuleDefs &mds) {
 }
 
 ModulePtr applyTypeDefns(cc *e, const ModulePtr &m) {
-  return ModulePtr(
-      new Module(m->name(), applyTypeDefns(m, e, m->definitions())));
+  return std::make_shared<Module>(
+      m->name(), applyTypeDefns(m, e, m->definitions()));
 }
 
 // index type variables and sanity check names to ensure no duplicates
-typedef std::map<std::string, int> NameIndexing;
+using NameIndexing = std::map<std::string, int>;
 
 NameIndexing nameIndexing(const str::seq &ns) {
   NameIndexing r;
@@ -210,7 +211,7 @@ NameIndexing nameIndexing(const std::set<std::string> &ns) {
 }
 
 int nameIndex(const NameIndexing &ns, const std::string &vn) {
-  NameIndexing::const_iterator ni = ns.find(vn);
+  auto ni = ns.find(vn);
   if (ni == ns.end()) {
     throw std::runtime_error("Undefined type name, '" + vn + "'");
   } else {
@@ -220,24 +221,24 @@ int nameIndex(const NameIndexing &ns, const std::string &vn) {
 
 std::vector<int> nameIndex(const NameIndexing &ns, const str::seq &vns) {
   std::vector<int> r;
-  for (str::seq::const_iterator vn = vns.begin(); vn != vns.end(); ++vn) {
-    r.push_back(nameIndex(ns, *vn));
+  for (const auto &vn : vns) {
+    r.push_back(nameIndex(ns, vn));
   }
   return r;
 }
 
 MonoTypeSubst substitution(const NameIndexing &ns) {
   MonoTypeSubst s;
-  for (NameIndexing::const_iterator ni = ns.begin(); ni != ns.end(); ++ni) {
-    s[ni->first] = MonoTypePtr(TGen::make(ni->second));
+  for (const auto &n : ns) {
+    s[n.first] = MonoTypePtr(TGen::make(n.second));
   }
   return s;
 }
 
 MonoTypeSubst uvarSubstitution(const NameIndexing &ns) {
   MonoTypeSubst s;
-  for (NameIndexing::const_iterator ni = ns.begin(); ni != ns.end(); ++ni) {
-    s[ni->first] = freshTypeVar();
+  for (const auto &n : ns) {
+    s[n.first] = freshTypeVar();
   }
   return s;
 }
@@ -246,17 +247,15 @@ MonoTypeSubst uvarSubstitution(const NameIndexing &ns) {
 void resolveNames(const NameIndexing &ns, const CFunDepDef &nfdep,
                   FunDeps *out) {
   VarIDs lhs = nameIndex(ns, nfdep.first);
-  for (str::seq::const_iterator vn = nfdep.second.begin();
-       vn != nfdep.second.end(); ++vn) {
-    out->push_back(FunDep(lhs, nameIndex(ns, *vn)));
+  for (const auto &vn : nfdep.second) {
+    out->push_back(FunDep(lhs, nameIndex(ns, vn)));
   }
 }
 
 FunDeps resolveNames(const NameIndexing &ns, const CFunDepDefs &nfdeps) {
   FunDeps r;
-  for (CFunDepDefs::const_iterator fd = nfdeps.begin(); fd != nfdeps.end();
-       ++fd) {
-    resolveNames(ns, *fd, &r);
+  for (const auto &nfdep : nfdeps) {
+    resolveNames(ns, nfdep, &r);
   }
   return r;
 }
@@ -351,7 +350,7 @@ void compile(const ModulePtr &m, cc *e, const InstanceDef *id) {
     UnqualifierPtr tyc = e->typeEnv()->lookupUnqualifier(id->className());
     TClassPtr c = std::dynamic_pointer_cast<TClass>(tyc);
 
-    if (c.get() == 0) {
+    if (c.get() == nullptr) {
       throw std::runtime_error("Cannot define overload in '" + id->className() +
                                "', class does not exist.");
     }
@@ -360,7 +359,7 @@ void compile(const ModulePtr &m, cc *e, const InstanceDef *id) {
 
     NameIndexing tns = nameIndexing(tvarNames(id->args()));
     MonoTypes targs = id->args();
-    bool asfn = id->constraints().size() > 0 || tvarNames(targs).size() > 0;
+    bool asfn = !id->constraints().empty() || !tvarNames(targs).empty();
     MemberMapping ms = compileMembers(m, &u, c, targs, e, id->members(), asfn);
 
     // is this a ground instance or an instance function?
@@ -369,7 +368,7 @@ void compile(const ModulePtr &m, cc *e, const InstanceDef *id) {
       try {
         c->insert(
             e->typeEnv(),
-            TCInstancePtr(new TCInstance(id->className(), targs, ms, id->la())),
+            std::make_shared<TCInstance>(id->className(), targs, ms, id->la()),
             &ds);
         e->drainUnqualifyDefs(ds);
       } catch (...) {
@@ -377,8 +376,8 @@ void compile(const ModulePtr &m, cc *e, const InstanceDef *id) {
         throw;
       }
     } else {
-      c->insert(TCInstanceFnPtr(new TCInstanceFn(
-          id->className(), id->constraints(), targs, ms, id->la())));
+      c->insert(std::make_shared<TCInstanceFn>(
+          id->className(), id->constraints(), targs, ms, id->la()));
     }
   } catch (annotated_error &) {
     throw;
@@ -446,7 +445,7 @@ void compile(const ModulePtr &m, cc *e, const MVarDef *mvd) {
 
   // make sure that globals with inaccessible names (evaluated for side-effects)
   // have monomorphic type (otherwise they'll quietly fail to run)
-  if (mvd->varWithArgs().size() >= 1 && mvd->varWithArgs()[0].size() > 0 &&
+  if (!mvd->varWithArgs().empty() && !mvd->varWithArgs()[0].empty() &&
       mvd->varWithArgs()[0][0] == '.') {
     requireMonotype(e->typeEnv(),
                     e->unsweetenExpression(mvd->varWithArgs()[0], vde));
@@ -564,7 +563,7 @@ struct UnsafeRefs : public SafeExpr::UnsafeDefs {
     SafeExpr::template with<void>(
         e,
         [&](const SafeExpr::UnsafeDefs &unsafeDef) {
-          for (auto &f : unsafeDef.unSafeRefs()) {
+          for (const auto &f : unsafeDef.unSafeRefs()) {
             if (v.second.find(f) == v.second.end()) {
               v.first.push_back(f);
             }
@@ -595,7 +594,7 @@ struct UnsafeRefs : public SafeExpr::UnsafeDefs {
   auto show(std::ostream &os) -> void {
     os << la().filename() << ", " << la().lineDesc() << ": " << varName()
        << " is not allowed";
-    if (unSafeRefs().size() > 0)
+    if (!unSafeRefs().empty())
       os << ", its transitive closure has disabled expressions: "
          << str::show(unSafeRefs());
     os << "." << exprDef() << std::endl;
@@ -643,7 +642,7 @@ struct Bool {
   Bool(bool v) : i(v ? 1 : 0) {}
   auto operator=(Bool const &) -> Bool & = default;
   auto operator=(bool v) -> Bool & { return (*this = Bool(v)); }
-  operator bool() const { return (i == 0 ? false : true); }
+  operator bool() const { return (i != 0); }
 
 private:
   Bool(int i) : i(i) {}
@@ -667,8 +666,8 @@ struct buildTransitiveUnsafePragmaClosure : public switchExprC<details::Bool> {
   }
   MVarDef const &mvd;
 
-  virtual details::Bool withConst(const Expr *) const { return true; };
-  virtual details::Bool with(const Var *v) const {
+  details::Bool withConst(const Expr *) const override { return true; };
+  details::Bool with(const Var *v) const override {
     return SafeExpr::with<bool>(
         v->value(),
         [&](const SafeExpr::UnsafeDefs &) {
@@ -690,12 +689,12 @@ struct buildTransitiveUnsafePragmaClosure : public switchExprC<details::Bool> {
         },
         []() { return false; });
   }
-  virtual details::Bool with(const Let *v) const {
+  details::Bool with(const Let *v) const override {
     switchOf(v->varExpr(), *this);
     switchOf(v->bodyExpr(), *this);
     return true;
   }
-  virtual details::Bool with(const LetRec *v) const {
+  details::Bool with(const LetRec *v) const override {
     str::set vns = toSet(v->varNames());
     LetRec::Bindings bs;
     for (const auto &b : v->bindings()) {
@@ -704,50 +703,49 @@ struct buildTransitiveUnsafePragmaClosure : public switchExprC<details::Bool> {
     switchOf(v->bodyExpr(), *this);
     return true;
   }
-  virtual details::Bool with(const Fn *v) const {
+  details::Bool with(const Fn *v) const override {
     switchOf(v->body(), *this);
     return true;
   }
-  virtual details::Bool with(const App *v) const {
+  details::Bool with(const App *v) const override {
     switchOf(v->fn(), *this);
     switchOf(v->args(), *this);
     return true;
   }
-  virtual details::Bool with(const Assign *v) const {
+  details::Bool with(const Assign *v) const override {
     switchOf(v->left(), *this);
     switchOf(v->right(), *this);
     return true;
   }
-  virtual details::Bool with(const MkArray *v) const {
+  details::Bool with(const MkArray *v) const override {
     switchOf(v->values(), *this);
     return true;
   }
-  virtual details::Bool with(const MkVariant *v) const {
+  details::Bool with(const MkVariant *v) const override {
     switchOf(v->value(), *this);
     return true;
   }
-  virtual details::Bool with(const MkRecord *v) const {
+  details::Bool with(const MkRecord *v) const override {
     switchOf(v->fields(), *this);
     return true;
   }
-  virtual details::Bool with(const AIndex *) const { return true; }
-  virtual details::Bool with(const Case *v) const {
+  details::Bool with(const AIndex *) const override { return true; }
+  details::Bool with(const Case *v) const override {
     const Case::Bindings &cbs = v->bindings();
     Case::Bindings rcbs;
-    for (Case::Bindings::const_iterator cb = cbs.begin(); cb != cbs.end();
-         ++cb) {
-      switchOf(cb->exp, *this);
+    for (const auto &cb : cbs) {
+      switchOf(cb.exp, *this);
     }
     ExprPtr de = v->defaultExpr();
-    if (de.get()) {
+    if (de.get() != nullptr) {
       switchOf(de, *this);
     }
     switchOf(v->variant(), *this);
     return true;
   }
-  virtual details::Bool with(const Switch *v) const {
+  details::Bool with(const Switch *v) const override {
     Switch::Bindings rsbs;
-    for (auto sb : v->bindings()) {
+    for (const auto& sb : v->bindings()) {
       switchOf(sb.exp, *this);
     }
     ExprPtr de = v->defaultExpr();
@@ -757,19 +755,19 @@ struct buildTransitiveUnsafePragmaClosure : public switchExprC<details::Bool> {
     switchOf(v->expr(), *this);
     return true;
   }
-  virtual details::Bool with(const Proj *v) const {
+  details::Bool with(const Proj *v) const override {
     switchOf(v->record(), *this);
     return true;
   }
-  virtual details::Bool with(const Assump *v) const {
+  details::Bool with(const Assump *v) const override {
     switchOf(v->expr(), *this);
     return true;
   }
-  virtual details::Bool with(const Pack *v) const {
+  details::Bool with(const Pack *v) const override {
     switchOf(v->expr(), *this);
     return true;
   }
-  virtual details::Bool with(const Unpack *v) const {
+  details::Bool with(const Unpack *v) const override {
     switchOf(v->package(), *this);
     switchOf(v->expr(), *this);
     return true;
@@ -797,7 +795,7 @@ void compile(const ModulePtr &, cc *, const MSafePragmaDef *mpd) {
 // environment
 //   (this disallows things like mutual recursion)
 void compile(cc *e, const ModulePtr &m) {
-  for (auto tmd : m->definitions()) {
+  for (const auto& tmd : m->definitions()) {
     auto md = applyTypeDefns(m, e, tmd);
 
     if (const MImport *imp = is<MImport>(md)) {
@@ -822,21 +820,21 @@ void compile(cc *e, const ModulePtr &m) {
   }
 
   // compile unsafe pragma
-  for (auto tmd : m->definitions()) {
+  for (const auto& tmd : m->definitions()) {
     if (const MUnsafePragmaDef *vpd = is<MUnsafePragmaDef>(tmd)) {
       compile(m, e, vpd);
     }
   }
 
   // compile safe pragma
-  for (auto tmd : m->definitions()) {
+  for (const auto& tmd : m->definitions()) {
     if (const MSafePragmaDef *vpd = is<MSafePragmaDef>(tmd)) {
       compile(m, e, vpd);
     }
   }
 
   // generate unsafe transitive closure
-  for (auto tmd : m->definitions()) {
+  for (const auto& tmd : m->definitions()) {
     if (const MVarDef *vd = is<MVarDef>(tmd)) {
       switchOf(vd->varExpr(), buildTransitiveUnsafePragmaClosure(*vd));
     }
@@ -849,7 +847,7 @@ std::vector<std::string> getDefaultOptions() { return str::strings(); }
 struct makeSafe : public switchExprC<ExprPtr> {
   std::map<std::string, UnsafeRefs> collectUnsafes;
 
-  makeSafe() {}
+  makeSafe() = default;
 
   auto show() -> std::string {
     std::stringstream ss;
@@ -859,14 +857,14 @@ struct makeSafe : public switchExprC<ExprPtr> {
     return ss.str();
   }
 
-  ExprPtr withConst(const Expr *v) const { return ExprPtr(v->clone()); }
+  ExprPtr withConst(const Expr *v) const override { return ExprPtr(v->clone()); }
 
-  ExprPtr with(const Var *v) const {
+  ExprPtr with(const Var *v) const override {
     return SafeExpr::template with<ExprPtr>(
         v->value(),
         [&, this](const SafeExpr::UnsafeDefs &unsafeDef) {
           ExprPtr vc(v->clone());
-          if (auto vcc = is<Var>(vc.get())) {
+          if (const auto *vcc = is<Var>(vc.get())) {
             if (not unsafeDef.safeFn().empty()) {
               const_cast<Var *>(vcc)->value(unsafeDef.safeFn());
             } else {
@@ -883,12 +881,12 @@ struct makeSafe : public switchExprC<ExprPtr> {
         [&]() { return ExprPtr(v->clone()); });
   }
 
-  ExprPtr with(const Let *v) const {
+  ExprPtr with(const Let *v) const override {
     return ExprPtr(new Let(v->var(), switchOf(v->varExpr(), *this),
                            switchOf(v->bodyExpr(), *this), v->la()));
   }
 
-  ExprPtr with(const LetRec *v) const {
+  ExprPtr with(const LetRec *v) const override {
     str::set vns = toSet(v->varNames());
     LetRec::Bindings bs;
     for (const auto &b : v->bindings()) {
@@ -897,58 +895,57 @@ struct makeSafe : public switchExprC<ExprPtr> {
     return ExprPtr(new LetRec(bs, switchOf(v->bodyExpr(), *this), v->la()));
   }
 
-  ExprPtr with(const Fn *v) const {
+  ExprPtr with(const Fn *v) const override {
     return ExprPtr(new Fn(v->varNames(), switchOf(v->body(), *this), v->la()));
   }
 
-  ExprPtr with(const App *v) const {
+  ExprPtr with(const App *v) const override {
     return ExprPtr(
         new App(switchOf(v->fn(), *this), switchOf(v->args(), *this), v->la()));
   }
 
-  ExprPtr with(const Assign *v) const {
+  ExprPtr with(const Assign *v) const override {
     return ExprPtr(new Assign(switchOf(v->left(), *this),
                               switchOf(v->right(), *this), v->la()));
   }
 
-  ExprPtr with(const MkArray *v) const {
+  ExprPtr with(const MkArray *v) const override {
     return ExprPtr(new MkArray(switchOf(v->values(), *this), v->la()));
   }
 
-  ExprPtr with(const MkVariant *v) const {
+  ExprPtr with(const MkVariant *v) const override {
     return ExprPtr(
         new MkVariant(v->label(), switchOf(v->value(), *this), v->la()));
   }
 
-  ExprPtr with(const MkRecord *v) const {
+  ExprPtr with(const MkRecord *v) const override {
     return ExprPtr(new MkRecord(switchOf(v->fields(), *this), v->la()));
   }
 
-  ExprPtr with(const AIndex *v) const {
+  ExprPtr with(const AIndex *v) const override {
     return fncall(
         var("atm", v->la()),
         list(switchOf(v->array(), *this), switchOf(v->index(), *this)),
         v->la());
   }
 
-  ExprPtr with(const Case *v) const {
+  ExprPtr with(const Case *v) const override {
     const Case::Bindings &cbs = v->bindings();
     Case::Bindings rcbs;
-    for (Case::Bindings::const_iterator cb = cbs.begin(); cb != cbs.end();
-         ++cb) {
+    for (const auto &cb : cbs) {
       rcbs.push_back(
-          Case::Binding(cb->selector, cb->vname, switchOf(cb->exp, *this)));
+          Case::Binding(cb.selector, cb.vname, switchOf(cb.exp, *this)));
     }
     ExprPtr de = v->defaultExpr();
-    if (de.get()) {
+    if (de.get() != nullptr) {
       de = switchOf(de, *this);
     }
     return ExprPtr(new Case(switchOf(v->variant(), *this), rcbs, de, v->la()));
   }
 
-  ExprPtr with(const Switch *v) const {
+  ExprPtr with(const Switch *v) const override {
     Switch::Bindings rsbs;
-    for (auto sb : v->bindings()) {
+    for (const auto& sb : v->bindings()) {
       rsbs.push_back(Switch::Binding(sb.value, switchOf(sb.exp, *this)));
     }
     ExprPtr de = v->defaultExpr();
@@ -958,19 +955,19 @@ struct makeSafe : public switchExprC<ExprPtr> {
     return ExprPtr(new Switch(switchOf(v->expr(), *this), rsbs, de, v->la()));
   }
 
-  ExprPtr with(const Proj *v) const {
+  ExprPtr with(const Proj *v) const override {
     return ExprPtr(new Proj(switchOf(v->record(), *this), v->field(), v->la()));
   }
 
-  ExprPtr with(const Assump *v) const {
+  ExprPtr with(const Assump *v) const override {
     return ExprPtr(new Assump(switchOf(v->expr(), *this), v->ty(), v->la()));
   }
 
-  ExprPtr with(const Pack *v) const {
+  ExprPtr with(const Pack *v) const override {
     return ExprPtr(new Pack(switchOf(v->expr(), *this), v->la()));
   }
 
-  ExprPtr with(const Unpack *v) const {
+  ExprPtr with(const Unpack *v) const override {
     return ExprPtr(new Unpack(v->varName(), switchOf(v->package(), *this),
                               switchOf(v->expr(), *this), v->la()));
   }
@@ -984,7 +981,7 @@ struct makeSafeArrays : public makeSafe {
       thread_local Map safeArrayTable{
           Map{{{"element", {"element", "elementM"}}}}};
       ExprPtr vc(v->clone());
-      if (auto vcc = is<Var>(vc.get())) {
+      if (const auto *vcc = is<Var>(vc.get())) {
         auto iter = safeArrayTable.find(v->value());
         if (iter != std::end(safeArrayTable)) {
           const_cast<Var *>(vcc)->value(iter->second.safeFn());
@@ -994,7 +991,7 @@ struct makeSafeArrays : public makeSafe {
     }
   };
 
-  ExprPtr with(const Var *v) const { return SafeArray::with(v); }
+  ExprPtr with(const Var *v) const override { return SafeArray::with(v); }
 };
 
 OptDescs getAllOptions() {
@@ -1021,7 +1018,7 @@ ExprPtr translateExprWithOpts(
            [&exceptionFn](std::string const &, const ExprPtr &e) -> ExprPtr {
              auto ms = makeSafe();
              auto r = switchOf(e, ms);
-             if (ms.collectUnsafes.size() != 0) {
+             if (!ms.collectUnsafes.empty()) {
                exceptionFn(ms.show());
              };
              return r;

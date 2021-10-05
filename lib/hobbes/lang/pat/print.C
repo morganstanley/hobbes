@@ -26,7 +26,7 @@ void printMatchExp(std::ostream& out, const ExprPtr& e) {
 void printMatchResult(const std::string& indent, std::ostream& out, const ExprPtr& e) {
   if (const Let* le = is<Let>(e)) {
     out << indent << "let " << le->var() << " = ";
-    if (is<Fn>(le->varExpr())) {
+    if (is<Fn>(le->varExpr()) != nullptr) {
       out << "\n";
       printMatchResult(indent + "  ", out, le->varExpr());
       out << indent;
@@ -70,7 +70,7 @@ void printMatchResult(const std::string& indent, std::ostream& out, const ExprPt
     out << indent << "switch (";
     printMatchExp(out, sw->expr());
     out << ") {\n";
-    for (auto b : sw->bindings()) {
+    for (const auto& b : sw->bindings()) {
       out << indent;
       b.value->show(out);
       out << " =>\n";
@@ -92,7 +92,7 @@ void printMatchResult(std::ostream& out, const ExprPtr& e) {
 
 // pretty-print a pattern match table
 void printMatchTable(std::ostream& out, const PatternRows& prs) {
-  if (prs.size() == 0) {
+  if (prs.empty()) {
     out << "{}";
   } else {
     str::seqs ps;

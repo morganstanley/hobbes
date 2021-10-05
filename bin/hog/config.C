@@ -112,7 +112,7 @@ RunMode config(int argc, const char** argv) {
 
       ++i;
       while (i < argc && argv[i][0] != '-') {
-        r.sendto.push_back(argv[i]);
+        r.sendto.emplace_back(argv[i]);
         ++i;
       }
       --i;
@@ -148,7 +148,7 @@ RunMode config(int argc, const char** argv) {
   }
 
   if (r.t == RunMode::local || r.t == RunMode::batchsend) {
-    if (r.groups.size() == 0) {
+    if (r.groups.empty()) {
       throw std::runtime_error("can't record data because no groups have been specified");
     }
     if (::access(r.groupServerDir.c_str(), W_OK) != 0) {

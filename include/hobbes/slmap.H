@@ -35,11 +35,11 @@ namespace hobbes {
 
 template <typename K, typename V>
   struct slnode {
-    typedef uint16_t level;
+    using level = uint16_t;
     static const size_t maxLevels = 8*sizeof(level);
 
     // a fileref pointer to a skip-list node
-    typedef fregion::fileref<slnode<K,V>> noderef;
+    using noderef = fregion::fileref<slnode<K, V>>;
 
     // the tower of 'next' pointers from this node
     // (0 is the "slow lane" with nothing skipped, then "faster" skips going further up)
@@ -77,7 +77,7 @@ template <typename K, typename V>
     // (this assumes that we have a valid link at this level)
     slnode<K,V>* loadNext(fregion::imagefile* f, size_t level) const {
       if (this->next[level].index == 0) {
-        return 0;
+        return nullptr;
       } else {
         return this->next[level].load(f);
       }
@@ -125,9 +125,9 @@ template <typename K, typename V>
     //   in a uniformly distributed random number
     //    (1/2 end in 1b, 1/4 end in 11b, 1/8 end in 111b, etc)
     static level chooseLevel() {
-      level bv = static_cast<level>(rand());
+      auto bv = static_cast<level>(rand());
       level r = 1;
-      while (bv&1) {
+      while ((bv&1) != 0) {
         ++r;
         bv>>=1;
       }
@@ -207,16 +207,16 @@ template <typename K, typename V>
     fregion::imagefile* f;
     slnode<K,V>*        n;
 
-    sliterator(fregion::imagefile* f=0, slnode<K,V>* n=0) : f(f), n(n) { }
+    sliterator(fregion::imagefile* f=nullptr, slnode<K,V>* n=nullptr) : f(f), n(n) { }
     bool operator==(const sliterator<K,V>& rhs) const { return this->n==rhs.n; }
     std::pair<K,V>& operator*() { return *reinterpret_cast<std::pair<K,V>*>(&this->n->key); }
     std::pair<K,V>* operator->() { return reinterpret_cast<std::pair<K,V>*>(&this->n->key); }
-    operator bool() const { return this->n != 0; }
+    operator bool() const { return this->n != nullptr; }
     
     sliterator<K,V>& operator++() {
       if (this->n->next[0].index==0) {
-        this->f=0;
-        this->n=0;
+        this->f=nullptr;
+        this->n=nullptr;
       } else {
         this->n=this->n->next[0].load(this->f);
       }
@@ -304,7 +304,7 @@ template <typename K, typename V>
       return this->d->count;
     }
 
-    typedef sliterator<K,V> iterator;
+    using iterator = sliterator<K, V>;
     iterator end()   { return iterator(); }
     iterator begin() { return (this->d->root.next.size==0 || this->d->root.next[0].index==0) ? end() : iterator(this->f, this->d->root.next[0].load(f)); }
 
@@ -315,19 +315,19 @@ template <typename K, typename V>
     iterator find(const K& k) {
       return iterator(this->f, this->d->lookup(this->f, k));
     }
+
+    slmap() = delete;
+    slmap(const slmap<K,V>&) = delete;
+    slmap<K,V>& operator=(const slmap<K,V>&) = delete;
   private:
     fregion::imagefile* f;
     slmapdata<K,V>* d;
-  private:
-    slmap();
-    slmap(const slmap<K,V>&);
-    slmap<K,V>& operator=(const slmap<K,V>&);
   };
 
 template <typename K>
   class slrefmap {
   public:
-    typedef uint64_t ufileref;
+    using ufileref = uint64_t;
 
     slrefmap(const std::string& name, fregion::imagefile* f, const ty::desc& refType) {
       this->f = f;
@@ -355,7 +355,7 @@ template <typename K>
       return this->d->count;
     }
 
-    typedef sliterator<K,ufileref> iterator;
+    using iterator = sliterator<K, ufileref>;
     iterator end()   { return iterator(); }
     iterator begin() { return (this->d->root.next.size==0 || this->d->root.next[0].index==0) ? end() : iterator(this->f, this->d->root.next[0].load(f)); }
 
@@ -366,13 +366,13 @@ template <typename K>
     iterator find(const K& k) {
       return iterator(this->f, this->d->lookup(this->f, k));
     }
+
+    slrefmap() = delete;
+    slrefmap(const slrefmap<K>&) = delete;
+    slrefmap<K>& operator=(const slrefmap<K>&) = delete;
   private:
     fregion::imagefile* f;
     slmapdata<K,ufileref>* d;
-  private:
-    slrefmap();
-    slrefmap(const slrefmap<K>&);
-    slrefmap<K>& operator=(const slrefmap<K>&);
   };
 
 }

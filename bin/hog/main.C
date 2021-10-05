@@ -17,7 +17,7 @@
 #include "path.H"
 #include "out.H"
 
-#include <signal.h>
+#include <csignal>
 
 namespace hog {
 
@@ -86,7 +86,7 @@ void runGroupHost(const size_t sessionHash, const std::string& groupName, const 
     [sg,groupName,&sessionHash,&m,&reg](int s) {
       out() << "new connection for '" << groupName << "'" << std::endl;
 
-      int c = accept(s, 0, 0);
+      int c = accept(s, nullptr, nullptr);
       if (c != -1) {
         try {
           uint32_t version = 0;
@@ -118,12 +118,12 @@ void run(const RunMode& m, const std::vector<std::string>& args) {
     out() << "hog stat file : " << StatFile::instance().filename() << std::endl;
     hog::StatFile::instance().log(hog::ProcessEnvironment{hobbes::now(), sessionHash, hobbes::string::from(m), args, hog::SessionType::Enum::Normal});
     pullRemoteDataT(m.dir, m.localport, m.consolidate, m.storageMode).join();
-  } else if (m.groups.size() > 0) {
+  } else if (!m.groups.empty()) {
     out() << "hog stat file : " << StatFile::instance().filename() << std::endl;
     hog::StatFile::instance().log(hog::ProcessEnvironment{hobbes::now(), sessionHash, hobbes::string::from(m), args, hog::SessionType::Enum::Normal});
     std::map<std::string, std::map<int, RegInfo>> registry;
 
-    for (auto g : m.groups) {
+    for (const auto& g : m.groups) {
       try {
         out() << "install a monitor for the '" << g << "' group" << std::endl;
         runGroupHost(sessionHash, g, m, registry[g]);

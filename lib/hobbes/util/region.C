@@ -1,9 +1,9 @@
 
+#include <algorithm>
+#include <cstdlib>
+#include <hobbes/util/ptr.H>
 #include <hobbes/util/region.H>
 #include <hobbes/util/str.H>
-#include <hobbes/util/ptr.H>
-#include <stdlib.h>
-#include <algorithm>
 
 namespace hobbes {
 
@@ -11,9 +11,9 @@ void dbglog(const std::string&);
 
 region::region(size_t minPageSize, size_t initialFreePages, size_t maxPageSize) :
   minPageSize(minPageSize), maxPageSize(maxPageSize), lastAllocPageSize(minPageSize),
-  abortOnOOM(false), maxTotalAllocation(0), totalAllocation(0), usedp(0), freep(0)
+  abortOnOOM(false), maxTotalAllocation(0), totalAllocation(0), usedp(nullptr), freep(nullptr)
 {
-  this->usedp = newpage(0, minPageSize);
+  this->usedp = newpage(nullptr, minPageSize);
 
   for (size_t i = 0; i < initialFreePages; ++i) {
     this->freep = newpage(this->freep, minPageSize);
@@ -37,7 +37,7 @@ void* region::malloc(size_t sz, size_t asz) {
   } else {
     allocpage(sz + asz);
 
-    uint8_t* uresult = reinterpret_cast<uint8_t*>(this->usedp->base);
+    auto* uresult = reinterpret_cast<uint8_t*>(this->usedp->base);
     size_t   afixup  = align(reinterpret_cast<size_t>(uresult), asz) - reinterpret_cast<size_t>(uresult);
     uint8_t* result  = uresult + afixup;
 
@@ -50,9 +50,9 @@ void region::clear() {
   freepages(this->freep);
   freepages(this->usedp->succ);
 
-  this->freep       = 0;
+  this->freep       = nullptr;
   this->usedp->read = 0;
-  this->usedp->succ = 0;
+  this->usedp->succ = nullptr;
 
   this->lastAllocPageSize = this->minPageSize;
 }
@@ -62,17 +62,17 @@ void region::reset() {
   // link the final used page to the initial free page
   // finally set free to used, having computed free' = used ++ free
   mempage* p = this->usedp;
-  while (p != 0) {
+  while (p != nullptr) {
     mempage* np = p->succ;
 
     p->read = 0;
-    if (np == 0) {
+    if (np == nullptr) {
       p->succ = this->freep;
     }
     p = np;
   }
   this->freep = this->usedp->succ;
-  this->usedp->succ = 0;
+  this->usedp->succ = nullptr;
 }
 
 namespace pattr {
@@ -87,20 +87,20 @@ size_t sumAttr(const mempage* p, pattr::E a) {
   size_t r = 0;
   switch (a) {
   case pattr::allocated:
-    while (p) {
+    while (p != nullptr) {
       r += p->size;
       p = p->succ;
     }
     break;
   case pattr::used:
-    while (p) {
+    while (p != nullptr) {
       r += p->read;
       p = p->succ;
     }
     break;
   case pattr::wasted:
-    p = p ? p->succ : p;
-    while (p) {
+    p = p != nullptr ? p->succ : p;
+    while (p != nullptr) {
       r += p->size - p->read;
       p = p->succ;
     }
@@ -126,12 +126,12 @@ std::string showPage(mempage* p) {
 }
 
 std::string showPages(mempage* ps) {
-  if (ps == 0) {
+  if (ps == nullptr) {
     return "[]";
   } else {
     std::string r = showPage(ps);
     ps = ps->succ;
-    while (ps != 0) {
+    while (ps != nullptr) {
       r += "; ";
       r += showPage(ps);
       ps = ps->succ;
@@ -165,7 +165,7 @@ mempage* region::newpage(mempage* succ, size_t sz) {
     abort();
   }
 
-  mempage* p = new mempage;
+  auto* p = new mempage;
   p->size = psz;
   p->base = ::malloc(p->size);
   p->read = 0;
@@ -175,7 +175,7 @@ mempage* region::newpage(mempage* succ, size_t sz) {
 }
 
 void region::allocpage(size_t sz) {
-  if (this->freep != 0 && sz <= this->freep->size) {
+  if (this->freep != nullptr && sz <= this->freep->size) {
     // used = head free : used
     mempage* usednp = this->freep;
     mempage* freenp = this->freep->succ;
@@ -198,7 +198,7 @@ void region::freepage(mempage* p) {
 }
 
 void region::freepages(mempage* p) {
-  while (p != 0) {
+  while (p != nullptr) {
     mempage* np = p->succ;
     freepage(p);
     p = np;

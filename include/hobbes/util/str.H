@@ -2,30 +2,30 @@
 #ifndef HOBBES_UTIL_STR_HPP_INCLUDED
 #define HOBBES_UTIL_STR_HPP_INCLUDED
 
-#include <hobbes/util/array.H>
-#include <string>
-#include <sstream>
-#include <vector>
+#include <cstdlib>
 #include <cxxabi.h>
-#include <stdlib.h>
-#include <set>
+#include <hobbes/util/array.H>
 #include <map>
+#include <set>
+#include <sstream>
+#include <string>
+#include <vector>
 
 namespace hobbes { namespace str {
 
 std::string env(const std::string& varname);
 void env(const std::string& varname, const std::string& value);
 
-typedef std::vector<std::string>  seq;
-typedef std::vector<seq>          seqs;
-typedef std::vector<unsigned int> lengths;
+using seq = std::vector<std::string>;
+using seqs = std::vector<seq>;
+using lengths = std::vector<unsigned int>;
 
 void repeat(unsigned int n, const std::string& s, seq* out);
 seq repeat(unsigned int n, const std::string& s);
 
 template <typename C>
   unsigned int maxSize(unsigned int d, const std::vector<C>& vs) {
-    if (vs.size() == 0) {
+    if (vs.empty()) {
       return d;
     } else {
       unsigned int r = vs[0].size();
@@ -38,7 +38,7 @@ template <typename C>
 
 template <typename C>
   unsigned int minSize(unsigned int d, const std::vector<C>& vs) {
-    if (vs.size() == 0) {
+    if (vs.empty()) {
       return d;
     } else {
       unsigned int r = vs[0].size();
@@ -151,7 +151,7 @@ template <typename Char>
 template <typename Char>
   std::vector< std::basic_string<Char> > trim(const std::vector< std::basic_string<Char> >& ss) {
     std::vector< std::basic_string<Char> > result;
-    for (typename std::vector< std::basic_string<Char> >::const_iterator s = ss.begin(); s != ss.end(); ++s) {
+    for (auto s = ss.begin(); s != ss.end(); ++s) {
       result.push_back(trim<Char>(*s));
     }
     return result;
@@ -183,7 +183,7 @@ template <typename Char>
       return src;
     }
 
-    typedef typename std::basic_string<Char>::size_type SZT;
+    using SZT = typename std::basic_string<Char>::size_type;
     std::basic_string<Char> result;
     SZT                     sz     = src.find(old_substr);
     SZT                     lsz    = 0;
@@ -217,7 +217,7 @@ std::string unescape(const std::string&);
 
 bool endsWith(const std::string& s, const std::string& sfx);
 
-typedef std::pair<std::string, std::string> pair;
+using pair = std::pair<std::string, std::string>;
 
 inline pair trim(const pair& p) {
   return pair(trim(p.first), trim(p.second));
@@ -238,10 +238,10 @@ unsigned int firstFailIndex(bool (*P)(char), const std::string& s);
 std::string cdelim(const seq& ss, const std::string& d);
 
 // common containers for strings
-typedef std::set<std::string> set;
+using set = std::set<std::string>;
 std::string show(const set&);
 
-typedef std::map<std::string, std::string> named_strings;
+using named_strings = std::map<std::string, std::string>;
 std::string show(const named_strings&);
 
 // process a string by 'expanding' embedded variables/expressions and unescaping sequences

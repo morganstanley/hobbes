@@ -22,7 +22,7 @@ struct eventcbclosure {
   int                      fd;
   std::function<void(int)> fn;
 };
-typedef std::map<int, eventcbclosure*> EventClosures;
+using EventClosures = std::map<int, eventcbclosure *>;
 
 void registerEventHandler(int fd, eventhandler fn, void* ud, bool f) {
   registerEventHandler(fd, [fn,ud](int c){fn(c,ud);}, f);
@@ -31,7 +31,7 @@ void registerEventHandler(int fd, eventhandler fn, void* ud, bool f) {
 #ifdef BUILD_LINUX
 thread_local bool           epInitialized = false;
 thread_local int            epFD          = 0;
-thread_local EventClosures* epClosures    = 0;
+thread_local EventClosures* epClosures    = nullptr;
 
 struct timer {
   timerfunc func;
@@ -43,7 +43,7 @@ bool operator>(const timer& a, const timer& b) {
   return a.callTime > b.callTime;
 }
 
-thread_local std::priority_queue<timer, std::vector<timer>, std::greater<timer>> timers;
+thread_local std::priority_queue<timer, std::vector<timer>, std::greater<>> timers;
 
 int threadEPollFD() {
   if (!epInitialized) {
@@ -70,7 +70,7 @@ void unregisterEventHandler(int fd) {
 void registerEventHandler(int fd, const std::function<void(int)>& fn, bool) {
   int epfd = threadEPollFD();
 
-  eventcbclosure* c = new eventcbclosure(fd, fn);
+  auto* c = new eventcbclosure(fd, fn);
   (*epClosures)[fd] = c;
 
   struct epoll_event evt;
@@ -105,14 +105,14 @@ bool stepEventLoop(int timeoutMS) {
     bool status = true;
     if (fds > 0) {
       for (int fd = 0; fd < fds; ++fd) {
-        eventcbclosure* c = reinterpret_cast<eventcbclosure*>(evts[fd].data.ptr);
+        auto* c = reinterpret_cast<eventcbclosure*>(evts[fd].data.ptr);
         (c->fn)(c->fd);
         resetMemoryPool();
       }
     } else if (fds < 0) {
       if (errno != EINTR) {
         status = false;
-      } else if (epClosures) {
+      } else if (epClosures != nullptr) {
         auto f = epClosures->find(-1);
         if (f != epClosures->end()) {
           f->second->fn(-1);
@@ -174,7 +174,7 @@ void runEventLoop(int microsecondDuration) {
     int fds = epoll_wait(threadEPollFD(), evts, sizeof(evts)/sizeof(evts[0]), timeout);
     if (fds > 0) {
       for (int fd = 0; fd < fds; ++fd) {
-        eventcbclosure* c = reinterpret_cast<eventcbclosure*>(evts[fd].data.ptr);
+        auto* c = reinterpret_cast<eventcbclosure*>(evts[fd].data.ptr);
         (c->fn)(c->fd);
         resetMemoryPool();
       }

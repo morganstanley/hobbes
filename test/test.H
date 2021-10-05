@@ -77,7 +77,7 @@ struct Result final {
 
 class TestCoord {
 public:
-  typedef void (*PTEST)();
+  using PTEST = void (*)();
   static TestCoord& instance();
   bool installTest(const std::string& group, const std::string& test, PTEST pf);
   std::set<std::string> testGroupNames() const;
@@ -85,10 +85,10 @@ public:
 
 private:
   std::string toJSON();
-  typedef std::vector<std::pair<std::string, PTEST>> Tests;
-  typedef std::map<std::string, Tests> GroupedTests;
-  typedef std::vector<Result> Results;
-  typedef std::map<std::string, Results> GroupedResults;
+  using Tests = std::vector<std::pair<std::string, PTEST>>;
+  using GroupedTests = std::map<std::string, Tests>;
+  using Results = std::vector<Result>;
+  using GroupedResults = std::map<std::string, Results>;
   GroupedTests tests;
   GroupedResults results;
 };

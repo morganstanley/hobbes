@@ -1,17 +1,18 @@
 
 #include <hobbes/hobbes.H>
-#include <hobbes/lang/preds/class.H>
-#include <hobbes/lang/tyunqualify.H>
 #include <hobbes/ipc/nbindings.H>
 #include <hobbes/ipc/net.H>
+#include <hobbes/lang/preds/class.H>
+#include <hobbes/lang/tyunqualify.H>
 #include <map>
+#include <memory>
 
 namespace hobbes {
 
 /******************
  * global set of client connections
  ******************/
-typedef std::set<Client*> Connections;
+using Connections = std::set<Client *>;
 static Connections connections;
 
 bool isAllocatedConnection(Client* c) {
@@ -19,7 +20,7 @@ bool isAllocatedConnection(Client* c) {
 }
 
 Client* makeConnection(const std::string& hp) {
-  Client* r = new Client(hp);
+  auto* r = new Client(hp);
   connections.insert(r);
   return r;
 }
@@ -40,7 +41,7 @@ Client* decodeConnType(const MonoTypePtr& t) {
       }
     }
   }
-  return 0;
+  return nullptr;
 }
 
 bool isPartialConnection(const MonoTypePtr& t) {
@@ -49,7 +50,7 @@ bool isPartialConnection(const MonoTypePtr& t) {
       if (const Prim* apn = is<Prim>(ap->fn())) {
         return apn->name() == "connection";
       } else {
-        return is<TVar>(ap->fn());
+        return is<TVar>(ap->fn()) != nullptr;
       }
     }
   }
@@ -66,7 +67,7 @@ public:
   static std::string constraintName() { return "Connect"; }
   static std::string connectVar() { return "connection"; }
 
-  bool refine(const TEnvPtr&, const ConstraintPtr& cst, MonoTypeUnifier* u, Definitions*) {
+  bool refine(const TEnvPtr&, const ConstraintPtr& cst, MonoTypeUnifier* u, Definitions*) override {
     MonoTypePtr hostport;
     MonoTypePtr handle;
 
@@ -86,7 +87,7 @@ public:
     return false;
   }
 
-  bool satisfied(const TEnvPtr&, const ConstraintPtr& cst, Definitions*) const {
+  bool satisfied(const TEnvPtr&, const ConstraintPtr& cst, Definitions*) const override {
     MonoTypePtr hostport;
     MonoTypePtr handle;
 
@@ -98,16 +99,16 @@ public:
     return false;
   }
 
-  bool satisfiable(const TEnvPtr&, const ConstraintPtr& cst, Definitions*) const {
+  bool satisfiable(const TEnvPtr&, const ConstraintPtr& cst, Definitions*) const override {
     MonoTypePtr hostport;
     MonoTypePtr handle;
     
     return decodeConstraint(cst, &hostport, &handle) &&
-           (is<TVar>(hostport) || is<TString>(hostport)) &&
-           (is<TVar>(handle) || isPartialConnection(handle));
+           ((is<TVar>(hostport) != nullptr) || (is<TString>(hostport) != nullptr)) &&
+           ((is<TVar>(handle) != nullptr) || isPartialConnection(handle));
   }
 
-  void explain(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*, annmsgs*) {
+  void explain(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*, annmsgs*) override {
   }
 
   struct StripConnQual : public switchExprTyFn {
@@ -116,13 +117,13 @@ public:
     StripConnQual(const ConstraintPtr& cst) : constraint(cst) {
     }
   
-    ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const {
+    ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const override {
       ExprPtr result(e);
       result->type(removeConstraint(this->constraint, qty));
       return result;
     }
 
-    ExprPtr with(const Var* v) const {
+    ExprPtr with(const Var* v) const override {
       if (v->value() == connectVar() && hasConstraint(this->constraint, v->type())) {
         return mktunit(v->la());
       } else {
@@ -131,25 +132,25 @@ public:
     }
   };
 
-  ExprPtr unqualify(const TEnvPtr&, const ConstraintPtr& cst, const ExprPtr& e, Definitions*) const {
+  ExprPtr unqualify(const TEnvPtr&, const ConstraintPtr& cst, const ExprPtr& e, Definitions*) const override {
     return switchOf(e, StripConnQual(cst));
   }
 
-  PolyTypePtr lookup(const std::string& vn) const {
+  PolyTypePtr lookup(const std::string& vn) const override {
     if (vn == connectVar()) {
-      return polytype(2, qualtype(list(ConstraintPtr(new Constraint(constraintName(), list(tgen(0), tgen(1))))), tgen(1)));
+      return polytype(2, qualtype(list(std::make_shared<Constraint>(constraintName(), list(tgen(0), tgen(1)))), tgen(1)));
     } else {
       return PolyTypePtr();
     }
   }
 
-  SymSet bindings() const {
+  SymSet bindings() const override {
     SymSet r;
     r.insert(connectVar());
     return r;
   }
 
-  FunDeps dependencies(const ConstraintPtr&) const {
+  FunDeps dependencies(const ConstraintPtr&) const override {
     return list(FunDep(list(0), 1), FunDep(list(1), 0));
   }
 private:
@@ -172,11 +173,11 @@ public:
   static std::string constraintName() { return "Invoke"; }
   static std::string netInvoke() { return "invoke"; }
 
-  bool refine(const TEnvPtr&, const ConstraintPtr& cst, MonoTypeUnifier* u, Definitions*) {
+  bool refine(const TEnvPtr&, const ConstraintPtr& cst, MonoTypeUnifier* u, Definitions*) override {
     MonoTypePtr ch, expr, inty, outty;
     if (decodeConstraint(cst, &ch, &expr, &inty, &outty)) {
       if (const TLong* chv = is<TLong>(ch)) {
-        if (Client* conn = reinterpret_cast<Client*>(chv->value())) {
+        if (auto* conn = reinterpret_cast<Client*>(chv->value())) {
           if (const TExpr* exprv = is<TExpr>(expr)) {
             if (isAllocatedConnection(conn) && !hasFreeVariables(inty)) {
               size_t uc = u->size();
@@ -190,16 +191,16 @@ public:
     return false;
   }
 
-  bool satisfied(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions* ds) const {
+  bool satisfied(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions* ds) const override {
     MonoTypePtr ch, expr, inty, outty;
     if (decodeConstraint(cst, &ch, &expr, &inty, &outty)) {
       if (const TLong* chv = is<TLong>(ch)) {
-        if (Client* conn = reinterpret_cast<Client*>(chv->value())) {
+        if (auto* conn = reinterpret_cast<Client*>(chv->value())) {
           if (const TExpr* exprv = is<TExpr>(expr)) {
             if (isAllocatedConnection(conn) && !hasFreeVariables(inty)) {
               return *outty == *conn->output(exprv->expr(), inty);
-                     hobbes::satisfied(tenv, ConstraintPtr(new Constraint("BlockCodec", list(inty))), ds) &&
-                     hobbes::satisfied(tenv, ConstraintPtr(new Constraint("BlockCodec", list(outty))), ds);
+                     hobbes::satisfied(tenv, std::make_shared<Constraint>("BlockCodec", list(inty)), ds) &&
+                     hobbes::satisfied(tenv, std::make_shared<Constraint>("BlockCodec", list(outty)), ds);
             }
           }
         }
@@ -208,22 +209,22 @@ public:
     return false;
   }
 
-  bool satisfiable(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions* ds) const {
+  bool satisfiable(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions* ds) const override {
     MonoTypePtr ch, expr, inty, outty;
     if (!decodeConstraint(cst, &ch, &expr, &inty, &outty)) { return false; }
 
-    TLong* chv = is<TLong>(ch);
-    if (!chv) { return is<TVar>(ch); }
-    Client* conn = reinterpret_cast<Client*>(chv->value());
-    if (!conn || !isAllocatedConnection(conn)) { return false; }
+    auto* chv = is<TLong>(ch);
+    if (chv == nullptr) { return is<TVar>(ch) != nullptr; }
+    auto* conn = reinterpret_cast<Client*>(chv->value());
+    if ((conn == nullptr) || !isAllocatedConnection(conn)) { return false; }
 
-    TExpr* exprv = is<TExpr>(expr);
-    if (!exprv) { return is<TVar>(expr); }
+    auto* exprv = is<TExpr>(expr);
+    if (exprv == nullptr) { return is<TVar>(expr) != nullptr; }
 
     return hasFreeVariables(inty) || satisfied(tenv, cst, ds);
   }
 
-  void explain(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*, annmsgs*) {
+  void explain(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*, annmsgs*) override {
   }
 
   struct RewriteInvokes : public switchExprTyFn {
@@ -233,13 +234,13 @@ public:
     RewriteInvokes(const ConstraintPtr& cst, const std::string& invokeFn) : constraint(cst), invokeFn(invokeFn) {
     }
   
-    ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const {
+    ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const override {
       ExprPtr result(e);
       result->type(removeConstraint(this->constraint, qty));
       return result;
     }
   
-    ExprPtr with(const Var* v) const {
+    ExprPtr with(const Var* v) const override {
       if (v->value() == netInvoke() && hasConstraint(this->constraint, v->type())) {
         return var(this->invokeFn, removeConstraint(this->constraint, v->type()), v->la());
       } else {
@@ -248,16 +249,16 @@ public:
     }
   };
 
-  ExprPtr unqualify(const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPtr& e, Definitions* ds) const {
+  ExprPtr unqualify(const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPtr& e, Definitions* ds) const override {
     std::string invokeFn = makeInvokeFn(tenv, cst, ds, e->la());
     return switchOf(e, RewriteInvokes(cst, invokeFn));
   }
 
-  PolyTypePtr lookup(const std::string& vn) const {
+  PolyTypePtr lookup(const std::string& vn) const override {
     if (vn == netInvoke()) {
       // invoke :: (Invoke ch expr inty outty) => (connection ch, quote expr, inty) -> (promise ch outty)
       return polytype(4,
-        qualtype(list(ConstraintPtr(new Constraint(constraintName(), list(tgen(0), tgen(1), tgen(2), tgen(3))))),
+        qualtype(list(std::make_shared<Constraint>(constraintName(), list(tgen(0), tgen(1), tgen(2), tgen(3)))),
           functy(
             list(
               tapp(primty("connection"), list(tgen(0))),
@@ -273,13 +274,13 @@ public:
     }
   }
 
-  SymSet bindings() const {
+  SymSet bindings() const override {
     SymSet r;
     r.insert(netInvoke());
     return r;
   }
 
-  FunDeps dependencies(const ConstraintPtr&) const {
+  FunDeps dependencies(const ConstraintPtr&) const override {
     return list(FunDep(list(0, 1, 2), 3));
   }
 private:
@@ -298,7 +299,7 @@ private:
     MonoTypePtr ch, expr, inty, outty;
     if (decodeConstraint(cst, &ch, &expr, &inty, &outty)) {
       if (const TLong* chv = is<TLong>(ch)) {
-        if (Client* c = reinterpret_cast<Client*>(chv->value())) {
+        if (auto* c = reinterpret_cast<Client*>(chv->value())) {
           if (const TExpr* exprv = is<TExpr>(expr)) {
             if (isAllocatedConnection(c) && !hasFreeVariables(inty)) {
               MonoTypePtr retty = tapp(primty("promise"), list(ch, outty));
@@ -309,8 +310,8 @@ private:
               MonoTypePtr urfnty = functy(list(intt), opaqueptr<char>(false));
               MonoTypePtr rfnty  = functy(list(intt), tuplety(list(outty)));
 
-              ConstraintPtr incst  = ConstraintPtr(new Constraint("BlockCodec", list(inty)));
-              ConstraintPtr outcst = ConstraintPtr(new Constraint("BlockCodec", list(tuplety(list(outty)))));
+              ConstraintPtr incst  = std::make_shared<Constraint>("BlockCodec", list(inty));
+              ConstraintPtr outcst = std::make_shared<Constraint>("BlockCodec", list(tuplety(list(outty))));
               ExprPtr qinvokeFn =
                 fn(str::strings(".ch", ".expr", ".x"),
                   // write the 'invoke expression' indicator byte
@@ -355,17 +356,17 @@ public:
   static std::string constraintName() { return "Receive"; }
   static std::string receive()        { return "receive"; }
 
-  bool refine(const TEnvPtr&, const ConstraintPtr&, MonoTypeUnifier*, Definitions*) {
+  bool refine(const TEnvPtr&, const ConstraintPtr&, MonoTypeUnifier*, Definitions*) override {
     return false;
   }
 
-  bool satisfied(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions* ds) const {
+  bool satisfied(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions* ds) const override {
     MonoTypePtr ch, rty;
     if (decodeConstraint(cst, &ch, &rty)) {
       if (const TLong* chv = is<TLong>(ch)) {
-        if (Client* conn = reinterpret_cast<Client*>(chv->value())) {
+        if (auto* conn = reinterpret_cast<Client*>(chv->value())) {
           if (isAllocatedConnection(conn) && !hasFreeVariables(rty)) {
-            return hobbes::satisfied(tenv, ConstraintPtr(new Constraint("BlockCodec", list(rty))), ds);
+            return hobbes::satisfied(tenv, std::make_shared<Constraint>("BlockCodec", list(rty)), ds);
           }
         }
       }
@@ -373,19 +374,19 @@ public:
     return false;
   }
 
-  bool satisfiable(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions* ds) const {
+  bool satisfiable(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions* ds) const override {
     MonoTypePtr ch, rty;
     if (!decodeConstraint(cst, &ch, &rty)) { return false; }
 
-    TLong* chv = is<TLong>(ch);
-    if (!chv) { return is<TVar>(ch); }
-    Client* conn = reinterpret_cast<Client*>(chv->value());
-    if (!conn || !isAllocatedConnection(conn)) { return false; }
+    auto* chv = is<TLong>(ch);
+    if (chv == nullptr) { return is<TVar>(ch) != nullptr; }
+    auto* conn = reinterpret_cast<Client*>(chv->value());
+    if ((conn == nullptr) || !isAllocatedConnection(conn)) { return false; }
 
     return hasFreeVariables(rty) || satisfied(tenv, cst, ds);
   }
 
-  void explain(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*, annmsgs*) {
+  void explain(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*, annmsgs*) override {
   }
 
   struct RewriteReceives : public switchExprTyFn {
@@ -395,13 +396,13 @@ public:
     RewriteReceives(const ConstraintPtr& cst, const std::string& receiveFn) : constraint(cst), receiveFn(receiveFn) {
     }
   
-    ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const {
+    ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const override {
       ExprPtr result(e);
       result->type(removeConstraint(this->constraint, qty));
       return result;
     }
   
-    ExprPtr with(const Var* v) const {
+    ExprPtr with(const Var* v) const override {
       if (v->value() == receive() && hasConstraint(this->constraint, v->type())) {
         return var(this->receiveFn, removeConstraint(this->constraint, v->type()), v->la());
       } else {
@@ -410,16 +411,16 @@ public:
     }
   };
 
-  ExprPtr unqualify(const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPtr& e, Definitions* ds) const {
+  ExprPtr unqualify(const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPtr& e, Definitions* ds) const override {
     std::string receiveFn = makeReceiveFn(tenv, cst, ds, e->la());
     return switchOf(e, RewriteReceives(cst, receiveFn));
   }
 
-  PolyTypePtr lookup(const std::string& vn) const {
+  PolyTypePtr lookup(const std::string& vn) const override {
     if (vn == receive()) {
       // receive :: (Receive ch outty) => (promise ch ty) -> ty
       return polytype(2,
-        qualtype(list(ConstraintPtr(new Constraint(constraintName(), list(tgen(0), tgen(1))))),
+        qualtype(list(std::make_shared<Constraint>(constraintName(), list(tgen(0), tgen(1)))),
           functy(
             list(
               tapp(primty("promise"), list(tgen(0), tgen(1)))
@@ -433,13 +434,13 @@ public:
     }
   }
 
-  SymSet bindings() const {
+  SymSet bindings() const override {
     SymSet r;
     r.insert(receive());
     return r;
   }
 
-  FunDeps dependencies(const ConstraintPtr&) const {
+  FunDeps dependencies(const ConstraintPtr&) const override {
     return FunDeps();
   }
 private:
@@ -456,7 +457,7 @@ private:
     MonoTypePtr ch, ty;
     if (decodeConstraint(cst, &ch, &ty)) {
       if (const TLong* chv = is<TLong>(ch)) {
-        if (Client* c = reinterpret_cast<Client*>(chv->value())) {
+        if (auto* c = reinterpret_cast<Client*>(chv->value())) {
           if (isAllocatedConnection(c) && !hasFreeVariables(ty)) {
             // our receive function is uniquely determined by its connection and result type
             std::string recvFnName = ".cxn.recvFn." + str::from(chv->value()) + "." + str::from(reinterpret_cast<long>(ty.get()));
@@ -518,7 +519,7 @@ struct printConnectionF : public op {
   printConnectionF(const std::string& showf) : showf(showf) {
   }
 
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) override {
     if (Client* conn = decodeConnType(tys[0])) {
       ExprPtr wfrtfn = var(this->showf, functy(list(primty("long")), primty("unit")), es[0]->la());
       return c->compile(fncall(wfrtfn, list(constant(reinterpret_cast<long>(conn), es[0]->la())), es[0]->la()));
@@ -527,16 +528,15 @@ struct printConnectionF : public op {
     }
   }
 
-  PolyTypePtr type(typedb&) const {
+  PolyTypePtr type(typedb&) const override {
     return polytype(1, qualtype(functy(list(tapp(primty("connection"), list(tgen(0)))), primty("unit"))));
   }
 };
 
 struct remoteHostF : public op {
-  remoteHostF() {
-  }
+  remoteHostF() = default;
 
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) override {
     if (Client* conn = decodeConnType(tys[0])) {
       return c->compile(ExprPtr(mkarray(conn->remoteHost(), es[0]->la())));
     } else {
@@ -544,7 +544,7 @@ struct remoteHostF : public op {
     }
   }
 
-  PolyTypePtr type(typedb&) const {
+  PolyTypePtr type(typedb&) const override {
     return polytype(1, qualtype(functy(list(tapp(primty("connection"), list(tgen(0)))), arrayty(primty("char")))));
   }
 };

@@ -5,6 +5,7 @@
 #include <hobbes/util/str.H>
 #include <hobbes/util/rmap.H>
 
+#include <memory>
 #include <queue>
 
 namespace hobbes {
@@ -13,11 +14,11 @@ namespace hobbes {
  * parse regular expressions into an AST
  ******************/
 
-typedef uint8_t rchar_t;
+using rchar_t = uint8_t;
 
 // epsilon / the empty string
 struct REps : public Regex {
-  void show(std::ostream& out) const { out << "`"; }
+  void show(std::ostream& out) const override { out << "`"; }
 };
 
 // a range of chars [b,e] (inclusive)
@@ -25,7 +26,7 @@ struct RCharRange : public Regex {
   rchar_t b, e;
   RCharRange(rchar_t b, rchar_t e) : b(b), e(e) { }
 
-  void show(std::ostream& out) const {
+  void show(std::ostream& out) const override {
     if (this->b == this->e) {
       out << this->b;
     } else if (this->b == rchar_t(0) && this->e == rchar_t(255)) {
@@ -41,7 +42,7 @@ struct RStar : public Regex {
   RegexPtr v;
   RStar(const RegexPtr& v) : v(v) { }
 
-  void show(std::ostream& out) const { this->v->show(out); out << "*"; }
+  void show(std::ostream& out) const override { this->v->show(out); out << "*"; }
 };
 
 // A|B (either match A, or match B)
@@ -50,7 +51,7 @@ struct REither : public Regex {
   RegexPtr rhs;
   REither(const RegexPtr& lhs, const RegexPtr& rhs) : lhs(lhs), rhs(rhs) { }
 
-  void show(std::ostream& out) const { this->lhs->show(out); out << "|"; this->rhs->show(out); }
+  void show(std::ostream& out) const override { this->lhs->show(out); out << "|"; this->rhs->show(out); }
 };
 
 // AB (match A, then match B)
@@ -59,7 +60,7 @@ struct RSeq : public Regex {
   RegexPtr rhs;
   RSeq(const RegexPtr& lhs, const RegexPtr& rhs) : lhs(lhs), rhs(rhs) { }
 
-  void show(std::ostream& out) const { this->lhs->show(out); this->rhs->show(out); }
+  void show(std::ostream& out) const override { this->lhs->show(out); this->rhs->show(out); }
 };
 
 // (?<x>E) (match E, bind the substring to a variable "x")
@@ -68,7 +69,7 @@ struct RBind : public Regex {
   RegexPtr    def;
   RBind(const std::string& var, const RegexPtr& def) : var(var), def(def) { }
 
-  void show(std::ostream& out) const {
+  void show(std::ostream& out) const override {
     out << "(?<" << this->var << ">";
     this->def->show(out);
     out << ")";
@@ -145,7 +146,7 @@ RegexPtr sequence(const RegexPtr& p0, const RegexPtr& p1) {
 }
 
 RegexPtr anyOf(const Regexes& rs) {
-  if (rs.size() == 0) {
+  if (rs.empty()) {
     return epsilon();
   } else {
     RegexPtr a = rs[0];
@@ -156,11 +157,11 @@ RegexPtr anyOf(const Regexes& rs) {
   }
 }
 
-typedef std::pair<rchar_t, rchar_t> CharRange;
-typedef std::vector<CharRange> CharRanges;
+using CharRange = std::pair<rchar_t, rchar_t>;
+using CharRanges = std::vector<CharRange>;
 
 CharRanges toRanges(const std::set<rchar_t>& cs) {
-  if (cs.size() == 0) {
+  if (cs.empty()) {
     return CharRanges();
   } else {
     auto ci = cs.begin();
@@ -207,17 +208,17 @@ RegexPtr unescapePatChar(rchar_t x) {
 }
 
 // read char sets
-typedef std::pair<size_t, std::set<rchar_t>> DCharset;
+using DCharset = std::pair<size_t, std::set<rchar_t>>;
 
 void charRange(rchar_t i, rchar_t e, std::set<rchar_t>* out) {
-  for (size_t x = static_cast<size_t>(i); x <= static_cast<size_t>(e); ++x) {
+  for (auto x = static_cast<size_t>(i); x <= static_cast<size_t>(e); ++x) {
     out->insert(static_cast<rchar_t>(x));
   }
 }
 
 const std::set<rchar_t>& anyChars() {
   static std::set<rchar_t> r;
-  if (r.size() == 0) {
+  if (r.empty()) {
     charRange(0x00, 0xff, &r);
   }
   return r;
@@ -250,7 +251,7 @@ DCharset readCharset(const std::string& x, size_t i) {
 }
 
 // parse a complete regex
-typedef std::pair<size_t, RegexPtr> DRegex;
+using DRegex = std::pair<size_t, RegexPtr>;
 DRegex diffRegex(const RegexPtr& lhs, const std::string& x, size_t i);
 
 DRegex returnR(const std::string& x, size_t k, const RegexPtr& r) {
@@ -348,21 +349,21 @@ struct bnamesF : public switchRegex<UnitV> {
 
   bnamesF(str::set* bnames) : bnames(bnames) { }
 
-  UnitV with(const REps*) const { return unitv; }
-  UnitV with(const RCharRange*) const { return unitv; }
-  UnitV with(const RStar* x) const { return switchOf(x->v, *this); }
+  UnitV with(const REps*) const override { return unitv; }
+  UnitV with(const RCharRange*) const override { return unitv; }
+  UnitV with(const RStar* x) const override { return switchOf(x->v, *this); }
 
-  UnitV with(const REither* x) const {
+  UnitV with(const REither* x) const override {
     switchOf(x->lhs, *this);
     return switchOf(x->rhs, *this);
   }
 
-  UnitV with(const RSeq* x) const {
+  UnitV with(const RSeq* x) const override {
     switchOf(x->lhs, *this);
     return switchOf(x->rhs, *this);
   }
 
-  UnitV with(const RBind* x) const {
+  UnitV with(const RBind* x) const override {
     this->bnames->insert(x->var);
     return switchOf(x->def, *this);
   }
@@ -377,10 +378,10 @@ str::seq bindingNames(const RegexPtr& rgx) {
 /******************************
  * translate the regex AST to an NFA
  ******************************/
-typedef uint32_t state;
-typedef std::set<state> stateset;
+using state = uint32_t;
+using stateset = std::set<state>;
 
-typedef uint32_t result;
+using result = uint32_t;
 static const result nullResult = static_cast<result>(-1);
 
 struct char_range_ord {
@@ -407,9 +408,9 @@ struct char_range_ord {
   }
 };
 
-typedef range_map<rchar_t, stateset, char_range_ord> ntransitions;
+using ntransitions = range_map<rchar_t, stateset, char_range_ord>;
 
-typedef std::map<result, str::set> srcmarkers;
+using srcmarkers = std::map<result, str::set>;
 
 struct NFAState {
   // transitions to successor states
@@ -424,7 +425,7 @@ struct NFAState {
   void beginMark(result r, const std::string& m) { this->begins[r].insert(m); }
   void endMark  (result r, const std::string& m) {   this->ends[r].insert(m); }
 };
-typedef std::vector<NFAState> NFA;
+using NFA = std::vector<NFAState>;
 
 // for a given set of NFA states, find the set of non-overlapping char ranges
 CharRanges usedCharRanges(const NFA& nfa, const stateset& ss) {
@@ -452,23 +453,23 @@ struct linkStateF : public switchRegex<UnitV> {
 
   state ins(const RegexPtr& p) const { return regexBefore(p, this->succ, this->id, this->nfa); }
 
-  UnitV with(const REps*) const {
+  UnitV with(const REps*) const override {
     s().eps.insert(this->succ);
     return unitv;
   }
 
-  UnitV with(const RCharRange* x) const {
+  UnitV with(const RCharRange* x) const override {
     s().chars.mergeRange(x->b, x->e, [&](stateset& ss){ ss.insert(this->succ); });
     return unitv;
   }
 
-  UnitV with(const RStar* x) const {
+  UnitV with(const RStar* x) const override {
     switchOf(x->v, linkStateF(this->nfa, this->self, this->self, this->id));
     s().eps.insert(this->succ);
     return unitv;
   }
 
-  UnitV with(const REither* x) const {
+  UnitV with(const REither* x) const override {
     state lstate = ins(x->lhs);
     state rstate = ins(x->rhs);
     s().eps.insert(lstate);
@@ -476,13 +477,13 @@ struct linkStateF : public switchRegex<UnitV> {
     return unitv;
   }
 
-  UnitV with(const RSeq* x) const {
+  UnitV with(const RSeq* x) const override {
     state rstate = ins(x->rhs);
     switchOf(x->lhs, linkStateF(this->nfa, this->self, rstate, this->id));
     return unitv;
   }
 
-  UnitV with(const RBind* x) const {
+  UnitV with(const RBind* x) const override {
     s().beginMark(this->id, x->var);
     switchOf(x->def, *this);
     s(this->succ).endMark(this->id, x->var);
@@ -518,7 +519,7 @@ std::set<rchar_t> usedChars(const NFA& nfa) {
  *****************************/
 std::string descStates(const stateset& ss) {
   std::ostringstream out;
-  if (ss.size() > 0) {
+  if (!ss.empty()) {
     auto s = ss.begin();
     out << *s;
     ++s;
@@ -606,9 +607,9 @@ void print(std::ostream& out, const NFA& nfa) {
 /**********************
  * find eps* for an NFA
  **********************/
-typedef std::map<state, stateset> EpsClosure;
+using EpsClosure = std::map<state, stateset>;
 
-typedef std::vector<bool> statemarks;
+using statemarks = std::vector<bool>;
 
 void findEpsClosure(const NFA& nfa, state s, statemarks* sms, EpsClosure* ec) {
   if (!(*sms)[s]) {
@@ -683,7 +684,7 @@ void print(std::ostream& out, const EpsClosure& ec) {
 /**********************
  * convert an NFA to a DFA
  **********************/
-typedef range_map<rchar_t, state, char_range_ord> dtransitions;
+using dtransitions = range_map<rchar_t, state, char_range_ord>;
 struct DFAState {
   dtransitions chars;
 
@@ -693,7 +694,7 @@ struct DFAState {
   // markers to begin and end recording subranges
   srcmarkers begins, ends;
 };
-typedef std::vector<DFAState> DFA;
+using DFA = std::vector<DFAState>;
 
 void insert(stateset* o, const stateset& i) {
   o->insert(i.begin(), i.end());
@@ -711,7 +712,7 @@ stateset nfaTransition(const NFA& nfa, const EpsClosure& ec, const stateset& ss,
 }
 
 // sets of NFA states are mapped to distinct DFA states
-typedef std::map<stateset, state> Nss2Ds;
+using Nss2Ds = std::map<stateset, state>;
 
 // create a DFA state from a set of NFA states
 // (or if it's already been made, just return the existing state)
@@ -932,7 +933,7 @@ static ExprPtr transitionMapping(const std::string& fname, const DFAState& s, co
   //   else use a sequence of range tests
   auto rtns = s.chars.mapping();
 
-  if (rtns.size() == 0) {
+  if (rtns.empty()) {
     // shouldn't happen, but it's the right thing to do
     return defaultResult;
   } else if (rtns.size() == 1 && rtns[0].first.first == 0 && rtns[0].first.second == 255) {
@@ -974,8 +975,8 @@ void makeExprDFAFunc(cc* c, const std::string& fname, const MonoTypePtr& capture
   //   ...
   Switch::Bindings bs;
   MonoTypePtr arrT = freshTypeVar();
-  QualTypePtr qarrElemTy = qualtype(list(ConstraintPtr(new Constraint("Array", list(arrT, primty("char"))))), functy(list(arrT, primty("long")), primty("char")));
-  QualTypePtr qarrT = qualtype(list(ConstraintPtr(new Constraint("Array", list(arrT, primty("char"))))), arrT);
+  QualTypePtr qarrElemTy = qualtype(list(std::make_shared<Constraint>("Array", list(arrT, primty("char")))), functy(list(arrT, primty("long")), primty("char")));
+  QualTypePtr qarrT = qualtype(list(std::make_shared<Constraint>("Array", list(arrT, primty("char")))), arrT);
 
   for (size_t s = 0; s < dfa.size(); ++s) {
     // all transitions out of this state
@@ -1046,9 +1047,9 @@ void makeExprDFAFunc(cc* c, const std::string& fname, const MonoTypePtr& capture
   c->define(fname, assume(fndef, qualtype(qarrT->constraints(), functy(list(captureTy, arrT, primty("long"), primty("long"), primty("int")), primty("int"))), rootLA));
 }
 
-typedef std::pair<char,char>  CRange;
-typedef std::pair<CRange,int> CTransition;
-typedef array<CTransition>    CTransitions;
+using CRange = std::pair<char, char>;
+using CTransition = std::pair<CRange, int>;
+using CTransitions = array<CTransition>;
 
 DEFINE_STRUCT(
   DFAStateRep,
@@ -1057,7 +1058,7 @@ DEFINE_STRUCT(
 );
 
 array<DFAStateRep>* makeDFARep(cc* c, const DFA& dfa) {
-  auto result = c->makeArray<DFAStateRep>(dfa.size());
+  auto *result = c->makeArray<DFAStateRep>(dfa.size());
   for (size_t i = 0; i < dfa.size(); ++i) {
     DFAStateRep& s = result->data[i];
     auto ctnm = dfa[i].chars.mapping();
@@ -1074,8 +1075,8 @@ array<DFAStateRep>* makeDFARep(cc* c, const DFA& dfa) {
 
 void makeInterpDFAFunc(cc* c, const std::string& fname, const MonoTypePtr& captureTy, const DFA& dfa, const LexicalAnnotation& rootLA) {
   MonoTypePtr arrT = freshTypeVar();
-  QualTypePtr qarrElemTy = qualtype(list(ConstraintPtr(new Constraint("Array", list(arrT, primty("char"))))), functy(list(arrT, primty("long")), primty("char")));
-  QualTypePtr qarrT = qualtype(list(ConstraintPtr(new Constraint("Array", list(arrT, primty("char"))))), arrT);
+  QualTypePtr qarrElemTy = qualtype(list(std::make_shared<Constraint>("Array", list(arrT, primty("char")))), functy(list(arrT, primty("long")), primty("char")));
+  QualTypePtr qarrT = qualtype(list(std::make_shared<Constraint>("Array", list(arrT, primty("char")))), arrT);
 
   std::string regexDFADef = ".regexDFA." + freshName();
   c->bind(regexDFADef, makeDFARep(c, dfa));
@@ -1125,9 +1126,9 @@ void mergeCharRangesAndEqResults(DFA* dfa, const RStates& fstates, RStates* rsta
 /**************************
  * compress a DFA by merging equivalent states
  **************************/
-typedef std::map<state, state> EqStates;
+using EqStates = std::map<state, state>;
 
-void visitGraph(const std::vector<std::vector<state>>& g, state m, std::vector<bool>& visited, std::function<void(state)> visitFn) {
+void visitGraph(const std::vector<std::vector<state>>& g, state m, std::vector<bool>& visited, const std::function<void(state)>& visitFn) {
   std::queue<state> q;
 
   q.push(m);
@@ -1263,7 +1264,7 @@ MonoTypePtr regexCaptureBufferType(const Regexes& regexes) {
       ms.push_back(Record::Member(str::from(r) + "_end_"   + b, primty("long")));
     }
   }
-  return ms.size() == 0 ? primty("unit") : MonoTypePtr(Record::make(ms));
+  return ms.empty() ? primty("unit") : MonoTypePtr(Record::make(ms));
 }
 
 ExprPtr makeRegexCaptureBuffer(const Regexes& regexes, const LexicalAnnotation& rootLA) {

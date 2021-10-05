@@ -2,6 +2,7 @@
 #include <hobbes/lang/module.H>
 #include <hobbes/util/array.H>
 #include <hobbes/util/lannotation.H>
+#include <memory>
 #include <sstream>
 
 namespace hobbes {
@@ -13,8 +14,8 @@ const ModuleDefs&  Module::definitions() const { return this->defs; }
 
 void Module::show(std::ostream& out) const {
   out << "module " << this->mname << " where" << std::endl;
-  for (ModuleDefs::const_iterator md = this->defs.begin(); md != this->defs.end(); ++md) {
-    (*md)->show(out);
+  for (const auto &def : this->defs) {
+    def->show(out);
     out << std::endl;
   }
 }
@@ -38,7 +39,7 @@ const std::vector<std::string>& Module::options() const {
 /* module defs */
 ModuleDef::ModuleDef(int cid, const LexicalAnnotation& la) : LexicallyAnnotated(la), cid(cid) { }
 int ModuleDef::case_id() const { return this->cid; }
-ModuleDef::~ModuleDef() { }
+ModuleDef::~ModuleDef() = default;
 
 // module imports
 MImport::MImport(const std::string& p, const std::string& n, const LexicalAnnotation& la) : Base(la), p(p), n(n) { }
@@ -56,9 +57,9 @@ const QualTypePtr&   MTypeDef::type()       const { return this->t;     }
 
 void MTypeDef::show(std::ostream& out) const {
   if (this->v == Transparent) {
-    out << "type " << this->tname << (this->targs.size() > 0 ? " " : "") << str::cdelim(this->targs, " ") << " = " << hobbes::show(this->t);
+    out << "type " << this->tname << (!this->targs.empty() ? " " : "") << str::cdelim(this->targs, " ") << " = " << hobbes::show(this->t);
   } else {
-    out << "data " << this->tname << (this->targs.size() > 0 ? " " : "") << str::cdelim(this->targs, " ") << " = " << hobbes::show(this->t);
+    out << "data " << this->tname << (!this->targs.empty() ? " " : "") << str::cdelim(this->targs, " ") << " = " << hobbes::show(this->t);
   }
 }
 
@@ -74,7 +75,7 @@ void MVarTypeDef::show(std::ostream& out) const {
 // variable expression bindings
 str::seq nameBlanks(const str::seq& xs) {
   str::seq r;
-  for (auto x : xs) {
+  for (const auto& x : xs) {
     if (x == "_") {
       r.push_back(freshName());
     } else {
@@ -100,19 +101,19 @@ ClassDef::ClassDef(const Constraints& cs, const std::string& cname, const str::s
 const Constraints&  ClassDef::constraints() const { return this->cs; }
 const std::string&  ClassDef::name() const { return this->cname; }
 const str::seq&     ClassDef::vars() const { return this->tvars; }
-const CFunDepDefs   ClassDef::fundeps() const { return this->fdeps; }
+CFunDepDefs         ClassDef::fundeps() const { return this->fdeps; }
 const MVarTypeDefs& ClassDef::members() const { return this->mvtydefs; }
 
 void ClassDef::show(std::ostream& out) const {
   out << "class " << this->cname << " " << str::cdelim(this->tvars, " ");
-  if (this->fdeps.size() > 0) {
+  if (!this->fdeps.empty()) {
     out << " | ";
     out << hobbes::show(this->fdeps);
   }
   out << " where" << std::endl;
-  for (MVarTypeDefs::const_iterator mvtd = this->mvtydefs.begin(); mvtd != this->mvtydefs.end(); ++mvtd) {
+  for (const auto &mvtydef : this->mvtydefs) {
     out << "  ";
-    (*mvtd)->show(out);
+    mvtydef->show(out);
     out << std::endl;
   }
 }
@@ -129,9 +130,9 @@ const MVarDefs&    InstanceDef::members()     const { return this->mdefs; }
 
 void InstanceDef::show(std::ostream& out) const {
   out << "instance (" << str::cdelim(hobbes::show(this->cs), ", ") << ") => " << this->cname << " " << str::cdelim(hobbes::show(this->targs), " ") << " where" << std::endl;
-  for (MVarDefs::const_iterator mvd = this->mdefs.begin(); mvd != this->mdefs.end(); ++mvd) {
+  for (const auto &mdef : this->mdefs) {
     out << "  ";
-    (*mvd)->show(out);
+    mdef->show(out);
     out << std::endl;
   }
 }
@@ -182,7 +183,7 @@ std::string show(const CFunDepDef& fundep) {
 }
 
 std::string show(const CFunDepDefs& fundeps) {
-  if (fundeps.size() == 0) {
+  if (fundeps.empty()) {
     return "";
   } else {
     std::ostringstream ss;
@@ -197,8 +198,8 @@ std::string show(const CFunDepDefs& fundeps) {
 
 MVarDefs substitute(const MonoTypeSubst& s, const MVarDefs& vds) {
   MVarDefs result;
-  for (MVarDefs::const_iterator vd = vds.begin(); vd != vds.end(); ++vd) {
-    result.push_back(MVarDefPtr(new MVarDef((*vd)->varWithArgs(), substitute(s, (*vd)->varExpr()), (*vd)->la())));
+  for (const auto &vd : vds) {
+    result.push_back(std::make_shared<MVarDef>(vd->varWithArgs(), substitute(s, vd->varExpr()), vd->la()));
   }
   return result;
 }
@@ -213,7 +214,7 @@ ModuleDefPtr switchMDefTyFn::with(const MSafePragmaDef* x) const { return Module
 struct appMTySwitchF : public switchExprTyFn {
   const switchMDefTyFn* f;
   appMTySwitchF(const switchMDefTyFn* f) : f(f) { }
-  QualTypePtr withTy(const QualTypePtr& t) const { if (t) return this->f->withTy(t); else return t; }
+  QualTypePtr withTy(const QualTypePtr& t) const override { if (t) return this->f->withTy(t); else return t; }
 };
 ModuleDefPtr switchMDefTyFn::with(const MVarDef* x) const {
   return ModuleDefPtr(new MVarDef(x->varWithArgs(), switchOf(x->varExpr(), appMTySwitchF(this)), x->la()));
@@ -229,14 +230,14 @@ MonoTypes appMTyTys(const switchMDefTyFn* f, const MonoTypes& ts) {
 Constraints appMTyCS(const switchMDefTyFn* f, const Constraints& cs) {
   Constraints r;
   for (const auto& c : cs) {
-    r.push_back(ConstraintPtr(new Constraint(c->name(), appMTyTys(f, c->arguments()))));
+    r.push_back(std::make_shared<Constraint>(c->name(), appMTyTys(f, c->arguments())));
   }
   return r;
 }
 MVarTypeDefs appMTyMVTDs(const switchMDefTyFn* f, const MVarTypeDefs& tds) {
   MVarTypeDefs r;
   for (const auto& td : tds) {
-    r.push_back(MVarTypeDefPtr(new MVarTypeDef(td->varName(), f->withTy(td->varType()), td->la())));
+    r.push_back(std::make_shared<MVarTypeDef>(td->varName(), f->withTy(td->varType()), td->la()));
   }
   return r;
 }
@@ -247,7 +248,7 @@ ModuleDefPtr switchMDefTyFn::with(const ClassDef* x) const {
 MVarDefs appMTyMVDs(const switchMDefTyFn* f, const MVarDefs& vds) {
   MVarDefs r;
   for (const auto& vd : vds) {
-    r.push_back(MVarDefPtr(new MVarDef(vd->varWithArgs(), switchOf(vd->varExpr(), appMTySwitchF(f)), vd->la())));
+    r.push_back(std::make_shared<MVarDef>(vd->varWithArgs(), switchOf(vd->varExpr(), appMTySwitchF(f)), vd->la()));
   }
   return r;
 }

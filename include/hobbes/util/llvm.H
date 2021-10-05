@@ -65,7 +65,7 @@
 
 namespace hobbes {
 
-typedef __int128 int128_t;
+using int128_t = __int128;
 
 
 #if LLVM_VERSION_MAJOR >= 11
@@ -79,9 +79,9 @@ template <typename Fn> auto withContext(Fn fn) -> decltype(auto) {
   return fn(*threadSafeContext().getContext());
 }
 
-typedef std::vector<llvm::Type*>     Types;
-typedef std::vector<llvm::Constant*> Constants;
-typedef std::vector<llvm::Value*>    Values;
+using Types = std::vector<llvm::Type *>;
+using Constants = std::vector<llvm::Constant *>;
+using Values = std::vector<llvm::Value *>;
 
 // type utilities
 inline llvm::Type* voidType() {
@@ -476,11 +476,11 @@ inline llvm::ConstantInt* civalue(int128_t x) {
 
 #endif
 // an intermediate representation for records
-typedef std::pair<std::string, llvm::Value*> FieldValue;
-typedef std::vector<FieldValue>              RecordValue;
+using FieldValue = std::pair<std::string, llvm::Value *>;
+using RecordValue = std::vector<FieldValue>;
 
-typedef std::pair<std::string, llvm::Constant*> ConstFieldValue;
-typedef std::vector<ConstFieldValue>            ConstRecordValue;
+using ConstFieldValue = std::pair<std::string, llvm::Constant *>;
+using ConstRecordValue = std::vector<ConstFieldValue>;
 
 // add any standard settings to global variables that we need
 inline llvm::GlobalVariable* prepgv(llvm::GlobalVariable* gv, unsigned int align = sizeof(void*)) {
@@ -495,20 +495,20 @@ inline llvm::GlobalVariable* prepgv(llvm::GlobalVariable* gv, unsigned int align
 // constant :: Value -> Bool -> Const
 //   try to extract a constant from a value (either by value or reference)
 inline llvm::Constant* constant(llvm::Value* v, bool globalPtrRefs) {
-  if (llvm::GlobalVariable* gv = llvm::dyn_cast<llvm::GlobalVariable>(v)) {
+  if (auto* gv = llvm::dyn_cast<llvm::GlobalVariable>(v)) {
     if (gv->isConstant()) {
       if (globalPtrRefs) {
         return gv;
       } else {
-        return gv->hasInitializer() ? gv->getInitializer() : 0;
+        return gv->hasInitializer() ? gv->getInitializer() : nullptr;
       }
     } else {
-      return 0;
+      return nullptr;
     }
-  } else if (llvm::Constant* c = llvm::dyn_cast<llvm::Constant>(v)) {
+  } else if (auto* c = llvm::dyn_cast<llvm::Constant>(v)) {
     return c;
   } else {
-    return 0;
+    return nullptr;
   }
 }
 
@@ -529,8 +529,8 @@ inline llvm::Constant* liftAsGlobalRef(llvm::Module* m, llvm::Constant* c) {
 //   try to extract constants from a set of compiled values -- if even one value is not constant, fail by returning an empty list
 inline Constants varArrayConstants(const Values& vs, bool globalPtrRefs) {
   Constants r;
-  for (Values::const_iterator v = vs.begin(); v != vs.end(); ++v) {
-    if (llvm::Constant* c = constant(*v, globalPtrRefs)) {
+  for (auto *v : vs) {
+    if (llvm::Constant* c = constant(v, globalPtrRefs)) {
       r.push_back(c);
     } else {
       return Constants();
@@ -541,7 +541,7 @@ inline Constants varArrayConstants(const Values& vs, bool globalPtrRefs) {
 
 inline Constants liftAsGlobalRefs(llvm::Module* m, const Constants& cs) {
   Constants r;
-  for (auto c : cs) {
+  for (auto *c : cs) {
     r.push_back(liftAsGlobalRef(m, c));
   }
   return r;
@@ -564,7 +564,7 @@ inline llvm::Constant* constArray(llvm::Module* m, const Constants& cs, llvm::Ty
 inline llvm::Value* tryMkConstVarArray(llvm::IRBuilder<>* b, llvm::Module* m, llvm::Type* elemTy, const Values& vs, bool globalPtrRefs) {
   Constants cs = varArrayConstants(vs, globalPtrRefs);
   if (cs.size() != vs.size()) {
-    return 0;
+    return nullptr;
   } else {
     llvm::StructType* saty = varArrayType(elemTy, cs.size());
     llvm::StructType* caty = varArrayType(elemTy);
@@ -608,11 +608,11 @@ inline llvm::Value* memCopy(llvm::IRBuilder<>* b, llvm::Value* dst, uint32_t dst
 inline Constants mergePadding(const Constants& cs, const Record::Members& ms) {
   Constants r;
   size_t i = 0;
-  Record::Members::const_iterator m = ms.begin();
+  auto m = ms.begin();
   while (m != ms.end()) {
     if (m->field[0] == '.' && m->field[1] == 'p') {
       size_t plen = 0;
-      if (FixedArray* fa = is<FixedArray>(m->type)) {
+      if (auto* fa = is<FixedArray>(m->type)) {
         long asz = fa->requireLength();
         plen = asz < 0 ? 0 : static_cast<size_t>(asz);
       } else {
@@ -630,18 +630,18 @@ inline Constants mergePadding(const Constants& cs, const Record::Members& ms) {
 
 inline Types types(const Constants& cs) {
   Types r;
-  for (unsigned int c = 0; c < cs.size(); ++c) {
-    r.push_back(cs[c]->getType());
+  for (auto *c : cs) {
+    r.push_back(c->getType());
   }
   return r;
 }
 
-typedef std::pair<std::vector<std::string>, Values> UnzRecValues;
+using UnzRecValues = std::pair<std::vector<std::string>, Values>;
 
 inline Constants recordUZConstants(const UnzRecValues& rps, const Record* rty) {
   Constants r;
   for (size_t i = 0; i < rps.second.size(); ++i) {
-    if (llvm::Constant* c = constant(rps.second[i], is<Array>(rty->member(rps.first[i])))) { // not pretty ...
+    if (llvm::Constant* c = constant(rps.second[i], is<Array>(rty->member(rps.first[i])) != nullptr)) { // not pretty ...
       r.push_back(c);
     } else {
       return Constants();
@@ -655,7 +655,7 @@ llvm::Type* toLLVM(const MonoTypePtr&, bool);
 inline Constants liftArraysAsGlobals(llvm::Module* m, const Constants& cs, const MonoTypes& tys) {
   Constants r;
   for (size_t i = 0; i < std::min<size_t>(cs.size(), tys.size()); ++i) {
-    if (is<Array>(tys[i])) {
+    if (is<Array>(tys[i]) != nullptr) {
       r.push_back(llvm::ConstantExpr::getBitCast(liftAsGlobalRef(m, cs[i]), toLLVM(tys[i], true)));
     } else {
       r.push_back(cs[i]);
@@ -671,7 +671,7 @@ inline llvm::Constant* constantRecord(llvm::Module*, const Constants& cs, const 
 inline llvm::Value* tryMkConstRecord(llvm::IRBuilder<>*, llvm::Module* m, const RecordValue& rv, const Record* rty) {
   Constants crv = recordUZConstants(unzip(rv), rty);
   if (crv.size() != rv.size()) {
-    return 0;
+    return nullptr;
   } else {
     Constants         pcs = mergePadding(crv, rty->alignedMembers());
     llvm::StructType* sty = packedRecordType(types(pcs));
@@ -734,7 +734,7 @@ inline llvm::ExecutionEngine* makeExecutionEngine(llvm::Module* m, llvm::Section
       .setMCJITMemoryManager(std::unique_ptr<llvm::SectionMemoryManager>(smm))
       .create();
 
-  if (!ee) {
+  if (ee == nullptr) {
     throw std::runtime_error("Internal error, failed to allocate execution engine with error: " + err);
   }
   return ee;

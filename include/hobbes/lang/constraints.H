@@ -24,7 +24,7 @@ public:
   void insert(const TEnvPtr&, const ConstraintPtr&, MonoTypeUnifier*);
   Constraints constraints() const;
 private:
-  typedef type_map<ConstraintPtr> CSet;
+  using CSet = type_map<ConstraintPtr>;
   CSet csts;
 };
 

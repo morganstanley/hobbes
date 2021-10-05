@@ -990,11 +990,11 @@ YY_DECL
 		YY_USER_INIT;
 #endif
 
-    /* Create the reject buffer large enough to save one state per allowed character. */
-    if ( ! (yy_state_buf) )
-      (yy_state_buf) = (yy_state_type *)yyalloc(YY_STATE_BUF_SIZE  );
-    if ( ! (yy_state_buf) )
-      YY_FATAL_ERROR( "out of dynamic memory in yylex()" );
+        /* Create the reject buffer large enough to save one state per allowed character. */
+      if ( ! (yy_state_buf) )
+        (yy_state_buf) = (yy_state_type *)yyalloc(YY_STATE_BUF_SIZE  );
+      if ( ! (yy_state_buf) )
+        YY_FATAL_ERROR( "out of dynamic memory in yylex()" );
 
 		if ( ! (yy_start) )
 			(yy_start) = 1;	/* first start state */

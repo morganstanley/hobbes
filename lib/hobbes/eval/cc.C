@@ -24,10 +24,11 @@
 #include <csignal>
 #include <cstdlib>
 
+#include <fstream>
+#include <memory>
+#include <mutex>
 #include <stdexcept>
 #include <unordered_map>
-#include <fstream>
-#include <mutex>
 
 namespace hobbes {
 
@@ -62,7 +63,7 @@ cc::cc() :
   // this seems to want to be a very primitive type class ...
   TClass::Members cvtcms;
   cvtcms["convert"] = functy(list(tgen(0)), tgen(1));
-  TClass* cvtc = new TClass("Convert", 2, cvtcms, FunDeps(), LexicalAnnotation::null());
+  auto* cvtc = new TClass("Convert", 2, cvtcms, FunDeps(), LexicalAnnotation::null());
   this->tenv->bind("Convert", UnqualifierPtr(cvtc));
 
   // support equality constraints
@@ -91,12 +92,12 @@ cc::cc() :
   this->tenv->bind(FixIsoRecur::constraintName(), UnqualifierPtr(new FixIsoRecur()));
 
   // support subtype constraints (including safe upcasting between C++ objects)
-  SubtypeUnqualifier* subuq = new SubtypeUnqualifier();
+  auto* subuq = new SubtypeUnqualifier();
   subuq->addEliminator(this->objs);
   this->tenv->bind(SubtypeUnqualifier::constraintName(), UnqualifierPtr(subuq));
 
   // support constraints on "field projection" (for records, "objects", ...)
-  FieldVerifier* fv = new FieldVerifier();
+  auto* fv = new FieldVerifier();
   this->tenv->bind(FieldVerifier::constraintName(), UnqualifierPtr(fv));
 
   // support constraints on "selective construction" (for variants, ...)
@@ -184,16 +185,16 @@ ExprPtr cc::normalize(const ExprPtr& e) {
 }
 
 llvm::GlobalVariable* extractGlobal(llvm::Value* e) {
-  if (llvm::GlobalVariable* g = llvm::dyn_cast<llvm::GlobalVariable>(e)) {
+  if (auto* g = llvm::dyn_cast<llvm::GlobalVariable>(e)) {
     return g;
-  } else if (llvm::ConstantExpr* c = llvm::dyn_cast<llvm::ConstantExpr>(e)) {
+  } else if (auto* c = llvm::dyn_cast<llvm::ConstantExpr>(e)) {
     if (c->isCast() && c->getNumOperands() == 1) {
       return extractGlobal(c->getOperand(0));
     } else {
-      return 0;
+      return nullptr;
     }
   } else {
-    return 0;
+    return nullptr;
   }
 }
 
@@ -250,9 +251,9 @@ void cc::drainUnqualifyDefs(const Definitions& ds) {
   this->drainingDefs = true;
 
   // forward declare the polymorphic functions, batch letrec compile the monomorphic functions
-  for (Definitions::const_iterator d = ds.begin(); d != ds.end(); ++d) {
-    const std::string& vname = d->first;
-    const ExprPtr&     e     = d->second;
+  for (const auto &d : ds) {
+    const std::string& vname = d.first;
+    const ExprPtr&     e     = d.second;
 
     bool forwardDeclared = this->tenv->hasBinding(vname) && !hasValueBinding(vname);
 
@@ -277,7 +278,7 @@ void cc::drainUnqualifyDefs(const Definitions& ds) {
   if (finaldef) {
     this->drainingDefs = false;
 
-    if (this->drainDefs.size() > 0) {
+    if (!this->drainDefs.empty()) {
       this->jit->compileFunctions(this->drainDefs);
       this->drainDefs.clear();
     }
@@ -347,18 +348,18 @@ bool cc::isTypeAliasName(const std::string& name) const {
 }
 
 struct repTypeAliasesF : public switchTyFn {
-  typedef std::pair<str::seq, MonoTypePtr>        TTyDef;
-  typedef std::unordered_map<std::string, TTyDef> TTyDefs;
+  using TTyDef = std::pair<str::seq, MonoTypePtr>;
+  using TTyDefs = std::unordered_map<std::string, TTyDef>;
   const TTyDefs& ttyDefs;
  
   repTypeAliasesF(const TTyDefs& ttyDefs) : ttyDefs(ttyDefs) {
   }
 
-  MonoTypePtr with(const Prim* v) const {
+  MonoTypePtr with(const Prim* v) const override {
     if (!v->representation()) {
       auto td = this->ttyDefs.find(v->name());
       if (td != this->ttyDefs.end()) {
-        if (td->second.first.size() == 0) {
+        if (td->second.first.empty()) {
           return td->second.second;
         }
       }
@@ -366,7 +367,7 @@ struct repTypeAliasesF : public switchTyFn {
     return Prim::make(v->name(), v->representation());
   }
 
-  MonoTypePtr with(const TApp* v) const {
+  MonoTypePtr with(const TApp* v) const override {
     if (const Prim* f = is<Prim>(v->fn())) {
       auto td = this->ttyDefs.find(f->name());
       if (td != this->ttyDefs.end()) {
@@ -416,7 +417,7 @@ MonoTypePtr cc::opaquePtrMonoType(const std::type_info& ti, unsigned int sz, boo
     // OK, we don't know what this type looks like so we'll give it an opaque pointer type
     // but strip the pointer char from the name, we assume opaqueptr types are always pointers
     std::string tn = str::demangle(ti.name());
-    while (tn.size()>0 && tn.back()=='*') {
+    while (!tn.empty() && tn.back()=='*') {
       tn=tn.substr(0,tn.size()-1);
     }
     return MonoTypePtr(OpaquePtr::make(tn, sz, inStruct));
@@ -433,9 +434,9 @@ void cc::overload(const std::string& tyclass, const MonoTypes& tys) {
   UnqualifierPtr tyc = this->tenv->lookupUnqualifier(tyclass);
   TClassPtr      c   = std::dynamic_pointer_cast<TClass>(tyc);
   
-  if (c.get() == 0) {
+  if (c.get() == nullptr) {
     throw std::runtime_error("Cannot define overload in '" + tyclass + "', class does not exist.");
-  } else if (c->members().size() != 0) {
+  } else if (!c->members().empty()) {
     throw std::runtime_error("Cannot define partial overload for type class '" + tyclass + "', which has " + str::from(c->members().size()) + " members.");
   }
 
@@ -443,7 +444,7 @@ void cc::overload(const std::string& tyclass, const MonoTypes& tys) {
 
   if (tgenSize(tys) == 0) {
     Definitions ds;
-    c->insert(typeEnv(), TCInstancePtr(new TCInstance(tyclass, tys, insts, LexicalAnnotation::null())), &ds);
+    c->insert(typeEnv(), std::make_shared<TCInstance>(tyclass, tys, insts, LexicalAnnotation::null()), &ds);
     drainUnqualifyDefs(ds);
   } else {
     throw std::runtime_error("cc::overload forgot how to produce instance functions");
@@ -455,7 +456,7 @@ void cc::overload(const std::string& tyclass, const MonoTypes& tys, const ExprPt
   UnqualifierPtr tyc = this->tenv->lookupUnqualifier(tyclass);
   TClassPtr      c   = std::dynamic_pointer_cast<TClass>(tyc);
   
-  if (c.get() == 0) {
+  if (c.get() == nullptr) {
     throw std::runtime_error("Cannot define overload in '" + tyclass + "', class does not exist.");
   } else if (c->members().size() != 1) {
     throw std::runtime_error("Cannot define partial overload for type class '" + tyclass + "', which has " + str::from(c->members().size()) + " members.");
@@ -466,7 +467,7 @@ void cc::overload(const std::string& tyclass, const MonoTypes& tys, const ExprPt
 
   if (tgenSize(tys) == 0) {
     Definitions ds;
-    c->insert(typeEnv(), TCInstancePtr(new TCInstance(tyclass, tys, insts, e->la())), &ds);
+    c->insert(typeEnv(), std::make_shared<TCInstance>(tyclass, tys, insts, e->la()), &ds);
     drainUnqualifyDefs(ds);
   } else {
     throw std::runtime_error("cc::overload forgot how to produce instance functions");
@@ -486,7 +487,7 @@ void cc::addInstance(const TClassPtr& c, const TCInstancePtr& i) {
 
 MonoTypePtr cc::defineNamedType(const std::string& name, const str::seq& argNames, const MonoTypePtr& ty) {
   hlock _;
-  if (argNames.size() > 0) {
+  if (!argNames.empty()) {
     MonoTypePtr tfn    = tabs(argNames, ty);
     MonoTypePtr talias = MonoTypePtr(Prim::make(name, tfn));
     MonoTypePtr tappd  = tapp(talias, typeVars(argNames));
@@ -526,9 +527,9 @@ void cc::dumpTypeEnv(std::function<std::string const&(std::string const&)> const
 }
 
 void cc::dumpTypeEnv(str::seq* syms, str::seq* types, std::function<std::string const&(std::string const&)> const& rewriteFn) const {
-  for (auto te : this->tenv->typeEnvTable(rewriteFn)) {
+  for (const auto& te : this->tenv->typeEnvTable(rewriteFn)) {
     // don't show hidden symbols since they're not meant for users
-    if (te.first.size() > 0 && te.first[0] != '.') {
+    if (!te.first.empty() && te.first[0] != '.') {
       syms->push_back(te.first);
 
       auto t = te.second->instantiate();
@@ -600,7 +601,7 @@ void* cc::memalloc(size_t sz, size_t asz) {
 }
 
 inline TEnvPtr allocTEnvFrame(const str::seq& names, const MonoTypes& tys, const TEnvPtr& ptenv) {
-  if (names.size() == 0) {
+  if (names.empty()) {
     return ptenv;
   } else {
     TEnvPtr r(new TEnv(ptenv));
@@ -616,7 +617,7 @@ void* cc::unsafeCompileFn(const MonoTypePtr& retTy, const str::seq& tnames, cons
   hlock _;
   str::seq names = tnames;
 
-  if (names.size() == 0 && argTys.size() == 1 && isUnit(argTys[0])) {
+  if (names.empty() && argTys.size() == 1 && isUnit(argTys[0])) {
     names.push_back("_");
   } else if (names.size() != argTys.size()) {
     std::ostringstream ss;

@@ -12,8 +12,8 @@ namespace hobbes {
 
 template <typename K, typename V, typename KMap>
   struct prefix_tree_node {
-    typedef typename KMap::template map<prefix_tree_node<K, V, KMap>*>::type SubkeyMap;
-    typedef variant<unit, V> MaybeV;
+    using SubkeyMap = typename KMap::template map<prefix_tree_node<K, V, KMap> *>::type;
+    using MaybeV = variant<unit, V>;
 
     ~prefix_tree_node() {
       for (typename SubkeyMap::const_iterator c = this->children.begin(); c != this->children.end(); ++c) {
@@ -29,7 +29,7 @@ template <typename K, typename V, typename KMap>
         vs->push_back(*v);
       }
 
-      for (typename SubkeyMap::const_iterator c = this->children.begin(); c != this->children.end(); ++c) {
+      for (auto c = this->children.begin(); c != this->children.end(); ++c) {
         c->second->values(vs);
       }
     }
@@ -38,7 +38,7 @@ template <typename K, typename V, typename KMap>
 template <typename K, typename V, typename KMap>
   class prefix_tree {
   private:
-    typedef prefix_tree_node<K, V, KMap> node_t;
+    using node_t = prefix_tree_node<K, V, KMap>;
     node_t* root;
 
     template <typename KIter>
@@ -58,9 +58,9 @@ template <typename K, typename V, typename KMap>
       const node_t* findNode(KIter begin, KIter end) const {
         const node_t* r = this->root;
         for (KIter i = begin; i != end; ++i) {
-          typename node_t::SubkeyMap::const_iterator c = r->children.find(*i);
+          auto c = r->children.find(*i);
           if (c == r->children.end()) {
-            return 0;
+            return nullptr;
           } else {
             r = c->second;
           }
@@ -83,7 +83,7 @@ template <typename K, typename V, typename KMap>
     template <typename KIter>
       V* lookup(KIter begin, KIter end) const {
         const node_t* n = findNode(begin, end);
-        return n ? const_cast<V*>(get<V>(n->value)) : 0;
+        return n ? const_cast<V*>(get<V>(n->value)) : nullptr;
       }
 
     void insert(const std::vector<K>& k, const V& v) {
@@ -94,7 +94,7 @@ template <typename K, typename V, typename KMap>
       return lookup(k.begin(), k.end());
     }
 
-    typedef std::vector<V> ValueSeq;
+    using ValueSeq = std::vector<V>;
     void values(ValueSeq* vs) const {
       this->root->values(vs);
     }
@@ -106,16 +106,16 @@ template <typename K, typename V, typename KMap>
     }
 
     // support incremental search
-    typedef void* point_t;
+    using point_t = void *;
     point_t rootPoint() const { return this->root; }
 
     point_t moveTo(const K& k, point_t base) const {
       const node_t* n = reinterpret_cast<node_t*>(base);
-      typename node_t::SubkeyMap::const_iterator c = n->children.find(k);
+      auto c = n->children.find(k);
       return (c == n->children.end()) ? 0 : c->second;
     }
 
-    typedef std::vector<K> KeySeq;
+    using KeySeq = std::vector<K>;
     void keysAt(KeySeq* ks, point_t base) const {
       const node_t* n = reinterpret_cast<node_t*>(base);
 
@@ -130,12 +130,12 @@ template <typename K, typename V, typename KMap>
       return r;
     }
 
-    typedef std::pair<K, point_t> KeyPoint;
-    typedef std::vector<KeyPoint> KeyPointSeq;
+    using KeyPoint = std::pair<K, point_t>;
+    using KeyPointSeq = std::vector<KeyPoint>;
     void keyPointsAt(KeyPointSeq* kps, point_t base) const {
       const node_t* n = reinterpret_cast<node_t*>(base);
 
-      for (typename node_t::SubkeyMap::const_iterator c = n->children.begin(); c != n->children.end(); ++c) {
+      for (auto c = n->children.begin(); c != n->children.end(); ++c) {
         kps->push_back(KeyPoint(c->first, c->second));
       }
     }

@@ -30,7 +30,7 @@ template <typename T, typename P = void>
 //   and maps into a statically-known type
 template <typename T>
   struct convFn {
-    typedef std::function<void(const void*, T*)> type;
+    using type = std::function<void (const void *, T *)>;
   };
 
 /////////////////////////
@@ -101,7 +101,7 @@ SCAST_CONVERT("double", double, ("char", char), ("byte", uint8_t), ("short", int
 template <typename T, size_t N>
   struct into<std::array<T, N>> {
     static typename convFn<std::array<T,N>>::type from(const ty::desc& t) {
-      const ty::FArr* pfa  = reinterpret_cast<const ty::FArr*>(t.get());
+      const auto* pfa  = reinterpret_cast<const ty::FArr*>(t.get());
 
       if (t->tid != PRIV_HPPF_TYCTOR_FIXEDARR) {
         throw std::runtime_error("Can't convert from " + ty::show(t) + " to " + hobbes::string::demangle<std::array<T,N>>());
@@ -137,8 +137,8 @@ template <typename T, size_t N>
 template <typename T>
   struct StructConvField {
     struct type {
-      typedef T                        value_type;
-      typedef typename convFn<T>::type convert_fn;
+      using value_type = T;
+      using convert_fn = typename convFn<T>::type;
 
       size_t     srcOffset;
       size_t     dstOffset;
@@ -204,8 +204,8 @@ template <typename ConvFns, size_t n, typename ... Ts>
 // the inductive case (apply at the pointed-to field, then continue walking the struct)
 template <typename ConvFns, size_t i, size_t n, typename ... Ts>
   struct ApplyStructConvF<ConvFns, tuple<Ts...>, i, n> {
-    typedef typename nth<i, Ts...>::type H;
-    typedef ApplyStructConvF<ConvFns, tuple<Ts...>, i+1, n> Recurse;
+    using H = typename nth<i, Ts...>::type;
+    using Recurse = ApplyStructConvF<ConvFns, tuple<Ts...>, i + 1, n>;
 
     static void apply(const ConvFns& cfns, const void* src, tuple<Ts...>* dst) {
       const auto& cfn = cfns.template at<i>();
@@ -217,15 +217,15 @@ template <typename ConvFns, size_t i, size_t n, typename ... Ts>
 template <typename T>
   struct into<T, typename tbool<T::is_hmeta_struct>::type> {
     static typename convFn<T>::type from(const ty::desc& t) {
-      const ty::Struct* pr = reinterpret_cast<const ty::Struct*>(t.get());
+      const auto* pr = reinterpret_cast<const ty::Struct*>(t.get());
 
       if (t->tid != PRIV_HPPF_TYCTOR_STRUCT) {
         throw std::runtime_error("Can't convert from " + ty::show(t) + " due to kind mismatch (not a struct)");
       } else {
-        typedef typename T::as_tuple_type TT;
+        using TT = typename T::as_tuple_type;
 
         // prepare the conversion map out of the source into the dest
-        typedef typename fmap<StructConvField, TT>::type StructConvF;
+        using StructConvF = typename fmap<StructConvField, TT>::type;
         StructConvF scf;
         MakeStructConvF<T, TT, StructConvF, 0, TT::count>::init(pr, &scf);
 
@@ -246,8 +246,8 @@ template <typename T>
 // a variant conversion function over a variant type holds conversion functions at every possible ctor/payload
 template <typename T>
   struct VariantConvF {
-    typedef std::function<void(const void*, T*)> CtorConvF;
-    typedef std::unordered_map<uint32_t, CtorConvF> Ctors;
+    using CtorConvF = std::function<void (const void *, T *)>;
+    using Ctors = std::unordered_map<uint32_t, CtorConvF>;
 
     Ctors  ctors;
     size_t srcPayloadOffset;
@@ -281,7 +281,7 @@ template <typename DstVariantT, typename VariantConvF, size_t n, typename ... Ts
 template <typename DstVariantT, typename VariantConvF, size_t i, size_t n, typename ... Ts>
   struct MakeVariantConvF<DstVariantT, variant<Ts...>, VariantConvF, i, n> {
     static void init(const ty::Variant* srcTy, VariantConvF* convFs) {
-      typedef typename nth<i, Ts...>::type H;
+      using H = typename nth<i, Ts...>::type;
 
       // figure out how to convert just this constructor (if possible)
       if (const ty::Variant::Ctor* srcCtor = namedCtor(srcTy, DstVariantT::template _hmeta_ctor_name<i>())) {
@@ -301,12 +301,12 @@ template <typename DstVariantT, typename VariantConvF, size_t i, size_t n, typen
 
     // find the definition of the named ctor in the source variant (or return null if there is no such ctor)
     static const ty::Variant::Ctor* namedCtor(const ty::Variant* ty, const std::string& cname) {
-      for (size_t k = 0; k < ty->ctors.size(); ++k) {
-        if (ty->ctors[k].at<0>() == cname) {
-          return &ty->ctors[k];
+      for (const auto &ctor : ty->ctors) {
+        if (ctor.at<0>() == cname) {
+          return &ctor;
         }
       }
-      return 0;
+      return nullptr;
     }
   };
 
@@ -314,12 +314,12 @@ template <typename DstVariantT, typename VariantConvF, size_t i, size_t n, typen
 template <typename T>
   struct into<T, typename tbool<T::is_hmeta_variant>::type> {
     static typename convFn<T>::type from(const ty::desc& t) {
-      const ty::Variant* pv = reinterpret_cast<const ty::Variant*>(t.get());
+      const auto* pv = reinterpret_cast<const ty::Variant*>(t.get());
 
       if (t->tid != PRIV_HPPF_TYCTOR_VARIANT) {
         throw std::runtime_error("Can't convert from " + ty::show(t) + " due to kind mismatch (not a variant)");
       } else {
-        typedef typename T::as_variant_type VT;
+        using VT = typename T::as_variant_type;
 
         // prepare the conversion map out of the source into the dest
         VariantConvF<VT> vcf;

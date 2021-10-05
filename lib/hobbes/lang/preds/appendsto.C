@@ -35,12 +35,12 @@ void AppendsToUnqualifier::addEliminator(const std::shared_ptr<ATEliminator>& at
 }
 
 ATEliminator* AppendsToUnqualifier::findEliminator(const TEnvPtr& tenv, const AppendsTo* at) const {
-  for (ATEliminators::const_iterator ate = this->eliminators.begin(); ate != this->eliminators.end(); ++ate) {
-    if ((*ate)->satisfiable(tenv, at->leftType, at->rightType, at->resultType)) {
-      return ate->get();
+  for (const auto &eliminator : this->eliminators) {
+    if (eliminator->satisfiable(tenv, at->leftType, at->rightType, at->resultType)) {
+      return eliminator.get();
     }
   }
-  return 0;
+  return nullptr;
 }
 
 bool AppendsToUnqualifier::refine(const TEnvPtr& tenv, const ConstraintPtr& cst, MonoTypeUnifier* s, Definitions*) {
@@ -65,7 +65,7 @@ bool AppendsToUnqualifier::satisfied(const TEnvPtr& tenv, const ConstraintPtr& c
 
 bool AppendsToUnqualifier::satisfiable(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions*) const {
   AppendsTo at;
-  return dec(cst, &at) && findEliminator(tenv, &at) != 0;
+  return dec(cst, &at) && findEliminator(tenv, &at) != nullptr;
 }
 
 void AppendsToUnqualifier::explain(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*, annmsgs*) {
@@ -82,8 +82,8 @@ ExprPtr AppendsToUnqualifier::unqualify(const TEnvPtr& tenv, const ConstraintPtr
 }
 
 PolyTypePtr AppendsToUnqualifier::lookup(const std::string& vn) const {
-  for (ATEliminators::const_iterator ate = this->eliminators.begin(); ate != this->eliminators.end(); ++ate) {
-    PolyTypePtr ty = (*ate)->lookup(vn);
+  for (const auto &eliminator : this->eliminators) {
+    PolyTypePtr ty = eliminator->lookup(vn);
     if (ty != PolyTypePtr()) {
       return ty;
     }
@@ -93,8 +93,8 @@ PolyTypePtr AppendsToUnqualifier::lookup(const std::string& vn) const {
 
 SymSet AppendsToUnqualifier::bindings() const {
   SymSet result;
-  for (ATEliminators::const_iterator ate = this->eliminators.begin(); ate != this->eliminators.end(); ++ate) {
-    SymSet x = (*ate)->bindings();
+  for (const auto &eliminator : this->eliminators) {
+    SymSet x = eliminator->bindings();
     result.insert(x.begin(), x.end());
   }
   return result;

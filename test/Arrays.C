@@ -63,9 +63,9 @@ TEST(Arrays, CppRAIIConsistency) {
 }
 
 TEST(Arrays, Alignment) {
-  short*        s = reinterpret_cast<short*>(threadRegion().malloc(sizeof(short), alignof(short)));
+  auto*        s = reinterpret_cast<short*>(threadRegion().malloc(sizeof(short), alignof(short)));
   int*          i = reinterpret_cast<int*>(threadRegion().malloc(sizeof(int)), alignof(int));
-  double*       d = reinterpret_cast<double*>(threadRegion().malloc(sizeof(double)), alignof(double));
+  auto*       d = reinterpret_cast<double*>(threadRegion().malloc(sizeof(double)), alignof(double));
   array<int>*   a = makeArray<int>(100);
 
   EXPECT_EQ(reinterpret_cast<size_t>(s)%sizeof(short),  size_t(0));

@@ -7,10 +7,10 @@
 
 #include <sstream>
 
+#include <cstring>
 #include <fcntl.h>
 #include <netdb.h>
 #include <netinet/in.h>
-#include <string.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -25,7 +25,7 @@ int lookupPort(const std::string &x) {
     return str::to<int>(x);
   } else {
     struct servent *s = getservbyname(x.c_str(), "tcp");
-    if (s != 0) {
+    if (s != nullptr) {
       return ntohs(s->s_port);
     } else {
       throw std::runtime_error("Failed to resolve port name: " + x);
@@ -36,9 +36,9 @@ int lookupPort(const std::string &x) {
 // create a listening socket on a given port and a given host
 int allocateServer(int port, const std::string &host) {
   struct addrinfo *addrs = net::lookupAddrInfo(host, std::to_string(port));
-  struct addrinfo *p = NULL;
+  struct addrinfo *p = nullptr;
   int s;
-  for (p = addrs; p != 0; p = p->ai_next) {
+  for (p = addrs; p != nullptr; p = p->ai_next) {
     if (p->ai_family != AF_INET || p->ai_protocol != IPPROTO_TCP)
       continue;
     s = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
@@ -56,7 +56,7 @@ int allocateServer(int port, const std::string &host) {
     close(s);
   }
   freeaddrinfo(addrs);
-  if (p == NULL) {
+  if (p == nullptr) {
     throw std::runtime_error("Unable to bind socket to address: " +
                              std::string(strerror(errno)));
   }
@@ -115,7 +115,7 @@ int connectSocket(int r, sockaddr *saddr, size_t len) {
   FD_ZERO(&wd);
   FD_SET(r, &wd);
 
-  if (select(r + 1, 0, &wd, 0, 0) == -1) {
+  if (select(r + 1, nullptr, &wd, nullptr, nullptr) == -1) {
     std::ostringstream ss;
     ss << "Failed to connect socket while waiting for writeability: "
        << strerror(errno) << std::flush;
@@ -160,7 +160,7 @@ int connectFileSocket(const std::string &filepath) {
 }
 
 int connectSocket(const std::string &host, int port) {
-  if (host.size() > 0 && str::isDigit(host[0])) {
+  if (!host.empty() && str::isDigit(host[0])) {
     return connectSocket(gethostbyaddr(host.c_str(), host.size(), AF_INET),
                          port);
   } else {
@@ -170,7 +170,7 @@ int connectSocket(const std::string &host, int port) {
 
 int connectSocket(const std::string &hostport) {
   str::pair p = str::lsplit(hostport, ":");
-  if (p.second.size() > 0)
+  if (!p.second.empty())
     return connectSocket(p.first, lookupPort(p.second));
   else
     return connectFileSocket(p.first);
@@ -208,7 +208,7 @@ void prepareStrExpr(Server *s, int c, exprid eid, const std::string &expr,
                     const MonoTypes &intys, const MonoTypePtr &outty) {
   auto la = LexicalAnnotation::null();
 
-  if (intys.size() == 0 || (intys.size() == 1 && isUnit(intys[0]))) {
+  if (intys.empty() || (intys.size() == 1 && isUnit(intys[0]))) {
     s->prepare(c, eid,
                assume(s->readExpr(expr), functy(tuplety(intys), outty), la),
                tuplety());
@@ -224,7 +224,7 @@ void prepareStrExpr(Server *s, int c, exprid eid, const std::string &expr,
 }
 
 void evaluateNetREPLRequest(int c, void *d) {
-  Server *s = reinterpret_cast<Server *>(d);
+  auto *s = reinterpret_cast<Server *>(d);
 
   try {
     uint8_t cmd = 0;
@@ -308,7 +308,7 @@ void registerNetREPL(int s, Server *svr) {
   registerEventHandler(
       s,
       [](int s, void *d) {
-        int c = accept(s, 0, 0);
+        int c = accept(s, nullptr, nullptr);
         if (c != -1) {
           try {
             uint32_t version = 0;
@@ -349,12 +349,12 @@ class CCServer : public Server {
 public:
   CCServer(cc *c, ReWriteExprFn const &wrExprFn) : c(c), wrExprFn(wrExprFn) {}
 
-  void connect(int) {}
+  void connect(int) override {}
 
-  ExprPtr readExpr(const std::string &x) { return this->c->readExpr(x); }
+  ExprPtr readExpr(const std::string &x) override { return this->c->readExpr(x); }
 
   MonoTypePtr prepare(int c, exprid eid, const ExprPtr &expr,
-                      const MonoTypePtr &inty) {
+                      const MonoTypePtr &inty) override {
     const auto &la = expr->la();
 
     // E(readFrom(in)::T) :: ?
@@ -382,7 +382,7 @@ public:
     return rty;
   }
 
-  void evaluate(int c, exprid eid) {
+  void evaluate(int c, exprid eid) override {
     auto cfns = this->cnetFns[c];
     auto f = cfns.find(eid);
 
@@ -397,14 +397,14 @@ public:
     }
   }
 
-  void disconnect(int) {}
+  void disconnect(int) override {}
 
 private:
   cc *c;
 
-  typedef void (*NetFn)(int); // socket -> ()
-  typedef std::map<exprid, NetFn> NetFns;
-  typedef std::map<int, NetFns> ConnNetFns;
+  using NetFn = void (*)(int); // socket -> ()
+  using NetFns = std::map<exprid, NetFn>;
+  using ConnNetFns = std::map<int, NetFns>;
   ConnNetFns cnetFns;
   ReWriteExprFn wrExprFn;
 };

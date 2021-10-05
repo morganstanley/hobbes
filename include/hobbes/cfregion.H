@@ -38,8 +38,8 @@ namespace hobbes { namespace fregion {
 
 // parameters for arithmetic coding and modeling
 struct arithn {
-  typedef uint32_t code;
-  typedef uint32_t freq;
+  using code = uint32_t;
+  using freq = uint32_t;
 
   static constexpr uint32_t cbits    = 16;
   static constexpr code     cmax     = (code(1) << cbits) - code(1);
@@ -109,7 +109,7 @@ struct cwbitstream {
   size_t* batchNode;
 
   // allocate an initial batch and prepare to write bits
-  cwbitstream(imagefile* file) : file(file), buffer(0), seg(0), batchNode(0) {
+  cwbitstream(imagefile* file) : file(file), buffer(nullptr), seg(nullptr), batchNode(nullptr) {
   }
 
   // initialize a root node from a pair of model states (init and final)
@@ -126,7 +126,7 @@ struct cwbitstream {
 
     // seek to the last buffer (where the next pointer goes to the null batch node)
     if (this->batchNode[0] == 1) {
-      size_t* nextNode = reinterpret_cast<size_t*>(mapFileData(this->file, this->batchNode[2], 3*sizeof(size_t)));
+      auto* nextNode = reinterpret_cast<size_t*>(mapFileData(this->file, this->batchNode[2], 3*sizeof(size_t)));
       while (nextNode[0] == 1) {
         unmapFileData(this->file, this->batchNode, 3*sizeof(size_t));
         this->batchNode = nextNode;
@@ -167,7 +167,7 @@ struct cwbitstream {
   // start a new segment within the current batch
   void stepSegment() {
     this->seg->nextRef = findSpace(this->file, pagetype::data, sizeof(cbatchseg), sizeof(size_t));
-    cbatchseg* newseg = reinterpret_cast<cbatchseg*>(mapFileData(this->file, this->seg->nextRef, sizeof(cbatchseg)));
+    auto* newseg = reinterpret_cast<cbatchseg*>(mapFileData(this->file, this->seg->nextRef, sizeof(cbatchseg)));
     unmapFileData(this->file, this->seg, sizeof(cbatchseg));
     this->seg = newseg;
     this->buffer->bitIndex = 0;
@@ -176,7 +176,7 @@ struct cwbitstream {
   // start a new buffer with a given initial model
   uint64_t stepBuffer(uint64_t initModel, uint64_t scratchModel) {
     // release the old batch
-    if (this->buffer) {
+    if (this->buffer != nullptr) {
       unmapFileData(this->file, this->buffer, sizeof(cbatch));
     }
 
@@ -197,7 +197,7 @@ struct cwbitstream {
     // allocate a new node to hold this new batch
     size_t  nodeSize = 3 * sizeof(size_t);
     size_t  nodeLoc  = findSpace(this->file, pagetype::data, nodeSize, sizeof(size_t));
-    size_t* newNode  = reinterpret_cast<size_t*>(mapFileData(this->file, nodeLoc, nodeSize));
+    auto* newNode  = reinterpret_cast<size_t*>(mapFileData(this->file, nodeLoc, nodeSize));
 
     newNode[0] = 1;
     newNode[1] = batchRef;
@@ -382,7 +382,7 @@ struct crbitstream {
       this->seg      = reinterpret_cast<cbatchseg*>(mapFileData(this->file, this->seg->nextRef, sizeof(cbatchseg)));
       this->bitIndex = 0;
     }
-    bool bit = this->seg->bits[this->bitIndex>>3]&(1<<((this->bitIndex)%8));
+    bool bit = (this->seg->bits[this->bitIndex>>3]&(1<<((this->bitIndex)%8))) != 0;
     ++this->bitIndex;
     return bit;
   }
@@ -451,8 +451,8 @@ struct crbitstream {
 
 template <uint8_t maxSymbol>
   struct cumFreqState {
-    typedef uint16_t index_t;
-    typedef uint16_t symbol;
+    using index_t = uint16_t;
+    using symbol = uint16_t;
 
     static constexpr index_t symbolCount = static_cast<index_t>(maxSymbol)+1;
     static constexpr symbol  esc         = static_cast<symbol>(symbolCount);
@@ -503,10 +503,10 @@ template <uint8_t maxSymbol>
 template <uint8_t maxSymbol = 0xff>
   struct dmodel0 : public cumFreqState<maxSymbol> {
   public:
-    typedef cumFreqState<maxSymbol> CFS;
-    typedef typename CFS::index_t   index_t;
-    typedef typename CFS::symbol    symbol;
-    typedef typename CFS::CModel    CModel;
+    using CFS = cumFreqState<maxSymbol>;
+    using index_t = typename CFS::index_t;
+    using symbol = typename CFS::symbol;
+    using CModel = typename CFS::CModel;
 
     static constexpr index_t symbolCount = CFS::symbolCount;
     static constexpr symbol  esc         = CFS::esc;
@@ -598,8 +598,8 @@ template <typename T, typename P = void>
 // nothing compresses to nothing (that's a positive statement)
 template <>
   struct compress<unit> {
-    typedef int PModel;
-    typedef int CModel;
+    using PModel = int;
+    using CModel = int;
 
     static void init(const PModel&, CModel*) { }
     static void write(cwbitstream*, PModel*, CModel*, unit) { }
@@ -609,10 +609,10 @@ template <>
 // compressed a fixed set of values, cast to a (possibly larger) type
 template <uint8_t maxSym, typename AsSym>
   struct compressFixedSet {
-    typedef dmodel0<maxSym>    M;
-    typedef typename M::PModel PModel;
-    typedef typename M::CModel CModel;
-    typedef typename M::symbol symbol;
+    using M = dmodel0<maxSym>;
+    using PModel = typename M::PModel;
+    using CModel = typename M::CModel;
+    using symbol = typename M::symbol;
 
     static const arithn::code escRange = static_cast<arithn::code>(maxSym)+1;
 
@@ -621,7 +621,7 @@ template <uint8_t maxSym, typename AsSym>
     }
 
     static void write(cwbitstream* bits, PModel* pm, CModel* cm, AsSym s) {
-      uint8_t c = static_cast<uint8_t>(s);
+      auto c = static_cast<uint8_t>(s);
       arithn::code clow, chigh;
       if (M::find(cm, c, &clow, &chigh)) {
         bits->write(clow, chigh, M::interval(cm));
@@ -641,7 +641,7 @@ template <uint8_t maxSym, typename AsSym>
       rbits->shift(clow, chigh, M::interval(cm));
 
       if (s == M::esc) {
-        symbol nc = static_cast<symbol>(rbits->svalue(escRange));
+        auto nc = static_cast<symbol>(rbits->svalue(escRange));
         rbits->shift(nc, nc+1, escRange);
         M::add(pm, cm, nc);
         *c = static_cast<AsSym>(static_cast<uint8_t>(nc));
@@ -704,11 +704,11 @@ template <> struct compress<size_t> : public compressByteSeq<size_t> { };
 // to compress floating point numbers, treat them like a structure {sign:bool, exp:b, val:nat}
 template <typename T, typename Exp, typename Val, Val ExpWidth, Val ValWidth>
   struct compressFloat {
-    typedef compress<bool> CSign;
-    typedef compress<Exp>  CExp;
-    typedef compress<Val>  CVal;
-    typedef tuple<typename CSign::PModel, typename CExp::PModel, typename CVal::PModel> PModel;
-    typedef tuple<typename CSign::CModel, typename CExp::CModel, typename CVal::CModel> CModel;
+    using CSign = compress<bool>;
+    using CExp = compress<Exp>;
+    using CVal = compress<Val>;
+    using PModel = tuple<typename CSign::PModel, typename CExp::PModel, typename CVal::PModel>;
+    using CModel = tuple<typename CSign::CModel, typename CExp::CModel, typename CVal::CModel>;
 
     static void init(const PModel& pm, CModel* cm) {
       CSign::init(pm.template at<0>(), &cm->template at<0>());
@@ -749,13 +749,13 @@ template <> struct compress<double> : public compressByteSeq<double> { };
 #endif
 
 // compress tuples, pairs and structures
-template <typename T> struct PModelOf { typedef typename compress<T>::PModel type; };
-template <typename T> struct CModelOf { typedef typename compress<T>::CModel type; };
+template <typename T> struct PModelOf { using type = typename compress<T>::PModel; };
+template <typename T> struct CModelOf { using type = typename compress<T>::CModel; };
 
 template <size_t i, size_t n, typename PModel, typename CModel, typename ... Ts>
   struct compressTuple {
-    typedef typename nth<i, Ts...>::type H;
-    typedef compressTuple<i+1, n, PModel, CModel, Ts...> Recurse;
+    using H = typename nth<i, Ts...>::type;
+    using Recurse = compressTuple<i + 1, n, PModel, CModel, Ts...>;
 
     static void init(const PModel& pm, CModel* cm) {
       compress<H>::init(pm.template at<i>(), &cm->template at<i>());
@@ -779,9 +779,9 @@ template <size_t n, typename PModel, typename CModel, typename ... Ts>
 
 template <typename ... Fields>
   struct compress<tuple<Fields...>> {
-    typedef typename fmap<PModelOf, tuple<Fields...>>::type PModel;
-    typedef typename fmap<CModelOf, tuple<Fields...>>::type CModel;
-    typedef compressTuple<0, sizeof...(Fields), PModel, CModel, Fields...> Reflect;
+    using PModel = typename fmap<PModelOf, tuple<Fields...>>::type;
+    using CModel = typename fmap<CModelOf, tuple<Fields...>>::type;
+    using Reflect = compressTuple<0, sizeof...(Fields), PModel, CModel, Fields...>;
 
     static void init(const PModel& pm, CModel* cm)                                           { Reflect::init(pm, cm); }
     static void write(cwbitstream* bits,  PModel* pm, CModel* cm, const tuple<Fields...>& t) { Reflect::write(bits, pm, cm, t); }
@@ -790,10 +790,10 @@ template <typename ... Fields>
 
 template <typename U, typename V>
   struct compress<std::pair<U,V>> {
-    typedef std::pair<U,V> T;
-    typedef tuple<U,V>     TT;
-    typedef typename compress<TT>::PModel PModel;
-    typedef typename compress<TT>::CModel CModel;
+    using T = std::pair<U, V>;
+    using TT = tuple<U, V>;
+    using PModel = typename compress<TT>::PModel;
+    using CModel = typename compress<TT>::CModel;
 
     static void init(const PModel& pm, CModel* cm)                            { compress<TT>::init(pm, cm); }
     static void write(cwbitstream* bits,  PModel* pm, CModel* cm, const T& t) { compress<TT>::write(bits, pm, cm, *reinterpret_cast<const TT*>(&t)); }
@@ -802,9 +802,9 @@ template <typename U, typename V>
 
 template <typename T>
   struct compress<T, typename tbool<T::is_hmeta_struct>::type> {
-    typedef typename T::as_tuple_type TT;
-    typedef typename compress<TT>::PModel PModel;
-    typedef typename compress<TT>::CModel CModel;
+    using TT = typename T::as_tuple_type;
+    using PModel = typename compress<TT>::PModel;
+    using CModel = typename compress<TT>::CModel;
 
     static void init(const PModel& pm, CModel* cm)                            { compress<TT>::init(pm, cm); }
     static void write(cwbitstream* bits,  PModel* pm, CModel* cm, const T& t) { compress<TT>::write(bits, pm, cm, *reinterpret_cast<const TT*>(&t)); }
@@ -815,8 +815,8 @@ template <typename T>
 // these behave like dependent pairs of a size N followed by N values
 template <typename T, typename CT>
   struct compressSequence {
-    typedef std::pair<compress<size_t>::PModel, typename compress<T>::PModel> PModel;
-    typedef std::pair<compress<size_t>::CModel, typename compress<T>::CModel> CModel;
+    using PModel = std::pair<compress<size_t>::PModel, typename compress<T>::PModel>;
+    using CModel = std::pair<compress<size_t>::CModel, typename compress<T>::CModel>;
 
     static void init(const PModel& pm, CModel* cm) {
       compress<size_t>::init(pm.first,  &cm->first);
@@ -853,15 +853,15 @@ template <size_t C, typename P = void>
   };
 template <size_t C>
   struct compressEnum<C, typename tbool<(C < 256)>::type> : public compressFixedSet<static_cast<uint8_t>(C)-1, uint8_t> {
-    typedef uint8_t element;
+    using element = uint8_t;
   };
 
 template <typename T>
   struct compress<T, typename tbool<T::is_hmeta_enum>::type> {
-    typedef compressEnum<T::ctorCount> R;
-    typedef typename R::PModel  PModel;
-    typedef typename R::CModel  CModel;
-    typedef typename R::element element;
+    using R = compressEnum<T::ctorCount>;
+    using PModel = typename R::PModel;
+    using CModel = typename R::CModel;
+    using element = typename R::element;
 
     static void init(const PModel& pm, CModel* cm) {
       R::init(pm, cm);
@@ -878,8 +878,8 @@ template <typename T>
 
 template <size_t tag, typename T, typename M>
   struct variantCompressor {
-    typedef typename M::first_type  PModel;
-    typedef typename M::second_type CModel;
+    using PModel = typename M::first_type;
+    using CModel = typename M::second_type;
 
     static void fn(T* p, cwbitstream* bits, PModel* pm, CModel* cm) {
       compress<T>::write(bits, &pm->template at<tag>(), &cm->template at<tag>(), *p);
@@ -887,8 +887,8 @@ template <size_t tag, typename T, typename M>
   };
 template <size_t tag, typename T, typename M>
   struct variantDecompressor {
-    typedef typename M::first_type  PModel;
-    typedef typename M::second_type CModel;
+    using PModel = typename M::first_type;
+    using CModel = typename M::second_type;
 
     static void fn(T* p, crbitstream* rbits, PModel* pm, CModel* cm) {
       new (p) T();
@@ -898,19 +898,19 @@ template <size_t tag, typename T, typename M>
 
 template <typename ... Ctors>
   struct compress<variant<Ctors...>> {
-    typedef compressEnum<sizeof...(Ctors)> TagC;
-    typedef typename TagC::PModel TagPModel;
-    typedef typename TagC::CModel TagCModel;
-    typedef typename TagC::element TagElement;
+    using TagC = compressEnum<sizeof...(Ctors)>;
+    using TagPModel = typename TagC::PModel;
+    using TagCModel = typename TagC::CModel;
+    using TagElement = typename TagC::element;
 
-    typedef typename fmap<PModelOf, tuple<Ctors...>>::type PayloadPModel;
-    typedef typename fmap<CModelOf, tuple<Ctors...>>::type PayloadCModel;
-    typedef compressTuple<0, sizeof...(Ctors), PayloadPModel, PayloadCModel, Ctors...> PayloadReflect;
+    using PayloadPModel = typename fmap<PModelOf, tuple<Ctors...>>::type;
+    using PayloadCModel = typename fmap<CModelOf, tuple<Ctors...>>::type;
+    using PayloadReflect = compressTuple<0, sizeof...(Ctors), PayloadPModel, PayloadCModel, Ctors...>;
 
-    typedef std::pair<TagPModel, PayloadPModel> PModel;
-    typedef std::pair<TagCModel, PayloadCModel> CModel;
+    using PModel = std::pair<TagPModel, PayloadPModel>;
+    using CModel = std::pair<TagCModel, PayloadCModel>;
 
-    typedef std::pair<PayloadPModel, PayloadCModel> PayloadModels;
+    using PayloadModels = std::pair<PayloadPModel, PayloadCModel>;
 
     static void init(const PModel& pm, CModel* cm) {
       TagC::init(pm.first, &cm->first);
@@ -930,9 +930,9 @@ template <typename ... Ctors>
 
 template <typename T>
   struct compress<T, typename tbool<T::is_hmeta_variant>::type> {
-    typedef typename T::as_variant_type VT;
-    typedef typename compress<VT>::PModel PModel;
-    typedef typename compress<VT>::CModel CModel;
+    using VT = typename T::as_variant_type;
+    using PModel = typename compress<VT>::PModel;
+    using CModel = typename compress<VT>::CModel;
 
     static void init(const PModel& pm, CModel* cm)                            { compress<VT>::init(pm, cm); }
     static void write(cwbitstream* bits,  PModel* pm, CModel* cm, const T& t) { compress<VT>::write(bits, pm, cm, *reinterpret_cast<const VT*>(&t)); }
@@ -941,9 +941,9 @@ template <typename T>
 
 template <typename T>
   struct compress<T, typename tbool<T::is_hmeta_alias>::type> {
-    typedef typename T::type RT;
-    typedef typename compress<RT>::PModel PModel;
-    typedef typename compress<RT>::CModel CModel;
+    using RT = typename T::type;
+    using PModel = typename compress<RT>::PModel;
+    using CModel = typename compress<RT>::CModel;
 
     static void init(const PModel& pm, CModel* cm)                            { compress<RT>::init(pm, cm); }
     static void write(cwbitstream* bits,  PModel* pm, CModel* cm, const T& t) { compress<RT>::write(bits, pm, cm, *reinterpret_cast<const RT*>(&t)); }
@@ -963,7 +963,7 @@ inline ty::desc storedBitSeqType() {
   ty::desc bt = store<cbatchseg>::storeType();
 
   if (bt->tid == PRIV_HPPF_TYCTOR_STRUCT) {
-    ty::Struct* s = reinterpret_cast<ty::Struct*>(bt.get());
+    auto* s = reinterpret_cast<ty::Struct*>(bt.get());
     size_t pc = 0;
 
     for (auto& f : s->fields) {
@@ -986,7 +986,7 @@ inline ty::desc storedCompressedSeqTypeDef(const ty::desc& t, const ty::desc& mo
   ty::desc bt = store<cbatch>::storeType();
 
   if (bt->tid == PRIV_HPPF_TYCTOR_STRUCT) {
-    ty::Struct* s = reinterpret_cast<ty::Struct*>(bt.get());
+    auto* s = reinterpret_cast<ty::Struct*>(bt.get());
     size_t pc = 0;
 
     for (auto& f : s->fields) {
@@ -1025,7 +1025,7 @@ inline size_t inferCompressedBatchSize(const bytes& bs) {
   ty::desc t = ty::decode(bs);
 
   if (t->tid == PRIV_HPPF_TYCTOR_TAPP) {
-    auto ap = reinterpret_cast<const ty::App*>(t.get());
+    const auto *ap = reinterpret_cast<const ty::App*>(t.get());
 
     if (ap->f->tid == PRIV_HPPF_TYCTOR_PRIM && ap->args.size() == 3) {
       if (reinterpret_cast<const ty::Prim*>(ap->f.get())->n == "cseq") {
@@ -1049,8 +1049,8 @@ inline size_t inferCompressedBatchSize(const bytes& bs) {
 template <typename T>
   class cwseries : public seriesi {
   public:
-    typedef typename compress<T>::PModel PModel;
-    typedef typename compress<T>::CModel CModel;
+    using PModel = typename compress<T>::PModel;
+    using CModel = typename compress<T>::CModel;
 
     cwseries(imagefile* f, const std::string& seqname, size_t maxBatchSize) : tdef(ty::elimFileRefs(store<T>::storeType())), f(f), seqname(seqname), batchSize(maxBatchSize), out(f) {
       // determine sequence types
@@ -1068,7 +1068,7 @@ template <typename T>
 
         // define the sequence and prepare to write to it
         size_t  headNodeRef = findSpace(this->f, pagetype::data, sizeof(size_t), sizeof(size_t));
-        size_t* headNode    = reinterpret_cast<size_t*>(mapFileData(this->f, headNodeRef, sizeof(size_t)));
+        auto* headNode    = reinterpret_cast<size_t*>(mapFileData(this->f, headNodeRef, sizeof(size_t)));
         *headNode = this->out.initFresh(initModelRef, this->scratchModelRef);
         addBinding(this->f, this->seqname, ty::encoding(this->stdef), headNodeRef);
         unmapFileData(this->f, headNode, sizeof(size_t));
@@ -1076,7 +1076,7 @@ template <typename T>
         throw std::runtime_error("Can't write to sequence " + seqname + " as type '" + ty::show(this->stdef) + "', already defined as type '" + ty::show(ty::decode(b->second.type)) + "'");
       } else {
         // load the head batch and initialize from it
-        size_t* headNode      = reinterpret_cast<size_t*>(mapFileData(this->f, b->second.offset, sizeof(size_t)));
+        auto* headNode      = reinterpret_cast<size_t*>(mapFileData(this->f, b->second.offset, sizeof(size_t)));
         this->scratchModelRef = this->out.initFromRoot(*headNode, sizeof(PModel));
         this->scratchModel    = reinterpret_cast<PModel*>(mapFileData(this->f, this->scratchModelRef, sizeof(PModel)));
 
@@ -1084,12 +1084,11 @@ template <typename T>
         unmapFileData(this->f, headNode, sizeof(size_t));
       }
     }
-    ~cwseries() {
-    }
+    ~cwseries() = default;
     cwseries(const cwseries<T>&) = delete;
     cwseries<T>& operator=(const cwseries<T>&) = delete;
 
-    const ty::desc&    typeDef()  const { return this->tdef; }
+    const ty::desc&    typeDef()  const override { return this->tdef; }
     const std::string& name()     const { return this->seqname; }
     imagefile*         file()     const { return this->f; }
 
@@ -1102,7 +1101,7 @@ template <typename T>
 
         // allocate/initialize the model for this bitstream segment (from the terminal state of the scratch model for the previous segment)
         uint64_t newScratchModelRef = findSpace(this->f, pagetype::data, sizeof(PModel), sizeof(size_t));
-        PModel*  newScratchModel    = reinterpret_cast<PModel*>(mapFileData(this->f, newScratchModelRef, sizeof(PModel)));
+        auto*  newScratchModel    = reinterpret_cast<PModel*>(mapFileData(this->f, newScratchModelRef, sizeof(PModel)));
         memcpy(reinterpret_cast<void*>(newScratchModel), this->scratchModel, sizeof(PModel));
         unmapFileData(this->f, this->scratchModel, sizeof(PModel));
 
@@ -1162,7 +1161,7 @@ public:
     write(this->f, static_cast<uint8_t>(0x0d));
   }
 private:
-  typedef std::map<std::string, seriesi*> wseriess;
+  using wseriess = std::map<std::string, seriesi *>;
   imagefile* f;
   wseriess   ss;
 };
@@ -1171,8 +1170,8 @@ private:
 template <typename T>
   class crseries : public seriesi {
   public:
-    typedef typename compress<T>::PModel PModel;
-    typedef typename compress<T>::CModel CModel;
+    using PModel = typename compress<T>::PModel;
+    using CModel = typename compress<T>::CModel;
 
     crseries(imagefile* f, const std::string& seqname, const binding& b) : tdef(ty::elimFileRefs(store<T>::storeType())), f(f), batchSize(inferCompressedBatchSize(b.type)), readState(f) {
       // determine value and sequence types
@@ -1189,10 +1188,9 @@ template <typename T>
     }
     crseries(imagefile* f, const std::string& seqname) : crseries(f, seqname, loadBinding(f, seqname)) {
     }
-    ~crseries() {
-    }
+    ~crseries() = default;
 
-    const ty::desc& typeDef()  const { return this->tdef; }
+    const ty::desc& typeDef()  const override { return this->tdef; }
     imagefile*      file()     const { return this->f; }
 
     bool next(T* x) {
@@ -1232,7 +1230,7 @@ template <typename T>
 
     void loadReadState(uint64_t root) {
       while (root != 0) {
-        uint64_t* d = reinterpret_cast<uint64_t*>(mapFileData(this->f, root, 3*sizeof(uint64_t)));
+        auto* d = reinterpret_cast<uint64_t*>(mapFileData(this->f, root, 3*sizeof(uint64_t)));
         if (d[0] == 0) {
           root = 0;
         } else {
@@ -1251,14 +1249,14 @@ template <typename T>
       }
 
       if (this->batches.size() == 0) {
-        this->readState.buffer = 0;
+        this->readState.buffer = nullptr;
         return false;
       } else {
         // load this compressed data segment
         this->readState.reset(reinterpret_cast<const cbatch*>(mapFileData(this->f, this->batches.front(), sizeof(cbatch))));
 
         // initialize the model for this batch
-        const uint8_t* modelState = reinterpret_cast<const uint8_t*>(mapFileData(this->f, this->readState.buffer->initModel, sizeof(PModel)));
+        const auto* modelState = reinterpret_cast<const uint8_t*>(mapFileData(this->f, this->readState.buffer->initModel, sizeof(PModel)));
         memcpy(reinterpret_cast<void*>(&this->scratchModel), modelState, sizeof(PModel));
         unmapFileData(this->f, reinterpret_cast<const void*>(modelState), sizeof(PModel));
         compress<T>::init(this->scratchModel, &this->scratchModelState);
@@ -1301,7 +1299,7 @@ public:
       return rordering(this->f, name);
     }
 private:
-  typedef std::map<std::string, seriesi*> rseriess;
+  using rseriess = std::map<std::string, seriesi *>;
   imagefile* f;
   rseriess   ss;
 };

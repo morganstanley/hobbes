@@ -22,7 +22,7 @@ bool hstoreCanRead(storage::Transaction& txn, size_t n) {
 }
 
 const uint8_t* hstoreUnsafeRead(storage::Transaction& txn, size_t n) {
-  auto p = txn.ptr();
+  const auto *p = txn.ptr();
   txn.skip(n);
   return p;
 }
@@ -37,8 +37,8 @@ const uint8_t* hstoreUnsafeReadFixedArray(storage::Transaction& txn, size_t byte
 }
 
 cc* loggerCompiler() {
-  static cc* c = 0;
-  if (!c) {
+  static cc* c = nullptr;
+  if (c == nullptr) {
     c = new cc();
     c->bind("hstoreCanRead",              &hstoreCanRead);
     c->bind("hstoreUnsafeRead",           &hstoreUnsafeRead);
@@ -62,7 +62,7 @@ DEFINE_STRUCT(
 std::string ensureDirExists(const std::string& dirPfx) {
   hobbes::str::seq ps = hobbes::str::csplit(dirPfx, "/");
   std::ostringstream pfx;
-  if (ps.size() > 0) {
+  if (!ps.empty()) {
     for (size_t i = 0; i < (ps.size()-1); ++i) {
       pfx << ps[i] << "/";
       if (mkdir(pfx.str().c_str(), S_IRWXU | S_IRWXG | S_IRWXO) == -1 && errno != EEXIST) {
@@ -89,12 +89,12 @@ struct Session {
   hobbes::writer* db;
 
   // sections of the file for structured data
-  typedef std::vector<hobbes::StoredSeries*> StoredSeriess;
+  using StoredSeriess = std::vector<hobbes::StoredSeries *>;
   StoredSeriess streams;
 
   // functions for actually writing stream data
-  typedef void (*WriteFn)(hobbes::storage::Transaction*);
-  typedef std::vector<WriteFn> WriteFns;
+  using WriteFn = void (*)(hobbes::storage::Transaction *);
+  using WriteFns = std::vector<WriteFn>;
 
   WriteFns writeFns;
 
@@ -120,7 +120,7 @@ public:
   std::string ready() {
     std::string fpath = moveToUniqueFilename(this->tmpPath, this->dirPfx, ".log");
     this->tmpPath = "";
-    this->f = 0;
+    this->f = nullptr;
     return fpath;
   }
 
@@ -137,7 +137,7 @@ public:
   AppendFirstMatchingFile(const std::string& dirPfx, storage::CommitMethod cm, const storage::statements& stmts) : dirPfx(dirPfx) {
     this->f = findMatchingFile(dirPfx, cm, stmts);
 
-    if (this->f == 0) {
+    if (this->f == nullptr) {
       this->tmpPath = freshTempFile(dirPfx);
       this->f       = new writer(this->tmpPath);
     }
@@ -159,7 +159,7 @@ public:
       fpath = moveToUniqueFilename(this->tmpPath, this->dirPfx, ".log");
       this->tmpPath = "";
     }
-    this->f = 0;
+    this->f = nullptr;
     return fpath;
   }
 
@@ -171,9 +171,9 @@ private:
 
   static writer* findMatchingFile(const std::string& dirPfx, storage::CommitMethod cm, const storage::statements& stmts) {
     glob_t g;
-    if (glob((dirPfx + "*.log").c_str(), GLOB_NOSORT, 0, &g) == 0) {
+    if (glob((dirPfx + "*.log").c_str(), GLOB_NOSORT, nullptr, &g) == 0) {
       for (size_t i = 0; i < g.gl_pathc; ++i) {
-        writer* f = 0;
+        writer* f = nullptr;
         try {
           f = new writer(g.gl_pathv[i]);
           if (fileMatchesStatements(f, cm, stmts)) {
@@ -188,7 +188,7 @@ private:
       globfree(&g);
     }
 
-    return 0; // couldn't find any matching file
+    return nullptr; // couldn't find any matching file
   }
 
   static bool fileMatchesStatements(writer* f, storage::CommitMethod cm, const storage::statements& stmts) {
@@ -261,7 +261,7 @@ ProcessTxnF initStorageSession(Session* s, const std::string& dirPfx, storage::P
   // allocate space for every log statement
   Variant::Members txnEntries;
 
-  for (auto stmt : stmts) {
+  for (const auto& stmt : stmts) {
     MonoTypePtr pty = decode(stmt.type);
     out << " ==> " << stmt.name << " :: " << show(pty) << " (#" << stmt.id << ")" << std::endl;
     if (s->streams.size() <= stmt.id) {
@@ -269,7 +269,7 @@ ProcessTxnF initStorageSession(Session* s, const std::string& dirPfx, storage::P
       s->writeFns.resize(stmt.id + 1);
     }
 
-    auto ss = new StoredSeries(c, s->db, stmt.name, pty, 10000, sm);
+    auto *ss = new StoredSeries(c, s->db, stmt.name, pty, 10000, sm);
     std::string writefn = "write_" + str::from(hobbes::time()) + "_" + stmt.name;
     ss->bindAs(c, writefn);
 
@@ -379,7 +379,7 @@ ProcessTxnF initStorageSession(Session* s, const std::string& dirPfx, storage::P
 // support merging log session data where type structures are identical
 class SessionGroup {
 public:
-  virtual ~SessionGroup() { }
+  virtual ~SessionGroup() = default;
   virtual ProcessTxnF appendStorageSession(const std::string& dirPfx, hobbes::storage::PipeQOS qos, hobbes::storage::CommitMethod cm, const hobbes::storage::statements& stmts) = 0;
 };
 
@@ -388,7 +388,7 @@ public:
   ConsolidateGroup(hobbes::StoredSeries::StorageMode sm) : sm(sm) {
   }
 
-  ProcessTxnF appendStorageSession(const std::string& dirPfx, hobbes::storage::PipeQOS qos, hobbes::storage::CommitMethod cm, const hobbes::storage::statements& stmts) {
+  ProcessTxnF appendStorageSession(const std::string& dirPfx, hobbes::storage::PipeQOS qos, hobbes::storage::CommitMethod cm, const hobbes::storage::statements& stmts) override {
     std::lock_guard<std::mutex> slock(this->m);
     for (auto* cs : this->sessions) {
       if (dirPfx == cs->dirPfx && qos == cs->qos && cm == cs->cm && stmts == cs->stmts) {
@@ -433,8 +433,8 @@ public:
   SimpleGroup(hobbes::StoredSeries::StorageMode sm) : sm(sm) {
   }
 
-  ProcessTxnF appendStorageSession(const std::string& dirPfx, hobbes::storage::PipeQOS qos, hobbes::storage::CommitMethod cm, const hobbes::storage::statements& stmts) {
-    Session* s = new Session;
+  ProcessTxnF appendStorageSession(const std::string& dirPfx, hobbes::storage::PipeQOS qos, hobbes::storage::CommitMethod cm, const hobbes::storage::statements& stmts) override {
+    auto* s = new Session;
     return initStorageSession<AllocFreshFile>(s, dirPfx, qos, cm, stmts, this->sm);
   }
 private:

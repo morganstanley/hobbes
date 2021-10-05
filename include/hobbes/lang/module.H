@@ -26,12 +26,12 @@ protected:
 private:
   int cid;
 };
-typedef std::shared_ptr<ModuleDef> ModuleDefPtr;
-typedef std::vector<ModuleDefPtr>  ModuleDefs;
+using ModuleDefPtr = std::shared_ptr<ModuleDef>;
+using ModuleDefs = std::vector<ModuleDefPtr>;
 
 template <typename Case>
   struct ModuleDefCase : public ModuleDef {
-    typedef ModuleDefCase<Case> Base;
+    using Base = ModuleDefCase<Case>;
     ModuleDefCase(const LexicalAnnotation&);
   };
 
@@ -42,7 +42,7 @@ public:
   const std::string& path() const;
   const std::string& name() const;
 
-  void show(std::ostream&) const;
+  void show(std::ostream&) const override;
 
   static const int type_case_id = 0;
 private:
@@ -60,7 +60,7 @@ public:
   const str::seq&    arguments() const;
   const QualTypePtr& type() const;
 
-  void show(std::ostream&) const;
+  void show(std::ostream&) const override;
 
   static const int type_case_id = 1;
 private:
@@ -76,15 +76,15 @@ public:
   const std::string& varName() const;
   const QualTypePtr& varType() const;
 
-  void show(std::ostream& out) const;
+  void show(std::ostream& out) const override;
 
   static const int type_case_id = 2;
 private:
   std::string vname;
   QualTypePtr qty;
 };
-typedef std::shared_ptr<MVarTypeDef> MVarTypeDefPtr;
-typedef std::vector<MVarTypeDefPtr>  MVarTypeDefs;
+using MVarTypeDefPtr = std::shared_ptr<MVarTypeDef>;
+using MVarTypeDefs = std::vector<MVarTypeDefPtr>;
 
 class MVarDef : public ModuleDefCase<MVarDef> {
 public:
@@ -92,20 +92,20 @@ public:
   const str::seq& varWithArgs() const;
   const ExprPtr&  varExpr() const;
 
-  void show(std::ostream& out) const;
+  void show(std::ostream& out) const override;
 
   static const int type_case_id = 3;
 private:
   str::seq vargl;
   ExprPtr  expr;
 };
-typedef std::shared_ptr<MVarDef> MVarDefPtr;
-typedef std::vector<MVarDefPtr>  MVarDefs;
+using MVarDefPtr = std::shared_ptr<MVarDef>;
+using MVarDefs = std::vector<MVarDefPtr>;
 
 MVarDefs substitute(const MonoTypeSubst&, const MVarDefs&);
 
-typedef std::pair<str::seq, str::seq> CFunDepDef;
-typedef std::vector<CFunDepDef>       CFunDepDefs;
+using CFunDepDef = std::pair<str::seq, str::seq>;
+using CFunDepDefs = std::vector<CFunDepDef>;
 
 class ClassDef : public ModuleDefCase<ClassDef> {
 public:
@@ -114,10 +114,10 @@ public:
   const Constraints&  constraints() const;
   const std::string&  name() const;
   const str::seq&     vars() const;
-  const CFunDepDefs   fundeps() const;
+  CFunDepDefs         fundeps() const;
   const MVarTypeDefs& members() const;
 
-  void show(std::ostream& out) const;
+  void show(std::ostream& out) const override;
 
   static const int type_case_id = 4;
 private:
@@ -127,8 +127,8 @@ private:
   CFunDepDefs  fdeps;
   MVarTypeDefs mvtydefs;
 };
-typedef std::shared_ptr<ClassDef> ClassDefPtr;
-typedef std::vector<ClassDefPtr>  ClassDefs;
+using ClassDefPtr = std::shared_ptr<ClassDef>;
+using ClassDefs = std::vector<ClassDefPtr>;
 
 class InstanceDef : public ModuleDefCase<InstanceDef> {
 public:
@@ -139,7 +139,7 @@ public:
   const MonoTypes&   args() const;
   const MVarDefs&    members() const;
 
-  void show(std::ostream& out) const;
+  void show(std::ostream& out) const override;
 
   static const int type_case_id = 5;
 private:
@@ -148,13 +148,13 @@ private:
   MonoTypes   targs;
   MVarDefs    mdefs;
 };
-typedef std::shared_ptr<InstanceDef> InstanceDefPtr;
-typedef std::vector<InstanceDefPtr>  InstanceDefs;
+using InstanceDefPtr = std::shared_ptr<InstanceDef>;
+using InstanceDefs = std::vector<InstanceDefPtr>;
 
 class MUnsafePragmaDef : public ModuleDefCase<MUnsafePragmaDef> {
 public:
   MUnsafePragmaDef(const std::string& symbol, const LexicalAnnotation& la) : Base(la), symbol(symbol) {}
-  void show(std::ostream& out) const { out << "{-# UNSAFE " << symbol << " #-}"; } ; 
+  void show(std::ostream& out) const override { out << "{-# UNSAFE " << symbol << " #-}"; } ; 
 
   const std::string& symbolValue() const { return symbol; }
   static const int type_case_id = 6;
@@ -166,7 +166,7 @@ private:
 class MSafePragmaDef : public ModuleDefCase<MSafePragmaDef> {
 public:
   MSafePragmaDef(const std::string& symbol, const LexicalAnnotation& la) : Base(la), symbol(symbol) {}
-  void show(std::ostream& out) const { out << "{-# SAFE " << symbol << " #-}"; } ; 
+  void show(std::ostream& out) const override { out << "{-# SAFE " << symbol << " #-}"; } ; 
 
   const std::string& symbolValue() const { return symbol; }
   static const int type_case_id = 7;
@@ -224,14 +224,14 @@ template <typename T>
 struct switchMDefTyFn : switchMDef<ModuleDefPtr> {
   virtual QualTypePtr withTy(const QualTypePtr&) const = 0;
 
-  ModuleDefPtr with(const MImport*)     const;
-  ModuleDefPtr with(const MTypeDef*)    const;
-  ModuleDefPtr with(const MVarTypeDef*) const;
-  ModuleDefPtr with(const MVarDef*)     const;
-  ModuleDefPtr with(const ClassDef*)    const;
-  ModuleDefPtr with(const InstanceDef*) const;
-  ModuleDefPtr with(const MUnsafePragmaDef*)  const;
-  ModuleDefPtr with(const MSafePragmaDef*)  const;
+  ModuleDefPtr with(const MImport*)     const override;
+  ModuleDefPtr with(const MTypeDef*)    const override;
+  ModuleDefPtr with(const MVarTypeDef*) const override;
+  ModuleDefPtr with(const MVarDef*)     const override;
+  ModuleDefPtr with(const ClassDef*)    const override;
+  ModuleDefPtr with(const InstanceDef*) const override;
+  ModuleDefPtr with(const MUnsafePragmaDef*)  const override;
+  ModuleDefPtr with(const MSafePragmaDef*)  const override;
 
 };
 
@@ -253,8 +253,8 @@ private:
   std::vector<std::string> opts;
 };
 
-typedef std::shared_ptr<Module> ModulePtr;
-typedef std::vector<ModulePtr>  Modules;
+using ModulePtr = std::shared_ptr<Module>;
+using Modules = std::vector<ModulePtr>;
 
 // basic utilities
 std::string show(const Module& m);

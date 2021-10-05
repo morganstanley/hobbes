@@ -2,11 +2,11 @@
 #ifndef HOBBES_UTIL_TIME_HPP_INCLUDED
 #define HOBBES_UTIL_TIME_HPP_INCLUDED
 
-#include <hobbes/util/str.H>
-#include <string>
-#include <string.h>
-#include <sstream>
+#include <cstring>
 #include <ctime>
+#include <hobbes/util/str.H>
+#include <sstream>
+#include <string>
 
 namespace hobbes {
 
@@ -19,7 +19,7 @@ namespace hobbes {
 inline long readTimespan(std::string s) {
   long r = 0;
 
-  while (s.size() > 0) {
+  while (!s.empty()) {
     str::pair p = str::readWhile(&str::isDigit,    s);
     str::pair u = str::readWhile(&str::isNotDigit, p.second);
 
@@ -47,7 +47,7 @@ inline long readTimespan(std::string s) {
 
 inline long readTimespan(const str::seq& ss) {
   long r = 0;
-  for (auto s : ss) {
+  for (const auto& s : ss) {
     r += readTimespan(s);
   }
   return r;
@@ -164,7 +164,7 @@ inline long timeFromDateTime(long x) {
   int64_t us = x % (1000L * 1000L);
   tm*     t  = localtime(reinterpret_cast<time_t*>(&s));
 
-  if (t) {
+  if (t != nullptr) {
     return mkTime(t->tm_hour, t->tm_min, t->tm_sec, us);
   } else {
     return mkTime(0, 0, 0, 0);

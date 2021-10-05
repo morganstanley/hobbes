@@ -7,13 +7,13 @@
 #include <hobbes/util/str.H>
 #include <hobbes/util/time.H>
 
-#include <time.h>
-#include <unistd.h>
-#include <fstream>
 #include <cstdlib>
-#include <sys/types.h>
-#include <sys/stat.h>
+#include <ctime>
 #include <fcntl.h>
+#include <fstream>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 namespace hi {
 
@@ -48,7 +48,7 @@ const hobbes::array<char>* showTick(long x) {
 void enableConsoleCmds(bool f);
 
 // spawn sub-processes and support basic I/O
-typedef std::pair<int, int> PIO;
+using PIO = std::pair<int, int>;
 
 const PIO* pexec(const hobbes::array<char>* cmd) {
   PIO* p = hobbes::make<PIO>(0, 0);
@@ -75,13 +75,13 @@ const PIO* pexec(const hobbes::array<char>* cmd) {
     close(c2p[1]);
 
     hobbes::str::seq args = hobbes::str::csplit(hobbes::makeStdString(cmd), " ");
-    if (args.size() == 0) return p;
+    if (args.empty()) return p;
   
     std::vector<const char*> argv;
-    for (size_t i = 0; i < args.size(); ++i) {
-      argv.push_back(args[i].c_str());
+    for (const auto &arg : args) {
+      argv.push_back(arg.c_str());
     }
-    argv.push_back(0);
+    argv.push_back(nullptr);
   
     execv(args[0].c_str(), const_cast<char* const*>(&argv[0]));
     exit(0);

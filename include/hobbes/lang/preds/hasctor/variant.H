@@ -7,11 +7,11 @@
 namespace hobbes {
 
 struct HCVariantEliminator : public HCEliminator {
-  bool satisfied(const TEnvPtr& tenv, const HasCtor&, Definitions*) const;
-  bool satisfiable(const TEnvPtr& tenv, const HasCtor&, Definitions*) const;
-  bool refine(const TEnvPtr& tenv, const HasCtor&, MonoTypeUnifier* s, Definitions*);
-  ExprPtr unqualify(const TEnvPtr&, const ConstraintPtr&, const HasCtor&, const ExprPtr&, Definitions*) const;
-  std::string name() const;
+  bool satisfied(const TEnvPtr& tenv, const HasCtor&, Definitions*) const override;
+  bool satisfiable(const TEnvPtr& tenv, const HasCtor&, Definitions*) const override;
+  bool refine(const TEnvPtr& tenv, const HasCtor&, MonoTypeUnifier* s, Definitions*) override;
+  ExprPtr unqualify(const TEnvPtr&, const ConstraintPtr&, const HasCtor&, const ExprPtr&, Definitions*) const override;
+  std::string name() const override;
 };
 
 const Variant* isVariantPEnum(const MonoTypePtr& e);

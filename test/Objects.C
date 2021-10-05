@@ -24,7 +24,7 @@ class Left : public virtual Top {
 public:
   Left(int x, double y, int z) : Top(x, y, z) { }
 
-  int foo(int,double,char) { return 10; }
+  int foo(int,double,char) override { return 10; }
   int bar()                { return 1111; }
 };
 
@@ -32,7 +32,7 @@ class Right : public virtual Top {
 public:
   Right(int x, double y, int z) : Top(x, y, z) { }
 
-  int foo(int,double,char) { return 20; }
+  int foo(int,double,char) override { return 20; }
   int baz()                { return 2222; }
 };
 
@@ -40,7 +40,7 @@ class Bottom : public Left, public Right {
 public:
   Bottom(int x, double y, int z) : Top(x, y, z), Left(x*z, y*y, z*x), Right(x*x, y*y, z*z) { }
 
-  int foo(int,double,char) { return 30; }
+  int foo(int,double,char) override { return 30; }
   int zzz()                { return 3333; }
 };
 
@@ -59,7 +59,7 @@ array<ArrObjV*>* arrobjs(int n) {
 // verify compilation of simple single-inheritance
 class SIBase {
 public:
-  virtual ~SIBase() { }
+  virtual ~SIBase() = default;
 
   virtual int doblah() {
     return 42;
@@ -71,7 +71,7 @@ public:
 
 class SIDerived : public SIBase {
 public:
-  int doblah() {
+  int doblah() override {
     return 20;
   }
 };
@@ -87,8 +87,8 @@ static cc& c() {
     x.bind("arrobjs", &arrobjs);
 
     static Left*   l = new Left  (1, 2.0, 3);
-    static Right*  r = new Right (4, 5.0, 6);
-    static Bottom* b = new Bottom(7, 8.0, 9);
+    static auto*  r = new Right (4, 5.0, 6);
+    static auto* b = new Bottom(7, 8.0, 9);
 
     x.bind("foo",  memberfn(&Top::foo));
     x.bind("getX", memberfn(&Top::getX));
@@ -103,7 +103,7 @@ static cc& c() {
     x.bind("r", r);
     x.bind("b", b);
 
-    static SIDerived* sid = new SIDerived();
+    static auto* sid = new SIDerived();
     x.bind("doblah", memberfn(&SIBase::doblah));
     x.bind("doit",   memberfn(&SIBase::doit));
     x.bind("sid",    sid);

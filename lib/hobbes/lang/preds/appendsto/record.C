@@ -1,7 +1,8 @@
 
 #include <hobbes/lang/preds/appendsto/record.H>
-#include <hobbes/lang/typeinf.H>
 #include <hobbes/lang/preds/class.H>
+#include <hobbes/lang/typeinf.H>
+#include <memory>
 #include <sstream>
 
 namespace hobbes {
@@ -11,7 +12,7 @@ namespace hobbes {
 #define REF_REC_SUFFIX "recordSuffix"
 
 bool isRecordLike(const MonoTypePtr& mt) {
-  return is<Record>(mt) || isUnit(mt);
+  return (is<Record>(mt) != nullptr) || isUnit(mt);
 }
 
 const Record::Members& recordMembers(const MonoTypePtr& mt) {
@@ -30,19 +31,19 @@ bool isTupleLike(const std::string& fname) {
 }
 
 bool isTupleLike(const Record::Members& ms) {
-  return ms.size() > 0 && isTupleLike(ms[0].field);
+  return !ms.empty() && isTupleLike(ms[0].field);
 }
 
 bool isTupleLike(const MkRecord::FieldDefs& fds) {
-  return fds.size() > 0 && isTupleLike(fds[0].first);
+  return !fds.empty() && isTupleLike(fds[0].first);
 }
 
 Record::Members tupleNormalize(const Record::Members& ms) {
   if (isTupleLike(ms)) {
     Record::Members result;
     size_t i = 0;
-    for (Record::Members::const_iterator m = ms.begin(); m != ms.end(); ++m) {
-      result.push_back(Record::Member(".f" + str::from(i++), m->type, m->offset));
+    for (const auto &m : ms) {
+      result.push_back(Record::Member(".f" + str::from(i++), m.type, m.offset));
     }
     return result;
   } else {
@@ -54,8 +55,8 @@ MkRecord::FieldDefs tupleNormalize(const MkRecord::FieldDefs& fds) {
   if (isTupleLike(fds)) {
     MkRecord::FieldDefs result;
     size_t i = 0;
-    for (MkRecord::FieldDefs::const_iterator fd = fds.begin(); fd != fds.end(); ++fd) {
-      result.push_back(MkRecord::FieldDef(".f" + str::from(i++), fd->second));
+    for (const auto &fd : fds) {
+      result.push_back(MkRecord::FieldDef(".f" + str::from(i++), fd.second));
     }
     return result;
   } else {
@@ -64,7 +65,7 @@ MkRecord::FieldDefs tupleNormalize(const MkRecord::FieldDefs& fds) {
 }
 
 MonoTypePtr makeRecordType(const Record::Members& ms) {
-  if (ms.size() == 0) {
+  if (ms.empty()) {
     static MonoTypePtr u(Prim::make("unit"));
     return u;
   } else {
@@ -73,7 +74,7 @@ MonoTypePtr makeRecordType(const Record::Members& ms) {
 }
 
 ExprPtr makeRecord(const MkRecord::FieldDefs& fds, const LexicalAnnotation& la) {
-  if (fds.size() == 0) {
+  if (fds.empty()) {
     return mktunit(la);
   } else {
     return mkrecord(tupleNormalize(fds), la);
@@ -87,8 +88,8 @@ ExprPtr makeRecord(const MkRecord::FieldDefs& fds, const LexicalAnnotation& la) 
 }
 
 void importDefs(const Record::Members& ms, Record::Members* out) {
-  for (Record::Members::const_iterator m = ms.begin(); m != ms.end(); ++m) {
-    out->push_back(Record::Member(m->field, m->type));
+  for (const auto &m : ms) {
+    out->push_back(Record::Member(m.field, m.type));
   }
 }
 
@@ -162,7 +163,7 @@ bool ATRecordEliminator::satisfied(const TEnvPtr&, const MonoTypePtr& lhs, const
 }
 
 void checkSatisfiable(const MonoTypePtr& ty) {
-  if (!isRecordLike(ty) && !is<TVar>(ty)) {
+  if (!isRecordLike(ty) && (is<TVar>(ty) == nullptr)) {
     throw std::runtime_error("Not eligible for record-append relationship: " + show(ty));
   }
 }
@@ -213,11 +214,11 @@ bool ATRecordEliminator::refine(const TEnvPtr& tenv, const MonoTypePtr& lhs, con
 
 PolyTypePtr ATRecordEliminator::lookup(const std::string& vn) const {
   if (vn == REF_REC_APPEND) {
-    return polytype(3, qualtype(list(ConstraintPtr(new Constraint(AppendsToUnqualifier::constraintName(), list(tgen(0), tgen(1), tgen(2))))), functy(list(tgen(0), tgen(1)), tgen(2))));
+    return polytype(3, qualtype(list(std::make_shared<Constraint>(AppendsToUnqualifier::constraintName(), list(tgen(0), tgen(1), tgen(2)))), functy(list(tgen(0), tgen(1)), tgen(2))));
   } else if (vn == REF_REC_PREFIX) {
-    return polytype(3, qualtype(list(ConstraintPtr(new Constraint(AppendsToUnqualifier::constraintName(), list(tgen(0), tgen(1), tgen(2))))), functy(list(tgen(2)), tgen(0))));
+    return polytype(3, qualtype(list(std::make_shared<Constraint>(AppendsToUnqualifier::constraintName(), list(tgen(0), tgen(1), tgen(2)))), functy(list(tgen(2)), tgen(0))));
   } else if (vn == REF_REC_SUFFIX) {
-    return polytype(3, qualtype(list(ConstraintPtr(new Constraint(AppendsToUnqualifier::constraintName(), list(tgen(0), tgen(1), tgen(2))))), functy(list(tgen(2)), tgen(1))));
+    return polytype(3, qualtype(list(std::make_shared<Constraint>(AppendsToUnqualifier::constraintName(), list(tgen(0), tgen(1), tgen(2)))), functy(list(tgen(2)), tgen(1))));
   } else {
     return PolyTypePtr();
   }
@@ -244,11 +245,11 @@ void insertFieldDefsSfx(const MkRecord::FieldDefs& ifds, size_t c, MkRecord::Fie
 }
 
 void insertFieldDefsFromProj(const ExprPtr& rec, const Record* rty, MkRecord::FieldDefs* out) {
-  if (!rty) {
+  if (rty == nullptr) {
     throw annotated_error(*rec, "Internal error, can't insert projections out of non-record type: " + show(rec->type()));
   }
 
-  for (Record::Members::const_iterator m = rty->members().begin(); m != rty->members().end(); ++m) {
+  for (auto m = rty->members().begin(); m != rty->members().end(); ++m) {
     out->push_back(MkRecord::FieldDef(m->field, proj(rec, rty, m->field, rec->la())));
   }
 }
@@ -347,7 +348,7 @@ ExprPtr recordPrefixFunction(const MonoTypePtr& recty, const MonoTypePtr& resty,
 ExprPtr recordPrefix(const ExprPtr& rec, const MonoTypePtr& resty) {
   const Record::Members& ms = recordMembers(resty);
 
-  if (ms.size() == 0) {
+  if (ms.empty()) {
     return mktunit(rec->la());
   } else if (const MkRecord* r = is<MkRecord>(rec)) {
     MkRecord::FieldDefs fds;
@@ -374,7 +375,7 @@ ExprPtr recordSuffixFunction(const MonoTypePtr& recty, const MonoTypePtr& resty,
 ExprPtr recordSuffix(const ExprPtr& rec, const MonoTypePtr& resty) {
   const Record::Members& ms = recordMembers(resty);
 
-  if (ms.size() == 0) {
+  if (ms.empty()) {
     return mktunit(rec->la());
   } else if (const MkRecord* r = is<MkRecord>(rec)) {
     MkRecord::FieldDefs fds;
@@ -401,13 +402,13 @@ struct ATRecordUnqualify : public switchExprTyFn {
     }
   }
 
-  ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const {
+  ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const override {
     ExprPtr result(e);
     result->type(removeConstraint(this->constraint, qty));
     return result;
   }
 
-  ExprPtr with(const Var* vn) const {
+  ExprPtr with(const Var* vn) const override {
     if (vn->value() == REF_REC_APPEND) {
       return recordAppendFunction(this->appto.leftType, this->appto.rightType, this->appto.resultType, vn->la());
     } else if (vn->value() == REF_REC_PREFIX) {
@@ -419,7 +420,7 @@ struct ATRecordUnqualify : public switchExprTyFn {
     }
   }
 
-  ExprPtr with(const App* ap) const {
+  ExprPtr with(const App* ap) const override {
     if (const Var* fn = is<Var>(stripAssumpHead(ap->fn()))) {
       if (fn->value() == REF_REC_APPEND) {
         return recordAppendExpr(switchOf(ap->args()[0], *this), switchOf(ap->args()[1], *this));

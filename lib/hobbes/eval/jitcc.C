@@ -179,14 +179,14 @@ template <typename... Ts> struct VariantLite {
     return *this;
   }
 
-  VariantLite(VariantLite &&rhs) {
+  VariantLite(VariantLite &&rhs) noexcept {
     tag = rhs.tag;
     if (isValid()) {
       VariantLiteMoveCreator<Ts...>::act(N, rhs.tag, &storage, &rhs.storage);
     }
   }
 
-  VariantLite &operator=(VariantLite &&rhs) & {
+  VariantLite &operator=(VariantLite &&rhs) & noexcept {
     if (isValid()) {
       VariantLiteDeletor<Ts...>::act(N, tag, &storage);
     }
@@ -570,7 +570,7 @@ jitcc::jitcc(const TEnvPtr& tenv)
 
 jitcc::~jitcc() {
   // release low-level functions
-  for (auto f : this->fenv) {
+  for (const auto& f : this->fenv) {
     delete f.second;
   }
 }
@@ -850,9 +850,9 @@ public:
   size_t size() const { return this->sz; }
   void NotifyObjectEmitted(const llvm::object::ObjectFile& o, const llvm::RuntimeDyld::LoadedObjectInfo&) {
     for (auto s : o.symbols()) {
-      const llvm::object::ELFSymbolRef* esr = reinterpret_cast<const llvm::object::ELFSymbolRef*>(&s);
+      const auto* esr = reinterpret_cast<const llvm::object::ELFSymbolRef*>(&s);
 
-      if (esr) {
+      if (esr != nullptr) {
         auto nr = esr->getName();
         if (nr) {
           std::string n(nr.get().data(), nr.get().size());
@@ -1147,7 +1147,7 @@ llvm::Value* jitcc::loadConstant(const std::string& vn) {
 void jitcc::defineGlobal(const std::string& vn, const ExprPtr& ue) {
   std::string vname = vn.empty() ? (".global" + freshName()) : vn;
   this->globalExprs[vn] = ue;
-  typedef void (*Thunk)();
+  using Thunk = void (*)();
   MonoTypePtr uety = requireMonotype(this->tenv, ue);
 
   if (isUnit(uety)) {
@@ -1206,7 +1206,7 @@ void jitcc::defineGlobal(const std::string& vn, const ExprPtr& ue) {
 
     // compile and run this function, it should then perform the global variable assignment
     // (make sure that any allocation happens in the global context iff we need it)
-    Thunk f = reinterpret_cast<Thunk>(getMachineCode(initfn));
+    auto f = reinterpret_cast<Thunk>(getMachineCode(initfn));
 
     if (hasPointerRep(uety)) {
       size_t oldregion = pushGlobalRegion();
@@ -1292,7 +1292,7 @@ llvm::Value* jitcc::lookupVar(const std::string& vn, const MonoTypePtr& vty) {
   }
 
   // maybe it's an op?
-  if (lookupOp(vn)) {
+  if (lookupOp(vn) != nullptr) {
     return compile(etaLift(vn, vty, LexicalAnnotation::null()));
   }
 
@@ -1395,7 +1395,7 @@ void jitcc::compileFunctions(const LetRec::Bindings& bs, std::vector<llvm::Funct
 
   unsafeCompileFunctions(&fs);
 
-  if (result) {
+  if (result != nullptr) {
     for (const auto& f : fs) {
       result->push_back(f.result);
     }
@@ -1403,7 +1403,7 @@ void jitcc::compileFunctions(const LetRec::Bindings& bs, std::vector<llvm::Funct
 }
 
 void jitcc::compileFunctions(const LetRec::Bindings& bs) {
-  compileFunctions(bs, 0);
+  compileFunctions(bs, nullptr);
 }
 
 void jitcc::unsafeCompileFunctions(UCFS* ufs) {
@@ -1413,24 +1413,24 @@ void jitcc::unsafeCompileFunctions(UCFS* ufs) {
   llvm::BasicBlock* ibb = withContext([this](auto&) { return this->builder()->GetInsertBlock(); });
 
   // prepare the environment for these mutually-recursive definitions
-  for (size_t f = 0; f < fs.size(); ++f) {
-    llvm::Function* fval = allocFunction(fs[f].name.empty() ? ("/" + freshName()) : fs[f].name, fs[f].argtys, requireMonotype(this->tenv, fs[f].exp));
-    if (fval == 0) {
+  for (auto &f : fs) {
+    llvm::Function* fval = allocFunction(f.name.empty() ? ("/" + freshName()) : f.name, f.argtys, requireMonotype(this->tenv, f.exp));
+    if (fval == nullptr) {
       throw std::runtime_error("Failed to allocate function");
     }
 
 #if LLVM_VERSION_MAJOR >= 11
-    this->bindScope(fs[f].name, fval);
+    this->bindScope(f.name, fval);
 #else
-    this->vtenv.back()[fs[f].name] = fval;
+    this->vtenv.back()[f.name] = fval;
 #endif
-    fs[f].result = fval;
+    f.result = fval;
   }
 
   // now compile each function
-  for (size_t f = 0; f < fs.size(); ++f) {
-    llvm::Function*   fval = fs[f].result;
-    const UCF&        ucf  = fs[f];
+  for (const auto &f : fs) {
+    llvm::Function*   fval = f.result;
+    const UCF&        ucf  = f;
     MonoTypePtr       rty  = requireMonotype(this->tenv, ucf.exp);
     llvm::BasicBlock* bb = withContext(
         [fval](llvm::LLVMContext& c) { return llvm::BasicBlock::Create(c, "entry", fval); });
@@ -1456,7 +1456,7 @@ void jitcc::unsafeCompileFunctions(UCFS* ufs) {
         a->setName(ucf.argns[i]);
 
         llvm::Value* argv = &*a;
-        if (is<FixedArray>(ucf.argtys[i])) {
+        if (is<FixedArray>(ucf.argtys[i]) != nullptr) {
           argv = withContext([&](auto&) {
             return cast(this->builder(), ptrType(toLLVM(ucf.argtys[i], false)), argv);
           });
@@ -1486,9 +1486,9 @@ void jitcc::unsafeCompileFunctions(UCFS* ufs) {
 
         // and we're done
         this->popScope();
-        if (ibb != 0) { this->builder()->SetInsertPoint(ibb); }
+        if (ibb != nullptr) { this->builder()->SetInsertPoint(ibb); }
       } catch (...) {
-        if (ibb != 0) { this->builder()->SetInsertPoint(ibb); }
+        if (ibb != nullptr) { this->builder()->SetInsertPoint(ibb); }
         this->popScope();
         throw;
       }
@@ -1498,7 +1498,7 @@ void jitcc::unsafeCompileFunctions(UCFS* ufs) {
 
 llvm::Value* jitcc::compileAllocStmt(llvm::Value* sz, llvm::Value* asz, llvm::Type* mty, bool zeroMem) {
   llvm::Function* f = lookupFunction(zeroMem ? "mallocz" : "malloc");
-  if (!f) throw std::runtime_error("Expected heap allocation function as call.");
+  if (f == nullptr) throw std::runtime_error("Expected heap allocation function as call.");
   return withContext([&](auto&) {
     return builder()->CreateBitCast(fncall(builder(), f, f->getFunctionType(), list(sz, asz)), mty);
   });
@@ -1560,15 +1560,15 @@ void* jitcc::reifyMachineCodeForFn(const MonoTypePtr&, const str::seq& names, co
 // compilation shorthand
 Values compile(jitcc* c, const Exprs& es) {
   Values r;
-  for (Exprs::const_iterator exp = es.begin(); exp != es.end(); ++exp) {
-    r.push_back(c->compile(*exp));
+  for (const auto &e : es) {
+    r.push_back(c->compile(e));
   }
   return r;
 }
 
 Values compileArgs(jitcc* c, const Exprs& es) {
   Values r;
-  for (auto e : es) {
+  for (const auto& e : es) {
     MonoTypePtr  et = requireMonotype(c->typeEnv(), e);
     llvm::Value* ev = c->compile(e);
 
@@ -1578,7 +1578,7 @@ Values compileArgs(jitcc* c, const Exprs& es) {
       }
     }
 
-    if (is<Array>(et)) {
+    if (is<Array>(et) != nullptr) {
       // variable-length arrays need to be cast to a single type to pass LLVM's check
       r.push_back(withContext([&](auto&) {
           return c->builder()->CreateBitCast(ev, toLLVM(et));
@@ -1602,6 +1602,6 @@ ExprPtr jitcc::inlineGlobals(const ExprPtr& e) {
   return s;
 }
 
-op::~op() { }
+op::~op() = default;
 
 } // namespace hobbes

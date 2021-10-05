@@ -39,7 +39,7 @@ static void runTestServer(int ps, int pe) {
 int testServerPort() {
   if (serverPort < 0) {
     std::unique_lock<std::mutex> lk(serverMtx);
-    std::thread serverProc(std::bind(&runTestServer, 8765, 9500));
+    std::thread serverProc([] { return runTestServer(8765, 9500); });
     serverProc.detach();
     serverStartup.wait(lk);
     if (serverPort < 0) {
@@ -76,7 +76,7 @@ int testServerWithHostPort(const std::string &host = "") {
   if (serverPortWithHost < 0) {
     std::unique_lock<std::mutex> lk(serverMtxWithHost);
     std::thread serverWithHostProc(
-        std::bind(&runTestServerWithHost, 9501, 10500, host));
+        [host] { return runTestServerWithHost(9501, 10500, host); });
     serverWithHostProc.detach();
     serverWithHostStartup.wait(lk);
     if (serverPortWithHost < 0) {
@@ -88,8 +88,8 @@ int testServerWithHostPort(const std::string &host = "") {
 /**************************
  * types/data for net communication
  **************************/
-typedef std::map<std::string, size_t> NameCounts;
-typedef std::pair<std::string, size_t> NC;
+using NameCounts = std::map<std::string, size_t>;
+using NC = std::pair<std::string, size_t>;
 bool operator==(const NameCounts &ncs, const std::vector<NC> &ncsc) {
   for (const auto &nc : ncsc) {
     auto i = ncs.find(nc.first);
@@ -107,7 +107,7 @@ std::ostream &operator<<(std::ostream &os, const NC &nc) {
 template <typename T>
 std::ostream &operator<<(std::ostream &os, const std::vector<T> &xs) {
   os << "[";
-  if (xs.size() > 0) {
+  if (!xs.empty()) {
     os << xs[0];
     for (size_t i = 1; i < xs.size(); ++i)
       os << ", " << xs[i];
@@ -132,7 +132,7 @@ std::ostream &operator<<(std::ostream &os, const NameCounts &ncsc) {
 DEFINE_ENUM(Kid, (Jim), (Bob));
 
 DEFINE_STRUCT(Group, (std::string, id), (Kid, kid), (double, aa), (size_t, bb));
-typedef std::vector<Group> Groups;
+using Groups = std::vector<Group>;
 std::ostream &operator<<(std::ostream &os, const Group &g) {
   os << "{id=\"" << g.id
      << "\", kid=" << ((g.kid == Kid::Jim()) ? "|Jim|" : "|Bob|")
@@ -183,7 +183,7 @@ template <> struct io<CustomIDEnum> {
     io<uint32_t>::read(s, reinterpret_cast<uint32_t *>(x));
   }
 
-  typedef io<uint32_t>::async_read_state async_read_state;
+  using async_read_state = io<uint32_t>::async_read_state;
   static void prepare(async_read_state *o) { io<uint32_t>::prepare(o); }
   static bool accum(int s, async_read_state *o, CustomIDEnum *x) {
     return io<uint32_t>::accum(s, o, reinterpret_cast<uint32_t *>(x));

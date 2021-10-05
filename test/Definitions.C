@@ -3,7 +3,7 @@
 #include "test.H"
 
 using namespace hobbes;
-static cc& c() { static __thread cc* x = 0; if (!x) { x = new cc(); } return *x; }
+static cc& c() { static __thread cc* x = nullptr; if (x == nullptr) { x = new cc(); } return *x; }
 
 TEST(Definitions, Basic) {
   c().define("defInt",      "42");

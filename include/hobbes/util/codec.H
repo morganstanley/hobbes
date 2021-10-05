@@ -2,15 +2,15 @@
 #ifndef HOBBES_UTIL_CODEC_HPP_INCLUDED
 #define HOBBES_UTIL_CODEC_HPP_INCLUDED
 
+#include <cstring>
 #include <iostream>
-#include <vector>
 #include <map>
 #include <unistd.h>
-#include <string.h>
+#include <vector>
 
 namespace hobbes {
 
-typedef __int128 int128_t;
+using int128_t = __int128;
 
 #define PRIM_CODEC(T) \
   inline void encode(T x, std::ostream& out) { out.write(reinterpret_cast<const char*>(&x), sizeof(x)); } \
@@ -43,7 +43,7 @@ inline void decode(std::string* x, std::istream& in) {
 template <typename T>
   inline void encode(const std::vector<T>& xs, std::ostream& out) {
     encode(static_cast<size_t>(xs.size()), out);
-    for (auto x : xs) {
+    for (const auto& x : xs) {
       encode(x, out);
     }
   }
@@ -75,7 +75,7 @@ template <typename U, typename V>
 template <typename K, typename V>
   inline void encode(const std::map<K, V>& m, std::ostream& out) {
     encode(m.size(), out);
-    for (auto p : m) {
+    for (const auto& p : m) {
       encode(p, out);
     }
   }
@@ -195,7 +195,7 @@ inline void fdwrite(int fd, const std::string& x) {
 template <typename T>
 inline void fdwrite(int fd, const std::vector<T>& xs) {
   fdwrite(fd, xs.size());
-  if (xs.size() > 0) fdwrite(fd, &xs[0], xs.size());
+  if (!xs.empty()) fdwrite(fd, &xs[0], xs.size());
 }
 
 // remove a 'bad' mark for an FD and return true iff it was previously marked bad

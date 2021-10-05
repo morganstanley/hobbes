@@ -1,11 +1,12 @@
 
+#include <hobbes/lang/expr.H>
+#include <hobbes/lang/preds/class.H>
 #include <hobbes/lang/preds/consrecord.H>
 #include <hobbes/lang/preds/hasfield.H>
-#include <hobbes/lang/preds/class.H>
-#include <hobbes/lang/expr.H>
 #include <hobbes/lang/tylift.H>
 #include <hobbes/lang/typeinf.H>
 #include <hobbes/util/array.H>
+#include <memory>
 
 namespace hobbes {
 
@@ -57,7 +58,7 @@ static bool dec(const ConstraintPtr& c, ConsRecord* cr) {
         cr->tailType      = c->arguments()[5];
 
         if (const Record* r = is<Record>(cr->recordType)) {
-          if (r->members().size() > 0) {
+          if (!r->members().empty()) {
             auto lpfx = r->members()[r->members().size()-1].field.substr(0,2);
 
             if (lpfx != ".p" && ((lpfx != ".f" && cr->asTuple) || (lpfx == ".f" && !cr->asTuple))) {
@@ -81,7 +82,7 @@ bool RecordDeconstructor::refine(const TEnvPtr&, const ConstraintPtr& cst, MonoT
   ConsRecord cr;
   if (dec(cst, &cr)) {
     if (const Record* rty = is<Record>(cr.recordType)) {
-      if (rty->members().size() > 0) {
+      if (!rty->members().empty()) {
         MonoTypePtr fname(TString::make(rty->headMember().field));
 
         mgu(fname,                  cr.headFieldName, u);
@@ -119,12 +120,12 @@ bool RecordDeconstructor::satisfied(const TEnvPtr&, const ConstraintPtr& cst, De
   }
 
   const TString* fname = is<TString>(cr.headFieldName);
-  if (!fname) {
+  if (fname == nullptr) {
     return false;
   }
 
   const Record* rty = is<Record>(cr.recordType);
-  if (!rty) {
+  if (rty == nullptr) {
     return false;
   }
   if (cr.asTuple != rty->isTuple()) {
@@ -132,18 +133,18 @@ bool RecordDeconstructor::satisfied(const TEnvPtr&, const ConstraintPtr& cst, De
   }
 
   const Record* tty = is<Record>(cr.tailType);
-  if (!tty && !isUnit(cr.tailType)) {
+  if ((tty == nullptr) && !isUnit(cr.tailType)) {
     return false;
   }
 
   if (cr.asTuple) {
-    if (tty) {
+    if (tty != nullptr) {
       return *stripHiddenFields(rty) == *stripHiddenFields(Record::make(cr.headType, tty->members()));
     } else {
       return *rty->headMember().type == *cr.headType;
     }
   } else {
-    if (tty) {
+    if (tty != nullptr) {
       return *stripHiddenFields(rty) == *stripHiddenFields(Record::make(fname->value(), cr.headType, tty->members()));
     } else {
       return rty->headMember().field == fname->value() && *rty->headMember().type == *cr.headType;
@@ -154,7 +155,7 @@ bool RecordDeconstructor::satisfied(const TEnvPtr&, const ConstraintPtr& cst, De
 bool RecordDeconstructor::satisfiable(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions* ds) const {
   ConsRecord cr;
   if (dec(cst, &cr)) {
-    return satisfied(tenv, cst, ds) || is<TVar>(cr.recordType) || is<TVar>(cr.headFieldName) || (is<Record>(cr.recordType) && (is<TVar>(cr.headType) || is<TVar>(cr.tailType)));
+    return satisfied(tenv, cst, ds) || (is<TVar>(cr.recordType) != nullptr) || (is<TVar>(cr.headFieldName) != nullptr) || ((is<Record>(cr.recordType) != nullptr) && ((is<TVar>(cr.headType) != nullptr) || (is<TVar>(cr.tailType) != nullptr)));
   } else {
     return false;
   }
@@ -165,13 +166,13 @@ void RecordDeconstructor::explain(const TEnvPtr&, const ConstraintPtr&, const Ex
 
 PolyTypePtr RecordDeconstructor::lookup(const std::string& vn) const {
   if (vn == REF_REC_LABEL) {
-    return polytype(4, qualtype(list(ConstraintPtr(new Constraint(RecordDeconstructor::constraintName(), list(tlong(1), tlong(0), tgen(0), tgen(1), tgen(2), tgen(3))))), functy(list(tgen(0)), arrayty(prim<char>()))));
+    return polytype(4, qualtype(list(std::make_shared<Constraint>(RecordDeconstructor::constraintName(), list(tlong(1), tlong(0), tgen(0), tgen(1), tgen(2), tgen(3)))), functy(list(tgen(0)), arrayty(prim<char>()))));
   } else if (vn == REF_REC_VALUE) {
-    return polytype(4, qualtype(list(ConstraintPtr(new Constraint(RecordDeconstructor::constraintName(), list(tlong(1), tlong(0), tgen(0), tgen(1), tgen(2), tgen(3))))), functy(list(tgen(0)), tgen(2))));
+    return polytype(4, qualtype(list(std::make_shared<Constraint>(RecordDeconstructor::constraintName(), list(tlong(1), tlong(0), tgen(0), tgen(1), tgen(2), tgen(3)))), functy(list(tgen(0)), tgen(2))));
   } else if (vn == REF_REC_TAIL) {
-    return polytype(4, qualtype(list(ConstraintPtr(new Constraint(RecordDeconstructor::constraintName(), list(tlong(1), tlong(0), tgen(0), tgen(1), tgen(2), tgen(3))))), functy(list(tgen(0)), tgen(3))));
+    return polytype(4, qualtype(list(std::make_shared<Constraint>(RecordDeconstructor::constraintName(), list(tlong(1), tlong(0), tgen(0), tgen(1), tgen(2), tgen(3)))), functy(list(tgen(0)), tgen(3))));
   } else if (vn == REF_TUP_TAIL) {
-    return polytype(4, qualtype(list(ConstraintPtr(new Constraint(RecordDeconstructor::constraintName(), list(tlong(1), tlong(1), tgen(0), tgen(1), tgen(2), tgen(3))))), functy(list(tgen(0)), tgen(3))));
+    return polytype(4, qualtype(list(std::make_shared<Constraint>(RecordDeconstructor::constraintName(), list(tlong(1), tlong(1), tgen(0), tgen(1), tgen(2), tgen(3)))), functy(list(tgen(0)), tgen(3))));
   } else {
     return PolyTypePtr();
   }
@@ -226,11 +227,11 @@ struct RDUnqualify : public switchExprTyFn {
     }
   }
 
-  QualTypePtr withTy(const QualTypePtr& qt) const {
+  QualTypePtr withTy(const QualTypePtr& qt) const override {
     return removeConstraint(this->constraint, qt);
   }
 
-  ExprPtr with(const Assign* v) const {
+  ExprPtr with(const Assign* v) const override {
     if (hasConstraint(this->constraint, v->left()->type())) {
       if (const App* a = is<App>(stripAssumps(v->left()))) {
         if (const Var* f = is<Var>(stripAssumps(a->fn()))) {
@@ -250,7 +251,7 @@ struct RDUnqualify : public switchExprTyFn {
     return wrapWithTy(v->type(), new Assign(switchOf(v->left(), *this), switchOf(v->right(), *this), v->la()));
   }
 
-  ExprPtr with(const Var* v) const {
+  ExprPtr with(const Var* v) const override {
     if (hasConstraint(this->constraint, v->type())) {
       // replace safe functions with 'unsafe' ones
       if (v->value() == REF_REC_LABEL) {

@@ -2,12 +2,12 @@
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wold-style-cast"
 
-typedef struct YYLTYPE {
+using YYLTYPE = struct YYLTYPE {
   int first_line;
   int first_column;
   int last_line;
   int last_column;
-} YYLTYPE;
+};
 #define YYLTYPE_IS_DECLARED 1
 
 #define YYLLOC_DEFAULT(L, R, N) \
@@ -23,32 +23,32 @@ typedef struct YYLTYPE {
 %}
 
 %{
-#include <hobbes/lang/module.H>
+#include <cstdio>
+#include <hobbes/db/bindings.H>
 #include <hobbes/lang/expr.H>
+#include <hobbes/lang/module.H>
 #include <hobbes/lang/pat/pattern.H>
 #include <hobbes/lang/type.H>
 #include <hobbes/lang/typepreds.H>
-#include <hobbes/db/bindings.H>
-#include <hobbes/util/autorelease.H>
-#include <hobbes/util/str.H>
-#include <hobbes/util/array.H>
 #include <hobbes/parse/grammar.H>
 #include <hobbes/parse/lalr.H>
 #include <hobbes/read/pgen/hexpr.parse.H>
-#include <string>
+#include <hobbes/util/array.H>
+#include <hobbes/util/autorelease.H>
+#include <hobbes/util/str.H>
 #include <stdexcept>
+#include <string>
 #include <vector>
-#include <stdio.h>
 
 using namespace hobbes;
 
-typedef std::pair<PatternPtr, ExprPtr> LetBinding;
-typedef std::vector<LetBinding>        LetBindings;
+using LetBinding = std::pair<PatternPtr, ExprPtr>;
+using LetBindings = std::vector<LetBinding>;
 
 cc*         yyParseCC;
-Module*     yyParsedModule = 0;
+Module*     yyParsedModule = nullptr;
 std::string yyParsedVar;
-Expr*       yyParsedExpr   = 0;
+Expr*       yyParsedExpr   = nullptr;
 std::string yyMatchDiagram;
 std::string yyModulePath;
 YYLTYPE     yyErrPos;
@@ -77,7 +77,7 @@ LexicalAnnotation m(const YYLTYPE& p0, const YYLTYPE& p1) {
 #define TAPP3(fn,x0,x1,x2,la) new App(fn, list(ExprPtr(x0),ExprPtr(x1),ExprPtr(x2)), la)
 
 Expr* pickNestedExp(Exprs* exprs, const LexicalAnnotation& la) {
-  if (exprs->size() == 0) {
+  if (exprs->empty()) {
     return new Unit(la);
   } else if (exprs->size() == 1) {
     return (*exprs)[0]->clone();
@@ -91,7 +91,7 @@ Expr* pickNestedExp(Exprs* exprs, const LexicalAnnotation& la) {
 }
 
 Pattern* pickNestedPat(Patterns* pats, const LexicalAnnotation& la) {
-  if (pats->size() == 0) {
+  if (pats->empty()) {
     return new MatchLiteral(PrimitivePtr(new Unit(la)), la);
   } else {
     MatchRecord::Fields fds;
@@ -103,7 +103,7 @@ Pattern* pickNestedPat(Patterns* pats, const LexicalAnnotation& la) {
 }
 
 PatternRows normPatternRules(PatternRows rs, const LexicalAnnotation& la) {
-  if (rs.size() > 0 && !rs.back().result) {
+  if (!rs.empty() && !rs.back().result) {
     throw annotated_error(la, "match table can't end with fall-through row");
   }
 
@@ -117,7 +117,7 @@ PatternRows normPatternRules(PatternRows rs, const LexicalAnnotation& la) {
 
 Expr* compileNestedLetMatch(const LetBindings& bs, const ExprPtr& e, const LexicalAnnotation& la) {
   ExprPtr r = e;
-  for (LetBindings::const_reverse_iterator b = bs.rbegin(); b != bs.rend(); ++b) {
+  for (auto b = bs.rbegin(); b != bs.rend(); ++b) {
     r = compileMatch(yyParseCC, list(b->second), list(PatternRow(list(b->first), r)), la);
   }
   return r->clone();
@@ -196,7 +196,7 @@ MonoTypePtr monoTypeByName(const std::string& tn) {
 }
 
 MonoTypePtr accumTApp(const MonoTypes& ts) {
-  if (ts.size() == 0) {
+  if (ts.empty()) {
     throw std::runtime_error("Internal parser error for type applications");
   } else if (ts.size() == 1) {
     return ts[0];
@@ -280,8 +280,8 @@ str::seq tupSectionFields(const std::string& x) {
 
 // override var and pat-var construction
 namespace hobbes {
-typedef Expr* (*VarCtorFn)(const std::string&, const LexicalAnnotation&);
-typedef Pattern* (*PatVarCtorFn)(const std::string&, const LexicalAnnotation&);
+using VarCtorFn = Expr *(*)(const std::string &, const LexicalAnnotation &);
+using PatVarCtorFn = Pattern *(*)(const std::string &, const LexicalAnnotation &);
 extern VarCtorFn varCtorFn;
 extern PatVarCtorFn patVarCtorFn;
 }

@@ -21,15 +21,15 @@
 #include <map>
 #include <stdexcept>
 
+#include <cstring>
+#include <fcntl.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <sys/ioctl.h>
+#include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/un.h>
-#include <sys/socket.h>
-#include <sys/ioctl.h>
-#include <netinet/in.h>
-#include <netdb.h>
 #include <unistd.h>
-#include <fcntl.h>
-#include <string.h>
 
 // types with static reflection info (for reflective structs, variants, etc)
 #include "reflect.H"
@@ -41,7 +41,7 @@ namespace hobbes { namespace net {
 #define HNET_CMD_INVOKE  static_cast<uint8_t>(2)
 #define HNET_RESULT_FAIL 0
 
-typedef std::vector<uint8_t> bytes;
+using bytes = std::vector<uint8_t>;
 
 // basic socket I/O
 inline void sendData(int socket, const uint8_t* d, size_t sz) {
@@ -127,15 +127,15 @@ struct RPCDef {
   bytes       willPut; // what type will be sent?
   bytes       willGet; // what type will be received?
 };
-typedef std::vector<RPCDef> RPCDefs;
+using RPCDefs = std::vector<RPCDef>;
 
 // initiate a session on a connected socket by sending all of the RPC defs
 inline int initSession(int s, const RPCDefs& rpcds) {
-  uint32_t version = HNET_VERSION;
+  auto version = HNET_VERSION;
   sendData(s, reinterpret_cast<const uint8_t*>(&version), sizeof(version));
 
   for (const auto& rpcd : rpcds) {
-    uint8_t defCmd = HNET_CMD_DEFEXPR;
+    auto defCmd = HNET_CMD_DEFEXPR;
     sendData(s, &defCmd, sizeof(defCmd));
     sendData(s, reinterpret_cast<const uint8_t*>(&rpcd.id), sizeof(rpcd.id));
     sendString(s, rpcd.expr);
@@ -161,8 +161,8 @@ inline addrinfo* lookupAddrInfo(const std::string& host, const std::string& port
   h.ai_family   = AF_UNSPEC;
   h.ai_socktype = SOCK_STREAM;
 
-  struct addrinfo* addrs = 0;
-  switch (getaddrinfo(host.empty()? 0 : host.c_str(), port.empty() ? 0 : port.c_str(), &h, &addrs)) {
+  struct addrinfo* addrs = nullptr;
+  switch (getaddrinfo(host.empty()? nullptr : host.c_str(), port.empty() ? nullptr : port.c_str(), &h, &addrs)) {
   case 0:              return addrs;
   case EAI_ADDRFAMILY: throw std::runtime_error("Cannot make socket connection to " + host + ":" + port);
   case EAI_AGAIN:      throw std::runtime_error(host + ":" + port + " is temporarily unavailable");
@@ -172,26 +172,26 @@ inline addrinfo* lookupAddrInfo(const std::string& host, const std::string& port
   case EAI_SERVICE:    throw std::runtime_error("Failed to resolve service: " + port);
   default:             throw std::runtime_error("Unknown error while trying to resolve " + host + ":" + port);
   }
-  return 0;
+  return nullptr;
 }
 
 inline int makeConnection(const std::string& localAddr, const std::string& host, const std::string& port) {
-  struct addrinfo* localAddrs = localAddr.empty() ? 0 : lookupAddrInfo(localAddr, "");
+  struct addrinfo* localAddrs = localAddr.empty() ? nullptr : lookupAddrInfo(localAddr, "");
   struct addrinfo* addrs      = lookupAddrInfo(host, port);
 
-  for (auto p = addrs; p != 0; p = p->ai_next) {
+  for (auto *p = addrs; p != nullptr; p = p->ai_next) {
     int s = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
     if (s == -1) continue;
 
-    auto la = localAddrs;
-    for (; la != 0; la = la->ai_next) {
+    auto *la = localAddrs;
+    for (; la != nullptr; la = la->ai_next) {
       if (la->ai_family == p->ai_family && la->ai_socktype == p->ai_socktype && la->ai_protocol == p->ai_protocol) {
         if (bind(s, la->ai_addr, la->ai_addrlen) != -1) {
           break;
         }
       }
     }
-    if (la == 0 && localAddrs != 0) continue;
+    if (la == nullptr && localAddrs != nullptr) continue;
 
     if (connect(s, p->ai_addr, p->ai_addrlen) == -1) {
       close(s);
@@ -222,7 +222,7 @@ inline int makeConnection(const std::string& host, size_t port) {
 }
 
 inline int makeConnection(const std::string& hostport) {
-  auto p = hostport.find(":");
+  auto p = hostport.find(':');
   if (p == std::string::npos) {
     throw std::runtime_error("Failed to determine port: " + hostport);
   } else {
@@ -276,7 +276,7 @@ template <>
     static void     write(int, const unit&) { }
     static void     read (int, unit*)       { }
 
-    typedef uint8_t async_read_state;
+    using async_read_state = uint8_t;
     static void prepare(uint8_t*) {}
     static bool accum(int, uint8_t*, unit*) { return true; }
   };
@@ -290,7 +290,7 @@ template <typename T>
     static void     write(int s, const T& x) { io<typename T::rep_t>::write(s, static_cast<typename T::rep_t>(x.value)); }
     static void     read(int s, T* x)        { io<typename T::rep_t>::read(s, reinterpret_cast<typename T::rep_t*>(&x->value)); }
 
-    typedef uint8_t async_read_state;
+    using async_read_state = uint8_t;
     static void prepare(uint8_t* o) { *o = 0; }
     static bool accum(int s, uint8_t* o, T* x) { *o += recvDataPartial(s, reinterpret_cast<uint8_t*>(x) + *o, sizeof(typename T::rep_t) - *o); return *o == sizeof(typename T::rep_t); }
   };
@@ -298,8 +298,8 @@ template <typename T>
 // support variants
 template <size_t i, size_t n, typename ... Ts>
   struct descVariantTy {
-    typedef typename nth<i, Ts...>::type H;
-    typedef descVariantTy<i+1, n, Ts...> Recurse;
+    using H = typename nth<i, Ts...>::type;
+    using Recurse = descVariantTy<i + 1, n, Ts...>;
 
     static void ctorDefs(ty::Variant::Ctors* cs) {
       std::ostringstream fn;
@@ -333,14 +333,14 @@ template <size_t tag, typename T, typename M>
   };
 template <typename T>
   struct AsyncStateOf {
-    typedef typename io<T>::async_read_state type;
+    using type = typename io<T>::async_read_state;
   };
 template <size_t tag, typename T, typename M>
   struct variantAsyncInit {
     static void fn(T* p, void* rs) {
       new (p) T();
 
-      typedef typename io<T>::async_read_state RSType;
+      using RSType = typename io<T>::async_read_state;
       new (rs) RSType();
       io<T>::prepare(reinterpret_cast<RSType*>(rs));
     }
@@ -348,7 +348,7 @@ template <size_t tag, typename T, typename M>
 template <size_t tag, typename T, typename M>
   struct variantAsyncAccum {
     static bool fn(T* p, int s, void* rs) {
-      typedef typename io<T>::async_read_state RSType;
+      using RSType = typename io<T>::async_read_state;
       return io<T>::accum(s, reinterpret_cast<RSType*>(rs), p);
     }
   };
@@ -367,9 +367,9 @@ template <typename ... Ctors>
       variantApp<void, variantGenRead, void, tuple<Ctors...>, int>::apply(x->unsafeTag(), x->unsafePayload(), s);
     }
 
-    typedef typename io<uint32_t>::async_read_state            TagState;
-    typedef typename fmap<AsyncStateOf, tuple<Ctors...>>::type PayloadSAsTuple;
-    typedef typename toVariant<PayloadSAsTuple>::type          PayloadState;
+    using TagState = typename io<uint32_t>::async_read_state;
+    using PayloadSAsTuple = typename fmap<AsyncStateOf, tuple<Ctors...>>::type;
+    using PayloadState = typename toVariant<PayloadSAsTuple>::type;
 
     struct async_read_state {
       bool         readTag;
@@ -406,7 +406,7 @@ struct descVariantF {
 };
 template <typename T>
   struct io<T, typename tbool<T::is_hmeta_variant>::type> {
-    typedef typename T::as_variant_type VT;
+    using VT = typename T::as_variant_type;
     static const bool can_memcpy = io<VT>::can_memcpy;
 
     static ty::desc type() {
@@ -419,7 +419,7 @@ template <typename T>
     static void write(int s, const T& x) { io<VT>::write(s, *reinterpret_cast<const VT*>(&x)); }
     static void read (int s, T* x)       { io<VT>::read(s, reinterpret_cast<VT*>(x)); }
 
-    typedef typename io<VT>::async_read_state async_read_state;
+    using async_read_state = typename io<VT>::async_read_state;
     static void prepare(async_read_state* o)            { io<VT>::prepare(o); }
     static bool accum(int s, async_read_state* o, T* x) { return io<VT>::accum(s, o, reinterpret_cast<VT*>(x)); }
   };
@@ -442,8 +442,8 @@ template <typename U, typename V>
 
     // async reading of pairs
     struct async_read_state {
-      typedef typename io<U>::async_read_state Ustate;
-      typedef typename io<V>::async_read_state Vstate;
+      using Ustate = typename io<U>::async_read_state;
+      using Vstate = typename io<V>::async_read_state;
 
       bool   readFirst;
       Ustate fstState;
@@ -493,7 +493,7 @@ template <typename T, size_t N>
 
     static bool accum(int s, async_read_state* o, T (*x)[N]) {
       const auto len = sizeof(T) * N;
-      uint8_t* buf = reinterpret_cast<uint8_t*>(&((*x)[0]));
+      auto* buf = reinterpret_cast<uint8_t*>(&((*x)[0]));
       o->bytesRead += recvDataPartial(s, buf + o->bytesRead, len - o->bytesRead);
       return o->bytesRead == len;
     }
@@ -516,7 +516,7 @@ template <typename T, size_t N>
     }
 
     struct async_read_state {
-      typedef typename io<T>::async_read_state ElemS;
+      using ElemS = typename io<T>::async_read_state;
 
       size_t idx;
       ElemS  elemS;
@@ -552,7 +552,7 @@ template <typename T>
 
     // async reading of mem-copyable vectors
     struct async_read_state {
-      typedef io<size_t>::async_read_state LenS;
+      using LenS = io<size_t>::async_read_state;
 
       bool   readLen;
       LenS   lenS;
@@ -574,7 +574,7 @@ template <typename T>
           o->readLen   = false;
         }
       } else {
-        uint8_t* buf = reinterpret_cast<uint8_t*>(&(*x)[0]);
+        auto* buf = reinterpret_cast<uint8_t*>(&(*x)[0]);
         o->bytesRead += recvDataPartial(s, buf + o->bytesRead, o->byteLen - o->bytesRead);
       }
       return !o->readLen && o->bytesRead == o->byteLen;
@@ -603,8 +603,8 @@ template <typename T>
 
     // async reading of vectors
     struct async_read_state {
-      typedef io<size_t>::async_read_state LenS;
-      typedef typename io<T>::async_read_state ElemS;
+      using LenS = io<size_t>::async_read_state;
+      using ElemS = typename io<T>::async_read_state;
 
       bool   readLen;
       LenS   lenS;
@@ -660,9 +660,9 @@ template <typename K, typename T>
       }
     }
 
-    typedef io<size_t>::async_read_state LenS;
-    typedef typename io<K>::async_read_state      KS;
-    typedef typename io<T>::async_read_state      TS;
+    using LenS = io<size_t>::async_read_state;
+    using KS = typename io<K>::async_read_state;
+    using TS = typename io<T>::async_read_state;
     enum class ReadS : uint8_t { LenS, KS, TS };
 
     struct async_read_state {
@@ -721,7 +721,7 @@ template <>
 
     // async reading of strings
     struct async_read_state {
-      typedef io<size_t>::async_read_state LenS;
+      using LenS = io<size_t>::async_read_state;
 
       bool   readLen;
       LenS   lenS;
@@ -742,7 +742,7 @@ template <>
           o->readLen = false;
         }
       } else {
-        uint8_t* buf = reinterpret_cast<uint8_t*>(&(*x)[0]);
+        auto* buf = reinterpret_cast<uint8_t*>(&(*x)[0]);
         o->bytesRead += recvDataPartial(s, buf + o->bytesRead, o->byteLen - o->bytesRead);
       }
       return !o->readLen && o->bytesRead == o->byteLen;
@@ -752,10 +752,10 @@ template <>
 // support tuples
 template <size_t i, size_t n, typename ... Fs>
   struct tupInd {
-    typedef typename nth<i, Fs...>::type H;
-    typedef tuple<Fs...>                 TT;
-    typedef typename TT::offs            offs;
-    typedef tupInd<i+1, n, Fs...>        Recurse;
+    using H = typename nth<i, Fs...>::type;
+    using TT = tuple<Fs...>;
+    using offs = typename TT::offs;
+    using Recurse = tupInd<i + 1, n, Fs...>;
 
     static void accFields(ty::Struct::Fields* fs) {
       std::ostringstream ss;
@@ -779,7 +779,7 @@ template <size_t n, typename ... Fs>
 template <size_t tag, typename T, typename M>
   struct tupAsyncInit {
     static void fn(T*, void* rs) {
-      typedef typename io<T>::async_read_state RSType;
+      using RSType = typename io<T>::async_read_state;
       new (rs) RSType();
       io<T>::prepare(reinterpret_cast<RSType*>(rs));
     }
@@ -798,8 +798,8 @@ template <typename ... Fs>
     static void write(int s, const tuple<Fs...>& x) { tupInd<0, sizeof...(Fs), Fs...>::write(s, x); }
     static void read (int s, tuple<Fs...>* x)       { tupInd<0, sizeof...(Fs), Fs...>::read (s, x); }
 
-    typedef typename fmap<AsyncStateOf, tuple<Fs...>>::type SAsTuple;
-    typedef typename toVariant<SAsTuple>::type              async_read_state;
+    using SAsTuple = typename fmap<AsyncStateOf, tuple<Fs...>>::type;
+    using async_read_state = typename toVariant<SAsTuple>::type;
 
     static void prepare(async_read_state* o) {
       o->unsafeTag() = 0;
@@ -835,11 +835,11 @@ template <typename T>
     static const bool can_memcpy = false;
     static ty::desc type() { ty::Struct::Fields fs; defStructF df(&fs); T::meta(df); return ty::record(fs); }
 
-    typedef typename T::as_tuple_type TT;
+    using TT = typename T::as_tuple_type;
     static void write(int s, const T& x) { io<TT>::write(s, *reinterpret_cast<const TT*>(&x)); }
     static void read (int s, T* x)       { io<TT>::read (s, reinterpret_cast<TT*>(x)); }
 
-    typedef typename io<TT>::async_read_state async_read_state;
+    using async_read_state = typename io<TT>::async_read_state;
     static void prepare(async_read_state* o) { io<TT>::prepare(o); }
     static bool accum(int s, async_read_state* o, T* x) { return io<TT>::accum(s, o, reinterpret_cast<TT*>(x)); }
   };
@@ -863,14 +863,14 @@ template <typename T, typename ... Ts>
 // support opaque type aliases
 template <typename T>
   struct io<T, typename tbool<T::is_hmeta_alias>::type> {
-    typedef typename T::type RT;
+    using RT = typename T::type;
     static const bool can_memcpy = io<RT>::can_memcpy;
 
     static ty::desc type()                   { return ty::prim(T::name(), io<RT>::type()); }
     static void     write(int s, const T& x) { io<RT>::write(s, x.value); }
     static void     read (int s, T* x)       { io<RT>::read (s, &x->value); }
 
-    typedef typename io<RT>::async_read_state async_read_state;
+    using async_read_state = typename io<RT>::async_read_state;
     static void prepare(async_read_state* o)            { io<RT>::prepare(o); }
     static bool accum(int s, async_read_state* o, T* x) { return io<typename T::type>::accum(s, o, &x->value); }
   };
@@ -985,7 +985,7 @@ template <typename F>
   };
 template <typename R, typename ... Args>
   struct AsyncRPCFunc<R(Args...)> : public AsyncReader {
-    typedef std::function<void(const R&)> K;
+    using K = std::function<void (const R &)>;
 
     AsyncRPCFunc(AsyncScheduler* sched, int* socket, uint32_t exprid) :
       sched(sched), socket(socket), exprid(exprid)
@@ -1008,7 +1008,7 @@ template <typename R, typename ... Args>
       this->sched->enqueue(this);
     }
 
-    bool readAndFinish() {
+    bool readAndFinish() override {
       if (io<R>::accum(*this->socket, &this->pr, &this->r)) {
         this->ks.front()(this->r);
         this->ks.pop();
@@ -1024,8 +1024,8 @@ template <typename R, typename ... Args>
     int*            socket;
     uint32_t        exprid;
 
-    typedef typename io<R>::async_read_state async_read_state;
-    typedef std::queue<K> KS;
+    using async_read_state = typename io<R>::async_read_state;
+    using KS = std::queue<K>;
 
     KS               ks;
     R                r;

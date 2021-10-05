@@ -16,8 +16,7 @@ bool dec(const ConstraintPtr& c, Subtype* st) {
 }
 
 // the subtype eliminator
-SubtypeUnqualifier::SubtypeUnqualifier() {
-}
+SubtypeUnqualifier::SubtypeUnqualifier() = default;
 
 std::string SubtypeUnqualifier::constraintName() {
   return "Subtype";
@@ -28,12 +27,12 @@ void SubtypeUnqualifier::addEliminator(const std::shared_ptr<SubtypeEliminator>&
 }
 
 SubtypeEliminator* SubtypeUnqualifier::findEliminator(const TEnvPtr& tenv, const Subtype& st) const {
-  for (SubtypeEliminators::const_iterator e = this->eliminators.begin(); e != this->eliminators.end(); ++e) {
-    if ((*e)->satisfiable(tenv, st.lower, st.greater)) {
-      return e->get();
+  for (const auto &eliminator : this->eliminators) {
+    if (eliminator->satisfiable(tenv, st.lower, st.greater)) {
+      return eliminator.get();
     }
   }
-  return 0;
+  return nullptr;
 }
 
 bool SubtypeUnqualifier::refine(const TEnvPtr& tenv, const ConstraintPtr& cst, MonoTypeUnifier* s, Definitions*) {
@@ -58,7 +57,7 @@ bool SubtypeUnqualifier::satisfied(const TEnvPtr& tenv, const ConstraintPtr& cst
 
 bool SubtypeUnqualifier::satisfiable(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions*) const {
   Subtype st;
-  return dec(cst, &st) && findEliminator(tenv, st) != 0;
+  return dec(cst, &st) && findEliminator(tenv, st) != nullptr;
 }
 
 void SubtypeUnqualifier::explain(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*, annmsgs*) {
@@ -75,8 +74,8 @@ ExprPtr SubtypeUnqualifier::unqualify(const TEnvPtr& tenv, const ConstraintPtr& 
 }
 
 PolyTypePtr SubtypeUnqualifier::lookup(const std::string& vn) const {
-  for (SubtypeEliminators::const_iterator e = this->eliminators.begin(); e != this->eliminators.end(); ++e) {
-    PolyTypePtr r = (*e)->lookup(vn);
+  for (const auto &eliminator : this->eliminators) {
+    PolyTypePtr r = eliminator->lookup(vn);
     if (r) {
       return r;
     }
@@ -86,8 +85,8 @@ PolyTypePtr SubtypeUnqualifier::lookup(const std::string& vn) const {
 
 SymSet SubtypeUnqualifier::bindings() const {
   SymSet r;
-  for (SubtypeEliminators::const_iterator e = this->eliminators.begin(); e != this->eliminators.end(); ++e) {
-    SymSet x = (*e)->bindings();
+  for (const auto &eliminator : this->eliminators) {
+    SymSet x = eliminator->bindings();
     r.insert(x.begin(), x.end());
   }
   return r;

@@ -65,14 +65,14 @@ private:
   size_t bcount;
 
   // avoid binding to certain type variables
-  typedef std::map<std::string, size_t> SuppressVarCounts;
+  using SuppressVarCounts = std::map<std::string, size_t>;
   SuppressVarCounts suppressVarCounts;
 
   bool suppressed(const std::string&) const;
   bool suppressed(const MonoTypePtr&) const;
 
   // equivalences between types
-  typedef equivalence_mapping<MonoTypePtr, UTypeRec, LiftUType, MoreDefinedType> M;
+  using M = equivalence_mapping<MonoTypePtr, UTypeRec, LiftUType, MoreDefinedType>;
   M m;
 };
 
@@ -121,10 +121,10 @@ void mgu(const MonoTypes& ts0, const MonoTypes& ts1, MonoTypeUnifier* u);
 void mgu(const ConstraintPtr&, const ConstraintPtr&, MonoTypeUnifier*);
 
 // some utilities for dealing with qualified types
-typedef std::pair<Constraints, MonoTypes> QualLiftedMonoTypes;
+using QualLiftedMonoTypes = std::pair<Constraints, MonoTypes>;
 QualLiftedMonoTypes liftQualifiers(const QualTypes& qts);
 
-typedef std::pair<Constraints, MonoTypePtr> QualLiftedMonoType;
+using QualLiftedMonoType = std::pair<Constraints, MonoTypePtr>;
 
 }
 
