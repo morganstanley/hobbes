@@ -362,7 +362,7 @@ struct crbitstream {
   }
 
   // the current batch and segment we're compressing out of
-  const cbatch*    buffer;
+  const cbatch*    buffer = nullptr;
   const cbatchseg* seg;
 
   // the (read) arithmetic encoder state
