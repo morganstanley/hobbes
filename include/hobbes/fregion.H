@@ -2247,7 +2247,7 @@ template <typename T>
     file_watch fwatch;
     size_t     batchSize;
 
-    const uint64_t* headLen;   // the mapped array count
+    const uint64_t* headLen = nullptr;   // the mapped array count
     const uint8_t*  head;      // pointer into mapped array data (advanced as we read)
     size_t          headIndex; // read index into mapped array
 

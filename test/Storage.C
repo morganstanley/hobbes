@@ -976,8 +976,7 @@ TEST(Storage, KeySeries) {
     writer w(fname);
     keyseries<std::array<char,10>, Quote> ticks(&c(), &w, "ticks", 10000, StoredSeries::Compressed);
 
-    std::array<char,10> bob;
-    strcpy(bob.data(), "bob");
+    std::array<char,10> bob{'b', 'o', 'b', '\0'};
     for (size_t i = 0; i < 20000; ++i) {
       Quote q;
       q.bpx = 3.14159;
@@ -987,8 +986,7 @@ TEST(Storage, KeySeries) {
       ticks.record(bob, q);
     }
 
-    std::array<char,10> jim;
-    strcpy(jim.data(), "jim");
+    std::array<char,10> jim{'j', 'i', 'm', '\0'};
     for (size_t i = 0; i < 20000; ++i) {
       Quote q;
       q.bpx = 4.2;
