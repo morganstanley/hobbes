@@ -44,15 +44,6 @@
 
 namespace hobbes { namespace storage { namespace internal {
 
-// a few things have to be OS-specific here
-//  * available waiting strategy in shared memory
-//  * default waiting strategy
-#if defined(__APPLE__) && defined(__MACH__)
-// macOS doesn't support this flag to mmap so we can just 0 it out
-#ifndef MAP_POPULATE
-#define MAP_POPULATE 0
-#endif
-
 namespace spin {
 
 #if defined(CLOCK_REALTIME)
@@ -74,6 +65,26 @@ inline long poll_tickNS() {
   }
 }
 #endif
+
+static inline void wakeN(volatile uint32_t*, int) {
+  // assume the waiter is polling, nothing to do
+}
+
+} // namespace spin
+}}} // namespace hobbes { namespace storage { namespace internal
+
+// a few things have to be OS-specific here
+//  * available waiting strategy in shared memory
+//  * default waiting strategy
+#if defined(__APPLE__) && defined(__MACH__)
+// macOS doesn't support this flag to mmap so we can just 0 it out
+#ifndef MAP_POPULATE
+#define MAP_POPULATE 0
+#endif
+
+namespace hobbes { namespace storage { namespace internal {
+
+namespace spin {
 
 static inline void waitForUpdate(volatile uint32_t* p, int eqV) {
   while (true) {
@@ -108,36 +119,21 @@ static inline void waitForUpdate(volatile uint32_t* p, int eqV, size_t timeoutNS
     usleep(500);
   }
 }
-static inline void wakeN(volatile uint32_t* p, int c) {
-  // assume the waiter is polling, nothing to do
-}
 
 } // namespace spin
+
+namespace platform = spin;
+
+}}} // namespace hobbes { namespace storage { namespace internal
+
 #else
+
 #include <linux/futex.h>
 #include <sys/syscall.h>
 
-namespace spin {
+namespace hobbes { namespace storage { namespace internal {
 
-#if defined(CLOCK_REALTIME)
-inline long poll_tickNS() {
-  timespec ts;
-  if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0) {
-    return ts.tv_sec * 1000000000L + ts.tv_nsec;
-  } else {
-    return 0;
-  }
-}
-#else
-inline long poll_tickNS() {
-  struct timeval t;
-  if (gettimeofday(&t, 0) == 0) {
-    return ((t.tv_sec * 1000000) + t.tv_usec) * 1000;
-  } else {
-    return 0;
-  }
-}
-#endif
+namespace spin {
 
 static inline void waitForUpdate(volatile uint32_t* p, int eqV) {
   while (true) {
@@ -170,10 +166,6 @@ static inline void waitForUpdate(volatile uint32_t* p, int eqV, size_t timeoutNS
     }
   }
 }
-static inline void wakeN(volatile uint32_t*, int) {
-  // assume the waiter is polling, nothing to do
-}
-
 } // namespace spin
 
 namespace futex {
@@ -209,15 +201,11 @@ static inline void wakeN(volatile uint32_t* p, int c) {
 }
 
 } // namespace futex
-#endif
 
-#if defined (__APPLE__) && defined (__MACH__)
-namespace platform = spin;
-#else
 namespace platform = futex;
-#endif
 
-}}}
+}}} // namespace hobbes { namespace storage { namespace internal
+#endif
 
 namespace hobbes { namespace storage {
 
