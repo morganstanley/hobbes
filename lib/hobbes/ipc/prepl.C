@@ -6,11 +6,80 @@
 #include <hobbes/util/codec.H>
 #include <hobbes/util/os.H>
 #include <sstream>
+#include <string>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+
+namespace {
+bool doesDirExist(const std::string &name) {
+  struct stat sb {};
+  return stat(name.c_str(), &sb) == 0;
+}
+
+// if "HOBBES_LOADING_TIMEOUT" is undefined or without a valid timeout value
+// def will be returned
+// "HOBBES_LOADING_TIMEOUT" is in seconds
+int getLoadingTimeoutInSecs(int def) {
+  const auto ts = hobbes::str::env("HOBBES_LOADING_TIMEOUT");
+  if (ts.empty()) {
+    return def;
+  }
+  try {
+    std::size_t pos{};
+    const auto t = std::stoi(ts, &pos);
+    return (pos != ts.size() || t <= 0) ? def : t;
+  } catch (const std::exception &) {
+    return def;
+  }
+}
+
+void killAndWait(pid_t cpid) {
+  const auto p = [cpid]() -> std::ostream & {
+    return std::cout << "killing process (" << cpid << ")";
+  };
+
+  const auto killFn = [cpid, p]() -> bool {
+    if (kill(cpid, SIGTERM) != 0) {
+      const auto e = errno;
+      p() << " returns error " << std::strerror(e) << std::endl;
+      return false;
+    }
+    return true;
+  };
+
+  const auto waitFn = [cpid, p]() -> bool {
+    int stat = 0;
+    if (waitpid(cpid, &stat, 0) == -1) {
+      const auto e = errno;
+      p() << " failed with error " << std::strerror(e) << std::endl;
+      return false;
+    }
+    if (WIFEXITED(stat)) {
+      // p() << ", succeed with exit status " << WEXITSTATUS(stat) << std::endl;
+    } else {
+      p() << ", child exited with unexpected status " << stat << std::endl;
+    }
+    return true;
+  };
+
+  const auto confirmFn = [cpid, p]() -> void {
+    if (doesDirExist("/proc/" + std::to_string(cpid))) {
+      p() << ". process (" << cpid << ") remains" << std::endl;
+    }
+  };
+
+  if (!killFn()) {
+    return;
+  }
+  if (!waitFn()) {
+    return;
+  }
+  confirmFn(); // what shoud we do if process still exists?
+}
+} // namespace
 
 namespace hobbes {
 
@@ -74,7 +143,7 @@ void spawn(const std::string& cmd, proc* p) {
 
       struct timeval tmout;
       memset(&tmout, 0, sizeof(tmout));
-      tmout.tv_sec = 30 * 60;
+      tmout.tv_sec = getLoadingTimeoutInSecs(1800);
 
       select(FD_SETSIZE, &fds, nullptr, nullptr, &tmout);
 
@@ -98,6 +167,7 @@ void spawn(const std::string& cmd, proc* p) {
           throw std::runtime_error("Unable to launch process: " + cmd + " (invalid init response), with output:\n" + ss.str());
         }
       } else {
+        killAndWait(cpid);
         throw std::runtime_error("Unable to launch process: " + cmd + " (timed out waiting for init signal)");
       }
 

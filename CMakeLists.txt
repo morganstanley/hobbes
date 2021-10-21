@@ -106,6 +106,7 @@ add_executable(hog ${hog_files})
 target_link_libraries(hog PRIVATE hobbes)
 
 enable_testing()
+add_executable(mock-proc test/mocks/proc.C)
 add_executable(hobbes-test ${test_files})
 target_link_libraries(hobbes-test PRIVATE hobbes)
 add_test(hobbes-test hobbes-test)
