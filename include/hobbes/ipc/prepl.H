@@ -5,6 +5,8 @@
 #ifndef HOBBES_IPC_REPL_HPP_INCLUDED
 #define HOBBES_IPC_REPL_HPP_INCLUDED
 
+#include "hobbes/lang/type.H"
+
 #include <string>
 #include <unistd.h>
 
