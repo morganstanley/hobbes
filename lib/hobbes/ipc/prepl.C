@@ -57,15 +57,13 @@ void killAndWait(pid_t cpid) {
       p() << " failed with error " << std::strerror(e) << std::endl;
       return false;
     }
-    if (WIFEXITED(stat)) {
-      // p() << ", succeed with exit status " << WEXITSTATUS(stat) << std::endl;
-    } else {
+    if (!WIFEXITED(stat)) {
       p() << ", child exited with unexpected status " << stat << std::endl;
     }
     return true;
   };
 
-  const auto confirmFn = [cpid, p]() -> void {
+  const auto confirmExitFn = [cpid, p]() -> void {
     if (doesDirExist("/proc/" + std::to_string(cpid))) {
       p() << ". process (" << cpid << ") remains" << std::endl;
     }
@@ -77,7 +75,7 @@ void killAndWait(pid_t cpid) {
   if (!waitFn()) {
     return;
   }
-  confirmFn(); // what shoud we do if process still exists?
+  confirmExitFn(); // what shoud we do if process still exists?
 }
 } // namespace
 
