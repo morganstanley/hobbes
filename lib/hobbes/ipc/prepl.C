@@ -23,7 +23,7 @@ bool doesDirExist(const std::string &name) {
 // def will be returned
 // "HOBBES_LOADING_TIMEOUT" is in seconds
 int getLoadingTimeoutInSecs(int def) {
-  const auto ts = hobbes::str::env("HOBBES_LOADING_TIMEOUT");
+  const auto ts = hobbes::str::env("HOBBES_LOADING_TIMEOUT_IN_SECS");
   if (ts.empty()) {
     return def;
   }
@@ -36,46 +36,52 @@ int getLoadingTimeoutInSecs(int def) {
   }
 }
 
-void killAndWait(pid_t cpid) {
-  const auto p = [cpid]() -> std::ostream & {
-    return std::cout << "killing process (" << cpid << ")";
-  };
+struct TermResult {
+  std::string reason{};
+  bool ok = false;
 
-  const auto killFn = [cpid, p]() -> bool {
+  static const TermResult OK;
+};
+
+const TermResult TermResult::OK = {.ok = true};
+
+TermResult killAndWait(pid_t cpid) {
+  const auto killFn = [cpid]() -> TermResult {
     if (kill(cpid, SIGTERM) != 0) {
       const auto e = errno;
-      p() << " returns error " << std::strerror(e) << std::endl;
-      return false;
+      return {.reason = "killing process failed with an error " +
+                        std::string(std::strerror(e))};
     }
-    return true;
+    return TermResult::OK;
   };
 
-  const auto waitFn = [cpid, p]() -> bool {
-    int stat = 0;
-    if (waitpid(cpid, &stat, 0) == -1) {
+  const auto waitFn = [cpid]() -> TermResult {
+    if (waitpid(cpid, nullptr, 0) == -1) {
       const auto e = errno;
-      p() << " failed with error " << std::strerror(e) << std::endl;
-      return false;
+      return {.reason = "waiting process to exit failed with error " +
+                        std::string(std::strerror(e))};
     }
-    if (!WIFEXITED(stat)) {
-      p() << ", child exited with unexpected status " << stat << std::endl;
-    }
-    return true;
+    return TermResult::OK;
   };
 
-  const auto confirmExitFn = [cpid, p]() -> void {
+  const auto hasProcessExited = [cpid]() -> TermResult {
     if (doesDirExist("/proc/" + std::to_string(cpid))) {
-      p() << ". process (" << cpid << ") remains" << std::endl;
+      return {.reason = "process remains"};
     }
+    return TermResult::OK;
   };
 
-  if (!killFn()) {
-    return;
+  TermResult r = killFn();
+  if (!r.ok) {
+    return hasProcessExited().ok ? TermResult::OK : r;
   }
-  if (!waitFn()) {
-    return;
+
+  r = waitFn();
+  if (!r.ok) {
+    return hasProcessExited().ok ? TermResult::OK : r;
   }
-  confirmExitFn(); // what shoud we do if process still exists?
+
+  return hasProcessExited();
 }
 } // namespace
 
@@ -95,7 +101,7 @@ void execProcess(const std::string& cmd) {
   execv(args[0].c_str(), const_cast<char* const*>(&argv[0]));
 }
 
-void spawn(const std::string& cmd, proc* p) {
+void spawn(const std::string& cmd, proc* p, const FailToKillCallback& fn) {
   // launch the process -- set up pipes for communication
   int p2c[2] = {0, 0};
   int c2p[2] = {0, 0};
@@ -165,7 +171,10 @@ void spawn(const std::string& cmd, proc* p) {
           throw std::runtime_error("Unable to launch process: " + cmd + " (invalid init response), with output:\n" + ss.str());
         }
       } else {
-        killAndWait(cpid);
+        const TermResult r = killAndWait(cpid);
+        if (!r.ok && fn) {
+          fn(cpid, r.reason);
+        }
         throw std::runtime_error("Unable to launch process: " + cmd + " (timed out waiting for init signal)");
       }
 
