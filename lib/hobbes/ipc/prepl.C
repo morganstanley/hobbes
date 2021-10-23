@@ -6,11 +6,84 @@
 #include <hobbes/util/codec.H>
 #include <hobbes/util/os.H>
 #include <sstream>
+#include <string>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+
+namespace {
+bool doesDirExist(const std::string &name) {
+  struct stat sb {};
+  return stat(name.c_str(), &sb) == 0;
+}
+
+// if "HOBBES_LOADING_TIMEOUT" is undefined or without a valid timeout value
+// def will be returned
+// "HOBBES_LOADING_TIMEOUT" is in seconds
+int getLoadingTimeoutInSecs(int def) {
+  const auto ts = hobbes::str::env("HOBBES_LOADING_TIMEOUT_IN_SECS");
+  if (ts.empty()) {
+    return def;
+  }
+  try {
+    std::size_t pos{};
+    const auto t = std::stoi(ts, &pos);
+    return (pos != ts.size() || t <= 0) ? def : t;
+  } catch (const std::exception &) {
+    return def;
+  }
+}
+
+struct TermResult {
+  std::string reason{};
+  bool ok = false;
+
+  static const TermResult OK;
+};
+
+const TermResult TermResult::OK = {.ok = true};
+
+TermResult killAndWait(pid_t cpid) {
+  const auto killFn = [cpid]() -> TermResult {
+    if (kill(cpid, SIGTERM) != 0) {
+      const auto e = errno;
+      return {.reason = "killing process failed with an error " +
+                        std::string(std::strerror(e))};
+    }
+    return TermResult::OK;
+  };
+
+  const auto waitFn = [cpid]() -> TermResult {
+    if (waitpid(cpid, nullptr, 0) == -1) {
+      const auto e = errno;
+      return {.reason = "waiting process to exit failed with error " +
+                        std::string(std::strerror(e))};
+    }
+    return TermResult::OK;
+  };
+
+  const auto hasProcessExited = [cpid]() -> TermResult {
+    if (doesDirExist("/proc/" + std::to_string(cpid))) {
+      return {.reason = "process remains"};
+    }
+    return TermResult::OK;
+  };
+
+  TermResult r = killFn();
+  if (!r.ok) {
+    return hasProcessExited().ok ? TermResult::OK : r;
+  }
+
+  r = waitFn();
+  if (!r.ok) {
+    return hasProcessExited().ok ? TermResult::OK : r;
+  }
+
+  return hasProcessExited();
+}
+} // namespace
 
 namespace hobbes {
 
@@ -28,7 +101,7 @@ void execProcess(const std::string& cmd) {
   execv(args[0].c_str(), const_cast<char* const*>(&argv[0]));
 }
 
-void spawn(const std::string& cmd, proc* p) {
+void spawn(const std::string& cmd, proc* p, const FailToKillCallback& fn) {
   // launch the process -- set up pipes for communication
   int p2c[2] = {0, 0};
   int c2p[2] = {0, 0};
@@ -74,7 +147,7 @@ void spawn(const std::string& cmd, proc* p) {
 
       struct timeval tmout;
       memset(&tmout, 0, sizeof(tmout));
-      tmout.tv_sec = 30 * 60;
+      tmout.tv_sec = getLoadingTimeoutInSecs(1800);
 
       select(FD_SETSIZE, &fds, nullptr, nullptr, &tmout);
 
@@ -98,6 +171,10 @@ void spawn(const std::string& cmd, proc* p) {
           throw std::runtime_error("Unable to launch process: " + cmd + " (invalid init response), with output:\n" + ss.str());
         }
       } else {
+        const TermResult r = killAndWait(cpid);
+        if (!r.ok && fn) {
+          fn(cpid, r.reason);
+        }
         throw std::runtime_error("Unable to launch process: " + cmd + " (timed out waiting for init signal)");
       }
 

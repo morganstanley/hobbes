@@ -5,6 +5,8 @@
 #ifndef HOBBES_IPC_REPL_HPP_INCLUDED
 #define HOBBES_IPC_REPL_HPP_INCLUDED
 
+#include "hobbes/lang/type.H"
+
 #include <string>
 #include <unistd.h>
 
@@ -19,7 +21,8 @@ struct proc {
   int         read_fd;  // read from this to get remote proc responses
 };
 
-void spawn(const std::string&, proc*);
+using FailToKillCallback = std::function<void(pid_t, const std::string&)>;
+void spawn(const std::string&, proc*, const FailToKillCallback& fn={});
 void procSearch(proc*, const std::string&, const std::string&);
 void procDefine(proc*, const std::string&, const std::string&);
 void procEval(proc*, const std::string&);
