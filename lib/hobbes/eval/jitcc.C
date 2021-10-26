@@ -654,10 +654,11 @@ llvm::IRBuilder<>* jitcc::builder() const {
 }
 
 #if LLVM_VERSION_MAJOR >= 11
-llvm::Module* jitcc::module() {
+llvm::Module *jitcc::module() {
   if (this->currentModule == nullptr) {
-    this->currentModule = withContext([](llvm::LLVMContext& c) {
-      return std::make_unique<llvm::Module>(createUniqueName("jitModule"), c);
+    this->currentModule = withContext([](llvm::LLVMContext &c) {
+      static std::atomic_int mc{};
+      return std::make_unique<llvm::Module>("jitModule" + std::to_string(mc++), c);
     });
   }
   return this->currentModule.get();

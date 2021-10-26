@@ -14,14 +14,8 @@
 
 #include <llvm/ADT/SmallString.h>
 #include <llvm/ADT/StringMap.h>
-#include <llvm/Support/FormatVariadic.h>
 
 namespace hobbes {
-
-LLVM_NODISCARD inline std::string createUniqueName(llvm::StringRef prefix) {
-  static llvm::StringMap<std::atomic_int> m;
-  return llvm::formatv("{0}{1}", prefix, llvm::to_string(m[prefix]++));
-}
 
 // type aliases for common types
 DEFINE_TYPE_ALIAS_AS(timespanT, timespan, int64_t);
