@@ -55,33 +55,32 @@ TermResult killAndWait(pid_t cpid) {
     return TermResult::OK;
   };
 
-  const auto waitFn = [cpid]() -> TermResult {
-    if (waitpid(cpid, nullptr, 0) == -1) {
-      const auto e = errno;
-      return {.reason = "waiting process to exit failed with error " +
-                        std::string(std::strerror(e))};
-    }
-    return TermResult::OK;
+  const auto waitFn = [cpid]() -> bool {
+    return cpid == waitpid(cpid, nullptr, WNOHANG);
   };
 
-  const auto hasProcessExited = [cpid]() -> TermResult {
-    if (doesDirExist("/proc/" + std::to_string(cpid))) {
-      return {.reason = "process remains"};
-    }
-    return TermResult::OK;
+  const auto hasProcessExited = [cpid]() -> bool {
+    return !doesDirExist("/proc/" + std::to_string(cpid));
   };
 
   TermResult r = killFn();
   if (!r.ok) {
-    return hasProcessExited().ok ? TermResult::OK : r;
+    return hasProcessExited() ? TermResult::OK : r;
   }
 
-  r = waitFn();
-  if (!r.ok) {
-    return hasProcessExited().ok ? TermResult::OK : r;
+  // wait and retry, 10 secs
+  for (int i = 0; i < 10; ++i) {
+    waitFn();
+    if (hasProcessExited()) {
+      return TermResult::OK;
+    }
+    sleep(1);
   }
 
-  return hasProcessExited();
+  if (hasProcessExited()) {
+    return TermResult::OK;
+  }
+  return {.reason = "process " + std::to_string(cpid) + " is still alive"};
 }
 } // namespace
 
