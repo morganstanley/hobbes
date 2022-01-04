@@ -74,11 +74,15 @@ template < typename Char = char, typename Traits = std::char_traits<Char> >
 
 // show int128 values (should be disabled when/if compiler support for these types is standardized)
 inline void printInt128(std::ostream& out, const __int128& sx) {
+  constexpr __int128 INT128_MIN = static_cast<__int128>(static_cast<unsigned __int128>(1) << 127);
+
   if (sx == 0) {
     out << "0";
+  } else if (sx == INT128_MIN) {
+    out << "-170141183460469231731687303715884105728";
   } else {
     __int128 x = (sx < 0) ? -sx : sx;
-    
+
     char buf[128];
     memset(buf, 0, sizeof(buf));
     char* d = buf;
@@ -103,24 +107,34 @@ inline std::ostream& operator<<(std::ostream& out, const __int128& sx) {
 }
 
 inline bool readInt128(const std::string& s, __int128* x) {
+  constexpr unsigned __int128 ABS_INT128_POS = (static_cast<unsigned __int128>(1) << 127) - 1;
+  constexpr unsigned __int128 ABS_INT128_NEG = static_cast<unsigned __int128>(1) << 127;
+
   if (s.empty()) return false;
 
   bool neg = s[0] == '-';
   std::string n = neg ? s.substr(1) : s;
 
-  *x = 0;
-  __int128 a = 1;
+  unsigned __int128 y = 0U;
+  unsigned __int128 a = 1U;
   for (size_t i = n.size(); i > 0; --i) {
     char d = n[i-1];
 
     if (d >= '0' && d <= '9') {
-      *x += a * (d-'0');
-      a  *= 10;
+      y += a * static_cast<unsigned __int128>(d-'0');
+      if (neg && y > ABS_INT128_NEG) {
+        return false;
+      }
+      if ((!neg) && y > ABS_INT128_POS) {
+        return false;
+      }
+      a *= 10U;
     } else {
       return false;
     }
   }
-  if (neg) *x *= -1;
+
+  *x = (neg ? -1 : 1) * static_cast<__int128>(y);
   return true;
 }
 
