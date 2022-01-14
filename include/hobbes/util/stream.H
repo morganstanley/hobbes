@@ -72,15 +72,15 @@ template < typename Char = char, typename Traits = std::char_traits<Char> >
 
 }}
 
-#define ABS_INT128_POS ((static_cast<unsigned __int128>(1) << 127) - 1)
-#define ABS_INT128_NEG ( static_cast<unsigned __int128>(1) << 127)
-#define INT128_MIN     (static_cast<__int128>(static_cast<unsigned __int128>(1) << 127))
+#define HOBBES_ABS_INT128_POS ((static_cast<unsigned __int128>(1) << 127) - 1)
+#define HOBBES_ABS_INT128_NEG ( static_cast<unsigned __int128>(1) << 127)
+#define HOBBES_INT128_MIN     (static_cast<__int128>(static_cast<unsigned __int128>(1) << 127))
 
 // show int128 values (should be disabled when/if compiler support for these types is standardized)
 inline void printInt128(std::ostream& out, const __int128& sx) {
   if (sx == 0) {
     out << "0";
-  } else if (sx == INT128_MIN) {
+  } else if (sx == HOBBES_INT128_MIN) {
     out << "-170141183460469231731687303715884105728";
   } else {
     __int128 x = (sx < 0) ? -sx : sx;
@@ -108,6 +108,7 @@ inline std::ostream& operator<<(std::ostream& out, const __int128& sx) {
   return out;
 }
 
+// s must not have trailing 'H'
 inline bool readInt128(const std::string& s, __int128* x) {
   if (s.empty()) return false;
 
@@ -121,10 +122,10 @@ inline bool readInt128(const std::string& s, __int128* x) {
 
     if (d >= '0' && d <= '9') {
       y += a * static_cast<unsigned __int128>(d-'0');
-      if (neg && y > ABS_INT128_NEG) {
+      if (neg && y > HOBBES_ABS_INT128_NEG) {
         return false;
       }
-      if ((!neg) && y > ABS_INT128_POS) {
+      if ((!neg) && y > HOBBES_ABS_INT128_POS) {
         return false;
       }
       a *= 10U;
@@ -134,8 +135,8 @@ inline bool readInt128(const std::string& s, __int128* x) {
   }
 
   if (neg) {
-    if (y == ABS_INT128_NEG) {
-      *x = INT128_MIN;
+    if (y == HOBBES_ABS_INT128_NEG) {
+      *x = HOBBES_INT128_MIN;
     } else {
       *x = -1 * static_cast<__int128>(y);
     }
@@ -145,9 +146,9 @@ inline bool readInt128(const std::string& s, __int128* x) {
   return true;
 }
 
-#undef ABS_INT128_POS
-#undef ABS_INT128_NEG
-#undef INT128_MIN
+#undef HOBBES_ABS_INT128_POS
+#undef HOBBES_ABS_INT128_NEG
+#undef HOBBES_INT128_MIN
 
 #endif
 
