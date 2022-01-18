@@ -77,7 +77,21 @@ TEST(Prelude, SScan) {
 
 TEST(Prelude, Int128) {
   EXPECT_EQ(c().compileFn<int128_t()>("40H + 2S")(), 42);
+  EXPECT_EQ(c().compileFn<int128_t()>("40H - 42S")(), -2);
   EXPECT_TRUE((c().compileFn<bool(int128_t)>("x", "x==42")(42)));
   EXPECT_EQ(hobbes::makeStdString(c().compileFn<const hobbes::array<char>*()>("show(42H)")()), "42");
+
+  // INT128_MAX w/  'H'
+  EXPECT_EQ((makeStdString(c().compileFn<const array<char>*()>("show(readInt128(\"170141183460469231731687303715884105727H\"))")())), "|1=170141183460469231731687303715884105727|");
+  // INT128_MAX w/o 'H'
+  EXPECT_EQ((makeStdString(c().compileFn<const array<char>*()>("show(readInt128(\"170141183460469231731687303715884105727\"))")())), "|1=170141183460469231731687303715884105727|");
+  // INT128_MIN w/  'H'
+  EXPECT_EQ((makeStdString(c().compileFn<const array<char>*()>("show(readInt128(\"-170141183460469231731687303715884105728H\"))")())), "|1=-170141183460469231731687303715884105728|");
+  // INT128_MIN w/o 'H'
+  EXPECT_EQ((makeStdString(c().compileFn<const array<char>*()>("show(readInt128(\"-170141183460469231731687303715884105728\"))")())), "|1=-170141183460469231731687303715884105728|");
+  // underflow
+  EXPECT_EQ((makeStdString(c().compileFn<const array<char>*()>("show(readInt128(\"-170141183460469231731687303715884105729\"))")())), "|0|");
+  // overflow
+  EXPECT_EQ((makeStdString(c().compileFn<const array<char>*()>("show(readInt128(\"170141183460469231731687303715884105728\"))")())), "|0|");
 }
 

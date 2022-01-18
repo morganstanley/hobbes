@@ -248,6 +248,20 @@ template <typename T>
     }
   }
 
+template <>
+  const typename maybe<int128_t>::ty* readISV<int128_t>(const array<char>* x) {
+    const std::string numbers = [x] {
+      const int suffix_digit = *(x->data + x->size - 1) == 'H' ? 1 : 0;
+      return std::string(x->data, x->data + x->size - suffix_digit);
+    }();
+    int128_t r;
+    if (readInt128(numbers, &r)) {
+      return maybe<int128_t>::just(r);
+    } else {
+      return maybe<int128_t>::nothing();
+    }
+  }
+
 const array<char>* showShort(short s) {
   return makeString(str::from(s) + "S");
 }
@@ -272,6 +286,10 @@ const array<char>* showInt128(int128_t x) {
   std::ostringstream ss;
   printInt128(ss, x);
   return makeString(ss.str());
+}
+
+const maybe<int128_t>::ty* readInt128(const array<char>* x) {
+  return readISV<int128_t>(x);
 }
 
 const maybe<long>::ty* readLong(const array<char>* x) {
@@ -682,6 +700,7 @@ void initStdFuncDefs(cc& ctx) {
   ctx.bind("readShort",  &readShort);
   ctx.bind("readInt",    &readInt);
   ctx.bind("readLong",   &readLong);
+  ctx.bind("readInt128", static_cast<const maybe<int128_t>::ty*(*)(const array<char>*)>(&readInt128));
   ctx.bind("readFloat",  &readFloat);
   ctx.bind("readDouble", &readDouble);
 
