@@ -438,3 +438,51 @@ TEST(Net, asyncClientAPIWithUnConfiguredHostName) {
   }
   EXPECT_EQ(c.pendingRequests(), size_t(0));
 }
+
+namespace {
+template <typename EventLoopFn, typename ExpectPred>
+void eventLoopShutdownWithStopFImpl(EventLoopFn elFn, ExpectPred expectPred) {
+  struct {
+    std::atomic_bool flag{false};
+  } stopper;
+  std::function<bool()> f = [&stopper]() -> bool { return stopper.flag; };
+
+  using namespace std::chrono_literals;
+  using Clock = std::chrono::steady_clock;
+
+  auto t = std::thread([&stopper] {
+    std::this_thread::sleep_for(2s);
+    stopper.flag = true;
+  });
+
+  const auto startTime = Clock::now();
+  elFn(f);
+  const auto endTime = Clock::now();
+  const auto millisecs =
+      std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime)
+          .count();
+  t.join();
+  EXPECT_TRUE(expectPred(millisecs));
+}
+} // namespace
+
+TEST(Net, eventLoopShutdownWithStopF) {
+  // eventLoopShutdownWithStopFImpl setup a stopFn returns true after 2000 ms
+
+  // a repeatable timer triggers on every 700ms is added to check stopFn periodically
+  // event loop should stop after ~2000 ms
+  eventLoopShutdownWithStopFImpl(
+      [](const std::function<bool()> &stopFn) {
+        hobbes::addTimer([] { return true; }, 700);
+        hobbes::runEventLoop(stopFn);
+      },
+      [](auto millisecs) { return millisecs > 1'500 && millisecs < 2'500; });
+
+  // a timeout at 500ms is set for this "one shot" event loop
+  // event loop should stop after ~500 ms
+  eventLoopShutdownWithStopFImpl(
+      [](const std::function<bool()> &stopFn) {
+        hobbes::runEventLoop(500'000, stopFn);
+      },
+      [](auto millisecs) { return millisecs < 1'000; });
+}

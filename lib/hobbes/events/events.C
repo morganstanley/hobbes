@@ -91,8 +91,8 @@ void registerInterruptHandler(const std::function<void()>& fn) {
   (*epClosures)[-1] = c;
 }
 
-bool stepEventLoop(int timeoutMS) {
-  while (true) {
+bool stepEventLoop(int timeoutMS, const std::function<bool()>& stopFn) {
+  while (!stopFn()) {
     if (!timers.empty()) {
       auto next = timers.top().callTime;
       auto timeUntilNext = next - std::chrono::high_resolution_clock::now();
@@ -125,30 +125,31 @@ bool stepEventLoop(int timeoutMS) {
       while(!timers.empty() && timers.top().callTime <= now) {
         auto t = timers.top();
         timers.pop();
-        
+
         bool repeat = t.func();
         resetMemoryPool();
-        
+
         if(repeat) {
           timer newT;
           newT.callTime = std::chrono::high_resolution_clock::now() + t.interval,
           newT.func = t.func,
           newT.interval = t.interval,
-          
+
           newTimers.push_back(newT);
         }
       }
-      
+
       for (auto& timer : newTimers) {
         timers.push(timer);
       }
     }
     return status;
   }
+  return false;
 }
 
-void runEventLoop() {
-  while (stepEventLoop());
+void runEventLoop(const std::function<bool()>& stopFn) {
+  while (stepEventLoop(-1, stopFn));
 }
 
 void addTimer(timerfunc f, int millisecInterval) {
@@ -160,7 +161,7 @@ void addTimer(timerfunc f, int millisecInterval) {
   timers.push(t);
 }
 
-void runEventLoop(int microsecondDuration) {
+void runEventLoop(int microsecondDuration, const std::function<bool()>& stopFn) {
   long t  = hobbes::time();
   long dt = static_cast<long>(microsecondDuration) * 1000L;
   long tf = t + dt;
@@ -180,7 +181,7 @@ void runEventLoop(int microsecondDuration) {
       }
     }
     t = hobbes::time();
-  } while (t < tf);
+  } while (t < tf && !stopFn());
 }
 
 #elif defined(BUILD_OSX)
@@ -236,8 +237,8 @@ void registerInterruptHandler(const std::function<void()>& fn) {
   (*kqClosures)[-1] = c;
 }
 
-bool stepEventLoop(int timeoutMS) {
-  while (true) {
+bool stepEventLoop(int timeoutMS, const std::function<bool()>& stopFn) {
+  while (!stopFn()) {
     struct timespec timeout;
     timeout.tv_sec  = timeoutMS / 1000;
     timeout.tv_nsec = (timeoutMS % 1000) * 1000000UL;
@@ -260,17 +261,18 @@ bool stepEventLoop(int timeoutMS) {
       }
     }
   }
+  return false;
 }
 
-void runEventLoop() {
-  while (stepEventLoop());
+void runEventLoop(const std::function<bool()>& stopFn) {
+  while (stepEventLoop(-1, stopFn));
 }
 
 void addTimer(timerfunc f, int millisecInterval) {
   throw std::runtime_error("addTimer nyi for OSX");
 }
 
-void runEventLoop(int microsecondDuration) {
+void runEventLoop(int microsecondDuration, const std::function<bool()>& stopFn) {
   long t  = hobbes::time();
   long dt = ((long)microsecondDuration) * 1000L;
   long tf = t + dt;
@@ -294,7 +296,7 @@ void runEventLoop(int microsecondDuration) {
       }
     }
     t = hobbes::time();
-  } while (t < tf);
+  } while (t < tf && !stopFn());
 }
 
 #endif
