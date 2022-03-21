@@ -5,6 +5,8 @@
 #include <hobbes/eval/func.H>
 #include <hobbes/lang/module.H>
 
+#include <functional>
+
 namespace hobbes {
 
 class cc;
@@ -17,7 +19,9 @@ void pushModuleDir(const std::string&);
 void popModuleDir();
 
 // compile a whole module into a cc context
-void compile(cc*, const ModulePtr& m);
+// once stopFn() is true, the compilation stops prematurely,
+//   cc is not valid anymore, all you can do is to destroy it
+void compile(cc*, const ModulePtr& m, std::function<bool()> stopFn=[] { return false; });
 
 // set language options, display language options
 using OptDescs = std::map<std::string, std::string>;

@@ -794,8 +794,11 @@ void compile(const ModulePtr &, cc *, const MSafePragmaDef *mpd) {
 // for now, just treat each definition independently and stick it in the input
 // environment
 //   (this disallows things like mutual recursion)
-void compile(cc *e, const ModulePtr &m) {
+void compile(cc *e, const ModulePtr &m, std::function<bool()> stopFn) {
   for (const auto& tmd : m->definitions()) {
+    if (stopFn()) {
+      return;
+    }
     auto md = applyTypeDefns(m, e, tmd);
 
     if (const MImport *imp = is<MImport>(md)) {
@@ -821,6 +824,9 @@ void compile(cc *e, const ModulePtr &m) {
 
   // compile unsafe pragma
   for (const auto& tmd : m->definitions()) {
+    if (stopFn()) {
+      return;
+    }
     if (const MUnsafePragmaDef *vpd = is<MUnsafePragmaDef>(tmd)) {
       compile(m, e, vpd);
     }
@@ -828,6 +834,9 @@ void compile(cc *e, const ModulePtr &m) {
 
   // compile safe pragma
   for (const auto& tmd : m->definitions()) {
+    if (stopFn()) {
+      return;
+    }
     if (const MSafePragmaDef *vpd = is<MSafePragmaDef>(tmd)) {
       compile(m, e, vpd);
     }
@@ -835,6 +844,9 @@ void compile(cc *e, const ModulePtr &m) {
 
   // generate unsafe transitive closure
   for (const auto& tmd : m->definitions()) {
+    if (stopFn()) {
+      return;
+    }
     if (const MVarDef *vd = is<MVarDef>(tmd)) {
       switchOf(vd->varExpr(), buildTransitiveUnsafePragmaClosure(*vd));
     }

@@ -27,11 +27,6 @@ void startChild(int t, hobbes::proc &p) {
   });
 }
 
-bool hasProcessExited(pid_t pid) {
-  const std::string procDir = "/proc/" + std::to_string(pid);
-  return !exists(procDir);
-}
-
 bool msgInException(const std::exception &e, const std::string &msg) {
   return std::string(e.what()).find(msg) != std::string::npos;
 }
@@ -40,7 +35,7 @@ const char *const KEY = "HOBBES_LOADING_TIMEOUT_IN_SECS";
 } // namespace
 
 TEST(Spawn, TimeoutKill) {
-  hobbes::proc p;
+  hobbes::proc p{};
   hobbes::str::env(KEY, "1"); // this may affect other tests' behavior
   bool exp = false;
   try {
@@ -50,11 +45,11 @@ TEST(Spawn, TimeoutKill) {
     EXPECT_TRUE(msgInException(e, "timed out"));
   }
   EXPECT_TRUE(exp);
-  EXPECT_TRUE(hasProcessExited(p.pid));
+  //p is invalid when spawn goes wrong, cannot be checked against
 }
 
 TEST(Spawn, Normal) {
-  hobbes::proc p;
+  hobbes::proc p{};
   unsetenv(KEY);
   startChild(2, p); // should not throw any exceptions
 }
