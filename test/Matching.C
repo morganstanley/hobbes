@@ -387,7 +387,7 @@ TEST(Matching, noRaceInterpMatch) {
                                                         "| \"foo\" -> 0\n"
                                                         "| \"bar\" -> 1\n"
                                                         "| _       -> 2");
-  size_t wrongMatches = 0;
+  std::atomic_size_t wrongMatches{0U};
   std::vector<std::thread> ps;
   for (size_t p = 0; p < 10; ++p) {
     ps.emplace_back([&]() {
@@ -407,6 +407,6 @@ TEST(Matching, noRaceInterpMatch) {
   for (auto &p : ps) {
     p.join();
   }
-  EXPECT_EQ(wrongMatches, size_t(0));
+  EXPECT_EQ(wrongMatches.load(), size_t(0));
   c().buildInterpretedMatches(false);
 }
