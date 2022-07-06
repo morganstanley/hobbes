@@ -807,10 +807,10 @@ template <typename ... Fs>
     }
     static bool accum(int s, async_read_state* o, tuple<Fs...>* x) {
       if (o->template apply<bool, tupAsyncAcc, tuple<Fs...>, int, tuple<Fs...>*>(s, x)) {
-        ++o->unsafeTag();
-        if (o->unsafeTag() == sizeof...(Fs)) {
+        if (o->unsafeTag() == sizeof...(Fs)-1) {
           return true;
         } else {
+          ++o->unsafeTag();
           variantApp<void, tupAsyncInit, void, tuple<Fs...>, void*>::apply(o->unsafeTag(), o->unsafePayload(), o->unsafePayload());
           return false;
         }
@@ -1013,6 +1013,7 @@ template <typename R, typename ... Args>
         this->ks.front()(this->r);
         this->ks.pop();
         this->r = R();
+        this->pr = async_read_state();
         io<R>::prepare(&this->pr);
         return true;
       } else {
