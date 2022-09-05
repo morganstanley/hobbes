@@ -160,13 +160,13 @@ private:
     } \
   }
 
-#define EXPECT_EXCEPTION_MSG(p, E, S) \
+#define EXPECT_EXCEPTION_MSG(p, S) \
   { \
     bool exp = false; \
     const std::string s = S; \
     try { \
       (p); \
-    } catch (const E& e) { \
+    } catch (const std::exception& e) { \
       const std::string es = e.what(); \
       if (es.find(s) != std::string::npos) { \
         exp = true; \
@@ -174,11 +174,11 @@ private:
     } \
     if (!exp) { \
       std::ostringstream errmsg; \
-      errmsg << "Expression '" #p "' expects a '" #E; \
+      errmsg << "Expression '" #p "' expects an exception "; \
       if (!s.empty()) { \
-        errmsg << "' which contains string '" #S; \
+        errmsg << " which contains string '" #S; \
       } \
-      errmsg << "' at " << " " << FILEINFO(__FILE__, __LINE__); \
+      errmsg << " at " << " " << FILEINFO(__FILE__, __LINE__); \
       throw std::runtime_error(errmsg.str()); \
     } \
   }
