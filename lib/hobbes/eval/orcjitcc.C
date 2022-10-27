@@ -31,9 +31,8 @@ optimizeModule(llvm::orc::ThreadSafeModule tsm,
       fpm.run(f);
     }
 
-    auto mpm = llvm::legacy::PassManager();
-    mpm.add(llvm::createFunctionInliningPass());
-    mpm.run(m);
+    // may apply FunctionInliningPass depends upon some "scores"
+    hobbes::maybeInlineFunctionsIn(m);
   });
 
   return tsm;

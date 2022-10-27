@@ -600,15 +600,9 @@ jitcc::jitcc(const TEnvPtr& tenv) :
   this->eengine = makeExecutionEngine(module(), 0);
 
 #if LLVM_VERSION_MINOR >= 5
-  this->mpm = new llvm::legacy::PassManager();
-  this->mpm->add(llvm::createFunctionInliningPass());
-
   this->fpm = new llvm::legacy::FunctionPassManager(module());
   this->fpm->add(new llvm::DataLayoutPass(*this->eengine->getDataLayout()));
 #else
-  this->mpm = new llvm::PassManager();
-  this->mpm->add(llvm::createFunctionInliningPass());
-
   this->fpm = new llvm::FunctionPassManager(module());
   this->fpm->add(new llvm::DataLayout(*this->eengine->getDataLayout()));
 #endif
@@ -619,11 +613,6 @@ jitcc::jitcc(const TEnvPtr& tenv) :
   this->fpm->add(llvm::createCFGSimplificationPass());
   this->fpm->add(llvm::createTailCallEliminationPass());
   this->fpm->doInitialization();
-#endif
-
-#if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 6 || LLVM_VERSION_MAJOR >= 8
-  this->mpm = new llvm::legacy::PassManager();
-  this->mpm->add(llvm::createFunctionInliningPass());
 #endif
 }
 
@@ -795,8 +784,8 @@ void* jitcc::getMachineCode(llvm::Function* f, llvm::JITEventListener* listener)
     fpm.run(*mf);
   }
 
-  // apply module-level optimizations
-  this->mpm->run(*this->currentModule);
+  // may apply FunctionInliningPass depends upon some "scores"
+  maybeInlineFunctionsIn(*this->currentModule);
 
   // but we can still get at it through its execution engine
   this->eengines.push_back(ee);
