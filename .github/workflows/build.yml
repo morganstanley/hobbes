@@ -8,11 +8,11 @@ jobs:
         os: [ubuntu-20.04]
         clang: [8]
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         with:
             # Nix Flakes doesn't work on shallow clones
             fetch-depth: 0
-      - uses: cachix/install-nix-action@v12
+      - uses: cachix/install-nix-action@v18
         with:
           install_url: https://github.com/numtide/nix-flakes-installer/releases/download/nix-2.4pre20201221_9fab14a/install
           extra_nix_config: |
@@ -37,11 +37,11 @@ jobs:
         os: [ubuntu-20.04]
         clang: [6, 8, 10, 11, 12]
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         with:
             # Nix Flakes doesn't work on shallow clones
             fetch-depth: 0
-      - uses: cachix/install-nix-action@v12
+      - uses: cachix/install-nix-action@v18
         with:
           install_url: https://github.com/numtide/nix-flakes-installer/releases/download/nix-2.4pre20201221_9fab14a/install
           extra_nix_config: |
@@ -67,11 +67,11 @@ jobs:
         gcc: [10]
         llvm: [6, 8, 10, 11, 12]
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         with:
             # Nix Flakes doesn't work on shallow clones
             fetch-depth: 0
-      - uses: cachix/install-nix-action@v12
+      - uses: cachix/install-nix-action@v18
         with:
           install_url: https://github.com/numtide/nix-flakes-installer/releases/download/nix-2.4pre20201221_9fab14a/install
           extra_nix_config: |
