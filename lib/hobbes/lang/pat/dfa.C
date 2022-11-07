@@ -4,6 +4,7 @@
 #include <hobbes/lang/pat/regex.H>
 #include <hobbes/lang/pat/print.H>
 #include <hobbes/util/perf.H>
+#include <limits>
 #include <sstream>
 #include <fstream>
 
@@ -1267,9 +1268,23 @@ ExprPtr liftDFAExprWithSwitchCompression(MDFA* dfa, stateidx_t state) {
 bool shouldInlineState(const MDFA* dfa, stateidx_t state) {
   const MStatePtr& s = dfa->states[state];
 
+  // stop adding state related IR code into current function, if the state value
+  // is above `HOBBES_DFA_INLINE_THRESHOLD`. If a DFA has too many states,
+  // otherwise IR function can get so large that llvm cannot handle
+  static const auto inlineThreshold = [] {
+    // setting it to 0 makes no threshold. It must be a non-negative integer
+    const char* v = std::getenv("HOBBES_DFA_INLINE_THRESHOLD");
+    if (v == nullptr) {
+      return 2'000UL; // empirical data
+    }
+    static_assert(std::is_same<stateidx_t, unsigned long>::value, "");
+    const auto i = strtoul(v, nullptr, 10);
+    return i == 0 ? std::numeric_limits<stateidx_t>::max() : i;
+  }();
+
   if (dfa->states[state]->isPrimMatchRoot) {
     return false;
-  } else if (s->refs <= 1) {
+  } else if (state < inlineThreshold && s->refs <= 1) {
     return true;
   } else if (const FinishExpr* fe = is<FinishExpr>(s)) {
     return isConst(fe->expr()) || (is<Var>(fe->expr()) != nullptr);

@@ -152,17 +152,13 @@ private:
 
 #else
 #if LLVM_VERSION_MINOR == 6 || LLVM_VERSION_MINOR == 7 || LLVM_VERSION_MINOR == 8 || LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR <= 12
-  llvm::legacy::PassManager* mpm;
-
   // the set of allocated execution engines (each will own a finalized module from the set of modules)
   typedef std::vector<llvm::ExecutionEngine*> ExecutionEngines;
   ExecutionEngines eengines;
 #elif LLVM_VERSION_MINOR == 3
-  llvm::PassManager*         mpm;
   llvm::ExecutionEngine*     eengine;
   llvm::FunctionPassManager* fpm;
 #elif LLVM_VERSION_MINOR == 5
-  llvm::legacy::PassManager*         mpm;
   llvm::ExecutionEngine*             eengine;
   llvm::legacy::FunctionPassManager* fpm;
 #else

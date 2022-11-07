@@ -3,6 +3,7 @@
 #define HOBBES_UTIL_LLVM_HPP_INCLUDED
 
 #include <hobbes/util/array.H>
+#include <llvm/IR/Function.h>
 #if LLVM_VERSION_MAJOR >= 11
 #include <hobbes/lang/type.H>
 #endif
@@ -832,6 +833,44 @@ inline llvm::Value* fncall(llvm::IRBuilder<>* b, llvm::Value* fn, llvm::Type* tf
   return fncall(b, fn, tfn, list(arg));
 }
 
-}
+inline void maybeInlineFunctionsIn(llvm::Module& m) {
+  // If there is an IR function in current module is already large (instructions
+  // > `HOBBES_FUNCTION_INLINE_THRESHOLD`), then keep inlining it makes it even
+  // larger, 10x larger. We simply stop applying FunctionInlining pass on this
+  // module in such kinds of scenario.
+  static const auto allFunctionsAreSmall = [](const llvm::Module& m) {
+    static unsigned fnInliningThreshold = [] {
+      const char* v = std::getenv("HOBBES_FUNCTION_INLINE_THRESHOLD");
+      if (v == nullptr) {
+        return 30'000U; // arbitrarily chosen, but should be conservative enough
+      }
+      return static_cast<unsigned>(strtoul(v, nullptr, 10));
+    }();
 
+    // early llvm versions either don't have
+    // llvm::Function::getInstructionCount() or failed to make it const, so we
+    // provide our simplified version
+    static const auto getFunctionInstructionCount =
+        [](const llvm::Function& f) {
+          unsigned num = 0;
+          for (const auto& b : f.getBasicBlockList()) {
+            num += b.size();
+          }
+          return num;
+        };
+
+    // if any functions in this module has instruction number above threshold,
+    // then should not inline anything
+    return std::none_of(m.begin(), m.end(), [](const llvm::Function& f) {
+      return getFunctionInstructionCount(f) > fnInliningThreshold;
+    });
+  };
+
+  if (allFunctionsAreSmall(m)) {
+    auto mpm = llvm::legacy::PassManager();
+    mpm.add(llvm::createFunctionInliningPass());
+    mpm.run(m);
+  }
+}
+}
 #endif
