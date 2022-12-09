@@ -68,6 +68,12 @@ namespace hobbes {
 
 using int128_t = __int128;
 
+#define INT128_TO_UINT64_ARRAY_REF_NAMED_a_a_a(x)                              \
+  const uint64_t aa_aa_aa[] = {                                                \
+      static_cast<uint64_t>(static_cast<unsigned __int128>(x) &                \
+                            0xFFFFFFFFFFFFFFFF),                               \
+      static_cast<uint64_t>(static_cast<unsigned __int128>(x) >> 64U)};        \
+  const auto a_a_a = llvm::ArrayRef<uint64_t> { aa_aa_aa }
 
 #if LLVM_VERSION_MAJOR >= 11
 inline llvm::orc::ThreadSafeContext& threadSafeContext() {
@@ -218,7 +224,8 @@ inline llvm::Constant* cvalue(long x) {
 }
 
 inline llvm::Constant* cvalue(int128_t x) {
-  return llvm::Constant::getIntegerValue(int128Type(), llvm::APInt(128, x, true));
+  INT128_TO_UINT64_ARRAY_REF_NAMED_a_a_a(x);
+  return llvm::Constant::getIntegerValue(int128Type(), llvm::APInt(128, a_a_a));
 }
 
 inline llvm::Constant* cvalue(float x) {
@@ -276,7 +283,8 @@ inline llvm::ConstantInt* civalue(long x) {
 
 inline llvm::ConstantInt* civalue(int128_t x) {
   return withContext([x](llvm::LLVMContext& c) {
-    return llvm::ConstantInt::get(llvm::IntegerType::get(c, 128), x); // static_cast<uint64_t>(x));
+    INT128_TO_UINT64_ARRAY_REF_NAMED_a_a_a(x);
+    return llvm::ConstantInt::get(c, llvm::APInt(128, a_a_a));
   });
 }
 #else
@@ -431,7 +439,8 @@ inline llvm::Constant* cvalue(long x) {
 }
 
 inline llvm::Constant* cvalue(int128_t x) {
-  return llvm::Constant::getIntegerValue(int128Type(), llvm::APInt(128, x, true));
+  INT128_TO_UINT64_ARRAY_REF_NAMED_a_a_a(x);
+  return llvm::Constant::getIntegerValue(int128Type(), llvm::APInt(128, a_a_a));
 }
 
 inline llvm::Constant* cvalue(float x) {
@@ -472,10 +481,14 @@ inline llvm::ConstantInt* civalue(long x) {
 }
 
 inline llvm::ConstantInt* civalue(int128_t x) {
-  return llvm::ConstantInt::get(llvm::IntegerType::get(context(), 128), x); //static_cast<uint64_t>(x));
+  INT128_TO_UINT64_ARRAY_REF_NAMED_a_a_a(x);
+  return llvm::ConstantInt::get(context(), llvm::APInt(128, a_a_a));
 }
 
 #endif
+
+#undef INT128_TO_UINT64_ARRAY_REF_NAMED_a_a_a
+
 // an intermediate representation for records
 using FieldValue = std::pair<std::string, llvm::Value *>;
 using RecordValue = std::vector<FieldValue>;

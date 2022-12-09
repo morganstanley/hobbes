@@ -93,5 +93,11 @@ TEST(Prelude, Int128) {
   EXPECT_EQ((makeStdString(c().compileFn<const array<char>*()>("show(readInt128(\"-170141183460469231731687303715884105729\"))")())), "|0|");
   // overflow
   EXPECT_EQ((makeStdString(c().compileFn<const array<char>*()>("show(readInt128(\"170141183460469231731687303715884105728\"))")())), "|0|");
-}
 
+  // INT128_MAX
+  EXPECT_EQ((makeStdString(c().compileFn<const array<char>*()>("show(170141183460469231731687303715884105727H)")())), "170141183460469231731687303715884105727");
+  // INT128_MIN, still wrong, needs to be fixed in a separated PR
+  //EXPECT_EQ((makeStdString(c().compileFn<const array<char>*()>("show(-170141183460469231731687303715884105728H)")())), "-170141183460469231731687303715884105728");
+  // INT128_MIN - 1, better than nothing
+  EXPECT_EQ((makeStdString(c().compileFn<const array<char>*()>("show(-170141183460469231731687303715884105727H)")())), "-170141183460469231731687303715884105727");
+}
