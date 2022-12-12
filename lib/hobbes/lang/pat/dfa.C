@@ -1155,6 +1155,17 @@ stateidx_t makeDFA(MDFA* dfa, const PatternRows& ps, const LexicalAnnotation& la
     }
   }
 
+  if (dfa->c->unreachableMatchRowsPtr) {
+    dfa->c->unreachableMatchRowsPtr->reserve(ps.size());
+    for (size_t r = 0; r < ps.size(); ++r) {
+      size_t fs = finalStates[r];
+
+      if (dfa->states[fs]->refs == 0) {
+        dfa->c->unreachableMatchRowsPtr->emplace_back(r, ps[r]);
+      }
+    }
+  }
+
   // OK, this is a good DFA
   return rootS;
 }

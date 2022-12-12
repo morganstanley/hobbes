@@ -318,6 +318,8 @@ public:
   void regexDFAOverNFAMaxRatio(int f);
   int regexDFAOverNFAMaxRatio() const;
 
+  UnreachableMatchRowsPtr unreachableMatchRowsPtr;
+
   // allow low-level functions to be added
   void bindLLFunc(const std::string &, op *);
 
