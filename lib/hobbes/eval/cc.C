@@ -45,6 +45,7 @@ cc::cc() :
   readExprDefnF(&defReadExprDefn),
   readExprF(&defReadExpr),
   drainingDefs(false),
+  unreachableMatchRowsPtr(nullptr),
   runModInlinePass(true),
   genInterpretedMatch(false),
   checkMatchReachability(true),

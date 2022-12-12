@@ -1,4 +1,5 @@
 
+#include "hobbes/lang/pat/pattern.H"
 #include "test.H"
 #include <hobbes/hobbes.H>
 #include <hobbes/util/perf.H>
@@ -239,22 +240,64 @@ TEST(Matching, Regex) {
             4);
 
   // verify unreachable row determination
+  const char* dupMatcher =
+      "match \"foo123ooo\" with | '123|foo.*' -> 0 | 'foo.*' -> 1 | _ -> -1";
+  const char* dupRow = "/`foo.*/ -> 1";
+  // default behavior is throwing exception, and no collected info
   bool unreachableExn = false;
   try {
-    c().compileFn<int()>(
-        "match \"foo123ooo\" with | '123|foo.*' -> 0 | 'foo.*' -> 1 | _ -> -1");
-  } catch (std::exception &) {
+    c().compileFn<int()>(dupMatcher);
+  } catch (std::exception&) {
     unreachableExn = true;
   }
   EXPECT_TRUE(unreachableExn &&
               "failed to determine expected unreachable regex row");
 
+  // Two APIs are kept due to backward-compatibility reason
+
+  // if requireMatchReachability is false, then unreachableMatchRowsPtr
+  // stores unreachable rows
+  const bool orgRequireMatchReachability = c().requireMatchReachability();
+  c().requireMatchReachability(false);
+  c().unreachableMatchRowsPtr =
+      std::make_shared<hobbes::UnreachableMatchRowsPtr::element_type>();
+  EXPECT_EQ(c().compileFn<int()>(dupMatcher)(), 0);
+  c().requireMatchReachability(orgRequireMatchReachability);
+  EXPECT_EQ(c().unreachableMatchRowsPtr->size(), 1ULL);
+  EXPECT_EQ((*c().unreachableMatchRowsPtr)[0].first, 1ULL);
+  EXPECT_EQ(hobbes::show((*c().unreachableMatchRowsPtr)[0].second), dupRow);
+
   // verify unreachable rows should not cause error with
-  // IgnoreUnreachableMatches option on
+  // IgnoreUnreachableMatches option on, both unreachableMatchRowsPtr
+  // and getherUnreachableMatches() can be used to retrieve
+  // unmatched rows
   c().ignoreUnreachableMatches(true);
-  EXPECT_EQ(c().compileFn<int()>("match \"foo123ooo\" with | '123|foo.*' -> 0 "
-                                 "| 'foo.*' -> 1 | _ -> -1")(),
-            0);
+  c().unreachableMatchRowsPtr =
+      std::make_shared<std::vector<std::pair<size_t, hobbes::PatternRow>>>();
+  static thread_local auto unreachableMatches = std::vector<std::string>{};
+  c().setGatherUnreachableMatchesFn(
+      [](const hobbes::cc::UnreachableMatches& u) {
+        unreachableMatches.push_back(u.lines);
+      });
+  EXPECT_EQ(c().compileFn<int()>(dupMatcher)(), 0);
+  EXPECT_EQ(unreachableMatches.size(), 1UL);
+  EXPECT_EQ(c().unreachableMatchRowsPtr->size(), 1UL);
+  EXPECT_EQ((*c().unreachableMatchRowsPtr)[0].first, 1UL);
+  EXPECT_EQ(hobbes::show((*c().unreachableMatchRowsPtr)[0].second), dupRow);
+  c().ignoreUnreachableMatches(false);
+
+  // if unreachableMatchRowsPtr is empty, then only getherUnreachableMatches()
+  // can be used
+  c().ignoreUnreachableMatches(true);
+  c().unreachableMatchRowsPtr.reset();
+  unreachableMatches.clear();
+  c().setGatherUnreachableMatchesFn(
+      [](const hobbes::cc::UnreachableMatches& u) {
+        unreachableMatches.push_back(u.lines);
+      });
+  EXPECT_EQ(c().compileFn<int()>(dupMatcher)(), 0);
+  EXPECT_EQ(unreachableMatches.size(), 1UL);
+  EXPECT_TRUE((!c().unreachableMatchRowsPtr));
   c().ignoreUnreachableMatches(false);
 
   // verify binding in regex matches
