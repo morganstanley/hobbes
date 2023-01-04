@@ -2,6 +2,7 @@
 #ifndef HOBBES_UTIL_STREAM_HPP_INCLUDED
 #define HOBBES_UTIL_STREAM_HPP_INCLUDED
 
+#include <cstring>
 #include <iostream>
 #include <vector>
 
@@ -72,9 +73,9 @@ template < typename Char = char, typename Traits = std::char_traits<Char> >
 
 }}
 
-#define HOBBES_ABS_INT128_POS ((static_cast<unsigned __int128>(1) << 127) - 1)
-#define HOBBES_ABS_INT128_NEG ( static_cast<unsigned __int128>(1) << 127)
-#define HOBBES_INT128_MIN     (static_cast<__int128>(static_cast<unsigned __int128>(1) << 127))
+#define HOBBES_ABS_INT128_POS ((static_cast<unsigned __int128>(1) << 127U) - 1)
+#define HOBBES_ABS_INT128_NEG ( static_cast<unsigned __int128>(1) << 127U)
+#define HOBBES_INT128_MIN     (static_cast<__int128>(static_cast<unsigned __int128>(1) << 127U))
 
 // show int128 values (should be disabled when/if compiler support for these types is standardized)
 inline void printInt128(std::ostream& out, const __int128& sx) {

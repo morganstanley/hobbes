@@ -2,12 +2,6 @@
 #ifndef HOBBES_UTIL_LLVM_HPP_INCLUDED
 #define HOBBES_UTIL_LLVM_HPP_INCLUDED
 
-#include <hobbes/util/array.H>
-#include <llvm/IR/Function.h>
-#if LLVM_VERSION_MAJOR >= 11
-#include <hobbes/lang/type.H>
-#endif
-
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wold-style-cast"
 #pragma GCC diagnostic ignored "-Wunused-parameter"
@@ -19,20 +13,29 @@
 #error "I don't know how to use this version of LLVM"
 #endif
 
+#include <hobbes/lang/type.H>
+#include <hobbes/util/ptr.H>
+#include <hobbes/util/array.H>
+
+#if LLVM_VERSION_MAJOR >= 11
+#include <hobbes/lang/type.H>
+#endif
+
+#include <llvm/Analysis/Passes.h>
+#include <llvm/IR/DataLayout.h>
 #include <llvm/IR/DerivedTypes.h>
+#include <llvm/IR/Function.h>
+#include <llvm/IR/InstIterator.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
-#include <llvm/IR/DataLayout.h>
-#include <llvm/IR/InstIterator.h>
-#include <llvm/Analysis/Passes.h>
-#include <llvm/Transforms/Scalar.h>
-#include <llvm/Transforms/Vectorize.h>
-#include <llvm/Transforms/IPO.h>
-#include <llvm/Transforms/Utils/Cloning.h>
-#include <llvm/Support/TargetSelect.h>
-#include <llvm/Support/TargetRegistry.h>
 #include <llvm/Support/Signals.h>
+#include <llvm/Support/TargetRegistry.h>
+#include <llvm/Support/TargetSelect.h>
+#include <llvm/Transforms/IPO.h>
+#include <llvm/Transforms/Scalar.h>
+#include <llvm/Transforms/Utils/Cloning.h>
+#include <llvm/Transforms/Vectorize.h>
 #if LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 6 || LLVM_VERSION_MAJOR <= 8
 #  include <llvm/Bitcode/BitstreamReader.h>
 #  include <llvm/Bitcode/BitstreamWriter.h>

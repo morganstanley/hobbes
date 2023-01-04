@@ -164,10 +164,11 @@ private:
   { \
     bool exp = false; \
     const std::string s = S; \
+    std::string es; \
     try { \
       (p); \
     } catch (const E& e) { \
-      const std::string es = e.what(); \
+      es = e.what(); \
       if (es.find(s) != std::string::npos) { \
         exp = true; \
       } \
@@ -179,6 +180,9 @@ private:
         errmsg << "' which contains string '" #S; \
       } \
       errmsg << "' at " << " " << FILEINFO(__FILE__, __LINE__); \
+      if (!es.empty()) { \
+        errmsg << ", got '" << es << "' instead"; \
+      } \
       throw std::runtime_error(errmsg.str()); \
     } \
   }
