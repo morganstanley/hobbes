@@ -19,3 +19,12 @@ TEST(Recursives, Lists) {
   EXPECT_TRUE(c().compileFn<bool()>("show(lmap(\\x.x+1, cons(1,cons(2,cons(3,nil()))))) == \"2:3:4:[]\"")());
 }
 
+TEST(Recursives, DuplicatedNamesInLetShouldFail) {
+  cc c;
+  EXPECT_EXCEPTION_MSG(c.compileFn<void()>("(\\x.let a = x; a = 3; in print(a))(0)")(), "has conflicting definitions");
+}
+
+TEST(Recursives, DuplicatedNamesInDoShouldFail) {
+  cc c;
+  EXPECT_EXCEPTION_MSG(c.compileFn<void()>("(\\x.do { a = x; a = 3; print(a); })(0)")(), "has conflicting definitions");
+}

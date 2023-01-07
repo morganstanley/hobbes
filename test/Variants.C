@@ -162,7 +162,7 @@ TEST(Variants, PEnumsChar) {
   struct PECharNFail : PEnumBase<char, '2', '4', '2'> {};
   PECharNFail penf;
   // raise from liftEnum
-  EXPECT_EXCEPTION_MSG((c().compileFn<const array<char>*(PECharNFail)>("x", "show(x)")(PECharNFail{})), std::exception, "(50)"); // 50 == '2';
+  EXPECT_EXCEPTION_MSG((c().compileFn<const array<char>*(PECharNFail)>("x", "show(x)")(PECharNFail{})), "(50)"); // 50 == '2';
 
   SP_C_Char spcc;
   spcc.pe.value = PECharContinous::Enum::e2;
@@ -193,10 +193,10 @@ newpen = unsafeCast('0')::e012
   EXPECT_TRUE(x.compileFn<bool()>("show(|CN|::((penum char |CN, DN, EN|))) == \"|CN|\"")());
 
   // either all or none have custom defined values
-  EXPECT_EXCEPTION_MSG(x.compileFn<void()>("let _ = |FP|::((penum char |FP('F'), GP, HP('H')|)) in ()")(), std::exception, R"(syntax error, unexpected ",", expecting ()");
+  EXPECT_EXCEPTION_MSG(x.compileFn<void()>("let _ = |FP|::((penum char |FP('F'), GP, HP('H')|)) in ()")(), R"(syntax error, unexpected ",", expecting ()");
 
   // value must be unique
-  EXPECT_EXCEPTION_MSG(x.compileFn<void()>("let _ = |GN|::((penum char |FN('O'), GN('P'), HN('O')|)) in ()")(), std::exception, "(79)"); // 79 == 'O'
+  EXPECT_EXCEPTION_MSG(x.compileFn<void()>("let _ = |GN|::((penum char |FN('O'), GN('P'), HN('O')|)) in ()")(), "(79)"); // 79 == 'O'
 
   // write to a penum defined in C++ land
   x.compileFn<void()>("spcc.pen <- unsafeCast('2')::e012")();
@@ -255,10 +255,10 @@ newpen = unsafeCast(3S)::e347
   EXPECT_TRUE(x.compileFn<bool()>("show(|CN|::((penum short |CN, DN, EN|))) == \"|CN|\"")());
 
   // either all or none have custom defined values
-  EXPECT_EXCEPTION_MSG(x.compileFn<void()>("let _ = |FP|::((penum char |FP(3), GP, HP(5)|)) in ()")(), std::exception, R"(syntax error, unexpected ",", expecting ()");
+  EXPECT_EXCEPTION_MSG(x.compileFn<void()>("let _ = |FP|::((penum char |FP(3), GP, HP(5)|)) in ()")(), R"(syntax error, unexpected ",", expecting ()");
 
   // value must be unique
-  EXPECT_EXCEPTION_MSG(x.compileFn<void()>("let _ = |GN|::((penum short |FN(79), GN(80), HN(79)|)) in ()")(), std::exception, "(79)");
+  EXPECT_EXCEPTION_MSG(x.compileFn<void()>("let _ = |GN|::((penum short |FN(79), GN(80), HN(79)|)) in ()")(), "(79)");
 
   // write to a penum defined in C++ land
   x.compileFn<void()>("spcc.pen <- unsafeCast(7S)::e347")();

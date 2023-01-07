@@ -115,6 +115,30 @@ PatternRows normPatternRules(PatternRows rs, const LexicalAnnotation& la) {
   return rs;
 }
 
+void verifyNoDuplicatedNamesInNestedLetMatch(const LetBindings& bs, const LetBinding& b) {
+  const auto toValue = [](const PatternPtr& p) -> const std::string& {
+    const auto& mp = dynamic_cast<MatchAny *>(p.get());
+    if (mp == nullptr) {
+      throw annotated_error(p->la(), "MatchAny is expected for nested let bindings");
+    }
+    return mp->value();
+  };
+
+  if (toValue(b.first) == "_") {
+    return;
+  }
+
+  const auto it = std::find_if(bs.cbegin(), bs.cend(), [&vn = toValue(b.first), toValue](const LetBinding& b_) {
+    return toValue(b_.first) == vn;
+  });
+  if (it != bs.cend()) {
+    throw annotated_error(annmsgs{
+      {"name " + toValue(b.first) + " has conflicting definitions", b.first->la()},
+      {"previously defined at", it->first->la()},
+    });
+  }
+}
+
 Expr* compileNestedLetMatch(const LetBindings& bs, const ExprPtr& e, const LexicalAnnotation& la) {
   ExprPtr r = e;
   for (auto b = bs.rbegin(); b != bs.rend(); ++b) {
@@ -721,12 +745,12 @@ l5expr: l6expr { $$ = $1; }
       /* forced type assignment */
       | l6expr "::" qtype       { $$ = new Assump(ExprPtr($1), QualTypePtr($3), m(@1,@3)); }
 
-letbindings: letbindings ";" letbinding { $1->push_back(*$3); $$ = $1; }
+letbindings: letbindings ";" letbinding { verifyNoDuplicatedNamesInNestedLetMatch(*$1, *$3); $1->push_back(*$3); $$ = $1; }
            | letbinding                 { $$ = autorelease(new LetBindings()); $$->push_back(*$1); }
 
 letbinding: irrefutablep "=" l1expr { $$ = autorelease(new LetBinding(PatternPtr($1), ExprPtr($3))); }
 
-dobindings: dobindings dobinding { $$ = $1; $$->push_back(*$2); }
+dobindings: dobindings dobinding { $$ = $1; verifyNoDuplicatedNamesInNestedLetMatch(*$$, *$2); $$->push_back(*$2); }
           | dobinding            { $$ = autorelease(new LetBindings()); $$->push_back(*$1); }
 
 dobinding: irrefutablep "=" l0expr ";" { $$ = autorelease(new LetBinding(PatternPtr($1), ExprPtr($3))); }
