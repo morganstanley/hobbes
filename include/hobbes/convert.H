@@ -7,6 +7,7 @@
 #define HOBBES_CONVERT_H_INCLUDED
 
 #include "reflect.H"
+#include <functional>
 #include <stdexcept>
 #include <array>
 #include <unordered_map>

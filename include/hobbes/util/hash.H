@@ -5,6 +5,7 @@
 #ifndef HOBBES_UTIL_HASH_H_INCLUDED
 #define HOBBES_UTIL_HASH_H_INCLUDED
 
+#include <cstddef>
 #include <functional>
 #include <unordered_map>
 #include <map>

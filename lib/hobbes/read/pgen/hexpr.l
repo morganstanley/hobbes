@@ -17,16 +17,55 @@ int yycolumn = 1;
 #include <hobbes/util/stream.H>
 #include <hobbes/parse/grammar.H>
 #include <hobbes/read/pgen/hexpr.parse.H>
+#include <limits>
 #include <string>
 #include <iostream>
+
+namespace {
+std::out_of_range make_err(const std::string& s) {
+  return std::out_of_range(std::string("literal ") + s + " is not supported");
+}
+
+int str2int(const std::string& s) {
+  try {
+    return std::stoi(s);
+  } catch (const std::out_of_range&) {
+    throw make_err(s);
+  }
+}
+
+long str2long(const std::string& s) {
+  try {
+    return std::stol(s);
+  } catch (const std::out_of_range&) {
+    throw make_err(s);
+  }
+}
+
+short str2short(const std::string& s) {
+  const auto i = str2int(s);
+  if (i > std::numeric_limits<short>::max()) {
+    throw make_err(s);
+  }
+  return static_cast<short>(i);
+}
+
+__int128 str2int128(const std::string& s) {
+  __int128 i = 0;
+  if (!readInt128(s, &i)) {
+    throw make_err(s);
+  }
+  return i;
+}
+}
 
 #define SAVE_STR    yylval.string = hobbes::autorelease(new std::string(yytext, yytext + yyleng))
 #define SAVE_IDENT  yylval.string = identifier(yytext, yytext + yyleng)
 #define SAVE_BOOL   std::istringstream(std::string(yytext, yytext + yyleng)) >> std::boolalpha >> yylval.boolv
-#define SAVE_SHORT  yylval.shortv = (short)std::stoi(std::string(yytext, yytext + yyleng))
-#define SAVE_INT    yylval.intv = std::stoi(std::string(yytext, yytext + yyleng))
-#define SAVE_LONG   yylval.longv = std::stol(std::string(yytext, yytext + yyleng - 1))
-#define SAVE_INT128 readInt128(std::string(yytext, yytext + yyleng - 1), &yylval.int128v)
+#define SAVE_SHORT  yylval.shortv = str2short(std::string(yytext, yytext + yyleng - 1))
+#define SAVE_INT    yylval.intv = str2int(std::string(yytext, yytext + yyleng))
+#define SAVE_LONG   yylval.longv = str2long(std::string(yytext, yytext + yyleng - 1))
+#define SAVE_INT128 yylval.int128v = str2int128(std::string(yytext, yytext + yyleng - 1))
 #define SAVE_FLOAT  yylval.floatv = std::stof(std::string(yytext, yytext + yyleng))
 #define SAVE_DOUBLE yylval.doublev = std::stod(std::string(yytext, yytext + yyleng))
 

@@ -1,7 +1,9 @@
 #include <hobbes/hobbes.H>
 #include <hobbes/lang/tylift.H>
 #include <hobbes/db/file.H>
+#include <iomanip>
 #include <thread>
+#include "hobbes/eval/funcdefs.H"
 #include "test.H"
 
 using namespace hobbes;
@@ -31,8 +33,9 @@ TEST(Compiler, compileToSupportsMoreThanSixArgs) {
 
 TEST(Compiler, charArrExpr) {
   char buffer[256];
-  strncpy(buffer, "\"hello world\"\0", sizeof(buffer));
-  EXPECT_TRUE(c().compileFn<const array<char>*()>(buffer) != nullptr);
+  strncpy(buffer, "\"hello world\"", sizeof(buffer));
+  const auto* p = c().compileFn<const array<char>*()>(buffer)();
+  EXPECT_TRUE(hobbes::makeStdString(p) != "\"hello world\"");
 }
 
 class BV { };
