@@ -375,6 +375,9 @@ private:
   // the JIT engine that compiles our monotyped expressions
   jitcc *jit;
 
+  struct PerfTracer;
+  std::unique_ptr<PerfTracer> perfTracer;
+
 public:
   // compiler-local type structure caches for internal use
   std::unordered_map<MonoType *, MonoTypePtr> unappTyDefns;
