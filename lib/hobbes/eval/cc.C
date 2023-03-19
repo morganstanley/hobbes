@@ -25,17 +25,25 @@
 #include <csignal>
 #include <cstdlib>
 
+#include <algorithm>
 #include <chrono>
 #include <fstream>
 #include <memory>
 #include <mutex>
+#include <numeric>
 #include <stdexcept>
 #include <unordered_map>
 
 namespace hobbes {
 
 struct cc::PerfTracer {
-  PerfTracer() : ofs(std::getenv("HOBBES_PERF_TRACE_FILE")) {
+  PerfTracer() {
+    const char* name = std::getenv("HOBBES_PERF_TRACE_FILE");
+    if (name == nullptr) {
+      return;
+    }
+
+    ofs.open(name);
     if (!ofs) {
       ofs.close();
       return;
@@ -49,23 +57,19 @@ struct cc::PerfTracer {
     threshold = std::chrono::seconds(atoi(th));
   }
 
+  template <typename T, typename F>
+  [[nodiscard]] std::size_t nonHiddenSz(const T& t, F f) {
+    const auto& ms = t.members();
+    return std::accumulate(ms.cbegin(), ms.cend(), 0UL, [f](auto a, const auto& m) {
+      return a + (f(m).substr(0, 2) != ".p" ? 1UL : 0UL);
+    });
+  }
+
   template <typename TT>
   void log(const std::string& name, const ExprPtr& e, const Definitions& defs, TT delta) {
     if (!isEnabled() || delta <= threshold || name.empty() || name.substr(0, 5) == ".rfn.") {
       return;
     }
-
-    const auto normal = [](const std::string& n) { return (n.substr(0, 2) != ".p") ? 1 : 0; };
-    const auto nonHiddenVar = [normal](const Variant& c) {
-      const auto& ms = c.members();
-      return std::accumulate(ms.cbegin(), ms.cend(), 0,
-                             [normal](int a, const auto& m) { return a + normal(m.selector); });
-    };
-    const auto nonHiddenRec = [normal](const Record& c) {
-      const auto& ms = c.members();
-      return std::accumulate(ms.cbegin(), ms.cend(), 0,
-                             [normal](int a, const auto& m) { return a + normal(m.field); });
-    };
 
     constexpr const char* MARK = "HOBBES_PERF";
     ofs << MARK << ':' << name
@@ -87,14 +91,14 @@ struct cc::PerfTracer {
       if (cs->name() == VariantDeconstructor::constraintName()) {
         const auto& var = cs->arguments()[1];
         var->show(oss);
-        const auto sz = nonHiddenVar(*is<Variant>(var));
-        i -= sz - 1U;
+        const int sz = nonHiddenSz(*is<Variant>(var), [](const auto& m) { return m.selector; });
+        i -= static_cast<std::size_t>(sz - 1);
         ofs << MARK << ':' << name << ':' << sz << ':' << std::move(oss).str() << '\n';
       } else if (cs->name() == RecordDeconstructor::constraintName()) {
         const auto& rec = cs->arguments()[2];
         rec->show(oss);
-        const auto sz = nonHiddenRec(*is<Record>(rec));
-        i -= sz - 1U;
+        const int sz = nonHiddenSz(*is<Record>(rec), [](const auto& m) { return m.field; });
+        i -= static_cast<std::size_t>(sz - 1);
         ofs << MARK << ':' << name << ':' << sz << ':' << std::move(oss).str() << '\n';
       }
     }

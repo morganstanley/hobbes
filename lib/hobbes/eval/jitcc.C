@@ -17,7 +17,7 @@
 #include <llvm/Support/Casting.h>
 #include <llvm/Support/Compiler.h>
 #include <llvm/Support/Error.h>
-#include <llvm/Support/raw_os_ostream.h>
+#include <llvm/Support/FileSystem.h>
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/Target/TargetMachine.h>
 
@@ -561,7 +561,7 @@ struct jitcc::IrTracer {
     if (name == nullptr) {
       return;
     }
-    out = std::make_unique<llvm::raw_fd_ostream>(name, ec);
+    out = std::make_unique<llvm::raw_fd_ostream>(name, ec, llvm::sys::fs::F_None);
     if (ec != std::errc()) {
       out = nullptr;
       return;
