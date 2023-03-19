@@ -9,6 +9,7 @@
 #include <hobbes/util/llvm.H>
 #include <hobbes/eval/func.H>
 #include <hobbes/eval/ctype.H>
+#include <memory>
 
 #if LLVM_VERSION_MAJOR >= 11
 #include <llvm/IR/ValueHandle.h>
@@ -260,6 +261,9 @@ private:
 #if LLVM_VERSION_MAJOR >= 11
   std::unique_ptr<ORCJIT> orcjit;
 #endif
+
+  struct IrTracer;
+  std::unique_ptr<IrTracer> irTracer;
 };
 
 // shorthand for compilation over a sequence of expressions
