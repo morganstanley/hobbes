@@ -40,6 +40,11 @@ Expr::~Expr() = default;
 const QualTypePtr& Expr::type() const { return this->annotatedType; }
 void Expr::type(const QualTypePtr& ty) { this->annotatedType = ty; }
 int Expr::case_id() const { return this->cid; }
+std::string Expr::toString() const {
+  std::ostringstream out;
+  this->show(out);
+  return std::move(out).str();
+}
 
 Primitive::Primitive(int cid, const LexicalAnnotation& la) : Expr(cid, la) { }
 bool PrimPtrLT::operator()(const PrimitivePtr& p0, const PrimitivePtr& p1) const { return *p0 < *p1; }
