@@ -264,6 +264,8 @@ private:
 
   struct IrTracer;
   std::unique_ptr<IrTracer> irTracer;
+  struct JitFuncTracer;
+  std::unique_ptr<JitFuncTracer> jitFuncTracer;
 };
 
 // shorthand for compilation over a sequence of expressions
