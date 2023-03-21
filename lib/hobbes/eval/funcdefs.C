@@ -8,9 +8,10 @@
 #include <hobbes/util/codec.H>
 #include <hobbes/util/stream.H>
 
-#include <stack>
-#include <iostream>
+#include <fstream>
 #include <iomanip>
+#include <iostream>
+#include <stack>
 #include <strings.h>
 #include <zlib.h>
 
@@ -458,7 +459,13 @@ const array<char>* releaseStdout() {
 }
 
 void putStr(array<char>* x) {
-  std::cout.write(x->data, x->size);
+  const char* redirectFilename = std::getenv(ENV_HOBBES_REDIRECT_PRINT_FILE);
+  if (redirectFilename == nullptr) {
+    std::cout.write(x->data, x->size);
+  } else {
+    std::ofstream ofs(redirectFilename, std::ios_base::app);
+    ofs.write(x->data, x->size);
+  }
 }
 
 size_t cstrlen(char* x) {

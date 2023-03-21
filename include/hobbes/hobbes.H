@@ -17,6 +17,8 @@
 
 namespace hobbes {
 
+constexpr const char* ENV_HOBBES_REDIRECT_PRINT_FILE = "HOBBES_REDIRECT_PRINT_FILE";
+
 // type aliases for common types
 DEFINE_TYPE_ALIAS_AS(timespanT, timespan, int64_t);
 

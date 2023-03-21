@@ -1,7 +1,9 @@
+#include <hobbes/hobbes.H>
 
 #include <exception>
-#include <hobbes/hobbes.H>
+#include <fstream>
 #include <stdexcept>
+
 #include "test.H"
 
 using namespace hobbes;
@@ -149,4 +151,18 @@ TEST(Prelude, Long) {
   EXPECT_EXCEPTION_MSG(c().compileFn<long()>("-9223372036854775808L")(), std::exception, "literal 9223372036854775808 is not supported");
   // LONG_MIN - 1
   EXPECT_EXCEPTION_MSG(c().compileFn<long()>("-9223372036854775809L")(), std::exception, "literal 9223372036854775809 is not supported");
+}
+
+TEST(Prelude, RedirectPrint) {
+  constexpr const char* filename = ".happ.out";
+  ::setenv(ENV_HOBBES_REDIRECT_PRINT_FILE, filename, /*replace*/1);
+  c().compileFn<void()>("print({a=1,b=2})")();
+  ::unsetenv(ENV_HOBBES_REDIRECT_PRINT_FILE);
+  {
+    std::ifstream ifs(filename);
+    std::ostringstream oss;
+    oss << ifs.rdbuf();
+    EXPECT_EQ(oss.str(), "{a=1, b=2}");
+  }
+  ::unlink(filename);
 }
