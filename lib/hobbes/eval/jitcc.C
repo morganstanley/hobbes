@@ -18,14 +18,10 @@
 #include <llvm/Support/Compiler.h>
 #include <llvm/Support/Error.h>
 #include <llvm/Support/FileSystem.h>
-#include <llvm/Support/raw_ostream.h>
 #include <llvm/Target/TargetMachine.h>
 
 #include <algorithm>
 #include <cstdint>
-#include <fstream>
-#include <ostream>
-#include <sstream>
 #include <stdexcept>
 #include <system_error>
 #include <utility>
@@ -557,104 +553,11 @@ private:
 };
 #endif
 
-struct jitcc::IrTracer {
-  IrTracer() {
-    std::error_code ec;
-    const char* name = std::getenv("HOBBES_IR_TRACE_FILE");
-    if (name == nullptr) {
-      return;
-    }
-    out = std::make_unique<llvm::raw_fd_ostream>(name, ec, llvm::sys::fs::F_None);
-    if (ec != std::errc()) {
-      out = nullptr;
-      return;
-    }
-  }
-
-  void log(const llvm::Module& m) {
-    if (isEnabled()) {
-      m.print(*out, nullptr, false, true);
-    }
-  }
-
-private:
-  [[nodiscard]] bool isEnabled() const noexcept {
-    return !!out;
-  }
-
-  std::unique_ptr<llvm::raw_fd_ostream> out;
-};
-
-struct jitcc::JitFuncTracer {
-  JitFuncTracer() {
-    std::error_code ec;
-    const char* name = std::getenv("HOBBES_JIT_FUNC_TRACE_FILE");
-    if (name == nullptr) {
-      return;
-    }
-    out = std::make_unique<llvm::raw_fd_ostream>(name, ec, llvm::sys::fs::F_None);
-    if (ec != std::errc()) {
-      out = nullptr;
-      return;
-    }
-  }
-
-private:
-  struct ModuleFunctions {
-    ModuleFunctions() = default;
-    explicit ModuleFunctions(const llvm::Module& m) {
-      funcs.reserve(m.getFunctionList().size());
-      for (const auto& f : m) {
-        if (!f.isDeclaration()) {
-          funcs.push_back(f.getName());
-        }
-      }
-    }
-
-    const std::vector<llvm::StringRef>& get() const noexcept {
-      return funcs;
-    }
-
-  private:
-    std::vector<llvm::StringRef> funcs;
-  };
-
-public:
-  ModuleFunctions getCollector(const llvm::Module& m) {
-    if (isEnabled()) {
-      return ModuleFunctions(m);
-    }
-    return {};
-  }
-
-  void log(const ModuleFunctions& mf, llvm::ExecutionEngine& ee) {
-    if (isEnabled()) {
-      for (const auto name : mf.get()) {
-        if (const auto a = ee.getFunctionAddress(name.str())) {
-          *out << name << ":0x";
-          out->write_hex(a);
-          *out << '\n';
-        }
-      }
-      out->flush();
-    }
-  }
-
-private:
-  [[nodiscard]] bool isEnabled() const noexcept {
-    return !!out;
-  }
-
-  std::unique_ptr<llvm::raw_fd_ostream> out;
-};
-
 #if LLVM_VERSION_MAJOR >= 11
 jitcc::jitcc(const TEnvPtr& tenv)
     : tenv(tenv), vtenv(std::make_unique<VTEnv>()), ignoreLocalScope(false),
       globals(std::make_unique<Globals>()), globalData(32768 /* min global page size = 32K */),
-      constants(std::make_unique<ConstantList>()),
-      irTracer(std::make_unique<IrTracer>()),
-      jitFuncTracer(std::make_unique<JitFuncTracer>())
+      constants(std::make_unique<ConstantList>())
        {
   llvm::InitializeNativeTarget();
   llvm::InitializeNativeTargetAsmParser();
@@ -684,9 +587,7 @@ jitcc::~jitcc() {
 jitcc::jitcc(const TEnvPtr& tenv) :
   tenv(tenv),
   ignoreLocalScope(false),
-  globalData(32768 /* min global page size = 32K */),
-  irTracer(std::make_unique<IrTracer>()),
-  jitFuncTracer(std::make_unique<JitFuncTracer>())
+  globalData(32768 /* min global page size = 32K */)
 {
   llvm::InitializeNativeTarget();
   llvm::InitializeNativeTargetAsmParser();
@@ -850,9 +751,6 @@ void* jitcc::getMachineCode(llvm::Function* f, llvm::JITEventListener* listener)
   if (!this->currentModule) {
     throw std::runtime_error("Internal compiler error, can't derive machine code for unknown function");
   }
-  irTracer->log(*this->currentModule);
-
-  const auto moduleFunctions = jitFuncTracer->getCollector(*this->currentModule);
 
   // make a new execution engine out of this module (finalizing the module)
   std::string err;
@@ -906,8 +804,6 @@ void* jitcc::getMachineCode(llvm::Function* f, llvm::JITEventListener* listener)
 
   // and _now_ we must be able to get machine code for this function
   void* pf = ee->getPointerToFunction(f);
-
-  jitFuncTracer->log(moduleFunctions, *ee);
 
   if (listener) {
     ee->UnregisterJITEventListener(listener);
