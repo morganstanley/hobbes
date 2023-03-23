@@ -219,6 +219,11 @@ public:
   // dump the contents of the generated module (useful for debugging)
   void dumpModule();
 
+#if LLVM_VERSION_MAJOR < 11
+  // show jit functions in name:addr format
+  [[nodiscard]] std::string showJitMemoryAddresses() const;
+#endif
+
   // get the x86 machine code for an expression (useful for debugging)
   using bytes = std::vector<unsigned char>;
   bytes machineCodeForExpr(const std::string &expr);

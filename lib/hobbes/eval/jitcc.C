@@ -18,6 +18,7 @@
 #include <llvm/Support/Compiler.h>
 #include <llvm/Support/Error.h>
 #include <llvm/Support/FileSystem.h>
+#include <llvm/Support/raw_ostream.h>
 #include <llvm/Target/TargetMachine.h>
 
 #include <algorithm>
@@ -669,6 +670,21 @@ llvm::Module* jitcc::module() {
     this->modules.push_back(this->currentModule);
   }
   return this->currentModule;
+}
+
+std::string jitcc::showJitMemoryAddresses() {
+  std::string s;
+  llvm::raw_string_ostream os(s);
+  for (const auto* m: this->modules) {
+    for (const auto& f: *m) {
+      if (!f.isDeclaration()) {
+        if (void* addr = this->getSymbolAddress(f.getName().str())) {
+          os << f.getName() << ':' << addr << '\n';
+        }
+      }
+    }
+  }
+  return s;
 }
 #endif
 

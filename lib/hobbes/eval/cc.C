@@ -653,6 +653,13 @@ void cc::dumpModule() {
 #endif
 }
 
+#if LLVM_VERSION_MAJOR < 11
+std::string cc::showJitMemoryAddresses() const {
+  hlock _;
+  return this->jit->showJitMemoryAddresses();
+}
+#endif
+
 cc::bytes cc::machineCodeForExpr(const std::string& expr) {
   hlock _;
   return this->jit->machineCodeForExpr(unsweetenExpression(readExpr(expr)));
