@@ -838,7 +838,11 @@ public:
   size_t sz;
   explicit LenWatch(const std::string &fname) : fname(fname), sz(0) {}
   size_t size() const { return this->sz; }
-  void NotifyObjectEmitted(const llvm::object::ObjectFile& o, const llvm::RuntimeDyld::LoadedObjectInfo&) {
+#if LLVM_VERSION_MAJOR >= 8
+  void notifyObjectLoaded(ObjectKey, const llvm::object::ObjectFile &o, const llvm::RuntimeDyld::LoadedObjectInfo &) override {
+#else
+  void NotifyObjectEmitted(const llvm::object::ObjectFile& o, const llvm::RuntimeDyld::LoadedObjectInfo&) override {
+#endif
     for (auto s : o.symbols()) {
       const auto* esr = reinterpret_cast<const llvm::object::ELFSymbolRef*>(&s);
 
