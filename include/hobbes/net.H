@@ -160,9 +160,16 @@ inline addrinfo* lookupAddrInfo(const std::string& host, const std::string& port
   memset(&h, 0, sizeof(h));
   h.ai_family   = AF_UNSPEC;
   h.ai_socktype = SOCK_STREAM;
+  const bool isServer = host.empty();
+  const char* hostname = isServer ? nullptr : host.c_str();
+  const char* service = port.empty() ? nullptr : port.c_str();
+  assert(!(hostname == nullptr && service == nullptr));
+  if (isServer) {
+    h.ai_flags = AI_PASSIVE;
+  }
 
   struct addrinfo* addrs = nullptr;
-  switch (getaddrinfo(host.empty()? nullptr : host.c_str(), port.empty() ? nullptr : port.c_str(), &h, &addrs)) {
+  switch (getaddrinfo(hostname, service, &h, &addrs)) {
   case 0:              return addrs;
   case EAI_ADDRFAMILY: throw std::runtime_error("Cannot make socket connection to " + host + ":" + port);
   case EAI_AGAIN:      throw std::runtime_error(host + ":" + port + " is temporarily unavailable");
