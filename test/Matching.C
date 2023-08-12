@@ -453,3 +453,17 @@ TEST(Matching, noRaceInterpMatch) {
   EXPECT_EQ(wrongMatches.load(), size_t(0));
   c().buildInterpretedMatches(false);
 }
+
+TEST(Matching, isPrimSelectionWithVariant) {
+  std::ostringstream rows;
+  rows << "(\\a b.match a b with\n";
+  rows << "| |Close| _ -> 1\n";
+  for (size_t i = 0; i < 499; ++i) {
+    rows << "| _ " << i << " -> " << i+2 << "\n";
+  }
+  rows << "| _ _ -> -1\n";
+  rows << ")(|Open|::|Open, Close|, 9)";
+  auto f = c().compileFn<int()>(rows.str());
+  EXPECT_EQ(f(), 11);
+}
+
