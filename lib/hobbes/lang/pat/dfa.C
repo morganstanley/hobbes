@@ -90,6 +90,9 @@ MStatePtr makeSwitch(const MDFA* dfa, const std::string& switchVar, const Switch
     if (jmps.empty()) {
       return dfa->states[defState];
     } else if (isUnit(jmps[0].first->primType())) {
+      if (dfa->inPrimSel) {
+        return dfa->states[jmps[0].second];
+      }
       return actAndThen(assume(var(switchVar, dfa->rootLA), primty("unit"), dfa->rootLA), jmps[0].second);
     } else {
       return MStatePtr(new SwitchVal(switchVar, jmps, defState));
