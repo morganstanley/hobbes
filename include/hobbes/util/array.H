@@ -3,6 +3,7 @@
 #define HOBBES_UTIL_ARRAY_HPP_INCLUDED
 
 #include <algorithm>
+#include <cstdint>
 #include <cstring>
 #include <functional>
 #include <map>
