@@ -154,6 +154,18 @@ void printMemoryPool() {
   std::cout << showMemoryPool() << std::flush;
 }
 
+std::string showDetailedMemoryPool() {
+  std::ostringstream oss;
+  oss << "{";
+  std::string sep;
+  for (const auto& region: threadRegions()) {
+    oss << sep << "\n\"" << region.first << "\": " << region.second->show();
+    sep = ",";
+  }
+  oss << "\n}";
+  return std::move(oss).str();
+}
+
 void resetMemoryPool() {
   threadRegion().clear();
 }
