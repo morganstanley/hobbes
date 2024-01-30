@@ -1,5 +1,7 @@
 # hobbes
 
+![Lifecycle Active](https://badgen.net/badge/Lifecycle/Active/green)  
+
 a language, embedded compiler, and runtime for efficient dynamic expression evaluation, data storage and analysis
 
 |section                             |description                                                   |
