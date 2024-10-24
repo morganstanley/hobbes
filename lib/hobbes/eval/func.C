@@ -190,6 +190,11 @@ BOP(i16div, CreateSDiv, int128_t, int128_t, int128_t);
 BOP(i16rem, CreateSRem, int128_t, int128_t, int128_t);
 
 BOP(i16shl, CreateShl, int128_t, int128_t, int128_t);
+BOP(i16lshr, CreateLShr, int128_t, int128_t, int128_t);
+BOP(i16ashr, CreateAShr, int128_t, int128_t, int128_t);
+BOP(i16and, CreateAnd, int128_t, int128_t, int128_t);
+BOP(i16or, CreateOr, int128_t, int128_t, int128_t);
+BOP(i16xor, CreateXor, int128_t, int128_t, int128_t);
 
 BOP(i16eq,  CreateICmpEQ,  int128_t, int128_t, bool);
 BOP(i16neq, CreateICmpNE,  int128_t, int128_t, bool);
@@ -1017,6 +1022,8 @@ void initDefOperators(cc* c) {
   DEC(iadd);   DEC(isub);   DEC(imul);   DEC(idiv);   DEC(irem);
   DEC(ladd);   DEC(lsub);   DEC(lmul);   DEC(ldiv);   DEC(lrem);
   DEC(i16add); DEC(i16sub); DEC(i16mul); DEC(i16div); DEC(i16rem);
+  DEC(i16shl); DEC(i16lshr); DEC(i16ashr); DEC(i16and); DEC(i16or);DEC(i16xor);
+
   DEC(fadd);   DEC(fsub);   DEC(fmul);   DEC(fdiv);
   DEC(dadd);   DEC(dsub);   DEC(dmul);   DEC(ddiv);
 
