@@ -1,18 +1,20 @@
 
-#include <hobbes/lang/type.H>
+#include <algorithm>
+#include <atomic>
+#include <cstring>
+#include <hobbes/lang/constraints.H>
 #include <hobbes/lang/expr.H>
 #include <hobbes/lang/tylift.H>
+#include <hobbes/lang/type.H>
 #include <hobbes/lang/typepreds.H>
-#include <hobbes/lang/constraints.H>
 #include <hobbes/util/array.H>
 #include <hobbes/util/codec.H>
-#include <hobbes/util/str.H>
 #include <hobbes/util/perf.H>
+#include <hobbes/util/str.H>
+#include <memory>
 #include <sstream>
 #include <stdexcept>
-#include <string.h>
 #include <unordered_map>
-#include <atomic>
 
 namespace hobbes {
 
@@ -42,7 +44,7 @@ template <typename T>
     if (ts.size() == 0) {
       return "{}";
     } else {
-      typedef typename std::set<T>::const_iterator TCIter;
+      using TCIter = typename std::set<T>::const_iterator;
       TCIter t = ts.begin();
       std::string r = "{" + str::from(*t);
       ++t;
@@ -88,7 +90,7 @@ str::seq showNoSimpl(const Constraints& cs) {
 TEnv::TEnv(const TEnvPtr& parent) : parent(parent), dbgCstRefine(false) {
 }
 
-TEnv::TEnv() : parent(), unquals(new UnqualifierSet()), dbgCstRefine(false)  {
+TEnv::TEnv() :  unquals(new UnqualifierSet()), dbgCstRefine(false)  {
 }
 bool TEnv::debugConstraintRefine() const { return this->dbgCstRefine || (parent && parent->debugConstraintRefine()); }
 void TEnv::debugConstraintRefine(bool f) { this->dbgCstRefine = f; }
@@ -118,14 +120,14 @@ void TEnv::bind(const std::string& vname, const MonoTypePtr& t) {
 }
 
 void TEnv::unbind(const std::string& vname) {
-  PolyTypeEnv::iterator b = this->ptenv.find(vname);
+  auto b = this->ptenv.find(vname);
   if (b != this->ptenv.end()) {
     this->ptenv.erase(b);
   }
 }
 
 PolyTypePtr TEnv::lookup(const std::string& vname) const {
-  PolyTypeEnv::const_iterator t = this->ptenv.find(vname);
+  auto t = this->ptenv.find(vname);
   if (t != this->ptenv.end()) {
     return t->second;
   } else if (this->parent) {
@@ -141,7 +143,7 @@ PolyTypePtr TEnv::lookup(const std::string& vname) const {
       str::seq suggestions = str::closestMatches(vname, boundVariables(), 3);
       if (suggestions.size() == 1) {
         ss << " (did you mean '" << suggestions[0] << "'?)";
-      } else if (suggestions.size() > 0) {
+      } else if (!suggestions.empty()) {
         ss << " (did you mean one of: '" << suggestions[0] << "'";
         for (size_t i = 1; i < suggestions.size(); ++i) {
           ss << ", '" << suggestions[i] << "'";
@@ -159,7 +161,7 @@ void TEnv::bind(const std::string& predName, const UnqualifierPtr& uq) {
     this->parent->bind(predName, uq);
   } else {
     // add this unqualifier only if it doesn't introduce conflicting variable definitions
-    for (auto vn : uq->bindings()) {
+    for (const auto& vn : uq->bindings()) {
       if (hasBinding(vn)) {
         throw std::runtime_error("Variable already defined: " + vn);
       }
@@ -202,8 +204,8 @@ TEnv::PolyTypeEnv TEnv::typeEnvTable(std::function<std::string const&(std::strin
   } else {
     PolyTypeEnv pte       = this->ptenv;
     SymSet      overloads = this->unquals->bindings();
-    for (SymSet::const_iterator s = overloads.begin(); s != overloads.end(); ++s) {
-      pte[*s] = this->unquals->lookup(reWriteFn(*s));
+    for (const auto &overload : overloads) {
+      pte[overload] = this->unquals->lookup(reWriteFn(overload));
     }
     return pte;
   }
@@ -305,8 +307,8 @@ bool satisfied(const TEnvPtr& tenv, const ConstraintPtr& c, Definitions* ds) {
 }
 
 bool satisfied(const TEnvPtr& tenv, const Constraints& cs, Definitions* ds) {
-  for (Constraints::const_iterator c = cs.begin(); c != cs.end(); ++c) {
-    if (!satisfied(tenv, *c, ds)) {
+  for (const auto &c : cs) {
+    if (!satisfied(tenv, c, ds)) {
       return false;
     }
   }
@@ -334,8 +336,8 @@ bool satisfiable(const TEnvPtr& tenv, const ConstraintPtr& c, Definitions* ds) {
 }
 
 bool satisfiable(const TEnvPtr& tenv, const Constraints& cs, Definitions* ds) {
-  for (Constraints::const_iterator c = cs.begin(); c != cs.end(); ++c) {
-    if (!satisfiable(tenv, *c, ds)) {
+  for (const auto &c : cs) {
+    if (!satisfiable(tenv, c, ds)) {
       return false;
     }
   }
@@ -386,7 +388,7 @@ Constraints& QualType::constraints() { return this->cs; }
 void QualType::monoType(const MonoTypePtr& nt) { this->mt = nt; }
 
 void QualType::show(std::ostream& out) const {
-  if (this->cs.size() == 0) {
+  if (this->cs.empty()) {
     this->mt->show(out);
   } else if (this->cs.size() == 1) {
     this->cs[0]->show(out);
@@ -420,7 +422,7 @@ std::string        Constraint::name()      const { return this->cat; }
 const MonoTypes&   Constraint::arguments() const { return this->mts; }
 
 ConstraintPtr Constraint::instantiate(const MonoTypes& ts) const {
-  return ConstraintPtr(new Constraint(this->name(), hobbes::instantiate(ts, this->arguments())));
+  return std::make_shared<Constraint>(this->name(), hobbes::instantiate(ts, this->arguments()));
 }
 
 NameSet Constraint::tvarNames() const {
@@ -434,7 +436,7 @@ bool Constraint::hasFreeVariables() const {
 }
 
 ConstraintPtr Constraint::substitute(const MonoTypeSubst& s) const {
-  return ConstraintPtr(new Constraint(this->name(), hobbes::substitute(s, this->arguments())));
+  return std::make_shared<Constraint>(this->name(), hobbes::substitute(s, this->arguments()));
 }
 
 void Constraint::update(MonoTypeUnifier* u) {
@@ -465,9 +467,9 @@ void Constraint::show(std::ostream& out) const {
     this->mts[3]->show(out);
   } else {
     out << this->cat;
-    for (size_t i = 0; i < this->mts.size(); ++i) {
+    for (const auto &mt : this->mts) {
       out << " ";
-      this->mts[i]->show(out);
+      mt->show(out);
     }
   }
 }
@@ -490,7 +492,7 @@ bool Constraint::operator==(const Constraint& rhs) const {
 ////////
 MonoType::MonoType(int cid) : cid(cid), tgenCount(0), memorySize(-1) { }
 int MonoType::case_id() const { return this->cid; }
-MonoType::~MonoType() { }
+MonoType::~MonoType() = default;
 
 bool MonoType::operator==(const MonoType& rhs) const {
   return this == &rhs;
@@ -510,7 +512,7 @@ bool isFileRef(const MonoTypePtr& mt) {
 unsigned int alignment(const MonoTypePtr& pty) {
   MonoTypePtr ty = repType(pty);
 
-  if (is<Prim>(ty)) {
+  if (is<Prim>(ty) != nullptr) {
     if (isUnit(ty)) {
       return 1;
     } else {
@@ -524,15 +526,15 @@ unsigned int alignment(const MonoTypePtr& pty) {
     }
   } else if (const FixedArray* farr = is<FixedArray>(ty)) {
     return alignment(farr->type());
-  } else if (is<OpaquePtr>(ty) || is<Array>(ty) || is<Func>(ty)) {
+  } else if ((is<OpaquePtr>(ty) != nullptr) || (is<Array>(ty) != nullptr) || (is<Func>(ty) != nullptr)) {
     return sizeof(void*);
   } else if (const Record* rty = is<Record>(ty)) {
     size_t a = 1;
-    for (auto f : rty->members()) {
+    for (const auto& f : rty->members()) {
       a = std::max<unsigned int>(a, alignment(f.type));
     }
     return a;
-  } else if (is<Recursive>(ty)) {
+  } else if (is<Recursive>(ty) != nullptr) {
     return sizeof(void*);
   } else if (isFileRef(ty)) {
     return sizeof(uint64_t);
@@ -544,48 +546,29 @@ unsigned int alignment(const MonoTypePtr& pty) {
 ////////////
 // manage allocation of mono types so that type pointers are uniquely determined by constructor arguments
 ////////////
-typedef unique_refc_map<const Prim,       std::string, MonoTypePtr>        PrimMem;
-typedef unique_refc_map<const OpaquePtr,  std::string, unsigned int, bool> OpaquePtrMem;
-typedef unique_refc_map<const TVar,       std::string>                     TVarMem;
-typedef unique_refc_map<const TGen,       int>                             TGenMem;
-typedef unique_refc_map<const TAbs,       str::seq,    MonoTypePtr>        TAbsMem;
-typedef unique_refc_map<const TApp,       MonoTypePtr, MonoTypes>          TAppMem;
-typedef unique_refc_map<const FixedArray, MonoTypePtr, MonoTypePtr>        FixedArrayMem;
-typedef unique_refc_map<const Array,      MonoTypePtr>                     ArrayMem;
-typedef unique_refc_map<const Variant,    Variant::Members>                VariantMem;
-typedef unique_refc_map<const Record,     Record::Members>                 RecordMem;
-typedef unique_refc_map<const Func,       MonoTypePtr, MonoTypePtr>        FuncMem;
-typedef unique_refc_map<const Exists,     std::string, MonoTypePtr>        ExistsMem;
-typedef unique_refc_map<const Recursive,  std::string, MonoTypePtr>        RecursiveMem;
+using PrimMem = unique_refc_map<const Prim, std::string, MonoTypePtr>;
+using OpaquePtrMem = unique_refc_map<const OpaquePtr, std::string, unsigned int, bool>;
+using TVarMem = unique_refc_map<const TVar, std::string>;
+using TGenMem = unique_refc_map<const TGen, int>;
+using TAbsMem = unique_refc_map<const TAbs, str::seq, MonoTypePtr>;
+using TAppMem = unique_refc_map<const TApp, MonoTypePtr, MonoTypes>;
+using FixedArrayMem = unique_refc_map<const FixedArray, MonoTypePtr, MonoTypePtr>;
+using ArrayMem = unique_refc_map<const Array, MonoTypePtr>;
+using VariantMem = unique_refc_map<const Variant, Variant::Members>;
+using RecordMem = unique_refc_map<const Record, Record::Members>;
+using FuncMem = unique_refc_map<const Func, MonoTypePtr, MonoTypePtr>;
+using ExistsMem = unique_refc_map<const Exists, std::string, MonoTypePtr>;
+using RecursiveMem = unique_refc_map<const Recursive, std::string, MonoTypePtr>;
 
-typedef unique_refc_map<const TString,    std::string>                     TStringMem;
-typedef unique_refc_map<const TLong,      long>                            TLongMem;
-typedef unique_refc_map<const TExpr,      std::string>                     TExprMem;
+using TStringMem = unique_refc_map<const TString, std::string>;
+using TLongMem = unique_refc_map<const TLong, long>;
+using TExprMem = unique_refc_map<const TExpr, std::string>;
 
-typedef
-  unique_refc_maps<
-    PrimMem,
-    OpaquePtrMem,
-    TVarMem,
-    TGenMem,
-    TAbsMem,
-    TAppMem,
-    FixedArrayMem,
-    ArrayMem,
-    VariantMem,
-    RecordMem,
-    FuncMem,
-    ExistsMem,
-    RecursiveMem,
-
-    TStringMem,
-    TLongMem,
-    TExprMem
-  > MTypeCtorMaps;
+using MTypeCtorMaps = unique_refc_maps<PrimMem, OpaquePtrMem, TVarMem, TGenMem, TAbsMem, TAppMem, FixedArrayMem, ArrayMem, VariantMem, RecordMem, FuncMem, ExistsMem, RecursiveMem, TStringMem, TLongMem, TExprMem>;
 
 MTypeCtorMaps* tctorMaps() {
-  static MTypeCtorMaps* x = 0;
-  if (x == 0) {
+  static MTypeCtorMaps* x = nullptr;
+  if (x == nullptr) {
     x = new MTypeCtorMaps();
   }
   return x;
@@ -674,7 +657,7 @@ TAbs::TAbs(const str::seq& targns, const MonoTypePtr& b) : targns(targns), b(b) 
 }
 
 void TAbs::show(std::ostream& out) const {
-  out << "\\" << (this->targns.size() == 0 ? "()" : str::cdelim(this->targns, " ")) << "." << hobbes::show(this->b);
+  out << "\\" << (this->targns.empty() ? "()" : str::cdelim(this->targns, " ")) << "." << hobbes::show(this->b);
 }
 
 const str::seq&    TAbs::args() const { return this->targns; }
@@ -711,10 +694,10 @@ void TApp::show(std::ostream& out) const {
 
   out << "(";
   this->f->show(out);
-  if (this->targs.size() > 0) {
-    for (size_t i = 0; i < this->targs.size(); ++i) {
+  if (!this->targs.empty()) {
+    for (const auto &targ : this->targs) {
       out << " ";
-      this->targs[i]->show(out);
+      targ->show(out);
     }
   }
   out << ")";
@@ -762,8 +745,8 @@ MonoTypePtr Variant::make(const Members& ms) {
 
 static void resetCtorIDs(Variant::Members* ms) {
   size_t id = 0;
-  for (Variant::Members::iterator m = ms->begin(); m != ms->end(); ++m) {
-    m->id = id++;
+  for (auto &m : *ms) {
+    m.id = id++;
   }
 }
 
@@ -774,17 +757,16 @@ inline bool isHiddenCtor(const Variant::Member& m) {
   return isHiddenCtorName(m.selector);
 }
 
-int findHiddenMember(int i, const std::string& lbl, const Variant::Members& ms) {
-  std::string hlbl = ".p" + lbl;
-  while (i >= 0 && ms[i].selector != hlbl) {
-    --i;
-  }
-  return i;
+int findHiddenMember(const std::string& lbl, const Variant::Members& ms) {
+  const auto it = std::find_if(
+      ms.crbegin(), ms.crend(),
+      [hlbl = ".p" + lbl](const auto &m) { return m.selector == hlbl; });
+  return std::distance(it, ms.crend()) - 1;
 }
 
 Variant::Members consMember(const std::string& lbl, const MonoTypePtr& hty, const Variant::Members& tty) {
   // try to find a place to insert this type, otherwise insert it at the head
-  int slot = findHiddenMember(tty.size() - 1, lbl, tty);
+  const int slot = findHiddenMember(lbl, tty);
 
   Variant::Members r;
   if (slot < 0) {
@@ -819,7 +801,7 @@ MonoTypePtr Variant::make(const std::string& lbl, const MonoTypePtr& hty, const 
 }
 
 Variant::Member::Member(const std::string& selector, const MonoTypePtr& type, unsigned int id) : selector(selector), type(type), id(id) { }
-Variant::Member::Member() : selector(""), type(), id(0) { }
+Variant::Member::Member() :   id(0) { }
 bool Variant::Member::operator==(const Variant::Member& rhs) const { return this->selector == rhs.selector && *this->type == *rhs.type && this->id == rhs.id; }
 
 bool Variant::Member::operator<(const Variant::Member& rhs) const {
@@ -859,12 +841,25 @@ void showFull(const Variant::Members& ms, std::ostream& out) {
   out << "|";
   size_t i = nextVisibleMember(0, ms);
   if (i < ms.size()) {
-    out << ms[i].selector;
-    showFullVarPayloadSuffix(ms[i].type, out);
+    const bool discrete = [s = std::next(ms.cbegin(), i), e = ms.cend()] {
+      // not start from zero or not continous
+      return s->id != 0 ||
+             std::adjacent_find(s, e, [](const auto &a, const auto &b) {
+               return !((a.id < b.id) && (a.id + 1 == b.id));
+             }) != e;
+    }();
+    const auto showPayload = [&out, discrete](const Variant::Member &m) {
+      out << m.selector;
+      if (discrete) {
+        out << '(' << m.id << ')';
+      }
+      showFullVarPayloadSuffix(m.type, out);
+    };
+
+    showPayload(ms[i]);
     for (size_t j = i + 1; j < ms.size(); ++j) {
       out << ", ";
-      out << ms[j].selector;
-      showFullVarPayloadSuffix(ms[j].type, out);
+      showPayload(ms[j]);
     }
   }
   out << "|";
@@ -884,8 +879,8 @@ void showSum(const Variant::Members& ms, std::ostream& out) {
 }
 
 bool looksLikeSum(const Variant::Members& ms) {
-  for (size_t i = 0; i < ms.size(); ++i) {
-    if (ms[i].selector.size() > 1 && ms[i].selector[0] == '.' && ms[i].selector[1] == 'f') {
+  for (const auto &m : ms) {
+    if (m.selector.size() > 1 && m.selector[0] == '.' && m.selector[1] == 'f') {
       return true;
     }
   }
@@ -933,7 +928,7 @@ const MonoTypePtr& Variant::payload(const std::string& selector) const {
 
 unsigned int Variant::index(const std::string& selector) const {
   int i = 0;
-  for (Members::const_iterator m = this->ms.begin(); m != this->ms.end(); ++m, ++i) {
+  for (auto m = this->ms.begin(); m != this->ms.end(); ++m, ++i) {
     if (m->selector == selector) {
       return i;
     }
@@ -941,21 +936,21 @@ unsigned int Variant::index(const std::string& selector) const {
   throw std::runtime_error("No selector named '" + selector + "' in the variant '" + hobbes::show(this) + "'.");
 }
 unsigned int Variant::id(const std::string& selector) const {
-  for (Members::const_iterator m = this->ms.begin(); m != this->ms.end(); ++m) {
-    if (m->selector == selector) {
-      return m->id;
+  for (const auto &m : this->ms) {
+    if (m.selector == selector) {
+      return m.id;
     }
   }
   throw std::runtime_error("No selector named '" + selector + "' in the variant '" + hobbes::show(this) + "'.");
 }
 
 const Variant::Member* Variant::mmember(const std::string& selector) const {
-  for (Members::const_iterator m = this->ms.begin(); m != this->ms.end(); ++m) {
-    if (m->selector == selector) {
-      return &(*(m));
+  for (const auto &m : this->ms) {
+    if (m.selector == selector) {
+      return &m;
     }
   }
-  return 0;
+  return nullptr;
 }
 
 Variant::Members tailMembers(const Variant::Members& ms) {
@@ -994,7 +989,7 @@ MonoTypePtr Variant::tailType() const {
 // we should try to unify this logic with record alignment-determination logic
 unsigned int Variant::payloadOffset() const {
   unsigned int o = sizeof(int);
-  for (auto m : this->ms) {
+  for (const auto& m : this->ms) {
     o = std::max<unsigned int>(o, align<unsigned int>(sizeof(int), alignment(m.type)));
   }
   return o;
@@ -1003,7 +998,7 @@ unsigned int Variant::payloadOffset() const {
 unsigned int Variant::payloadSize() const {
   if (this->payloadSizeM == static_cast<unsigned int>(-1)) {
     this->payloadSizeM = 0;
-    for (auto m : this->ms) {
+    for (const auto& m : this->ms) {
       this->payloadSizeM = std::max(this->payloadSizeM, sizeOf(m.type));
     }
   }
@@ -1013,7 +1008,7 @@ unsigned int Variant::payloadSize() const {
 unsigned int Variant::size() const {
   // align to strictest field
   unsigned int malign = sizeof(int);
-  for (auto m : this->ms) {
+  for (const auto& m : this->ms) {
     malign = std::max<unsigned int>(malign, alignment(m.type));
   }
   return align<unsigned int>(payloadOffset() + payloadSize(), malign);
@@ -1021,7 +1016,7 @@ unsigned int Variant::size() const {
 
 // record types
 Record::Member::Member(const std::string& field, const MonoTypePtr& type, int offset) : field(field), type(type), offset(offset) { }
-Record::Member::Member() : field(""), type(), offset(0) { }
+Record::Member::Member() :   offset(0) { }
 bool Record::Member::operator==(const Record::Member& rhs) const { return this->field == rhs.field && *this->type == *rhs.type && this->offset == rhs.offset; }
 
 bool Record::Member::operator<(const Record::Member& rhs) const {
@@ -1076,23 +1071,22 @@ unsigned int nextVisibleMember(unsigned int i, const Record::Members& ms) {
   return i;
 }
 
-int findHiddenMember(int i, const std::string& lbl, const Record::Members& ms) {
-  std::string hlbl = ".p" + lbl;
-  while (i >= 0 && ms[i].field != hlbl) {
-    --i;
-  }
-  return i;
+int findHiddenMember(const std::string& lbl, const Record::Members& ms) {
+  const auto it = std::find_if(
+      ms.crbegin(), ms.crend(),
+      [hlbl = ".p" + lbl](const auto &m) { return m.field == hlbl; });
+  return std::distance(it, ms.crend()) - 1;
 }
 
 static void resetFieldOffsets(Record::Members* ms) {
-  for (Record::Members::iterator m = ms->begin(); m != ms->end(); ++m) {
-    m->offset = -1;
+  for (auto &m : *ms) {
+    m.offset = -1;
   }
 }
 
 Record::Members consMember(const std::string& lbl, const MonoTypePtr& hty, const Record::Members& tty) {
   // try to find a place to insert this type, otherwise insert it at the head
-  int slot = findHiddenMember(tty.size() - 1, lbl, tty);
+  const int slot = findHiddenMember(lbl, tty);
 
   Record::Members r;
   if (slot < 0) {
@@ -1109,9 +1103,9 @@ Record::Members consMember(const std::string& lbl, const MonoTypePtr& hty, const
 
 static void normalizeTupleFields(Record::Members* ms) {
   size_t i = 0;
-  for (Record::Members::iterator m = ms->begin(); m != ms->end(); ++m) {
-    if (m->field.substr(0, 2) != ".p") {
-      m->field = ".f" + str::from(i++);
+  for (auto &m : *ms) {
+    if (m.field.substr(0, 2) != ".p") {
+      m.field = ".f" + str::from(i++);
     }
   }
 }
@@ -1171,7 +1165,7 @@ Record::Members Record::withResolvedMemoryLayout(const Members& ms) {
 
   // infer offsets and/or insert padding as necessary
   int o = 0;
-  for (Record::Members::const_iterator m = ms.begin(); m != ms.end(); ++m) {
+  for (auto m = ms.begin(); m != ms.end(); ++m) {
     if (!isMonoSingular(m->type)) {
       return ms;
     }
@@ -1224,7 +1218,7 @@ unsigned int Record::maxFieldAlignment() const {
 
 unsigned int Record::size() const {
   // a record with no members is equivalent to unit
-  if (this->ms.size() == 0) {
+  if (this->ms.empty()) {
     return 0;
   }
 
@@ -1249,15 +1243,15 @@ Record::Members Record::withExplicitPadding(const Members& ms, const std::string
   int     o = 0; // the active determined offset in memory
   int     p = 0; // unique names for pad fields
 
-  for (Record::Members::const_iterator m = ms.begin(); m != ms.end(); ++m) {
-    if (m->offset > o) {
-      r.push_back(Member(pfx + str::from(p++), arrayty(prim<char>(), m->offset - o)));
+  for (const auto &m : ms) {
+    if (m.offset > o) {
+      r.push_back(Member(pfx + str::from(p++), arrayty(prim<char>(), m.offset - o)));
     }
-    size_t msz = sizeOf(m->type);
-    o = m->offset + msz;
+    size_t msz = sizeOf(m.type);
+    o = m.offset + msz;
 
     if (msz > 0) {
-      r.push_back(*m);
+      r.push_back(m);
     }
   }
 
@@ -1265,7 +1259,7 @@ Record::Members Record::withExplicitPadding(const Members& ms, const std::string
   unsigned int talign = maxFieldAlignmentF(ms);
 
   if (talign > 0) {
-    unsigned int asz = align<unsigned int>(o, talign);
+    auto asz = align<unsigned int>(o, talign);
     if (int(asz) > o) {
       r.push_back(Member(pfx + str::from(p++), arrayty(prim<char>(), asz - o)));
     }
@@ -1275,8 +1269,8 @@ Record::Members Record::withExplicitPadding(const Members& ms, const std::string
 }
 
 bool isTupleDesc(const Record::Members& ms) {
-  for (unsigned int i = 0; i < ms.size(); ++i) {
-    if (ms[i].field.substr(0, 2) == ".f") {
+  for (const auto &m : ms) {
+    if (m.field.substr(0, 2) == ".f") {
       return true;
     }
   }
@@ -1287,10 +1281,10 @@ void showAsTuple(std::ostream& out, const Record::Members& ms) {
   bool once = false;
 
   out << "(";
-  for (size_t i = 0; i < ms.size(); ++i) {
+  for (const auto &m : ms) {
     if (once) { out << " * "; }
-    if (ms[i].field.size() > 2 && ms[i].field[1] != 'p') {
-      ms[i].type->show(out);
+    if (m.field.size() > 2 && m.field[1] != 'p') {
+      m.type->show(out);
       once = true;
     }
   }
@@ -1298,7 +1292,7 @@ void showAsTuple(std::ostream& out, const Record::Members& ms) {
 }
 
 void showAsRecord(std::ostream& out, const Record::Members& ms) {
-  if (ms.size() == 0) {
+  if (ms.empty()) {
     out << "{}";
   } else {
     out << "{ ";
@@ -1335,7 +1329,7 @@ bool Record::isTuple() const {
 }
 
 const MonoTypePtr& Record::member(const std::string& mn) const {
-  if (auto m = mmember(mn)) {
+  if (const auto *m = mmember(mn)) {
     return m->type;
   }
 
@@ -1349,7 +1343,7 @@ const MonoTypePtr& Record::member(const std::string& mn) const {
   str::seq suggestions = str::closestMatches(mn, selectNames(this->ms), 3);
   if (suggestions.size() == 1) {
     throw std::runtime_error("Field '" + mn + "' (did you mean '" + suggestions[0] + "'?) does not exist in type: " + tdesc.substr(0, truncTyLen) + "...");
-  } else if (suggestions.size() > 0) {
+  } else if (!suggestions.empty()) {
     std::ostringstream ss;
     ss << "Field '" << mn << "' (did you mean one of: '" << suggestions[0] << "'";
     for (size_t i = 1; i < suggestions.size(); ++i) {
@@ -1367,12 +1361,12 @@ unsigned int Record::index(const std::string& mn) const {
 }
 
 const Record::Member* Record::mmember(const std::string& mn) const {
-  for (Members::const_iterator m = this->ms.begin(); m != this->ms.end(); ++m) {
-    if (m->field == mn) {
-      return &(*m);
+  for (const auto &m : this->ms) {
+    if (m.field == mn) {
+      return &m;
     }
   }
-  return 0;
+  return nullptr;
 }
 
 const Record::Members& Record::members() const {
@@ -1389,13 +1383,13 @@ unsigned int Record::alignedIndex(const std::string& mn) const {
 
 unsigned int Record::index(const Members& ms, const std::string& mn) const {
   unsigned int k = 0;
-  for (Members::const_iterator m = ms.begin(); m != ms.end(); ++m) {
+  for (const auto &m : ms) {
     // pretend that we don't see fields with unit type
     //   (they don't make it into the final compiled record anyway)
-    if (m->field == mn) {
+    if (m.field == mn) {
       return k;
     }
-    if (!isUnit(m->type)) {
+    if (!isUnit(m.type)) {
       ++k;
     }
   }
@@ -1418,7 +1412,7 @@ const MonoTypePtr& Func::result() const { return this->rty; }
 MonoTypes Func::parameters() const {
   // simplify multi-argument lookup
   const Record* arty = is<Record>(this->aty);
-  if (arty && arty->isTuple()) {
+  if ((arty != nullptr) && arty->isTuple()) {
     return selectTypes(arty->members());
   } else {
     return list(this->aty);
@@ -1513,11 +1507,11 @@ UnitV walkTy::with(const OpaquePtr*   ) const { return unitv; }
 UnitV walkTy::with(const TVar*        ) const { return unitv; }
 UnitV walkTy::with(const TGen*        ) const { return unitv; }
 UnitV walkTy::with(const TAbs*       v) const { switchOf(v->body(), *this); return unitv; }
-UnitV walkTy::with(const TApp*       v) const { switchOf(v->fn(), *this); for (auto a : v->args()) { switchOf(a, *this); } return unitv; }
+UnitV walkTy::with(const TApp*       v) const { switchOf(v->fn(), *this); for (const auto& a : v->args()) { switchOf(a, *this); } return unitv; }
 UnitV walkTy::with(const FixedArray* v) const { switchOf(v->type(), *this); switchOf(v->length(), *this); return unitv; }
 UnitV walkTy::with(const Array*      v) const { switchOf(v->type(), *this); return unitv; }
-UnitV walkTy::with(const Variant*    v) const { for (auto c : v->members()) { switchOf(c.type, *this); } return unitv; }
-UnitV walkTy::with(const Record*     v) const { for (auto f : v->members()) { switchOf(f.type, *this); } return unitv; }
+UnitV walkTy::with(const Variant*    v) const { for (const auto& c : v->members()) { switchOf(c.type, *this); } return unitv; }
+UnitV walkTy::with(const Record*     v) const { for (const auto& f : v->members()) { switchOf(f.type, *this); } return unitv; }
 UnitV walkTy::with(const Func*       v) const { switchOf(v->argument(), *this); switchOf(v->result(), *this); return unitv; }
 UnitV walkTy::with(const Exists*     v) const { switchOf(v->absType(), *this); return unitv; }
 UnitV walkTy::with(const Recursive*  v) const { switchOf(v->recType(), *this); return unitv; }
@@ -1552,23 +1546,23 @@ MonoTypePtr clone(const MonoTypePtr& t) { return t; }
 MonoTypePtr clone(const MonoType*    t) { return clone(*t); }
 
 struct cloneF : public switchType<MonoTypePtr> {
-  MonoTypePtr with(const Prim*       v) const { return Prim::make(v->name(), v->representation()); }
-  MonoTypePtr with(const OpaquePtr*  v) const { return OpaquePtr::make(v->name(), v->size(), v->storedContiguously()); }
-  MonoTypePtr with(const TVar*       v) const { return TVar::make(v->name()); }
-  MonoTypePtr with(const TGen*       v) const { return TGen::make(v->id()); }
-  MonoTypePtr with(const TAbs*       v) const { return TAbs::make(v->args(), v->body()); }
-  MonoTypePtr with(const TApp*       v) const { return TApp::make(v->fn(), v->args()); }
-  MonoTypePtr with(const FixedArray* v) const { return FixedArray::make(v->type(), v->length()); }
-  MonoTypePtr with(const Array*      v) const { return Array::make(v->type()); }
-  MonoTypePtr with(const Variant*    v) const { return Variant::make(v->members()); }
-  MonoTypePtr with(const Record*     v) const { return Record::make(v->members()); }
-  MonoTypePtr with(const Func*       v) const { return Func::make(v->argument(), v->result()); }
-  MonoTypePtr with(const Exists*     v) const { return Exists::make(v->absTypeName(), v->absType()); }
-  MonoTypePtr with(const Recursive*  v) const { return Recursive::make(v->recTypeName(), v->recType()); }
+  MonoTypePtr with(const Prim*       v) const override { return Prim::make(v->name(), v->representation()); }
+  MonoTypePtr with(const OpaquePtr*  v) const override { return OpaquePtr::make(v->name(), v->size(), v->storedContiguously()); }
+  MonoTypePtr with(const TVar*       v) const override { return TVar::make(v->name()); }
+  MonoTypePtr with(const TGen*       v) const override { return TGen::make(v->id()); }
+  MonoTypePtr with(const TAbs*       v) const override { return TAbs::make(v->args(), v->body()); }
+  MonoTypePtr with(const TApp*       v) const override { return TApp::make(v->fn(), v->args()); }
+  MonoTypePtr with(const FixedArray* v) const override { return FixedArray::make(v->type(), v->length()); }
+  MonoTypePtr with(const Array*      v) const override { return Array::make(v->type()); }
+  MonoTypePtr with(const Variant*    v) const override { return Variant::make(v->members()); }
+  MonoTypePtr with(const Record*     v) const override { return Record::make(v->members()); }
+  MonoTypePtr with(const Func*       v) const override { return Func::make(v->argument(), v->result()); }
+  MonoTypePtr with(const Exists*     v) const override { return Exists::make(v->absTypeName(), v->absType()); }
+  MonoTypePtr with(const Recursive*  v) const override { return Recursive::make(v->recTypeName(), v->recType()); }
   
-  MonoTypePtr with(const TString* v) const { return TString::make(v->value()); }
-  MonoTypePtr with(const TLong*   v) const { return TLong::make(v->value()); }
-  MonoTypePtr with(const TExpr*   v) const { return TExpr::make(v->expr()); }
+  MonoTypePtr with(const TString* v) const override { return TString::make(v->value()); }
+  MonoTypePtr with(const TLong*   v) const override { return TLong::make(v->value()); }
+  MonoTypePtr with(const TExpr*   v) const override { return TExpr::make(v->expr()); }
 };
 MonoTypePtr clone(const MonoType& t) { return switchOf(t, cloneF()); }
 
@@ -1585,11 +1579,11 @@ MonoTypePtr cloneP(const MonoTypePtr& p) {
 ///////////////////
 QualTypePtr lookupFieldType(const QualTypePtr& qt, const std::string& fieldName) {
   MonoTypePtr mt = lookupFieldType(qt->monoType(), fieldName);
-  return QualTypePtr(new QualType(qt->constraints(), mt));
+  return std::make_shared<QualType>(qt->constraints(), mt);
 }
 
 MonoTypePtr lookupFieldType(const MonoTypePtr& mt, const std::string& fieldName) {
-  if (Record* rt = is<Record>(mt)) {
+  if (auto* rt = is<Record>(mt)) {
     return rt->member(fieldName);
   } else {
     throw std::runtime_error("Cannot index field '" + fieldName + "' in non-record type: " + show(mt));
@@ -1607,8 +1601,8 @@ Constraints mergeConstraints(const Constraints& lhs, const Constraints& rhs) {
 }
 
 void mergeConstraints(const Constraints& fcs, Constraints* tcs) {
-  for (Constraints::const_iterator c = fcs.begin(); c != fcs.end(); ++c) {
-    tcs->push_back(*c);
+  for (const auto &fc : fcs) {
+    tcs->push_back(fc);
   }
 }
 
@@ -1646,8 +1640,8 @@ MonoTypes freshen(const MonoTypes& ts) {
   MonoTypeSubst s;
 
   NameSet tvns = tvarNames(ts);
-  for (NameSet::const_iterator n = tvns.begin(); n != tvns.end(); ++n) {
-    s[*n] = freshTypeVar();
+  for (const auto &tvn : tvns) {
+    s[tvn] = freshTypeVar();
   }
 
   return substitute(s, ts);
@@ -1656,8 +1650,8 @@ MonoTypes freshen(const MonoTypes& ts) {
 ConstraintPtr freshen(const ConstraintPtr& cst) {
   NameSet cvns = tvarNames(cst);
   MonoTypeSubst s;
-  for (NameSet::const_iterator cvn = cvns.begin(); cvn != cvns.end(); ++cvn) {
-    s[*cvn] = freshTypeVar();
+  for (const auto &cvn : cvns) {
+    s[cvn] = freshTypeVar();
   }
   return substitute(s, cst);
 }
@@ -1665,16 +1659,16 @@ ConstraintPtr freshen(const ConstraintPtr& cst) {
 Constraints freshen(const Constraints& cs) {
   NameSet cvns = tvarNames(cs);
   MonoTypeSubst s;
-  for (NameSet::const_iterator cvn = cvns.begin(); cvn != cvns.end(); ++cvn) {
-    s[*cvn] = freshTypeVar();
+  for (const auto &cvn : cvns) {
+    s[cvn] = freshTypeVar();
   }
   return substitute(s, cs);
 }
 
 MonoTypes typeVars(const Names& ns) {
   MonoTypes r;
-  for (Names::const_iterator n = ns.begin(); n != ns.end(); ++n) {
-    r.push_back(TVar::make(*n));
+  for (const auto &n : ns) {
+    r.push_back(TVar::make(n));
   }
   return r;
 }
@@ -1688,12 +1682,12 @@ MonoTypes tgens(int c) {
 }
 
 // determine whether or not a monotype actually contains references to any type variables or variable generator points
-bool isMonoSingular(const MonoType& mt)    { return mt.freeTVars.size() == 0 && mt.tgenCount == 0; }
+bool isMonoSingular(const MonoType& mt)    { return mt.freeTVars.empty() && mt.tgenCount == 0; }
 bool isMonoSingular(const MonoType* mt)    { return isMonoSingular(*mt); }
 bool isMonoSingular(const MonoTypePtr& mt) { return isMonoSingular(*mt); }
 
 bool isMonoSingular(const QualTypePtr& qt) {
-  return qt->constraints().size() == 0 && isMonoSingular(qt->monoType());
+  return qt->constraints().empty() && isMonoSingular(qt->monoType());
 }
 
 // find the highest TGen reference (useful for deducing the number of type variables required to generalize a mono type)
@@ -1703,8 +1697,8 @@ int tgenSize(const MonoTypePtr& mt) {
 
 int tgenSize(const MonoTypes& mts) {
   int x = 0;
-  for (MonoTypes::const_iterator mt = mts.begin(); mt != mts.end(); ++mt) {
-    x = std::max<int>(x, tgenSize(*mt));
+  for (const auto &mt : mts) {
+    x = std::max<int>(x, tgenSize(mt));
   }
   return x;
 }
@@ -1722,7 +1716,7 @@ struct tgenVarsF : public walkTy {
   TGenVarSet* s;
   tgenVarsF(TGenVarSet* s) : s(s) { }
 
-  UnitV with(const TGen* v) const {
+  UnitV with(const TGen* v) const override {
     this->s->insert(v->id());
     return unitv;
   }
@@ -1747,13 +1741,13 @@ MonoTypePtr   instantiate(int vs, const MonoTypePtr& mt)     { if (vs == 0 || is
 MonoTypes     instantiate(int vs, const MonoTypes& ts)       { if (vs == 0)                       { return ts;     } else { return instantiate(freshTypeVars(vs), ts);     } }
 
 QualTypePtr instantiate(const MonoTypes& ts, const QualTypePtr& scheme) {
-  return QualTypePtr(new QualType(instantiate(ts, scheme->constraints()), instantiate(ts, scheme->monoType())));
+  return std::make_shared<QualType>(instantiate(ts, scheme->constraints()), instantiate(ts, scheme->monoType()));
 }
 
 Constraints instantiate(const MonoTypes& ts, const Constraints& cs) {
   Constraints r;
-  for (Constraints::const_iterator c = cs.begin(); c != cs.end(); ++c) {
-    r.push_back(instantiate(ts, *c));
+  for (const auto &c : cs) {
+    r.push_back(instantiate(ts, c));
   }
   return r;
 }
@@ -1766,7 +1760,7 @@ class instantiateF : public switchTyFn {
 public:
   instantiateF(const MonoTypes& ts) : ts(ts) { }
 
-  MonoTypePtr with(const TGen* v) const {
+  MonoTypePtr with(const TGen* v) const override {
     return MonoTypePtr(this->ts[v->id()]);
   }
 private:
@@ -1783,7 +1777,7 @@ MonoTypePtr instantiate(const MonoTypes& ts, const MonoTypePtr& mt) {
 
 MonoTypes instantiate(const MonoTypes& ts, const MonoTypes& sts) {
   MonoTypes result;
-  for (auto st : sts) {
+  for (const auto& st : sts) {
     result.push_back(instantiate(ts, st));
   }
   return result;
@@ -1838,8 +1832,8 @@ void tvarNames(const QualTypePtr& qt, NameSet* out) {
 }
 
 void tvarNames(const Constraints& cs, NameSet* out) {
-  for (Constraints::const_iterator c = cs.begin(); c != cs.end(); ++c) {
-    tvarNames(*c, out);
+  for (const auto &c : cs) {
+    tvarNames(c, out);
   }
 }
 
@@ -1881,8 +1875,8 @@ bool hasFreeVariables(const QualTypePtr& qt) {
 }
 
 bool hasFreeVariables(const Constraints& cs) {
-  for (Constraints::const_iterator c = cs.begin(); c != cs.end(); ++c) {
-    if (hasFreeVariables(*c)) {
+  for (const auto &c : cs) {
+    if (hasFreeVariables(c)) {
       return true;
     }
   }
@@ -1898,8 +1892,8 @@ bool hasFreeVariables(const MonoTypePtr& mt) {
 }
 
 bool hasFreeVariables(const MonoTypes& mts) {
-  for (MonoTypes::const_iterator mt = mts.begin(); mt != mts.end(); ++mt) {
-    if (hasFreeVariables(*mt)) {
+  for (const auto &mt : mts) {
+    if (hasFreeVariables(mt)) {
       return true;
     }
   }
@@ -1914,31 +1908,31 @@ std::string show(const MonoTypeSubst& s) {
   stbl[1].push_back("");
   stbl[2].push_back("Type");
 
-  for (MonoTypeSubst::const_iterator si = s.begin(); si != s.end(); ++si) {
-    stbl[0].push_back(si->first);
+  for (const auto &si : s) {
+    stbl[0].push_back(si.first);
     stbl[1].push_back(" = ");
-    stbl[2].push_back(show(si->second));
+    stbl[2].push_back(show(si.second));
   }
 
   return str::showLeftAlignedTable(stbl);
 }
 
 void show(const MonoTypeSubst& s, std::ostream& out) {
-  for (MonoTypeSubst::const_iterator si = s.begin(); si != s.end(); ++si) {
-    out << si->first << " = " << std::flush;
-    si->second->show(out);
+  for (const auto &si : s) {
+    out << si.first << " = " << std::flush;
+    si.second->show(out);
     out << std::endl;
   }
 }
 
 // simplifying substitution from free type variables
 QualTypePtr substitute(const MonoTypeSubst& s, const QualTypePtr& qt) {
-  return QualTypePtr(new QualType(substitute(s, qt->constraints()), substitute(s, qt->monoType())));
+  return std::make_shared<QualType>(substitute(s, qt->constraints()), substitute(s, qt->monoType()));
 }
 
 inline bool in(const ConstraintPtr& c, const Constraints& cs) {
-  for (Constraints::const_iterator ci = cs.begin(); ci != cs.end(); ++ci) {
-    if (*c == **ci) {
+  for (const auto &ci : cs) {
+    if (*c == *ci) {
       return true;
     }
   }
@@ -1947,10 +1941,10 @@ inline bool in(const ConstraintPtr& c, const Constraints& cs) {
 
 Constraints substitute(const MonoTypeSubst& s, const Constraints& cs) {
   Constraints r;
-  for (Constraints::const_iterator c = cs.begin(); c != cs.end(); ++c) {
-    ConstraintPtr sc = substitute(s, *c);
+  for (const auto &c : cs) {
+    ConstraintPtr sc = substitute(s, c);
     if (!in(sc, r)) {
-      r.push_back(substitute(s, *c));
+      r.push_back(substitute(s, c));
     }
   }
   return r;
@@ -1964,8 +1958,8 @@ class substituteF : public switchTyFn {
 public:
   substituteF(bool transitive, const MonoTypeSubst& s) : transitive(transitive), s(s) { }
 
-  MonoTypePtr with(const TVar* v) const {
-    MonoTypeSubst::const_iterator si = this->s.find(v->name());
+  MonoTypePtr with(const TVar* v) const override {
+    auto si = this->s.find(v->name());
     if (si != this->s.end()) {
       if (this->transitive) {
         return switchOf(si->second, *this);
@@ -1977,7 +1971,7 @@ public:
     }
   }
 
-  MonoTypePtr with(const Exists* v) const {
+  MonoTypePtr with(const Exists* v) const override {
     if (this->s.find(v->absTypeName()) == this->s.end()) {
       return Exists::make(v->absTypeName(), switchOf(v->absType(), *this));
     } else {
@@ -1987,7 +1981,7 @@ public:
     }
   }
 
-  MonoTypePtr with(const Recursive* v) const {
+  MonoTypePtr with(const Recursive* v) const override {
     if (this->s.find(v->recTypeName()) == this->s.end()) {
       return Recursive::make(v->recTypeName(), switchOf(v->recType(), *this));
     } else {
@@ -2027,8 +2021,8 @@ MonoTypePtr substitute(const MonoTypeSubst& s, const MonoType& mt) {
 
 MonoTypes substitute(const MonoTypeSubst& s, const MonoTypes& ts) {
   MonoTypes r;
-  for (MonoTypes::const_iterator t = ts.begin(); t != ts.end(); ++t) {
-    r.push_back(substitute(s, *t));
+  for (const auto &t : ts) {
+    r.push_back(substitute(s, t));
   }
   return r;
 }
@@ -2041,12 +2035,12 @@ PolyTypePtr generalize(const QualTypePtr& qt) {
   // [(v, TGen i) | (v, i) <- zip vnames [0..]]
   MonoTypeSubst s;
   int i = 0;
-  for (NameSet::const_iterator n = fnames.begin(); n != fnames.end(); ++n) {
-    s[*n] = TGen::make(i);
+  for (const auto &fname : fnames) {
+    s[fname] = TGen::make(i);
     ++i;
   }
 
-  return PolyTypePtr(new PolyType(fnames.size(), substitute(s, qt)));
+  return std::make_shared<PolyType>(fnames.size(), substitute(s, qt));
 }
 
 // simplify ugly generated variable names
@@ -2062,11 +2056,11 @@ TVName canonicalName(int v) {
 MonoTypeSubst canonicalNameSubst(const NameSet& ns) {
   MonoTypeSubst r;
   int v = 0;
-  for (NameSet::const_iterator n = ns.begin(); n != ns.end(); ++n) {
+  for (const auto &n : ns) {
     TVName cn = canonicalName(v);
     // avoid making substitution cycles
-    if (*n != cn) {
-      r[*n] = TVar::make(cn);
+    if (n != cn) {
+      r[n] = TVar::make(cn);
     }
     ++v;
   }
@@ -2075,9 +2069,9 @@ MonoTypeSubst canonicalNameSubst(const NameSet& ns) {
 
 QualTypePtr   simplifyVarNames(const PolyType&      t) { return simplifyVarNames(t.instantiate()); }
 QualTypePtr   simplifyVarNames(const PolyTypePtr&   t) { return simplifyVarNames(*t); }
-ConstraintPtr simplifyVarNames(const Constraint&    c) { return simplifyVarNames(ConstraintPtr(new Constraint(c))); }
+ConstraintPtr simplifyVarNames(const Constraint&    c) { return simplifyVarNames(std::make_shared<Constraint>(c)); }
 ConstraintPtr simplifyVarNames(const ConstraintPtr& c) { return substitute(canonicalNameSubst(tvarNames(c)), c); }
-QualTypePtr   simplifyVarNames(const QualType&      t) { return simplifyVarNames(QualTypePtr(new QualType(t.constraints(), t.monoType()))); }
+QualTypePtr   simplifyVarNames(const QualType&      t) { return simplifyVarNames(std::make_shared<QualType>(t.constraints(), t.monoType())); }
 QualTypePtr   simplifyVarNames(const QualTypePtr&   t) { return substitute(canonicalNameSubst(tvarNames(t)), t); }
 MonoTypePtr   simplifyVarNames(const MonoType&      t) { return substitute(canonicalNameSubst(tvarNames(t)), t); }
 MonoTypePtr   simplifyVarNames(const MonoTypePtr&   t) { return substitute(canonicalNameSubst(tvarNames(t)), t); }
@@ -2115,13 +2109,13 @@ MonoTypePtr repTypeStep(const MonoTypePtr& t) {
 }
 
 // compute the size of a monotype (in bytes)
-typedef unsigned int nat;
+using nat = unsigned int;
 nat nadd(nat lhs, nat rhs) { return lhs + rhs; }
 nat nmax(nat lhs, nat rhs) { return std::max<nat>(lhs, rhs); }
 
 class sizeOfF : public switchType<nat> {
 public:
-  nat with(const Prim* v) const {
+  nat with(const Prim* v) const override {
     if (v->representation()) {
       return r(v->representation());
     } else {
@@ -2129,22 +2123,22 @@ public:
     }
   }
 
-  nat with(const OpaquePtr*  v) const { return v->storedContiguously() ? v->size() : sizeof(void*); }
-  nat with(const TVar*       v) const { throw std::runtime_error("Can't determine size of type variable '" + v->name() + "'"); }
-  nat with(const TGen*       v) const { throw std::runtime_error("Can't determine size of polytype argument #" + str::from(v->id())); }
-  nat with(const FixedArray* v) const { return r(v->type()) * v->requireLength(); }
-  nat with(const Array*       ) const { return sizeof(void*); }
-  nat with(const Variant*    v) const { return rv(v); }
-  nat with(const Record*     v) const { return rv(v); }
-  nat with(const Func*        ) const { return sizeof(void*); }
-  nat with(const Exists*      ) const { return sizeof(void*); }
-  nat with(const Recursive*   ) const { return sizeof(void*); }
+  nat with(const OpaquePtr*  v) const override { return v->storedContiguously() ? v->size() : sizeof(void*); }
+  nat with(const TVar*       v) const override { throw std::runtime_error("Can't determine size of type variable '" + v->name() + "'"); }
+  nat with(const TGen*       v) const override { throw std::runtime_error("Can't determine size of polytype argument #" + str::from(v->id())); }
+  nat with(const FixedArray* v) const override { return r(v->type()) * v->requireLength(); }
+  nat with(const Array*       ) const override { return sizeof(void*); }
+  nat with(const Variant*    v) const override { return rv(v); }
+  nat with(const Record*     v) const override { return rv(v); }
+  nat with(const Func*        ) const override { return sizeof(void*); }
+  nat with(const Exists*      ) const override { return sizeof(void*); }
+  nat with(const Recursive*   ) const override { return sizeof(void*); }
 
-  nat with(const TAbs* v) const {
+  nat with(const TAbs* v) const override {
     throw std::runtime_error("Can't determine size of type abstraction: " + show(v));
   }
 
-  nat with(const TApp* v) const {
+  nat with(const TApp* v) const override {
     // uncurry type function applications
     while (const TApp* lv = is<TApp>(v->fn())) {
       v = lv;
@@ -2182,9 +2176,9 @@ public:
   }
 
   // type-level values/expressions have no runtime content (they're equivalent to unit)
-  nat with(const TString* ) const { return 0; }
-  nat with(const TLong*   ) const { return 0; }
-  nat with(const TExpr*   ) const { return 0; }
+  nat with(const TString* ) const override { return 0; }
+  nat with(const TLong*   ) const override { return 0; }
+  nat with(const TExpr*   ) const override { return 0; }
 private:
   nat withPrim(const std::string& pn) const {
     if (pn == "unit") {
@@ -2255,8 +2249,8 @@ bool isPrimName(const std::string& tn) {
     "->", "closure", "fseq", "file"
   };
   
-  for (unsigned int i = 0; i < sizeof(prims)/sizeof(prims[0]); ++i) {
-    if (tn == prims[i]) {
+  for (const auto &prim : prims) {
+    if (tn == prim) {
       return true;
     }
   }
@@ -2288,7 +2282,7 @@ PolyTypePtr nulltypedb::generalize(const MonoTypePtr& mt) const { return polytyp
 nulltypedb nulltdb;
 
 bool isMonotype(const QualTypePtr& qt) {
-  return qt->constraints().size() == 0;
+  return qt->constraints().empty();
 }
 
 bool isMonotype(const PolyTypePtr& pt) {
@@ -2313,8 +2307,8 @@ MonoTypePtr requireMonotype(const PolyTypePtr& pt) {
 
 MonoTypes requireMonotype(const PolyTypes& pts) {
   MonoTypes r;
-  for (PolyTypes::const_iterator pt = pts.begin(); pt != pts.end(); ++pt) {
-    r.push_back(requireMonotype(*pt));
+  for (const auto &pt : pts) {
+    r.push_back(requireMonotype(pt));
   }
   return r;
 }
@@ -2339,7 +2333,7 @@ QualTypePtr unpackedType(const QualTypePtr& qty) {
 }
 
 // support an efficient binary codec for type descriptions
-typedef std::vector<unsigned char> bytes;
+using bytes = std::vector<unsigned char>;
 
 void write(bool b,               bytes* out) { out->push_back(b ? 0x01 : 0x00); }
 void write(char c,               bytes* out) { out->push_back(c); }
@@ -2362,7 +2356,8 @@ template <typename T>
 template <typename T>
   struct readF {
     static T read(const bytes& in, unsigned int* n) {
-      T r = *reinterpret_cast<const T*>(&(in[*n]));
+      T r;
+      std::memcpy(&r, &in[*n], sizeof(T));
       *n += sizeof(T);
       return r;
     }
@@ -2422,7 +2417,7 @@ class encodeMonoTypeF : public switchType<UnitV> {
 public:
   encodeMonoTypeF(bytes* out) : out(out) { }
 
-  UnitV with(const Prim* v) const {
+  UnitV with(const Prim* v) const override {
     write(Prim::type_case_id, this->out);
     write(v->name(),          this->out);
     if (v->representation()) {
@@ -2434,7 +2429,7 @@ public:
     return unitv;
   }
 
-  UnitV with(const OpaquePtr* v) const {
+  UnitV with(const OpaquePtr* v) const override {
     write(OpaquePtr::type_case_id, this->out);
     write(v->name(),               this->out);
     write(v->size(),               this->out);
@@ -2442,26 +2437,26 @@ public:
     return unitv;
   }
 
-  UnitV with(const TGen* v) const {
+  UnitV with(const TGen* v) const override {
     write(TGen::type_case_id, this->out);
     write(v->id(),            this->out);
     return unitv;
   }
 
-  UnitV with(const TVar* v) const {
+  UnitV with(const TVar* v) const override {
     write(TVar::type_case_id, this->out);
     write(v->name(),          this->out);
     return unitv;
   }
 
-  UnitV with(const TAbs* v) const {
+  UnitV with(const TAbs* v) const override {
     write(TAbs::type_case_id, this->out);
     write(v->args(), this->out);
     switchOf(v->body(), *this);
     return unitv;
   }
 
-  UnitV with(const TApp* v) const {
+  UnitV with(const TApp* v) const override {
     write(TApp::type_case_id, this->out);
 
     switchOf(v->fn(), *this);
@@ -2472,7 +2467,7 @@ public:
     return unitv;
   }
 
-  UnitV with(const FixedArray* v) const {
+  UnitV with(const FixedArray* v) const override {
     write(FixedArray::type_case_id, this->out);
 
     switchOf(v->type(),   *this);
@@ -2480,53 +2475,53 @@ public:
     return unitv;
   }
 
-  UnitV with(const Array* v) const {
+  UnitV with(const Array* v) const override {
     write(Array::type_case_id, this->out);
 
     switchOf(v->type(), *this);
     return unitv;
   }
 
-  UnitV with(const Variant* v) const {
+  UnitV with(const Variant* v) const override {
     write(Variant::type_case_id, this->out);
 
     const Variant::Members& ms = v->members();
     write(ms.size(), this->out);
 
-    for (Variant::Members::const_iterator m = ms.begin(); m != ms.end(); ++m) {
-      write(m->selector, this->out);
-      write(m->id,       this->out);
+    for (const auto &m : ms) {
+      write(m.selector, this->out);
+      write(m.id,       this->out);
 
-      switchOf(m->type, *this);
+      switchOf(m.type, *this);
     }
 
     return unitv;
   }
 
-  UnitV with(const Record* v) const {
+  UnitV with(const Record* v) const override {
     write(Record::type_case_id, this->out);
 
     const Record::Members& ms = v->members();
     write(ms.size(), this->out);
 
-    for (Record::Members::const_iterator m = ms.begin(); m != ms.end(); ++m) {
-      write(m->field,  this->out);
-      write(m->offset, this->out);
+    for (const auto &m : ms) {
+      write(m.field,  this->out);
+      write(m.offset, this->out);
 
-      switchOf(m->type, *this);
+      switchOf(m.type, *this);
     }
 
     return unitv;
   }
 
-  UnitV with(const Func* v) const {
+  UnitV with(const Func* v) const override {
     write(Func::type_case_id, this->out);
     switchOf(v->argument(), *this);
     switchOf(v->result(),   *this);
     return unitv;
   }
 
-  UnitV with(const Exists* v) const {
+  UnitV with(const Exists* v) const override {
     write(Exists::type_case_id, this->out);
     write(v->absTypeName(),     this->out);
 
@@ -2534,7 +2529,7 @@ public:
     return unitv;
   }
 
-  UnitV with(const Recursive* v) const {
+  UnitV with(const Recursive* v) const override {
     write(Recursive::type_case_id, this->out);
     write(v->recTypeName(),        this->out);
 
@@ -2542,19 +2537,19 @@ public:
     return unitv;
   }
 
-  UnitV with(const TString* v) const {
+  UnitV with(const TString* v) const override {
     write(TString::type_case_id, this->out);
     write(v->value(),            this->out);
     return unitv;
   }
 
-  UnitV with(const TLong* v) const {
+  UnitV with(const TLong* v) const override {
     write(TLong::type_case_id, this->out);
     write(v->value(),          this->out);
     return unitv;
   }
 
-  UnitV with(const TExpr* v) const {
+  UnitV with(const TExpr* v) const override {
     write(TExpr::type_case_id, this->out);
     std::vector<uint8_t> ebs;
     encode(stripAssumpHead(v->expr()), &ebs);
@@ -2595,7 +2590,7 @@ MonoTypePtr decodePrim(const bytes& in, unsigned int* n) {
 
 MonoTypePtr decodeOpaquePtr(const bytes& in, unsigned int* n) {
   std::string  s  = read<std::string>(in, n);
-  unsigned int sz = read<unsigned int>(in, n);
+  auto sz = read<unsigned int>(in, n);
   bool         sc = read<bool>(in, n);
 
   return OpaquePtr::make(s, sz, sc);
@@ -2618,7 +2613,7 @@ MonoTypePtr decodeTApp(const bytes& in, unsigned int* n) {
   MonoTypePtr f = decodeFrom(in, n);
 
   MonoTypes args;
-  size_t sz = read<size_t>(in, n);
+  auto sz = read<size_t>(in, n);
   for (size_t i = 0; i < sz; ++i) {
     args.push_back(decodeFrom(in, n));
   }
@@ -2648,10 +2643,10 @@ MonoTypePtr decodeArr(const bytes& in, unsigned int* n) {
 MonoTypePtr decodeVariant(const bytes& in, unsigned int* n) {
   Variant::Members ms;
 
-  size_t c = read<size_t>(in, n);
+  auto c = read<size_t>(in, n);
   for (size_t i = 0; i < c; ++i) {
     std::string  ctor = read<std::string>(in, n);
-    unsigned int id   = read<unsigned int>(in, n);
+    auto id   = read<unsigned int>(in, n);
     MonoTypePtr  ty   = decodeFrom(in, n);
 
     ms.push_back(Variant::Member(ctor, ty, id));
@@ -2663,10 +2658,10 @@ MonoTypePtr decodeVariant(const bytes& in, unsigned int* n) {
 MonoTypePtr decodeRecord(const bytes& in, unsigned int* n) {
   Record::Members ms;
 
-  size_t c = read<size_t>(in, n);
+  auto c = read<size_t>(in, n);
   for (size_t i = 0; i < c; ++i) {
     std::string  field  = read<std::string>(in, n);
-    unsigned int offset = read<unsigned int>(in, n);
+    auto offset = read<unsigned int>(in, n);
     MonoTypePtr  ty     = decodeFrom(in, n);
 
     ms.push_back(Record::Member(field, ty, offset));
@@ -2773,7 +2768,7 @@ void decode(MonoTypePtr* mty, std::istream& in) {
   std::vector<unsigned char> cs;
   decode(&cs, in);
 
-  if (cs.size() == 0) {
+  if (cs.empty()) {
     throw std::runtime_error("Type data corrupted in source file");
   }
 
@@ -2782,7 +2777,7 @@ void decode(MonoTypePtr* mty, std::istream& in) {
 
 // open opaque type aliases not defined by this library
 struct unaliasPrimTypesF : public switchTyFn {
-  MonoTypePtr with(const Prim* t) const {
+  MonoTypePtr with(const Prim* t) const override {
     if (t->representation()) {
       // well this is awkward ...
       if (t->name() != "time" && t->name() != "datetime" && t->name() != "timespan") {
@@ -2797,7 +2792,7 @@ MonoTypePtr unalias(const MonoTypePtr& ty) {
   if (isMonoSingular(ty)) {
     return switchOf(ty, unaliasPrimTypesF());
   } else {
-    if (!ty->unaliasedType.get()) {
+    if (ty->unaliasedType.get() == nullptr) {
       ty->unaliasedType = switchOf(ty, unaliasPrimTypesF());
     }
     return ty->unaliasedType;

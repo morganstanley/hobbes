@@ -9,17 +9,17 @@
 
 namespace hobbes {
 
-typedef std::set<std::string> SymSet;
+using SymSet = std::set<std::string>;
 
 // how do some parameters of a constraint determine others?
-typedef std::vector<int>       VarIDs;
-typedef std::pair<VarIDs, int> FunDep;
-typedef std::vector<FunDep>    FunDeps;
+using VarIDs = std::vector<int>;
+using FunDep = std::pair<VarIDs, int>;
+using FunDeps = std::vector<FunDep>;
 
 // if E :: T and R.satisfied(T), then R.unqualify(E)
 class Unqualifier {
   public:
-    virtual ~Unqualifier(void) {};
+    virtual ~Unqualifier() = default;;
     // bind any implied type variables in a constraint
     virtual bool refine(const TEnvPtr& tenv, const ConstraintPtr& cst, MonoTypeUnifier* u, Definitions* ds) = 0;
 
@@ -44,29 +44,29 @@ class Unqualifier {
     // list functional dependencies between constraint parameters (if any)
     virtual FunDeps dependencies(const ConstraintPtr&) const = 0;
 };
-typedef std::shared_ptr<Unqualifier> UnqualifierPtr;
+using UnqualifierPtr = std::shared_ptr<Unqualifier>;
 
 // type predicates are resolved by an assumed disjoint set of unqualifiers
 class UnqualifierSet : public Unqualifier {
   public:
-    typedef std::map<std::string, UnqualifierPtr> Unqualifiers;
+    using Unqualifiers = std::map<std::string, UnqualifierPtr>;
 
     void                add(const std::string& name, const UnqualifierPtr& uq);
     UnqualifierPtr      findUnqualifier(const std::string& name);
     const Unqualifiers& unqualifiers() const;
 
-    bool        refine(const TEnvPtr&,const ConstraintPtr&,MonoTypeUnifier*,Definitions*);
-    bool        satisfied(const TEnvPtr&,const ConstraintPtr&,Definitions*)                  const;
-    bool        satisfiable(const TEnvPtr&,const ConstraintPtr&,Definitions*)                const;
-    void        explain(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*, annmsgs*);
-    ExprPtr     unqualify(const TEnvPtr&,const ConstraintPtr&, const ExprPtr&, Definitions*) const;
-    PolyTypePtr lookup(const std::string& vn)                                                const;
-    SymSet      bindings()                                                                   const;
-    FunDeps     dependencies(const ConstraintPtr&)                                           const;
+    bool        refine(const TEnvPtr&,const ConstraintPtr&,MonoTypeUnifier*,Definitions*) override;
+    bool        satisfied(const TEnvPtr&,const ConstraintPtr&,Definitions*)                  const override;
+    bool        satisfiable(const TEnvPtr&,const ConstraintPtr&,Definitions*)                const override;
+    void        explain(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*, annmsgs*) override;
+    ExprPtr     unqualify(const TEnvPtr&,const ConstraintPtr&, const ExprPtr&, Definitions*) const override;
+    PolyTypePtr lookup(const std::string& vn)                                                const override;
+    SymSet      bindings()                                                                   const override;
+    FunDeps     dependencies(const ConstraintPtr&)                                           const override;
   private:
     Unqualifiers uqs;
 };
-typedef std::shared_ptr<UnqualifierSet> UnqualifierSetPtr;
+using UnqualifierSetPtr = std::shared_ptr<UnqualifierSet>;
 
 // utilities to remove discharged type predicates
 bool hasConstraint(const ConstraintPtr& c, const Constraints& cs);

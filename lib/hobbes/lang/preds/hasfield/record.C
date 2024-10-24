@@ -22,7 +22,7 @@ static bool isFieldName(const MonoTypePtr& fn, std::string* sfn) {
 
 bool HFRecordEliminator::satisfied(const TEnvPtr& tenv, const HasField& hf, Definitions*) const {
   const Record* r = is<Record>(hf.recordType);
-  if (!r) return false;
+  if (r == nullptr) return false;
 
   std::string fname;
   if (!isFieldName(hf.fieldName, &fname)) return false;
@@ -47,12 +47,12 @@ bool HFRecordEliminator::satisfiable(const TEnvPtr& tenv, const HasField& hf, De
     std::string fname;
     if (isFieldName(hf.fieldName, &fname)) {
       const Record::Member* rm = r->mmember(fname);
-      return rm != 0 && (is<TVar>(hf.fieldType) || is<TVar>(rm->type) || satisfied(tenv, hf, ds));
+      return rm != nullptr && ((is<TVar>(hf.fieldType) != nullptr) || (is<TVar>(rm->type) != nullptr) || satisfied(tenv, hf, ds));
     } else {
-      return is<TVar>(hf.fieldName);
+      return is<TVar>(hf.fieldName) != nullptr;
     }
   }
-  return is<TVar>(hf.recordType);
+  return is<TVar>(hf.recordType) != nullptr;
 }
 
 bool HFRecordEliminator::refine(const TEnvPtr&, const HasField& hf, MonoTypeUnifier* s, Definitions*) {
@@ -79,13 +79,13 @@ struct HFRecordUnqualify : public switchExprTyFn {
   HFRecordUnqualify(const ConstraintPtr& cst) : constraint(cst) {
   }
 
-  ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const {
+  ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const override {
     ExprPtr result(e);
     result->type(removeConstraint(this->constraint, qty));
     return result;
   }
 
-  ExprPtr with(const Assign* v) const {
+  ExprPtr with(const Assign* v) const override {
     // hack to assign [char] into <std.string>
     if (hasConstraint(this->constraint, v->type())) {
       if (*v->left()->type()->monoType() == *stdstrty && *v->right()->type()->monoType() == *chararrty) {

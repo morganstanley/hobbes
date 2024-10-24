@@ -16,14 +16,14 @@ struct DynCumFreqState {
   }
   uint8_t maxSymbol;
 
-  typedef uint16_t index_t;
-  typedef uint16_t symbol;
+  using index_t = uint16_t;
+  using symbol = uint16_t;
 
   index_t symbolCount() const { return static_cast<index_t>(this->maxSymbol)+1; }
   symbol  esc()         const { return static_cast<symbol>(symbolCount()); }
 
   struct CModel {
-    CModel(uint8_t maxSym) : symbols(0), indexes(0), cfreqs(0) {
+    CModel(uint8_t maxSym) : symbols(nullptr), indexes(nullptr), cfreqs(nullptr) {
       size_t n = static_cast<size_t>(maxSym) + 2; // one extra for the escape symbol
       this->symbols = new symbol[n];
       this->indexes = new index_t[n];
@@ -77,16 +77,15 @@ struct DynDModel0 : DynCumFreqState {
 public:
   DynDModel0(imagefile* f, bool input, uint8_t maxSymbol) : DynCumFreqState(maxSymbol), f(f), pm(input, maxSymbol), cm(maxSymbol) {
   }
-  ~DynDModel0() {
-  }
+  ~DynDModel0() = default;
 
-  typedef DynCumFreqState CFS;
-  typedef typename CFS::index_t index_t;
-  typedef typename CFS::symbol  symbol;
-  typedef typename CFS::CModel  CModel;
+  using CFS = DynCumFreqState;
+  using index_t = typename CFS::index_t;
+  using symbol = typename CFS::symbol;
+  using CModel = typename CFS::CModel;
 
   struct PModel {
-    PModel(bool input, uint8_t maxSymbol) : freqs(0), activeFreqs(0), pc(0), input(input), lc(0) {
+    PModel(bool input, uint8_t maxSymbol) : freqs(nullptr), activeFreqs(nullptr), pc(nullptr), input(input), lc(0) {
       if (this->input) {
         size_t n = static_cast<size_t>(maxSymbol) + 1;
         this->freqs       = new arithn::freq[n];
@@ -107,7 +106,7 @@ public:
     bool          input;
     arithn::freq  lc;
 
-    arithn::freq& c() { return *this->pc; }
+    arithn::freq& c() const { return *this->pc; }
   };
 
   imagefile* f;
@@ -211,7 +210,7 @@ public:
   }
 
   uint8_t read(DynDModel0* dm) {
-    typedef uint16_t symbol;
+    using symbol = uint16_t;
 
     symbol s=0;
     arithn::code clow=0, chigh=0;
@@ -222,7 +221,7 @@ public:
 
     if (s == dm->esc()) {
       auto escRange = dm->symbolCount();
-      symbol nc = static_cast<symbol>(this->readState.svalue(escRange));
+      auto nc = static_cast<symbol>(this->readState.svalue(escRange));
       this->readState.shift(nc, nc+1, escRange);
       dm->add(nc);
       return static_cast<uint8_t>(nc);
@@ -233,7 +232,7 @@ public:
   }
 
   bool step() {
-    if (this->readState.buffer) {
+    if (this->readState.buffer != nullptr) {
       ++this->readState.count;
 
       bool f = false;
@@ -258,7 +257,7 @@ public:
   }
 
   bool eof() const {
-    return this->readState.buffer == 0;
+    return this->readState.buffer == nullptr;
   }
 
   size_t currentInitModel() const {
@@ -272,7 +271,7 @@ private:
 
   void loadReadState(uint64_t root) {
     while (root != 0) {
-      uint64_t* d = reinterpret_cast<uint64_t*>(mapFileData(this->readState.file, root, 3*sizeof(uint64_t)));
+      auto* d = reinterpret_cast<uint64_t*>(mapFileData(this->readState.file, root, 3*sizeof(uint64_t)));
       if (d[0] == 0) {
         root = 0;
       } else {
@@ -286,12 +285,12 @@ private:
   }
 
   bool loadNextNode() {
-    if (this->readState.buffer) {
+    if (this->readState.buffer != nullptr) {
       unmapFileData(this->readState.file, reinterpret_cast<const void*>(this->readState.buffer), sizeof(cbatch));
     }
 
-    if (this->batches.size() == 0) {
-      this->readState.buffer = 0;
+    if (this->batches.empty()) {
+      this->readState.buffer = nullptr;
       return false;
     } else {
       // load this compressed data segment (the caller will then need to init from `this->readState.buffer->initModel`)
@@ -340,7 +339,7 @@ bool UCWriter::step() {
 
     // allocate/initialize the model for this bitstream segment (from the terminal state of the scratch model for the previous segment)
     uint64_t newScratchModelRef = findSpace(this->out.file, pagetype::data, this->modelSize, sizeof(size_t));
-    uint8_t* newScratchModel    = reinterpret_cast<uint8_t*>(mapFileData(this->out.file, newScratchModelRef, this->modelSize));
+    auto* newScratchModel    = reinterpret_cast<uint8_t*>(mapFileData(this->out.file, newScratchModelRef, this->modelSize));
     memcpy(newScratchModel, this->scratchModel, this->modelSize);
     unmapFileData(this->out.file, this->scratchModel, this->modelSize);
 

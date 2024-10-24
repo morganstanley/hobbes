@@ -32,21 +32,21 @@
 #ifndef HMC_LIVENESS_H_INCLUDED
 #define HMC_LIVENESS_H_INCLUDED
 
-#include <set>
-#include <vector>
+#include <cassert>
 #include <map>
-#include <unordered_map>
+#include <set>
 #include <stdexcept>
-#include <assert.h>
+#include <unordered_map>
+#include <vector>
 
 namespace hobbes { namespace mc {
 
 // a dynamic bitset, used to represent a set of variables (assuming a mapping of variable name to 0-N index)
 class VarSet {
 public:
-  VarSet() : varc(0), bcount(0), bits(0) {
+  VarSet() : varc(0), bcount(0), bits(nullptr) {
   }
-  VarSet(uint64_t vc) : varc(0), bcount(0), bits(0) {
+  VarSet(uint64_t vc) : varc(0), bcount(0), bits(nullptr) {
     resize(vc);
   }
   VarSet(const VarSet& s) { copyBuffer(s); }
@@ -60,15 +60,15 @@ public:
   }
 
   void clear() {
-    if (this->bits) {
+    if (this->bits != nullptr) {
       memset(this->bits, 0, this->bcount * sizeof(uint64_t));
     }
   }
 
   void resize(uint64_t sz) {
-    uint64_t  asz   = align<uint64_t>(sz, 64);
+    auto  asz   = align<uint64_t>(sz, 64);
     uint64_t  bc    = asz / 64;
-    uint64_t* nbits = new uint64_t[bc];
+    auto* nbits = new uint64_t[bc];
 
     if (bc <= this->bcount) {
       memcpy(nbits, this->bits, bc * sizeof(uint64_t));
@@ -150,7 +150,7 @@ public:
       uint64_t k = b;
 
       // gather members in 4-bit steps
-      while (v) {
+      while (v != 0u) {
         switch (v & 0x0f) {
         default: 
         case 0:                                                            break; // 0000
@@ -242,16 +242,15 @@ inline std::set<L> truncTo(const std::set<U>& us) {
 //                 key  :: Var -> K      (such that K is unique for Var and has < defined)
 //                 desc :: K -> string   (describe a variable key for an error message)
 //
-typedef uint32_t VarID;
+using VarID = uint32_t;
 
 template <typename VarM>
 class VarUniverse {
 public:
-  typedef typename VarM::Var Var;
-  typedef decltype(VarM::key(*reinterpret_cast<Var*>(42))) K;
+  using Var = typename VarM::Var;
+  using K = decltype(VarM::key(*reinterpret_cast<Var *>(42)));
 
-  VarUniverse() {
-  }
+  VarUniverse() = default;
 
   void define(const Var& v) {
     auto k = VarM::key(v);
@@ -310,8 +309,8 @@ private:
 template <typename InstM, typename VarM = InstM>
 class BlockLiveness {
 public:
-  typedef typename InstM::Instruction Inst;
-  typedef typename InstM::Var         Var;
+  using Inst = typename InstM::Instruction;
+  using Var = typename InstM::Var;
 
   BlockLiveness(const std::set<Var>& initVars, const std::vector<Inst>& insts, const InstM& instM) : insts(insts), instM(instM) {
     // initialize the variable universe out of the instruction sequence
@@ -356,7 +355,7 @@ public:
               pc < insts.size()             && // pc is valid
               instM.follows(insts, pc)      && // control follows straight from pc to pc+1
               !instM.jumpsTo(insts, pc, &n) && // pc doesn't jump anywhere else
-              !jumpTargets.count(pc+1)         // and the next instruction is only reachable from this one
+              (jumpTargets.count(pc+1) == 0u)         // and the next instruction is only reachable from this one
             )
       {
         // the next instruction is in the block
@@ -550,8 +549,8 @@ public:
 template <typename InstM, typename VarM = InstM>
 class BasicLiveness {
 public:
-  typedef typename InstM::Instruction Inst;
-  typedef typename InstM::Var         Var;
+  using Inst = typename InstM::Instruction;
+  using Var = typename InstM::Var;
 
   BasicLiveness(const std::set<Var>& initVars, const std::vector<Inst>& insts, const InstM& instM) : insts(insts), instM(instM) {
     // initialize the variable universe out of the instruction sequence

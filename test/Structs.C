@@ -2,6 +2,9 @@
 #include <hobbes/hobbes.H>
 #include "test.H"
 
+#include <cstddef>
+#include <type_traits>
+
 using namespace hobbes;
 
 DEFINE_STRUCT(
@@ -78,8 +81,8 @@ TEST(Structs, Consts) {
   EXPECT_TRUE(c().compileFn<bool()>("(1,\"jimmy\",13L).1 == \"jimmy\"")());
   EXPECT_TRUE(c().compileFn<bool()>("(if (0 == 0) then (1,2) else (3,4)).0 == 1")());
 
-  typedef std::pair<unsigned char, double> FWeight;
-  typedef array<FWeight>                   FWeights;
+  using FWeight = std::pair<unsigned char, double>;
+  using FWeights = array<FWeight>;
   EXPECT_EQ(c().compileFn<FWeights*()>("[(0XAE, 1.2),(0XBD, 2.4),(0XFF, 5.9)]")()->data[1].second, 2.4);
 }
 
@@ -98,7 +101,7 @@ TEST(Structs, Bindings) {
   EXPECT_TRUE(c().compileFn<bool()>("bob.z == \"Hello!\"")());
   EXPECT_TRUE(c().compileFn<bool()>("bob.w == 'c'")());
 
-  EXPECT_TRUE(c().compileFn<array<char>*()>("show(genstruct)") != 0);
+  EXPECT_TRUE(c().compileFn<array<char>*()>("show(genstruct)") != nullptr);
 }
 
 TEST(Structs, NoDuplicateFieldNames) {
@@ -190,8 +193,8 @@ TEST(Structs, LiftTuple) {
   EXPECT_TRUE(c().compileFn<bool(const hobbes::tuple<short,int,std::string>&)>("p", "p==(42,314159,\"jimmy\")")(p));
 }
 
-typedef variant<unit, AlignA> MaybeAlignA;
-typedef variant<unit, AlignB> MaybeAlignB;
+using MaybeAlignA = variant<unit, AlignA>;
+using MaybeAlignB = variant<unit, AlignB>;
 
 DEFINE_STRUCT(AlignTest,
   (MaybeAlignA, ma),
@@ -208,9 +211,11 @@ TEST(Structs, Alignment) {
   c().bind("makeAT", &makeAT);
   EXPECT_TRUE(true);
 
+  static_assert(std::is_standard_layout<PadTest>::value, "must be standard layout to use offsetof");
+
   Record::Members ms;
-  ms.push_back(Record::Member("x", lift<int>::type(c()), 0));
-  ms.push_back(Record::Member("y", lift<long>::type(c()), static_cast<int>(reinterpret_cast<size_t>(&reinterpret_cast<PadTest*>(0)->y))));
+  ms.push_back(Record::Member("x", lift<int>::type(c()), offsetof(PadTest, x)));
+  ms.push_back(Record::Member("y", lift<long>::type(c()), offsetof(PadTest, y)));
   MonoTypePtr pty(Record::make(Record::withExplicitPadding(ms)));
 
   PadTest p;

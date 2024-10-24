@@ -46,7 +46,7 @@ TEST(Arrays, Streams) {
   ));
   EXPECT_TRUE((c().compileFn<bool()>(
     "takeS(10, [s | |even='12(?<s>[4-9]+)'| <- [if (x%2 == 0) then |even=show(x)| else |odd=x|::|even:[char],odd:int| | x <- [0..], x > 20]]) == [\"4\", \"6\", \"8\", \"44\", \"46\", \"48\", \"54\", \"56\", \"58\", \"64\"]"
-  )));
+  )()));
 }
 
 TEST(Arrays, WithStdVector) {
@@ -63,9 +63,9 @@ TEST(Arrays, CppRAIIConsistency) {
 }
 
 TEST(Arrays, Alignment) {
-  short*        s = reinterpret_cast<short*>(threadRegion().malloc(sizeof(short), alignof(short)));
+  auto*        s = reinterpret_cast<short*>(threadRegion().malloc(sizeof(short), alignof(short)));
   int*          i = reinterpret_cast<int*>(threadRegion().malloc(sizeof(int)), alignof(int));
-  double*       d = reinterpret_cast<double*>(threadRegion().malloc(sizeof(double)), alignof(double));
+  auto*       d = reinterpret_cast<double*>(threadRegion().malloc(sizeof(double)), alignof(double));
   array<int>*   a = makeArray<int>(100);
 
   EXPECT_EQ(reinterpret_cast<size_t>(s)%sizeof(short),  size_t(0));

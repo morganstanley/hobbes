@@ -17,7 +17,7 @@ void recordLocalData(SessionGroup* sg, const hobbes::storage::QueueConnection& q
   using namespace hobbes;
 
   auto timeoutF = [&qc,&conn](const storage::reader& reader) {
-    if (conn == false && *reader.config().wstate == PRIV_HSTORE_STATE_READER_WAITING) {
+    if (!conn && *reader.config().wstate == PRIV_HSTORE_STATE_READER_WAITING) {
       throw ShutdownException("SHM reader shutting down, name: " + qc.shmname);
     }
   };

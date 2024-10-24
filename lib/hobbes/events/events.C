@@ -22,7 +22,7 @@ struct eventcbclosure {
   int                      fd;
   std::function<void(int)> fn;
 };
-typedef std::map<int, eventcbclosure*> EventClosures;
+using EventClosures = std::map<int, eventcbclosure *>;
 
 void registerEventHandler(int fd, eventhandler fn, void* ud, bool f) {
   registerEventHandler(fd, [fn,ud](int c){fn(c,ud);}, f);
@@ -31,7 +31,7 @@ void registerEventHandler(int fd, eventhandler fn, void* ud, bool f) {
 #ifdef BUILD_LINUX
 thread_local bool           epInitialized = false;
 thread_local int            epFD          = 0;
-thread_local EventClosures* epClosures    = 0;
+thread_local EventClosures* epClosures    = nullptr;
 
 struct timer {
   timerfunc func;
@@ -43,7 +43,7 @@ bool operator>(const timer& a, const timer& b) {
   return a.callTime > b.callTime;
 }
 
-thread_local std::priority_queue<timer, std::vector<timer>, std::greater<timer>> timers;
+thread_local std::priority_queue<timer, std::vector<timer>, std::greater<>> timers;
 
 int threadEPollFD() {
   if (!epInitialized) {
@@ -70,7 +70,7 @@ void unregisterEventHandler(int fd) {
 void registerEventHandler(int fd, const std::function<void(int)>& fn, bool) {
   int epfd = threadEPollFD();
 
-  eventcbclosure* c = new eventcbclosure(fd, fn);
+  auto* c = new eventcbclosure(fd, fn);
   (*epClosures)[fd] = c;
 
   struct epoll_event evt;
@@ -91,8 +91,8 @@ void registerInterruptHandler(const std::function<void()>& fn) {
   (*epClosures)[-1] = c;
 }
 
-bool stepEventLoop(int timeoutMS) {
-  while (true) {
+bool stepEventLoop(int timeoutMS, const std::function<bool()>& stopFn) {
+  while (!stopFn()) {
     if (!timers.empty()) {
       auto next = timers.top().callTime;
       auto timeUntilNext = next - std::chrono::high_resolution_clock::now();
@@ -105,14 +105,14 @@ bool stepEventLoop(int timeoutMS) {
     bool status = true;
     if (fds > 0) {
       for (int fd = 0; fd < fds; ++fd) {
-        eventcbclosure* c = reinterpret_cast<eventcbclosure*>(evts[fd].data.ptr);
+        auto* c = reinterpret_cast<eventcbclosure*>(evts[fd].data.ptr);
         (c->fn)(c->fd);
         resetMemoryPool();
       }
     } else if (fds < 0) {
       if (errno != EINTR) {
         status = false;
-      } else if (epClosures) {
+      } else if (epClosures != nullptr) {
         auto f = epClosures->find(-1);
         if (f != epClosures->end()) {
           f->second->fn(-1);
@@ -125,30 +125,31 @@ bool stepEventLoop(int timeoutMS) {
       while(!timers.empty() && timers.top().callTime <= now) {
         auto t = timers.top();
         timers.pop();
-        
+
         bool repeat = t.func();
         resetMemoryPool();
-        
+
         if(repeat) {
           timer newT;
           newT.callTime = std::chrono::high_resolution_clock::now() + t.interval,
           newT.func = t.func,
           newT.interval = t.interval,
-          
+
           newTimers.push_back(newT);
         }
       }
-      
+
       for (auto& timer : newTimers) {
         timers.push(timer);
       }
     }
     return status;
   }
+  return false;
 }
 
-void runEventLoop() {
-  while (stepEventLoop());
+void runEventLoop(const std::function<bool()>& stopFn) {
+  while (stepEventLoop(-1, stopFn));
 }
 
 void addTimer(timerfunc f, int millisecInterval) {
@@ -160,7 +161,7 @@ void addTimer(timerfunc f, int millisecInterval) {
   timers.push(t);
 }
 
-void runEventLoop(int microsecondDuration) {
+void runEventLoop(int microsecondDuration, const std::function<bool()>& stopFn) {
   long t  = hobbes::time();
   long dt = static_cast<long>(microsecondDuration) * 1000L;
   long tf = t + dt;
@@ -174,13 +175,13 @@ void runEventLoop(int microsecondDuration) {
     int fds = epoll_wait(threadEPollFD(), evts, sizeof(evts)/sizeof(evts[0]), timeout);
     if (fds > 0) {
       for (int fd = 0; fd < fds; ++fd) {
-        eventcbclosure* c = reinterpret_cast<eventcbclosure*>(evts[fd].data.ptr);
+        auto* c = reinterpret_cast<eventcbclosure*>(evts[fd].data.ptr);
         (c->fn)(c->fd);
         resetMemoryPool();
       }
     }
     t = hobbes::time();
-  } while (t < tf);
+  } while (t < tf && !stopFn());
 }
 
 #elif defined(BUILD_OSX)
@@ -236,8 +237,8 @@ void registerInterruptHandler(const std::function<void()>& fn) {
   (*kqClosures)[-1] = c;
 }
 
-bool stepEventLoop(int timeoutMS) {
-  while (true) {
+bool stepEventLoop(int timeoutMS, const std::function<bool()>& stopFn) {
+  while (!stopFn()) {
     struct timespec timeout;
     timeout.tv_sec  = timeoutMS / 1000;
     timeout.tv_nsec = (timeoutMS % 1000) * 1000000UL;
@@ -260,17 +261,18 @@ bool stepEventLoop(int timeoutMS) {
       }
     }
   }
+  return false;
 }
 
-void runEventLoop() {
-  while (stepEventLoop());
+void runEventLoop(const std::function<bool()>& stopFn) {
+  while (stepEventLoop(-1, stopFn));
 }
 
 void addTimer(timerfunc f, int millisecInterval) {
   throw std::runtime_error("addTimer nyi for OSX");
 }
 
-void runEventLoop(int microsecondDuration) {
+void runEventLoop(int microsecondDuration, const std::function<bool()>& stopFn) {
   long t  = hobbes::time();
   long dt = ((long)microsecondDuration) * 1000L;
   long tf = t + dt;
@@ -294,7 +296,7 @@ void runEventLoop(int microsecondDuration) {
       }
     }
     t = hobbes::time();
-  } while (t < tf);
+  } while (t < tf && !stopFn());
 }
 
 #endif

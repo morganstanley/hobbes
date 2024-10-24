@@ -8,8 +8,8 @@ namespace hobbes {
 
 // simplify automatic destruction within bison parsers
 struct AutoreleaseSet {
-  typedef void (*presetfn)();
-  typedef std::vector<presetfn> ResetFns;
+  using presetfn = void (*)();
+  using ResetFns = std::vector<presetfn>;
 
   static ResetFns& resetFns() {
     thread_local ResetFns rs;
@@ -24,15 +24,15 @@ struct AutoreleaseSet {
 
   static void reset() {
     ResetFns& rfs = resetFns();
-    for (ResetFns::const_iterator f = rfs.begin(); f != rfs.end(); ++f) {
-      (*f)();
+    for (auto rf : rfs) {
+      rf();
     }
   }
 };
 
 template <typename T>
   struct Autorelease {
-    typedef std::vector<T*> Vals;
+    using Vals = std::vector<T *>;
     static Vals& vals() {
       thread_local Vals vs;
       return vs;
@@ -40,7 +40,7 @@ template <typename T>
 
     static void reset() {
       Vals& vs = vals();
-      for (typename Vals::iterator i = vs.begin(); i != vs.end(); ++i) {
+      for (auto i = vs.begin(); i != vs.end(); ++i) {
         delete *i;
       }
       vs.clear();

@@ -44,7 +44,7 @@ template <typename T>
 
 static bool fileExists(const char* fileName) {
   FILE* fd = fopen(fileName, "r");
-  if (fd != NULL) {
+  if (fd != nullptr) {
     fclose(fd);
     return true;
   } else {
@@ -98,7 +98,7 @@ TEST(Storage, Create) {
 
     int n = 1020;
     array<int>* vs = f.define<int>("vs", n);
-    EXPECT_TRUE(vs != 0);
+    EXPECT_TRUE(vs != nullptr);
     EXPECT_TRUE(vs->size == 1020);
 
     initSeq(vs, 0, 0, n);
@@ -248,11 +248,11 @@ TEST(Storage, Alignment) {
   std::string fname = mkFName();
   try {
     writer f(fname);
-    short*        s = f.define<short>("s");
+    auto*        s = f.define<short>("s");
     int*          i = f.define<int>("i");
-    double*       d = f.define<double>("d");
+    auto*       d = f.define<double>("d");
     array<int>*   a = f.define<int>("a", 100);
-    fileref<int>* r = f.define<fileref<int>>("r");
+    auto* r = f.define<fileref<int>>("r");
 
     EXPECT_EQ(reinterpret_cast<size_t>(s)%sizeof(short),  size_t(0));
     EXPECT_EQ(reinterpret_cast<size_t>(i)%sizeof(int),    size_t(0));
@@ -562,7 +562,7 @@ DEFINE_VARIANT(
   (just,    std::string)
 );
 
-typedef std::array<std::string,2> FRStrArr;
+using FRStrArr = std::array<std::string, 2>;
 
 DEFINE_STRUCT(
   FRTest,
@@ -583,9 +583,9 @@ TEST(Storage, FRegionCompatibility) {
       FRTest t;
       t.x = static_cast<int>(i);
       t.y = 3.14159*static_cast<double>(i);
-      t.z.push_back("a");
-      t.z.push_back("b");
-      t.z.push_back("c");
+      t.z.emplace_back("a");
+      t.z.emplace_back("b");
+      t.z.emplace_back("c");
       t.u = FRTestFood::HotDog();
       t.v = MStr::just("chicken");
       t.w[0] = "a";
@@ -657,7 +657,7 @@ DEFINE_ENUM(
   (Magenta)
 );
 
-typedef std::vector<std::string> strs;
+using strs = std::vector<std::string>;
 
 DEFINE_STRUCT(
   MyStruct,
@@ -897,8 +897,8 @@ TEST(Storage, FRegionCArrays) {
 
     // verify memcopyable carrays can be accessed by reference
     //   'carray (int*double) 20'
-    typedef std::pair<int,double> IandD;
-    typedef hobbes::carray<IandD, 20> XS;
+    using IandD = std::pair<int, double>;
+    using XS = hobbes::carray<IandD, 20>;
 
     auto& xs = *w.define<XS>("xs");
     for (size_t i = 0; i < 10; ++i) {
@@ -908,10 +908,10 @@ TEST(Storage, FRegionCArrays) {
     
     // verify that non-memcopyable can be written
     //     'carray (int * [char]@? * [int+double]@?) 20'
-    typedef hobbes::variant<int,double> IorD;
-    typedef std::vector<IorD>   IorDs;
-    typedef hobbes::tuple<int, std::string, IorDs> Y;
-    typedef hobbes::carray<Y, 20> YS;
+    using IorD = hobbes::variant<int, double>;
+    using IorDs = std::vector<IorD>;
+    using Y = hobbes::tuple<int, std::string, IorDs>;
+    using YS = hobbes::carray<Y, 20>;
 
     IorDs idi; idi.push_back(IorD(100)); idi.push_back(IorD(3.14159)); idi.push_back(IorD(200));
     IorDs ddi; ddi.push_back(IorD(2.1)); ddi.push_back(IorD(4.2));     ddi.push_back(IorD(29));
@@ -924,7 +924,7 @@ TEST(Storage, FRegionCArrays) {
     // expect to be able to read back the carray data from C++
     hobbes::fregion::reader r(fname);
 
-    auto& rxs = *r.definition<XS>("xs");
+    const auto& rxs = *r.definition<XS>("xs");
     EXPECT_EQ(rxs.size, 10UL);
     for (size_t i = 0; i < rxs.size; ++i) {
       EXPECT_EQ(rxs[i].first, static_cast<int>(i));
@@ -976,8 +976,7 @@ TEST(Storage, KeySeries) {
     writer w(fname);
     keyseries<std::array<char,10>, Quote> ticks(&c(), &w, "ticks", 10000, StoredSeries::Compressed);
 
-    std::array<char,10> bob;
-    strcpy(bob.data(), "bob");
+    std::array<char,10> bob{'b', 'o', 'b', '\0'};
     for (size_t i = 0; i < 20000; ++i) {
       Quote q;
       q.bpx = 3.14159;
@@ -987,8 +986,7 @@ TEST(Storage, KeySeries) {
       ticks.record(bob, q);
     }
 
-    std::array<char,10> jim;
-    strcpy(jim.data(), "jim");
+    std::array<char,10> jim{'j', 'i', 'm', '\0'};
     for (size_t i = 0; i < 20000; ++i) {
       Quote q;
       q.bpx = 4.2;
@@ -1058,7 +1056,7 @@ TEST(Storage, AvoidTornRead) {
     while (rlog.next());
 
     // if we get here, we are good
-    EXPECT_TRUE(ss.str().size() > 0);
+    EXPECT_TRUE(!ss.str().empty());
 
     unlink(fname.c_str());
   } catch (...) {

@@ -7,11 +7,11 @@
 
 namespace hi {
 
-typedef std::vector<std::string> ModuleFiles;
+using ModuleFiles = std::vector<std::string>;
 
 struct Args {
-  typedef std::map<std::string, std::string> NameVals;
-  typedef std::vector<std::string> strs;
+  using NameVals = std::map<std::string, std::string>;
+  using strs = std::vector<std::string>;
 
   ModuleFiles              mfiles;
   std::vector<std::string> evalExprs;

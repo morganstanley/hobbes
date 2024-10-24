@@ -1,11 +1,14 @@
 
+#include "hobbes/reflect.H"
 #include <hobbes/eval/jitcc.H>
 #include <hobbes/eval/cexpr.H>
 #include <hobbes/eval/ctype.H>
 #include <hobbes/lang/expr.H>
 #include <hobbes/lang/type.H>
 #include <hobbes/util/llvm.H>
-#include <hobbes/util/perf.H>
+#include <hobbes/lang/preds/hasctor/variant.H>
+#include <llvm/IR/Instruction.h>
+#include <llvm/IR/LLVMContext.h>
 
 namespace hobbes {
 
@@ -25,9 +28,9 @@ Values removeUnit(const Values& vs, const MonoTypes& mts) {
 
 MonoTypes removeUnit(const MonoTypes& mts) {
   MonoTypes r;
-  for (MonoTypes::const_iterator mt = mts.begin(); mt != mts.end(); ++mt) {
-    if (!isUnit(*mt)) {
-      r.push_back(*mt);
+  for (const auto &mt : mts) {
+    if (!isUnit(mt)) {
+      r.push_back(mt);
     }
   }
   return r;
@@ -35,9 +38,9 @@ MonoTypes removeUnit(const MonoTypes& mts) {
 
 Record::Members removeUnit(const Record::Members& ms) {
   Record::Members r;
-  for (Record::Members::const_iterator m = ms.begin(); m != ms.end(); ++m) {
-    if (!isUnit(m->type)) {
-      r.push_back(*m);
+  for (const auto &m : ms) {
+    if (!isUnit(m.type)) {
+      r.push_back(m);
     }
   }
   return r;
@@ -46,16 +49,16 @@ Record::Members removeUnit(const Record::Members& ms) {
 // compile int constants for int switches
 class compileIntConstF : public switchConst<llvm::ConstantInt*> {
 public:
-  llvm::ConstantInt* with(const Unit*   v) const { return fail(*v); }
-  llvm::ConstantInt* with(const Bool*   v) const { return civalue(v->value()); }
-  llvm::ConstantInt* with(const Char*   v) const { return civalue(v->value()); }
-  llvm::ConstantInt* with(const Byte*   v) const { return civalue(v->value()); }
-  llvm::ConstantInt* with(const Short*  v) const { return civalue(v->value()); }
-  llvm::ConstantInt* with(const Int*    v) const { return civalue(v->value()); }
-  llvm::ConstantInt* with(const Long*   v) const { return civalue(v->value()); }
-  llvm::ConstantInt* with(const Int128* v) const { return civalue(v->value()); }
-  llvm::ConstantInt* with(const Float*  v) const { return fail(*v); }
-  llvm::ConstantInt* with(const Double* v) const { return fail(*v); }
+  llvm::ConstantInt* with(const Unit*   v) const override { return fail(*v); }
+  llvm::ConstantInt* with(const Bool*   v) const override { return civalue(v->value()); }
+  llvm::ConstantInt* with(const Char*   v) const override { return civalue(v->value()); }
+  llvm::ConstantInt* with(const Byte*   v) const override { return civalue(v->value()); }
+  llvm::ConstantInt* with(const Short*  v) const override { return civalue(v->value()); }
+  llvm::ConstantInt* with(const Int*    v) const override { return civalue(v->value()); }
+  llvm::ConstantInt* with(const Long*   v) const override { return civalue(v->value()); }
+  llvm::ConstantInt* with(const Int128* v) const override { return civalue(v->value()); }
+  llvm::ConstantInt* with(const Float*  v) const override { return fail(*v); }
+  llvm::ConstantInt* with(const Double* v) const override { return fail(*v); }
 private:
   llvm::ConstantInt* fail(const LexicallyAnnotated& la) const {
     throw annotated_error(la, "Internal error, can't switch on non-integral type");
@@ -72,25 +75,25 @@ public:
   compileExpF(const std::string& vname, jitcc* c) : c(c), vname(vname) {
   }
 
-  llvm::Value* with(const Unit*    ) const { return cvalue(true); } // should get optimized away -- unit should have no runtime representation
-  llvm::Value* with(const Bool*   v) const { return cvalue(v->value()); }
-  llvm::Value* with(const Char*   v) const { return cvalue(v->value()); }
-  llvm::Value* with(const Byte*   v) const { return cvalue(v->value()); }
-  llvm::Value* with(const Short*  v) const { return cvalue(v->value()); }
-  llvm::Value* with(const Int*    v) const { return cvalue(v->value()); }
-  llvm::Value* with(const Long*   v) const { return cvalue(v->value()); }
-  llvm::Value* with(const Int128* v) const { return cvalue(v->value()); }
-  llvm::Value* with(const Float*  v) const { return cvalue(v->value()); }
-  llvm::Value* with(const Double* v) const { return cvalue(v->value()); }
+  llvm::Value* with(const Unit*    ) const override { return cvalue(true); } // should get optimized away -- unit should have no runtime representation
+  llvm::Value* with(const Bool*   v) const override { return cvalue(v->value()); }
+  llvm::Value* with(const Char*   v) const override { return cvalue(v->value()); }
+  llvm::Value* with(const Byte*   v) const override { return cvalue(v->value()); }
+  llvm::Value* with(const Short*  v) const override { return cvalue(v->value()); }
+  llvm::Value* with(const Int*    v) const override { return cvalue(v->value()); }
+  llvm::Value* with(const Long*   v) const override { return cvalue(v->value()); }
+  llvm::Value* with(const Int128* v) const override { return cvalue(v->value()); }
+  llvm::Value* with(const Float*  v) const override { return cvalue(v->value()); }
+  llvm::Value* with(const Double* v) const override { return cvalue(v->value()); }
 
-  llvm::Value* with(const Var* v) const {
+  llvm::Value* with(const Var* v) const override {
     return c->lookupVar(v->value(), requireMonotype(v->type()));
   }
 
-  llvm::Value* with(const Let* v) const {
+  llvm::Value* with(const Let* v) const override {
     // compile the bound variable's value
     llvm::Value* var  = compile(v->varExpr());
-    llvm::Value* body = 0;
+    llvm::Value* body = nullptr;
 
     try {
       beginScope(v->var(), var);
@@ -104,7 +107,7 @@ public:
     return body;
   }
 
-  llvm::Value* with(const LetRec* v) const {
+  llvm::Value* with(const LetRec* v) const override {
     try {
       this->c->pushScope();
       this->c->compileFunctions(v->bindings());
@@ -117,9 +120,9 @@ public:
     }
   }
 
-  llvm::Value* with(const Fn* v) const {
+  llvm::Value* with(const Fn* v) const override {
     Func* fty = is<Func>(requireMonotype(v->type()));
-    if (!fty) {
+    if (fty == nullptr) {
       throw annotated_error(*v, "Internal compiler error, not a function type: " + show(v->type()));
     }
 
@@ -134,7 +137,7 @@ public:
     }
   }
 
-  llvm::Value* with(const App* v) const {
+  llvm::Value* with(const App* v) const override {
     // for the special case of "operators", we should allow them to decide how to compile
     //   this allows us to use primitive instructions / control-flow
     if (Var* fv = is<Var>(stripAssumpHead(v->fn()))) {
@@ -144,13 +147,15 @@ public:
     }
 
     // it's a standard function call, invoke it in the standard way
-    return fncall(builder(),
-                  compile(v->fn()),
-                  toLLVM(requireMonotype(this->c->typeEnv(), v->fn())),
-                  compileArgs(this->c, v->args()));
+    return withContext([this, v](auto&) {
+      return fncall(builder(),
+                    compile(v->fn()),
+                    toLLVM(requireMonotype(this->c->typeEnv(), v->fn())),
+                    compileArgs(this->c, v->args()));
+    });
   }
 
-  llvm::Value* with(const Assign* v) const {
+  llvm::Value* with(const Assign* v) const override {
     MonoTypePtr lty = requireMonotype(v->left()->type());
     MonoTypePtr rty = requireMonotype(v->right()->type());
 
@@ -158,11 +163,13 @@ public:
       llvm::Value* lhs = compileRef(v->left());
       llvm::Value* rhs = compile(v->right());
 
-      if (isLargeType(rty)) {
-        memCopy(builder(), lhs, 8, rhs, 8, sizeOf(rty));
-      } else {
-        builder()->CreateStore(rhs, lhs);
-      }
+      withContext([&](auto&) {
+        if (isLargeType(rty)) {
+          memCopy(builder(), lhs, 8, rhs, 8, sizeOf(rty));
+        } else {
+          builder()->CreateStore(rhs, lhs);
+        }
+      });
 
       return with(rcast<const Unit*>(0));
     } else {
@@ -170,10 +177,10 @@ public:
     }
   }
 
-  llvm::Value* with(const MkArray* v) const {
+  llvm::Value* with(const MkArray* v) const override {
     MonoTypePtr ty  = requireMonotype(v->type());
-    Array*      aty = is<Array>(ty);
-    if (aty == 0) {
+    auto*      aty = is<Array>(ty);
+    if (aty == nullptr) {
       throw annotated_error(*v, "Internal compiler error -- can't make array out of non-array type: " + show(ty));
     }
 
@@ -182,73 +189,87 @@ public:
     if (llvm::Value* cr = compileConstArray(aty->type(), vs)) {
       return cr;
     } else {
-      bool         isStoredPtr = is<OpaquePtr>(aty->type()) || is<Func>(aty->type()); // consistent with ctype.C, store opaque ptrs and functions in arrays as pointers
+      bool         isStoredPtr = (is<OpaquePtr>(aty->type()) != nullptr) || (is<Func>(aty->type()) != nullptr); // consistent with ctype.C, store opaque ptrs and functions in arrays as pointers
       llvm::Type*  elemTy      = toLLVM(aty->type(), isStoredPtr);
       llvm::Value* p           = compileAllocStmt(sizeof(long) + sizeOf(aty->type()) * vs.size(), std::max<size_t>(sizeof(long), alignment(aty->type())), ptrType(llvmVarArrType(elemTy)));
 
-      // store the array length
-      llvm::Value* alenp = structOffset(builder(), p, 0);
-      builder()->CreateStore(llvm::Constant::getIntegerValue(longType(), llvm::APInt(64, vs.size(), true)), alenp);
+      withContext([&](auto&) {
+        // store the array length
+        llvm::Value* alenp = structOffset(builder(), p, 0);
+        builder()->CreateStore(llvm::Constant::getIntegerValue(longType(), llvm::APInt(64, vs.size(), true)), alenp);
 
-      // store the array contents
-      if (!isUnit(aty->type())) {
-        llvm::Value* adatap = structOffset(builder(), p, 1);
-  
-        for (size_t i = 0; i < vs.size(); ++i) {
-          llvm::Value* ev = vs[i];
-          llvm::Value* ap = offset(builder(), adatap, 0, i);
+        // store the array contents
+        if (!isUnit(aty->type())) {
+          llvm::Value* adatap = structOffset(builder(), p, 1);
 
-          // we only memcopy into an array if the data is large and isn't an opaque pointer (always write opaque pointers as pointers)
-          if (!isStoredPtr && isLargeType(aty->type())) {
-            memCopy(builder(), ap, 8, ev, 8, sizeOf(aty->type()));
-          } else {
-            builder()->CreateStore(ev, ap);
+          for (size_t i = 0; i < vs.size(); ++i) {
+            llvm::Value* ev = vs[i];
+            llvm::Value* ap = offset(builder(), adatap, 0, i);
+
+            // we only memcopy into an array if the data is large and isn't an opaque pointer (always write opaque pointers as pointers)
+            if (!isStoredPtr && isLargeType(aty->type())) {
+              memCopy(builder(), ap, 8, ev, 8, sizeOf(aty->type()));
+            } else {
+              builder()->CreateStore(ev, ap);
+            }
           }
         }
-      }
+      });
 
       return p;
     }
   }
 
-  llvm::Value* with(const MkVariant* v) const {
+  llvm::Value* with(const MkVariant* v) const override {
     MonoTypePtr mvty = requireMonotype(v->type());
-    Variant*    vty  = is<Variant>(mvty);
-    if (!vty) { throw annotated_error(*v, "Internal compiler error, compiling variant without variant type: " + show(v) + " :: " + show(v->type())); }
+    const Variant *vty = is<Variant>(mvty);
+    if (vty == nullptr && show(v->value()) == "()") {
+      vty = isVariantPEnum(mvty);
+      if (vty != nullptr) {
+        llvm::Type *uty = toLLVM(mvty);
+        return withContext([&](auto &) {
+          return llvm::Constant::getIntegerValue(
+              uty, llvm::APInt(8 * sizeOf(mvty), vty->id(v->label())));
+        });
+      }
+    }
+    if (vty == nullptr) { throw annotated_error(*v, "Internal compiler error, compiling variant without penum/variant type: " + show(v) + " :: " + show(v->type())); }
 
     llvm::Value* p  = compileAllocStmt(sizeOf(mvty), alignment(mvty), ptrType(byteType()));
     llvm::Value* tg = cvalue(vty->id(v->label()));
     llvm::Value* tv = compile(v->value());
 
-    // store the variant tag
-    builder()->CreateStore(tg, builder()->CreateBitCast(p, ptrType(intType())));
+    return withContext([&](auto&) {
+      // store the variant tag
+      builder()->CreateStore(tg, builder()->CreateBitCast(p, ptrType(intType())));
 
-    // store the variant value
-    MonoTypePtr  valty = requireMonotype(v->value()->type());
-    llvm::Value* pp    = offset(builder(), p, vty->payloadOffset());
+      // store the variant value
+      MonoTypePtr  valty = requireMonotype(v->value()->type());
+      llvm::Value* pp    = offset(builder(), p, vty->payloadOffset());
 
-    if (isLargeType(valty)) {
-      memCopy(builder(), pp, 8, tv, 8, sizeOf(valty));
-    } else if (isUnit(valty)) {
-      // don't store unit values
-    } else {
-      // store data for this case inline in the variant
-      // (functions should be stored as pointers)
-      builder()->CreateStore(tv, builder()->CreateBitCast(pp, ptrType(toLLVM(valty, is<Func>(valty)))));
-    }
+      if (isLargeType(valty)) {
+        memCopy(builder(), pp, 8, tv, 8, sizeOf(valty));
+      } else if (isUnit(valty)) {
+        // don't store unit values
+      } else {
+        // store data for this case inline in the variant
+        // (functions should be stored as pointers)
+        builder()->CreateStore(tv, builder()->CreateBitCast(pp, ptrType(toLLVM(valty, is<Func>(valty)))));
+      }
 
-    return builder()->CreateBitCast(p, toLLVM(mvty, true));
+      return builder()->CreateBitCast(p, toLLVM(mvty, true));
+    });
   }
 
-  llvm::Value* with(const MkRecord* v) const {
+  llvm::Value* with(const MkRecord* v) const override {
     MonoTypePtr mrty = requireMonotype(v->type());
-    Record*     rty  = is<Record>(mrty);
-    if (!rty) { throw annotated_error(*v, "Internal compiler error, compiling record without record type: " + show(v) + " :: " + show(v->type())); }
+    auto*     rty  = is<Record>(mrty);
+    if (rty == nullptr) { throw annotated_error(*v, "Internal compiler error, compiling record without record type: " + show(v) + " :: " + show(v->type())); }
 
     RecordValue vs = compileRecordFields(v->fields());
 
     // for the odd case where all fields are unit
-    if (vs.size() == 0) {
+    if (vs.empty()) {
       return cvalue(true);
     }
 
@@ -257,23 +278,25 @@ public:
     } else {
       llvm::Value* p = compileAllocStmt(sizeOf(mrty), alignment(mrty), toLLVM(mrty, true));
 
-      for (RecordValue::const_iterator rv = vs.begin(); rv != vs.end(); ++rv) {
-        llvm::Value* fv  = rv->second;
-        llvm::Value* fp  = structFieldPtr(p, rty->alignedIndex(rv->first));
-        MonoTypePtr  fty = rty->member(rv->first);
+      for (const auto &v : vs) {
+        llvm::Value* fv  = v.second;
+        llvm::Value* fp  = structFieldPtr(p, rty->alignedIndex(v.first));
+        MonoTypePtr  fty = rty->member(v.first);
 
-        if (isLargeType(fty)) {
-          memCopy(builder(), fp, 8, fv, 8, sizeOf(fty));
-        } else {
-          builder()->CreateStore(fv, fp);
-        }
+        withContext([&](auto&) {
+          if (isLargeType(fty)) {
+            memCopy(builder(), fp, 8, fv, 8, sizeOf(fty));
+          } else {
+            builder()->CreateStore(fv, fp);
+          }
+        });
       }
 
       return p;
     }
   }
 
-  llvm::Value* with(const AIndex* v) const {
+  llvm::Value* with(const AIndex* v) const override {
     MonoTypePtr  aity = requireMonotype(v->type());
     llvm::Value* ar   = compile(v->array());
     llvm::Value* ir   = compile(v->index());
@@ -281,172 +304,195 @@ public:
       return with(rcast<const Unit*>(0));
     }
 
-    llvm::Value* ard = structOffset(builder(), ar, 1); // get the array's data pointer
-    llvm::Value* p   = offset(builder(), ard, 0, ir);  // and index into it
+    return withContext([&](auto&) -> llvm::Value* {
+      llvm::Value* ard = structOffset(builder(), ar, 1); // get the array's data pointer
+      llvm::Value* p   = offset(builder(), ard, 0, ir);  // and index into it
 
-    if (isLargeType(aity)) {
-      return p;
-    } else {
-      return builder()->CreateLoad(p, false);
-    }
+      if (isLargeType(aity)) {
+        return p;
+      } else {
+        return builder()->CreateLoad(p, false);
+      }
+    });
   }
 
   // apply a case expression's default expression across every constructor not accounted for
   void resolveCaseDefault(const Variant* vty, Case* v) const {
-    if (v->defaultExpr().get() != 0) {
+    if (v->defaultExpr().get() != nullptr) {
       std::string pn = freshName();
 
-      for (Variant::Members::const_iterator vm = vty->members().begin(); vm != vty->members().end(); ++vm) {
-        if (!v->hasBinding(vm->selector)) {
-          v->addBinding(vm->selector, pn, v->defaultExpr());
+      for (const auto &vm : vty->members()) {
+        if (!v->hasBinding(vm.selector)) {
+          v->addBinding(vm.selector, pn, v->defaultExpr());
         }
       }
     }
   }
 
-  llvm::Value* with(const Case* v) const {
+  llvm::Value* with(const Case* v) const override {
     MonoTypePtr casety = requireMonotype(v->type());
     MonoTypePtr varty  = requireMonotype(v->variant()->type());
-    Variant*    vty    = is<Variant>(varty);
-    if (!vty) {
+    auto*    vty    = is<Variant>(varty);
+    if (vty == nullptr) {
       throw annotated_error(*v, "Internal compiler error (received non-variant type in case).");
     }
     resolveCaseDefault(vty, const_cast<Case*>(v));
 
     // compile the variant and pull out the tag and value
     llvm::Value* var  = compile(v->variant());
-    llvm::Value* ptag = builder()->CreateBitCast(var, ptrType(intType()));
-    llvm::Value* tag  = builder()->CreateLoad(ptag, false);
+    llvm::Value* ptag = withContext([this, var](auto&) { return builder()->CreateBitCast(var, ptrType(intType())); });
+    llvm::Value* tag  = withContext([this, ptag](auto&) { return builder()->CreateLoad(ptag, false); });
 
     std::vector<llvm::Value*> idxs;
     idxs.push_back(cvalue(0));
     idxs.push_back(cvalue(vty->payloadOffset()));
-    llvm::Value* pval = builder()->CreateGEP(var, idxs);
+    llvm::Value* pval = withContext([&, this](auto&) { return builder()->CreateGEP(var, idxs); });
 
-    llvm::Function*   thisFn     = builder()->GetInsertBlock()->getParent();
-    llvm::BasicBlock* failBlock  = llvm::BasicBlock::Create(context(), "casefail", thisFn);
-    llvm::BasicBlock* mergeBlock = llvm::BasicBlock::Create(context(), "casemerge", thisFn);
-    llvm::SwitchInst* s          = builder()->CreateSwitch(tag, failBlock, v->bindings().size());
+    llvm::Function*   thisFn     = withContext([this](auto&) { return builder()->GetInsertBlock()->getParent(); });
+    llvm::BasicBlock* failBlock  = withContext([thisFn](llvm::LLVMContext& c) {
+      return llvm::BasicBlock::Create(c, "casefail", thisFn);
+    });
+    llvm::BasicBlock* mergeBlock = withContext([thisFn](llvm::LLVMContext& c) {
+      return llvm::BasicBlock::Create(c, "casemerge", thisFn);
+    });
+    llvm::SwitchInst* s          = withContext([&](auto&) {
+      return builder()->CreateSwitch(tag, failBlock, v->bindings().size());
+    });
 
-    typedef std::pair<llvm::Value*, llvm::BasicBlock*> MergeLink;
-    typedef std::vector<MergeLink> MergeLinks;
+    using MergeLink = std::pair<llvm::Value *, llvm::BasicBlock *>;
+    using MergeLinks = std::vector<MergeLink>;
     MergeLinks mergeLinks;
 
-    for (Case::Bindings::const_iterator b = v->bindings().begin(); b != v->bindings().end(); ++b) {
-      unsigned int      caseID    = vty->id(b->selector);
-      llvm::BasicBlock* caseBlock = llvm::BasicBlock::Create(context(), "case_" + str::from(caseID), thisFn);
+    for (const auto &b : v->bindings()) {
+      unsigned int      caseID    = vty->id(b.selector);
+      withContext([&](llvm::LLVMContext& c) {
+        llvm::BasicBlock* caseBlock = llvm::BasicBlock::Create(c, "case_" + str::from(caseID), thisFn);
 
-      builder()->SetInsertPoint(caseBlock);
-      try {
-        MonoTypePtr valty = vty->payload(b->selector);
+        builder()->SetInsertPoint(caseBlock);
+        try {
+          MonoTypePtr valty = vty->payload(b.selector);
 
-        if (isUnit(valty)) {
-          beginScope(b->vname, cvalue(true)); // this is unit, so should never be looked at
-        } else {
-          // otherwise the data here is available inline
-          // (and functions are stored as pointers)
-          llvm::Type*  lty      = toLLVM(valty, is<Func>(valty));
-          llvm::Value* pointval = builder()->CreateBitCast(pval, ptrType(lty));
-          llvm::Value* val      = isLargeType(valty) ? pointval : builder()->CreateLoad(pointval, false);
+          if (isUnit(valty)) {
+            beginScope(b.vname, cvalue(true)); // this is unit, so should never be looked at
+          } else {
+            // otherwise the data here is available inline
+            // (and functions are stored as pointers)
+            llvm::Type*  lty      = toLLVM(valty, is<Func>(valty) != nullptr);
+            llvm::Value* pointval = builder()->CreateBitCast(pval, ptrType(lty));
+            llvm::Value* val      = isLargeType(valty) ? pointval : builder()->CreateLoad(pointval, false);
 
-          beginScope(b->vname, val);
+            beginScope(b.vname, val);
+          }
+
+          llvm::Value* caseValue = switchOf(b.exp, compileExpF("", this->c));
+          mergeLinks.push_back(MergeLink(caseValue, builder()->GetInsertBlock()));
+          builder()->CreateBr(mergeBlock);
+          endScope();
+        } catch (...) {
+          endScope();
+          throw;
         }
 
-        llvm::Value* caseValue = switchOf(b->exp, compileExpF("", this->c));
-        mergeLinks.push_back(MergeLink(caseValue, builder()->GetInsertBlock()));
-        builder()->CreateBr(mergeBlock);
-        endScope();
-      } catch (...) {
-        endScope();
-        throw;
-      }
-
-      s->addCase(llvm::ConstantInt::get(llvm::IntegerType::get(context(), 32), scast<uint64_t>(caseID)), caseBlock);
+        s->addCase(llvm::ConstantInt::get(llvm::IntegerType::get(c, 32),
+                                          scast<uint64_t>(caseID)), caseBlock);
+      });
     }
 
     // fill in the default (failure) target for variant matching
     llvm::Function* f = this->c->lookupFunction(".failvarmatch");
-    if (!f) { throw std::runtime_error("Internal compiler error -- no default variant match failure handler defined."); }
+    if (f == nullptr) { throw std::runtime_error("Internal compiler error -- no default variant match failure handler defined."); }
 
     auto ltxts = v->la().lines(v->la().p0.first-1, v->la().p1.first);
-    auto ltxt  = ltxts.size() > 0 ? ltxts[0] : "???";
+    auto ltxt  = !ltxts.empty() ? ltxts[0] : "???";
 
-    builder()->SetInsertPoint(failBlock);
-    fncall(builder(), f, f->getFunctionType(), list(
-      this->c->internConstString(v->la().filename()),
-      cvalue(scast<long>(v->la().p0.first)),
-      this->c->internConstString(ltxt),
-      builder()->CreateBitCast(var, ptrType(charType()))
-    ));
-    builder()->CreateUnreachable();
+    return withContext([&](auto&) -> llvm::Value* {
+      builder()->SetInsertPoint(failBlock);
+      fncall(builder(), f, f->getFunctionType(), list(
+        this->c->internConstString(v->la().filename()),
+        cvalue(scast<long>(v->la().p0.first)),
+        this->c->internConstString(ltxt),
+        builder()->CreateBitCast(var, ptrType(charType()))
+      ));
+      builder()->CreateUnreachable();
 
-    // now if the result type is unit, it can be trivially constructed, else merge potential branch results
-    builder()->SetInsertPoint(mergeBlock);
-    if (isUnit(casety)) {
-      return cvalue(true);
-    } else {
-      llvm::PHINode* pn = builder()->CreatePHI(toLLVM(casety, true), mergeLinks.size());
-      for (MergeLinks::const_iterator ml = mergeLinks.begin(); ml != mergeLinks.end(); ++ml) {
-        pn->addIncoming(ml->first, ml->second);
+      // now if the result type is unit, it can be trivially constructed, else merge potential branch results
+      builder()->SetInsertPoint(mergeBlock);
+      if (isUnit(casety)) {
+        return cvalue(true);
+      } else {
+        llvm::PHINode* pn = builder()->CreatePHI(toLLVM(casety, true), mergeLinks.size());
+        for (const auto &mergeLink : mergeLinks) {
+          pn->addIncoming(mergeLink.first, mergeLink.second);
+        }
+        return pn;
       }
-      return pn;
-    }
+    });
   }
 
-  llvm::Value* with(const Switch* v) const {
+  llvm::Value* with(const Switch* v) const override {
     MonoTypePtr casety = requireMonotype(v->type());
 
     // prepare to switch on the discriminant
     llvm::Value* e = compile(v->expr());
 
-    llvm::Function*   thisFn     = builder()->GetInsertBlock()->getParent();
-    llvm::BasicBlock* failBlock  = llvm::BasicBlock::Create(context(), "casefail", thisFn);
-    llvm::BasicBlock* mergeBlock = llvm::BasicBlock::Create(context(), "casemerge", thisFn);
-    llvm::SwitchInst* s          = builder()->CreateSwitch(e, failBlock, v->bindings().size());
+    llvm::Function*   thisFn     = withContext([this](auto&) {
+      return builder()->GetInsertBlock()->getParent();
+    });
+    llvm::BasicBlock* failBlock  = withContext([thisFn](llvm::LLVMContext& c) {
+      return llvm::BasicBlock::Create(c, "casefail", thisFn);
+    });
+    llvm::BasicBlock* mergeBlock = withContext([thisFn](llvm::LLVMContext& c) {
+      return llvm::BasicBlock::Create(c, "casemerge", thisFn);
+    });
+    llvm::SwitchInst* s          = withContext([&](auto&) {
+      return builder()->CreateSwitch(e, failBlock, v->bindings().size());
+    });
 
-    typedef std::pair<llvm::Value*, llvm::BasicBlock*> MergeLink;
-    typedef std::vector<MergeLink> MergeLinks;
+    using MergeLink = std::pair<llvm::Value *, llvm::BasicBlock *>;
+    using MergeLinks = std::vector<MergeLink>;
     MergeLinks mergeLinks;
 
-    size_t i = 0;
-    for (auto b : v->bindings()) {
-      size_t caseID = i++;
-      llvm::BasicBlock* caseBlock = llvm::BasicBlock::Create(context(), "case_" + str::from(caseID), thisFn);
+    return withContext([&](auto& c) -> llvm::Value* {
+      size_t i = 0;
+      for (const auto& b : v->bindings()) {
+        size_t caseID = i++;
+        llvm::BasicBlock* caseBlock = llvm::BasicBlock::Create(c, "case_" + str::from(caseID), thisFn);
 
-      builder()->SetInsertPoint(caseBlock);
-      llvm::Value* caseValue = compile(b.exp);
-      mergeLinks.push_back(MergeLink(caseValue, builder()->GetInsertBlock()));
-      builder()->CreateBr(mergeBlock);
+        builder()->SetInsertPoint(caseBlock);
+        llvm::Value* caseValue = compile(b.exp);
+        mergeLinks.push_back(MergeLink(caseValue, builder()->GetInsertBlock()));
+        builder()->CreateBr(mergeBlock);
 
-      s->addCase(toLLVMConstantInt(b.value), caseBlock);
-    }
-
-    // fill in the default (failure) target
-    if (v->defaultExpr()) {
-      builder()->SetInsertPoint(failBlock);
-      llvm::Value* defValue = compile(v->defaultExpr());
-      mergeLinks.push_back(MergeLink(defValue, builder()->GetInsertBlock()));
-      builder()->CreateBr(mergeBlock);
-    } else {
-      builder()->CreateUnreachable();
-    }
-
-    // now just merge each of the case blocks to a final value
-    builder()->SetInsertPoint(mergeBlock);
-    if (isUnit(casety)) {
-      return cvalue(true);
-    } else {
-      llvm::PHINode* pn = builder()->CreatePHI(toLLVM(casety, true), mergeLinks.size());
-      for (MergeLinks::const_iterator ml = mergeLinks.begin(); ml != mergeLinks.end(); ++ml) {
-        pn->addIncoming(ml->first, ml->second);
+        s->addCase(toLLVMConstantInt(b.value), caseBlock);
       }
-      return pn;
-    }
+
+      // fill in the default (failure) target
+      if (v->defaultExpr()) {
+        builder()->SetInsertPoint(failBlock);
+        llvm::Value* defValue = compile(v->defaultExpr());
+        mergeLinks.push_back(MergeLink(defValue, builder()->GetInsertBlock()));
+        builder()->CreateBr(mergeBlock);
+      } else {
+        builder()->CreateUnreachable();
+      }
+
+      // now just merge each of the case blocks to a final value
+      builder()->SetInsertPoint(mergeBlock);
+      if (isUnit(casety)) {
+        return cvalue(true);
+      } else {
+        llvm::PHINode* pn = builder()->CreatePHI(toLLVM(casety, true), mergeLinks.size());
+        for (const auto &mergeLink : mergeLinks) {
+          pn->addIncoming(mergeLink.first, mergeLink.second);
+        }
+        return pn;
+      }
+    });
   }
 
-  llvm::Value* with(const Proj* v) const {
-    Record* rty = is<Record>(requireMonotype(v->record()->type()));
-    if (!rty) {
+  llvm::Value* with(const Proj* v) const override {
+    auto* rty = is<Record>(requireMonotype(v->record()->type()));
+    if (rty == nullptr) {
       throw annotated_error(*v, "Internal compiler error (received non-record type in projection).");
     }
 
@@ -461,34 +507,36 @@ public:
     // switched to using packed records and manually-determined padding
     llvm::Value* rp = structFieldPtr(rec, rty->alignedIndex(v->field()));
 
-    if (OpaquePtr* op = is<OpaquePtr>(fty)) {
-      if (op->storedContiguously()) {
-        return builder()->CreateBitCast(rp, ptrType(byteType()));
+    return withContext([&](auto&) -> llvm::Value* {
+      if (auto* op = is<OpaquePtr>(fty)) {
+        if (op->storedContiguously()) {
+          return builder()->CreateBitCast(rp, ptrType(byteType()));
+        } else {
+          return builder()->CreateLoad(rp, false);
+        }
+      } else if (isLargeType(fty)) {
+        return rp;
       } else {
         return builder()->CreateLoad(rp, false);
       }
-    } else if (isLargeType(fty)) {
-      return rp;
-    } else {
-      return builder()->CreateLoad(rp, false);
-    }
+    });
   }
 
-  llvm::Value* with(const Assump* v) const {
+  llvm::Value* with(const Assump* v) const override {
     // because we explicitly discard these type assumptions before compilation, this case should never happen
     return switchOf(v->expr(), *this);
   }
 
-  llvm::Value* with(const Pack* v) const {
+  llvm::Value* with(const Pack* v) const override {
     llvm::Value* ev = compile(v->expr());
     llvm::Type*  et = toLLVM(requireMonotype(v->type()), true);
 
-    return builder()->CreateBitCast(ev, et);
+    return withContext([&](auto&) { return builder()->CreateBitCast(ev, et); });
   }
 
-  llvm::Value* with(const Unpack* v) const {
+  llvm::Value* with(const Unpack* v) const override {
     llvm::Value* var  = compile(v->package());
-    llvm::Value* body = 0;
+    llvm::Value* body = nullptr;
 
     try {
       beginScope(v->varName(), var);
@@ -506,12 +554,17 @@ private:
   std::string vname;
 
   llvm::Value* compileConstArray(const MonoTypePtr& ty, const Values& vs) const {
-    auto elemTy = is<Func>(ty) ? ptrType(toLLVM(ty)) : toLLVM(ty);
-    return tryMkConstVarArray(builder(), this->c->module(), elemTy, vs, is<Array>(ty)); // take care to refer to global array constants by reference (a bit awkward!)
+    auto *elemTy = is<Func>(ty) != nullptr ? ptrType(toLLVM(ty)) : toLLVM(ty);
+    return withContext([&](auto&) {
+       // take care to refer to global array constants by reference (a bit awkward!)
+       return tryMkConstVarArray(builder(), this->c->module(), elemTy, vs, is<Array>(ty));
+    });
   }
 
   llvm::Value* compileConstRecord(const RecordValue& vs, const Record* rty) const {
-    return tryMkConstRecord(builder(), this->c->module(), vs, rty);
+    return withContext([&](auto&) {
+      return tryMkConstRecord(builder(), this->c->module(), vs, rty);
+    });
   }
 
   llvm::Value* compile(const ExprPtr& e) const {
@@ -544,15 +597,15 @@ private:
   }
 
   llvm::Value* structFieldPtr(llvm::Value* r, unsigned int i) const {
-    return structOffset(builder(), r, i);
+    return withContext([=](auto&) { return structOffset(builder(), r, i); });
   }
 
   RecordValue compileRecordFields(const MkRecord::FieldDefs& fs) const {
     RecordValue r;
-    for (MkRecord::FieldDefs::const_iterator f = fs.begin(); f != fs.end(); ++f) {
-      if (!isUnit(requireMonotype(f->second->type()))) {
-        llvm::Value* v = compile(f->second);
-        r.push_back(FieldValue(f->first, v));
+    for (const auto &f : fs) {
+      if (!isUnit(requireMonotype(f.second->type()))) {
+        llvm::Value* v = compile(f.second);
+        r.push_back(FieldValue(f.first, v));
       }
     }
     return r;
@@ -569,23 +622,27 @@ private:
       MonoTypePtr  vty = requireMonotype(gv->type());
       llvm::Value* vl  = this->c->lookupVarRef(gv->value());
 
-      if (!vl) {
+      if (vl == nullptr) {
         throw annotated_error(*e, "Failed to get reference to global variable: " + gv->value());
       }
 
-      return isLargeType(vty) ? builder()->CreateLoad(vl) : vl;
+      return withContext([&](auto&) { return isLargeType(vty) ? builder()->CreateLoad(vl) : vl; });
     } else if (const AIndex* ai = is<AIndex>(e)) {
       MonoTypePtr  aity = requireMonotype(ai->type());
       llvm::Value* ar   = compile(ai->array());
       llvm::Value* ir   = compile(ai->index());
 
-      llvm::Value* ard = structOffset(builder(), ar, 1); // get the array's 'data' pointer
-      llvm::Value* p   = offset(builder(), ard, 0, ir);  // and index into it
+      llvm::Value* ard = withContext([this, ar](auto&) {
+        return structOffset(builder(), ar, 1); // get the array's 'data' pointer
+      });
+      llvm::Value* p   = withContext([&](auto&) {
+        return offset(builder(), ard, 0, ir);  // and index into it
+      });
 
       return p;
     } else if (const Proj* rp = is<Proj>(e)) {
-      Record* rty = is<Record>(requireMonotype(rp->record()->type()));
-      if (!rty) {
+      auto* rty = is<Record>(requireMonotype(rp->record()->type()));
+      if (rty == nullptr) {
         throw annotated_error(*e, "Internal compiler error (received non-record type in projection).");
       }
 
@@ -595,10 +652,12 @@ private:
       // switched to using packed records and manually-determined padding
       llvm::Value* p = structFieldPtr(rec, rty->alignedIndex(rp->field()));
 
-      if (OpaquePtr* op = is<OpaquePtr>(fty)) {
+      if (auto* op = is<OpaquePtr>(fty)) {
         if (op->storedContiguously()) {
-          llvm::PointerType* bty = llvm::PointerType::getUnqual(llvm::Type::getInt8Ty(context()));
-          return builder()->CreateBitCast(p, bty);
+          return withContext([&](llvm::LLVMContext& c) {
+            llvm::PointerType* bty = llvm::PointerType::getUnqual(llvm::Type::getInt8Ty(c));
+            return builder()->CreateBitCast(p, bty);
+          });
         }
       }
 
@@ -609,7 +668,7 @@ private:
           llvm::Value* ar = compile(ap->args()[0]);
           llvm::Value* i  = compile(ap->args()[1]);
 
-          return offset(builder(), ar, 0, i);
+          return withContext([&](auto&) { return offset(builder(), ar, 0, i); });
         }
       }
     }
@@ -633,32 +692,39 @@ public:
   std::string vname;
   compileConstExpF(jitcc* c, const std::string& vname) : vname(vname), c(c) { }
 
-  llvm::Constant* with(const Unit*    ) const { return cvalue(true); } // should get optimized away -- unit should have no runtime representation
-  llvm::Constant* with(const Bool*   v) const { return cvalue(v->value()); }
-  llvm::Constant* with(const Char*   v) const { return cvalue(v->value()); }
-  llvm::Constant* with(const Byte*   v) const { return cvalue(v->value()); }
-  llvm::Constant* with(const Short*  v) const { return cvalue(v->value()); }
-  llvm::Constant* with(const Int*    v) const { return cvalue(v->value()); }
-  llvm::Constant* with(const Long*   v) const { return cvalue(v->value()); }
-  llvm::Constant* with(const Int128* v) const { return cvalue(v->value()); }
-  llvm::Constant* with(const Float*  v) const { return cvalue(v->value()); }
-  llvm::Constant* with(const Double* v) const { return cvalue(v->value()); }
+  llvm::Constant* with(const Unit*    ) const override { return cvalue(true); } // should get optimized away -- unit should have no runtime representation
+  llvm::Constant* with(const Bool*   v) const override { return cvalue(v->value()); }
+  llvm::Constant* with(const Char*   v) const override { return cvalue(v->value()); }
+  llvm::Constant* with(const Byte*   v) const override { return cvalue(v->value()); }
+  llvm::Constant* with(const Short*  v) const override { return cvalue(v->value()); }
+  llvm::Constant* with(const Int*    v) const override { return cvalue(v->value()); }
+  llvm::Constant* with(const Long*   v) const override { return cvalue(v->value()); }
+  llvm::Constant* with(const Int128* v) const override { return cvalue(v->value()); }
+  llvm::Constant* with(const Float*  v) const override { return cvalue(v->value()); }
+  llvm::Constant* with(const Double* v) const override { return cvalue(v->value()); }
 
-  llvm::Constant* with(const Var* v) const {
-    return llvm::dyn_cast<llvm::Constant>(this->c->lookupVar(v->value(), requireMonotype(v->type())));
+  llvm::Constant* with(const Var* v) const override {
+    // possible instructions created during compilation
+    // remove them otherwise they may become dangling instructions
+    llvm::Value* x = this->c->lookupVar(v->value(), requireMonotype(v->type()));
+    if (auto* inst = llvm::dyn_cast<llvm::Instruction>(x)) {
+      inst->eraseFromParent();
+      return nullptr;
+    }
+    return llvm::dyn_cast<llvm::Constant>(x);
   }
 
-  llvm::Constant* with(const Let*) const {
-    return 0;
+  llvm::Constant* with(const Let*) const override {
+    return nullptr;
   }
 
-  llvm::Constant* with(const LetRec*) const {
-    return 0;
+  llvm::Constant* with(const LetRec*) const override {
+    return nullptr;
   }
 
-  llvm::Constant* with(const Fn* v) const {
+  llvm::Constant* with(const Fn* v) const override {
     Func* fty = is<Func>(requireMonotype(v->type()));
-    if (!fty) {
+    if (fty == nullptr) {
       throw annotated_error(*v, "Internal compiler error, not a function type: " + show(v->type()));
     }
 
@@ -673,30 +739,30 @@ public:
     }
   }
 
-  llvm::Constant* with(const App*) const {
-    return 0;
+  llvm::Constant* with(const App*) const override {
+    return nullptr;
   }
 
-  llvm::Constant* with(const Assign*) const {
-    return 0;
+  llvm::Constant* with(const Assign*) const override {
+    return nullptr;
   }
 
-  llvm::Constant* with(const MkArray* v) const {
+  llvm::Constant* with(const MkArray* v) const override {
     MonoTypePtr ty  = requireMonotype(v->type());
-    Array*      aty = is<Array>(ty);
-    if (aty == 0) {
+    auto*      aty = is<Array>(ty);
+    if (aty == nullptr) {
       throw annotated_error(*v, "Internal compiler error -- can't make array out of non-array type: " + show(ty));
     }
 
     Constants cs = switchOf(v->values(), *this);
-    for (auto c : cs) { if (!c) return 0; }
+    for (auto *c : cs) { if (c == nullptr) return nullptr; }
 
     llvm::Type* elemTy = toLLVM(aty->type(), false);
     llvm::StructType* saty = varArrayType(elemTy, cs.size());
     llvm::StructType* caty = varArrayType(elemTy);
     
-    return
-      ccast(ptrType(caty),
+    return withContext([&](auto&) {
+      return ccast(ptrType(caty),
         new llvm::GlobalVariable(
           *this->c->module(),
           saty,
@@ -705,54 +771,55 @@ public:
           constArray(this->c->module(), cs, elemTy)
         )
       );
+    });
   }
 
-  llvm::Constant* with(const MkVariant*) const {
-    return 0;
+  llvm::Constant* with(const MkVariant*) const override {
+    return nullptr;
   }
 
-  llvm::Constant* with(const MkRecord* v) const {
+  llvm::Constant* with(const MkRecord* v) const override {
     MonoTypePtr mrty = requireMonotype(v->type());
-    Record*     rty  = is<Record>(mrty);
-    if (!rty) { throw annotated_error(*v, "Internal compiler error, compiling record without record type: " + show(v) + " :: " + show(v->type())); }
+    auto*     rty  = is<Record>(mrty);
+    if (rty == nullptr) { throw annotated_error(*v, "Internal compiler error, compiling record without record type: " + show(v) + " :: " + show(v->type())); }
 
     Constants rcs;
-    for (auto f : v->fields()) {
+    for (const auto& f : v->fields()) {
       if (llvm::Constant* c = switchOf(f.second, compileConstExpF(this->c, this->vname+"."+f.first))) {
         rcs.push_back(c);
       } else {
-        return 0;
+        return nullptr;
       }
     }
-    return constantRecord(this->c->module(), rcs, rty);
+    return withContext([&](auto&) { return constantRecord(this->c->module(), rcs, rty); });
   }
 
-  llvm::Constant* with(const AIndex*) const {
-    return 0;
+  llvm::Constant* with(const AIndex*) const override {
+    return nullptr;
   }
 
-  llvm::Constant* with(const Case*) const {
-    return 0;
+  llvm::Constant* with(const Case*) const override {
+    return nullptr;
   }
 
-  llvm::Constant* with(const Switch*) const {
-    return 0;
+  llvm::Constant* with(const Switch*) const override {
+    return nullptr;
   }
 
-  llvm::Constant* with(const Proj*) const {
-    return 0;
+  llvm::Constant* with(const Proj*) const override {
+    return nullptr;
   }
 
-  llvm::Constant* with(const Assump* v) const {
+  llvm::Constant* with(const Assump* v) const override {
     return switchOf(v->expr(), *this);
   }
 
-  llvm::Constant* with(const Pack*) const {
-    return 0;
+  llvm::Constant* with(const Pack*) const override {
+    return nullptr;
   }
 
-  llvm::Constant* with(const Unpack*) const {
-    return 0;
+  llvm::Constant* with(const Unpack*) const override {
+    return nullptr;
   }
 private:
   jitcc* c;

@@ -7,7 +7,7 @@
 namespace hi {
 
 // controls display options
-typedef unsigned char color;
+using color = unsigned char;
 
 DEFINE_STRUCT(ConsoleColors,
   (color, promptfg),
@@ -62,13 +62,13 @@ inline void sendCmd(std::ostream& out, int n0, int n1, int n2, char c) {
   }
 }
 
-struct setbold { setbold() { } };
+struct setbold {};
 inline std::ostream& operator<<(std::ostream& lhs, const setbold&) {
   sendCmd(lhs, 1, 'm');
   return lhs;
 }
 
-struct setunderline { setunderline() { } };
+struct setunderline {};
 inline std::ostream& operator<<(std::ostream& lhs, const setunderline&) {
   sendCmd(lhs, 4, 'm');
   return lhs;
@@ -103,18 +103,14 @@ inline std::ostream& operator<<(std::ostream& lhs, const setbgc& c) {
   return lhs;
 }
 
-struct resetfmt {
-  resetfmt() { }
-};
+struct resetfmt {};
 
 inline std::ostream& operator<<(std::ostream& lhs, const resetfmt&) {
   sendCmd(lhs, 0, 'm');
   return lhs;
 }
 
-struct clearscr {
-  clearscr() { }
-};
+struct clearscr {};
 
 inline std::ostream& operator<<(std::ostream& lhs, const clearscr&) {
   sendCmd(lhs, 2, 'J');
@@ -151,13 +147,13 @@ inline std::ostream& operator<<(std::ostream& lhs, const movecursor& mc) {
   return lhs;
 }
 
-struct eraseToEOL { eraseToEOL() { } };
+struct eraseToEOL {};
 inline std::ostream& operator<<(std::ostream& lhs, const eraseToEOL&) {
   sendCmd(lhs, 0, 'K');
   return lhs;
 }
 
-struct clearline { clearline() { } };
+struct clearline {};
 inline std::ostream& operator<<(std::ostream& lhs, const clearline&) {
   sendCmd(lhs, 2, 'K');
   return lhs;

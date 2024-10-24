@@ -1,13 +1,14 @@
 #include <hobbes/ipc/process.H>
 #include <hobbes/lang/typeinf.H>
 #include <hobbes/lang/preds/class.H>
+#include <memory>
 
 namespace hobbes {
 
 #define PROCESS_SPAWN "spawn"
 
 ProcessP::ProcessP(FieldVerifier* fv) {
-  fv->addEliminator(&this->procman);
+  fv->addEliminator(this->procman);
 }
 
 static bool dec(const ConstraintPtr& c, MonoTypePtr* lhs, MonoTypePtr* rhs) {
@@ -29,7 +30,7 @@ bool ProcessP::refine(const TEnvPtr&, const ConstraintPtr& cst, MonoTypeUnifier*
   MonoTypePtr cmdt, pidt;
   if (dec(cst, &cmdt, &pidt)) {
     if (const TString* cmd = is<TString>(cmdt)) {
-      mgu(pidt, mkPidTy(this->procman.spawnedPid(cmd->value())), u);
+      mgu(pidt, mkPidTy(this->procman->spawnedPid(cmd->value())), u);
     }
   }
   return uc != u->size();
@@ -40,7 +41,7 @@ bool ProcessP::satisfied(const TEnvPtr&, const ConstraintPtr& cst, Definitions*)
   if (dec(cst, &cmdt, &pidt)) {
     if (const TString* cmd = is<TString>(cmdt)) {
       if (const TLong* pid = pidTy(pidt)) {
-        return this->procman.isSpawnedPid(cmd->value(), pid->value());
+        return this->procman->isSpawnedPid(cmd->value(), pid->value());
       }
     }
   }
@@ -50,9 +51,9 @@ bool ProcessP::satisfied(const TEnvPtr&, const ConstraintPtr& cst, Definitions*)
 bool ProcessP::satisfiable(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions* ds) const {
   MonoTypePtr cmdt, pidt;
   if (dec(cst, &cmdt, &pidt)) {
-    if (is<TVar>(cmdt)) {
+    if (is<TVar>(cmdt) != nullptr) {
       return true;
-    } else if (is<TVar>(pidt)) {
+    } else if (is<TVar>(pidt) != nullptr) {
       return true;
     } else {
       return satisfied(tenv, cst, ds);
@@ -75,15 +76,15 @@ struct ProcessPUnqualify : public switchExprTyFn {
       throw std::runtime_error("Internal error, invalid constraint for process resolution");
     }
     const TLong* tpid = pidTy(pidt);
-    if (!tpid) { throw std::runtime_error("Internal error, unresolved process constraint for resolution"); }
+    if (tpid == nullptr) { throw std::runtime_error("Internal error, unresolved process constraint for resolution"); }
     this->pid = tpid->value();
   }
 
-  QualTypePtr withTy(const QualTypePtr& qt) const {
+  QualTypePtr withTy(const QualTypePtr& qt) const override {
     return removeConstraint(this->constraint, qt);
   }
 
-  ExprPtr with(const App* ap) const {
+  ExprPtr with(const App* ap) const override {
     if (const Var* fn = is<Var>(stripAssumpHead(ap->fn()))) {
       if (fn->value() == PROCESS_SPAWN && hasConstraint(this->constraint, fn->type())) {
         return wrapWithTy(ap->type(), new Long(this->pid, fn->la()));
@@ -92,7 +93,7 @@ struct ProcessPUnqualify : public switchExprTyFn {
     return ExprPtr(new App(switchOf(ap->fn(), *this), switchOf(ap->args(), *this), ap->la()));
   }
 
-  ExprPtr with(const Var* v) const {
+  ExprPtr with(const Var* v) const override {
     if (hasConstraint(this->constraint, v->type())) {
       throw std::runtime_error("spawn to lambda NYI (unnecessary?)");
     }
@@ -106,7 +107,7 @@ ExprPtr ProcessP::unqualify(const TEnvPtr&, const ConstraintPtr& cst, const Expr
 
 PolyTypePtr ProcessP::lookup(const std::string& vn) const {
   if (vn == PROCESS_SPAWN) {
-    return polytype(2, qualtype(list(ConstraintPtr(new Constraint(ProcessP::constraintName(), list(tgen(0), tgen(1))))), functy(list(tuplety()), tgen(1))));
+    return polytype(2, qualtype(list(std::make_shared<Constraint>(ProcessP::constraintName(), list(tgen(0), tgen(1)))), functy(list(tuplety()), tgen(1))));
   } else {
     return PolyTypePtr();
   }

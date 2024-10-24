@@ -1,9 +1,10 @@
 
-#include <hobbes/lang/preds/hasfield/slookup.H>
 #include <hobbes/lang/preds/class.H>
-#include <hobbes/lang/tyunqualify.H>
+#include <hobbes/lang/preds/hasfield/slookup.H>
 #include <hobbes/lang/typeinf.H>
+#include <hobbes/lang/tyunqualify.H>
 #include <hobbes/util/array.H>
+#include <memory>
 
 namespace hobbes {
 
@@ -24,7 +25,7 @@ static MonoTypePtr impliedType(const MonoTypePtr& fieldName) {
 }
 
 bool mightRewriteToSLookup(const TEnvPtr& tenv, const MonoTypePtr& rty, const MonoTypePtr& fieldName, const MonoTypePtr& fty, Definitions* ds) {
-  if (is<TVar>(rty)) {
+  if (is<TVar>(rty) != nullptr) {
     return true;
   }
 
@@ -62,7 +63,7 @@ ExprPtr rewriteSLookup(const TEnvPtr& tenv, const ExprPtr& r, const std::string&
     unqualifyTypes(
       tenv,
       fncall(
-        var("slookup", qualtype(list(ConstraintPtr(new Constraint("SLookup", list(rty, xty, fty)))), functy(list(rty), fty)), la),
+        var("slookup", qualtype(list(std::make_shared<Constraint>("SLookup", list(rty, xty, fty))), functy(list(rty), fty)), la),
         list(r),
         la
       ),
@@ -75,7 +76,7 @@ bool HFSLookupEliminator::satisfied(const TEnvPtr& tenv, const HasField& hf, Def
   auto fnamet = hf.fieldName;
   auto fty    = hf.fieldType;
 
-  if (is<TString>(fnamet) || is<TLong>(fnamet)) {
+  if ((is<TString>(fnamet) != nullptr) || (is<TLong>(fnamet) != nullptr)) {
     MonoTypePtr efty = rewritesToSLookup(tenv, rty, fnamet, fty, ds);
     return efty != MonoTypePtr() && isMonoSingular(efty) && *efty == *fty;
   } else {
@@ -96,7 +97,7 @@ bool HFSLookupEliminator::refine(const TEnvPtr& tenv, const HasField& hf, MonoTy
   auto fnamet = hf.fieldName;
   auto fty    = hf.fieldType;
 
-  if (is<TString>(fnamet) || is<TLong>(fnamet)) {
+  if ((is<TString>(fnamet) != nullptr) || (is<TLong>(fnamet) != nullptr)) {
     MonoTypePtr efty = rewritesToSLookup(tenv, rty, fnamet, fty, ds);
 
     if (efty != MonoTypePtr() && isMonoSingular(efty)) {
@@ -117,13 +118,13 @@ struct HFSLookupUnqualify : public switchExprTyFn {
   HFSLookupUnqualify(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions* defs) : tenv(tenv), constraint(cst), defs(defs) {
   }
 
-  ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const {
+  ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const override {
     ExprPtr result(e);
     result->type(removeConstraint(this->constraint, qty));
     return result;
   }
 
-  ExprPtr with(const Proj* v) const {
+  ExprPtr with(const Proj* v) const override {
     ExprPtr prec = switchOf(v->record(), *this);
 
     if (hasConstraint(this->constraint, v->type()) && rewritesToSLookup(this->tenv, prec->type()->monoType(), impliedType(v->field()), v->type()->monoType(), this->defs)) {

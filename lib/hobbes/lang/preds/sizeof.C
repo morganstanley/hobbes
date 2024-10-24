@@ -1,7 +1,8 @@
 
-#include <hobbes/lang/preds/sizeof.H>
 #include <hobbes/lang/preds/class.H>
+#include <hobbes/lang/preds/sizeof.H>
 #include <hobbes/lang/typeinf.H>
+#include <memory>
 
 namespace hobbes {
 
@@ -41,11 +42,11 @@ struct SizeOfPUnqualify : public switchExprTyFn {
   SizeOfPUnqualify(const ConstraintPtr& constraint) : constraint(constraint) {
   }
 
-  QualTypePtr withTy(const QualTypePtr& qt) const {
+  QualTypePtr withTy(const QualTypePtr& qt) const override {
     return removeConstraint(this->constraint, qt);
   }
 
-  ExprPtr with(const Var* vn) const {
+  ExprPtr with(const Var* vn) const override {
     if (vn->value() == REF_SIZEOF) {
       return constant(static_cast<size_t>(sizeOf(this->constraint->arguments()[0])), vn->la());
     } else {
@@ -60,7 +61,7 @@ ExprPtr SizeOfP::unqualify(const TEnvPtr&, const ConstraintPtr& cst, const ExprP
 
 PolyTypePtr SizeOfP::lookup(const std::string& vn) const {
   if (vn == REF_SIZEOF) {
-    return polytype(2, qualtype(list(ConstraintPtr(new Constraint(SizeOfP::constraintName(), list(tgen(0), tgen(1))))), primty("long")));
+    return polytype(2, qualtype(list(std::make_shared<Constraint>(SizeOfP::constraintName(), list(tgen(0), tgen(1)))), primty("long")));
   } else {
     return PolyTypePtr();
   }

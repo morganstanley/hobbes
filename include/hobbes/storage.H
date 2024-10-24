@@ -11,21 +11,21 @@
 #ifndef HSTORE_H_INCLUDED
 #define HSTORE_H_INCLUDED
 
-#include <map>
-#include <vector>
 #include <array>
-#include <string>
-#include <string.h>
-#include <tuple>
+#include <atomic>
+#include <cassert>
+#include <cstdint>
+#include <cstdlib>
+#include <cstring>
 #include <functional>
 #include <iostream>
-#include <sstream>
-#include <atomic>
+#include <map>
 #include <mutex>
+#include <sstream>
 #include <stdexcept>
-#include <stdlib.h>
-#include <stdint.h>
-#include <assert.h>
+#include <string>
+#include <tuple>
+#include <vector>
 
 #include <unistd.h>
 #include <sys/types.h>
@@ -43,15 +43,6 @@
 #include "reflect.H"
 
 namespace hobbes { namespace storage { namespace internal {
-
-// a few things have to be OS-specific here
-//  * available waiting strategy in shared memory
-//  * default waiting strategy
-#if defined(__APPLE__) && defined(__MACH__)
-// macOS doesn't support this flag to mmap so we can just 0 it out
-#ifndef MAP_POPULATE
-#define MAP_POPULATE 0
-#endif
 
 namespace spin {
 
@@ -74,6 +65,26 @@ inline long poll_tickNS() {
   }
 }
 #endif
+
+static inline void wakeN(volatile uint32_t*, int) {
+  // assume the waiter is polling, nothing to do
+}
+
+} // namespace spin
+}}} // namespace hobbes { namespace storage { namespace internal
+
+// a few things have to be OS-specific here
+//  * available waiting strategy in shared memory
+//  * default waiting strategy
+#if defined(__APPLE__) && defined(__MACH__)
+// macOS doesn't support this flag to mmap so we can just 0 it out
+#ifndef MAP_POPULATE
+#define MAP_POPULATE 0
+#endif
+
+namespace hobbes { namespace storage { namespace internal {
+
+namespace spin {
 
 static inline void waitForUpdate(volatile uint32_t* p, int eqV) {
   while (true) {
@@ -108,36 +119,21 @@ static inline void waitForUpdate(volatile uint32_t* p, int eqV, size_t timeoutNS
     usleep(500);
   }
 }
-static inline void wakeN(volatile uint32_t* p, int c) {
-  // assume the waiter is polling, nothing to do
-}
 
 } // namespace spin
+
+namespace platform = spin;
+
+}}} // namespace hobbes { namespace storage { namespace internal
+
 #else
+
 #include <linux/futex.h>
 #include <sys/syscall.h>
 
-namespace spin {
+namespace hobbes { namespace storage { namespace internal {
 
-#if defined(CLOCK_REALTIME)
-inline long poll_tickNS() {
-  timespec ts;
-  if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0) {
-    return ts.tv_sec * 1000000000L + ts.tv_nsec;
-  } else {
-    return 0;
-  }
-}
-#else
-inline long poll_tickNS() {
-  struct timeval t;
-  if (gettimeofday(&t, 0) == 0) {
-    return ((t.tv_sec * 1000000) + t.tv_usec) * 1000;
-  } else {
-    return 0;
-  }
-}
-#endif
+namespace spin {
 
 static inline void waitForUpdate(volatile uint32_t* p, int eqV) {
   while (true) {
@@ -170,10 +166,6 @@ static inline void waitForUpdate(volatile uint32_t* p, int eqV, size_t timeoutNS
     }
   }
 }
-static inline void wakeN(volatile uint32_t*, int) {
-  // assume the waiter is polling, nothing to do
-}
-
 } // namespace spin
 
 namespace futex {
@@ -182,7 +174,7 @@ static inline long sys_futex(volatile uint32_t* p, int op, int v, struct timespe
   return syscall(SYS_futex, p, op, v, timeout, p2, v2);
 }
 static inline void waitForUpdate(volatile uint32_t* p, int eqV) {
-  sys_futex(p, FUTEX_WAIT, eqV, 0, 0, 0);
+  sys_futex(p, FUTEX_WAIT, eqV, nullptr, nullptr, 0);
 }
 static inline void waitForUpdate(volatile uint32_t* p, int eqV, size_t timeoutNS, const std::function<void()>& timeoutF) {
   if (timeoutNS == 0) {
@@ -196,7 +188,7 @@ static inline void waitForUpdate(volatile uint32_t* p, int eqV, size_t timeoutNS
 
   bool c = true;
   while (c) {
-    int r = sys_futex(p, FUTEX_WAIT, eqV, &ts, 0, 0);
+    int r = sys_futex(p, FUTEX_WAIT, eqV, &ts, nullptr, 0);
         c = r < 0 && errno == ETIMEDOUT;
 
     if (c) {
@@ -205,24 +197,20 @@ static inline void waitForUpdate(volatile uint32_t* p, int eqV, size_t timeoutNS
   }
 }
 static inline void wakeN(volatile uint32_t* p, int c) {
-  sys_futex(p, FUTEX_WAKE, c, 0, 0, 0);
+  sys_futex(p, FUTEX_WAKE, c, nullptr, nullptr, 0);
 }
 
 } // namespace futex
-#endif
 
-#if defined (__APPLE__) && defined (__MACH__)
-namespace platform = spin;
-#else
 namespace platform = futex;
-#endif
 
-}}}
+}}} // namespace hobbes { namespace storage { namespace internal
+#endif
 
 namespace hobbes { namespace storage {
 
-typedef void (*WaitFn)(volatile uint32_t*, int, size_t, const std::function<void()>&);
-typedef void (*WakeFn)(volatile uint32_t*, int);
+using WaitFn = void (*)(volatile uint32_t *, int, size_t, const std::function<void ()> &);
+using WakeFn = void (*)(volatile uint32_t *, int);
 
 enum WaitPolicy {
   Platform = 0,
@@ -251,7 +239,7 @@ namespace hobbes { namespace storage {
 
 #define HSTORE_VERSION static_cast<uint32_t>(0x00020000)
 
-typedef std::vector<uint8_t> bytes;
+using bytes = std::vector<uint8_t>;
 
 // write transactions into shared memory
 #define PRIV_HSTORE_LIKELY(x)   __builtin_expect((x),1)
@@ -322,7 +310,7 @@ inline int mqconnect(const std::string& fileName) {
   addr.sun_family = AF_UNIX;
   snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", fileName.c_str());
  
-  sockaddr* saddr = reinterpret_cast<sockaddr*>(&addr);
+  auto* saddr = reinterpret_cast<sockaddr*>(&addr);
   size_t    len   = sizeof(addr);
   if (connect(r, saddr, len) == -1) {
     std::string emsg = "Unable to connect socket: " + std::string(strerror(errno));
@@ -333,13 +321,13 @@ inline int mqconnect(const std::string& fileName) {
   fd_set wd;
   FD_ZERO(&wd);
   FD_SET(r, &wd);
-  if (select(r + 1, 0, &wd, 0, 0) == -1) {
+  if (select(r + 1, nullptr, &wd, nullptr, nullptr) == -1) {
     std::string emsg = "Failed to connect socket while waiting for writeability: " + std::string(strerror(errno));
     close(r);
     throw std::runtime_error(emsg);
   }
 
-  uint32_t version = HSTORE_VERSION;
+  auto version = HSTORE_VERSION;
   mqwrite(r, reinterpret_cast<const uint8_t*>(&version), sizeof(version));
   return r;
 }
@@ -377,18 +365,18 @@ inline int mqlisten(const std::string& fileName) {
 }
 
 inline std::string defaultStoreDir() {
-  const char* td = 0;
-  if ((td = ::getenv("HOBBES_STORE_DIR"))) {
+  const char* td = nullptr;
+  if ((td = ::getenv("HOBBES_STORE_DIR")) != nullptr) {
     if (::strlen(td) > 0 && ::access(td, W_OK) == 0) {
       return std::string(td);
     }
   }
-  if ((td = ::getenv("TMPDIR"))) {
+  if ((td = ::getenv("TMPDIR")) != nullptr) {
     if (::strlen(td) > 0 && ::access(td, W_OK) == 0) {
       return std::string(td);
     }
   }
-  if ((td = ::getenv("TMP"))) {
+  if ((td = ::getenv("TMP")) != nullptr) {
     if (::strlen(td) > 0 && ::access(td, W_OK) == 0) {
       return std::string(td);
     }
@@ -418,7 +406,7 @@ inline int makeGroupHost(const std::string& groupName, const std::string& sdir =
 }
 
 // identify this process/thread
-typedef std::pair<uint64_t, uint64_t> ProcThread;
+using ProcThread = std::pair<uint64_t, uint64_t>;
 
 inline ProcThread thisProcThread() {
   ProcThread r;
@@ -466,7 +454,7 @@ inline void reconnectSHM(int* mqserver, const char* groupName, const WaitPolicy 
     tmout.tv_sec = 0;
     tmout.tv_usec = 1;
 
-    auto sr = select(*mqserver+1, &rd, 0, 0, &tmout);
+    auto sr = select(*mqserver+1, &rd, nullptr, nullptr, &tmout);
     if (sr == 1) {
       char b=0;
       if (recv(*mqserver, &b, 1, MSG_PEEK) == 0) {
@@ -497,7 +485,7 @@ inline void reconnectSHM(int* mqserver, const char* groupName, const WaitPolicy 
 
 struct pqueue_config {
   pqueue_config() :
-    valuesz(0), count(0), wstate(0), readerIndex(0), writerIndex(0), data(0) {
+    valuesz(0), count(0), wstate(nullptr), readerIndex(nullptr), writerIndex(nullptr), data(nullptr) {
   }
   
   pqueue_config(size_t valuesz, size_t count, uint32_t* wstate, uint32_t* ri, uint32_t* wi, uint8_t* data) :
@@ -560,8 +548,8 @@ public:
   
     // our meta-data section comes first up to the first page boundary
     // then our data section comes next
-    size_t metaLen = align<size_t>(sizeof(ShQueueHeader) + meta.size(),  pagesz);
-    size_t dataLen = align<size_t>(sizeof(ShQueueData)   + qvalsz*count, pagesz);
+    auto metaLen = align<size_t>(sizeof(ShQueueHeader) + meta.size(),  pagesz);
+    auto dataLen = align<size_t>(sizeof(ShQueueData)   + qvalsz*count, pagesz);
     size_t memLen  = metaLen + dataLen;
   
     // allocate this much data
@@ -569,13 +557,13 @@ public:
       throw std::runtime_error("Failed to truncate shared memory for '" + shmname + "': " + strerror(errno));
     }
   
-    uint8_t* mem = reinterpret_cast<uint8_t*>(mmap(0, memLen, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_POPULATE, shfd, 0));
+    auto* mem = reinterpret_cast<uint8_t*>(mmap(nullptr, memLen, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_POPULATE, shfd, 0));
     if (mem == MAP_FAILED) {
       throw std::runtime_error("Failed to map bytes out of shared memory for '" + shmname + "': " + strerror(errno));
     }
   
     // write meta data
-    ShQueueHeader* hdr = reinterpret_cast<ShQueueHeader*>(mem);
+    auto* hdr = reinterpret_cast<ShQueueHeader*>(mem);
     hdr->valsz  = qvalsz;
     hdr->count  = count;
     hdr->metasz = meta.size();
@@ -585,7 +573,7 @@ public:
     uxchg(&hdr->ready, 1);
   
     // now make this pqueue config
-    ShQueueData* sqd = reinterpret_cast<ShQueueData*>(mem + metaLen);
+    auto* sqd = reinterpret_cast<ShQueueData*>(mem + metaLen);
   
     this->shmname = shmname;
     this->shmfd   = shfd;
@@ -637,7 +625,7 @@ public:
   
   uint8_t* pollNext() {
     if (PRIV_HSTORE_UNLIKELY(*readIndex() == nextIndex(writeIndex()))) {
-      return 0;
+      return nullptr;
     } else {
       return value(*writeIndex());
     }
@@ -701,11 +689,11 @@ private:
       markPage(PRIV_HSTORE_PAGE_STATE_TENTATIVE);
       this->wq->push();
       uint8_t* npage = this->wq->pollNext();
-      markPage(npage ? PRIV_HSTORE_PAGE_STATE_CONT : PRIV_HSTORE_PAGE_STATE_ROLLBACK);
+      markPage(npage != nullptr ? PRIV_HSTORE_PAGE_STATE_CONT : PRIV_HSTORE_PAGE_STATE_ROLLBACK);
 
       this->page   = npage;
       this->offset = 0;
-      return npage;
+      return npage != nullptr;
     }
   }
 public:
@@ -722,14 +710,14 @@ public:
       this->wq->push();
       this->page = this->wq->next(this->timeoutNS, this->timeoutF);
     } else {
-      if (PRIV_HSTORE_LIKELY(this->page != 0)) {
+      if (PRIV_HSTORE_LIKELY(this->page != nullptr)) {
         markPage(PRIV_HSTORE_PAGE_STATE_COMMIT);
         this->wq->push();
       }
       this->page = this->wq->pollNext();
 
       // allow unreliable producers to process timeout events
-      if (PRIV_HSTORE_UNLIKELY(this->page == 0)) {
+      if (PRIV_HSTORE_UNLIKELY(this->page == nullptr)) {
         if (this->unrtimeNS == 0) {
           this->unrtimeNS = internal::spin::poll_tickNS();
         } else if (internal::spin::poll_tickNS() - this->unrtimeNS >= this->timeoutNS) {
@@ -742,7 +730,7 @@ public:
   }
 
   void rollback() {
-    if (PRIV_HSTORE_LIKELY(this->page != 0)) {
+    if (PRIV_HSTORE_LIKELY(this->page != nullptr)) {
       markPage(PRIV_HSTORE_PAGE_STATE_ROLLBACK);
       this->wq->push();
     }
@@ -751,7 +739,7 @@ public:
   }
 
   bool hasSpaceFor(size_t sz) const {
-    return this->page && sz < (this->pagesz - this->offset);
+    return (this->page != nullptr) && sz < (this->pagesz - this->offset);
   }
 
   // write a block of bytes within a frame
@@ -783,7 +771,7 @@ public:
       this->offset = this->pagesz;
       so += this->pagesz;
     }
-    if (!this->page) {
+    if (this->page == nullptr) {
       return false;
     } else {
       if (so < sz) {
@@ -828,13 +816,13 @@ inline QueueConnection consumeQueue(const std::string& shmname) {
   }
 
   // map memory for this data, ensure it is in a good state
-  uint8_t* mem = reinterpret_cast<uint8_t*>(mmap(0, msb.st_size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_POPULATE, shfd, 0));
+  auto* mem = reinterpret_cast<uint8_t*>(mmap(nullptr, msb.st_size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_POPULATE, shfd, 0));
   if (mem == MAP_FAILED) {
     close(shfd);
     throw std::runtime_error("Failed to map bytes out of shared memory for '" + shmname + "': " + strerror(errno));
   }
 
-  if (!reinterpret_cast<ShQueueHeader*>(mem)->ready) {
+  if (reinterpret_cast<ShQueueHeader*>(mem)->ready == 0u) {
     munmap(mem, msb.st_size);
     close(shfd);
     throw std::runtime_error("Not ready to consume shared memory for '" + shmname + "'");
@@ -871,9 +859,9 @@ private:
 public:
   reader(const QueueConnection& qc, const WaitPolicy wp) : shfd(qc.shfd), waitFn(hobbes::storage::waitFn(wp)), wakeFn(hobbes::storage::wakeFn(wp)) {
     // prepare to read the queue description
-    ShQueueHeader* hdr     = reinterpret_cast<ShQueueHeader*>(qc.data);
-    size_t         metaLen = align<size_t>(sizeof(ShQueueHeader) + hdr->metasz, qc.pagesz);
-    ShQueueData*   sqd     = reinterpret_cast<ShQueueData*>(qc.data + metaLen);
+    auto* hdr     = reinterpret_cast<ShQueueHeader*>(qc.data);
+    auto         metaLen = align<size_t>(sizeof(ShQueueHeader) + hdr->metasz, qc.pagesz);
+    auto*   sqd     = reinterpret_cast<ShQueueData*>(qc.data + metaLen);
 
     // now we should have enough to read out of this queue
     this->metad           = qc.data + sizeof(ShQueueHeader);
@@ -893,7 +881,7 @@ public:
   inline const pqueue_config& config() const { return this->cfg; }
 
   // access queue init data; (null,0) if no data was specified
-  typedef std::pair<const uint8_t*, size_t> MetaData;
+  using MetaData = std::pair<const uint8_t *, size_t>;
   MetaData meta() const {
     return MetaData(this->metad, this->metasz);
   }
@@ -939,7 +927,7 @@ public:
   // get the next value in the queue if one is present, else null
   uint8_t* pollNext() {
     if (PRIV_HSTORE_UNLIKELY(*writeIndex() == *readIndex())) {
-      return 0;
+      return nullptr;
     } else {
       return value(*readIndex());
     }
@@ -964,7 +952,7 @@ private:
   size_t         pagesz;
   uint32_t       offset;
 public:
-  rpipe(reader* rq) : rq(rq), page(0), pagesz(rq->config().valuesz - sizeof(uint32_t)), offset(0) {
+  rpipe(reader* rq) : rq(rq), page(nullptr), pagesz(rq->config().valuesz - sizeof(uint32_t)), offset(0) {
     if (rq->config().valuesz <= sizeof(uint32_t)) {
       throw std::runtime_error("queue page size too small for use as shared memory pipe");
     }
@@ -972,13 +960,13 @@ public:
 
   // read a range of bytes out of the 'pipe' into a user-supplied buffer
   size_t read(uint8_t* dst, size_t sz, uint8_t* state, size_t timeoutNS, const std::function<void()>& timeoutF) {
-    if (!this->page) {
+    if (this->page == nullptr) {
       this->page = this->rq->next(timeoutNS, timeoutF);
     }
   
     size_t doff = 0;
   
-    while (sz != 0 && this->page) {
+    while (sz != 0 && (this->page != nullptr)) {
       // how much can we copy out of the current page into the dest buffer?
       const volatile uint32_t* pend      = reinterpret_cast<const uint32_t*>(this->page + this->pagesz);
       size_t                   rpagesz   = *pend & ~(0xFF << 24);
@@ -998,12 +986,12 @@ public:
         // wait for the producer to decide what state the page is in
         while ((*pend >> 24) == PRIV_HSTORE_PAGE_STATE_TENTATIVE);
         uint8_t ps = *pend >> 24;
-        if (state) *state = ps;
+        if (state != nullptr) *state = ps;
 
         // if this page is just a continuation, continue reading
         // else we've terminated a transaction
         this->rq->pop();
-        this->page   = (ps == PRIV_HSTORE_PAGE_STATE_CONT) ? this->rq->pollNext() : 0;
+        this->page   = (ps == PRIV_HSTORE_PAGE_STATE_CONT) ? this->rq->pollNext() : nullptr;
         this->offset = 0;
       }
     }
@@ -1199,9 +1187,9 @@ template <typename T>
 // a generic method to write tuples as a last resort
 template <size_t i, size_t n, typename ... Ts>
   struct storeTupleDef {
-    typedef typename nth<i, Ts...>::type H;
-    typedef typename tuple<Ts...>::offs  offs;
-    typedef storeTupleDef<i+1, n, Ts...> Recurse;
+    using H = typename nth<i, Ts...>::type;
+    using offs = typename tuple<Ts...>::offs;
+    using Recurse = storeTupleDef<i + 1, n, Ts...>;
 
     static void fieldDefs(ty::Struct::Fields* fs) {
       fs->push_back(ty::Struct::Field(".f" + hobbes::string::from(i), static_cast<int>(offsetAt<i, offs>::value), store<H>::type()));
@@ -1261,7 +1249,7 @@ template <typename ... Ts>
 template <typename ... Ts>
   struct storeStdLayoutTuple<tuple<Ts...>, typename tbool<(!tuple<Ts...>::packed && !tuple<Ts...>::offs::packed) || !all_memcpyableFs<Ts...>::value>::type> {
     static const bool can_memcpy = false;
-    typedef storeTupleDef<0, sizeof...(Ts), Ts...> Reflect;
+    using Reflect = storeTupleDef<0, sizeof...(Ts), Ts...>;
     static ty::desc type()                                 { return Reflect::type(); }
     static size_t   size(const tuple<Ts...>& t)            { return Reflect::size(t); }
     static bool     write(wpipe& p, const tuple<Ts...>& t) { return Reflect::incrWrite(p, t); }
@@ -1324,14 +1312,14 @@ template <typename T> struct member;
 
 template <typename T, typename F>
   struct member<F T::*> {
-    typedef F type;
-    typedef F T::* Acc;
+    using type = F;
+    using Acc = F T::*;
     static const F& read(const T& x, Acc a) { return x.*a; }
   };
 template <typename T, typename F>
   struct member<F (T::*)() const> {
-    typedef F type;
-    typedef F (T::*Acc)() const;
+    using type = F;
+    using Acc = F (T::*)() const;
     static F read(const T& x, Acc a) { return (x.*a)(); }
   };
 
@@ -1413,8 +1401,8 @@ template <typename T>
 // store variants
 template <size_t i, size_t n, typename ... Ts>
   struct storeVariantDef {
-    typedef typename nth<i, Ts...>::type   H;
-    typedef storeVariantDef<i+1, n, Ts...> Recurse;
+    using H = typename nth<i, Ts...>::type;
+    using Recurse = storeVariantDef<i + 1, n, Ts...>;
 
     static void ctorDefs(ty::Variant::Ctors* cs) {
       cs->push_back(ty::Variant::Ctor(".f" + hobbes::string::from(i), static_cast<int>(i), store<H>::type()));
@@ -1466,7 +1454,7 @@ struct descVariantF {
 
 template <typename T>
   struct store<T, typename tbool<T::is_hmeta_variant>::type> {
-    typedef typename T::as_variant_type VT;
+    using VT = typename T::as_variant_type;
     static const bool can_memcpy = store<VT>::can_memcpy;
 
     static ty::desc type() {
@@ -1488,7 +1476,7 @@ struct recursion {
 
 template <typename T>
   struct recursive {
-    typedef T value_type;
+    using value_type = T;
     value_type value;
     recursive(const value_type& x) : value(x) { }
   };
@@ -1499,18 +1487,18 @@ template <>
       return ty::var("x");
     }
 
-    typedef size_t (*RecSizeF)(const recursion&);
+    using RecSizeF = size_t (*)(const recursion &);
     static RecSizeF& sizeF() {
-      thread_local RecSizeF fn = 0;
+      thread_local RecSizeF fn = nullptr;
       return fn;
     }
     static size_t size(const recursion& x) {
       return sizeF()(x);
     }
 
-    typedef bool (*RecWriteF)(wpipe&, const recursion&);
+    using RecWriteF = bool (*)(wpipe &, const recursion &);
     static RecWriteF& writeF() {
-      thread_local RecWriteF fn = 0;
+      thread_local RecWriteF fn = nullptr;
       return fn;
     }
     static bool write(wpipe& p, const recursion& x) {
@@ -1527,7 +1515,7 @@ template <typename T>
       return size(*reinterpret_cast<const recursive<T>*>(x.value));
     }
     static size_t size(const recursive<T>& x) {
-      typedef typename store<recursion>::RecSizeF RSF;
+      using RSF = typename store<recursion>::RecSizeF;
       RSF sf = store<recursion>::sizeF();
       store<recursion>::sizeF() = &store<recursive<T>>::recSize;
       size_t r = store<T>::size(x.value);
@@ -1539,7 +1527,7 @@ template <typename T>
       return write(p, *reinterpret_cast<const recursive<T>*>(x.value));
     }
     static bool write(wpipe& p, const recursive<T>& x) {
-      typedef typename store<recursion>::RecWriteF RWF;
+      using RWF = typename store<recursion>::RecWriteF;
       RWF sf = store<recursion>::writeF();
       store<recursion>::writeF() = &store<recursive<T>>::recWrite;
       bool r = store<T>::write(p, x.value);
@@ -1551,7 +1539,7 @@ template <typename T>
 // store opaque type aliases
 template <typename T>
   struct store<T, typename tbool<T::is_hmeta_alias>::type> {
-    typedef typename T::type RT;
+    using RT = typename T::type;
     static const bool can_memcpy = store<RT>::can_memcpy;
 
     static ty::desc type ()                     { return ty::prim(T::name(), store<RT>::type()); ; }
@@ -1576,7 +1564,7 @@ template <typename F, typename T>
 #define HNAME(N,E) ::hobbes::storage::namedValue<PRIV_HPPF_TSTR(#N),decltype(E)>(E)
 
 // allow inference of log statement names from payload types
-typedef void (*tynamehints)(std::vector<std::string>*);
+using tynamehints = void (*)(std::vector<std::string> *);
 template <typename T>
   struct nameAt {
     template <typename U, std::string (*P)()> struct HasStorageName { };
@@ -1588,7 +1576,7 @@ template <typename T>
   struct storeNames {
     static void accum(std::vector<std::string>* ns) {
       std::string n = nameAt<T>::template is<store<T>>(0);
-      if (n.size() > 0) {
+      if (!n.empty()) {
         ns->push_back(n);
       }
     }
@@ -1612,7 +1600,7 @@ template <typename F, typename T>
 
 template <typename ... Ts>
   struct hstore_payload_types {
-    typedef unit head_type;
+    using head_type = unit;
     static const size_t count = 0;
     static const bool isTuple = true;
     static void fields(const char*,size_t,ty::Struct::Fields*) {}
@@ -1620,7 +1608,7 @@ template <typename ... Ts>
   };
 template <typename T, typename ... Ts>
   struct hstore_payload_types<T,Ts...> {
-    typedef T head_type;
+    using head_type = T;
     static const size_t count = 1 + hstore_payload_types<Ts...>::count;
     static const bool isTuple = hstore_argl_name<T>::isTuple && hstore_payload_types<Ts...>::isTuple;
     static void fields(const char* fmt, size_t f, ty::Struct::Fields* fs) {
@@ -1640,7 +1628,7 @@ template <typename ... Ts>
     return hstore_payload_types<Ts...>();
   }
 
-typedef void (*tydescfn)(bytes*,std::string*);
+using tydescfn = void (*)(bytes *, std::string *);
 template <typename TyList>
   void makeTyDescF(bytes* e, std::string* d) {
     ty::desc td;
@@ -1689,7 +1677,7 @@ struct StorageGroup {
     uint32_t    line;
     uint32_t    id;
   };
-  typedef std::map<std::string, StmtData> StorageStatements;
+  using StorageStatements = std::map<std::string, StmtData>;
 
   StorageStatements* statements;
   PipeQOS            qos;
@@ -1811,7 +1799,7 @@ struct StorageGroup {
       std::string n;
       std::vector<std::string> ns;
       tnhints(&ns);
-      if (ns.size() == 0) {
+      if (ns.empty()) {
         n = x.substr(5);
       } else {
         std::ostringstream nss;
@@ -1839,7 +1827,7 @@ struct StorageGroup {
     return fnss.str();
   }
 
-  uint32_t addStatement(const std::string file, uint32_t line, const std::string& name, size_t flags, const std::string& fmtstr, tydescfn tdesc) {
+  uint32_t addStatement(const std::string& file, uint32_t line, const std::string& name, size_t flags, const std::string& fmtstr, tydescfn tdesc) {
     if (this->statements->find(name) != this->statements->end()) {
       std::cerr
         << "fatal error: duplicate log name in use (" << name << ")"
@@ -1872,14 +1860,14 @@ struct StorageGroup {
       // make sure that all identifying parameters are consistent
       bytes ety, xty;
       s->second.tdesc(&ety,0);
-      tdesc(&xty,0);
+      tdesc(&xty,nullptr);
       if (ety != xty) {
         if (isAutoName(namet)) {
           return addStatement(file, line, incrAutoName(name), flags, fmtstr, tdesc);
         } else {
           std::string etd, xtd;
           s->second.tdesc(0,&etd);
-          tdesc(0,&xtd);
+          tdesc(nullptr,&xtd);
 
           std::cerr
             << "fatal error: incompatible types for store statement '" << name << "' between:\n"
@@ -1930,7 +1918,7 @@ struct StorageGroup {
   }
 };
 template <typename Name, CommitMethod cm>
-  thread_local wpipe* StorageGroup<Name, cm>::pipe = 0;
+  thread_local wpipe* StorageGroup<Name, cm>::pipe = nullptr;
 template <typename Name, CommitMethod cm>
   std::vector<ProcThread> StorageGroup<Name, cm>::pts;
 
@@ -2029,7 +2017,7 @@ struct statement {
            this->type   == rhs.type;
   }
 };
-typedef std::vector<statement> statements;
+using statements = std::vector<statement>;
 
 inline size_t rs(const reader::MetaData& md, size_t o, size_t n, uint8_t* b) {
   if (o + n <= md.second) {
@@ -2062,14 +2050,11 @@ inline size_t rs(const reader::MetaData& md, size_t o, bytes* s) {
 class Transaction {
 public:
   // a persistent transaction to retain log data between consumer sessions (if necessary)
-  Transaction(std::string fname) : fd(-1), file_size(0), map_size(0), data(0), data_size(0), wi(0), ri(0) {
-    for (size_t i = 0; i < fname.size(); ++i) {
-      switch (fname[i]) {
-      case '/': fname[i]='_'; break;
-      case ':': fname[i]='_'; break;
-      case '[': fname[i]='_'; break;
-      case ']': fname[i]='_'; break;
-      default:                break;
+  Transaction(std::string fname) : fd(-1), file_size(0), map_size(0), data(nullptr), data_size(nullptr), wi(0), ri(0) {
+    for (char &i : fname) {
+      switch (i) {
+      case '/': case ':': case '[': case ']': i='_'; break;
+      default: break;
       }
     }
     fname = "." + fname + ".txn";
@@ -2088,7 +2073,7 @@ public:
   }
 
   // a non-persistent transaction over constant data (just used by remote consumers)
-  Transaction(const uint8_t* d, size_t len) : fd(-1), file_size(len), map_size(len), data(const_cast<uint8_t*>(d)), data_size(0), wi(0), ri(0) {
+  Transaction(const uint8_t* d, size_t len) : fd(-1), file_size(len), map_size(len), data(const_cast<uint8_t*>(d)), data_size(nullptr), wi(0), ri(0) {
     this->data_size = &this->map_size;
   }
 
@@ -2106,7 +2091,7 @@ public:
 
   template <typename T>
     const T* read() {
-      auto p = reinterpret_cast<const T*>(ptr());
+      const auto *p = reinterpret_cast<const T*>(ptr());
       skip(sizeof(T));
       return p;
     }
@@ -2166,10 +2151,10 @@ private:
     this->file_size = sz;
 
     if (sz > this->map_size) {
-      if (this->data) { ::munmap(this->data-sizeof(size_t), this->map_size); }
+      if (this->data != nullptr) { ::munmap(this->data-sizeof(size_t), this->map_size); }
 
       this->map_size = align<size_t>(sz, /*10MB*/10485760);
-      this->data = reinterpret_cast<uint8_t*>(mmap(0, this->map_size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_POPULATE, this->fd, 0));
+      this->data = reinterpret_cast<uint8_t*>(mmap(nullptr, this->map_size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_POPULATE, this->fd, 0));
       if (this->data == MAP_FAILED) {
         throw std::runtime_error("Failed to map transaction persistence file");
       }

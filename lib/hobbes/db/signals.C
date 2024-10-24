@@ -1,14 +1,14 @@
 
-#include <hobbes/db/signals.H>
-#include <hobbes/db/file.H>
-#include <hobbes/events/events.H>
-#include <hobbes/util/os.H>
-#include <hobbes/hobbes.H>
-#include <vector>
-#include <set>
 #include <atomic>
-#include <string.h>
-#include <errno.h>
+#include <cerrno>
+#include <cstring>
+#include <hobbes/db/file.H>
+#include <hobbes/db/signals.H>
+#include <hobbes/events/events.H>
+#include <hobbes/hobbes.H>
+#include <hobbes/util/os.H>
+#include <set>
+#include <vector>
 
 #ifdef BUILD_LINUX
 #include <sys/inotify.h>
@@ -17,11 +17,11 @@
 namespace hobbes {
 
 // imported from 'bindings' (some refactoring might be good here)
-typedef std::pair<MonoTypePtr, ExprPtr> FRefT;
+using FRefT = std::pair<MonoTypePtr, ExprPtr>;
 FRefT assumeFRefT(const MonoTypePtr&, const LexicalAnnotation&);
 
-typedef std::pair<bool, MonoTypePtr> UTFileConfig;
-typedef std::pair<bool, const Record*> FileConfig;
+using UTFileConfig = std::pair<bool, MonoTypePtr>;
+using FileConfig = std::pair<bool, const Record *>;
 bool unpackFileType(const MonoTypePtr& fty, UTFileConfig* fcfg);
 bool unpackFileType(const MonoTypePtr& fty, FileConfig* fcfg);
 
@@ -29,10 +29,10 @@ MonoTypePtr injFileReferences(const MonoTypePtr&, const ExprPtr&);
 
 // raise a signal when a particular range of bytes in a file have been changed
 // (and include the reference to the file offset that changed)
-typedef bool (*ChangeSignal)(long);
-typedef std::set<ChangeSignal> ChangeSignals;
+using ChangeSignal = bool (*)(long);
+using ChangeSignals = std::set<ChangeSignal>;
 
-typedef std::vector<uint8_t> bytes;
+using bytes = std::vector<uint8_t>;
 
 enum BROffsetType : uint8_t { Binding=0, DArray=1, Value=2 };
 
@@ -43,7 +43,7 @@ struct ByteRangeWatch {
   ChangeSignals          fs;
 };
 
-typedef std::map<uint64_t, ByteRangeWatch> ByteRangeWatches;
+using ByteRangeWatches = std::map<uint64_t, ByteRangeWatch>;
 
 struct FileWatch {
   std::string      filePath;
@@ -65,7 +65,7 @@ void sweepFileWatch(FileWatch& fw) {
       size_t ref = brw.offType==BROffsetType::DArray ? (brwp.first - sizeof(size_t)) : brw.offType==BROffsetType::Binding ? newValue : brwp.first;
       brw.oldValue = newValue;
 
-      for (ChangeSignals::iterator f = brw.fs.begin(); f != brw.fs.end();) {
+      for (auto f = brw.fs.begin(); f != brw.fs.end();) {
         if ((*f)(ref)) {
           ++f;
         } else {
@@ -74,7 +74,7 @@ void sweepFileWatch(FileWatch& fw) {
       }
     }
 
-    if (brw.fs.size() > 0) {
+    if (!brw.fs.empty()) {
       ++brwi;
     } else {
       fw.byteRangeWatches.erase(brwi++);
@@ -82,7 +82,7 @@ void sweepFileWatch(FileWatch& fw) {
   }
 }
 
-typedef std::vector<FileWatch> FileWatches;
+using FileWatches = std::vector<FileWatch>;
 
 #ifdef BUILD_LINUX
 // on Linux, we can use inotify to watch for file updates
@@ -101,7 +101,7 @@ struct SystemWatch {
       fd,
       [](int fd, void* self) {
         char buf[sizeof(inotify_event) + NAME_MAX + 1];
-        inotify_event* event = reinterpret_cast<inotify_event*>(buf);
+        auto* event = reinterpret_cast<inotify_event*>(buf);
         auto rc = read(fd, event, sizeof(inotify_event));
         if (rc > 0 && event->len > 0 ) {
           rc = read(fd, event->name, event->len);
@@ -196,9 +196,9 @@ SystemWatch* watcher() {
 }
 #endif
 
-typedef std::pair<uint8_t, uint64_t>                            IsArrOldVal;
-typedef std::pair<uint64_t, IsArrOldVal>                        OffsetData;
-typedef std::pair<const array<char>*, const array<OffsetData>*> FileWatchData;
+using IsArrOldVal = std::pair<uint8_t, uint64_t>;
+using OffsetData = std::pair<uint64_t, IsArrOldVal>;
+using FileWatchData = std::pair<const array<char> *, const array<OffsetData> *>;
 
 const array<FileWatchData>* fileWatchData() {
   const SystemWatch&    w = *watcher();
@@ -250,7 +250,7 @@ void addFileSOSignal(long file, unsigned int so, ChangeSignal f) {
 const MonoTypePtr& frefType(const MonoTypePtr& fref);
 
 struct addFileSignalF : public op {
-  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) override {
     FRefT frt = assumeFRefT(tys[0], es[0]->la());
 
     llvm::Value* db  = c->compileAtGlobalScope(frt.second);
@@ -258,7 +258,7 @@ struct addFileSignalF : public op {
     llvm::Value* sfn = c->compile(es[1]);
 
     llvm::Function* f = c->lookupFunction(".addFileSignal");
-    if (!f) { throw std::runtime_error("Expected 'addFileSignal' function as call"); }
+    if (f == nullptr) { throw std::runtime_error("Expected 'addFileSignal' function as call"); }
 
     size_t      sz     = 0;
     MonoTypePtr refty  = frefType(tys[0]);
@@ -266,15 +266,17 @@ struct addFileSignalF : public op {
 
     if (isDArr) {
       sz  = sizeof(long);
-      off = c->builder()->CreateAdd(off, cvalue(static_cast<long>(sizeof(long))));
+      off = withContext([c, off](auto&) { return c->builder()->CreateAdd(off, cvalue(static_cast<long>(sizeof(long)))); });
     } else {
       sz = storageSizeOf(refty);
     }
 
-    return fncall(c->builder(), f, f->getFunctionType(), list<llvm::Value*>(db, off, cvalue(static_cast<long>(sz)), cvalue(static_cast<uint8_t>(isDArr ? BROffsetType::DArray : BROffsetType::Value)), sfn));
+    return withContext([&](auto&) {
+      return fncall(c->builder(), f, f->getFunctionType(), list<llvm::Value*>(db, off, cvalue(static_cast<long>(sz)), cvalue(static_cast<uint8_t>(isDArr ? BROffsetType::DArray : BROffsetType::Value)), sfn));
+    });
   }
 
-  PolyTypePtr type(typedb&) const {
+  PolyTypePtr type(typedb&) const override {
     MonoTypePtr tg0(TGen::make(0));
     MonoTypePtr tg1(TGen::make(1));
     MonoTypePtr fr = fileRefTy(tg0, tg1);
@@ -300,11 +302,11 @@ bool pullTypeArg(const std::string& fname, size_t idx, MonoTypePtr* p, const Mon
 
 // alias the file and 'signals' type as a way of getting at top-level file addresses
 class signalsF : public op {
-  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) {
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) override {
     return c->compile(es[0]);
   }
 
-  PolyTypePtr type(typedb&) const {
+  PolyTypePtr type(typedb&) const override {
     MonoTypePtr fty = tapp(primty("file"), list(tgen(0), tgen(1)));
     MonoTypePtr sty = tapp(primty("signals", primty("unit")), list(tgen(1)));
     return polytype(2, qualtype(functy(list(fty), sty)));
@@ -314,11 +316,11 @@ class signalsF : public op {
 // add signals for top-level file variables
 class AddDBFieldSignal : public HFEliminator {
 public:
-  bool refine(const TEnvPtr&, const HasField&, MonoTypeUnifier*, Definitions*);
-  bool satisfied(const TEnvPtr&, const HasField&, Definitions*) const;
-  bool satisfiable(const TEnvPtr&, const HasField&, Definitions*) const;
-  ExprPtr unqualify(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*) const;
-  std::string name() const;
+  bool refine(const TEnvPtr&, const HasField&, MonoTypeUnifier*, Definitions*) override;
+  bool satisfied(const TEnvPtr&, const HasField&, Definitions*) const override;
+  bool satisfiable(const TEnvPtr&, const HasField&, Definitions*) const override;
+  ExprPtr unqualify(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*) const override;
+  std::string name() const override;
 };
 
 const Record* signalRecord(const MonoTypePtr& r) {
@@ -329,7 +331,7 @@ const Record* signalRecord(const MonoTypePtr& r) {
       }
     }
   }
-  return 0;
+  return nullptr;
 }
 
 ExprPtr sigFileExpr(const ExprPtr& e) {
@@ -402,14 +404,14 @@ bool AddDBFieldSignal::satisfiable(const TEnvPtr& tenv, const HasField& hf, Defi
 
   if (dir != HasField::Write) return false;
 
-  if (is<TString>(fname)) {
+  if (is<TString>(fname) != nullptr) {
     if (hf.recordExpr) {
       return !isMonoSingular(fty) || satisfied(tenv, hf, ds);
     } else {
-      return is<TVar>(rty);
+      return is<TVar>(rty) != nullptr;
     }
   } else {
-    return is<TVar>(fname);
+    return is<TVar>(fname) != nullptr;
   }
 }
 
@@ -436,7 +438,7 @@ struct ADBFSigUnqualify : public switchExprTyFn {
         this->frec   = signalRecord(this->stype);
         this->findex = this->frec->index(this->fname);
 
-        return this->frec != 0;
+        return this->frec != nullptr;
       }
     }
     return false;
@@ -452,7 +454,7 @@ struct ADBFSigUnqualify : public switchExprTyFn {
     return *ty == *this->stype;
   }
 
-  ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const {
+  ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const override {
     ExprPtr result(e);
     result->type(removeConstraint(this->constraint, qty));
     ExprPtr aresult(new Assump(result, result->type(), result->la()));
@@ -460,9 +462,9 @@ struct ADBFSigUnqualify : public switchExprTyFn {
     return aresult;
   }
 
-  ExprPtr with(const Fn* v) const {
+  ExprPtr with(const Fn* v) const override {
     const Func* fty = is<Func>(v->type()->monoType());
-    if (!fty) {
+    if (fty == nullptr) {
       throw annotated_error(*v, "Internal error, expected annotated function type");
     }
     return wrapWithTy(v->type(),
@@ -474,7 +476,7 @@ struct ADBFSigUnqualify : public switchExprTyFn {
     );
   }
 
-  ExprPtr with(const Let* v) const {
+  ExprPtr with(const Let* v) const override {
     return wrapWithTy(v->type(),
       new Let(
         v->var(),
@@ -485,7 +487,7 @@ struct ADBFSigUnqualify : public switchExprTyFn {
     );
   }
 
-  ExprPtr with(const Assign* v) const {
+  ExprPtr with(const Assign* v) const override {
     const auto& la = v->la();
 
     // set a signal callback
@@ -525,7 +527,7 @@ void initSignalsDefs(FieldVerifier* fv, cc& c) {
   // add signals for top-level file variables
   c.bind(".addFileSOSignal", &addFileSOSignal);
   c.bindLLFunc("signals", new signalsF());
-  fv->addEliminator(new AddDBFieldSignal());
+  fv->addEliminator(std::make_shared<AddDBFieldSignal>());
 
   c.bind(".addFileSignal", &addFileSignal);
   c.bindLLFunc("addFileSignal", new addFileSignalF());

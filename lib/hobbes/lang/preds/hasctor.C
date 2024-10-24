@@ -6,6 +6,8 @@
 
 #include <hobbes/lang/preds/hasctor/variant.H>
 
+#include <memory>
+
 namespace hobbes {
 
 #define MSELECT_CTOR_FN "maybeFromCtor"
@@ -14,24 +16,24 @@ namespace hobbes {
 // generic field verification and constraint removal
 /////////////////////////////////////////////////////
 CtorVerifier::CtorVerifier() {
-  this->eliminators.push_back(new HCVariantEliminator());
+  addEliminator(std::make_shared<HCVariantEliminator>());
 }
 
 std::string CtorVerifier::constraintName() {
   return "HasCtor";
 }
 
-void CtorVerifier::addEliminator(HCEliminator* hce) {
+void CtorVerifier::addEliminator(const std::shared_ptr<HCEliminator>& hce) {
   this->eliminators.push_back(hce);
 }
 
 HCEliminator* CtorVerifier::findEliminator(const TEnvPtr& tenv, const HasCtor& hc, Definitions* ds) const {
-  for (auto hce : this->eliminators) {
+  for (const auto& hce : this->eliminators) {
     if (hce->satisfiable(tenv, hc, ds)) {
-      return hce;
+      return hce.get();
     }
   }
-  return 0;
+  return nullptr;
 }
 
 bool CtorVerifier::refine(const TEnvPtr& tenv, const ConstraintPtr& cst, MonoTypeUnifier* s, Definitions* ds) {
@@ -56,7 +58,7 @@ bool CtorVerifier::satisfied(const TEnvPtr& tenv, const ConstraintPtr& cst, Defi
 
 bool CtorVerifier::satisfiable(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions* ds) const {
   HasCtor hc;
-  return dec(cst, &hc) && findEliminator(tenv, hc, ds);
+  return dec(cst, &hc) && (findEliminator(tenv, hc, ds) != nullptr);
 }
 
 void CtorVerifier::explain(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*, annmsgs*) {
@@ -69,11 +71,11 @@ struct RewriteMSelect : public switchExprTyFn {
 
   RewriteMSelect(const HasCtor& hc, const ConstraintPtr& cst) : hc(hc), cst(cst) {
     const TString* fn = is<TString>(hc.ctorlbl);
-    if (!fn) { throw std::runtime_error("Internal error, invalid hasctor constraint for unqualification"); }
+    if (fn == nullptr) { throw std::runtime_error("Internal error, invalid hasctor constraint for unqualification"); }
     this->ctor = fn->value();
   }
 
-  ExprPtr with(const App* ap) const {
+  ExprPtr with(const App* ap) const override {
     if (ap->args().size() == 1) {
       if (hasConstraint(this->cst, ap->type())) {
         if (const Var* f = is<Var>(stripAssumpHead(ap->fn()))) {
@@ -88,7 +90,7 @@ struct RewriteMSelect : public switchExprTyFn {
     return wrapWithTy(ap->type(), new App(switchOf(ap->fn(), *this), switchOf(ap->args(), *this), ap->la()));
   }
 
-  ExprPtr with(const Var* v) const {
+  ExprPtr with(const Var* v) const override {
     if (hasConstraint(this->cst, v->type())) {
       if (v->value() == MSELECT_CTOR_FN) {
         std::string vn = freshName();
@@ -120,7 +122,7 @@ PolyTypePtr CtorVerifier::lookup(const std::string& vn) const {
   if (vn == MSELECT_CTOR_FN) {
     // select either the given constructor payload from a variant, or nothing
     // :: (|c/p|::v) => v -> (()+p)
-    return polytype(3, qualtype(list(ConstraintPtr(new Constraint(CtorVerifier::constraintName(), list(tgen(0), tgen(1), tgen(2))))), functy(list(tgen(0)), maybety(tgen(2)))));
+    return polytype(3, qualtype(list(std::make_shared<Constraint>(CtorVerifier::constraintName(), list(tgen(0), tgen(1), tgen(2)))), functy(list(tgen(0)), maybety(tgen(2)))));
   } else {
     return PolyTypePtr();
   }

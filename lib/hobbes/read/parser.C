@@ -1,18 +1,18 @@
 
-#include <hobbes/lang/module.H>
+#include <cstdio>
+#include <fstream>
 #include <hobbes/lang/expr.H>
+#include <hobbes/lang/module.H>
 #include <hobbes/lang/pat/pattern.H>
 #include <hobbes/parse/grammar.H>
-#include <hobbes/read/pgen/hexpr.parse.H>
 #include <hobbes/read/parser.H>
+#include <hobbes/read/pgen/hexpr.parse.H>
 #include <hobbes/util/autorelease.H>
-#include <mutex>
-#include <string>
-#include <stdexcept>
-#include <stack>
 #include <iostream>
-#include <fstream>
-#include <stdio.h>
+#include <mutex>
+#include <stack>
+#include <stdexcept>
+#include <string>
 
 // protect access to lexer/parser globals (blech)
 static std::recursive_mutex parse_mutex;
@@ -39,7 +39,7 @@ extern YYLTYPE         yyErrPos;
 extern int yyparse();
 #define YY_BUF_SIZE 16384
 struct yy_buffer_state;
-typedef yy_buffer_state* YY_BUFFER_STATE;
+using YY_BUFFER_STATE = yy_buffer_state *;
 extern YY_BUFFER_STATE yy_scan_string(const char*);
 extern YY_BUFFER_STATE yy_create_buffer(FILE*, int);
 extern void yy_switch_to_buffer(YY_BUFFER_STATE);
@@ -89,7 +89,7 @@ void runParserOnBuffer(cc* c, int initTok, YY_BUFFER_STATE bs) {
   yy_delete_buffer(bs);
   if (!activeParseBuffers.empty()) { yy_switch_to_buffer(activeParseBuffers.top()); }
 
-  if (yyVexpLexError.size() > 0) {
+  if (!yyVexpLexError.empty()) {
     std::string msg = yyVexpLexError;
     yyVexpLexError = "";
     throw std::runtime_error(msg);
@@ -98,7 +98,7 @@ void runParserOnBuffer(cc* c, int initTok, YY_BUFFER_STATE bs) {
 
 void runParserOnFile(cc* c, int initTok, const std::string& fname) {
   FILE* f = fopen(fname.c_str(), "r");
-  if (!f) {
+  if (f == nullptr) {
     throw std::runtime_error("Failed to open file for reading, '" + fname + "'");
   }
   try {
@@ -134,21 +134,21 @@ void runParserOnString(cc* c, int initTok, const char* s) {
 ModulePtr defReadModuleFile(cc* c, const std::string& file) {
   LOCK_PARSER;
 
-  yyParsedModule = 0;
+  yyParsedModule = nullptr;
   yyModulePath = str::rsplit(file, "/").first;
   runParserOnFile(c, TPARSEMODULE, file);
   yyModulePath = "";
 
-  return checkReturn(yyParsedModule ? ModulePtr(yyParsedModule) : ModulePtr());
+  return checkReturn(yyParsedModule != nullptr ? ModulePtr(yyParsedModule) : ModulePtr());
 }
 
 ModulePtr defReadModule(cc* c, const char* text) {
   LOCK_PARSER;
 
-  yyParsedModule = 0;
+  yyParsedModule = nullptr;
   runParserOnString(c, TPARSEMODULE, text);
 
-  return checkReturn(yyParsedModule ? ModulePtr(yyParsedModule) : ModulePtr());
+  return checkReturn(yyParsedModule != nullptr ? ModulePtr(yyParsedModule) : ModulePtr());
 }
 
 ModulePtr defReadModule(cc* c, const std::string& text) {
@@ -159,19 +159,19 @@ ExprDefn defReadExprDefn(cc* c, const std::string& expr) {
   LOCK_PARSER;
 
   yyParsedVar  = "";
-  yyParsedExpr = 0;
+  yyParsedExpr = nullptr;
   runParserOnString(c, TPARSEDEFN, expr.c_str());
 
-  return ExprDefn(yyParsedVar, checkReturn(yyParsedExpr ? ExprPtr(yyParsedExpr) : ExprPtr()));
+  return ExprDefn(yyParsedVar, checkReturn(yyParsedExpr != nullptr ? ExprPtr(yyParsedExpr) : ExprPtr()));
 }
 
 ExprPtr defReadExpr(cc* c, const std::string& expr) {
   LOCK_PARSER;
 
-  yyParsedExpr = 0;
+  yyParsedExpr = nullptr;
   runParserOnString(c, TPARSEEXPR, expr.c_str());
 
-  return checkReturn(yyParsedExpr ? ExprPtr(yyParsedExpr) : ExprPtr());
+  return checkReturn(yyParsedExpr != nullptr ? ExprPtr(yyParsedExpr) : ExprPtr());
 }
 
 // allow variable and pattern variable overloading

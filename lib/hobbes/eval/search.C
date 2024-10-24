@@ -10,45 +10,45 @@ struct findLabelsF : public switchType<unit> {
   std::set<std::string>* lbls;
   findLabelsF(std::set<std::string>* lbls) : lbls(lbls) { }
 
-  unit with(const TString* v) const {
+  unit with(const TString* v) const override {
     this->lbls->insert(v->value());
-    return unit();
+    return {};
   }
 
-  unit with(const Variant* v) const {
+  unit with(const Variant* v) const override {
     for (const auto& m : v->members()) {
       if (!m.selector.empty() && m.selector[0] != '.') {
         this->lbls->insert(m.selector);
       }
       switchOf(m.type, *this);
     }
-    return unit();
+    return {};
   }
 
-  unit with(const Record* v) const {
+  unit with(const Record* v) const override {
     for (const auto& m : v->members()) {
       if (!m.field.empty() && m.field[0] != '.') {
         this->lbls->insert(m.field);
       }
       switchOf(m.type, *this);
     }
-    return unit();
+    return {};
   }
 
-  unit with(const TAbs*       v) const { return switchOf(v->body(), *this); }
-  unit with(const TApp*       v) const { switchOf(v->fn(), *this); switchOf(v->args(), *this); return unit(); }
-  unit with(const FixedArray* v) const { switchOf(v->type(), *this); return switchOf(v->length(), *this); }
-  unit with(const Array*      v) const { return switchOf(v->type(), *this); }
-  unit with(const Func*       v) const { switchOf(v->argument(), *this); return switchOf(v->result(), *this); }
-  unit with(const Exists*     v) const { return switchOf(v->absType(), *this); }
-  unit with(const Recursive*  v) const { return switchOf(v->recType(), *this); }
+  unit with(const TAbs*       v) const override { return switchOf(v->body(), *this); }
+  unit with(const TApp*       v) const override { switchOf(v->fn(), *this); switchOf(v->args(), *this); return {}; }
+  unit with(const FixedArray* v) const override { switchOf(v->type(), *this); return switchOf(v->length(), *this); }
+  unit with(const Array*      v) const override { return switchOf(v->type(), *this); }
+  unit with(const Func*       v) const override { switchOf(v->argument(), *this); return switchOf(v->result(), *this); }
+  unit with(const Exists*     v) const override { return switchOf(v->absType(), *this); }
+  unit with(const Recursive*  v) const override { return switchOf(v->recType(), *this); }
   
-  unit with(const Prim*        ) const { return unit(); }
-  unit with(const OpaquePtr*   ) const { return unit(); }
-  unit with(const TVar*        ) const { return unit(); }
-  unit with(const TGen*        ) const { return unit(); }
-  unit with(const TLong*       ) const { return unit(); }
-  unit with(const TExpr*       ) const { return unit(); }
+  unit with(const Prim*        ) const override { return {}; }
+  unit with(const OpaquePtr*   ) const override { return {}; }
+  unit with(const TVar*        ) const override { return {}; }
+  unit with(const TGen*        ) const override { return {}; }
+  unit with(const TLong*       ) const override { return {}; }
+  unit with(const TExpr*       ) const override { return {}; }
 };
 static void accumLabels(std::set<std::string>* lbls, const MonoTypePtr& t) {
   switchOf(t, findLabelsF(lbls));
@@ -58,8 +58,8 @@ static void accumLabels(std::set<std::string>* lbls, const TEnvPtr& tenv) {
   // (it might be reasonable to gather labels across types in _all_ ground type class instances)
   try {
     auto uq = tenv->lookupUnqualifier("SLookup");
-    if (const TClass* c = dynamic_cast<const TClass*>(uq.get())) {
-      for (auto i : c->instances()) {
+    if (const auto* c = dynamic_cast<const TClass*>(uq.get())) {
+      for (const auto& i : c->instances()) {
         if (i->types().size() > 2) {
           if (const TString* s = is<TString>(i->types()[1])) {
             lbls->insert(s->value());
@@ -75,7 +75,7 @@ static void accumLabels(std::set<std::string>* lbls, const TEnvPtr& tenv) {
     if (!vnt.first.empty() && vnt.first[0] != '.') {
       lbls->insert(vnt.first);
 
-      if (vnt.second->typeVariables() == 0 && vnt.second->qualtype()->constraints().size() == 0) {
+      if (vnt.second->typeVariables() == 0 && vnt.second->qualtype()->constraints().empty()) {
         accumLabels(lbls, vnt.second->qualtype()->monoType());
       }
     }
@@ -135,7 +135,7 @@ struct containsTypeF : public switchType<bool> {
   bool baseC(const MonoType& t) const { return t == *this->ty; }
   bool anyC(const MonoTypes& ts) const { for (const auto& t : ts) { if (switchOf(t, *this)) return true; } return false; }
 
-  bool with(const Variant* v) const {
+  bool with(const Variant* v) const override {
     if (baseC(*v)) return true;
     for (const auto& m : v->members()) {
       if (switchOf(m.type, *this)) {
@@ -145,7 +145,7 @@ struct containsTypeF : public switchType<bool> {
     return false;
   }
 
-  bool with(const Record* v) const {
+  bool with(const Record* v) const override {
     if (baseC(*v)) return true;
     for (const auto& m : v->members()) {
       if (switchOf(m.type, *this)) {
@@ -155,21 +155,21 @@ struct containsTypeF : public switchType<bool> {
     return false;
   }
 
-  bool with(const TAbs*       v) const { return baseC(*v) || switchOf(v->body(), *this); }
-  bool with(const TApp*       v) const { return baseC(*v) || switchOf(v->fn(), *this) || anyC(v->args()); }
-  bool with(const FixedArray* v) const { return baseC(*v) || switchOf(v->type(), *this) || switchOf(v->length(), *this); }
-  bool with(const Array*      v) const { return baseC(*v) || switchOf(v->type(), *this); }
-  bool with(const Func*       v) const { return baseC(*v) || switchOf(v->argument(), *this) || switchOf(v->result(), *this); }
-  bool with(const Exists*     v) const { return baseC(*v) || switchOf(v->absType(), *this); }
-  bool with(const Recursive*  v) const { return baseC(*v) || switchOf(v->recType(), *this); }
+  bool with(const TAbs*       v) const override { return baseC(*v) || switchOf(v->body(), *this); }
+  bool with(const TApp*       v) const override { return baseC(*v) || switchOf(v->fn(), *this) || anyC(v->args()); }
+  bool with(const FixedArray* v) const override { return baseC(*v) || switchOf(v->type(), *this) || switchOf(v->length(), *this); }
+  bool with(const Array*      v) const override { return baseC(*v) || switchOf(v->type(), *this); }
+  bool with(const Func*       v) const override { return baseC(*v) || switchOf(v->argument(), *this) || switchOf(v->result(), *this); }
+  bool with(const Exists*     v) const override { return baseC(*v) || switchOf(v->absType(), *this); }
+  bool with(const Recursive*  v) const override { return baseC(*v) || switchOf(v->recType(), *this); }
   
-  bool with(const Prim*      v) const { return baseC(*v); }
-  bool with(const OpaquePtr* v) const { return baseC(*v); }
-  bool with(const TVar*      v) const { return baseC(*v); }
-  bool with(const TGen*      v) const { return baseC(*v); }
-  bool with(const TLong*     v) const { return baseC(*v); }
-  bool with(const TString*   v) const { return baseC(*v); }
-  bool with(const TExpr*     v) const { return baseC(*v); }
+  bool with(const Prim*      v) const override { return baseC(*v); }
+  bool with(const OpaquePtr* v) const override { return baseC(*v); }
+  bool with(const TVar*      v) const override { return baseC(*v); }
+  bool with(const TGen*      v) const override { return baseC(*v); }
+  bool with(const TLong*     v) const override { return baseC(*v); }
+  bool with(const TString*   v) const override { return baseC(*v); }
+  bool with(const TExpr*     v) const override { return baseC(*v); }
 };
 bool validSearchResult(const SearchEntry& e, const MonoTypePtr& dst) {
   return switchOf(e.ty, containsTypeF(dst));
@@ -177,11 +177,11 @@ bool validSearchResult(const SearchEntry& e, const MonoTypePtr& dst) {
 
 // search for symbols going from one type to another
 SearchEntries search(cc& c, SearchCache& sc, const MonoTypePtr& src, const MonoTypePtr& dst) {
-  if (sc.univByType[src].size() == 0) {
+  if (sc.univByType[src].empty()) {
     sc.univByType[src] = findAll(c, src);
   }
 
-  if (is<TVar>(dst)) {
+  if (is<TVar>(dst) != nullptr) {
     // searching for everything, we already have it
     return sc.univByType[src];
   } else {

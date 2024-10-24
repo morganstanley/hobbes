@@ -1,10 +1,11 @@
 
-#include <hobbes/lang/preds/vapp.H>
-#include <hobbes/lang/preds/class.H>
 #include <hobbes/lang/expr.H>
+#include <hobbes/lang/preds/class.H>
+#include <hobbes/lang/preds/vapp.H>
 #include <hobbes/lang/tylift.H>
 #include <hobbes/lang/typeinf.H>
 #include <hobbes/util/array.H>
+#include <memory>
 
 namespace hobbes {
 
@@ -45,7 +46,7 @@ MonoTypePtr variantTypeFromDtor(const Record& rty) {
 }
 
 MonoTypePtr dtorResultFromDtor(const Record& rty) {
-  if (rty.members().size() == 0) {
+  if (rty.members().empty()) {
     throw std::runtime_error("Internal error, impossible variant applicator type: ()");
   } else {
     MonoTypePtr arg, result;
@@ -132,14 +133,14 @@ bool VariantAppP::satisfied(const TEnvPtr&, const ConstraintPtr& cst, Definition
 bool VariantAppP::satisfiable(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions* ds) const {
   VariantAppD va;
   if (dec(cst, &va)) {
-    if (is<Variant>(va.variantType)) {
-      if (is<Record>(va.recordDtorType)) {
+    if (is<Variant>(va.variantType) != nullptr) {
+      if (is<Record>(va.recordDtorType) != nullptr) {
         return hasFreeVariables(va.variantType) || hasFreeVariables(va.recordDtorType) || hasFreeVariables(va.resultType) || satisfied(tenv, cst, ds);
       } else {
-        return is<TVar>(va.recordDtorType);
+        return is<TVar>(va.recordDtorType) != nullptr;
       }
     } else {
-      return is<TVar>(va.variantType);
+      return is<TVar>(va.variantType) != nullptr;
     }
   }
   return false;
@@ -151,7 +152,7 @@ void VariantAppP::explain(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, 
 PolyTypePtr VariantAppP::lookup(const std::string& vn) const {
   if (vn == REF_VAR_APP) {
     // variantApp :: (VariantApp v f r) => (v,f) -> r
-    return polytype(3, qualtype(list(ConstraintPtr(new Constraint(VariantAppP::constraintName(), list(tgen(0), tgen(1), tgen(2))))), functy(list(tgen(0), tgen(1)), tgen(2))));
+    return polytype(3, qualtype(list(std::make_shared<Constraint>(VariantAppP::constraintName(), list(tgen(0), tgen(1), tgen(2)))), functy(list(tgen(0), tgen(1)), tgen(2))));
   } else {
     return PolyTypePtr();
   }
@@ -175,11 +176,11 @@ struct VAUnqualify : public switchExprTyFn {
   const ConstraintPtr& constraint;
   VAUnqualify(const ConstraintPtr& constraint) : constraint(constraint) { }
 
-  QualTypePtr withTy(const QualTypePtr& qt) const {
+  QualTypePtr withTy(const QualTypePtr& qt) const override {
     return removeConstraint(this->constraint, qt);
   }
 
-  ExprPtr with(const Var* v) const {
+  ExprPtr with(const Var* v) const override {
     if (hasConstraint(this->constraint, v->type())) {
       if (v->value() == REF_VAR_APP) {
         // rewrite this variable to become a function that does the promised case analysis and dispatch to closure calls
@@ -187,7 +188,7 @@ struct VAUnqualify : public switchExprTyFn {
         auto urty = this->constraint->arguments()[1];
 
         if (const Variant* vty = is<Variant>(uvty)) {
-          if (is<Record>(urty)) {
+          if (is<Record>(urty) != nullptr) {
             Case::Bindings cs;
             for (const auto& vm : vty->members()) {
               cs.push_back(Case::Binding(vm.selector, ".x", closcall(proj(var(".f", urty, v->la()), vm.selector, v->la()), list(var(".x", vm.type, v->la())), v->la())));

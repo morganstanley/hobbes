@@ -16,13 +16,13 @@ struct MonoTypeLT {
 struct MTyMap {
   template <typename V>
     struct map {
-      typedef std::map<MonoTypePtr, V, MonoTypeLT> type;
+      using type = std::map<MonoTypePtr, V, MonoTypeLT>;
     };
 };
 
 // used to do exact matches on types with a wildcard
-typedef variant<unit, MonoTypePtr> MaybePathPoint;
-typedef std::vector<MaybePathPoint> MaybePathPoints;
+using MaybePathPoint = variant<unit, MonoTypePtr>;
+using MaybePathPoints = std::vector<MaybePathPoint>;
 
 // a map from type sequences to some value
 template <typename V>
@@ -63,11 +63,11 @@ template <typename V>
       findMatches(this->d.rootPoint(), path, 0, out);
     }
   private:
-    typedef prefix_tree<MonoTypePtr, V, MTyMap> tmdata;
+    using tmdata = prefix_tree<MonoTypePtr, V, MTyMap>;
     tmdata d;
 
     bool hasMatch(MonoTypeUnifier& u, typename tmdata::point_t p, const MonoTypes& mts, size_t i) const {
-      if (p == 0) {
+      if (p == nullptr) {
         return false;
       }
 
@@ -96,7 +96,7 @@ template <typename V>
     }
 
     void findMatches(MonoTypeUnifier& u, typename tmdata::point_t p, const MonoTypes& mts, size_t i, std::vector<V>* out) const {
-      if (p == 0) return;
+      if (p == nullptr) return;
 
       if (i == mts.size()) {
         if (const V* v = this->d.valueAt(p)) {
@@ -124,7 +124,7 @@ template <typename V>
     }
 
     void findBidiMatches(MonoTypeUnifier& u, typename tmdata::point_t p, const MonoTypes& mts, size_t i, std::vector<V>* out) const {
-      if (p == 0) return;
+      if (p == nullptr) return;
 
       if (i == mts.size()) {
         if (const V* v = this->d.valueAt(p)) {
@@ -148,7 +148,7 @@ template <typename V>
     }
 
     void findMatches(typename tmdata::point_t p, const MaybePathPoints& path, size_t i, std::vector<V>* out) const {
-      if (p == 0) return;
+      if (p == nullptr) return;
 
       if (i == path.size()) {
         if (const V* v = this->d.valueAt(p)) {
@@ -156,13 +156,13 @@ template <typename V>
         }
       } else {
         // do we need an exact match or any point here?
-        if (const MonoTypePtr* mt = get<MonoTypePtr>(path[i])) {
+        if (const auto* mt = get<MonoTypePtr>(path[i])) {
           findMatches(this->d.moveTo(*mt, p), path, i + 1, out);
         } else {
           typename tmdata::KeyPointSeq kps;
           this->d.keyPointsAt(&kps, p);
 
-          for (auto kp : kps) {
+          for (const auto& kp : kps) {
             findMatches(kp.second, path, i + 1, out);
           }
         }

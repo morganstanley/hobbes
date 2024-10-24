@@ -23,8 +23,8 @@ namespace hobbes {
 // such that:
 //   the type of R matches the type of R for all other definitions of S
 struct ParseRule {
-  typedef std::pair<std::string, terminal*> Binding;
-  typedef std::vector<Binding> Bindings;
+  using Binding = std::pair<std::string, terminal *>;
+  using Bindings = std::vector<Binding>;
 
   inline ParseRule(terminal* s, const Bindings& bs, const ExprPtr& r) : symbol(s), bindings(bs), reducer(r) { }
 
@@ -34,7 +34,7 @@ struct ParseRule {
 };
 
 // and a parser is a set of such rules
-typedef std::vector<ParseRule> Parser;
+using Parser = std::vector<ParseRule>;
 
 // consume a grammar to produce a parser for that grammar
 class cc;

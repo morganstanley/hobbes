@@ -6,14 +6,14 @@
 
 #include <sstream>
 
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <sys/ioctl.h>
-#include <netinet/in.h>
-#include <netdb.h>
-#include <unistd.h>
+#include <cstring>
 #include <fcntl.h>
-#include <string.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <sys/ioctl.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 namespace hobbes {
 
@@ -131,7 +131,7 @@ private:
 };
 
 void evaluatePartialHTTPRequest(int c, void* ud) {
-  PartialHTTPRequestState* s = reinterpret_cast<PartialHTTPRequestState*>(ud);
+  auto* s = reinterpret_cast<PartialHTTPRequestState*>(ud);
 
   char buf[1024];
   ssize_t m = 0;
@@ -151,15 +151,15 @@ void evaluatePartialHTTPRequest(int c, void* ud) {
 int installHTTPD(int port, HTTPRequestHandler f, void* ud) {
   int s = allocateServer(port);
 
-  typedef std::pair<HTTPRequestHandler, void*> ReqCB;
-  ReqCB* rcb = new ReqCB(f, ud);
+  using ReqCB = std::pair<HTTPRequestHandler, void *>;
+  auto* rcb = new ReqCB(f, ud);
 
   registerEventHandler(
     s,
     [](int s, void* d) {
-      int c = accept(s, 0, 0);
+      int c = accept(s, nullptr, nullptr);
       if (c != -1) {
-        ReqCB* rcb = reinterpret_cast<ReqCB*>(d);
+        auto* rcb = reinterpret_cast<ReqCB*>(d);
         fcntl(c, F_SETFL, fcntl(c, F_GETFL) | O_NONBLOCK);
         registerEventHandler(c, &evaluatePartialHTTPRequest, reinterpret_cast<void*>(new PartialHTTPRequestState(c, rcb->first, rcb->second)));
       }

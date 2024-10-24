@@ -1,8 +1,8 @@
-/* A Bison parser, made by GNU Bison 3.7.4.  */
+/* A Bison parser, made by GNU Bison 3.8.2.  */
 
 /* Bison interface for Yacc-like parsers in C
 
-   Copyright (C) 1984, 1989-1990, 2000-2015, 2018-2020 Free Software Foundation,
+   Copyright (C) 1984, 1989-1990, 2000-2015, 2018-2021 Free Software Foundation,
    Inc.
 
    This program is free software: you can redistribute it and/or modify
@@ -16,7 +16,7 @@
    GNU General Public License for more details.
 
    You should have received a copy of the GNU General Public License
-   along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
+   along with this program.  If not, see <https://www.gnu.org/licenses/>.  */
 
 /* As a special exception, you may create a larger work that contains
    part or all of the Bison parser skeleton and distribute that work
@@ -156,7 +156,7 @@ extern int yydebug;
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 union YYSTYPE
 {
-#line 262 "hexpr.y"
+#line 295 "hexpr.y"
 
   hobbes::Module*              module;
   hobbes::ModuleDefs*          mdefs;
@@ -197,6 +197,7 @@ union YYSTYPE
   hobbes::MonoTypes*           mtypes;
   hobbes::Record::Members*     mreclist;
   hobbes::Variant::Members*    mvarlist;
+  hobbes::Variant::Member*     mpvar;
 
   std::string*                            string;
   bool                                    boolv;
@@ -216,7 +217,7 @@ union YYSTYPE
   hobbes::BoundGrammarValue*   pbelem;
   hobbes::GrammarValue*        pvalue;
 
-#line 220 "hexpr.parse.H"
+#line 221 "hexpr.parse.H"
 
 };
 typedef union YYSTYPE YYSTYPE;
@@ -241,6 +242,8 @@ struct YYLTYPE
 
 extern YYSTYPE yylval;
 extern YYLTYPE yylloc;
+
 int yyparse (void);
+
 
 #endif /* !YY_YY_HEXPR_PARSE_H_INCLUDED  */

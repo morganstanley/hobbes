@@ -1,10 +1,11 @@
 
-#include <hobbes/lang/preds/vtrunc.H>
-#include <hobbes/lang/preds/class.H>
 #include <hobbes/lang/expr.H>
+#include <hobbes/lang/preds/class.H>
+#include <hobbes/lang/preds/vtrunc.H>
 #include <hobbes/lang/tylift.H>
 #include <hobbes/lang/typeinf.H>
 #include <hobbes/util/array.H>
+#include <memory>
 
 namespace hobbes {
 
@@ -61,10 +62,10 @@ bool VariantTruncP::satisfied(const TEnvPtr&, const ConstraintPtr& cst, Definiti
 bool VariantTruncP::satisfiable(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions* ds) const {
   VariantTruncD vt;
   if (dec(cst, &vt)) {
-    if (!hasFreeVariables(vt.variantType) && is<Variant>(vt.variantType)) {
-      return is<TVar>(vt.enumType) || satisfied(tenv, cst, ds);
+    if (!hasFreeVariables(vt.variantType) && (is<Variant>(vt.variantType) != nullptr)) {
+      return (is<TVar>(vt.enumType) != nullptr) || satisfied(tenv, cst, ds);
     } else {
-      return is<TVar>(vt.variantType);
+      return is<TVar>(vt.variantType) != nullptr;
     }
   }
   return false;
@@ -76,7 +77,7 @@ void VariantTruncP::explain(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&
 PolyTypePtr VariantTruncP::lookup(const std::string& vn) const {
   if (vn == REF_VAR_TRUNC) {
     // trunc :: (VariantTrunc v e) => v -> e
-    return polytype(2, qualtype(list(ConstraintPtr(new Constraint(VariantTruncP::constraintName(), list(tgen(0), tgen(1))))), functy(list(tgen(0)), tgen(1))));
+    return polytype(2, qualtype(list(std::make_shared<Constraint>(VariantTruncP::constraintName(), list(tgen(0), tgen(1)))), functy(list(tgen(0)), tgen(1))));
   } else {
     return PolyTypePtr();
   }
@@ -99,11 +100,11 @@ struct VTUnqualify : public switchExprTyFn {
   const ConstraintPtr& constraint;
   VTUnqualify(const ConstraintPtr& constraint) : constraint(constraint) { }
 
-  QualTypePtr withTy(const QualTypePtr& qt) const {
+  QualTypePtr withTy(const QualTypePtr& qt) const override {
     return removeConstraint(this->constraint, qt);
   }
 
-  ExprPtr with(const Var* v) const {
+  ExprPtr with(const Var* v) const override {
     if (hasConstraint(this->constraint, v->type())) {
       if (v->value() == REF_VAR_TRUNC) {
         return wrapWithTy(v->type(), new Var("unsafeCast", v->la()));

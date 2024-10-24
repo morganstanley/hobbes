@@ -20,7 +20,7 @@ class PythonProc {
 public:
   PythonProc(const std::string& py, const std::string& moddir, const std::string& script, const std::string& db) : py(py), moddir(moddir), script(script), db(db)
   {
-    if(this->py == "")
+    if(this->py.empty())
       this->py = "/usr/bin/python"; // Give a default python execute path
     this->argv.push_back(this->py.c_str());
     this->argv.push_back(this->script.c_str());
@@ -59,7 +59,7 @@ static std::string mkFName(const std::string& ext = "db") {
 }
 #endif
 
-typedef std::array<int, 10> IArr;
+using IArr = std::array<int, 10>;
 DEFINE_STRUCT(
   TestStruct,
   (int, x),

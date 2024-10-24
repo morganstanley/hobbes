@@ -6,6 +6,7 @@
 
 // useful for debugging generated expressions
 #include <hobbes/lang/pat/print.H>
+#include <memory>
 
 namespace hobbes {
 
@@ -41,7 +42,7 @@ struct ParserEvalInfo {
   parserdef   pdef;
   lrtable     table;
 
-  typedef std::map<terminal*, Exprs> ReduceExprs;
+  using ReduceExprs = std::map<terminal *, Exprs>;
   ReduceExprs reduceExprs;
 };
 
@@ -128,7 +129,7 @@ str::seq varNames(size_t n) {
 
 size_t parseDepth(const ParserEvalInfo& pei, size_t i) {
   auto sd = pei.pdef.state_defs.find(i);
-  if (sd == pei.pdef.state_defs.end() || sd->second.size() == 0) {
+  if (sd == pei.pdef.state_defs.end() || sd->second.empty()) {
     throw std::runtime_error("Internal error, can't find depth for invalid state #" + str::from(i));
   } else {
     size_t d = 0;
@@ -265,7 +266,7 @@ ExprPtr doAction(const ParserEvalInfo& pei, size_t i, const action& act) {
 }
 
 ExprPtr makeInputParserState(const ParserEvalInfo& pei, size_t i) {
-  const action* eofAct = 0;
+  const action* eofAct = nullptr;
   PatternRows prs;
   for (const auto& sp : pei.table[i]) {
     if (sp.first == endOfFile::value()) {
@@ -281,7 +282,7 @@ ExprPtr makeInputParserState(const ParserEvalInfo& pei, size_t i) {
     fn(append(str::strings(".arr", ".i", ".sd"), varNames(parseDepth(pei, i))),
       // if (i == size(arr)) then eval-$ else eval-char
       fncall(var("if", pei.la), list(fncall(var("leq", pei.la), list(var(".i", pei.la), lengthOf(assume(var(".arr", pei.la), pei.arrty, pei.la), pei.la)), pei.la),
-        eofAct ? doAction(pei, i, *eofAct) : parseFailure(pei, i),
+        eofAct != nullptr ? doAction(pei, i, *eofAct) : parseFailure(pei, i),
         compileMatch(pei.c, list(elementOf(var(".arr", pei.la), var(".i", pei.la), pei.la)), prs, pei.la)
       ), pei.la),
       pei.la
@@ -328,13 +329,13 @@ ExprPtr makeParser(cc* c, const Parser& p, terminal* root, const precedence& pre
   return
     assume(
       fn(str::strings(".arr"), e, la),
-      qualtype(list(ConstraintPtr(new Constraint("Array", list(pei.arrty, primty("char"))))), functy(list(pei.arrty), parseResultType(pei))),
+      qualtype(list(std::make_shared<Constraint>("Array", list(pei.arrty, primty("char")))), functy(list(pei.arrty), parseResultType(pei))),
       la
     );
 }
 
 ExprPtr makeParser(cc* c, const Parser& p, const precedence& prec, const LexicalAnnotation& la) {
-  if (p.size() > 0) {
+  if (!p.empty()) {
     return makeParser(c, p, p[0].symbol, prec, la);
   } else {
     throw std::runtime_error("Internal error, cannot produce parser from empty definition");

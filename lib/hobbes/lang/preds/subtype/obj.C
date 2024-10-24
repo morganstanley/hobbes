@@ -1,10 +1,11 @@
 
-#include <hobbes/lang/preds/subtype/obj.H>
-#include <hobbes/lang/preds/class.H>
 #include <hobbes/lang/expr.H>
+#include <hobbes/lang/preds/class.H>
+#include <hobbes/lang/preds/subtype/obj.H>
 #include <hobbes/lang/typeinf.H>
-#include <hobbes/util/str.H>
 #include <hobbes/util/os.H>
+#include <hobbes/util/str.H>
+#include <memory>
 
 namespace hobbes {
 
@@ -130,7 +131,7 @@ bool Objs::isObjName(const std::string& tn) const {
 }
 
 bool Objs::isObjType(const MonoTypePtr& mt) const {
-  if (OpaquePtr* op = is<OpaquePtr>(mt)) {
+  if (auto* op = is<OpaquePtr>(mt)) {
     return isObjName(op->name());
   } else {
     return false;
@@ -138,7 +139,7 @@ bool Objs::isObjType(const MonoTypePtr& mt) const {
 }
 
 std::string show(const PtrAdjustmentPath& p) {
-  if (p.size() == 0) {
+  if (p.empty()) {
     return "[]";
   } else {
     std::string r = "[";
@@ -157,10 +158,10 @@ void appendPath(PtrAdjustmentPath* p, const PtrAdjustmentPath& sfx) {
 }
 
 PtrAdjustmentPath Objs::adjustment(const MonoTypePtr& derived, const MonoTypePtr& base) const {
-  OpaquePtr* d = is<OpaquePtr>(derived);
-  OpaquePtr* b = is<OpaquePtr>(base);
+  auto* d = is<OpaquePtr>(derived);
+  auto* b = is<OpaquePtr>(base);
 
-  if (!d || !b) {
+  if ((d == nullptr) || (b == nullptr)) {
     throw std::runtime_error("Expected class types for pointer adjustment determination, but received '" + show(derived) + " <: " + show(base));
   } else {
     return adjustment(d->name(), b->name());
@@ -179,7 +180,7 @@ PtrAdjustmentPath Objs::adjustment(const ConstraintPtr& cst) const {
 PolyTypePtr Objs::generalize(const MonoTypePtr& mt) const {
   // for now, just generalize function types
   Func* fty = is<Func>(mt);
-  if (!fty) return polytype(mt);
+  if (fty == nullptr) return polytype(mt);
 
   const MonoTypes&   fatys = fty->parameters();
   const MonoTypePtr& nfrty = fty->result();
@@ -187,14 +188,14 @@ PolyTypePtr Objs::generalize(const MonoTypePtr& mt) const {
   int                tvs = 0;
   Constraints        cs;
 
-  for (unsigned int a = 0; a < fatys.size(); ++a) {
-    if (isObjType(fatys[a])) {
+  for (const auto &faty : fatys) {
+    if (isObjType(faty)) {
       MonoTypePtr tgv(TGen::make(tvs));
       nfatys.push_back(tgv);
-      cs.push_back(ConstraintPtr(new Constraint(SubtypeUnqualifier::constraintName(), list(tgv, fatys[a]))));
+      cs.push_back(std::make_shared<Constraint>(SubtypeUnqualifier::constraintName(), list(tgv, faty)));
       ++tvs;
     } else {
-      nfatys.push_back(fatys[a]);
+      nfatys.push_back(faty);
     }
   }
 
@@ -210,7 +211,7 @@ bool Objs::satisfied(const TEnvPtr&, const MonoTypePtr& lhs, const MonoTypePtr& 
   const OpaquePtr* derived = is<OpaquePtr>(lhs);
   const OpaquePtr* base    = is<OpaquePtr>(rhs);
 
-  if (derived && base) {
+  if ((derived != nullptr) && (base != nullptr)) {
     return pathExists(derived->name(), base->name());
   } else {
     return false;
@@ -221,7 +222,7 @@ bool Objs::satisfiable(const TEnvPtr&, const MonoTypePtr& lhs, const MonoTypePtr
   const OpaquePtr* derived = is<OpaquePtr>(lhs);
   const OpaquePtr* base    = is<OpaquePtr>(rhs);
 
-  if (derived && base) {
+  if ((derived != nullptr) && (base != nullptr)) {
     return pathExists(derived->name(), base->name());
   } else {
     return mayBeKnown(lhs) && mayBeKnown(rhs);
@@ -229,13 +230,13 @@ bool Objs::satisfiable(const TEnvPtr&, const MonoTypePtr& lhs, const MonoTypePtr
 }
 
 bool Objs::mayBeKnown(const MonoTypePtr& mt) const {
-  if (OpaquePtr* op = is<OpaquePtr>(mt)) {
+  if (auto* op = is<OpaquePtr>(mt)) {
     // this is a specific C++ type name
     // we can directly tell if it's known
     return this->classDefs.find(op->name()) != this->classDefs.end();
   } else {
     // this type may only be known if it's a type-variable or polytype-arg
-    return is<TGen>(mt) || is<TVar>(mt);
+    return (is<TGen>(mt) != nullptr) || (is<TVar>(mt) != nullptr);
   }
 }
 
@@ -277,8 +278,8 @@ ExprPtr applyAdjustment(const PtrAdjustment& p, const ExprPtr& e) {
 
 ExprPtr applyAdjustments(const PtrAdjustmentPath& p, const ExprPtr& e) {
   ExprPtr r = e;
-  for (unsigned int i = 0; i < p.size(); ++i) {
-    r = applyAdjustment(p[i], r);
+  for (const auto &i : p) {
+    r = applyAdjustment(i, r);
   }
   return r;
 }
@@ -296,13 +297,13 @@ struct ObjUnqualify : public switchExprTyFn {
     }
   }
 
-  ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const {
+  ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const override {
     ExprPtr result(e);
     result->type(removeConstraint(this->constraint, qty));
     return result;
   }
 
-  ExprPtr with(const Var* v) const {
+  ExprPtr with(const Var* v) const override {
     if (!hasConstraint(this->constraint, v->type())) {
       return wrapWithTy(v->type(), v->clone());
     } else if (const Func* fty = is<Func>(v->type()->monoType())) {
@@ -327,9 +328,9 @@ struct ObjUnqualify : public switchExprTyFn {
     }
   }
 
-  ExprPtr with(const Fn* v) const {
+  ExprPtr with(const Fn* v) const override {
     const Func* fty = is<Func>(v->type()->monoType());
-    if (!fty) {
+    if (fty == nullptr) {
       throw std::runtime_error("Internal error, expected annotated function type");
     }
     return wrapWithTy(v->type(),
@@ -341,15 +342,15 @@ struct ObjUnqualify : public switchExprTyFn {
     );
   }
   
-  ExprPtr with(const App* v) const {
+  ExprPtr with(const App* v) const override {
     if (hasConstraint(this->constraint, v->fn()->type())) {
-      ExprPtr f    = is<Var>(v->fn()) ? wrapWithTy(v->fn()->type(), v->fn()->clone()) : switchOf(v->fn(), *this);
+      ExprPtr f    = is<Var>(v->fn()) != nullptr ? wrapWithTy(v->fn()->type(), v->fn()->clone()) : switchOf(v->fn(), *this);
       Exprs   args = switchOf(v->args(), *this);
       Idxs    ixs  = coercionIndexes(this->tenv, v->fn(), this->isa.greater, this->ds);
 
-      for (Idxs::const_iterator ix = ixs.begin(); ix != ixs.end(); ++ix) {
-        if (*args[*ix]->type()->monoType() == *this->isa.lower) {
-          args[*ix] = applyAdjustments(this->objs->adjustment(this->constraint), args[*ix]);
+      for (const unsigned long ix : ixs) {
+        if (*args[ix]->type()->monoType() == *this->isa.lower) {
+          args[ix] = applyAdjustments(this->objs->adjustment(this->constraint), args[ix]);
         }
       }
 
@@ -359,21 +360,21 @@ struct ObjUnqualify : public switchExprTyFn {
     }
   }
 
-  typedef std::vector<size_t> Idxs;
+  using Idxs = std::vector<size_t>;
 
   static Idxs coercionIndexes(const TEnvPtr& tenv, const ExprPtr& fe, const MonoTypePtr& convTo, Definitions* ds) {
     QualTypePtr fty  = validateType(tenv, fe, ds)->type();
     const Func* ffty = is<Func>(fty->monoType());
-    if (!ffty) return Idxs();
+    if (ffty == nullptr) return Idxs();
 
     MonoTypes ctys = convFroms(fty->constraints(), convTo);
-    if (ctys.size() == 0) return Idxs();
+    if (ctys.empty()) return Idxs();
 
     Idxs result;
     const MonoTypes& atys = ffty->parameters();
     for (size_t i = 0; i < atys.size(); ++i) {
-      for (MonoTypes::const_iterator cty = ctys.begin(); cty != ctys.end(); ++cty) {
-        if (*atys[i] == **cty) {
+      for (const auto &cty : ctys) {
+        if (*atys[i] == *cty) {
           result.push_back(i);
         }
       }
@@ -383,9 +384,9 @@ struct ObjUnqualify : public switchExprTyFn {
 
   static MonoTypes convFroms(const Constraints& cs, const MonoTypePtr& convTo) {
     MonoTypes result;
-    for (Constraints::const_iterator c = cs.begin(); c != cs.end(); ++c) {
+    for (const auto &c : cs) {
       Subtype sc;
-      if (dec(*c, &sc)) {
+      if (dec(c, &sc)) {
         if (*sc.greater == *convTo) {
           result.push_back(sc.lower);
         }

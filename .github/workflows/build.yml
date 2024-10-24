@@ -83,7 +83,7 @@ jobs:
         if: ${{ always() }}
         run: |
           nix log  .#hobbesPackages/gcc-${{ matrix.gcc }}/llvm-${{ matrix.llvm }}/hobbes &> ${{ matrix.os }}-gcc-${{ matrix.gcc }}-llvm-${{ matrix.llvm }}-hobbes.log
-      - name: upload log ${{ matrix.os }}-gcc-${{ matrix.gcc }}-llvm-${{ matrix.gitllvm }}-hobbes.log
+      - name: upload log ${{ matrix.os }}-gcc-${{ matrix.gcc }}-llvm-${{ matrix.llvm }}-hobbes.log
         if: ${{ always() }}
         uses: actions/upload-artifact@v3
         with:

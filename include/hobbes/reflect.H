@@ -12,17 +12,17 @@
 #ifndef HOBBES_REFLECT_H_INCLUDED
 #define HOBBES_REFLECT_H_INCLUDED
 
-#include <memory>
-#include <string>
-#include <vector>
-#include <map>
-#include <iostream>
-#include <sstream>
-#include <string.h>
-#include <assert.h>
-#include <stdexcept>
-#include <type_traits>
+#include <cassert>
+#include <cstring>
 #include <cxxabi.h>
+#include <iostream>
+#include <map>
+#include <memory>
+#include <sstream>
+#include <stdexcept>
+#include <string>
+#include <type_traits>
+#include <vector>
 
 #if defined(__APPLE__) && defined(__MACH__)
 #include <fcntl.h>
@@ -50,7 +50,7 @@ namespace string {
     inline std::string demangle() {
       if (const char* tn = typeid(T).name()) {
         int s = 0;
-        if (char* dmn = abi::__cxa_demangle(tn, 0, 0, &s)) {
+        if (char* dmn = abi::__cxa_demangle(tn, nullptr, nullptr, &s)) {
           std::string r(dmn);
           free(dmn);
           return r;
@@ -63,9 +63,9 @@ namespace string {
     }
 
   // tokenize strings
-  typedef std::vector<std::string> seq;
+  using seq = std::vector<std::string>;
   inline seq csplit(const std::string& str, const std::string& pivot) {
-    typedef std::string::size_type size_type;
+    using size_type = std::string::size_type;
   
     seq       ret;
     size_type mp = 0;
@@ -85,7 +85,7 @@ namespace string {
     return ret;
   }
 
-  typedef std::pair<std::string, std::string> pair;
+  using pair = std::pair<std::string, std::string>;
   inline pair rsplit(const std::string& s, const std::string& ss) {
     size_t p = s.rfind(ss);
     if (p == std::string::npos) {
@@ -96,7 +96,7 @@ namespace string {
   }
 
   inline std::string cdelim(const seq& ss, const std::string& d) {
-    if (ss.size() > 0) {
+    if (!ss.empty()) {
       std::ostringstream x;
       x << ss[0];
       for (size_t i = 1; i < ss.size(); ++i) {
@@ -109,7 +109,7 @@ namespace string {
   }
 }
 
-typedef __int128 int128_t;
+using int128_t = __int128;
 
 // very basic macro metaprogramming
 #define PRIV_HPPF_FIRST(a, ...) a
@@ -188,7 +188,7 @@ template <size_t... pcs>
 
 // value-level bool -> type-level bool
 template <bool f> struct tbool { };
-template <>       struct tbool<true> { typedef void type; };
+template <>       struct tbool<true> { using type = void; };
 
 // test to see if a type(s) can be printed
 template <typename T, class = decltype(std::declval<std::ostream&>() << std::declval<T>())>
@@ -230,7 +230,7 @@ template <size_t index, size_t base, typename Field, typename ... Fields>
   struct offsetInfo<index, base, Field, Fields...> {
     static const size_t offset = alignTo(base, alignof(Field));
 
-    typedef offsetInfo<index+1, offset+sizeof(Field), Fields...> tail;
+    using tail = offsetInfo<index + 1, offset + sizeof(Field), Fields...>;
 
     static const size_t maxAlignment = szmax(alignof(Field), tail::maxAlignment);
     static const size_t size         = (offset-base) + sizeof(Field) + tail::size;
@@ -265,13 +265,13 @@ template <typename Offs>
 template <size_t, typename ... Fields>
   struct nth { };
 template <typename Field, typename ... Fields>
-  struct nth<0, Field, Fields...> { typedef Field type; };
+  struct nth<0, Field, Fields...> { using type = Field; };
 template <size_t n, typename Field, typename ... Fields>
   struct nth<n, Field, Fields...> : nth<n-1, Fields...> { };
 
 template <typename ... Fields>
   struct tuple {
-    typedef offsetInfo<0, 0, Fields...> offs;
+    using offs = offsetInfo<0, 0, Fields...>;
     static const size_t alignment = offs::maxAlignment;
     static const size_t size      = alignTo(offs::size, offs::maxAlignment);
     static const bool   packed    = (size == offs::size) && offs::packed;
@@ -316,11 +316,11 @@ template <>
     static const size_t alignment = 1;
     static const size_t size      = 0;
 
-    tuple() { }
-    tuple(const tuple<>&) { }
-    ~tuple() { }
+    tuple() = default;
+    tuple(const tuple<>&) = default;
+    ~tuple() = default;
 
-    tuple<>& operator=(const tuple<>&) { return *this; }
+    tuple<>& operator=(const tuple<>&) = default;
   };
 
 template <typename ... Fields>
@@ -331,33 +331,33 @@ template <typename ... Fields>
 template <size_t i, typename T>
   struct tupType { };
 template <size_t i, typename ... Ts>
-  struct tupType<i, tuple<Ts...>> { typedef typename nth<i, Ts...>::type type; };
+  struct tupType<i, tuple<Ts...>> { using type = typename nth<i, Ts...>::type; };
 
 // map a function over a tuple's types (useful for structurally-derived types)
 template <typename ... Ts>
   struct concatT { };
 template <typename ... Ts1, typename ... Ts2, typename ... Rest>
   struct concatT<tuple<Ts1...>, tuple<Ts2...>, Rest...> {
-    typedef typename concatT<tuple<Ts1..., Ts2...>, Rest...>::type type;
+    using type = typename concatT<tuple<Ts1..., Ts2...>, Rest...>::type;
   }; 
 template <typename ... Ts>
   struct concatT<tuple<Ts...>> {
-    typedef tuple<Ts...> type;
+    using type = tuple<Ts...>;
   };
 
 template <template <typename T> class F, typename X>
   struct fmap { };
 template <template <typename T> class F, typename H, typename ... Rest>
   struct fmap<F, tuple<H, Rest...>> {
-    typedef typename concatT<tuple<typename F<H>::type>, typename fmap<F, tuple<Rest...>>::type>::type type;
+    using type = typename concatT<tuple<typename F<H>::type>, typename fmap<F, tuple<Rest...>>::type>::type;
   }; 
 template <template <typename T> class F, typename H>
   struct fmap<F, tuple<H>> {
-    typedef tuple<typename F<H>::type> type;
+    using type = tuple<typename F<H>::type>;
   };
 template <template <typename T> class F>
   struct fmap<F, tuple<>> {
-    typedef tuple<> type;
+    using type = tuple<>;
   };
 
 // show a tuple iff its fields can be shown
@@ -384,7 +384,7 @@ template <typename ... Ts>
 
 // the trivially true proposition -- ie: C's "void" with its one value constructible
 struct unit {
-  unit() { }
+  unit() = default;
   bool operator==(const unit&) const { return true; }
   bool operator< (const unit&) const { return false; }
 };
@@ -393,7 +393,7 @@ inline std::ostream& operator<<(std::ostream& o, const unit&) { o << "()"; retur
 // drop the first type from a sequence to determine a tuple type
 // (useful with these macro expansions where we can't distinguish first and rest values)
 template <typename ... Ts>             struct tupleTail           {                            };
-template <typename T, typename ... Ts> struct tupleTail<T, Ts...> { typedef tuple<Ts...> type; };
+template <typename T, typename ... Ts> struct tupleTail<T, Ts...> { using type = tuple<Ts...>; };
 
 // reflective structs
 #define PRIV_HPPF_STRUCT_FIELD(t, n) t n;
@@ -473,15 +473,15 @@ template <typename T, typename ... Ts> struct tupleTail<T, Ts...> { typedef tupl
 template <bool f, typename T, typename F>
   struct TIfF { };
 template <typename T, typename F>
-  struct TIfF<true, T, F> { typedef T type; };
+  struct TIfF<true, T, F> { using type = T; };
 template <typename T, typename F>
-  struct TIfF<false, T, F> { typedef F type; };
+  struct TIfF<false, T, F> { using type = F; };
 template <typename T>
   struct TSizeOfF { static const size_t value = sizeof(T); };
 template <typename T>
   struct TAlignOfF { static const size_t value = alignof(T); };
 template <template <class> class SzP, typename T0, typename ... Ts>
-  struct maximum { static const size_t value = SzP<T0>::value; typedef T0 type; };
+  struct maximum { static const size_t value = SzP<T0>::value; using type = T0; };
 template <template <class> class SzP, typename T0, typename T1, typename ... Ts>
   struct maximum<SzP, T0, T1, Ts...> : public maximum<SzP, typename TIfF<SzP<T1>::value < SzP<T0>::value, T0, T1>::type, Ts...> { };
 
@@ -492,21 +492,21 @@ template <typename T, typename ... Ctors>
 template <typename T, typename Ctor, typename ... Ctors>
   struct CtorIndexOf<T, Ctor, Ctors...> { static const uint32_t value = 1 + CtorIndexOf<T, Ctors...>::value; };
 template <typename T, typename ... Ts>
-  struct First { typedef T type; };
+  struct First { using type = T; };
 
 template <size_t i, typename R, template <size_t,class,class> class F, typename U, typename A, typename ... Ctors>
   struct variantAppInit {
   };
 template <size_t i, typename R, template <size_t,class,class> class F, typename U, typename ... Args, typename ... Ctors>
   struct variantAppInit<i, R, F, U, tuple<Args...>, Ctors...> {
-    typedef R (*PF)(void*, Args...);
+    using PF = R (*)(void *, Args...);
     static bool init(PF*) { return true; }
   };
 template <size_t i, typename R, template <size_t,class,class> class F, typename U, typename ... Args, typename Ctor, typename ... Ctors>
   struct variantAppInit<i, R, F, U, tuple<Args...>, Ctor, Ctors...> {
-    typedef R (*PF)(void*, Args...);
+    using PF = R (*)(void *, Args...);
     static bool init(PF* pfs) {
-      typedef R (*TPF)(Ctor*, Args...);
+      using TPF = R (*)(Ctor *, Args...);
       TPF tpf = &F<i, Ctor, U>::fn;
       pfs[i] = reinterpret_cast<PF>(tpf);
       return variantAppInit<i+1, R, F, U, tuple<Args...>, Ctors...>::init(pfs);
@@ -518,7 +518,7 @@ template <typename R, template <size_t,class,class> class F, typename U, typenam
   };
 template <template <size_t,class,class> class F, typename U, typename ... Ctors, typename ... Args>
   struct variantApp<void, F, U, tuple<Ctors...>, Args...> {
-    typedef void (*PF)(void*, Args...);
+    using PF = void (*)(void *, Args...);
     static PF* fns() {
       static PF fvec[sizeof...(Ctors)];
       static bool init = variantAppInit<0, void, F, U, tuple<Args...>, Ctors...>::init(fvec);
@@ -533,7 +533,7 @@ template <template <size_t,class,class> class F, typename U, typename ... Ctors,
 
 template <typename R, template <size_t,class,class> class F, typename U, typename ... Ctors, typename ... Args>
   struct variantApp<R, F, U, tuple<Ctors...>, Args...> {
-    typedef R (*PF)(void*, Args...);
+    using PF = R (*)(void *, Args...);
     static PF* fns() {
       static PF fvec[sizeof...(Ctors)];
       static bool init = variantAppInit<0, R, F, U, tuple<Args...>, Ctors...>::init(fvec);
@@ -567,14 +567,42 @@ template <size_t, typename T, typename U>
     }
   };
 
+namespace detail {
+template <typename Fn, typename... Ts> struct variantVisitorByTag {
+  static void visit(std::size_t, std::size_t, Fn &&, void *) {}
+};
+
+template <typename Fn, typename T, typename... Ts>
+struct variantVisitorByTag<Fn, T, Ts...> {
+  static void visit(std::size_t count, std::size_t tag, Fn &&fn,
+                    void *storage) {
+    if (tag == (count - sizeof...(Ts) - 1)) {
+      std::forward<Fn>(fn)(storage);
+    } else {
+      variantVisitorByTag<Fn, Ts...>::visit(count, tag, fn, storage);
+    }
+  }
+};
+
+template <typename T, typename... Ts> struct CountType {
+  static constexpr std::size_t value = 0;
+};
+
+template <typename T, typename U, typename... Ts>
+struct CountType<T, U, Ts...> {
+  static constexpr std::size_t value =
+      (std::is_same<T, U>::value ? 1 : 0) + CountType<T, Ts...>::value;
+};
+} // namespace detail
+
 template <typename ... Ctors>
   class variant {
   public:
     static const size_t count = sizeof...(Ctors);
     static_assert(count > 0, "Empty variants are impossible to construct");
 
-    typedef variantApp<void, variantPayloadCtor, void, tuple<Ctors...>, const void*> VCCtor;
-    typedef variantApp<void, variantPayloadDtor, void, tuple<Ctors...>>              VDtor;
+    using VCCtor = variantApp<void, variantPayloadCtor, void, tuple<Ctors...>, const void *>;
+    using VDtor = variantApp<void, variantPayloadDtor, void, tuple<Ctors...>>;
 
     variant() : tag(0) {
       new (this->storage) typename First<Ctors...>::type();
@@ -599,10 +627,22 @@ template <typename ... Ctors>
       return *this;
     }
 
-    template <typename T>
+    // This function is only instantiated when T is unique in Ctors
+    template <typename T, typename = std::enable_if_t<detail::CountType<T, Ctors...>::value == 1>>
       T* get() { return findByCtor<T>(); }
-    template <typename T>
+    template <typename T, typename = std::enable_if_t<detail::CountType<T, Ctors...>::value == 1>>
       const T* get() const { return findByCtor<T>(); }
+
+    // This function is only instantiated in case of having a type like variant<char, int, char>
+    // and tring to access the char
+    //
+    // \p fn should be void(void*) alike
+    template <typename T, typename Fn,
+              std::enable_if_t<(detail::CountType<T, Ctors...>::value > 1)>>
+    void get(uint32_t t, Fn &&fn) {
+      detail::variantVisitorByTag<Fn, Ctors...>::visit(
+          count, t, std::forward<Fn>(fn), this->storage);
+    }
 
     template <typename R, template <size_t,class,class> class F, typename U, typename ... Args>
       R apply(Args... args) {
@@ -624,14 +664,12 @@ template <typename ... Ctors>
       typename maximum<TAlignOfF, Ctors...>::type maxAlignedT;
     };
 
-    template <typename T>
+    template <typename T, typename = std::enable_if_t<detail::CountType<T, Ctors...>::value == 1>>
       T* findByCtor() const {
-        static_assert(CtorIndexOf<T, Ctors...>::value < sizeof...(Ctors), "Constructor type isn't part of variant");
-
         if (this->tag == CtorIndexOf<T, Ctors...>::value) {
           return const_cast<T*>(reinterpret_cast<const T*>(this->storage));
         } else {
-          return 0;
+          return nullptr;
         }
       }
   };
@@ -640,22 +678,22 @@ template <typename ... Ctors>
     return lhs.unsafeTag() == rhs.unsafeTag() &&
            variantApp<bool, variantPayloadEq, void, tuple<Ctors...>, const void*>::apply(lhs.unsafeTag(), const_cast<void*>(reinterpret_cast<const void*>(lhs.unsafePayload())), reinterpret_cast<const void*>(rhs.unsafePayload()));
   }
-template <typename T, typename ... Ctors>
+template <typename T, typename ... Ctors, typename = std::enable_if_t<detail::CountType<T, Ctors...>::value == 1>>
   T* get(variant<Ctors...>& v) {
     return v.template get<T>();
   }
-template <typename T, typename ... Ctors>
+template <typename T, typename ... Ctors, typename = std::enable_if_t<detail::CountType<T, Ctors...>::value == 1>>
   const T* get(const variant<Ctors...>& v) {
     return v.template get<T>();
   }
 
 template <typename ... Ts>             struct variantTail           {                              };
-template <typename T, typename ... Ts> struct variantTail<T, Ts...> { typedef variant<Ts...> type; };
+template <typename T, typename ... Ts> struct variantTail<T, Ts...> { using type = variant<Ts...>; };
 
 template <typename T>
   struct toVariant { };
 template <typename ... Ts>
-  struct toVariant<tuple<Ts...>> { typedef variant<Ts...> type; };
+  struct toVariant<tuple<Ts...>> { using type = variant<Ts...>; };
 
 // show a variant iff its constructors can be shown
 template <size_t, typename T, typename U>
@@ -921,7 +959,7 @@ template <typename ... Ts>
 // arrays with dynamically-determined length
 template <typename T>
   struct array {
-    typedef array<T>* ptr;
+    using ptr = array<T> *;
 
     size_t size;
     T      data[1]; // unknown length, bytes inline with this structure
@@ -978,7 +1016,7 @@ template <typename T, size_t N>       T* end  (      carray<T,N>& d) { return d.
 template <typename RepTy>
   struct alias {
     static const bool is_hmeta_alias = true;
-    typedef RepTy type;
+    using type = RepTy;
     RepTy value;
 
     alias() : value() { }
@@ -1003,7 +1041,7 @@ template <typename RepTy>
 
 namespace ty {
 
-typedef std::vector<uint8_t> bytes;
+using bytes = std::vector<uint8_t>;
 
 // type encoding logic
 #define PRIV_HPPF_TYCTOR_PRIM      (static_cast<uint32_t>(0))
@@ -1018,7 +1056,7 @@ typedef std::vector<uint8_t> bytes;
 #define PRIV_HPPF_TYCTOR_TABS      (static_cast<uint32_t>(15))
 
 struct D { uint32_t tid; D(uint32_t tid) : tid(tid) { } };
-typedef std::shared_ptr<D> desc;
+using desc = std::shared_ptr<D>;
 
 struct Nat : public D {
   Nat(size_t x) : D(PRIV_HPPF_TYCTOR_SIZE), x(x) { }
@@ -1055,8 +1093,8 @@ struct Arr : public D {
 inline desc array(const desc& t) { return desc(new Arr(t)); }
 
 struct Variant : public D {
-  typedef tuple<std::string, uint32_t, desc> Ctor;
-  typedef std::vector<Ctor> Ctors;
+  using Ctor = tuple<std::string, uint32_t, desc>;
+  using Ctors = std::vector<Ctor>;
 
   Variant(const Ctors& ctors) : D(PRIV_HPPF_TYCTOR_VARIANT), ctors(ctors) { }
 
@@ -1084,14 +1122,14 @@ template <typename ... Tys>
   }
 
 struct Struct : public D {
-  typedef tuple<std::string, int, desc> Field;
-  typedef std::vector<Field> Fields;
+  using Field = tuple<std::string, int, desc>;
+  using Fields = std::vector<Field>;
 
   Struct(const Fields& fields) : D(PRIV_HPPF_TYCTOR_STRUCT), fields(fields) { }
 
   Fields fields;
 };
-inline desc record(const Struct::Fields& fields) { return fields.size() == 0 ? prim("unit") : desc(new Struct(fields)); }
+inline desc record(const Struct::Fields& fields) { return fields.empty() ? prim("unit") : desc(new Struct(fields)); }
 
 template <typename ... Tys>
   struct tupAcc { static void acc(Struct::Fields*) { } };
@@ -1133,7 +1171,7 @@ struct Recursive : public D {
 inline desc recursive(const std::string& x, const desc& t) { return desc(new Recursive(x, t)); }
 
 struct Fn : public D {
-  typedef std::vector<std::string> Args;
+  using Args = std::vector<std::string>;
   Fn(const Args& args, const desc& t) : D(PRIV_HPPF_TYCTOR_TABS), args(args), t(t) { }
 
   Args args;
@@ -1152,7 +1190,7 @@ template <typename ... Tys>
   inline desc fn(const Tys& ... tt) { Fn::Args args; return fnAcc<Tys...>::acc(&args, tt...); }
 
 struct App : public D {
-  typedef std::vector<desc> Args;
+  using Args = std::vector<desc>;
 
   App(const desc& f, const Args& args) : D(PRIV_HPPF_TYCTOR_TAPP), f(f), args(args) { }
 
@@ -1196,9 +1234,9 @@ inline desc elimFileRefs(const desc& t) {
   const D*         pd   = t.get();
   const FArr*      pfa  = reinterpret_cast<const FArr*>(pd);
   const Arr*       pa   = reinterpret_cast<const Arr*>(pd);
-  const Variant*   pv   = reinterpret_cast<const Variant*>(pd);
-  const Struct*    ps   = reinterpret_cast<const Struct*>(pd);
-  const Recursive* pr   = reinterpret_cast<const Recursive*>(pd);
+  const auto*   pv   = reinterpret_cast<const Variant*>(pd);
+  const auto*    ps   = reinterpret_cast<const Struct*>(pd);
+  const auto* pr   = reinterpret_cast<const Recursive*>(pd);
   const Fn*        pfn  = reinterpret_cast<const Fn*>(pd);
   const App*       papp = reinterpret_cast<const App*>(pd);
 
@@ -1229,7 +1267,7 @@ inline desc elimFileRefs(const desc& t) {
     {
       if (papp->f->tid == PRIV_HPPF_TYCTOR_PRIM) {
         if (reinterpret_cast<const Prim*>(papp->f.get())->n == "fileref") {
-          if (papp->args.size() > 0) {
+          if (!papp->args.empty()) {
             return elimFileRefs(papp->args[0]);
           }
         }
@@ -1274,9 +1312,9 @@ inline void encode(const desc& t, bytes* o) {
   const Var*       pvn  = reinterpret_cast<const Var*>(pd);
   const FArr*      pfa  = reinterpret_cast<const FArr*>(pd);
   const Arr*       pa   = reinterpret_cast<const Arr*>(pd);
-  const Variant*   pv   = reinterpret_cast<const Variant*>(pd);
-  const Struct*    ps   = reinterpret_cast<const Struct*>(pd);
-  const Recursive* pr   = reinterpret_cast<const Recursive*>(pd);
+  const auto*   pv   = reinterpret_cast<const Variant*>(pd);
+  const auto*    ps   = reinterpret_cast<const Struct*>(pd);
+  const auto* pr   = reinterpret_cast<const Recursive*>(pd);
   const Fn*        pfn  = reinterpret_cast<const Fn*>(pd);
   const App*       papp = reinterpret_cast<const App*>(pd);
   const Nat*       pn   = reinterpret_cast<const Nat*>(pd);
@@ -1362,7 +1400,8 @@ inline bool operator!=(const desc& t0, const desc& t1) {
 template <typename T>
   T readValue(const bytes& bs, size_t* i) {
     assert((bs.size() >= (*i + sizeof(T))) && "Invalid type encoding, expected data not available");
-    T result = *reinterpret_cast<const T*>(&bs[*i]);
+    T result;
+    std::memcpy(&result, &bs[*i], sizeof(T));
     *i += sizeof(T);
     return result;
   }
@@ -1402,7 +1441,7 @@ inline desc decodeFrom(const bytes& bs, size_t* i) {
     }
 
   case PRIV_HPPF_TYCTOR_VARIANT: {
-      size_t n = readValue<size_t>(bs, i);
+      auto n = readValue<size_t>(bs, i);
       Variant::Ctors cs;
       for (size_t k = 0; k < n; ++k) {
         std::string n  = readString(bs, i);
@@ -1415,7 +1454,7 @@ inline desc decodeFrom(const bytes& bs, size_t* i) {
     }
 
   case PRIV_HPPF_TYCTOR_STRUCT: {
-      size_t count = readValue<size_t>(bs, i);
+      auto count = readValue<size_t>(bs, i);
       Struct::Fields fs;
       for (size_t k = 0; k < count; ++k) {
         std::string n = readString(bs, i);
@@ -1433,7 +1472,7 @@ inline desc decodeFrom(const bytes& bs, size_t* i) {
 
   case PRIV_HPPF_TYCTOR_TAPP: {
       desc   f = decodeFrom(bs, i);
-      size_t n = readValue<size_t>(bs, i);
+      auto n = readValue<size_t>(bs, i);
 
       App::Args args;
       for (size_t k = 0; k < n; ++k) {
@@ -1451,7 +1490,7 @@ inline desc decodeFrom(const bytes& bs, size_t* i) {
     }
 
   case PRIV_HPPF_TYCTOR_TABS: {
-      size_t   n = readValue<size_t>(bs, i);
+      auto   n = readValue<size_t>(bs, i);
       Fn::Args args;
       for (size_t k = 0; k < n; ++k) {
         args.push_back(readString(bs, i));
@@ -1488,9 +1527,9 @@ inline void describe(const desc& t, std::ostream& o) {
   const Var*       pvn  = reinterpret_cast<const Var*>(pd);
   const FArr*      pfa  = reinterpret_cast<const FArr*>(pd);
   const Arr*       pa   = reinterpret_cast<const Arr*>(pd);
-  const Variant*   pv   = reinterpret_cast<const Variant*>(pd);
-  const Struct*    ps   = reinterpret_cast<const Struct*>(pd);
-  const Recursive* pr   = reinterpret_cast<const Recursive*>(pd);
+  const auto*   pv   = reinterpret_cast<const Variant*>(pd);
+  const auto*    ps   = reinterpret_cast<const Struct*>(pd);
+  const auto* pr   = reinterpret_cast<const Recursive*>(pd);
   const Fn*        pfn  = reinterpret_cast<const Fn*>(pd);
   const App*       papp = reinterpret_cast<const App*>(pd);
   const Nat*       pn   = reinterpret_cast<const Nat*>(pd);
@@ -1519,7 +1558,7 @@ inline void describe(const desc& t, std::ostream& o) {
     o << "]";
     break;
   case PRIV_HPPF_TYCTOR_VARIANT:
-    if (pv->ctors.size() == 0) {
+    if (pv->ctors.empty()) {
       o << "void";
     } else {
       // show as sum or variant
@@ -1543,7 +1582,7 @@ inline void describe(const desc& t, std::ostream& o) {
     }
     break;
   case PRIV_HPPF_TYCTOR_STRUCT:
-    if (ps->fields.size() == 0) {
+    if (ps->fields.empty()) {
       o << "()";
     } else {
       // show as product or record
@@ -1570,13 +1609,13 @@ inline void describe(const desc& t, std::ostream& o) {
     o << pn->x;
     break;
   case PRIV_HPPF_TYCTOR_TAPP:
-    if (papp->args.size() > 0 && papp->f->tid == PRIV_HPPF_TYCTOR_PRIM && reinterpret_cast<const ty::Prim*>(papp->f.get())->n == "fileref") {
+    if (!papp->args.empty() && papp->f->tid == PRIV_HPPF_TYCTOR_PRIM && reinterpret_cast<const ty::Prim*>(papp->f.get())->n == "fileref") {
       describe(papp->args[0], o);
       o << "@?";
     } else {
       describe(papp->f, o);
       o << "(";
-      if (papp->args.size() > 0) {
+      if (!papp->args.empty()) {
         describe(papp->args[0], o);
         for (size_t i = 1; i < papp->args.size(); ++i) {
           o << ", ";
@@ -1592,7 +1631,7 @@ inline void describe(const desc& t, std::ostream& o) {
     break;
   case PRIV_HPPF_TYCTOR_TABS:
     o << "\\";
-    if (pfn->args.size() > 0) {
+    if (!pfn->args.empty()) {
       o << pfn->args[0];
       for (size_t i = 1; i < pfn->args.size(); ++i) {
         o << " " << pfn->args[i];
@@ -1633,8 +1672,8 @@ inline bool equivModOffset(const desc& t0, const desc& t1) {
   case PRIV_HPPF_TYCTOR_ARR:
     return equivModOffset(reinterpret_cast<const Arr*>(pd0)->t, reinterpret_cast<const Arr*>(pd1)->t);
   case PRIV_HPPF_TYCTOR_VARIANT: {
-      const Variant* pv0 = reinterpret_cast<const Variant*>(pd0);
-      const Variant* pv1 = reinterpret_cast<const Variant*>(pd1);
+      const auto* pv0 = reinterpret_cast<const Variant*>(pd0);
+      const auto* pv1 = reinterpret_cast<const Variant*>(pd1);
 
       if (pv0->ctors.size() != pv1->ctors.size()) {
         return false;
@@ -1650,8 +1689,8 @@ inline bool equivModOffset(const desc& t0, const desc& t1) {
       }
     }
   case PRIV_HPPF_TYCTOR_STRUCT: {
-      const Struct* pr0 = reinterpret_cast<const Struct*>(pd0);
-      const Struct* pr1 = reinterpret_cast<const Struct*>(pd1);
+      const auto* pr0 = reinterpret_cast<const Struct*>(pd0);
+      const auto* pr1 = reinterpret_cast<const Struct*>(pd1);
 
       if (pr0->fields.size() != pr1->fields.size()) {
         return false;
@@ -1703,8 +1742,8 @@ inline size_t alignOf(const desc& t) {
   const Prim*      pt   = reinterpret_cast<const Prim*>(pd);
   const Var*       pvn  = reinterpret_cast<const Var*>(pd);
   const FArr*      pfa  = reinterpret_cast<const FArr*>(pd);
-  const Variant*   pv   = reinterpret_cast<const Variant*>(pd);
-  const Struct*    ps   = reinterpret_cast<const Struct*>(pd);
+  const auto*   pv   = reinterpret_cast<const Variant*>(pd);
+  const auto*    ps   = reinterpret_cast<const Struct*>(pd);
 
   switch (t->tid) {
   case PRIV_HPPF_TYCTOR_PRIM:
@@ -1734,7 +1773,7 @@ inline size_t alignOf(const desc& t) {
     throw std::runtime_error("Can't determine alignment of variable-length array type: " + show(t));
 
   case PRIV_HPPF_TYCTOR_VARIANT:
-    if (pv->ctors.size() == 0) {
+    if (pv->ctors.empty()) {
       return 1;
     } else {
       size_t maxAlign = 4; // the variant tag is an int
@@ -1745,7 +1784,7 @@ inline size_t alignOf(const desc& t) {
     }
 
   case PRIV_HPPF_TYCTOR_STRUCT:
-    if (ps->fields.size() == 0) {
+    if (ps->fields.empty()) {
       return 1;
     } else {
       size_t maxAlign = 1;
@@ -1777,8 +1816,8 @@ inline size_t sizeOf(const desc& t) {
   const Prim*      pt   = reinterpret_cast<const Prim*>(pd);
   const Var*       pvn  = reinterpret_cast<const Var*>(pd);
   const FArr*      pfa  = reinterpret_cast<const FArr*>(pd);
-  const Variant*   pv   = reinterpret_cast<const Variant*>(pd);
-  const Struct*    ps   = reinterpret_cast<const Struct*>(pd);
+  const auto*   pv   = reinterpret_cast<const Variant*>(pd);
+  const auto*    ps   = reinterpret_cast<const Struct*>(pd);
 
   switch (t->tid) {
   case PRIV_HPPF_TYCTOR_PRIM:
@@ -1804,7 +1843,7 @@ inline size_t sizeOf(const desc& t) {
     throw std::runtime_error("Can't determine size of variable-length array type: " + show(t));
 
   case PRIV_HPPF_TYCTOR_VARIANT:
-    if (pv->ctors.size() == 0) {
+    if (pv->ctors.empty()) {
       return 4;
     } else {
       size_t maxSize  = 4; // the variant tag is an int
@@ -1817,7 +1856,7 @@ inline size_t sizeOf(const desc& t) {
     }
 
   case PRIV_HPPF_TYCTOR_STRUCT:
-    if (ps->fields.size() == 0) {
+    if (ps->fields.empty()) {
       return 1;
     } else {
       size_t maxAlign = 1;
