@@ -189,6 +189,8 @@ BOP(i16mul, CreateMul,  int128_t, int128_t, int128_t);
 BOP(i16div, CreateSDiv, int128_t, int128_t, int128_t);
 BOP(i16rem, CreateSRem, int128_t, int128_t, int128_t);
 
+BOP(i16shl, CreateShl, int128_t, int128_t, int128_t);
+
 BOP(i16eq,  CreateICmpEQ,  int128_t, int128_t, bool);
 BOP(i16neq, CreateICmpNE,  int128_t, int128_t, bool);
 BOP(i16lt,  CreateICmpSLT, int128_t, int128_t, bool);
