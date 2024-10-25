@@ -28,7 +28,7 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
-          name: output-log-file-${{ matrix.os }}-clang-${{ matrix.clang }}
+          name: output-log-file-${{ matrix.os }}-clang-${{ matrix.clang }}-ASanAndUBSan-hobbes
           path: ${{ matrix.os }}-clang-${{ matrix.clang }}-ASanAndUBSan-hobbes.log
   linux-clang-build:
     runs-on: ${{matrix.os}}
