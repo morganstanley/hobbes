@@ -28,7 +28,7 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
-          name: output-log-file
+          name: output-log-file-${{ matrix.os }}-clang-${{ matrix.clang }}
           path: ${{ matrix.os }}-clang-${{ matrix.clang }}-ASanAndUBSan-hobbes.log
   linux-clang-build:
     runs-on: ${{matrix.os}}
@@ -57,7 +57,7 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
-          name: output-log-file
+          name: output-log-file-${{ matrix.os }}-clang-${{ matrix.clang }}
           path: ${{ matrix.os }}-clang-${{ matrix.clang }}-hobbes.log
   linux-gcc-build:
     runs-on: ${{matrix.os}}
@@ -87,5 +87,5 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
-          name: output-log-file
+          name: output-log-file-${{ matrix.os }}-gcc-${{ matrix.gcc }}-llvm-${{ matrix.llvm }}
           path: ${{ matrix.os }}-gcc-${{ matrix.gcc }}-llvm-${{ matrix.llvm }}-hobbes.log
