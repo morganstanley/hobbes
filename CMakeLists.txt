@@ -13,11 +13,16 @@ set(CURSES_NEED_NCURSES TRUE)
 find_package(Curses REQUIRED)
 include_directories(${CURSES_INCLUDE_DIRS})
 
+find_package(LLVM 12 CONFIG QUIET)
 find_package(LLVM REQUIRED CONFIG)
 include_directories(SYSTEM ${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
 
 set(CMAKE_CXX_STANDARD 14)
+
+message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
+message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
+message(STATUS "Using LLVM binary dir: ${LLVM_TOOLS_BINARY_DIR}")
 
 if (${LLVM_PACKAGE_VERSION} VERSION_LESS "3.6")
   set(jit_lib jit)
@@ -29,6 +34,7 @@ endif()
 
 find_program(llvm-config llvm-config PATHS ${LLVM_TOOLS_BINARY_DIR} NO_DEFAULT_PATH)
 find_program(llvm-config llvm-config)
+message(STATUS "Using LLVM config: ${llvm-config}")
 if (${LLVM_PACKAGE_VERSION} VERSION_LESS "4.0")
   execute_process(COMMAND ${llvm-config} --libs x86 ipo ${jit_lib}
                   OUTPUT_VARIABLE llvm_libs
@@ -42,7 +48,8 @@ if (${LLVM_PACKAGE_VERSION} VERSION_LESS "4.0")
 else()
   execute_process(COMMAND ${llvm-config} --libs x86 ipo ${jit_lib} --link-static
                   OUTPUT_VARIABLE llvm_libs
-                  OUTPUT_STRIP_TRAILING_WHITESPACE)
+                  OUTPUT_STRIP_TRAILING_WHITESPACE
+                  COMMAND_ERROR_IS_FATAL ANY)
   execute_process(COMMAND ${llvm-config} --ldflags
                   OUTPUT_VARIABLE llvm_ldflags
                   OUTPUT_STRIP_TRAILING_WHITESPACE)
@@ -110,7 +117,7 @@ add_executable(mock-proc test/mocks/proc.C)
 add_executable(hobbes-test ${test_files})
 target_link_libraries(hobbes-test PRIVATE hobbes)
 add_test(hobbes-test hobbes-test)
-find_package(PythonInterp 2.7 REQUIRED)
+find_package(Python COMPONENTS Interpreter)
 set_property(TARGET hobbes-test PROPERTY COMPILE_FLAGS "-DPYTHON_EXECUTABLE=\"${PYTHON_EXECUTABLE}\" -DSCRIPT_DIR=\"${CMAKE_SOURCE_DIR}/scripts/\"")
 
 install(TARGETS hobbes hobbes-pic DESTINATION "lib")

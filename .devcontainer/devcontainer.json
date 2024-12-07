@@ -35,7 +35,10 @@
 		"vscode": {
 			"extensions": [
 				"github.vscode-github-actions",
-				"GitHub.vscode-pull-request-github"
+				"GitHub.vscode-pull-request-github",
+				"ms-vscode.cpptools-extension-pack",
+				"ms-vscode.makefile-tools",
+				"ms-azuretools.vscode-docker"
 			]
 		}
 	}
