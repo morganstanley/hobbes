@@ -4,8 +4,8 @@
 	"name": "Ubuntu",
 	// Or use a Dockerfile or Docker Compose file. More info: https://containers.dev/guide/dockerfile
 	"build": {
-		"dockerfile": "Dockerfile",
-		"context": "..",
+		"dockerfile": "../Dockerfile",
+		"context": "../..",
 		"args": {
 		  // Options
 		  "NODE_VERSION": "none"
