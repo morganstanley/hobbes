@@ -5,7 +5,7 @@ jobs:
     runs-on: ${{matrix.os}}
     strategy:
       matrix:
-        os: [ubuntu-20.04]
+        os: [ubuntu-22.04]
         clang: [8]
     steps:
       - uses: actions/checkout@v4
@@ -14,9 +14,11 @@ jobs:
             fetch-depth: 0
       - uses: cachix/install-nix-action@v31
         with:
-          install_url: https://github.com/numtide/nix-flakes-installer/releases/download/nix-2.4pre20201221_9fab14a/install
           extra_nix_config: |
             experimental-features = nix-command flakes ca-references
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
       - name: nix build hobbesPackages/clang-${{ matrix.clang }}-ASanAndUBSan/hobbes
         run: |
           nix build .#hobbesPackages/clang-${{ matrix.clang }}-ASanAndUBSan/hobbes
@@ -34,7 +36,7 @@ jobs:
     runs-on: ${{matrix.os}}
     strategy:
       matrix:
-        os: [ubuntu-20.04]
+        os: [ubuntu-22.04]
         clang: [6, 8, 10, 11, 12]
     steps:
       - uses: actions/checkout@v4
@@ -43,9 +45,11 @@ jobs:
             fetch-depth: 0
       - uses: cachix/install-nix-action@v31
         with:
-          install_url: https://github.com/numtide/nix-flakes-installer/releases/download/nix-2.4pre20201221_9fab14a/install
           extra_nix_config: |
             experimental-features = nix-command flakes ca-references
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
       - name: nix build hobbesPackages/clang-${{ matrix.clang }}/hobbes
         run: |
           nix build .#hobbesPackages/clang-${{ matrix.clang }}/hobbes
@@ -63,7 +67,7 @@ jobs:
     runs-on: ${{matrix.os}}
     strategy:
       matrix:
-        os: [ubuntu-20.04]
+        os: [ubuntu-22.04]
         gcc: [10]
         llvm: [6, 8, 10, 11, 12]
     steps:
@@ -73,9 +77,11 @@ jobs:
             fetch-depth: 0
       - uses: cachix/install-nix-action@v31
         with:
-          install_url: https://github.com/numtide/nix-flakes-installer/releases/download/nix-2.4pre20201221_9fab14a/install
           extra_nix_config: |
             experimental-features = nix-command flakes ca-references
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
       - name: nix build hobbesPackages/gcc-${{ matrix.gcc }}/llvm-${{ matrix.llvm }}/hobbes
         run: |
           nix build .#hobbesPackages/gcc-${{ matrix.gcc }}/llvm-${{ matrix.llvm }}/hobbes
