@@ -5379,8 +5379,9 @@ yyreturnlab:
       YYPOPSTACK (1);
     }
 #ifndef yyoverflow
+ // false positive https://gcc.gnu.org/bugzilla/show_bug.cgi?id=98753
   if (yyss != yyssa)
-    YYSTACK_FREE (yyss);
+    YYSTACK_FREE (yyss == yyssa ? nullptr : yyss);
 #endif
   if (yymsg != yymsgbuf)
     YYSTACK_FREE (yymsg);

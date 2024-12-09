@@ -4,9 +4,9 @@ with final;
 let
   dbg = if debug == true then enableDebugging else (x: x);
 
-  nativeBuildInputs = [ cmake ninja python27 ];
+  nativeBuildInputs = [ cmake ninja python310 ];
 
-  buildInputs = [ ncurses readline zlib python27 ];
+  buildInputs = [ ncurses readline zlib python310 ];
 
   doCheck = true;
 

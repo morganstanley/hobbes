@@ -262,6 +262,57 @@ static inline unsigned spin(unsigned count) {
   return (count << 1);
 }
 
+#if defined(__aarch64__)
+//https://docs.huihoo.com/doxygen/linux/kernel/3.7/arch_2arm64_2include_2asm_2cmpxchg_8h_source.html
+#define uxchg(ptr,x) \
+        __xchg((x),(ptr),sizeof(*(ptr))) 
+
+static inline void __xchg(volatile unsigned long x, volatile void *ptr, std::size_t size)
+{
+    unsigned long ret, tmp;
+
+    switch (size) {
+    case 1:
+        asm volatile("//    __xchg1\n"
+        "1: ldaxrb  %w0, [%3]\n"
+        "   stlxrb  %w1, %w2, [%3]\n"
+        "   cbnz    %w1, 1b\n"
+            : "=&r" (ret), "=&r" (tmp)
+            : "r" (x), "r" (ptr)
+            : "memory", "cc");
+        break;
+    case 2:
+        asm volatile("//    __xchg2\n"
+        "1: ldaxrh  %w0, [%3]\n"
+        "   stlxrh  %w1, %w2, [%3]\n"
+        "   cbnz    %w1, 1b\n"
+            : "=&r" (ret), "=&r" (tmp)
+            : "r" (x), "r" (ptr)
+            : "memory", "cc");
+        break;
+    case 4:
+        asm volatile("//    __xchg4\n"
+        "1: ldaxr   %w0, [%3]\n"
+        "   stlxr   %w1, %w2, [%3]\n"
+        "   cbnz    %w1, 1b\n"
+            : "=&r" (ret), "=&r" (tmp)
+            : "r" (x), "r" (ptr)
+            : "memory", "cc");
+        break;
+    case 8:
+        asm volatile("//    __xchg8\n"
+        "1: ldaxr   %0, [%3]\n"
+        "   stlxr   %w1, %2, [%3]\n"
+        "   cbnz    %w1, 1b\n"
+            : "=&r" (ret), "=&r" (tmp)
+            : "r" (x), "r" (ptr)
+            : "memory", "cc");
+        break;
+    default:
+        assert(0);
+    }
+}
+#else
 static inline void uxchg(volatile uint32_t* px, uint32_t nx) {
   __asm__ __volatile__(
     "xchgl %0,%1"
@@ -270,6 +321,8 @@ static inline void uxchg(volatile uint32_t* px, uint32_t nx) {
     :"memory"
   );
 }
+#endif
+
 #define xchg __sync_lock_test_and_set
 
 // define a local socket for registering new storage queues
