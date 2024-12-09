@@ -31,12 +31,17 @@ elseif(${LLVM_PACKAGE_VERSION} VERSION_LESS "11.0")
 else()
   set(jit_lib mcjit orcjit)
 endif()
+IF(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
+  set(llvm_arch_lib x86)
+ELSEIF(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
+  set(llvm_arch_lib aarch64)
+ENDIF()
 
 find_program(llvm-config llvm-config PATHS ${LLVM_TOOLS_BINARY_DIR} NO_DEFAULT_PATH)
 find_program(llvm-config llvm-config)
 message(STATUS "Using LLVM config: ${llvm-config}")
 if (${LLVM_PACKAGE_VERSION} VERSION_LESS "4.0")
-  execute_process(COMMAND ${llvm-config} --libs x86 ipo ${jit_lib}
+  execute_process(COMMAND ${llvm-config} --libs ipo ${llvm_arch_lib} ${jit_lib}
                   OUTPUT_VARIABLE llvm_libs
                   OUTPUT_STRIP_TRAILING_WHITESPACE)
   execute_process(COMMAND ${llvm-config} --ldflags
@@ -46,7 +51,7 @@ if (${LLVM_PACKAGE_VERSION} VERSION_LESS "4.0")
                   OUTPUT_VARIABLE sys_libs
                   OUTPUT_STRIP_TRAILING_WHITESPACE)
 else()
-  execute_process(COMMAND ${llvm-config} --libs x86 ipo ${jit_lib} --link-static
+  execute_process(COMMAND ${llvm-config} --libs ipo ${llvm_arch_lib} ${jit_lib} --link-static
                   OUTPUT_VARIABLE llvm_libs
                   OUTPUT_STRIP_TRAILING_WHITESPACE
                   COMMAND_ERROR_IS_FATAL ANY)
@@ -118,7 +123,8 @@ add_executable(hobbes-test ${test_files})
 target_link_libraries(hobbes-test PRIVATE hobbes)
 add_test(hobbes-test hobbes-test)
 find_package(Python COMPONENTS Interpreter)
-set_property(TARGET hobbes-test PROPERTY COMPILE_FLAGS "-DPYTHON_EXECUTABLE=\"${PYTHON_EXECUTABLE}\" -DSCRIPT_DIR=\"${CMAKE_SOURCE_DIR}/scripts/\"")
+message("Python_EXECUTABLE " ${Python_EXECUTABLE})
+set_property(TARGET hobbes-test PROPERTY COMPILE_FLAGS "-DPYTHON_EXECUTABLE=\"${Python_EXECUTABLE}\" -DSCRIPT_DIR=\"${CMAKE_SOURCE_DIR}/scripts/\"")
 
 install(TARGETS hobbes hobbes-pic DESTINATION "lib")
 install(TARGETS hi hog hobbes-test DESTINATION "bin")
