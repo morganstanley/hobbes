@@ -20,9 +20,12 @@ class PythonProc {
 public:
   PythonProc(const std::string& py, const std::string& moddir, const std::string& script, const std::string& db) : py(py), moddir(moddir), script(script), db(db)
   {
-    if(this->py.empty())
-      this->py = "/usr/bin/python"; // Give a default python execute path
-    this->argv.push_back(this->py.c_str());
+    if(this->py.empty()) {
+      this->argv.push_back("/usr/bin/env");
+      this->argv.push_back("python3");
+    } else {
+      this->argv.push_back(this->py.c_str());
+    }
     this->argv.push_back(this->script.c_str());
     this->argv.push_back(this->db.c_str());
     this->argv.push_back(nullptr); // end
@@ -246,8 +249,11 @@ def explode(s):
     r.append(s[i])
   return r
 
-expectCB=explode('chickens')
-if (f.cbuffer[0:len(expectCB)] != expectCB):
+expectCB='chickens'
+if (b''.join(f.cbuffer[0:len(expectCB)]).decode('utf-8') != expectCB):
+  from pprint import pprint
+  pprint(f.cbuffer[0:len(expectCB)])
+  pprint(expectCB)
   print("Expected 'cbuffer' to equal 'chickens': " + str(f.cbuffer))
   sys.exit(-1)
 
@@ -272,6 +278,7 @@ TEST(Python, FRegion) {
     makeTestData(db);
     makeTestScript(py);
 
+    std::cout << "Using Python executable: " << DEF_STR(PYTHON_EXECUTABLE) << std::endl;
     PythonProc p(DEF_STR(PYTHON_EXECUTABLE), DEF_STR(SCRIPT_DIR), py, db);
     EXPECT_EQ(p.run(), 0);
 

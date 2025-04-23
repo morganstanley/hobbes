@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 ########################################################
 #
@@ -84,7 +84,7 @@ class Loader:
     return "{}".format(self.fn(*self.args, **self.kw))
 
   def reader(self):
-    return self.fn.im_self
+    return self.fn.__self__
 
 def LazyRead(enable):
   """
@@ -302,7 +302,7 @@ def freeVars(ty):
   return m
 def dictFreeVars(m):
   lm={}
-  for n, ty in m.items():
+  for n, ty in list(m.items()):
     freeVarsInto(lm,ty)
   return lm
 def freeName(m):
@@ -358,7 +358,7 @@ def substituteInAbs(m,a):
 def substitute(m,ty):
   tyDisp = {
     "prim":    lambda p:  Prim(p.name,substitute(m,p.rep)) if (p.rep != None) else p,
-    "var":     lambda v:  m[v.name] if (v.name in m.keys()) else v,
+    "var":     lambda v:  m[v.name] if (v.name in list(m.keys())) else v,
     "farr":    lambda fa: FixedArr(substitute(m,fa.ty), substitute(m,fa.tlen)),
     "arr":     lambda a:  Arr(substitute(m,a.ty)),
     "variant": lambda v:  substituteInVariant(m,v),
@@ -532,7 +532,7 @@ def decodeLong(d, p):
 
 def decodeStr(d, p):
   n = decodeLong(d,p)
-  s = str(d[p.pos:p.pos+n])
+  s = (d[p.pos:p.pos+n]).decode("utf-8")
   p.pos += n
   return s
 
@@ -670,7 +670,7 @@ class FREnvelope:
 
     # if reading the old format, we need to reinterpret recorded types
     if (self.version == 1):
-      for vn, b in self.env.items():
+      for vn, b in list(self.env.items()):
         b.ty = V1toV2Type(b.ty)
 
   # read page data entries into the 'pages' argument
@@ -710,7 +710,7 @@ class FREnvelope:
     vnlen = struct.unpack('Q', self.m[offset:offset+8])[0]
     offset += 8
 
-    vn = str(self.m[offset:offset+vnlen])
+    vn = (self.m[offset:offset+vnlen]).decode("utf-8")
     offset += vnlen
 
     tylen = struct.unpack('Q', self.m[offset:offset+8])[0]
@@ -821,7 +821,8 @@ class MaybeReader:
     if (t == 0):
       return None
     else:
-      return self.jr.read(m,offset+self.poff)
+      x = self.jr.read(m,offset+self.poff)
+      return x
 
 class EnumView:
   def __init__(self, ns, t):
@@ -879,7 +880,7 @@ class StrReader:
     self.nr = UnpackReader('Q',8)
   def read(self,m,offset):
     n=self.nr.read(m,offset)
-    return m[offset+8:offset+8+n]
+    return m[offset+8:offset+8+n].decode("utf-8")
 
 class ArrReaderGenerator:
   def __init__(self, m, reader, size, offset):
@@ -894,13 +895,13 @@ class ArrReaderGenerator:
   
   def __call__(self):
     o = self.offset
-    for i in xrange(0, self.size):
+    for i in range(0, self.size):
        tv = self.get(i)
        o += self.vlen
        yield(tv)
 
   def __getitem__(self, i):
-    if not isinstance(i, (int,long)):
+    if not isinstance(i, int):
       raise StopIteration
     return self.get(i)
 
@@ -969,7 +970,7 @@ def makeArrReader(renv,a):
 def makeVariantReader(renv,v):
   if (len(v.ctors)==2 and v.ctors[0][0] == ".f0" and v.ctors[0][1] == 0 and isinstance(v.ctors[0][2],Prim) and v.ctors[0][2].name == "unit"):
     return MaybeReader(renv,v.ctors[1][2])
-  elif (all(map(lambda c: isinstance(c[2],Prim) and c[2].name=="unit", v.ctors))):
+  elif (all([isinstance(c[2],Prim) and c[2].name=="unit" for c in v.ctors])):
     return EnumReader(v.ctors)
   else:
     return VariantReader(renv,v.ctors)
@@ -978,9 +979,9 @@ def makeStructReader(renv,s):
   if (len(s.fields) == 0):
     return UnitReader()
   elif (s.fields[0][0][0] == '.'): # should we read this as a tuple?
-    return TupleReader(renv, map(lambda f:f[2], s.fields))
+    return TupleReader(renv, [f[2] for f in s.fields])
   else:
-    return StructReader(renv, map(lambda f:f[0], s.fields), map(lambda f:f[2], s.fields))
+    return StructReader(renv, [f[0] for f in s.fields], [f[2] for f in s.fields])
 
 def makeAppReader(renv,app):
   if (isinstance(app.f,Prim)):
@@ -1064,7 +1065,7 @@ class FRegion:
   def __init__(self, fpath):
     self.rep = FREnvelope(fpath)
 
-    for vn, bind in self.rep.env.items():
+    for vn, bind in list(self.rep.env.items()):
       bind.reader = makeReader({}, bind.ty)
 
   @staticmethod
@@ -1077,10 +1078,10 @@ class FRegion:
     vns = []
     hts = []
     tds = []
-    for vn, bind in self.rep.env.items():
+    for vn, bind in list(self.rep.env.items()):
       vns.append(vn)
       hts.append(' :: ')
-      tds.append(str(bind.ty))
+      tds.append((bind.ty).decode("utf-8"))
     return tableFormat([vns, hts, tds])
 
   def __getattr__(self, attr):
@@ -1133,7 +1134,8 @@ class FileRefReader:
     if (o==0):
       return None
     else:
-      return self.r.read(m,o)
+      x = self.r.read(m,o)
+      return x
 
 # carrays (variable-length arrays stored with a static capacity)
 FRegion.addType("carray", lambda renv, ty, repty: makeArrReader(renv, Arr(ty.args[0])))
@@ -1178,7 +1180,7 @@ class SLView:
     if (self.sl.count==0):
       return False
     else:
-      n=SLView.findNextGLEB(self.sl.root, len(self.sl.root.next)-1, k)
+      n=SLView.findNextGLEB(self.sl.root, len(self.sl.root.__next__)-1, k)
       return (not(n==None) and n.key==k)
   def __iter__(self):
     n=self.sl.root.next[0]
@@ -1193,9 +1195,9 @@ class SLView:
     vs=[]
     n=self.sl.root().next[0]
     while (not(n == None)):
-      ks.append(str(n.key))
+      ks.append(n.key.decode("utf-8"))
       eqs.append(' = ')
-      vs.append(str(n.value))
+      vs.append(n.value.decode("utf-8"))
       n=n.next[0]
     return tableFormat([ks,eqs,vs])
 

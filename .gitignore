@@ -1,6 +1,7 @@
 *.sw?
 /build/
-scripts/*.pyc
+__pycache__/
+*.py[cod]
 CMakeCache.txt
 CMakeFiles/
 /doc/en/_build/
