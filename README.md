@@ -79,7 +79,7 @@ When a compiled function decides to allocate memory, that allocation happens out
 Finally, if we put the above program in a file called "test.cpp" then we can build it like this:
 
 ```
-$ g++ -pthread -std=c++11 -I <path-to-hobbes-headers> -I <path-to-llvm-headers> test.cpp -o test -L <path-to-hobbes-libs> -lhobbes -ldl -lrt -ltinfo -lz -L <path-to-llvm-libs> `llvm-config --libs x86asmparser x86codegen x86 mcjit passes`
+$ g++ -pthread -std=c++17 -I <path-to-hobbes-headers> -I <path-to-llvm-headers> test.cpp -o test -L <path-to-hobbes-libs> -lhobbes -ldl -lrt -ltinfo -lz -L <path-to-llvm-libs> `llvm-config --libs x86asmparser x86codegen x86 mcjit passes`
 ```
 
 The explicit path statements may not be necessary depending on where/how LLVM and hobbes have been installed on your system.  The inline invocation of the `llvm-config` program is typical with users of LLVM, to avoid explicitly listing several libraries.

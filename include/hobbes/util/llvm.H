@@ -6,10 +6,19 @@
 #pragma GCC diagnostic ignored "-Wold-style-cast"
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #pragma GCC diagnostic ignored "-Wctor-dtor-privacy"
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 
 #include <llvm/Config/llvm-config.h>
 
-#if LLVM_VERSION_MAJOR != 3 && LLVM_VERSION_MAJOR != 4 && LLVM_VERSION_MAJOR != 6 && LLVM_VERSION_MAJOR != 8 && LLVM_VERSION_MAJOR != 9 && LLVM_VERSION_MAJOR != 10 && LLVM_VERSION_MAJOR != 11 && LLVM_VERSION_MAJOR != 12
+#if LLVM_VERSION_MAJOR != 3 &&  \
+    LLVM_VERSION_MAJOR != 4 &&  \
+    LLVM_VERSION_MAJOR != 6 &&  \
+    LLVM_VERSION_MAJOR != 8 &&  \
+    LLVM_VERSION_MAJOR != 9 &&  \
+    LLVM_VERSION_MAJOR != 10 && \
+    LLVM_VERSION_MAJOR != 11 && \
+    LLVM_VERSION_MAJOR != 12 && \
+    LLVM_VERSION_MAJOR != 16
 #error "I don't know how to use this version of LLVM"
 #endif
 
@@ -30,7 +39,9 @@
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
 #include <llvm/Support/Signals.h>
+#if LLVM_VERSION_MAJOR < 16
 #include <llvm/Support/TargetRegistry.h>
+#endif
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/Transforms/IPO.h>
 #include <llvm/Transforms/Scalar.h>
@@ -39,7 +50,7 @@
 #if LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 6 || LLVM_VERSION_MAJOR <= 8
 #  include <llvm/Bitcode/BitstreamReader.h>
 #  include <llvm/Bitcode/BitstreamWriter.h>
-#elif  LLVM_VERSION_MAJOR <= 12
+#elif  LLVM_VERSION_MAJOR <= 16
 #  include <llvm/Bitstream/BitstreamReader.h>
 #  include <llvm/Bitstream/BitstreamWriter.h>
 #else
@@ -86,6 +97,9 @@ inline llvm::orc::ThreadSafeContext& threadSafeContext() {
 
 template <typename Fn> auto withContext(Fn fn) -> decltype(auto) {
   auto lk = threadSafeContext().getLock();
+#if LLVM_VERSION_MAJOR >= 16
+  threadSafeContext().getContext()->setOpaquePointers(false);
+#endif
   return fn(*threadSafeContext().getContext());
 }
 
@@ -613,7 +627,7 @@ inline llvm::Value* memCopy(llvm::IRBuilder<>* b, llvm::Value* dst, uint32_t dst
   return b->CreateMemCpy(dst, src, sz, srcAlign);
 #elif LLVM_VERSION_MAJOR <= 9
   return b->CreateMemCpy(dst, dstAlign, src, srcAlign, sz);
-#elif LLVM_VERSION_MAJOR <= 12
+#else
   return b->CreateMemCpy(dst, llvm::MaybeAlign(dstAlign), src, llvm::MaybeAlign(srcAlign), sz);
 #endif
 }
@@ -710,7 +724,11 @@ inline llvm::Value* tryMkConstRecord(llvm::IRBuilder<>*, llvm::Module* m, const 
 inline llvm::Value* offset(llvm::IRBuilder<>* b, llvm::Value* p, llvm::Value* o0) {
   std::vector<llvm::Value*> idxs;
   idxs.push_back(o0);
+#if LLVM_VERSION_MAJOR < 16
   return b->CreateGEP(p, idxs);
+#else
+  return b->CreateGEP(p->getType()->getPointerElementType(), p, idxs);
+#endif
 }
 
 inline llvm::Value* offset(llvm::IRBuilder<>* b, llvm::Value* p, int o0) {
@@ -721,14 +739,23 @@ inline llvm::Value* offset(llvm::IRBuilder<>* b, llvm::Value* p, int o0, int o1)
   std::vector<llvm::Value*> idxs;
   idxs.push_back(cvalue(o0));
   idxs.push_back(cvalue(o1));
+
+#if LLVM_VERSION_MAJOR < 16
   return b->CreateGEP(p, idxs);
+#else
+  return b->CreateGEP(p->getType()->getPointerElementType(), p, idxs);
+#endif
 }
 
 inline llvm::Value* offset(llvm::IRBuilder<>* b, llvm::Value* p, int o0, llvm::Value* o1) {
   std::vector<llvm::Value*> idxs;
   idxs.push_back(cvalue(o0));
   idxs.push_back(o1);
+#if LLVM_VERSION_MAJOR < 16
   return b->CreateGEP(p, idxs);
+#else
+  return b->CreateGEP(p->getType()->getPointerElementType(), p, idxs);
+#endif
 }
 
 inline llvm::Value* structOffset(llvm::IRBuilder<>* b, llvm::Value* p, unsigned int fieldOffset) {
@@ -737,8 +764,10 @@ inline llvm::Value* structOffset(llvm::IRBuilder<>* b, llvm::Value* p, unsigned 
   return b->CreateStructGEP(nullptr, p, fieldOffset);
 #elif LLVM_VERSION_MINOR >= 8 || LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 6
   return b->CreateStructGEP(reinterpret_cast<llvm::PointerType*>(p->getType())->getElementType(), p, fieldOffset);
-#else
+#elif LLVM_VERSION_MAJOR < 16
   return b->CreateStructGEP(p, fieldOffset);
+#else
+  return b->CreateStructGEP(p->getType()->getPointerElementType(), p, fieldOffset);
 #endif
 }
 
@@ -842,6 +871,17 @@ inline llvm::Value* fncall(llvm::IRBuilder<>* b, llvm::Value* vfn, llvm::Type* t
     throw std::runtime_error("fncall(...) invoked on non-function type (internal error)");
   }
   return nullptr;
+#else
+  if (auto *ty = llvm::dyn_cast<llvm::FunctionType>(tfn)) {
+    auto *inst =  b->CreateCall(ty, vfn, args);
+    if (ty->getReturnType() == boolType()) {
+      inst->addRetAttr(llvm::Attribute::ZExt);
+    }
+    return inst;
+  } else {
+    throw std::runtime_error("fncall(...) invoked on non-function type (internal error)");
+  }
+  return nullptr;
 #endif
 }
 
@@ -869,7 +909,11 @@ inline void maybeInlineFunctionsIn(llvm::Module& m) {
     static const auto getFunctionInstructionCount =
         [](const llvm::Function& f) {
           unsigned num = 0;
+#if LLVM_VERSION_MAJOR < 16
           for (const auto& b : f.getBasicBlockList()) {
+#else
+          for (const auto& b : f) {
+#endif
             num += b.size();
           }
           return num;

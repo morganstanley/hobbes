@@ -311,7 +311,11 @@ public:
       if (isLargeType(aity)) {
         return p;
       } else {
+#if LLVM_VERSION_MAJOR < 16
         return builder()->CreateLoad(p, false);
+#else
+        return builder()->CreateLoad(p->getType()->getPointerElementType(), p, false);
+#endif
       }
     });
   }
@@ -341,12 +345,20 @@ public:
     // compile the variant and pull out the tag and value
     llvm::Value* var  = compile(v->variant());
     llvm::Value* ptag = withContext([this, var](auto&) { return builder()->CreateBitCast(var, ptrType(intType())); });
+#if LLVM_VERSION_MAJOR < 16
     llvm::Value* tag  = withContext([this, ptag](auto&) { return builder()->CreateLoad(ptag, false); });
+#else
+    llvm::Value* tag  = withContext([this, ptag](auto&) { return builder()->CreateLoad(ptag->getType()->getPointerElementType(), ptag, false); });
+#endif
 
     std::vector<llvm::Value*> idxs;
     idxs.push_back(cvalue(0));
     idxs.push_back(cvalue(vty->payloadOffset()));
+#if LLVM_VERSION_MAJOR < 16
     llvm::Value* pval = withContext([&, this](auto&) { return builder()->CreateGEP(var, idxs); });
+#else
+    llvm::Value* pval = withContext([&, this](auto&) { return builder()->CreateGEP(var->getType()->getPointerElementType(), var, idxs); });
+#endif
 
     llvm::Function*   thisFn     = withContext([this](auto&) { return builder()->GetInsertBlock()->getParent(); });
     llvm::BasicBlock* failBlock  = withContext([thisFn](llvm::LLVMContext& c) {
@@ -379,7 +391,11 @@ public:
             // (and functions are stored as pointers)
             llvm::Type*  lty      = toLLVM(valty, is<Func>(valty) != nullptr);
             llvm::Value* pointval = builder()->CreateBitCast(pval, ptrType(lty));
+#if LLVM_VERSION_MAJOR < 16
             llvm::Value* val      = isLargeType(valty) ? pointval : builder()->CreateLoad(pointval, false);
+#else
+            llvm::Value* val      = isLargeType(valty) ? pointval : builder()->CreateLoad(pointval->getType()->getPointerElementType(), pointval, false);
+#endif
 
             beginScope(b.vname, val);
           }
@@ -512,12 +528,20 @@ public:
         if (op->storedContiguously()) {
           return builder()->CreateBitCast(rp, ptrType(byteType()));
         } else {
+#if LLVM_VERSION_MAJOR < 16
           return builder()->CreateLoad(rp, false);
+#else
+          return builder()->CreateLoad(rp->getType()->getPointerElementType(), rp, false);
+#endif
         }
       } else if (isLargeType(fty)) {
         return rp;
       } else {
+#if LLVM_VERSION_MAJOR < 16
         return builder()->CreateLoad(rp, false);
+#else
+        return builder()->CreateLoad(rp->getType()->getPointerElementType(), rp, false);
+#endif
       }
     });
   }
@@ -626,7 +650,11 @@ private:
         throw annotated_error(*e, "Failed to get reference to global variable: " + gv->value());
       }
 
+#if LLVM_VERSION_MAJOR < 16
       return withContext([&](auto&) { return isLargeType(vty) ? builder()->CreateLoad(vl) : vl; });
+#else
+      return withContext([&](auto&) { return isLargeType(vty) ? builder()->CreateLoad(vl->getType()->getPointerElementType(), vl) : vl; });
+#endif
     } else if (const AIndex* ai = is<AIndex>(e)) {
       MonoTypePtr  aity = requireMonotype(ai->type());
       llvm::Value* ar   = compile(ai->array());

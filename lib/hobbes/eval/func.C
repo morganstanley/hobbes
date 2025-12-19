@@ -250,7 +250,11 @@ public:
       thenBlock = c->builder()->GetInsertBlock(); // reset block pointer, in case compiling 'then' expression changed the active block
 
       // compile the 'else' branch
+#if LLVM_VERSION_MAJOR < 16
       thisFn->getBasicBlockList().push_back(elseBlock);
+#else
+      thisFn->insert(thisFn->end(), elseBlock);
+#endif
       c->builder()->SetInsertPoint(elseBlock);
 
       llvm::Value* elseExp = c->compile(es[2]);
@@ -258,7 +262,11 @@ public:
       elseBlock = c->builder()->GetInsertBlock(); // reset block pointer, in case compiling 'else' expression changed the active block
 
       // finally, merge blocks
+#if LLVM_VERSION_MAJOR < 16
       thisFn->getBasicBlockList().push_back(mergeBlock);
+#else
+      thisFn->insert(thisFn->end(), mergeBlock);
+#endif
       c->builder()->SetInsertPoint(mergeBlock);
 
       // and the final value is the phi merge of the two possible branches
@@ -287,7 +295,12 @@ class alenexp : public op {
 public:
   llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) override {
     return withContext([c, &es](auto&) {
+#if LLVM_VERSION_MAJOR < 16
       return c->builder()->CreateLoad(structOffset(c->builder(), c->compile(es[0]), 0), false, "at");
+#else
+      llvm::Value* v = structOffset(c->builder(), c->compile(es[0]), 0);
+      return c->builder()->CreateLoad(v->getType()->getPointerElementType(), v, false, "at");
+#endif
     });
   }
 
@@ -311,10 +324,20 @@ public:
 
     return withContext([&](auto&) {
       llvm::Value* a0 = c->compile(es[0]);
-      llvm::Value* c0 = c->builder()->CreateLoad(structOffset(c->builder(), a0, 0));
+      llvm::Value* a00 = structOffset(c->builder(), a0, 0);
+#if LLVM_VERSION_MAJOR < 16
+      llvm::Value* c0 = c->builder()->CreateLoad(a00);
+#else
+      llvm::Value* c0 = c->builder()->CreateLoad(a00->getType()->getPointerElementType(), a00);
+#endif
       llvm::Value* d0 = structOffset(c->builder(), a0, 1);
       llvm::Value* a1 = c->compile(es[1]);
-      llvm::Value* c1 = c->builder()->CreateLoad(structOffset(c->builder(), a1, 0));
+      llvm::Value* a10 = structOffset(c->builder(), a1, 0);
+#if LLVM_VERSION_MAJOR < 16
+      llvm::Value* c1 = c->builder()->CreateLoad(a10);
+#else
+      llvm::Value* c1 = c->builder()->CreateLoad(a10->getType()->getPointerElementType(), a10);
+#endif
       llvm::Value* d1 = structOffset(c->builder(), a1, 1);
 
       llvm::Value* aclen = c->builder()->CreateAdd(c0, c1);
@@ -400,7 +423,11 @@ class saelem : public op {
       if (isLargeType(rty)) {
         return p;
       } else {
+#if LLVM_VERSION_MAJOR < 16
         return c->builder()->CreateLoad(p, false);
+#else
+        return c->builder()->CreateLoad(p->getType()->getPointerElementType(), p, false);
+#endif
       }
     });
   }
@@ -534,7 +561,12 @@ public:
       return cvalue(true);
     } else if (!hasPointerRep(rty)) {
       return withContext([&](auto&) {
+#if LLVM_VERSION_MAJOR < 16
         return c->builder()->CreateLoad(c->compileAllocStmt(sizeOf(rty), alignment(rty), ptrType(toLLVM(rty, true)), this->zeroMem));
+#else
+        llvm::Value* tmp = c->compileAllocStmt(sizeOf(rty), alignment(rty), ptrType(toLLVM(rty, true)), this->zeroMem);
+        return c->builder()->CreateLoad(tmp->getType()->getPointerElementType(), tmp);
+#endif
       });
     } else {
       return c->compileAllocStmt(sizeOf(rty), alignment(rty), toLLVM(rty, true), this->zeroMem);
@@ -582,7 +614,13 @@ public:
   llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) override {
     llvm::Value* p = c->compile(es[0]);
     llvm::Value* o = c->compile(es[1]);
-    return withContext([&](auto&) { return c->builder()->CreateGEP(p, o); });
+    return withContext([&](auto&) {
+#if LLVM_VERSION_MAJOR < 16
+      return c->builder()->CreateGEP(p, o);
+#else
+      return c->builder()->CreateGEP(p->getType()->getPointerElementType(), p, o);
+#endif
+    });
   }
 
   PolyTypePtr type(typedb&) const override {
@@ -603,17 +641,22 @@ public:
     llvm::Value* p = c->compile(es[0]);
     llvm::Value* o = c->compile(es[1]);
 
+    llvm::Value* v1 = c->builder()->CreateBitCast(p, tppchar, "c");
+    llvm::Value* v2 = c->builder()->CreateLoad(
+              v1->getType()->getPointerElementType(), v1
+            );
+    llvm::Value* v3 = c->builder()->CreateGEP(v2->getType()->getPointerElementType(),
+            v2,
+            o
+          );
+    llvm::Value* v4 = c->builder()->CreateLoad(
+          v3->getType()->getPointerElementType(), v3
+        );
     return withContext([&](auto&) {
       return c->builder()->CreateGEP(
+        p->getType()->getPointerElementType(),
         p,
-        c->builder()->CreateLoad(
-          c->builder()->CreateGEP(
-            c->builder()->CreateLoad(
-              c->builder()->CreateBitCast(p, tppchar, "c")
-            ),
-            o
-          )
-        )
+        v4
       );
     });
   }
@@ -790,7 +833,12 @@ public:
       } else if (isLargeType(mty)) {
         return c->builder()->CreateBitCast(pval, toLLVM(mty, true));
       } else {
+#if LLVM_VERSION_MAJOR < 16
         return c->builder()->CreateLoad(c->builder()->CreateBitCast(pval, llvm::PointerType::getUnqual(toLLVM(mty, true))), false);
+#else
+        llvm::Value* tmp = c->builder()->CreateBitCast(pval, llvm::PointerType::getUnqual(toLLVM(mty, true)));
+        return c->builder()->CreateLoad(tmp->getType()->getPointerElementType(), tmp, false);
+#endif
       }
     });
   }
@@ -821,14 +869,21 @@ public:
         std::vector<llvm::Value*> idxs;
         idxs.push_back(cvalue(0));
         idxs.push_back(cvalue(vty->payloadOffset()));
+#if LLVM_VERSION_MAJOR < 16
         llvm::Value* pval = c->builder()->CreateGEP(var, idxs);
-
+#else
+        llvm::Value* pval = c->builder()->CreateGEP(var->getType()->getPointerElementType(), var, idxs);
+#endif
         // invoke the head case function with the payload value
         return callWith(c, es[1], vheadm.type, payloadValue(c, vheadm.type, pval));
       } else {
         // pull out the variant tag
         llvm::Value* ptag = c->builder()->CreateBitCast(var, ptrType(intType()));
+#if LLVM_VERSION_MAJOR < 16
         llvm::Value* tag  = c->builder()->CreateLoad(ptag, false);
+#else
+        llvm::Value* tag  = c->builder()->CreateLoad(ptag->getType()->getPointerElementType(), ptag, false);
+#endif
 
         // compare the tag data to the head tag id
         llvm::Value* htagv  = cvalue(static_cast<int>(vheadm.id));
@@ -838,7 +893,11 @@ public:
         std::vector<llvm::Value*> idxs;
         idxs.push_back(cvalue(0));
         idxs.push_back(cvalue(vty->payloadOffset()));
+#if LLVM_VERSION_MAJOR < 16
         llvm::Value* pval = c->builder()->CreateGEP(var, idxs);
+#else
+        llvm::Value* pval = c->builder()->CreateGEP(var->getType()->getPointerElementType(), var, idxs);
+#endif
 
         // either invoke the head case function, or the tail case function
         llvm::Function* thisFn = c->builder()->GetInsertBlock()->getParent();
@@ -858,7 +917,11 @@ public:
         thenBlock = c->builder()->GetInsertBlock(); // reset block pointer, in case compiling 'then' expression changed the active block
 
         // compile the 'else' branch
+#if LLVM_VERSION_MAJOR < 16
         thisFn->getBasicBlockList().push_back(elseBlock);
+#else
+        thisFn->insert(thisFn->end(), elseBlock);
+#endif
         c->builder()->SetInsertPoint(elseBlock);
 
         llvm::Value* elseExp = callWith(c, es[2], vty->tailType(), var);
@@ -866,7 +929,11 @@ public:
         elseBlock = c->builder()->GetInsertBlock(); // reset block pointer, in case compiling 'else' expression changed the active block
 
         // finally, merge blocks
+#if LLVM_VERSION_MAJOR < 16
         thisFn->getBasicBlockList().push_back(mergeBlock);
+#else
+        thisFn->insert(thisFn->end(), mergeBlock);
+#endif
         c->builder()->SetInsertPoint(mergeBlock);
 
         // and the final value is the phi merge of the two possible branches
@@ -932,7 +999,11 @@ private:
 
     thenBlock = builder->GetInsertBlock();
 
+#if LLVM_VERSION_MAJOR < 16
     thisFn->getBasicBlockList().push_back(elseBlock);
+#else
+    thisFn->insert(thisFn->end(), elseBlock);
+#endif
     builder->SetInsertPoint(elseBlock);
 
     llvm::Value *elseExp = nullptr;
@@ -946,7 +1017,11 @@ private:
 
     elseBlock = builder->GetInsertBlock();
 
+#if LLVM_VERSION_MAJOR < 16
     thisFn->getBasicBlockList().push_back(mergeBlock);
+#else
+    thisFn->insert(thisFn->end(), mergeBlock);
+#endif
     builder->SetInsertPoint(mergeBlock);
     auto *pn = builder->CreatePHI(toLLVM(arrayty(prim<char>()), true), 2);
     pn->addIncoming(thenExp, thenBlock);
@@ -1069,8 +1144,13 @@ class packShortF : public op {
 class cptrrefbyF : public op {
   llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) override {
     return withContext([&](auto&) {
+#if LLVM_VERSION_MAJOR < 16
       return c->builder()->CreateLoad(
           offset(c->builder(), c->compile(es[0]), c->compile(es[1])), false);
+#else
+      llvm::Value* tmp = offset(c->builder(), c->compile(es[0]), c->compile(es[1]));
+      return c->builder()->CreateLoad(tmp->getType()->getPointerElementType(), tmp, false);
+#endif
     });
   }
 
