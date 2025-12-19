@@ -62,7 +62,11 @@ ORCJIT::ORCJIT() {
           .setJITTargetMachineBuilder(
               llvm::cantFail(llvm::orc::JITTargetMachineBuilder::detectHost()))
           .setNumCompileThreads(tn)
+#if LLVM_VERSION_MAJOR < 16
           .setLazyCompileFailureAddr(llvm::pointerToJITTargetAddress(+[] {
+#else
+          .setLazyCompileFailureAddr(llvm::orc::ExecutorAddr::fromPtr(+[] {
+#endif
             throw std::runtime_error("exiting on lazy call through failure");
           }))
           .create());
@@ -84,7 +88,11 @@ llvm::Error ORCJIT::addModule(std::unique_ptr<llvm::Module> m) {
   });
 }
 
+#if LLVM_VERSION_MAJOR < 16
 llvm::Expected<llvm::JITEvaluatedSymbol> ORCJIT::lookup(llvm::StringRef name) {
+#else
+llvm::Expected<llvm::orc::ExecutorAddr> ORCJIT::lookup(llvm::StringRef name) {
+#endif
   return jit->lookup(name);
 }
 

@@ -1012,12 +1012,19 @@ TEST(Storage, KeySeries) {
 // actually is not and so an attempt to read the whole value causes a crash)
 //
 // this test was verified to reproduce the bug
+
+// gcc12 false positive uninitialized warning when ASAN enabled.
+// upgrade c++ union to std::variant to avoid the warning.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
 DEFINE_VARIANT(
   Tick,
   (bob,   int),
   (frank, int),
   (steve, std::string)
 );
+#pragma GCC diagnostic pop
+
 DEFINE_STRUCT(
   TTick,
   (Tick, t0),

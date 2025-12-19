@@ -18,7 +18,7 @@ find_package(LLVM REQUIRED CONFIG)
 include_directories(SYSTEM ${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
 
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17)
 
 message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
 message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
@@ -58,7 +58,7 @@ else()
   execute_process(COMMAND ${llvm-config} --ldflags
                   OUTPUT_VARIABLE llvm_ldflags
                   OUTPUT_STRIP_TRAILING_WHITESPACE)
-  execute_process(COMMAND ${llvm-config} --system-libs --ignore-libllvm
+  execute_process(COMMAND ${llvm-config} --system-libs --ignore-libllvm --ignore-libxml2
                   OUTPUT_VARIABLE sys_libs
                   OUTPUT_STRIP_TRAILING_WHITESPACE)
 endif()
@@ -86,7 +86,7 @@ if(APPLE)
 endif()
 if(LINUX)
   set(sys_libs ${sys_libs} pthread dl rt)
-  set(cxx_flags "-Werror=old-style-cast -Werror -Wall -Wextra -Winit-self -Wreturn-type -Wunused-variable -Wsign-compare -Warray-bounds -Wunknown-pragmas -Wuninitialized -Wstrict-aliasing -Wunused-value -Wunused-label -Wswitch -Wcast-align -Wctor-dtor-privacy -Wmissing-noreturn -Wunused-parameter -Wreorder")
+  set(cxx_flags "-Werror=old-style-cast -Werror -Wall -Wextra -Winit-self -Wreturn-type -Wunused-variable -Wsign-compare -Warray-bounds -Wunknown-pragmas -Wuninitialized -Wstrict-aliasing -Wunused-value -Wunused-label -Wswitch -Wcast-align -Wctor-dtor-privacy -Wmissing-noreturn -Wunused-parameter -Wreorder -Wno-deprecated-declarations -Wno-dangling-reference -Wno-mismatched-new-delete")
 endif()
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${cxx_flags}")
