@@ -231,10 +231,14 @@ private:
   std::size_t tag = InvalidTag;
 };
 
-LLVM_NODISCARD llvm::Function *createFnDecl(llvm::Function *f, llvm::Module &m,
+[[nodiscard]] llvm::Function *createFnDecl(llvm::Function *f, llvm::Module &m,
                                             llvm::StringRef name) {
   if (f->getReturnType() == hobbes::boolType()) {
+#if LLVM_VERSION_MAJOR < 16
     f->addAttribute(llvm::AttributeList::ReturnIndex, llvm::Attribute::ZExt);
+#else
+    f->addRetAttr(llvm::Attribute::ZExt);
+#endif
   }
   if (f->getName() != name) {
     f->eraseFromParent();
@@ -243,7 +247,7 @@ LLVM_NODISCARD llvm::Function *createFnDecl(llvm::Function *f, llvm::Module &m,
   return f;
 }
 
-LLVM_NODISCARD llvm::GlobalVariable *
+[[nodiscard]] llvm::GlobalVariable *
 createGVDecl(llvm::GlobalVariable *gv, llvm::Module &m, llvm::StringRef name) {
   if (gv->getName() != name) {
     gv->eraseFromParent();
@@ -281,7 +285,7 @@ public:
   ConstantList &operator=(ConstantList &&) = delete;
   ~ConstantList() = default;
 
-  LLVM_NODISCARD bool contains(llvm::StringRef name) const {
+  [[nodiscard]] bool contains(llvm::StringRef name) const {
     return constants.find(name) != constants.end();
   }
 
@@ -290,7 +294,7 @@ public:
                    llvm::Constant *initVal, const MonoTypePtr &mtype);
 
   /// Gets constant by generating load inst or possibly recreating decl
-  LLVM_NODISCARD llvm::Value *loadConstant(llvm::StringRef name,
+  [[nodiscard]] llvm::Value *loadConstant(llvm::StringRef name,
                                            llvm::Module &m,
                                            llvm::IRBuilder<> &builder);
 };
@@ -348,7 +352,11 @@ llvm::Value *ConstantList::loadConstant(llvm::StringRef name, llvm::Module &m,
 
     switch (it->second.ty) {
     case Ty::Array:
+#if LLVM_VERSION_MAJOR < 16
       return builder.CreateLoad(g);
+#else
+      return builder.CreateLoad(g->getType()->getPointerElementType(), g);
+#endif
     case Ty::HasPointerRep:
       return g;
     default:
@@ -375,7 +383,7 @@ public:
   VTEnv &operator=(VTEnv &&) = delete;
   ~VTEnv() = default;
 
-  LLVM_NODISCARD bool contains(llvm::StringRef name) const {
+  [[nodiscard]] bool contains(llvm::StringRef name) const {
     return std::any_of(vtenv.rbegin(), vtenv.rend(), [name](const auto &vb) {
       return vb.find(name) != vb.end();
     });
@@ -384,8 +392,7 @@ public:
   /// Gets \p name by looking up from inner to outer scope
   ///
   /// Possibly recreating decl
-  LLVM_NODISCARD llvm::Value *getOrCreateDecl(llvm::StringRef name,
-                                              llvm::Module &m);
+  [[nodiscard]] llvm::Value *getOrCreateDecl(llvm::StringRef name, llvm::Module &m);
 
   /// Adds \p name to current scope
   void add(llvm::StringRef name, llvm::Value *v) {
@@ -439,7 +446,7 @@ private:
   using VarDeclFnTy = std::function<llvm::GlobalVariable *(llvm::Module &)>;
   llvm::StringMap<VariantLite<FnDeclFnTy, VarDeclFnTy>> globals;
 
-  LLVM_NODISCARD bool isFunc(decltype(globals)::iterator it) const {
+  [[nodiscard]] bool isFunc(decltype(globals)::iterator it) const {
     return it->second.get<FnDeclFnTy>() != nullptr;
   }
 
@@ -451,17 +458,17 @@ public:
   Globals &operator=(Globals &&) = delete;
   ~Globals() = default;
 
-  LLVM_NODISCARD bool contains(llvm::StringRef name) const {
+  [[nodiscard]] bool contains(llvm::StringRef name) const {
     return globals.find(name) != globals.end();
   }
 
   /// Gets a global variable \p name by possibly recreating decl in current
   /// module
-  LLVM_NODISCARD llvm::GlobalVariable *getOrCreateVarDecl(llvm::StringRef name,
+  [[nodiscard]] llvm::GlobalVariable *getOrCreateVarDecl(llvm::StringRef name,
                                                           llvm::Module &m);
   /// Gets a global function \p name by possibly recreating decl in current
   /// module
-  LLVM_NODISCARD llvm::Function *getOrCreateFuncDecl(llvm::StringRef name,
+  [[nodiscard]] llvm::Function *getOrCreateFuncDecl(llvm::StringRef name,
                                                      llvm::Module &m);
 
   /// Creates a global variable decl for \p name with type \p ty
@@ -671,7 +678,11 @@ void* jitcc::getMachineCode(llvm::Function* f, llvm::JITEventListener* /*listene
   if (auto e = sym.takeError()) {
     llvm::consumeError(std::move(e));
   } else {
+#if LLVM_VERSION_MAJOR < 16
     return llvm::jitTargetAddressToPointer<void*>(sym->getAddress());
+#else
+    return sym->toPtr<void*>();
+#endif
   }
 
   withContext([&](auto&) {
@@ -689,7 +700,11 @@ void* jitcc::getMachineCode(llvm::Function* f, llvm::JITEventListener* /*listene
         "Internal compiler error, no current module and no machine code for (" + fname + ")");
   }
 
+#if LLVM_VERSION_MAJOR < 16
   return llvm::jitTargetAddressToPointer<void*>(sym->getAddress());
+#else
+  return sym->toPtr<void*>();
+#endif
 }
 #else
 void* jitcc::getSymbolAddress(const std::string& vn) {
@@ -1272,7 +1287,12 @@ llvm::Value* jitcc::lookupVar(const std::string& vn, const MonoTypePtr& vty) {
 #else
   if (llvm::GlobalVariable* gv = maybeRefGlobal(vn)) {
 #endif
+
+#if LLVM_VERSION_MAJOR < 16
     return withContext([this, gv](auto&) { return builder()->CreateLoad(gv); });
+#else
+    return withContext([this, gv](auto&) { return builder()->CreateLoad(gv->getType()->getPointerElementType(), gv); });
+#endif
   }
 
   // maybe it's a function?
@@ -1518,7 +1538,11 @@ llvm::Function* jitcc::allocFunction(const std::string& fname, const MonoTypes& 
     // for a llvm version >=9, zeroext has to be added to functions return boolean
     // otherwise, 255 will be returned as true
     if (retType == boolType()) {
+#if LLVM_VERSION_MAJOR < 16
       f->addAttribute(llvm::AttributeList::ReturnIndex, llvm::Attribute::ZExt);
+#else
+      f->addRetAttr(llvm::Attribute::ZExt);
+#endif
     }
     return f;
   };

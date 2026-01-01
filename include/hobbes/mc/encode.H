@@ -1106,12 +1106,11 @@ private:
     MImm
   };
   Tag tag;
-  X86Reg   rname;  // register name (if MLitReg)
-  int8_t   immc;   // literal match value (if MLitImm)
-  RegSize  rsize;  // size (in bytes) of expected argument
-  RegClass rclass; // type of expected argument (int or float)
-  VDir     vdir;   // track whether an arg is in/out/inout
-
+  X86Reg   rname{};  // register name (if MLitReg)
+  int8_t   immc{};   // literal match value (if MLitImm)
+  RegSize  rsize{};  // size (in bytes) of expected argument
+  RegClass rclass{}; // type of expected argument (int or float)
+  VDir     vdir{};   // track whether an arg is in/out/inout
   P(Tag t, int8_t c, RegSize rsz, RegClass rc) : tag(t), immc(c), rsize(rsz), rclass(rc), vdir(In) { }
   P(Tag t, X86Reg rname, RegSize rsz, RegClass rc) : tag(t), rname(rname), rsize(rsz), rclass(rc), vdir(In) { }
   P(Tag t, RegSize rsz, RegClass rc) : tag(t), rsize(rsz), rclass(rc), vdir(In) { }
@@ -1456,7 +1455,7 @@ inline uint8_t lowRegCode(const Reg<X86Reg>& r) { return lowRegCode(static_cast<
 
 // encode MODRM
 inline MODRMCode MODRM(uint8_t r, const Reg<X86Reg>& rm) {
-  MODRMCode c;
+  MODRMCode c{};
   c.modrm = encode233(3, lowRegCode(r), lowRegCode(rm));
   return c;
 }
@@ -1477,7 +1476,7 @@ inline MODRMCode MODRM(uint8_t r, const RegDeref<X86Reg>& dm) {
     O = 1;
   }
 
-  MODRMCode c;
+  MODRMCode c{};
   c.disp = m.offset;
 
   if (m.scale == 0) {
