@@ -95,3 +95,28 @@ jobs:
         with:
           name: output-log-file-${{ matrix.os }}-gcc-${{ matrix.gcc }}-llvm-${{ matrix.llvm }}
           path: ${{ matrix.os }}-gcc-${{ matrix.gcc }}-llvm-${{ matrix.llvm }}-hobbes.log
+  rhel9-build:
+    runs-on: ubuntu-latest
+    container:
+      image: redhat/ubi9:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          dnf update -y
+          dnf install -y gcc gcc-c++ cmake make llvm llvm-devel ncurses-devel readline-devel zlib-devel python3
+      - name: Build hobbes
+        run: |
+          mkdir -p /build && cd /build
+          cmake $GITHUB_WORKSPACE
+          VERBOSE=1 make -j2
+      - name: Test hobbes
+        run: |
+          cd /build
+          make test
+      - name: Upload build logs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: rhel9-build-logs
+          path: /build/

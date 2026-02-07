@@ -55,6 +55,25 @@ build-job-clang11:       # This job runs in the build stage, which runs first.
     expire_in: 1 week
     when: always
 
+build-job-rhel9:       # This job builds on Red Hat Enterprise Linux 9.
+  stage: build
+  image: redhat/ubi9:latest
+  script:
+    - echo "Building on Red Hat Enterprise Linux 9..."
+    - dnf update -y
+    - dnf install -y gcc gcc-c++ cmake make llvm llvm-devel ncurses-devel readline-devel zlib-devel python3
+    - mkdir -p /build && cd /build
+    - cmake /builds/$CI_PROJECT_PATH
+    - VERBOSE=1 make -j2
+    - make test
+    - echo "Build complete."
+  artifacts:
+    name: "$CI_COMMIT_REF_SLUG-rhel9"
+    paths:
+      - /build/
+    expire_in: 1 week
+    when: always
+
 unit-test-job-gcc:   # This job runs in the test stage.
   stage: test    # It only starts when the job in the build stage completes successfully.
   script:
