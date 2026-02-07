@@ -97,6 +97,8 @@ jobs:
           path: ${{ matrix.os }}-gcc-${{ matrix.gcc }}-llvm-${{ matrix.llvm }}-hobbes.log
   rhel9-build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     container:
       image: redhat/ubi9:latest
     steps:
