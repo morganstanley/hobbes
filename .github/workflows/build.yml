@@ -107,16 +107,16 @@ jobs:
           dnf install -y gcc gcc-c++ cmake make llvm llvm-devel ncurses-devel readline-devel zlib-devel python3
       - name: Build hobbes
         run: |
-          mkdir -p /build && cd /build
-          cmake $GITHUB_WORKSPACE
+          mkdir -p build && cd build
+          cmake ..
           VERBOSE=1 make -j2
       - name: Test hobbes
         run: |
-          cd /build
+          cd build
           make test
       - name: Upload build logs
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
           name: rhel9-build-logs
-          path: /build/
+          path: build/

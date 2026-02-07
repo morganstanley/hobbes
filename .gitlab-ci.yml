@@ -62,15 +62,15 @@ build-job-rhel9:       # This job builds on Red Hat Enterprise Linux 9.
     - echo "Building on Red Hat Enterprise Linux 9..."
     - dnf update -y
     - dnf install -y gcc gcc-c++ cmake make llvm llvm-devel ncurses-devel readline-devel zlib-devel python3
-    - mkdir -p /build && cd /build
-    - cmake /builds/$CI_PROJECT_PATH
+    - mkdir -p build && cd build
+    - cmake ..
     - VERBOSE=1 make -j2
     - make test
     - echo "Build complete."
   artifacts:
     name: "$CI_COMMIT_REF_SLUG-rhel9"
     paths:
-      - /build/
+      - build/
     expire_in: 1 week
     when: always
 
