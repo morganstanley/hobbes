@@ -107,10 +107,18 @@ jobs:
         run: |
           dnf update -y
           # Install EPEL for additional packages like readline-devel
-          dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm || true
+          echo "Installing EPEL repository..."
+          dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm || echo "EPEL may already be installed or unavailable"
           dnf install -y gcc gcc-c++ cmake make ncurses-devel zlib-devel python3 readline readline-devel
           # LLVM may need to come from different sources on RHEL9
-          dnf install -y llvm llvm-devel || dnf install -y clang clang-devel
+          echo "Installing LLVM..."
+          if dnf install -y llvm llvm-devel; then
+            echo "LLVM installed successfully"
+          else
+            echo "LLVM not available, trying Clang as fallback..."
+            dnf install -y clang clang-devel
+            echo "Clang installed successfully"
+          fi
       - name: Build hobbes
         run: |
           mkdir -p build && cd build
