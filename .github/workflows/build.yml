@@ -37,7 +37,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-22.04]
-        clang: [8, 10, 11, 12, 16]
+        clang: [8, 10, 11, 12, 16, 18]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -69,7 +69,7 @@ jobs:
       matrix:
         os: [ubuntu-22.04]
         gcc: [10]
-        llvm: [8, 10, 11, 12, 16]
+        llvm: [8, 10, 11, 12, 16, 18]
     steps:
       - uses: actions/checkout@v4
         with:

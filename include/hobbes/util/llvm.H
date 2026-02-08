@@ -18,7 +18,8 @@
     LLVM_VERSION_MAJOR != 10 && \
     LLVM_VERSION_MAJOR != 11 && \
     LLVM_VERSION_MAJOR != 12 && \
-    LLVM_VERSION_MAJOR != 16
+    LLVM_VERSION_MAJOR != 16 && \
+    LLVM_VERSION_MAJOR != 18
 #error "I don't know how to use this version of LLVM"
 #endif
 
@@ -50,7 +51,7 @@
 #if LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 6 || LLVM_VERSION_MAJOR <= 8
 #  include <llvm/Bitcode/BitstreamReader.h>
 #  include <llvm/Bitcode/BitstreamWriter.h>
-#elif  LLVM_VERSION_MAJOR <= 16
+#elif  LLVM_VERSION_MAJOR <= 18
 #  include <llvm/Bitstream/BitstreamReader.h>
 #  include <llvm/Bitstream/BitstreamWriter.h>
 #else
