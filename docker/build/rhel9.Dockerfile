@@ -1,4 +1,4 @@
-FROM redhat/ubi9:latest
+FROM rockylinux:9
 ARG  DEPS
 ENV  ARGS=-V
 RUN  dnf update -y

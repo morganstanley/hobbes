@@ -100,15 +100,17 @@ jobs:
     permissions:
       contents: read
     container:
-      image: redhat/ubi9:latest
+      image: rockylinux:9
     steps:
       - uses: actions/checkout@v4
       - name: Install dependencies
         run: |
           dnf update -y
-          # Install EPEL for additional packages like readline-devel
+          # Enable EPEL and PowerTools/CRB for additional development packages
           echo "Installing EPEL repository..."
-          dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm || echo "EPEL may already be installed or unavailable"
+          dnf install -y epel-release
+          echo "Enabling PowerTools/CRB repository..."
+          dnf config-manager --set-enabled crb || dnf config-manager --set-enabled powertools || echo "CRB/PowerTools already enabled"
           dnf install -y gcc gcc-c++ cmake make ncurses-devel zlib-devel python3 readline readline-devel
           # LLVM may need to come from different sources on RHEL9
           echo "Installing LLVM..."
