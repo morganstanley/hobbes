@@ -100,27 +100,22 @@ jobs:
     permissions:
       contents: read
     container:
-      image: rockylinux:9
+      image: rockylinux:8
     steps:
       - uses: actions/checkout@v4
       - name: Install dependencies
         run: |
           dnf update -y
-          # Enable EPEL and PowerTools/CRB for additional development packages
+          # Enable EPEL and PowerTools for additional development packages
           echo "Installing EPEL repository..."
           dnf install -y epel-release
-          echo "Enabling PowerTools/CRB repository..."
-          dnf config-manager --set-enabled crb || dnf config-manager --set-enabled powertools || echo "CRB/PowerTools already enabled"
+          echo "Enabling PowerTools repository..."
+          dnf config-manager --set-enabled powertools || echo "PowerTools already enabled"
+          # Rocky Linux 8 has compatible LLVM versions
           dnf install -y gcc gcc-c++ cmake make ncurses-devel zlib-devel python3 readline readline-devel
-          # LLVM may need to come from different sources on RHEL9
-          echo "Installing LLVM..."
-          if dnf install -y llvm llvm-devel; then
-            echo "LLVM installed successfully"
-          else
-            echo "LLVM not available, trying Clang as fallback..."
-            dnf install -y clang clang-devel
-            echo "Clang installed successfully"
-          fi
+          echo "Installing LLVM/Clang..."
+          dnf install -y llvm-devel clang clang-devel
+          echo "LLVM/Clang installed successfully"
       - name: Build hobbes
         run: |
           mkdir -p build && cd build

@@ -55,28 +55,22 @@ build-job-clang11:       # This job runs in the build stage, which runs first.
     expire_in: 1 week
     when: always
 
-build-job-rhel9:       # This job builds on Red Hat Enterprise Linux 9.
+build-job-rhel9:       # This job builds on Red Hat Enterprise Linux 8/9 compatible.
   stage: build
-  image: rockylinux:9
+  image: rockylinux:8
   script:
-    - echo "Building on Rocky Linux 9 (RHEL 9 compatible)..."
+    - echo "Building on Rocky Linux 8 (RHEL 8 compatible)..."
     - dnf update -y
-    # Enable EPEL and PowerTools/CRB for additional development packages
+    # Enable EPEL and PowerTools for additional development packages
     - echo "Installing EPEL repository..."
     - dnf install -y epel-release
-    - echo "Enabling PowerTools/CRB repository..."
-    - dnf config-manager --set-enabled crb || dnf config-manager --set-enabled powertools || echo "CRB/PowerTools already enabled"
+    - echo "Enabling PowerTools repository..."
+    - dnf config-manager --set-enabled powertools || echo "PowerTools already enabled"
+    # Rocky Linux 8 has compatible LLVM versions
     - dnf install -y gcc gcc-c++ cmake make ncurses-devel zlib-devel python3 readline readline-devel
-    # LLVM may need to come from different sources on RHEL9
-    - echo "Installing LLVM..."
-    - |
-      if dnf install -y llvm llvm-devel; then
-        echo "LLVM installed successfully"
-      else
-        echo "LLVM not available, trying Clang as fallback..."
-        dnf install -y clang clang-devel
-        echo "Clang installed successfully"
-      fi
+    - echo "Installing LLVM/Clang..."
+    - dnf install -y llvm-devel clang clang-devel
+    - echo "LLVM/Clang installed successfully"
     - mkdir -p build && cd build
     - cmake ..
     - VERBOSE=1 make -j2
