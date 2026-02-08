@@ -61,7 +61,11 @@ build-job-rhel9:       # This job builds on Red Hat Enterprise Linux 9.
   script:
     - echo "Building on Red Hat Enterprise Linux 9..."
     - dnf update -y
-    - dnf install -y gcc gcc-c++ cmake make llvm llvm-devel ncurses-devel readline-devel zlib-devel python3
+    # Install EPEL for additional packages like readline-devel
+    - dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm || true
+    - dnf install -y gcc gcc-c++ cmake make ncurses-devel zlib-devel python3 readline readline-devel
+    # LLVM may need to come from different sources on RHEL9
+    - dnf install -y llvm llvm-devel || dnf install -y clang clang-devel
     - mkdir -p build && cd build
     - cmake ..
     - VERBOSE=1 make -j2
