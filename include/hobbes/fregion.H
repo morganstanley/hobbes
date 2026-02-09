@@ -79,7 +79,7 @@ struct filehead {
 };
 #define HFREGION_CURRENT_FILE_FORMAT_VERSION static_cast<uint16_t>(2)
 #define HFREGION_FILE_PREFIX_BYTES           static_cast<uint32_t>(0x10a1db0d)
-#define HFREGION_MAX_PAGE_SIZE               static_cast<size_t>((1<<14)-1)
+#define HFREGION_MAX_PAGE_SIZE               static_cast<size_t>(1<<14)
 #define HFREGION_MIN_PAGE_SIZE               static_cast<size_t>(256)
 
 // a single system page record
