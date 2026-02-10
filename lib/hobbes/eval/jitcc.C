@@ -355,12 +355,12 @@ llvm::Value *ConstantList::loadConstant(llvm::StringRef name, llvm::Module &m,
 #if LLVM_VERSION_MAJOR < 16
       return builder.CreateLoad(g);
 #else
-      return builder.CreateLoad(g->getType()->getPointerElementType(), g);
+      return builder.CreateLoad(g->getValueType(), g);
 #endif
     case Ty::HasPointerRep:
       return g;
     default:
-      return builder.CreateAlignedLoad(g->getType()->getPointerElementType(), g,
+      return builder.CreateAlignedLoad(g->getValueType(), g,
                                        llvm::MaybeAlign(8));
     }
   });
@@ -1291,7 +1291,7 @@ llvm::Value* jitcc::lookupVar(const std::string& vn, const MonoTypePtr& vty) {
 #if LLVM_VERSION_MAJOR < 16
     return withContext([this, gv](auto&) { return builder()->CreateLoad(gv); });
 #else
-    return withContext([this, gv](auto&) { return builder()->CreateLoad(gv->getType()->getPointerElementType(), gv); });
+    return withContext([this, gv](auto&) { return builder()->CreateLoad(gv->getValueType(), gv); });
 #endif
   }
 

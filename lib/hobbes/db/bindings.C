@@ -196,11 +196,13 @@ class dbloadVF : public op {
       if (hasPointerRep(rty)) {
         return c->builder()->CreateBitCast(allocv, toLLVM(rty, true));
       } else {
-#if LLVM_VERSION_MAJOR < 16
-        return c->builder()->CreateLoad(c->builder()->CreateBitCast(allocv, ptrType(toLLVM(rty, true))));
-#else
+#if LLVM_VERSION_MAJOR >= 18
+        return c->builder()->CreateLoad(toLLVM(rty, true), allocv);
+#elif LLVM_VERSION_MAJOR >= 16
         llvm::Value* cast = c->builder()->CreateBitCast(allocv, ptrType(toLLVM(rty, true)));
         return c->builder()->CreateLoad(cast->getType()->getPointerElementType(), cast);
+#else
+        return c->builder()->CreateLoad(c->builder()->CreateBitCast(allocv, ptrType(toLLVM(rty, true))));
 #endif
       }
     });
@@ -291,11 +293,13 @@ struct dbloadF : public op {
         if (hasPointerRep(rty)) {
           return c->builder()->CreateBitCast(allocv, toLLVM(rty, true));
         } else {
-#if LLVM_VERSION_MAJOR < 16
-          return c->builder()->CreateLoad(c->builder()->CreateBitCast(allocv, ptrType(toLLVM(rty, true))));
-#else
+#if LLVM_VERSION_MAJOR >= 18
+          return c->builder()->CreateLoad(toLLVM(rty, true), allocv);
+#elif LLVM_VERSION_MAJOR >= 16
           llvm::Value* cast = c->builder()->CreateBitCast(allocv, ptrType(toLLVM(rty, true)));
           return c->builder()->CreateLoad(cast->getType()->getPointerElementType(), cast);
+#else
+          return c->builder()->CreateLoad(c->builder()->CreateBitCast(allocv, ptrType(toLLVM(rty, true))));
 #endif
         }
       }
@@ -341,11 +345,13 @@ struct dbloadPF : public op {
         if (hasPointerRep(rty)) {
           return c->builder()->CreateBitCast(allocv, toLLVM(rty, true));
         } else {
-#if LLVM_VERSION_MAJOR < 16
-          return c->builder()->CreateLoad(c->builder()->CreateBitCast(allocv, ptrType(toLLVM(rty, true))));
-#else
+#if LLVM_VERSION_MAJOR >= 18
+          return c->builder()->CreateLoad(toLLVM(rty, true), allocv);
+#elif LLVM_VERSION_MAJOR >= 16
           llvm::Value* cast = c->builder()->CreateBitCast(allocv, ptrType(toLLVM(rty, true)));
           return c->builder()->CreateLoad(cast->getType()->getPointerElementType(), cast);
+#else
+          return c->builder()->CreateLoad(c->builder()->CreateBitCast(allocv, ptrType(toLLVM(rty, true))));
 #endif
         }
       }

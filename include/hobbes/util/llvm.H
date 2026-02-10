@@ -18,7 +18,8 @@
     LLVM_VERSION_MAJOR != 10 && \
     LLVM_VERSION_MAJOR != 11 && \
     LLVM_VERSION_MAJOR != 12 && \
-    LLVM_VERSION_MAJOR != 16
+    LLVM_VERSION_MAJOR != 16 && \
+    LLVM_VERSION_MAJOR != 18
 #error "I don't know how to use this version of LLVM"
 #endif
 
@@ -43,18 +44,20 @@
 #include <llvm/Support/TargetRegistry.h>
 #endif
 #include <llvm/Support/TargetSelect.h>
+#if LLVM_VERSION_MAJOR < 18
 #include <llvm/Transforms/IPO.h>
 #include <llvm/Transforms/Scalar.h>
+#endif
 #include <llvm/Transforms/Utils/Cloning.h>
+#if LLVM_VERSION_MAJOR < 18
 #include <llvm/Transforms/Vectorize.h>
+#endif
 #if LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 6 || LLVM_VERSION_MAJOR <= 8
 #  include <llvm/Bitcode/BitstreamReader.h>
 #  include <llvm/Bitcode/BitstreamWriter.h>
-#elif  LLVM_VERSION_MAJOR <= 16
+#else
 #  include <llvm/Bitstream/BitstreamReader.h>
 #  include <llvm/Bitstream/BitstreamWriter.h>
-#else
-#  include <llvm/Bitcode/ReaderWriter.h>
 #endif
 
 #include <llvm/Support/raw_os_ostream.h>
@@ -74,6 +77,11 @@
 
 #if LLVM_VERSION_MAJOR >= 11
 #  include <llvm/ExecutionEngine/Orc/ThreadSafeModule.h>
+#endif
+
+#if LLVM_VERSION_MAJOR >= 18
+#  include <llvm/Passes/PassBuilder.h>
+#  include <llvm/Transforms/IPO/ModuleInliner.h>
 #endif
 
 #pragma GCC diagnostic pop
@@ -97,7 +105,7 @@ inline llvm::orc::ThreadSafeContext& threadSafeContext() {
 
 template <typename Fn> auto withContext(Fn fn) -> decltype(auto) {
   auto lk = threadSafeContext().getLock();
-#if LLVM_VERSION_MAJOR >= 16
+#if LLVM_VERSION_MAJOR == 16
   threadSafeContext().getContext()->setOpaquePointers(false);
 #endif
   return fn(*threadSafeContext().getContext());
@@ -149,7 +157,11 @@ inline llvm::Type* doubleType() {
 }
 
 inline llvm::PointerType* ptrType(llvm::Type* ty) {
+#if LLVM_VERSION_MAJOR >= 18
+  return llvm::PointerType::get(ty->getContext(), 0);
+#else
   return llvm::PointerType::getUnqual(ty);
+#endif
 }
 
 inline llvm::ArrayType* arrayType(llvm::Type* ty, size_t sz) {
@@ -204,10 +216,20 @@ inline llvm::StructType* varArrayType(llvm::Type* elemty, size_t sz = 1) {
 
 // casting
 inline llvm::Value* cast(llvm::IRBuilder<>* b, llvm::Type* ty, llvm::Value* v) {
+#if LLVM_VERSION_MAJOR >= 18
+  // with opaque pointers, ptr-to-ptr bitcast is identity
+  if (v->getType()->isPointerTy() && ty->isPointerTy())
+    return v;
+#endif
   return b->CreateBitCast(v, ty);
 }
 
 inline llvm::Constant* ccast(llvm::Type* ty, llvm::Constant* v) {
+#if LLVM_VERSION_MAJOR >= 18
+  // with opaque pointers, ptr-to-ptr bitcast is identity
+  if (v->getType()->isPointerTy() && ty->isPointerTy())
+    return v;
+#endif
   return llvm::ConstantExpr::getBitCast(v, ty);
 }
 
@@ -687,7 +709,7 @@ inline Constants liftArraysAsGlobals(llvm::Module* m, const Constants& cs, const
   Constants r;
   for (size_t i = 0; i < std::min<size_t>(cs.size(), tys.size()); ++i) {
     if (is<Array>(tys[i]) != nullptr) {
-      r.push_back(llvm::ConstantExpr::getBitCast(liftAsGlobalRef(m, cs[i]), toLLVM(tys[i], true)));
+      r.push_back(ccast(toLLVM(tys[i], true), liftAsGlobalRef(m, cs[i])));
     } else {
       r.push_back(cs[i]);
     }
@@ -721,6 +743,39 @@ inline llvm::Value* tryMkConstRecord(llvm::IRBuilder<>*, llvm::Module* m, const 
 }
 
 // pointer / GEP utilities
+
+// typed overloads (work for all LLVM versions, required for LLVM >= 18)
+inline llvm::Value* offset(llvm::IRBuilder<>* b, llvm::Type* elemTy, llvm::Value* p, llvm::Value* o0) {
+  return b->CreateGEP(elemTy, p, {o0});
+}
+
+inline llvm::Value* offset(llvm::IRBuilder<>* b, llvm::Type* elemTy, llvm::Value* p, int o0) {
+  return offset(b, elemTy, p, cvalue(o0));
+}
+
+inline llvm::Value* offset(llvm::IRBuilder<>* b, llvm::Type* elemTy, llvm::Value* p, int o0, int o1) {
+  return b->CreateGEP(elemTy, p, {cvalue(o0), cvalue(o1)});
+}
+
+inline llvm::Value* offset(llvm::IRBuilder<>* b, llvm::Type* elemTy, llvm::Value* p, int o0, llvm::Value* o1) {
+  return b->CreateGEP(elemTy, p, {cvalue(o0), o1});
+}
+
+inline llvm::Value* structOffset(llvm::IRBuilder<>* b, llvm::Type* structTy, llvm::Value* p, unsigned int fieldOffset) {
+  return b->CreateStructGEP(structTy, p, fieldOffset);
+}
+
+// helper to load from a GlobalVariable (uses getValueType instead of getPointerElementType)
+inline llvm::Value* loadFromGlobal(llvm::IRBuilder<>* b, llvm::GlobalVariable* gv) {
+#if LLVM_VERSION_MAJOR < 16
+  return b->CreateLoad(gv);
+#else
+  return b->CreateLoad(gv->getValueType(), gv);
+#endif
+}
+
+#if LLVM_VERSION_MAJOR < 18
+// untyped overloads (LLVM < 18 only — element type derived from pointer)
 inline llvm::Value* offset(llvm::IRBuilder<>* b, llvm::Value* p, llvm::Value* o0) {
   std::vector<llvm::Value*> idxs;
   idxs.push_back(o0);
@@ -770,6 +825,7 @@ inline llvm::Value* structOffset(llvm::IRBuilder<>* b, llvm::Value* p, unsigned 
   return b->CreateStructGEP(p->getType()->getPointerElementType(), p, fieldOffset);
 #endif
 }
+#endif // LLVM_VERSION_MAJOR < 18
 
 #if LLVM_VERSION_MINOR >= 6 || LLVM_VERSION_MAJOR == 4 || LLVM_VERSION_MAJOR == 6 || LLVM_VERSION_MAJOR >= 8
 inline llvm::ExecutionEngine* makeExecutionEngine(llvm::Module* m, llvm::SectionMemoryManager* smm) {
@@ -927,9 +983,25 @@ inline void maybeInlineFunctionsIn(llvm::Module& m) {
   };
 
   if (allFunctionsAreSmall(m)) {
+#if LLVM_VERSION_MAJOR >= 18
+    llvm::PassBuilder PB;
+    llvm::LoopAnalysisManager LAM;
+    llvm::FunctionAnalysisManager FAM;
+    llvm::CGSCCAnalysisManager CGAM;
+    llvm::ModuleAnalysisManager MAM;
+    PB.registerModuleAnalyses(MAM);
+    PB.registerCGSCCAnalyses(CGAM);
+    PB.registerFunctionAnalyses(FAM);
+    PB.registerLoopAnalyses(LAM);
+    PB.crossRegisterProxies(LAM, FAM, CGAM, MAM);
+    llvm::ModulePassManager MPM;
+    MPM.addPass(llvm::ModuleInlinerPass());
+    MPM.run(m, MAM);
+#else
     auto mpm = llvm::legacy::PassManager();
     mpm.add(llvm::createFunctionInliningPass());
     mpm.run(m);
+#endif
   }
 }
 }
