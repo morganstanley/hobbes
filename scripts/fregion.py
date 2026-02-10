@@ -650,14 +650,12 @@ class FREnvelope:
     self.pageSize = struct.unpack('H', self.m[4:6])[0]
     self.version  = struct.unpack('H', self.m[6:8])[0]
 
-    if (self.pageSize != 4096):
-      raise Exception('Expected 4K page size')
     if (not(self.version in [1,2])):
       raise Exception('Structured data file format version ' + str(self.version) + ' not supported')
 
     # read the page data in this file
     self.pages = []
-    self.readPageEntries(self.pages, 8, 4096)
+    self.readPageEntries(self.pages, 8, self.pageSize)
 
     # read the environment data in this file
     self.env = dict([])
@@ -686,22 +684,22 @@ class FREnvelope:
       k += 2
     n = struct.unpack('Q', self.m[e:e+8])[0]
     if (n != 0):
-      self.readPageEntries(pages, n*4096, (n+1)*4096)
+      self.readPageEntries(pages, n*self.pageSize, (n+1)*self.pageSize)
 
   # read environment data into the 'env' argument out of 'page'
   def readEnvPage(self, env, page):
-    initOffset = page * 4096
+    initOffset = page * self.pageSize
     offset = initOffset
     while (True):
       offset = self.readEnvRecord(env, offset)
 
       pos   = offset - 1
-      tpage = int(pos / 4096)
-      rpos  = (pos % 4096) + 1
-      if (rpos == (4096 - availBytes(self.pages[tpage]))):
+      tpage = int(pos / self.pageSize)
+      rpos  = (pos % self.pageSize) + 1
+      if (rpos == (self.pageSize - availBytes(self.pages[tpage]))):
         break
 
-    return int(math.ceil((float(offset-initOffset))/4096.0))
+    return int(math.ceil((float(offset-initOffset))/float(self.pageSize)))
 
   def readEnvRecord(self, env, offset):
     vpos = struct.unpack('Q', self.m[offset:offset+8])[0]

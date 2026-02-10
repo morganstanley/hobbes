@@ -516,7 +516,7 @@ struct SafeExpr {
   static auto with(std::string const &n,
                    std::function<R(const SafeExpr::UnsafeDefs &)> const &hit,
                    std::function<R(void)> const &miss) -> R {
-    return instance().template _with(n, hit, miss);
+    return instance()._with(n, hit, miss);
   }
 
 private:

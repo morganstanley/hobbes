@@ -115,7 +115,8 @@ TEST(MC, BlockLivenessEqualsBasicLiveness) {
   }
 }
 
-// test some encoded assembly programs
+// test some encoded assembly programs (x86-64 only)
+#if defined(__x86_64__)
 template <typename T>
 T assemble(const mc::MInsts& insts) {
   auto* b = new mc::buffer(); // leak just for convenience in tests
@@ -270,4 +271,5 @@ TEST(MC, StructUsage) {
 
   EXPECT_EQ(f(s), 42);
 }
+#endif // __x86_64__
 
