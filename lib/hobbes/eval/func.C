@@ -327,8 +327,10 @@ public:
     }
 
     return withContext([&](auto&) {
+#if LLVM_VERSION_MAJOR >= 18
       llvm::Type* varrTy = varArrayType(toLLVM(aty->type(), is<OpaquePtr>(aty->type()) || is<Func>(aty->type())));
       llvm::Type* elemArrTy = arrayType(toLLVM(aty->type(), is<OpaquePtr>(aty->type()) || is<Func>(aty->type())), 1);
+#endif
 
       llvm::Value* a0 = c->compile(es[0]);
 #if LLVM_VERSION_MAJOR >= 18

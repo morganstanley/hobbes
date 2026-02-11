@@ -13,6 +13,7 @@
 #define HOBBES_REFLECT_H_INCLUDED
 
 #include <cassert>
+#include <cstdint>
 #include <cstring>
 #include <cxxabi.h>
 #include <iostream>
