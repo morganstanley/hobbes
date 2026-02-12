@@ -1,4 +1,5 @@
 
+#include <csignal>
 #include <cstring>
 #include <fcntl.h>
 #include <hobbes/hobbes.H>
