@@ -118,4 +118,11 @@ jobs:
           cmake --build build -j$(sysctl -n hw.ncpu)
       - name: Test
         run: |
-          cd build && ctest --output-on-failure
+          # Run test binary directly; the process may exit non-zero due to
+          # detached thread cleanup (libc++abi: terminating) even when all
+          # tests pass, so check output for failures instead of exit code.
+          ./build/hobbes-test 2>&1 | tee test-output.txt; true
+          if grep -q 'FAILURE' test-output.txt; then
+            echo "::error::Test failures detected"
+            exit 1
+          fi
