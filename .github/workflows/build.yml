@@ -95,3 +95,27 @@ jobs:
         with:
           name: output-log-file-${{ matrix.os }}-gcc-${{ matrix.gcc }}-llvm-${{ matrix.llvm }}
           path: ${{ matrix.os }}-gcc-${{ matrix.gcc }}-llvm-${{ matrix.llvm }}-hobbes.log
+  macos-build:
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        llvm: [18]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Install dependencies
+        run: |
+          brew install llvm@${{ matrix.llvm }} readline zstd
+      - name: Configure
+        run: |
+          export LLVM_DIR="$(brew --prefix llvm@${{ matrix.llvm }})/lib/cmake/llvm"
+          export PATH="$(brew --prefix llvm@${{ matrix.llvm }})/bin:$PATH"
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DLLVM_DIR="$LLVM_DIR"
+      - name: Build
+        run: |
+          cmake --build build -j$(sysctl -n hw.ncpu)
+      - name: Test
+        run: |
+          cd build && ctest --output-on-failure
