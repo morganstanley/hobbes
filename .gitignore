@@ -8,3 +8,17 @@ CMakeFiles/
 /doc/building.txt
 .vscode/
 .gitmessage
+.hproc.*.log
+.devcontainer/.profile
+.devcontainer/.profile-*-link
+CTestTestfile.cmake
+Makefile
+cmake_install.cmake
+hi
+hobbes-test
+hog
+libhobbes-pic.a
+libhobbes.a
+macos_setup.sh
+mock-proc
+test_report.json

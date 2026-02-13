@@ -25,12 +25,16 @@
 
 	// Uncomment to connect as root instead. More info: https://aka.ms/dev-containers-non-root.
 	// "remoteUser": "root"
-	"runArgs": [],
+	"runArgs": ["--memory=8g", "--memory-swap=8g"],
 	"containerUser": "vscode",
 	"updateRemoteUserUID": true,
 	"containerEnv": {
-	  "HOME": "/home/vscode"
+	  "HOME": "/home/vscode",
+	  "CLAUDE_CONFIG_DIR": "/home/vscode/.claude"
 	},
+	"mounts": [
+		"type=volume,source=hobbes-claude-config,target=/home/vscode/.claude"
+	],
 	"customizations": {
 		"vscode": {
 			"extensions": [
