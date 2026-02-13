@@ -1,6 +1,6 @@
 #!/bin/bash
 
-PROJECT_DIR=${PROJECT_DIR:-/workspace}
+PROJECT_DIR=${PROJECT_DIR:-/workspaces/hobbes}
 
 # Make Nix available as it's not installed system-wide.
 if [ -e $HOME/.nix-profile/etc/profile.d/nix.sh ] ; then

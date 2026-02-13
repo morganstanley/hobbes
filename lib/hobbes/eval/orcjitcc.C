@@ -13,14 +13,45 @@
 #include <llvm/Support/AllocatorBase.h>
 #include <llvm/Support/Compiler.h>
 #include <llvm/Support/Error.h>
+#if LLVM_VERSION_MAJOR >= 16
+#include <llvm/TargetParser/Host.h>
+#else
 #include <llvm/Support/Host.h>
+#endif
 #include <llvm/Support/Process.h>
+#if LLVM_VERSION_MAJOR >= 18
+#include <llvm/Passes/PassBuilder.h>
+#include <llvm/Transforms/Scalar/Reassociate.h>
+#include <llvm/Transforms/Scalar/NewGVN.h>
+#include <llvm/Transforms/Scalar/SimplifyCFG.h>
+#include <llvm/Transforms/Scalar/TailRecursionElimination.h>
+#endif
 
 namespace {
 llvm::Expected<llvm::orc::ThreadSafeModule>
 optimizeModule(llvm::orc::ThreadSafeModule tsm,
                const llvm::orc::MaterializationResponsibility &) {
   tsm.withModuleDo([](llvm::Module &m) {
+#if LLVM_VERSION_MAJOR >= 18
+    llvm::PassBuilder PB;
+    llvm::LoopAnalysisManager LAM;
+    llvm::FunctionAnalysisManager FAM;
+    llvm::CGSCCAnalysisManager CGAM;
+    llvm::ModuleAnalysisManager MAM;
+    PB.registerModuleAnalyses(MAM);
+    PB.registerCGSCCAnalyses(CGAM);
+    PB.registerFunctionAnalyses(FAM);
+    PB.registerLoopAnalyses(LAM);
+    PB.crossRegisterProxies(LAM, FAM, CGAM, MAM);
+    llvm::FunctionPassManager FPM;
+    FPM.addPass(llvm::ReassociatePass());
+    FPM.addPass(llvm::NewGVNPass());
+    FPM.addPass(llvm::SimplifyCFGPass());
+    FPM.addPass(llvm::TailCallElimPass());
+    llvm::ModulePassManager MPM;
+    MPM.addPass(llvm::createModuleToFunctionPassAdaptor(std::move(FPM)));
+    MPM.run(m, MAM);
+#else
     auto fpm = llvm::legacy::FunctionPassManager(&m);
     fpm.add(llvm::createReassociatePass());
     fpm.add(llvm::createNewGVNPass());
@@ -30,8 +61,8 @@ optimizeModule(llvm::orc::ThreadSafeModule tsm,
     for (auto &f : m) {
       fpm.run(f);
     }
+#endif
 
-    // may apply FunctionInliningPass depends upon some "scores"
     hobbes::maybeInlineFunctionsIn(m);
   });
 
@@ -56,6 +87,21 @@ ORCJIT::ORCJIT() {
     return 0U;
   }();
 
+#if LLVM_VERSION_MAJOR >= 18
+  // Use LLJIT (eager) instead of LLLazyJIT to avoid bitcode round-trip
+  // issues with opaque pointers
+  llvm::orc::LLJITBuilder jitBuilder;
+  jit = llvm::cantFail(
+      jitBuilder
+          .setJITTargetMachineBuilder(
+              llvm::cantFail(llvm::orc::JITTargetMachineBuilder::detectHost()))
+          .setNumCompileThreads(tn)
+          .create());
+  jit->getIRTransformLayer().setTransform(optimizeModule);
+  jit->getMainJITDylib().addGenerator(
+      cantFail(llvm::orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(
+          jit->getDataLayout().getGlobalPrefix())));
+#else
   llvm::orc::LLLazyJITBuilder jitBuilder;
   jit = llvm::cantFail(
       jitBuilder
@@ -74,6 +120,7 @@ ORCJIT::ORCJIT() {
   jit->getMainJITDylib().addGenerator(
       cantFail(llvm::orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(
           jit->getDataLayout().getGlobalPrefix())));
+#endif
 
   mangle = std::make_unique<llvm::orc::MangleAndInterner>(
       jit->getExecutionSession(), jit->getDataLayout());
@@ -83,8 +130,13 @@ ORCJIT::~ORCJIT() = default;
 
 llvm::Error ORCJIT::addModule(std::unique_ptr<llvm::Module> m) {
   return withContext([&, this](auto &) {
+#if LLVM_VERSION_MAJOR >= 18
+    return jit->addIRModule(
+        llvm::orc::ThreadSafeModule(std::move(m), threadSafeContext()));
+#else
     return jit->addLazyIRModule(
         llvm::orc::ThreadSafeModule(std::move(m), threadSafeContext()));
+#endif
   });
 }
 
@@ -97,16 +149,29 @@ llvm::Expected<llvm::orc::ExecutorAddr> ORCJIT::lookup(llvm::StringRef name) {
 }
 
 llvm::Error ORCJIT::addExternalCallableSymbol(llvm::StringRef name, void *ptr) {
+#if LLVM_VERSION_MAJOR >= 18
+  return jit->getMainJITDylib().define(llvm::orc::absoluteSymbols(
+      {{(*mangle)(name), {llvm::orc::ExecutorAddr::fromPtr(ptr),
+                          llvm::JITSymbolFlags::Exported |
+                              llvm::JITSymbolFlags::Callable}}}));
+#else
   return jit->getMainJITDylib().define(llvm::orc::absoluteSymbols(
       {{(*mangle)(name), llvm::JITEvaluatedSymbol::fromPointer(
                              ptr, llvm::JITSymbolFlags::Exported |
                                       llvm::JITSymbolFlags::Callable)}}));
+#endif
 }
 
 llvm::Error ORCJIT::addExternalNonCallableSymbol(llvm::StringRef name,
                                                  void *ptr) {
+#if LLVM_VERSION_MAJOR >= 18
+  return jit->getMainJITDylib().define(llvm::orc::absoluteSymbols(
+      {{(*mangle)(name), {llvm::orc::ExecutorAddr::fromPtr(ptr),
+                          llvm::JITSymbolFlags::Exported}}}));
+#else
   return jit->getMainJITDylib().define(llvm::orc::absoluteSymbols(
       {{(*mangle)(name), llvm::JITEvaluatedSymbol::fromPointer(ptr)}}));
+#endif
 }
 } // namespace hobbes
 #endif

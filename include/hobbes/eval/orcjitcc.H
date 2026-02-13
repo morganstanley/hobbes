@@ -4,7 +4,9 @@
 #include <llvm/Config/llvm-config.h>
 
 #if LLVM_VERSION_MAJOR >= 11
+#if LLVM_VERSION_MAJOR < 18
 #include <llvm/ADT/Optional.h>
+#endif
 #include <llvm/ExecutionEngine/JITSymbol.h>
 #include <llvm/ExecutionEngine/Orc/ThreadSafeModule.h>
 #if LLVM_VERSION_MAJOR >= 16
@@ -17,7 +19,11 @@
 namespace llvm {
 class Module;
 namespace orc {
+#if LLVM_VERSION_MAJOR >= 18
+class LLJIT;
+#else
 class LLLazyJIT;
+#endif
 class MaterializationResponsibility;
 class MangleAndInterner;
 } // namespace orc
@@ -46,7 +52,11 @@ public:
   llvm::Error addExternalCallableSymbol(llvm::StringRef name, void *ptr);
 
 private:
+#if LLVM_VERSION_MAJOR >= 18
+  std::unique_ptr<llvm::orc::LLJIT> jit;
+#else
   std::unique_ptr<llvm::orc::LLLazyJIT> jit;
+#endif
   std::unique_ptr<llvm::orc::MangleAndInterner> mangle;
 };
 } // namespace hobbes

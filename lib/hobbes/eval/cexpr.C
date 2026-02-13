@@ -195,16 +195,29 @@ public:
 
       withContext([&](auto&) {
         // store the array length
+#if LLVM_VERSION_MAJOR >= 18
+        llvm::Type* varrTy = varArrayType(elemTy);
+        llvm::Value* alenp = structOffset(builder(), varrTy, p, 0);
+#else
         llvm::Value* alenp = structOffset(builder(), p, 0);
+#endif
         builder()->CreateStore(llvm::Constant::getIntegerValue(longType(), llvm::APInt(64, vs.size(), true)), alenp);
 
         // store the array contents
         if (!isUnit(aty->type())) {
+#if LLVM_VERSION_MAJOR >= 18
+          llvm::Value* adatap = structOffset(builder(), varrTy, p, 1);
+#else
           llvm::Value* adatap = structOffset(builder(), p, 1);
+#endif
 
           for (size_t i = 0; i < vs.size(); ++i) {
             llvm::Value* ev = vs[i];
+#if LLVM_VERSION_MAJOR >= 18
+            llvm::Value* ap = offset(builder(), elemTy, adatap, static_cast<int>(i));
+#else
             llvm::Value* ap = offset(builder(), adatap, 0, i);
+#endif
 
             // we only memcopy into an array if the data is large and isn't an opaque pointer (always write opaque pointers as pointers)
             if (!isStoredPtr && isLargeType(aty->type())) {
@@ -245,7 +258,11 @@ public:
 
       // store the variant value
       MonoTypePtr  valty = requireMonotype(v->value()->type());
+#if LLVM_VERSION_MAJOR >= 18
+      llvm::Value* pp    = offset(builder(), charType(), p, vty->payloadOffset());
+#else
       llvm::Value* pp    = offset(builder(), p, vty->payloadOffset());
+#endif
 
       if (isLargeType(valty)) {
         memCopy(builder(), pp, 8, tv, 8, sizeOf(valty));
@@ -280,7 +297,11 @@ public:
 
       for (const auto &v : vs) {
         llvm::Value* fv  = v.second;
+#if LLVM_VERSION_MAJOR >= 18
+        llvm::Value* fp  = structFieldPtr(p, rty->alignedIndex(v.first), toLLVM(mrty));
+#else
         llvm::Value* fp  = structFieldPtr(p, rty->alignedIndex(v.first));
+#endif
         MonoTypePtr  fty = rty->member(v.first);
 
         withContext([&](auto&) {
@@ -305,6 +326,17 @@ public:
     }
 
     return withContext([&](auto&) -> llvm::Value* {
+#if LLVM_VERSION_MAJOR >= 18
+      bool isElemPtr = (is<OpaquePtr>(aity) != nullptr) || (is<Func>(aity) != nullptr);
+      llvm::Type* elemLLTy = toLLVM(aity, isElemPtr);
+      llvm::Value* ard = structOffset(builder(), varArrayType(elemLLTy), ar, 1);
+      llvm::Value* p   = offset(builder(), elemLLTy, ard, ir);
+      if (isLargeType(aity)) {
+        return p;
+      } else {
+        return builder()->CreateLoad(elemLLTy, p, false);
+      }
+#else
       llvm::Value* ard = structOffset(builder(), ar, 1); // get the array's data pointer
       llvm::Value* p   = offset(builder(), ard, 0, ir);  // and index into it
 
@@ -317,6 +349,7 @@ public:
         return builder()->CreateLoad(p->getType()->getPointerElementType(), p, false);
 #endif
       }
+#endif
     });
   }
 
@@ -344,6 +377,10 @@ public:
 
     // compile the variant and pull out the tag and value
     llvm::Value* var  = compile(v->variant());
+#if LLVM_VERSION_MAJOR >= 18
+    llvm::Value* tag  = withContext([this, var](auto&) { return builder()->CreateLoad(intType(), var, false); });
+    llvm::Value* pval = withContext([&, this](auto&) { return builder()->CreateGEP(charType(), var, {cvalue(vty->payloadOffset())}); });
+#else
     llvm::Value* ptag = withContext([this, var](auto&) { return builder()->CreateBitCast(var, ptrType(intType())); });
 #if LLVM_VERSION_MAJOR < 16
     llvm::Value* tag  = withContext([this, ptag](auto&) { return builder()->CreateLoad(ptag, false); });
@@ -358,6 +395,7 @@ public:
     llvm::Value* pval = withContext([&, this](auto&) { return builder()->CreateGEP(var, idxs); });
 #else
     llvm::Value* pval = withContext([&, this](auto&) { return builder()->CreateGEP(var->getType()->getPointerElementType(), var, idxs); });
+#endif
 #endif
 
     llvm::Function*   thisFn     = withContext([this](auto&) { return builder()->GetInsertBlock()->getParent(); });
@@ -390,11 +428,15 @@ public:
             // otherwise the data here is available inline
             // (and functions are stored as pointers)
             llvm::Type*  lty      = toLLVM(valty, is<Func>(valty) != nullptr);
+#if LLVM_VERSION_MAJOR >= 18
+            llvm::Value* val      = isLargeType(valty) ? pval : builder()->CreateLoad(lty, pval, false);
+#else
             llvm::Value* pointval = builder()->CreateBitCast(pval, ptrType(lty));
 #if LLVM_VERSION_MAJOR < 16
             llvm::Value* val      = isLargeType(valty) ? pointval : builder()->CreateLoad(pointval, false);
 #else
             llvm::Value* val      = isLargeType(valty) ? pointval : builder()->CreateLoad(pointval->getType()->getPointerElementType(), pointval, false);
+#endif
 #endif
 
             beginScope(b.vname, val);
@@ -521,26 +563,34 @@ public:
     }
 
     // switched to using packed records and manually-determined padding
+#if LLVM_VERSION_MAJOR >= 18
+    llvm::Value* rp = structFieldPtr(rec, rty->alignedIndex(v->field()), toLLVM(requireMonotype(v->record()->type())));
+#else
     llvm::Value* rp = structFieldPtr(rec, rty->alignedIndex(v->field()));
+#endif
 
     return withContext([&](auto&) -> llvm::Value* {
       if (auto* op = is<OpaquePtr>(fty)) {
         if (op->storedContiguously()) {
           return builder()->CreateBitCast(rp, ptrType(byteType()));
         } else {
-#if LLVM_VERSION_MAJOR < 16
-          return builder()->CreateLoad(rp, false);
-#else
+#if LLVM_VERSION_MAJOR >= 18
+          return builder()->CreateLoad(toLLVM(fty), rp, false);
+#elif LLVM_VERSION_MAJOR >= 16
           return builder()->CreateLoad(rp->getType()->getPointerElementType(), rp, false);
+#else
+          return builder()->CreateLoad(rp, false);
 #endif
         }
       } else if (isLargeType(fty)) {
         return rp;
       } else {
-#if LLVM_VERSION_MAJOR < 16
-        return builder()->CreateLoad(rp, false);
-#else
+#if LLVM_VERSION_MAJOR >= 18
+        return builder()->CreateLoad(toLLVM(fty, true), rp, false);
+#elif LLVM_VERSION_MAJOR >= 16
         return builder()->CreateLoad(rp->getType()->getPointerElementType(), rp, false);
+#else
+        return builder()->CreateLoad(rp, false);
 #endif
       }
     });
@@ -581,7 +631,9 @@ private:
     auto *elemTy = is<Func>(ty) != nullptr ? ptrType(toLLVM(ty)) : toLLVM(ty);
     return withContext([&](auto&) {
        // take care to refer to global array constants by reference (a bit awkward!)
-       return tryMkConstVarArray(builder(), this->c->module(), elemTy, vs, is<Array>(ty));
+       // Use elemTy->isPointerTy() rather than is<Array>(ty) to correctly handle
+       // type aliases (e.g. darray) that resolve to Array through TAbs substitution
+       return tryMkConstVarArray(builder(), this->c->module(), elemTy, vs, elemTy->isPointerTy());
     });
   }
 
@@ -620,9 +672,15 @@ private:
     this->c->popScope();
   }
 
+#if LLVM_VERSION_MAJOR >= 18
+  llvm::Value* structFieldPtr(llvm::Value* r, unsigned int i, llvm::Type* structTy) const {
+    return withContext([=](auto&) { return structOffset(builder(), structTy, r, i); });
+  }
+#else
   llvm::Value* structFieldPtr(llvm::Value* r, unsigned int i) const {
     return withContext([=](auto&) { return structOffset(builder(), r, i); });
   }
+#endif
 
   RecordValue compileRecordFields(const MkRecord::FieldDefs& fs) const {
     RecordValue r;
@@ -650,22 +708,35 @@ private:
         throw annotated_error(*e, "Failed to get reference to global variable: " + gv->value());
       }
 
-#if LLVM_VERSION_MAJOR < 16
-      return withContext([&](auto&) { return isLargeType(vty) ? builder()->CreateLoad(vl) : vl; });
-#else
+#if LLVM_VERSION_MAJOR >= 18
+      return withContext([&](auto&) { return isLargeType(vty) ? builder()->CreateLoad(toLLVM(vty, true), vl) : vl; });
+#elif LLVM_VERSION_MAJOR >= 16
       return withContext([&](auto&) { return isLargeType(vty) ? builder()->CreateLoad(vl->getType()->getPointerElementType(), vl) : vl; });
+#else
+      return withContext([&](auto&) { return isLargeType(vty) ? builder()->CreateLoad(vl) : vl; });
 #endif
     } else if (const AIndex* ai = is<AIndex>(e)) {
       MonoTypePtr  aity = requireMonotype(ai->type());
       llvm::Value* ar   = compile(ai->array());
       llvm::Value* ir   = compile(ai->index());
 
+#if LLVM_VERSION_MAJOR >= 18
+      bool isElemPtr = (is<OpaquePtr>(aity) != nullptr) || (is<Func>(aity) != nullptr);
+      llvm::Type* elemLLTy = toLLVM(aity, isElemPtr);
+      llvm::Value* ard = withContext([&](auto&) {
+        return structOffset(builder(), varArrayType(elemLLTy), ar, 1);
+      });
+      llvm::Value* p   = withContext([&](auto&) {
+        return offset(builder(), elemLLTy, ard, ir);
+      });
+#else
       llvm::Value* ard = withContext([this, ar](auto&) {
         return structOffset(builder(), ar, 1); // get the array's 'data' pointer
       });
       llvm::Value* p   = withContext([&](auto&) {
         return offset(builder(), ard, 0, ir);  // and index into it
       });
+#endif
 
       return p;
     } else if (const Proj* rp = is<Proj>(e)) {
@@ -678,13 +749,16 @@ private:
       MonoTypePtr  fty  = requireMonotype(rp->type());
 
       // switched to using packed records and manually-determined padding
+#if LLVM_VERSION_MAJOR >= 18
+      llvm::Value* p = structFieldPtr(rec, rty->alignedIndex(rp->field()), toLLVM(requireMonotype(rp->record()->type())));
+#else
       llvm::Value* p = structFieldPtr(rec, rty->alignedIndex(rp->field()));
+#endif
 
       if (auto* op = is<OpaquePtr>(fty)) {
         if (op->storedContiguously()) {
-          return withContext([&](llvm::LLVMContext& c) {
-            llvm::PointerType* bty = llvm::PointerType::getUnqual(llvm::Type::getInt8Ty(c));
-            return builder()->CreateBitCast(p, bty);
+          return withContext([&](auto&) {
+            return builder()->CreateBitCast(p, ptrType(byteType()));
           });
         }
       }
@@ -696,7 +770,15 @@ private:
           llvm::Value* ar = compile(ap->args()[0]);
           llvm::Value* i  = compile(ap->args()[1]);
 
+#if LLVM_VERSION_MAJOR >= 18
+          {
+            MonoTypePtr elemTy = requireMonotype(ap->type());
+            bool isElemPtr = (is<OpaquePtr>(elemTy) != nullptr) || (is<Func>(elemTy) != nullptr);
+            return withContext([&](auto&) { return offset(builder(), toLLVM(elemTy, isElemPtr), ar, i); });
+          }
+#else
           return withContext([&](auto&) { return offset(builder(), ar, 0, i); });
+#endif
         }
       }
     }

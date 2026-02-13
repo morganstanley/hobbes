@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.4.1)
+cmake_minimum_required(VERSION 3.5)
 project(hobbes)
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
@@ -33,7 +33,7 @@ else()
 endif()
 IF(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
   set(llvm_arch_lib x86)
-ELSEIF(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
+ELSEIF(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")
   set(llvm_arch_lib aarch64)
 ENDIF()
 
@@ -58,9 +58,19 @@ else()
   execute_process(COMMAND ${llvm-config} --ldflags
                   OUTPUT_VARIABLE llvm_ldflags
                   OUTPUT_STRIP_TRAILING_WHITESPACE)
-  execute_process(COMMAND ${llvm-config} --system-libs --ignore-libllvm --ignore-libxml2
+  execute_process(COMMAND ${llvm-config} --system-libs
                   OUTPUT_VARIABLE sys_libs
                   OUTPUT_STRIP_TRAILING_WHITESPACE)
+endif()
+
+find_package(zstd QUIET)
+if(zstd_FOUND)
+  set(sys_libs ${sys_libs} zstd::libzstd_shared)
+else()
+  find_library(ZSTD_LIBRARY NAMES zstd)
+  if(ZSTD_LIBRARY)
+    set(sys_libs ${sys_libs} ${ZSTD_LIBRARY})
+  endif()
 endif()
 
 message(STATUS "llvm libs: ${llvm_libs}")
