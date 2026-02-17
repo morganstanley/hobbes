@@ -136,8 +136,6 @@ jobs:
           path: build/
   macos-build:
     runs-on: macos-latest
-    permissions:
-      contents: read
     strategy:
       matrix:
         llvm: [18]
