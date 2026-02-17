@@ -145,17 +145,17 @@ Tracking file for Hobbes examples corresponding to Haskell tasks on Rosetta Code
 - [x] Old lady swallowed a fly
 
 ## Batch 9: Stretch Goals (11 tasks)
-- [ ] Stern-Brocot sequence
-- [ ] Thue-Morse
-- [ ] Van Eck sequence
-- [ ] Yellowstone sequence
-- [ ] Zeckendorf number representation
-- [ ] Recaman's sequence
-- [ ] Kolakoski sequence
-- [ ] Floyd's triangle
-- [ ] Narcissistic decimal number
-- [ ] Farey sequence
-- [ ] Forward difference
+- [x] Stern-Brocot sequence
+- [x] Thue-Morse
+- [x] Van Eck sequence
+- [x] Yellowstone sequence
+- [x] Zeckendorf number representation
+- [x] Recaman's sequence
+- [x] Kolakoski sequence
+- [x] Floyd's triangle
+- [x] Narcissistic decimal number
+- [x] Farey sequence
+- [x] Forward difference
 
 ## Not Feasible in Hobbes
 - Accumulator factory (no general-purpose mutable local variables)

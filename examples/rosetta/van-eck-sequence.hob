@@ -1,0 +1,8 @@
+// @test: vanEck(10L)
+findLastHelper x = match x with
+  | (val, seq, j, startIdx) -> if (j < 0) then 0L else if (seq[j] == val and j < startIdx) then startIdx - j else findLastHelper((val, seq, j - 1, startIdx))
+
+vanEckHelper x = match x with
+  | (seq, i, n) -> if (i >= n) then seq else let prev = seq[i-1] in let gap = findLastHelper((prev, seq, i - 2, i - 1)) in vanEckHelper((seq ++ [gap], i + 1, n))
+
+vanEck n = vanEckHelper(([0L], 1L, n))
