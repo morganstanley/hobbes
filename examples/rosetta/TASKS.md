@@ -98,21 +98,21 @@ Tracking file for Hobbes examples corresponding to Haskell tasks on Rosetta Code
 - [x] Horner's rule for polynomial evaluation
 
 ## Batch 6: Math & Geometry (15 tasks)
-- [ ] Arithmetic-geometric mean
-- [ ] Bernoulli numbers
-- [ ] Calculating the value of e
-- [ ] Euler's sum of powers conjecture
-- [ ] Evaluate binomial coefficients
-- [ ] Haversine formula
-- [ ] Roots of a quadratic function
-- [ ] Shoelace formula for polygonal area
-- [ ] Trigonometric functions
-- [ ] Vector products
-- [ ] Sum and product of an array
-- [ ] Sum of squares
-- [ ] Sum multiples of 3 and 5
-- [ ] Sum digits of an integer
-- [ ] Pi
+- [x] Arithmetic-geometric mean
+- [x] Calculating the value of e
+- [x] Evaluate binomial coefficients
+- [x] Roots of a quadratic function
+- [x] Shoelace formula for polygonal area
+- [x] Vector products
+- [x] Sum and product of an array
+- [x] Sum of squares
+- [x] Sum multiples of 3 and 5
+- [x] Sum digits of an integer
+- [x] Pi
+- [x] Temperature conversion (substituted for Haversine formula - no sin/cos)
+- [x] Leap year (substituted for Trigonometric functions - no sin/cos/tan)
+- [x] Averages/Arithmetic mean (substituted for Bernoulli numbers - no memoization)
+- [x] Averages/Root mean square (substituted for Euler's sum of powers - no pow)
 
 ## Batch 7: Higher-Order Functions & Functional (15 tasks)
 - [ ] Accumulator factory
@@ -131,15 +131,13 @@ Tracking file for Hobbes examples corresponding to Haskell tasks on Rosetta Code
 - [ ] Flatten a list
 - [ ] Combinations with repetitions
 
-## Batch 8: Remaining Feasible (15 tasks)
+## Batch 8: Remaining Feasible (13 tasks)
 - [ ] Roman numerals/Decode
 - [ ] Babbage problem
 - [ ] Convex hull
 - [ ] Luhn test of credit card numbers
 - [ ] Fibonacci word
 - [ ] Pascal's triangle
-- [ ] Temperature conversion
-- [ ] Leap year
 - [ ] Convert seconds to compound duration
 - [ ] Vigenere cipher
 - [ ] Truth table
@@ -148,7 +146,7 @@ Tracking file for Hobbes examples corresponding to Haskell tasks on Rosetta Code
 - [ ] The Twelve Days of Christmas
 - [ ] Old lady swallowed a fly
 
-## Batch 9: Stretch Goals (13 tasks)
+## Batch 9: Stretch Goals (11 tasks)
 - [ ] Stern-Brocot sequence
 - [ ] Thue-Morse
 - [ ] Van Eck sequence
@@ -160,5 +158,3 @@ Tracking file for Hobbes examples corresponding to Haskell tasks on Rosetta Code
 - [ ] Narcissistic decimal number
 - [ ] Farey sequence
 - [ ] Forward difference
-- [ ] Averages/Arithmetic mean
-- [ ] Averages/Root mean square
