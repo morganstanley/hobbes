@@ -30,21 +30,21 @@ Tracking file for Hobbes examples corresponding to Haskell tasks on Rosetta Code
 - [x] Empty program
 
 ## Batch 2: Number Theory (15 tasks)
-- [ ] Abundant, deficient and perfect number classifications
-- [ ] Additive primes
-- [ ] Amicable pairs
-- [ ] Attractive numbers
-- [ ] Catalan numbers
-- [ ] Chowla numbers
-- [ ] Circular primes
-- [ ] Cousin primes
-- [ ] Digital root
-- [ ] Emirp primes
-- [ ] Factors of an integer
-- [ ] Happy numbers
-- [ ] Harshad or Niven series
-- [ ] Least common multiple
-- [ ] Perfect numbers
+- [x] Abundant, deficient and perfect number classifications
+- [x] Additive primes
+- [x] Amicable pairs
+- [x] Attractive numbers
+- [x] Catalan numbers
+- [x] Chowla numbers
+- [x] Circular primes
+- [x] Cousin primes
+- [x] Digital root
+- [x] Emirp primes
+- [x] Factors of an integer
+- [x] Happy numbers
+- [x] Harshad or Niven series
+- [x] Least common multiple
+- [x] Perfect numbers
 
 ## Batch 3: More Number Theory (15 tasks)
 - [ ] Pernicious numbers
