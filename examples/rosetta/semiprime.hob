@@ -1,0 +1,10 @@
+// @test: [n | n <- [2..100], isSemiprime(n)]
+pfcHelper :: (int * int * int) -> int
+pfcHelper x = match x with
+  | (n, p, count) -> if (p * p > n) then (if (n > 1) then count + 1 else count) else if (n % p == 0) then pfcHelper((n / p, p, count + 1)) else pfcHelper((n, p + 1, count))
+
+primeFactorCount :: int -> int
+primeFactorCount n = pfcHelper((n, 2, 0))
+
+isSemiprime :: int -> bool
+isSemiprime n = primeFactorCount(n) == 2

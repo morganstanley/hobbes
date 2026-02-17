@@ -47,21 +47,21 @@ Tracking file for Hobbes examples corresponding to Haskell tasks on Rosetta Code
 - [x] Perfect numbers
 
 ## Batch 3: More Number Theory (15 tasks)
-- [ ] Pernicious numbers
-- [ ] Population count
-- [ ] Prime decomposition
-- [ ] Proper divisors
-- [ ] Totient function
-- [ ] Sieve of Eratosthenes
-- [ ] Self numbers
-- [ ] Semiprime
-- [ ] Smith numbers
-- [ ] Strong and weak primes
-- [ ] Sexy primes
-- [ ] Kaprekar numbers
-- [ ] Hailstone sequence
-- [ ] Hamming numbers
-- [ ] Humble numbers
+- [x] Pernicious numbers
+- [x] Population count
+- [x] Prime decomposition
+- [x] Proper divisors
+- [x] Totient function
+- [x] Sieve of Eratosthenes
+- [x] Self numbers
+- [x] Semiprime
+- [x] Smith numbers
+- [x] Strong and weak primes
+- [x] Sexy primes
+- [x] Kaprekar numbers
+- [x] Hailstone sequence
+- [x] Hamming numbers
+- [x] Humble numbers
 
 ## Batch 4: String Processing (15 tasks)
 - [ ] Caesar cipher

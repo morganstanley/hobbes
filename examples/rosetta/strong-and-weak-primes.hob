@@ -1,0 +1,13 @@
+// @test: (strong, weak)
+hasDivisor :: (int * int) -> bool
+hasDivisor x = match x with
+  | (n, d) -> if (d * d > n) then false else if (n % d == 0) then true else hasDivisor((n, d + 1))
+
+isPrime :: int -> bool
+isPrime n = if (n < 2) then false else not(hasDivisor((n, 2)))
+
+primes = [n | n <- [2..1000], isPrime(n)]
+
+strong = [primes[i] | i <- [1L..length(primes)-2], 2 * primes[i] > primes[i-1] + primes[i+1]]
+
+weak = [primes[i] | i <- [1L..length(primes)-2], 2 * primes[i] < primes[i-1] + primes[i+1]]

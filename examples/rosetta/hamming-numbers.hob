@@ -1,0 +1,7 @@
+// @test: [n | n <- [1..200], isHamming(n)]
+removeFactor :: (int * int) -> int
+removeFactor x = match x with
+  | (n, p) -> if (n % p == 0) then removeFactor((n / p, p)) else n
+
+isHamming :: int -> bool
+isHamming n = removeFactor((removeFactor((removeFactor((n, 2)), 3)), 5)) == 1
