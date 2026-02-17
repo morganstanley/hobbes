@@ -109,10 +109,10 @@ Tracking file for Hobbes examples corresponding to Haskell tasks on Rosetta Code
 - [x] Sum multiples of 3 and 5
 - [x] Sum digits of an integer
 - [x] Pi
-- [x] Temperature conversion (substituted for Haversine formula - no sin/cos)
-- [x] Leap year (substituted for Trigonometric functions - no sin/cos/tan)
-- [x] Averages/Arithmetic mean (substituted for Bernoulli numbers - no memoization)
-- [x] Averages/Root mean square (substituted for Euler's sum of powers - no pow)
+- [x] Temperature conversion
+- [x] Leap year
+- [x] Averages/Arithmetic mean
+- [x] Averages/Root mean square
 
 ## Batch 7: Higher-Order Functions & Functional (15 tasks)
 - [x] Apply a callback to an array
@@ -128,8 +128,8 @@ Tracking file for Hobbes examples corresponding to Haskell tasks on Rosetta Code
 - [x] Symmetric difference
 - [x] Flatten a list
 - [x] Combinations with repetitions
-- [x] Mutual recursion (substituted for Accumulator factory - no mutable state)
-- [x] Pascal's triangle (substituted for Y combinator - no recursive types)
+- [x] Mutual recursion
+- [x] Pascal's triangle
 
 ## Batch 8: Remaining Feasible (11 tasks)
 - [ ] Roman numerals/Decode
@@ -156,3 +156,11 @@ Tracking file for Hobbes examples corresponding to Haskell tasks on Rosetta Code
 - [ ] Narcissistic decimal number
 - [ ] Farey sequence
 - [ ] Forward difference
+
+## Not Feasible in Hobbes
+- Accumulator factory (no general-purpose mutable local variables)
+- Y combinator (closure types don't unify with recursive types)
+- Haversine formula (no sin/cos/asin)
+- Trigonometric functions (no sin/cos/tan)
+- Bernoulli numbers (no memoization, exponential recursion)
+- Euler's sum of powers conjecture (no pow, brute force too slow)
