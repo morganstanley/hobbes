@@ -1,0 +1,19 @@
+// @test: let ct = vigenereEncrypt(("ATTACKATDAWN", "LEMON")) in (ct, vigenereDecrypt((ct, "LEMON")))
+alpha = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+findAlphaHelper x = match x with
+  | (c, i) -> if (i >= length(alpha)) then 0L else if (alpha[i] == c) then i else findAlphaHelper((c, i + 1))
+
+findAlpha c = findAlphaHelper((c, 0L))
+
+vigenereEncHelper x = match x with
+  | (plain, key, i, acc) -> if (i >= length(plain)) then acc else let p = findAlpha(plain[i]) in let k = findAlpha(key[i % length(key)]) in vigenereEncHelper((plain, key, i + 1, acc ++ [alpha[(p + k) % 26]]))
+
+vigenereEncrypt x = match x with
+  | (plain, key) -> vigenereEncHelper((plain, key, 0L, ""))
+
+vigenereDecHelper x = match x with
+  | (cipher, key, i, acc) -> if (i >= length(cipher)) then acc else let c = findAlpha(cipher[i]) in let k = findAlpha(key[i % length(key)]) in vigenereDecHelper((cipher, key, i + 1, acc ++ [alpha[(c - k + 26) % 26]]))
+
+vigenereDecrypt x = match x with
+  | (cipher, key) -> vigenereDecHelper((cipher, key, 0L, ""))

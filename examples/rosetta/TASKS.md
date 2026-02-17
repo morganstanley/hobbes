@@ -132,17 +132,17 @@ Tracking file for Hobbes examples corresponding to Haskell tasks on Rosetta Code
 - [x] Pascal's triangle
 
 ## Batch 8: Remaining Feasible (11 tasks)
-- [ ] Roman numerals/Decode
-- [ ] Babbage problem
-- [ ] Convex hull
-- [ ] Luhn test of credit card numbers
-- [ ] Fibonacci word
-- [ ] Convert seconds to compound duration
-- [ ] Vigenere cipher
-- [ ] Truth table
-- [ ] Show ASCII table
-- [ ] The Twelve Days of Christmas
-- [ ] Old lady swallowed a fly
+- [x] Roman numerals/Decode
+- [x] Babbage problem
+- [x] Convex hull
+- [x] Luhn test of credit card numbers
+- [x] Fibonacci word
+- [x] Convert seconds to compound duration
+- [x] Vigenere cipher
+- [x] Truth table
+- [x] Show ASCII table
+- [x] The Twelve Days of Christmas
+- [x] Old lady swallowed a fly
 
 ## Batch 9: Stretch Goals (11 tasks)
 - [ ] Stern-Brocot sequence
