@@ -64,21 +64,21 @@ Tracking file for Hobbes examples corresponding to Haskell tasks on Rosetta Code
 - [x] Humble numbers
 
 ## Batch 4: String Processing (15 tasks)
-- [ ] Caesar cipher
-- [ ] Balanced brackets
-- [ ] Comma quibbling
-- [ ] Pangram checker
-- [ ] Rot-13
-- [ ] Run-length encoding
-- [ ] Strip whitespace from a string/Top and tail
-- [ ] Reverse words in a string
-- [ ] Remove duplicate elements
-- [ ] Determine if a string has all unique characters
-- [ ] Determine if a string has all the same characters
-- [ ] Count how many vowels and consonants occur in a string
-- [ ] Count occurrences of a substring
-- [ ] Repeat a string
-- [ ] Roman numerals/Encode
+- [x] Caesar cipher
+- [x] Balanced brackets
+- [x] Comma quibbling
+- [x] Pangram checker
+- [x] Rot-13
+- [x] Run-length encoding
+- [x] Strip whitespace from a string/Top and tail
+- [x] Reverse words in a string
+- [x] Remove duplicate elements
+- [x] Determine if a string has all unique characters
+- [x] Determine if a string has all the same characters
+- [x] Count how many vowels and consonants occur in a string
+- [x] Count occurrences of a substring
+- [x] Repeat a string
+- [x] Roman numerals/Encode
 
 ## Batch 5: Algorithms & Data Structures (15 tasks)
 - [ ] Binary search

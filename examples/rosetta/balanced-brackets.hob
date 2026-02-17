@@ -1,0 +1,7 @@
+// @test: [(s, isBalanced(s)) | s <- ["", "[]", "[][]", "[[][]]", "][", "][][", "[]][[]"]]
+checkBalance :: ([char] * int * int) -> bool
+checkBalance x = match x with
+  | (s, i, depth) -> if (depth < 0) then false else if (i >= length(s)) then depth == 0 else if (s[i] == '[') then checkBalance((s, i + 1, depth + 1)) else if (s[i] == ']') then checkBalance((s, i + 1, depth - 1)) else checkBalance((s, i + 1, depth))
+
+isBalanced :: [char] -> bool
+isBalanced s = checkBalance((s, 0, 0))

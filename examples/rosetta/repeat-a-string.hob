@@ -1,0 +1,5 @@
+// @test: [repeatStr(("ha", 0)), repeatStr(("ha", 1)), repeatStr(("ha", 5))]
+repeatStr :: ([char] * int) -> [char]
+repeatStr x = match x with
+  | (_, 0) -> ""
+  | (s, n) -> s ++ repeatStr((s, n - 1))
