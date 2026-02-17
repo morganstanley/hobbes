@@ -8,7 +8,7 @@ jobs:
         os: [ubuntu-24.04]
         clang: [16, 18]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
             # Nix Flakes doesn't work on shallow clones
             fetch-depth: 0
@@ -39,7 +39,7 @@ jobs:
         os: [ubuntu-24.04]
         clang: [16, 18]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
             # Nix Flakes doesn't work on shallow clones
             fetch-depth: 0
@@ -74,7 +74,7 @@ jobs:
         gcc: [13, 14]
         llvm: [16, 18]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
             # Nix Flakes doesn't work on shallow clones
             fetch-depth: 0
@@ -104,7 +104,7 @@ jobs:
       matrix:
         llvm: [18]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
