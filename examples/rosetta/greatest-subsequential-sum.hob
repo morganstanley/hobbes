@@ -1,0 +1,7 @@
+// @test: maxSubseq([-1, -2, 3, 5, 6, -2, -1, 4, -4, 2, -1])
+kadane :: ([int] * int * int * int * int * int * int) -> (int * int * int)
+kadane x = match x with
+  | (xs, i, curSum, curStart, bestSum, bestStart, bestEnd) -> if (i >= length(xs)) then (bestSum, bestStart, bestEnd) else let newSum = curSum + xs[i] in if (newSum < xs[i]) then (if (xs[i] > bestSum) then kadane((xs, i+1, xs[i], i, xs[i], i, i)) else kadane((xs, i+1, xs[i], i, bestSum, bestStart, bestEnd))) else (if (newSum > bestSum) then kadane((xs, i+1, newSum, curStart, newSum, curStart, i)) else kadane((xs, i+1, newSum, curStart, bestSum, bestStart, bestEnd)))
+
+maxSubseq :: [int] -> [int]
+maxSubseq xs = if (length(xs) == 0) then [] else let r = kadane((xs, 0, 0, 0, xs[0], 0, 0)) in [xs[i] | i <- [r.1..r.2]]

@@ -1,0 +1,10 @@
+// @test: bsort([4, 65, 2, -31, 0, 99, 83, 782, 1])
+bubblePass :: ([int] * int * bool) -> ([int] * bool)
+bubblePass x = match x with
+  | (xs, i, swapped) -> if (i >= length(xs) - 1) then (xs, swapped) else if (xs[i] > xs[i+1]) then bubblePass(([if (j == i) then xs[i+1] else if (j == i+1) then xs[i] else xs[j] | j <- [0L..length(xs)-1]], i + 1, true)) else bubblePass((xs, i + 1, swapped))
+
+bsortHelper :: [int] -> [int]
+bsortHelper xs = let r = bubblePass((xs, 0, false)) in if (r.1) then bsortHelper(r.0) else r.0
+
+bsort :: [int] -> [int]
+bsort xs = if (length(xs) <= 1) then xs else bsortHelper(xs)

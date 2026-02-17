@@ -81,21 +81,21 @@ Tracking file for Hobbes examples corresponding to Haskell tasks on Rosetta Code
 - [x] Roman numerals/Encode
 
 ## Batch 5: Algorithms & Data Structures (15 tasks)
-- [ ] Binary search
-- [ ] Sorting algorithms/Quicksort
-- [ ] Sorting algorithms/Merge sort
-- [ ] Sorting algorithms/Insertion sort
-- [ ] Sorting algorithms/Bubble sort
-- [ ] Sorting algorithms/Selection sort
-- [ ] Greatest subsequential sum
-- [ ] Josephus problem
-- [ ] Longest common subsequence
-- [ ] N-queens problem
-- [ ] Knapsack problem/0-1
-- [ ] Levenshtein distance
-- [ ] Look-and-say sequence
-- [ ] Ethiopian multiplication
-- [ ] Horner's rule for polynomial evaluation
+- [x] Binary search
+- [x] Sorting algorithms/Quicksort
+- [x] Sorting algorithms/Merge sort
+- [x] Sorting algorithms/Insertion sort
+- [x] Sorting algorithms/Bubble sort
+- [x] Sorting algorithms/Selection sort
+- [x] Greatest subsequential sum
+- [x] Josephus problem
+- [x] Longest common subsequence
+- [x] N-queens problem
+- [x] Knapsack problem/0-1
+- [x] Levenshtein distance
+- [x] Look-and-say sequence
+- [x] Ethiopian multiplication
+- [x] Horner's rule for polynomial evaluation
 
 ## Batch 6: Math & Geometry (15 tasks)
 - [ ] Arithmetic-geometric mean

@@ -1,0 +1,11 @@
+// @test: nqueens(8)
+safeHelper x = match x with
+  | (queens, row, col, i) -> if (i >= length(queens)) then true else let r = queens[i] in if (r == col or r - col == row - i or col - r == row - i) then false else safeHelper((queens, row, col, i + 1))
+
+safe x = match x with
+  | (queens, row, col) -> safeHelper((queens, row, col, 0L))
+
+solve x = match x with
+  | (queens, n) -> if (length(queens) == n) then 1 else sum([solve((queens ++ [c], n)) | c <- [0L..n-1], safe((queens, length(queens), c))])
+
+nqueens n = solve(([], 0L + n))
