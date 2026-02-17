@@ -16,7 +16,7 @@ jobs:
         with:
           extra_nix_config: |
             experimental-features = nix-command flakes ca-references
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.10'
       - name: nix build hobbesPackages/clang-${{ matrix.clang }}-ASanAndUBSan/hobbes
@@ -47,7 +47,7 @@ jobs:
         with:
           extra_nix_config: |
             experimental-features = nix-command flakes ca-references
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.10'
       - name: nix build hobbesPackages/clang-${{ matrix.clang }}/hobbes
@@ -82,7 +82,7 @@ jobs:
         with:
           extra_nix_config: |
             experimental-features = nix-command flakes ca-references
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.10'
       - name: nix build hobbesPackages/gcc-${{ matrix.gcc }}/llvm-${{ matrix.llvm }}/hobbes
@@ -105,7 +105,7 @@ jobs:
         llvm: [18]
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.10'
       - name: Install dependencies
