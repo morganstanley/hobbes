@@ -157,6 +157,13 @@ Tracking file for Hobbes examples corresponding to Haskell tasks on Rosetta Code
 - [x] Farey sequence
 - [x] Forward difference
 
+## Batch 10: File I/O (5 tasks)
+- [x] Create a file
+- [x] Read a file line by line
+- [x] Read entire file
+- [x] Write entire file
+- [x] File input/output
+
 ## Not Feasible in Hobbes
 - Accumulator factory (no general-purpose mutable local variables)
 - Y combinator (closure types don't unify with recursive types)

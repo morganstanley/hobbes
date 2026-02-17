@@ -1,0 +1,1 @@
+// @test: let _ = writefile("/tmp/hobbes-rosetta-readall.txt", "Line one\nLine two\nLine three\n") in readfile("/tmp/hobbes-rosetta-readall.txt")
