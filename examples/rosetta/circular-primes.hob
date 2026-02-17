@@ -1,0 +1,26 @@
+// @test: [n | n <- [2..1000], isCircularPrime(n)]
+hasDivisor :: (int * int) -> bool
+hasDivisor x = match x with
+  | (n, d) -> if (d * d > n) then false else if (n % d == 0) then true else hasDivisor((n, d + 1))
+
+isPrime :: int -> bool
+isPrime n = if (n < 2) then false else not(hasDivisor((n, 2)))
+
+numDigits :: int -> int
+numDigits n = if (n < 10) then 1 else 1 + numDigits(n / 10)
+
+pow10 :: int -> int
+pow10 n = match n with
+  | 0 -> 1
+  | _ -> 10 * pow10(n - 1)
+
+rotate :: int -> int
+rotate n = (n % 10) * pow10(numDigits(n) - 1) + n / 10
+
+allRotationsPrime :: (int * int) -> bool
+allRotationsPrime x = match x with
+  | (_, 0) -> true
+  | (n, k) -> isPrime(n) and allRotationsPrime((rotate(n), k - 1))
+
+isCircularPrime :: int -> bool
+isCircularPrime n = allRotationsPrime((n, numDigits(n)))

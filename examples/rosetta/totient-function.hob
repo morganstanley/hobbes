@@ -1,0 +1,7 @@
+// @test: [(n, totient(n)) | n <- [1..25]]
+gcd :: (int * int) -> int
+gcd x = match x with
+  | (a, 0) -> a
+  | (a, b) -> gcd((b, a % b))
+
+totient n = length([k | k <- [1..n], gcd((k, n)) == 1])

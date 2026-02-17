@@ -1,0 +1,11 @@
+// @test: [lcm((12, 18)), lcm((4, 6)), lcm((21, 6)), lcm((1, 0))]
+gcd :: (int * int) -> int
+gcd x = match x with
+  | (a, 0) -> a
+  | (a, b) -> gcd((b, a % b))
+
+lcm :: (int * int) -> int
+lcm x = match x with
+  | (_, 0) -> 0
+  | (0, _) -> 0
+  | (a, b) -> (a / gcd((a, b))) * b

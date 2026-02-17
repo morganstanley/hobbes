@@ -1,0 +1,17 @@
+// @test: [n | n <- [1..1000], isKaprekar(n)]
+numDigits :: int -> int
+numDigits n = if (n < 10) then 1 else 1 + numDigits(n / 10)
+
+pow10 :: int -> int
+pow10 n = match n with
+  | 0 -> 1
+  | _ -> 10 * pow10(n - 1)
+
+checkSplit :: (int * int * int) -> bool
+checkSplit x = match x with
+  | (sq, n, d) -> if (d > numDigits(sq) - 1) then false else if ((sq / pow10(d)) + (sq % pow10(d)) == n and sq % pow10(d) > 0) then true else checkSplit((sq, n, d + 1))
+
+isKaprekar :: int -> bool
+isKaprekar n = match n with
+  | 1 -> true
+  | _ -> checkSplit((n * n, n, 1))

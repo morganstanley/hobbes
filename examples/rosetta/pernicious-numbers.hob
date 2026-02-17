@@ -1,0 +1,13 @@
+// @test: [n | n <- [1..150], isPernicious(n)]
+hasDivisor :: (int * int) -> bool
+hasDivisor x = match x with
+  | (n, d) -> if (d * d > n) then false else if (n % d == 0) then true else hasDivisor((n, d + 1))
+
+isPrime :: int -> bool
+isPrime n = if (n < 2) then false else not(hasDivisor((n, 2)))
+
+popcount :: int -> int
+popcount n = if (n == 0) then 0 else (n % 2) + popcount(n / 2)
+
+isPernicious :: int -> bool
+isPernicious n = isPrime(popcount(n))
