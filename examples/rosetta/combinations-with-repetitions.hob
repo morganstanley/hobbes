@@ -1,0 +1,10 @@
+// @test: combsWithRep((2, [1,2,3]))
+tail xs = [xs[i] | i <- [1L..length(xs)-1]]
+
+prepend x = match x with
+  | (elem, lists) -> [([elem] ++ r) | r <- lists]
+
+combsWithRep :: (int * [int]) -> [[int]]
+combsWithRep x = match x with
+  | (0, _) -> [[]]
+  | (k, xs) -> if (length(xs) == 0) then [] else prepend((xs[0], combsWithRep((k-1, xs)))) ++ combsWithRep((k, tail(xs)))

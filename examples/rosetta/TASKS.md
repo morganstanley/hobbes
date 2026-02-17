@@ -115,33 +115,31 @@ Tracking file for Hobbes examples corresponding to Haskell tasks on Rosetta Code
 - [x] Averages/Root mean square (substituted for Euler's sum of powers - no pow)
 
 ## Batch 7: Higher-Order Functions & Functional (15 tasks)
-- [ ] Accumulator factory
-- [ ] Apply a callback to an array
-- [ ] Catamorphism
-- [ ] Filter
-- [ ] First-class functions
-- [ ] Function composition
-- [ ] Higher-order functions
-- [ ] Y combinator
-- [ ] List comprehensions
-- [ ] Cartesian product of two or more lists
-- [ ] Combinations
-- [ ] Power set
-- [ ] Symmetric difference
-- [ ] Flatten a list
-- [ ] Combinations with repetitions
+- [x] Apply a callback to an array
+- [x] Catamorphism
+- [x] Filter
+- [x] First-class functions
+- [x] Function composition
+- [x] Higher-order functions
+- [x] List comprehensions
+- [x] Cartesian product of two or more lists
+- [x] Combinations
+- [x] Power set
+- [x] Symmetric difference
+- [x] Flatten a list
+- [x] Combinations with repetitions
+- [x] Mutual recursion (substituted for Accumulator factory - no mutable state)
+- [x] Pascal's triangle (substituted for Y combinator - no recursive types)
 
-## Batch 8: Remaining Feasible (13 tasks)
+## Batch 8: Remaining Feasible (11 tasks)
 - [ ] Roman numerals/Decode
 - [ ] Babbage problem
 - [ ] Convex hull
 - [ ] Luhn test of credit card numbers
 - [ ] Fibonacci word
-- [ ] Pascal's triangle
 - [ ] Convert seconds to compound duration
 - [ ] Vigenere cipher
 - [ ] Truth table
-- [ ] Mutual recursion
 - [ ] Show ASCII table
 - [ ] The Twelve Days of Christmas
 - [ ] Old lady swallowed a fly
