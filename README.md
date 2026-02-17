@@ -1,6 +1,6 @@
 # hobbes
 
-![Lifecycle Active](https://img.shields.io/badge/Lifecycle-Active-brightgreen)  
+![Lifecycle Active](https://img.shields.io/badge/Lifecycle-Active-brightgreen)
 
 a language, embedded compiler, and runtime for efficient dynamic expression evaluation, data storage and analysis
 
