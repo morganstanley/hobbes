@@ -58,7 +58,7 @@ else()
   execute_process(COMMAND ${llvm-config} --ldflags
                   OUTPUT_VARIABLE llvm_ldflags
                   OUTPUT_STRIP_TRAILING_WHITESPACE)
-  execute_process(COMMAND ${llvm-config} --system-libs
+  execute_process(COMMAND ${llvm-config} --system-libs --ignore-libllvm --ignore-libxml2
                   OUTPUT_VARIABLE sys_libs
                   OUTPUT_STRIP_TRAILING_WHITESPACE)
 endif()
