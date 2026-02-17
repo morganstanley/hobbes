@@ -1,0 +1,7 @@
+// @test: [n | n <- [1..200], isHumble(n)]
+removeFactor :: (int * int) -> int
+removeFactor x = match x with
+  | (n, p) -> if (n % p == 0) then removeFactor((n / p, p)) else n
+
+isHumble :: int -> bool
+isHumble n = removeFactor((removeFactor((removeFactor((removeFactor((n, 2)), 3)), 5)), 7)) == 1

@@ -1,0 +1,11 @@
+// @test: [(s, allUnique(s)) | s <- ["", "abcdef", "abcaef", "the quick brown fox"]]
+containsChar :: (char * [char] * int * int) -> bool
+containsChar x = match x with
+  | (c, s, from, to) -> if (from >= to) then false else if (s[from] == c) then true else containsChar((c, s, from + 1, to))
+
+hasRepeat :: ([char] * int) -> bool
+hasRepeat x = match x with
+  | (s, i) -> if (i >= length(s)) then false else if (containsChar((s[i], s, 0, i))) then true else hasRepeat((s, i + 1))
+
+allUnique :: [char] -> bool
+allUnique s = not(hasRepeat((s, 0)))

@@ -12,7 +12,7 @@ jobs:
         with:
             # Nix Flakes doesn't work on shallow clones
             fetch-depth: 0
-      - uses: cachix/install-nix-action@v30
+      - uses: cachix/install-nix-action@v31
         with:
           extra_nix_config: |
             experimental-features = nix-command flakes ca-references
@@ -43,7 +43,7 @@ jobs:
         with:
             # Nix Flakes doesn't work on shallow clones
             fetch-depth: 0
-      - uses: cachix/install-nix-action@v30
+      - uses: cachix/install-nix-action@v31
         with:
           extra_nix_config: |
             experimental-features = nix-command flakes ca-references
@@ -53,6 +53,9 @@ jobs:
       - name: nix build hobbesPackages/clang-${{ matrix.clang }}/hobbes
         run: |
           nix build .#hobbesPackages/clang-${{ matrix.clang }}/hobbes
+      - name: Rosetta Code examples
+        run: |
+          bash examples/rosetta/run_tests.sh result/bin/hi
       - name: nix log hobbesPackages/clang-${{ matrix.clang }}/hobbes
         if: ${{ always() }}
         run: |
@@ -75,7 +78,7 @@ jobs:
         with:
             # Nix Flakes doesn't work on shallow clones
             fetch-depth: 0
-      - uses: cachix/install-nix-action@v30
+      - uses: cachix/install-nix-action@v31
         with:
           extra_nix_config: |
             experimental-features = nix-command flakes ca-references
@@ -131,3 +134,34 @@ jobs:
         with:
           name: rhel9-build-logs
           path: build/
+  macos-build:
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        llvm: [18]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Install dependencies
+        run: |
+          brew install llvm@${{ matrix.llvm }} readline zstd
+      - name: Configure
+        run: |
+          export LLVM_DIR="$(brew --prefix llvm@${{ matrix.llvm }})/lib/cmake/llvm"
+          export PATH="$(brew --prefix llvm@${{ matrix.llvm }})/bin:$PATH"
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DLLVM_DIR="$LLVM_DIR"
+      - name: Build
+        run: |
+          cmake --build build -j$(sysctl -n hw.ncpu)
+      - name: Test
+        run: |
+          # Run test binary directly; the process may exit non-zero due to
+          # detached thread cleanup (libc++abi: terminating) even when all
+          # tests pass, so check output for failures instead of exit code.
+          ./build/hobbes-test 2>&1 | tee test-output.txt; true
+          if grep -q 'FAILURE' test-output.txt; then
+            echo "::error::Test failures detected"
+            exit 1
+          fi

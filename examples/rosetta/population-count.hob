@@ -1,0 +1,3 @@
+// @test: [popcount(n) | n <- [0..30]]
+popcount :: int -> int
+popcount n = if (n == 0) then 0 else (n % 2) + popcount(n / 2)

@@ -58,7 +58,7 @@ else()
   execute_process(COMMAND ${llvm-config} --ldflags
                   OUTPUT_VARIABLE llvm_ldflags
                   OUTPUT_STRIP_TRAILING_WHITESPACE)
-  execute_process(COMMAND ${llvm-config} --system-libs
+  execute_process(COMMAND ${llvm-config} --system-libs --ignore-libllvm --ignore-libxml2
                   OUTPUT_VARIABLE sys_libs
                   OUTPUT_STRIP_TRAILING_WHITESPACE)
 endif()
@@ -144,6 +144,7 @@ add_executable(mock-proc test/mocks/proc.C)
 add_executable(hobbes-test ${test_files})
 target_link_libraries(hobbes-test PRIVATE hobbes)
 add_test(hobbes-test hobbes-test)
+add_test(NAME rosetta-examples COMMAND bash ${CMAKE_SOURCE_DIR}/examples/rosetta/run_tests.sh $<TARGET_FILE:hi>)
 find_package(Python COMPONENTS Interpreter)
 message("Python_EXECUTABLE " ${Python_EXECUTABLE})
 set_property(TARGET hobbes-test PROPERTY COMPILE_FLAGS "-DPYTHON_EXECUTABLE=\"${Python_EXECUTABLE}\" -DSCRIPT_DIR=\"${CMAKE_SOURCE_DIR}/scripts/\"")

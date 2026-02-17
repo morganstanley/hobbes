@@ -1,0 +1,12 @@
+// @test: [countSubstring(("the three truths", "th")), countSubstring(("aaaa", "aa")), countSubstring(("banana", "ana"))]
+matchAt :: ([char] * [char] * int * int) -> bool
+matchAt x = match x with
+  | (s, sub, si, subi) -> if (subi >= length(sub)) then true else if (si >= length(s)) then false else if (s[si] != sub[subi]) then false else matchAt((s, sub, si + 1, subi + 1))
+
+countHelper :: ([char] * [char] * int * int) -> int
+countHelper x = match x with
+  | (s, sub, i, count) -> if (i + length(sub) > length(s)) then count else if (matchAt((s, sub, i, 0))) then countHelper((s, sub, i + 1, count + 1)) else countHelper((s, sub, i + 1, count))
+
+countSubstring :: ([char] * [char]) -> int
+countSubstring x = match x with
+  | (s, sub) -> countHelper((s, sub, 0, 0))

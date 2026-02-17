@@ -1,0 +1,11 @@
+// @test: reverseWords("rosetta code phrase reversal")
+splitWords :: ([char] * int * [char] * [[char]]) -> [[char]]
+splitWords x = match x with
+  | (s, i, cur, acc) -> if (i >= length(s)) then (if (length(cur) > 0) then acc ++ [cur] else acc) else if (s[i] == ' ') then (if (length(cur) > 0) then splitWords((s, i + 1, "", acc ++ [cur])) else splitWords((s, i + 1, "", acc))) else splitWords((s, i + 1, cur ++ [s[i]], acc))
+
+joinWith :: ([[char]] * [char] * int * [char]) -> [char]
+joinWith x = match x with
+  | (ws, sep, i, acc) -> if (i >= length(ws)) then acc else if (i == 0) then joinWith((ws, sep, 1, ws[0])) else joinWith((ws, sep, i + 1, acc ++ sep ++ ws[i]))
+
+reverseWords :: [char] -> [char]
+reverseWords s = joinWith((reverse(splitWords((s, 0, "", []))), " ", 0, ""))

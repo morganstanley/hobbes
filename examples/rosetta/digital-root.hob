@@ -1,0 +1,6 @@
+// @test: [(n, digitalRoot(n)) | n <- [627615, 39390, 588225, 393900588]]
+digitSum :: int -> int
+digitSum n = if (n < 10) then n else (n % 10) + digitSum(n / 10)
+
+digitalRoot :: int -> int
+digitalRoot n = if (n < 10) then n else digitalRoot(digitSum(n))
