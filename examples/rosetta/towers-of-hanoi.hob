@@ -1,0 +1,5 @@
+// @test: hanoi((3, "A", "C", "B"))
+hanoi :: (int * [char] * [char] * [char]) -> ()
+hanoi x = match x with
+  | (0, _, _, _) -> ()
+  | (n, from, to, via) -> do { hanoi((n-1, from, via, to)); putStr("Move disk " ++ show(n) ++ " from " ++ from ++ " to " ++ to ++ "\n"); hanoi((n-1, via, to, from)); }

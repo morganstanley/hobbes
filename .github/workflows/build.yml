@@ -53,6 +53,9 @@ jobs:
       - name: nix build hobbesPackages/clang-${{ matrix.clang }}/hobbes
         run: |
           nix build .#hobbesPackages/clang-${{ matrix.clang }}/hobbes
+      - name: Rosetta Code examples
+        run: |
+          bash examples/rosetta/run_tests.sh result/bin/hi
       - name: nix log hobbesPackages/clang-${{ matrix.clang }}/hobbes
         if: ${{ always() }}
         run: |
