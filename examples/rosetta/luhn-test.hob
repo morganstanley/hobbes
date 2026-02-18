@@ -1,0 +1,11 @@
+// @test: [luhn(n) | n <- [49927398716L, 49927398717L, 1234567812345678L, 1234567812345670L]]
+digitList x = match x with
+  | (0L, acc) -> acc
+  | (n, acc) -> digitList((n / 10, [n % 10] ++ acc))
+
+luhnDouble d = if (2 * d > 9) then 2 * d - 9 else 2 * d
+
+luhnVal x = match x with
+  | (ds, i, parity) -> if (i < 0) then 0L else if ((parity - i) % 2 == 1) then luhnDouble(ds[i]) + luhnVal((ds, i - 1, parity)) else ds[i] + luhnVal((ds, i - 1, parity))
+
+luhn n = luhnVal((digitList((n, [])), length(digitList((n, []))) - 1, length(digitList((n, []))) - 1)) % 10 == 0

@@ -1,0 +1,8 @@
+// @test: [levenshtein(("kitten", "sitting")), levenshtein(("rosettacode", "raisethysword")), levenshtein(("", "abc"))]
+levHelper x = match x with
+  | (_, _, 0L, n) -> n
+  | (_, _, m, 0L) -> m
+  | (s, t, m, n) -> if (s[m-1] == t[n-1]) then levHelper((s, t, m-1, n-1)) else 1 + min(levHelper((s, t, m-1, n)), min(levHelper((s, t, m, n-1)), levHelper((s, t, m-1, n-1))))
+
+levenshtein x = match x with
+  | (s, t) -> levHelper((s, t, length(s), length(t)))

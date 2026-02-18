@@ -1,0 +1,10 @@
+// @test: symDiff(([1,2,3,4,5], [3,4,5,6,7]))
+elemHelper x = match x with
+  | (_, [], _) -> false
+  | (e, xs, i) -> if (xs[i] == e) then true else if (i + 1 >= length(xs)) then false else elemHelper((e, xs, i + 1))
+
+elemOf x = match x with
+  | (e, xs) -> elemHelper((e, xs, 0L))
+
+symDiff x = match x with
+  | (xs, ys) -> [a | a <- xs, not(elemOf((a, ys)))] ++ [b | b <- ys, not(elemOf((b, xs)))]

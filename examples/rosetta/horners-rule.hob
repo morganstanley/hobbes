@@ -1,0 +1,6 @@
+// @test: horner(([-19, 7, -4, 6], 3))
+hornerHelper x = match x with
+  | (coeffs, xval, i, acc) -> if (i < 0) then acc else hornerHelper((coeffs, xval, i - 1, acc * xval + coeffs[i]))
+
+horner x = match x with
+  | (coeffs, xval) -> hornerHelper((coeffs, xval, length(coeffs) - 1, 0L))

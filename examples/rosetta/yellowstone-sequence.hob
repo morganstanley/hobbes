@@ -1,0 +1,18 @@
+// @test: yellowstone(30L)
+gcd x = match x with
+  | (a, 0) -> a
+  | (a, b) -> gcd((b, a % b))
+
+coprime x = match x with
+  | (a, b) -> gcd((a, b)) == 1
+
+usedContains x = match x with
+  | (val, seq, j) -> if (j >= length(seq)) then false else if (seq[j] == val) then true else usedContains((val, seq, j + 1))
+
+findNext x = match x with
+  | (seq, prev1, prev2, candidate) -> if (usedContains((candidate, seq, 0L))) then findNext((seq, prev1, prev2, candidate + 1)) else if (coprime((candidate, prev1)) and not(coprime((candidate, prev2)))) then candidate else findNext((seq, prev1, prev2, candidate + 1))
+
+yellowstoneHelper x = match x with
+  | (seq, i, n) -> if (i >= n) then seq else let next = findNext((seq, seq[i-1], seq[i-2], 1)) in yellowstoneHelper((seq ++ [next], i + 1, n))
+
+yellowstone n = yellowstoneHelper(([1, 2, 3], 3L, n))

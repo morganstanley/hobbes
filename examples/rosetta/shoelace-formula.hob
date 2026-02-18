@@ -1,0 +1,5 @@
+// @test: shoelace([(3.0, 4.0), (5.0, 11.0), (12.0, 8.0), (9.0, 5.0), (5.0, 6.0)])
+shoelaceHelper x = match x with
+  | (pts, i, acc) -> if (i >= length(pts)) then acc else let j = (i + 1) % length(pts) in let xi = pts[i].0 in let yi = pts[i].1 in let xj = pts[j].0 in let yj = pts[j].1 in shoelaceHelper((pts, i + 1, acc + xi * yj - xj * yi))
+
+shoelace pts = let s = shoelaceHelper((pts, 0L, 0.0)) in if (s < 0.0) then s / (-2.0) else s / 2.0

@@ -1,0 +1,8 @@
+// @test: piApprox(100000L)
+piTerm n = if (n % 2 == 0) then 1.0 / (0.0 + 2 * n + 1) else -1.0 / (0.0 + 2 * n + 1)
+
+piHelper x = match x with
+  | (0L, acc) -> acc + 1.0
+  | (n, acc) -> piHelper((n - 1, acc + piTerm(n)))
+
+piApprox n = 4.0 * piHelper((n, 0.0))

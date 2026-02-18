@@ -1,0 +1,3 @@
+// @test: qsort([4, 65, 2, -31, 0, 99, 83, 782, 1])
+qsort :: [int] -> [int]
+qsort xs = if (length(xs) <= 1) then xs else let pivot = xs[0] in qsort([x | x <- [xs[i] | i <- [1L..length(xs)-1]], x < pivot]) ++ [x | x <- xs, x == pivot] ++ qsort([x | x <- [xs[i] | i <- [1L..length(xs)-1]], x > pivot])

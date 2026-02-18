@@ -1,0 +1,10 @@
+// @test: combinations((3, [0,1,2,3,4]))
+tail xs = [xs[i] | i <- [1L..length(xs)-1]]
+
+prepend x = match x with
+  | (elem, lists) -> [([elem] ++ r) | r <- lists]
+
+combinations :: (int * [int]) -> [[int]]
+combinations x = match x with
+  | (0, _) -> [[]]
+  | (k, xs) -> if (length(xs) == 0) then [] else prepend((xs[0], combinations((k-1, tail(xs))))) ++ combinations((k, tail(xs)))

@@ -1,0 +1,4 @@
+// @test: truthTable(())
+xorB a b = (a and not(b)) or (not(a) and b)
+
+truthTable _ = concat([[(a, b, a and b, a or b, not(a), xorB(a, b)) | b <- [true, false]] | a <- [true, false]])

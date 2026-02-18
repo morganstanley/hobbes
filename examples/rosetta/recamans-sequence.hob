@@ -1,0 +1,11 @@
+// @test: recaman(15L)
+seqContains x = match x with
+  | (val, seq, j) -> if (j >= length(seq)) then false else if (seq[j] == val) then true else seqContains((val, seq, j + 1))
+
+recamanNext x = match x with
+  | (seq, i) -> if (seq[i-1] - i > 0 and not(seqContains((seq[i-1] - i, seq, 0L)))) then seq[i-1] - i else seq[i-1] + i
+
+recamanHelper x = match x with
+  | (seq, i, n) -> if (i >= n) then seq else recamanHelper((seq ++ [recamanNext((seq, i))], i + 1, n))
+
+recaman n = recamanHelper(([0L], 1L, n))

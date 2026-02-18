@@ -1,0 +1,6 @@
+// @test: [binSearch(([1, 3, 5, 7, 9, 11, 13], t)) | t <- [1, 5, 13, 4, 14]]
+binSearchHelper x = match x with
+  | (xs, target, lo, hi) -> if (lo > hi) then -1L else let mid = (lo + hi) / 2 in if (xs[mid] == target) then mid else if (xs[mid] < target) then binSearchHelper((xs, target, mid + 1, hi)) else binSearchHelper((xs, target, lo, mid - 1))
+
+binSearch x = match x with
+  | (xs, target) -> binSearchHelper((xs, target, 0L, length(xs) - 1))

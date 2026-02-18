@@ -1,0 +1,12 @@
+// @test: iterateLAS(("1", 8))
+lasHelper :: ([char] * int * char * int) -> [char]
+lasHelper x = match x with
+  | (s, i, cur, count) -> if (i >= length(s)) then show(count) ++ [cur] else if (s[i] == cur) then lasHelper((s, i + 1, cur, count + 1)) else show(count) ++ [cur] ++ lasHelper((s, i + 1, s[i], 1))
+
+lookAndSay :: [char] -> [char]
+lookAndSay s = if (length(s) == 0) then "" else lasHelper((s, 1, s[0], 1))
+
+iterateLAS :: ([char] * int) -> [[char]]
+iterateLAS x = match x with
+  | (s, 0) -> []
+  | (s, n) -> [s] ++ iterateLAS((lookAndSay(s), n - 1))

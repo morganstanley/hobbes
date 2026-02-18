@@ -1,0 +1,7 @@
+// @test: [digitSum((1234, 10)), digitSum((255, 16)), digitSum((171, 8))]
+digitSumHelper x = match x with
+  | (0, _, acc) -> acc
+  | (n, base, acc) -> digitSumHelper((n / base, base, acc + n % base))
+
+digitSum x = match x with
+  | (n, base) -> digitSumHelper((n, base, 0))

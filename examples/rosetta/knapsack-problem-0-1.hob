@@ -1,0 +1,7 @@
+// @test: knapsack(400)
+items = [("map", 9, 150), ("compass", 13, 35), ("water", 153, 200), ("sandwich", 50, 160), ("glucose", 15, 60), ("tin", 68, 45), ("banana", 27, 60), ("apple", 39, 40), ("cheese", 23, 30), ("beer", 52, 10), ("sunscreen", 11, 70), ("camera", 32, 30), ("tshirt", 24, 15), ("trousers", 48, 10), ("umbrella", 73, 40), ("waterproof_trousers", 42, 70), ("waterproof_overclothes", 43, 75), ("note-case", 22, 80), ("sunglasses", 7, 20), ("towel", 18, 12), ("socks", 4, 50), ("book", 30, 10)]
+
+knapsackHelper x = match x with
+  | (cap, i) -> if (i >= length(items)) then 0 else let skip = knapsackHelper((cap, i + 1)) in let w = items[i].1 in let v = items[i].2 in if (w > cap) then skip else let take = v + knapsackHelper((cap - w, i + 1)) in if (take > skip) then take else skip
+
+knapsack cap = knapsackHelper((cap, 0L))

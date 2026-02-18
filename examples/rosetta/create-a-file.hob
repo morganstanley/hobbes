@@ -1,0 +1,1 @@
+// @test: let _ = writefile("/tmp/hobbes-rosetta-create.txt", "Created by Hobbes\n") in readfile("/tmp/hobbes-rosetta-create.txt")

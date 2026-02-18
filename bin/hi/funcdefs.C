@@ -95,6 +95,19 @@ const PIO* pexec(const hobbes::array<char>* cmd) {
   return p;
 }
 
+const hobbes::array<char>* readfile(const hobbes::array<char>* fname) {
+  std::string fn = hobbes::makeStdString(fname);
+  std::ifstream f(fn.c_str());
+
+  if (f.is_open()) {
+    std::ostringstream ss;
+    ss << f.rdbuf();
+    f.close();
+    return hobbes::makeString(ss.str());
+  }
+  return hobbes::makeString(std::string());
+}
+
 const hobbes::array<char>* fdReadLine(int fd) {
   std::ostringstream line;
 
@@ -131,6 +144,7 @@ void bindHiDefs(hobbes::cc& c) {
   c.bind("enableColors", &enableConsoleCmds);
   c.bind("colors",       &colors);
 
+  c.bind("readfile",   &readfile);
   c.bind("writefile",  &writefile);
   c.bind("removefile", &removefile);
   c.bind("pexec",      &pexec);
