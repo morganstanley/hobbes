@@ -41,6 +41,7 @@ public:
   using ptr = std::shared_ptr<MonoType>;
 
   virtual void show(std::ostream&) const = 0;
+  [[nodiscard]] std::string toString() const;
   bool operator==(const MonoType& rhs) const;
 
   // improves performance of case-analysis over instances (to avoid 'dynamic_cast')
@@ -109,6 +110,8 @@ public:
   // get access to the parent and root type environment from here
   const TEnvPtr& parentTypeEnv() const;
   TEnv* root();
+
+  [[nodiscard]] std::string toString() const;
 public:
   // get access to the internal type environment map (should only be used for debugging)
   using PolyTypeEnv = std::map<std::string, PolyTypePtr>;
@@ -179,6 +182,7 @@ public:
   QualTypePtr instantiate() const;
 
   void show(std::ostream&) const;
+  [[nodiscard]] std::string toString() const;
   bool operator==(const PolyType& rhs) const;
 
   // this should only be used if you don't mind capturing bound type variables
@@ -206,6 +210,7 @@ public:
   void monoType(const MonoTypePtr&);
 
   void show(std::ostream&) const;
+  [[nodiscard]] std::string toString() const;
   bool operator==(const QualType& rhs) const;
 private:
   Constraints cs;
@@ -238,6 +243,7 @@ public:
 
   // compare/show
   void show(std::ostream&) const;
+  [[nodiscard]] std::string toString() const;
   bool operator==(const Constraint& rhs) const;
 
   // are there free variables referenced in this constraint?

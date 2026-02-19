@@ -430,6 +430,11 @@ void TClass::show(std::ostream& out) const {
     out << "  " << tcmember.first << " :: " << hobbes::show(tcmember.second) << "\n";
   }
 }
+std::string TClass::toString() const {
+  std::ostringstream out;
+  this->show(out);
+  return std::move(out).str();
+}
 
 const TCInstances& TClass::instances() const {
   return this->tcinstances;
@@ -518,6 +523,11 @@ void TCInstance::show(std::ostream& out) const {
   for (const auto &mm : this->mmap) {
     out << "  " << mm.first << " = " << hobbes::show(mm.second) << "\n";
   }
+}
+std::string TCInstance::toString() const {
+  std::ostringstream out;
+  this->show(out);
+  return std::move(out).str();
 }
 
 ////////
@@ -756,6 +766,11 @@ void TCInstanceFn::show(std::ostream& out) const {
   for (const auto& mm : this->mmap) {
     out << "  " << mm.first << " = " << hobbes::show(substitute(simpl, mm.second)) << "\n";
   }
+}
+std::string TCInstanceFn::toString() const {
+  std::ostringstream out;
+  this->show(out);
+  return std::move(out).str();
 }
 
 // generate a fresh type class and instance generator to control poly/qualtype instantiation in an expression

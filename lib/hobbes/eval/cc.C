@@ -1,4 +1,3 @@
-
 #include <hobbes/eval/cc.H>
 #include <hobbes/eval/funcdefs.H>
 #include <hobbes/eval/ctype.H>
@@ -7,6 +6,8 @@
 #include <hobbes/lang/closcvt.H>
 #include <hobbes/lang/typepreds.H>
 #include <hobbes/lang/macroexpand.H>
+#include <hobbes/lang/preds/consrecord.H>
+#include <hobbes/lang/preds/consvariant.H>
 #include <hobbes/util/llvm.H>
 #include <hobbes/util/array.H>
 #include <hobbes/util/codec.H>
@@ -24,13 +25,95 @@
 #include <csignal>
 #include <cstdlib>
 
+#include <algorithm>
+#include <chrono>
 #include <fstream>
 #include <memory>
 #include <mutex>
+#include <numeric>
 #include <stdexcept>
 #include <unordered_map>
 
 namespace hobbes {
+
+struct cc::PerfTracer {
+  PerfTracer() {
+    const char* name = std::getenv("HOBBES_PERF_TRACE_FILE");
+    if (name == nullptr) {
+      return;
+    }
+
+    ofs.open(name);
+    if (!ofs) {
+      ofs.close();
+      return;
+    }
+
+    const char* th = std::getenv("HOBBES_PERF_TRACE_THRESHOLD_IN_SECS");
+    if (th == nullptr) {
+      ofs.close();
+      return;
+    }
+    threshold = std::chrono::seconds(atoi(th));
+  }
+
+  template <typename T, typename F>
+  [[nodiscard]] std::size_t nonHiddenSz(const T& t, F f) {
+    const auto& ms = t.members();
+    return std::accumulate(ms.cbegin(), ms.cend(), 0UL, [f](auto a, const auto& m) {
+      return a + (f(m).substr(0, 2) != ".p" ? 1UL : 0UL);
+    });
+  }
+
+  template <typename TT>
+  void log(const std::string& name, const ExprPtr& e, const Definitions& defs, TT delta) {
+    if (!isEnabled() || delta <= threshold || name.empty() || name.substr(0, 5) == ".rfn.") {
+      return;
+    }
+
+    constexpr const char* MARK = "HOBBES_PERF";
+    ofs << MARK << ':' << name
+        << ":BEGIN:" << std::chrono::duration_cast<std::chrono::seconds>(delta).count() << ":";
+    e->show(ofs);
+    ofs << '\n';
+
+    for (auto i = defs.size(); i > 0; --i) {
+      std::ostringstream oss;
+      if (Assump::type_case_id != defs[i - 1].second->case_id()) {
+        continue;
+      }
+      const auto a = rcast<const Assump*>(defs[i - 1].second.get());
+      if (!a->ty() || a->ty()->constraints().empty()) {
+        continue;
+      }
+
+      const auto& cs = a->ty()->constraints()[0];
+      if (cs->name() == VariantDeconstructor::constraintName()) {
+        const auto& var = cs->arguments()[1];
+        var->show(oss);
+        const int sz = nonHiddenSz(*is<Variant>(var), [](const auto& m) { return m.selector; });
+        i -= static_cast<std::size_t>(sz - 1);
+        ofs << MARK << ':' << name << ':' << sz << ':' << std::move(oss).str() << '\n';
+      } else if (cs->name() == RecordDeconstructor::constraintName()) {
+        const auto& rec = cs->arguments()[2];
+        rec->show(oss);
+        const int sz = nonHiddenSz(*is<Record>(rec), [](const auto& m) { return m.field; });
+        i -= static_cast<std::size_t>(sz - 1);
+        ofs << MARK << ':' << name << ':' << sz << ':' << std::move(oss).str() << '\n';
+      }
+    }
+
+    ofs << MARK << ':' << name << ":END:" << defs.size() << '\n' << std::endl;
+  }
+
+private:
+  [[nodiscard]] bool isEnabled() const noexcept {
+    return ofs.good();
+  }
+
+  std::ofstream ofs;
+  std::chrono::seconds threshold{0};
+};
 
 // protect access to hobbes/llvm resources
 static std::recursive_mutex hccmtx;
@@ -52,7 +135,8 @@ cc::cc() :
   lowerPrimMatchTables(false),
   columnwiseMatches(false),
   tenv(new TEnv()),
-  objs(new Objs())
+  objs(new Objs()),
+  perfTracer(std::make_unique<PerfTracer>())
 {
   // protect access to LLVM
   hlock _;
@@ -230,6 +314,7 @@ ExprPtr cc::unsweetenExpression(const TEnvPtr& te, const std::string& vname, con
   hlock _;
   Definitions ds;
 
+  const auto timingStart = std::chrono::steady_clock::now();
   ExprPtr result;
   try {
     result = macroExpand(unqualifyTypes(te, validateType(te, vname, closureConvert(this->tenv, vname, e), &ds), &ds));
@@ -239,6 +324,9 @@ ExprPtr cc::unsweetenExpression(const TEnvPtr& te, const std::string& vname, con
   }
 
   drainUnqualifyDefs(ds);
+  const auto delta = std::chrono::duration_cast<std::chrono::seconds>(
+      std::chrono::steady_clock::now() - timingStart);
+  perfTracer->log(vname, e, ds, delta);
   return result;
 }
 
@@ -564,6 +652,13 @@ void cc::dumpModule() {
   this->jit->dump();
 #endif
 }
+
+#if LLVM_VERSION_MAJOR < 11
+std::string cc::showJitMemoryAddresses() const {
+  hlock _;
+  return this->jit->showJitMemoryAddresses();
+}
+#endif
 
 cc::bytes cc::machineCodeForExpr(const std::string& expr) {
   hlock _;
