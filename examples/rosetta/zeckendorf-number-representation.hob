@@ -1,0 +1,8 @@
+// @test: [zeckendorf(n) | n <- [1..20]]
+fibUpTo x = match x with
+  | (a, b, n, acc) -> if (b > n) then acc else fibUpTo((b, a + b, n, acc ++ [b]))
+
+zeckHelper x = match x with
+  | (n, fibs, i, acc) -> if (n == 0 or i < 0) then acc else if (fibs[i] <= n) then zeckHelper((n - fibs[i], fibs, i - 2, acc ++ [fibs[i]])) else zeckHelper((n, fibs, i - 1, acc))
+
+zeckendorf n = let fibs = fibUpTo((1, 2, n, [1])) in zeckHelper((n, fibs, length(fibs) - 1, []))

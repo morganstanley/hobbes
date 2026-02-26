@@ -1,0 +1,4 @@
+// @test: asciiTable(())
+allChars = " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~"
+
+asciiTable _ = [(32 + i, [allChars[i]]) | i <- [0L..length(allChars)-1]]

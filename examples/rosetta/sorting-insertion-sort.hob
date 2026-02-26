@@ -1,0 +1,12 @@
+// @test: isort([4, 65, 2, -31, 0, 99, 83, 782, 1])
+insert :: (int * [int]) -> [int]
+insert x = match x with
+  | (v, []) -> [v]
+  | (v, xs) -> if (v <= xs[0]) then [v] ++ xs else [xs[0]] ++ insert((v, [xs[i] | i <- [1L..length(xs)-1]]))
+
+isortHelper :: ([int] * int * [int]) -> [int]
+isortHelper x = match x with
+  | (xs, i, acc) -> if (i >= length(xs)) then acc else isortHelper((xs, i + 1, insert((xs[i], acc))))
+
+isort :: [int] -> [int]
+isort xs = isortHelper((xs, 0, []))

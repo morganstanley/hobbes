@@ -1,0 +1,10 @@
+// @test: [fibWord(n) | n <- [1..10]]
+countOnes x = match x with
+  | (s, i, acc) -> if (i >= length(s)) then acc else countOnes((s, i + 1, if (s[i] == '1') then acc + 1 else acc))
+
+fibWordHelper x = match x with
+  | (1, _, _) -> "1"
+  | (2, _, _) -> "0"
+  | (n, prev2, prev1) -> let cur = prev2 ++ prev1 in if (n == 3) then cur else fibWordHelper((n - 1, prev1, cur))
+
+fibWord n = let s = fibWordHelper((n, "1", "0")) in (length(s), countOnes((s, 0L, 0L)))

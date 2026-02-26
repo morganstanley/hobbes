@@ -1,0 +1,8 @@
+// @test: (josephus((41, 3)), josephus((5, 2)))
+josephusHelper :: (int * int * int * int) -> int
+josephusHelper x = match x with
+  | (n, k, acc, i) -> if (i > n) then acc else josephusHelper((n, k, (acc + k) % i, i + 1))
+
+josephus :: (int * int) -> int
+josephus x = match x with
+  | (n, k) -> josephusHelper((n, k, 0, 1))

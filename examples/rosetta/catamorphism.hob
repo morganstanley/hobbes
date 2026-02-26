@@ -1,0 +1,1 @@
+// @test: (foldl(\a b.a+b, 0, [1,2,3,4,5]), foldl(\a b.a*b, 1, [1,2,3,4,5]), foldl(\a b.if(a>b) then a else b, 0, [3,1,4,1,5,9,2,6]))

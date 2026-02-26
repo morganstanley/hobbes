@@ -1,0 +1,10 @@
+// @test: [swallowed(n) | n <- [1..7]]
+animals = ["fly", "spider", "bird", "cat", "dog", "cow", "horse"]
+comments = ["", "That wiggled and jiggled and tickled inside her.", "How absurd, to swallow a bird!", "Imagine that, to swallow a cat!", "What a hog, to swallow a dog!", "I don't know how she swallowed a cow!", "She's dead, of course!"]
+
+chainLine i = if (i == 1) then "She swallowed the " ++ animals[i] ++ " to catch the " ++ animals[i-1] ++ " that wiggled and jiggled and tickled inside her." else "She swallowed the " ++ animals[i] ++ " to catch the " ++ animals[i-1] ++ "."
+
+chainHelper x = match x with
+  | (_, i, acc) -> if (i <= 0) then acc else chainHelper((0, i - 1, acc ++ [chainLine(i)]))
+
+swallowed n = if (n == 7) then ("I know an old lady who swallowed a horse.", [comments[6]]) else ("I know an old lady who swallowed a " ++ animals[n-1] ++ ".", [comments[n-1]] ++ chainHelper((n, n - 1, [])) ++ ["I don't know why she swallowed the fly. Perhaps she'll die."])

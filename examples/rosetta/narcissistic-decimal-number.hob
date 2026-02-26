@@ -1,0 +1,19 @@
+// @test: narcissistic(16)
+intPow x = match x with
+  | (base, 0) -> 1
+  | (base, exp) -> base * intPow((base, exp - 1))
+
+digitCount x = match x with
+  | (0, acc) -> acc
+  | (n, acc) -> digitCount((n / 10, acc + 1))
+
+narcSum x = match x with
+  | (0, _, acc) -> acc
+  | (n, nDigits, acc) -> narcSum((n / 10, nDigits, acc + intPow((n % 10, nDigits))))
+
+isNarc n = narcSum((n, digitCount((n, 0)), 0)) == n
+
+narcHelper x = match x with
+  | (n, count, target, acc) -> if (count >= target) then acc else if (isNarc(n)) then narcHelper((n + 1, count + 1, target, acc ++ [n])) else narcHelper((n + 1, count, target, acc))
+
+narcissistic n = narcHelper((0, 0, n, []))
