@@ -1,0 +1,8 @@
+// @test: [pascalRow(n) | n <- [0..7]]
+binomHelper x = match x with
+  | (n, k, i, acc) -> if (i == k) then acc else binomHelper((n, k, i + 1, acc * (n - i) / (i + 1)))
+
+binomial x = match x with
+  | (n, k) -> binomHelper((n, k, 0, 1))
+
+pascalRow n = [binomial((n, k)) | k <- [0..n]]

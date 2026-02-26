@@ -1,0 +1,9 @@
+// @test: mergesort([4, 65, 2, -31, 0, 99, 83, 782, 1])
+merge :: ([int] * [int]) -> [int]
+merge x = match x with
+  | ([], ys) -> ys
+  | (xs, []) -> xs
+  | (xs, ys) -> if (xs[0] <= ys[0]) then [xs[0]] ++ merge(([xs[i] | i <- [1L..length(xs)-1]], ys)) else [ys[0]] ++ merge((xs, [ys[i] | i <- [1L..length(ys)-1]]))
+
+mergesort :: [int] -> [int]
+mergesort xs = if (length(xs) <= 1) then xs else let mid = length(xs) / 2 in merge((mergesort([xs[i] | i <- [0L..mid-1]]), mergesort([xs[i] | i <- [mid..length(xs)-1]])))

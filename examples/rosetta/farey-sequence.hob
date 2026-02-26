@@ -1,0 +1,8 @@
+// @test: [farey(n) | n <- [1..5]]
+fareyNext x = match x with
+  | (a, b, c, d, n) -> let k = (n + b) / d in (c, d, k * c - a, k * d - b)
+
+fareyStep x = match x with
+  | (a, b, c, d, n, acc) -> if (a > n) then acc else let nxt = fareyNext((a, b, c, d, n)) in match nxt with | (na, nb, nc, nd) -> fareyStep((na, nb, nc, nd, n, acc ++ [(a, b)]))
+
+farey n = fareyStep((0, 1, 1, n, n, []))

@@ -1,0 +1,10 @@
+// @test: eApprox(20L)
+factHelper x = match x with
+  | (0L, acc) -> acc
+  | (n, acc) -> factHelper((n - 1, acc * n))
+
+fact n = factHelper((n, 1L))
+
+eTerms n = [1.0 / (0.0 + fact(i)) | i <- [0L..n]]
+
+eApprox n = sum(eTerms(n))

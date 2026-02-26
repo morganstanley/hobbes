@@ -1,0 +1,5 @@
+// @test: babbage(269696)
+babbageHelper x = match x with
+  | (target, n) -> if (n * n % 1000000 == target) then n else babbageHelper((target, n + 2))
+
+babbage target = babbageHelper((target, 4))

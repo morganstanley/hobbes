@@ -1,0 +1,11 @@
+// @test: [verse(n) | n <- [1..12]]
+ordinals = ["first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth", "eleventh", "twelfth"]
+gifts = ["A partridge in a pear tree", "Two turtle doves", "Three French hens", "Four calling birds", "Five gold rings", "Six geese a-laying", "Seven swans a-swimming", "Eight maids a-milking", "Nine ladies dancing", "Ten lords a-leaping", "Eleven pipers piping", "Twelve drummers drumming"]
+
+giftLine x = match x with
+  | (n, i) -> if (i == 0 and n > 1) then "And a" ++ [gifts[0][j] | j <- [1L..length(gifts[0])-1]] else gifts[i]
+
+giftList x = match x with
+  | (n, i, acc) -> if (i < 0) then acc else giftList((n, i - 1, acc ++ [giftLine((n, i))]))
+
+verse n = ("On the " ++ ordinals[n-1] ++ " day of Christmas, my true love sent to me:", giftList((n, n - 1, [])))

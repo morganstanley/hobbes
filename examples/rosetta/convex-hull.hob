@@ -1,0 +1,11 @@
+// @test: convexHull([(16,3),(12,17),(0,6),(-4,-6),(16,6),(16,-7),(16,-3),(17,-4),(5,19),(19,-8),(3,16),(12,13),(3,-4),(17,5),(-3,15),(-3,-9),(0,11),(9,2),(-4,-2),(8,8)])
+cross x = match x with
+  | (o, a, b) -> (a.0 - o.0) * (b.1 - o.1) - (a.1 - o.1) * (b.0 - o.0)
+
+trimHull x = match x with
+  | (hull, p) -> if (length(hull) < 2) then hull else if (cross((hull[length(hull)-2], hull[length(hull)-1], p)) <= 0) then trimHull(([hull[i] | i <- [0L..length(hull)-2]], p)) else hull
+
+buildHalf x = match x with
+  | (pts, hull, i) -> if (i >= length(pts)) then hull else let h2 = trimHull((hull, pts[i])) in buildHalf((pts, h2 ++ [pts[i]], i + 1))
+
+convexHull pts = let sorted = sort(pts) in let lower = buildHalf((sorted, [], 0L)) in let upper = buildHalf((reverse(sorted), [], 0L)) in [lower[i] | i <- [0L..length(lower)-2]] ++ [upper[i] | i <- [0L..length(upper)-2]]

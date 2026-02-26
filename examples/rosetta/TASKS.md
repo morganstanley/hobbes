@@ -81,84 +81,93 @@ Tracking file for Hobbes examples corresponding to Haskell tasks on Rosetta Code
 - [x] Roman numerals/Encode
 
 ## Batch 5: Algorithms & Data Structures (15 tasks)
-- [ ] Binary search
-- [ ] Sorting algorithms/Quicksort
-- [ ] Sorting algorithms/Merge sort
-- [ ] Sorting algorithms/Insertion sort
-- [ ] Sorting algorithms/Bubble sort
-- [ ] Sorting algorithms/Selection sort
-- [ ] Greatest subsequential sum
-- [ ] Josephus problem
-- [ ] Longest common subsequence
-- [ ] N-queens problem
-- [ ] Knapsack problem/0-1
-- [ ] Levenshtein distance
-- [ ] Look-and-say sequence
-- [ ] Ethiopian multiplication
-- [ ] Horner's rule for polynomial evaluation
+- [x] Binary search
+- [x] Sorting algorithms/Quicksort
+- [x] Sorting algorithms/Merge sort
+- [x] Sorting algorithms/Insertion sort
+- [x] Sorting algorithms/Bubble sort
+- [x] Sorting algorithms/Selection sort
+- [x] Greatest subsequential sum
+- [x] Josephus problem
+- [x] Longest common subsequence
+- [x] N-queens problem
+- [x] Knapsack problem/0-1
+- [x] Levenshtein distance
+- [x] Look-and-say sequence
+- [x] Ethiopian multiplication
+- [x] Horner's rule for polynomial evaluation
 
 ## Batch 6: Math & Geometry (15 tasks)
-- [ ] Arithmetic-geometric mean
-- [ ] Bernoulli numbers
-- [ ] Calculating the value of e
-- [ ] Euler's sum of powers conjecture
-- [ ] Evaluate binomial coefficients
-- [ ] Haversine formula
-- [ ] Roots of a quadratic function
-- [ ] Shoelace formula for polygonal area
-- [ ] Trigonometric functions
-- [ ] Vector products
-- [ ] Sum and product of an array
-- [ ] Sum of squares
-- [ ] Sum multiples of 3 and 5
-- [ ] Sum digits of an integer
-- [ ] Pi
+- [x] Arithmetic-geometric mean
+- [x] Calculating the value of e
+- [x] Evaluate binomial coefficients
+- [x] Roots of a quadratic function
+- [x] Shoelace formula for polygonal area
+- [x] Vector products
+- [x] Sum and product of an array
+- [x] Sum of squares
+- [x] Sum multiples of 3 and 5
+- [x] Sum digits of an integer
+- [x] Pi
+- [x] Temperature conversion
+- [x] Leap year
+- [x] Averages/Arithmetic mean
+- [x] Averages/Root mean square
 
 ## Batch 7: Higher-Order Functions & Functional (15 tasks)
-- [ ] Accumulator factory
-- [ ] Apply a callback to an array
-- [ ] Catamorphism
-- [ ] Filter
-- [ ] First-class functions
-- [ ] Function composition
-- [ ] Higher-order functions
-- [ ] Y combinator
-- [ ] List comprehensions
-- [ ] Cartesian product of two or more lists
-- [ ] Combinations
-- [ ] Power set
-- [ ] Symmetric difference
-- [ ] Flatten a list
-- [ ] Combinations with repetitions
+- [x] Apply a callback to an array
+- [x] Catamorphism
+- [x] Filter
+- [x] First-class functions
+- [x] Function composition
+- [x] Higher-order functions
+- [x] List comprehensions
+- [x] Cartesian product of two or more lists
+- [x] Combinations
+- [x] Power set
+- [x] Symmetric difference
+- [x] Flatten a list
+- [x] Combinations with repetitions
+- [x] Mutual recursion
+- [x] Pascal's triangle
 
-## Batch 8: Remaining Feasible (15 tasks)
-- [ ] Roman numerals/Decode
-- [ ] Babbage problem
-- [ ] Convex hull
-- [ ] Luhn test of credit card numbers
-- [ ] Fibonacci word
-- [ ] Pascal's triangle
-- [ ] Temperature conversion
-- [ ] Leap year
-- [ ] Convert seconds to compound duration
-- [ ] Vigenere cipher
-- [ ] Truth table
-- [ ] Mutual recursion
-- [ ] Show ASCII table
-- [ ] The Twelve Days of Christmas
-- [ ] Old lady swallowed a fly
+## Batch 8: Remaining Feasible (11 tasks)
+- [x] Roman numerals/Decode
+- [x] Babbage problem
+- [x] Convex hull
+- [x] Luhn test of credit card numbers
+- [x] Fibonacci word
+- [x] Convert seconds to compound duration
+- [x] Vigenere cipher
+- [x] Truth table
+- [x] Show ASCII table
+- [x] The Twelve Days of Christmas
+- [x] Old lady swallowed a fly
 
-## Batch 9: Stretch Goals (13 tasks)
-- [ ] Stern-Brocot sequence
-- [ ] Thue-Morse
-- [ ] Van Eck sequence
-- [ ] Yellowstone sequence
-- [ ] Zeckendorf number representation
-- [ ] Recaman's sequence
-- [ ] Kolakoski sequence
-- [ ] Floyd's triangle
-- [ ] Narcissistic decimal number
-- [ ] Farey sequence
-- [ ] Forward difference
-- [ ] Averages/Arithmetic mean
-- [ ] Averages/Root mean square
+## Batch 9: Stretch Goals (11 tasks)
+- [x] Stern-Brocot sequence
+- [x] Thue-Morse
+- [x] Van Eck sequence
+- [x] Yellowstone sequence
+- [x] Zeckendorf number representation
+- [x] Recaman's sequence
+- [x] Kolakoski sequence
+- [x] Floyd's triangle
+- [x] Narcissistic decimal number
+- [x] Farey sequence
+- [x] Forward difference
+
+## Batch 10: File I/O (5 tasks)
+- [x] Create a file
+- [x] Read a file line by line
+- [x] Read entire file
+- [x] Write entire file
+- [x] File input/output
+
+## Not Feasible in Hobbes
+- Accumulator factory (no general-purpose mutable local variables)
+- Y combinator (closure types don't unify with recursive types)
+- Haversine formula (no sin/cos/asin)
+- Trigonometric functions (no sin/cos/tan)
+- Bernoulli numbers (no memoization, exponential recursion)
+- Euler's sum of powers conjecture (no pow, brute force too slow)
