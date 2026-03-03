@@ -18,7 +18,7 @@ jobs:
             experimental-features = nix-command flakes ca-references
       - uses: actions/setup-python@v6
         with:
-          python-version: '3.10'
+          python-version: '3.14'
       - name: nix build hobbesPackages/clang-${{ matrix.clang }}-ASanAndUBSan/hobbes
         run: |
           nix build .#hobbesPackages/clang-${{ matrix.clang }}-ASanAndUBSan/hobbes
@@ -49,7 +49,7 @@ jobs:
             experimental-features = nix-command flakes ca-references
       - uses: actions/setup-python@v6
         with:
-          python-version: '3.10'
+          python-version: '3.14'
       - name: nix build hobbesPackages/clang-${{ matrix.clang }}/hobbes
         run: |
           nix build .#hobbesPackages/clang-${{ matrix.clang }}/hobbes
@@ -84,7 +84,7 @@ jobs:
             experimental-features = nix-command flakes ca-references
       - uses: actions/setup-python@v6
         with:
-          python-version: '3.10'
+          python-version: '3.14'
       - name: nix build hobbesPackages/gcc-${{ matrix.gcc }}/llvm-${{ matrix.llvm }}/hobbes
         run: |
           nix build .#hobbesPackages/gcc-${{ matrix.gcc }}/llvm-${{ matrix.llvm }}/hobbes
