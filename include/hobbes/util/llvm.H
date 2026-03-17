@@ -19,7 +19,8 @@
     LLVM_VERSION_MAJOR != 11 && \
     LLVM_VERSION_MAJOR != 12 && \
     LLVM_VERSION_MAJOR != 16 && \
-    LLVM_VERSION_MAJOR != 18
+    LLVM_VERSION_MAJOR != 18 && \
+    LLVM_VERSION_MAJOR != 20
 #error "I don't know how to use this version of LLVM"
 #endif
 

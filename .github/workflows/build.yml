@@ -98,6 +98,42 @@ jobs:
         with:
           name: output-log-file-${{ matrix.os }}-gcc-${{ matrix.gcc }}-llvm-${{ matrix.llvm }}
           path: ${{ matrix.os }}-gcc-${{ matrix.gcc }}-llvm-${{ matrix.llvm }}-hobbes.log
+  rhel9-build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    container:
+      image: rockylinux:8
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install dependencies
+        run: |
+          dnf update -y
+          # Enable EPEL and PowerTools for additional development packages
+          echo "Installing EPEL repository..."
+          dnf install -y epel-release
+          echo "Enabling PowerTools repository..."
+          dnf config-manager --set-enabled powertools || echo "PowerTools already enabled"
+          # Rocky Linux 8 has compatible LLVM versions
+          dnf install -y gcc gcc-c++ cmake make ncurses-devel zlib-devel python3 readline readline-devel
+          echo "Installing LLVM/Clang..."
+          dnf install -y llvm-devel clang clang-devel
+          echo "LLVM/Clang installed successfully"
+      - name: Build hobbes
+        run: |
+          mkdir -p build && cd build
+          cmake ..
+          VERBOSE=1 make -j2
+      - name: Test hobbes
+        run: |
+          cd build
+          make test
+      - name: Upload build logs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: rhel9-build-logs
+          path: build/
   macos-build:
     runs-on: macos-latest
     strategy:
