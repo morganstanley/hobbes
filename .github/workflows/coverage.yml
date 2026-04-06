@@ -47,8 +47,23 @@ jobs:
             --output-file coverage.info \
             --ignore-errors unused
           lcov --list coverage.info
+      - name: Generate HTML report
+        run: |
+          genhtml coverage.info --output-directory coverage-html \
+            --ignore-errors source \
+            --title "Hobbes Code Coverage" \
+            --legend
+      - name: Post coverage summary
+        run: |
+          lcov --summary coverage.info 2>&1 | tee coverage-summary.txt
+          echo '### Code Coverage' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cat coverage-summary.txt >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v7
         with:
           name: coverage-report
-          path: coverage.info
+          path: |
+            coverage.info
+            coverage-html
