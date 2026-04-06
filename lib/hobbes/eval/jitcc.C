@@ -1534,14 +1534,21 @@ llvm::Function* jitcc::allocFunction(const std::string& fname, const MonoTypes& 
         fname.find(".patfs.") == 0 ? llvm::Function::InternalLinkage
                                    : llvm::Function::ExternalLinkage,
         fname, m);
-    // https://bugs.llvm.org/show_bug.cgi?id=51163
-    // for a llvm version >=9, zeroext has to be added to functions return boolean
-    // otherwise, 255 will be returned as true
-    if (retType == boolType()) {
+    // Sub-32-bit return types need sign/zero extension attributes so the
+    // callee extends the value in the return register per the platform ABI.
+    // Without this, the upper bits may contain garbage on ARM64.
+    // See also: https://bugs.llvm.org/show_bug.cgi?id=51163 (bool case)
+    if (retType == boolType() || retType == byteType()) {
 #if LLVM_VERSION_MAJOR < 16
       f->addAttribute(llvm::AttributeList::ReturnIndex, llvm::Attribute::ZExt);
 #else
       f->addRetAttr(llvm::Attribute::ZExt);
+#endif
+    } else if (retType == charType() || retType == shortType()) {
+#if LLVM_VERSION_MAJOR < 16
+      f->addAttribute(llvm::AttributeList::ReturnIndex, llvm::Attribute::SExt);
+#else
+      f->addRetAttr(llvm::Attribute::SExt);
 #endif
     }
     return f;
