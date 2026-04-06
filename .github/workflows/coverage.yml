@@ -22,8 +22,8 @@ jobs:
         run: |
           cmake -B build \
             -DCMAKE_BUILD_TYPE=Debug \
-            -DCMAKE_CXX_FLAGS="--coverage" \
-            -DCMAKE_C_FLAGS="--coverage" \
+            -DCMAKE_CXX_FLAGS="--coverage -fprofile-update=atomic" \
+            -DCMAKE_C_FLAGS="--coverage -fprofile-update=atomic" \
             -DCMAKE_EXE_LINKER_FLAGS="--coverage"
       - name: Build
         run: cmake --build build -j$(nproc)
@@ -38,7 +38,7 @@ jobs:
       - name: Collect coverage
         run: |
           lcov --capture --directory build --output-file coverage.info \
-            --ignore-errors mismatch
+            --ignore-errors mismatch,negative
           # Remove system headers and test files from coverage
           lcov --remove coverage.info \
             '/usr/*' \
