@@ -4,6 +4,7 @@
 #include <hobbes/ipc/net.H>
 #include <hobbes/net.H>
 
+#include <atomic>
 #include <condition_variable>
 #include <mutex>
 #include <thread>
@@ -18,6 +19,8 @@ static cc &c() {
 static int serverPort = -1;
 static std::mutex serverMtx;
 static std::condition_variable serverStartup;
+static std::atomic<bool> serverStop{false};
+static std::thread serverThread;
 
 static void runTestServer(int ps, int pe) {
   std::unique_lock<std::mutex> lk(serverMtx);
@@ -27,7 +30,7 @@ static void runTestServer(int ps, int pe) {
       installNetREPL(serverPort, &c());
       lk.unlock();
       serverStartup.notify_one();
-      runEventLoop();
+      runEventLoop([&]{ return serverStop.load(); });
       return;
     } catch (std::exception &) {
       ++serverPort;
@@ -39,8 +42,7 @@ static void runTestServer(int ps, int pe) {
 int testServerPort() {
   if (serverPort < 0) {
     std::unique_lock<std::mutex> lk(serverMtx);
-    std::thread serverProc([] { return runTestServer(8765, 9500); });
-    serverProc.detach();
+    serverThread = std::thread([] { return runTestServer(8765, 9500); });
     serverStartup.wait(lk);
     if (serverPort < 0) {
       throw std::runtime_error("Couldn't allocate port for test server");
@@ -54,6 +56,8 @@ int testServerPort() {
 static int serverPortWithHost = -1;
 static std::mutex serverMtxWithHost;
 static std::condition_variable serverWithHostStartup;
+static std::atomic<bool> serverWithHostStop{false};
+static std::thread serverWithHostThread;
 
 static void runTestServerWithHost(int ps, int pe, const std::string &host) {
   std::unique_lock<std::mutex> lk(serverMtxWithHost);
@@ -63,7 +67,7 @@ static void runTestServerWithHost(int ps, int pe, const std::string &host) {
       installNetREPL(host, serverPortWithHost, &c());
       lk.unlock();
       serverWithHostStartup.notify_one();
-      runEventLoop();
+      runEventLoop([&]{ return serverWithHostStop.load(); });
       return;
     } catch (std::exception &) {
       ++serverPortWithHost;
@@ -75,9 +79,8 @@ static void runTestServerWithHost(int ps, int pe, const std::string &host) {
 int testServerWithHostPort(const std::string &host = "") {
   if (serverPortWithHost < 0) {
     std::unique_lock<std::mutex> lk(serverMtxWithHost);
-    std::thread serverWithHostProc(
+    serverWithHostThread = std::thread(
         [host] { return runTestServerWithHost(9501, 10500, host); });
-    serverWithHostProc.detach();
     serverWithHostStartup.wait(lk);
     if (serverPortWithHost < 0) {
       throw std::runtime_error("Couldn't allocate port for test server");
@@ -85,6 +88,20 @@ int testServerWithHostPort(const std::string &host = "") {
   }
   return serverPortWithHost;
 }
+
+// Clean up server threads at process exit
+static struct NetTestCleanup {
+  ~NetTestCleanup() {
+    serverStop = true;
+    serverWithHostStop = true;
+    if (serverThread.joinable()) {
+      serverThread.join();
+    }
+    if (serverWithHostThread.joinable()) {
+      serverWithHostThread.join();
+    }
+  }
+} netTestCleanup;
 /**************************
  * types/data for net communication
  **************************/
@@ -455,12 +472,19 @@ void eventLoopShutdownWithStopFImpl(EventLoopFn elFn, ExpectPred expectPred) {
     stopper.flag = true;
   });
 
-  const auto startTime = Clock::now();
-  elFn(f);
-  const auto endTime = Clock::now();
-  const auto millisecs =
-      std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime)
-          .count();
+  long long millisecs = 0;
+  try {
+    const auto startTime = Clock::now();
+    elFn(f);
+    const auto endTime = Clock::now();
+    millisecs =
+        std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime)
+            .count();
+  } catch (...) {
+    stopper.flag = true;
+    t.join();
+    throw;
+  }
   t.join();
   EXPECT_TRUE(expectPred(millisecs));
 }
