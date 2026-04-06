@@ -239,12 +239,20 @@ void registerInterruptHandler(const std::function<void()>& fn) {
 
 bool stepEventLoop(int timeoutMS, const std::function<bool()>& stopFn) {
   while (!stopFn()) {
+    // When a stop function is provided and no explicit timeout is set,
+    // use a 500ms poll interval so the stop condition gets checked
+    // periodically instead of blocking indefinitely in kevent().
+    int effectiveTimeoutMS = timeoutMS;
+    if (timeoutMS < 0) {
+      effectiveTimeoutMS = 500;
+    }
+
     struct timespec timeout;
-    timeout.tv_sec  = timeoutMS / 1000;
-    timeout.tv_nsec = (timeoutMS % 1000) * 1000000UL;
+    timeout.tv_sec  = effectiveTimeoutMS / 1000;
+    timeout.tv_nsec = (effectiveTimeoutMS % 1000) * 1000000UL;
 
     struct kevent evts[64];
-    int fds = kevent(threadKQFD(), 0, 0, evts, sizeof(evts)/sizeof(evts[0]), timeoutMS > 0 ? &timeout : 0);
+    int fds = kevent(threadKQFD(), 0, 0, evts, sizeof(evts)/sizeof(evts[0]), &timeout);
     if (fds > 0) {
       for (size_t fd = 0; fd < fds; ++fd) {
         eventcbclosure* c = (eventcbclosure*)evts[fd].udata;
@@ -252,6 +260,9 @@ bool stepEventLoop(int timeoutMS, const std::function<bool()>& stopFn) {
         resetMemoryPool();
       }
       return true;
+    } else if (fds == 0) {
+      // Timeout - loop back to check stopFn
+      continue;
     } else if (errno != EINTR) {
       return false;
     } else if (kqClosures) {
@@ -268,8 +279,22 @@ void runEventLoop(const std::function<bool()>& stopFn) {
   while (stepEventLoop(-1, stopFn));
 }
 
+thread_local int nextTimerIdent = 1;
+
 void addTimer(timerfunc f, int millisecInterval) {
-  throw std::runtime_error("addTimer nyi for OSX");
+  int kqfd = threadKQFD();
+
+  auto* c = new eventcbclosure(-1, [f](int) {
+    f();
+  });
+
+  int ident = nextTimerIdent++;
+  struct kevent ke;
+  EV_SET(&ke, ident, EVFILT_TIMER, EV_ADD, 0, millisecInterval, (void*)c);
+  if (kevent(kqfd, &ke, 1, 0, 0, 0) == -1) {
+    delete c;
+    throw std::runtime_error("Failed to add timer to kqueue: " + std::string(strerror(errno)));
+  }
 }
 
 void runEventLoop(int microsecondDuration, const std::function<bool()>& stopFn) {
