@@ -38,7 +38,7 @@ jobs:
       - name: Collect coverage
         run: |
           lcov --capture --directory build --output-file coverage.info \
-            --ignore-errors mismatch,negative
+            --ignore-errors mismatch,negative,source
           # Remove system headers and test files from coverage
           lcov --remove coverage.info \
             '/usr/*' \
