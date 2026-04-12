@@ -1,0 +1,80 @@
+name: "Code Coverage"
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  coverage:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.10'
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc g++ cmake make libncurses-dev zlib1g-dev \
+            libreadline-dev llvm-18-dev libzstd-dev lcov
+      - name: Configure with coverage
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_CXX_FLAGS="--coverage -fprofile-update=atomic" \
+            -DCMAKE_C_FLAGS="--coverage -fprofile-update=atomic" \
+            -DCMAKE_EXE_LINKER_FLAGS="--coverage"
+      - name: Build
+        run: cmake --build build -j$(nproc)
+      - name: Test
+        run: |
+          cd build
+          ./hobbes-test 2>&1 | tee test-output.txt; true
+          if grep -q 'FAILURE' test-output.txt; then
+            echo "::error::Test failures detected"
+            exit 1
+          fi
+      - name: Collect coverage
+        run: |
+          lcov --capture --directory build --output-file coverage.info \
+            --ignore-errors mismatch,negative,source
+          # Remove system headers and test files from coverage
+          lcov --remove coverage.info \
+            '/usr/*' \
+            '*/test/*' \
+            '*/build/*' \
+            --output-file coverage.info \
+            --ignore-errors unused
+          lcov --list coverage.info
+      - name: Generate HTML report
+        run: |
+          genhtml coverage.info --output-directory coverage-html \
+            --ignore-errors source \
+            --title "Hobbes Code Coverage" \
+            --legend
+      - name: Post coverage summary
+        run: |
+          lcov --summary coverage.info 2>&1 | tee coverage-summary.txt
+          echo '### Code Coverage' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cat coverage-summary.txt >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: coverage-html
+  deploy:
+    needs: coverage
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
