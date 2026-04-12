@@ -1016,7 +1016,9 @@ TEST(Storage, KeySeries) {
 // gcc12 false positive uninitialized warning when ASAN enabled.
 // upgrade c++ union to std::variant to avoid the warning.
 #pragma GCC diagnostic push
+#if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#endif
 DEFINE_VARIANT(
   Tick,
   (bob,   int),
