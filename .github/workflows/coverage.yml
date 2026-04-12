@@ -24,7 +24,8 @@ jobs:
             -DCMAKE_BUILD_TYPE=Debug \
             -DCMAKE_CXX_FLAGS="--coverage -fprofile-update=atomic" \
             -DCMAKE_C_FLAGS="--coverage -fprofile-update=atomic" \
-            -DCMAKE_EXE_LINKER_FLAGS="--coverage"
+            -DCMAKE_EXE_LINKER_FLAGS="--coverage" \
+            -DLLVM_DIR=/usr/lib/llvm-18/cmake
       - name: Build
         run: cmake --build build -j$(nproc)
       - name: Test
