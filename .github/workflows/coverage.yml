@@ -7,25 +7,25 @@ on:
 
 jobs:
   coverage:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
+    container:
+      image: rockylinux:9
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.10'
       - name: Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc g++ cmake make libncurses-dev zlib1g-dev \
-            libreadline-dev llvm-18-dev libzstd-dev lcov
+          dnf update -y
+          dnf install -y epel-release
+          dnf config-manager --set-enabled crb
+          dnf install -y gcc gcc-c++ cmake make ncurses-devel zlib-devel \
+            readline readline-devel llvm-devel clang clang-devel lcov
       - name: Configure with coverage
         run: |
           cmake -B build \
             -DCMAKE_BUILD_TYPE=Debug \
             -DCMAKE_CXX_FLAGS="--coverage -fprofile-update=atomic" \
             -DCMAKE_C_FLAGS="--coverage -fprofile-update=atomic" \
-            -DCMAKE_EXE_LINKER_FLAGS="--coverage" \
-            -DLLVM_DIR=/usr/lib/llvm-18/cmake
+            -DCMAKE_EXE_LINKER_FLAGS="--coverage"
       - name: Build
         run: cmake --build build -j$(nproc)
       - name: Test
