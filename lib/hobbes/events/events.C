@@ -93,15 +93,16 @@ void registerInterruptHandler(const std::function<void()>& fn) {
 
 bool stepEventLoop(int timeoutMS, const std::function<bool()>& stopFn) {
   while (!stopFn()) {
+    int effectiveTimeout = timeoutMS;
     if (!timers.empty()) {
       auto next = timers.top().callTime;
       auto timeUntilNext = next - std::chrono::high_resolution_clock::now();
       int millis = std::chrono::duration_cast<std::chrono::milliseconds>(timeUntilNext).count();
-      timeoutMS = std::max(1, millis);
+      effectiveTimeout = (timeoutMS == -1) ? std::max(1, millis) : std::min(timeoutMS, std::max(1, millis));
     }
 
     struct epoll_event evts[64];
-    int fds = epoll_wait(threadEPollFD(), evts, sizeof(evts)/sizeof(evts[0]), timeoutMS);
+    int fds = epoll_wait(threadEPollFD(), evts, sizeof(evts)/sizeof(evts[0]), effectiveTimeout);
     bool status = true;
     if (fds > 0) {
       for (int fd = 0; fd < fds; ++fd) {
@@ -111,7 +112,7 @@ bool stepEventLoop(int timeoutMS, const std::function<bool()>& stopFn) {
       }
     } else if (fds < 0) {
       if (errno != EINTR) {
-        status = false;
+        return false;
       } else if (epClosures != nullptr) {
         auto f = epClosures->find(-1);
         if (f != epClosures->end()) {
@@ -133,19 +134,11 @@ bool stepEventLoop(int timeoutMS, const std::function<bool()>& stopFn) {
           timer newT;
           newT.callTime = std::chrono::high_resolution_clock::now() + t.interval,
           newT.func = t.func,
-          newT.interval = t.interval,
-
-          newTimers.push_back(newT);
         }
       }
-
-      for (auto& timer : newTimers) {
-        timers.push(timer);
-      }
     }
-    return status;
   }
-  return false;
+  return true;
 }
 
 void runEventLoop(const std::function<bool()>& stopFn) {
