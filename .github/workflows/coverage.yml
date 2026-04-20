@@ -7,23 +7,24 @@ on:
 
 jobs:
   coverage:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
+    container:
+      image: rockylinux:9
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.10'
       - name: Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc g++ cmake make libncurses-dev zlib1g-dev \
-            libreadline-dev llvm-18-dev libzstd-dev lcov
+          dnf update -y
+          dnf install -y epel-release
+          dnf config-manager --set-enabled crb
+          dnf install -y gcc gcc-c++ cmake make ncurses-devel zlib-devel \
+            readline readline-devel llvm-devel clang clang-devel lcov
       - name: Configure with coverage
         run: |
-          cmake -B build \
+          CC=clang CXX=clang++ cmake -B build \
             -DCMAKE_BUILD_TYPE=Debug \
-            -DCMAKE_CXX_FLAGS="--coverage -fprofile-update=atomic" \
-            -DCMAKE_C_FLAGS="--coverage -fprofile-update=atomic" \
+            -DCMAKE_CXX_FLAGS="--coverage" \
+            -DCMAKE_C_FLAGS="--coverage" \
             -DCMAKE_EXE_LINKER_FLAGS="--coverage"
       - name: Build
         run: cmake --build build -j$(nproc)
@@ -37,20 +38,21 @@ jobs:
           fi
       - name: Collect coverage
         run: |
+          # lcov needs a gcov-compatible wrapper for clang coverage data
+          printf '#!/bin/sh\nexec llvm-cov gcov "$@"\n' > /usr/local/bin/llvm-gcov.sh
+          chmod +x /usr/local/bin/llvm-gcov.sh
           lcov --capture --directory build --output-file coverage.info \
-            --ignore-errors mismatch,negative,source
+            --gcov-tool /usr/local/bin/llvm-gcov.sh
           # Remove system headers and test files from coverage
           lcov --remove coverage.info \
             '/usr/*' \
             '*/test/*' \
             '*/build/*' \
-            --output-file coverage.info \
-            --ignore-errors unused
+            --output-file coverage.info
           lcov --list coverage.info
       - name: Generate HTML report
         run: |
           genhtml coverage.info --output-directory coverage-html \
-            --ignore-errors source \
             --title "Hobbes Code Coverage" \
             --legend
       - name: Post coverage summary
