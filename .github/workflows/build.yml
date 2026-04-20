@@ -129,6 +129,36 @@ jobs:
         with:
           name: rhel9-build-logs
           path: build/
+  rhel10-build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    container:
+      image: quay.io/rockylinux/rockylinux:10
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install dependencies
+        run: |
+          dnf update -y
+          dnf install -y epel-release
+          dnf config-manager --set-enabled crb
+          dnf install -y gcc gcc-c++ cmake make ncurses-devel zlib-devel python3 readline readline-devel
+          dnf install -y llvm-devel clang clang-devel
+      - name: Build hobbes
+        run: |
+          mkdir -p build && cd build
+          CC=clang CXX=clang++ cmake ..
+          VERBOSE=1 make -j2
+      - name: Test hobbes
+        run: |
+          cd build
+          make test
+      - name: Upload build logs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: rhel10-build-logs
+          path: build/
   macos-build:
     runs-on: macos-latest
     strategy:
