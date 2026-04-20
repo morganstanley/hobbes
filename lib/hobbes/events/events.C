@@ -100,8 +100,12 @@ bool stepEventLoop(int timeoutMS, const std::function<bool()>& stopFn) {
       timeoutMS = std::max(1, millis);
     }
 
+    // When stopFn is provided with no explicit timeout, poll every 500ms
+    // so the stop condition gets checked instead of blocking indefinitely.
+    int effectiveTimeoutMS = timeoutMS < 0 ? 500 : timeoutMS;
+
     struct epoll_event evts[64];
-    int fds = epoll_wait(threadEPollFD(), evts, sizeof(evts)/sizeof(evts[0]), timeoutMS);
+    int fds = epoll_wait(threadEPollFD(), evts, sizeof(evts)/sizeof(evts[0]), effectiveTimeoutMS);
     bool status = true;
     if (fds > 0) {
       for (int fd = 0; fd < fds; ++fd) {
