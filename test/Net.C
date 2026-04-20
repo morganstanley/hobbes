@@ -17,6 +17,7 @@ static cc &c() {
 
 // start a basic server to validate RPC communication
 static int serverPort = -1;
+static bool serverReady = false;
 static std::mutex serverMtx;
 static std::condition_variable serverStartup;
 static std::atomic<bool> serverStop{false};
@@ -28,6 +29,7 @@ static void runTestServer(int ps, int pe) {
   while (serverPort < pe) {
     try {
       installNetREPL(serverPort, &c());
+      serverReady = true;
       lk.unlock();
       serverStartup.notify_one();
       runEventLoop([&]{ return serverStop.load(); });
@@ -37,13 +39,16 @@ static void runTestServer(int ps, int pe) {
     }
   }
   serverPort = -1;
+  serverReady = true;
+  lk.unlock();
+  serverStartup.notify_one();
 }
 
 int testServerPort() {
   if (serverPort < 0) {
     std::unique_lock<std::mutex> lk(serverMtx);
     serverThread = std::thread([] { return runTestServer(8765, 9500); });
-    serverStartup.wait(lk);
+    serverStartup.wait(lk, []{ return serverReady; });
     if (serverPort < 0) {
       throw std::runtime_error("Couldn't allocate port for test server");
     }
@@ -54,6 +59,7 @@ int testServerPort() {
 // start a basic server with configurable hostname and port to validate RPC
 // communication
 static int serverPortWithHost = -1;
+static bool serverWithHostReady = false;
 static std::mutex serverMtxWithHost;
 static std::condition_variable serverWithHostStartup;
 static std::atomic<bool> serverWithHostStop{false};
@@ -65,6 +71,7 @@ static void runTestServerWithHost(int ps, int pe, const std::string &host) {
   while (serverPortWithHost < pe) {
     try {
       installNetREPL(host, serverPortWithHost, &c());
+      serverWithHostReady = true;
       lk.unlock();
       serverWithHostStartup.notify_one();
       runEventLoop([&]{ return serverWithHostStop.load(); });
@@ -74,6 +81,9 @@ static void runTestServerWithHost(int ps, int pe, const std::string &host) {
     }
   }
   serverPortWithHost = -1;
+  serverWithHostReady = true;
+  lk.unlock();
+  serverWithHostStartup.notify_one();
 }
 
 int testServerWithHostPort(const std::string &host = "") {
@@ -81,7 +91,7 @@ int testServerWithHostPort(const std::string &host = "") {
     std::unique_lock<std::mutex> lk(serverMtxWithHost);
     serverWithHostThread = std::thread(
         [host] { return runTestServerWithHost(9501, 10500, host); });
-    serverWithHostStartup.wait(lk);
+    serverWithHostStartup.wait(lk, []{ return serverWithHostReady; });
     if (serverPortWithHost < 0) {
       throw std::runtime_error("Couldn't allocate port for test server");
     }
