@@ -172,14 +172,15 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
-          allow-prereleases: true
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake clang llvm-dev libncurses-dev libreadline-dev zlib1g-dev
+          sudo apt-get install -y cmake clang-18 llvm-18-dev libncurses-dev libreadline-dev zlib1g-dev
       - name: Configure
         run: |
-          CC=clang CXX=clang++ cmake -B build -DCMAKE_BUILD_TYPE=Release \
+          export PATH="/usr/lib/llvm-18/bin:$PATH"
+          CC=clang-18 CXX=clang++-18 cmake -B build -DCMAKE_BUILD_TYPE=Release \
+            -DLLVM_DIR=/usr/lib/llvm-18/lib/cmake/llvm \
             -DPython_EXECUTABLE="$(which python3)"
       - name: Build
         run: cmake --build build -j$(nproc)
