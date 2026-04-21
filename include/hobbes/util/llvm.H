@@ -20,7 +20,8 @@
     LLVM_VERSION_MAJOR != 12 && \
     LLVM_VERSION_MAJOR != 16 && \
     LLVM_VERSION_MAJOR != 18 && \
-    LLVM_VERSION_MAJOR != 20
+    LLVM_VERSION_MAJOR != 20 && \
+    LLVM_VERSION_MAJOR != 22
 #error "I don't know how to use this version of LLVM"
 #endif
 
@@ -105,11 +106,17 @@ inline llvm::orc::ThreadSafeContext& threadSafeContext() {
 }
 
 template <typename Fn> auto withContext(Fn fn) -> decltype(auto) {
+#if LLVM_VERSION_MAJOR >= 22
+  return threadSafeContext().withContextDo([&](llvm::LLVMContext *ctx) {
+    return fn(*ctx);
+  });
+#else
   auto lk = threadSafeContext().getLock();
 #if LLVM_VERSION_MAJOR == 16
   threadSafeContext().getContext()->setOpaquePointers(false);
 #endif
   return fn(*threadSafeContext().getContext());
+#endif
 }
 
 using Types = std::vector<llvm::Type *>;
