@@ -6,12 +6,22 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <cstdlib>
 #include <mutex>
 #include <thread>
 
 using namespace hobbes;
+
+// Forward declaration so the atexit cleanup can reach both server thread sets.
+static void joinServerThreadsAtExit();
+
 static cc &c() {
   static cc x;
+  // Register the thread-join cleanup AFTER cc x is fully constructed, so at
+  // process exit the handler runs before cc x is destroyed (atexit handlers
+  // run in reverse registration order, interleaved with static destructors).
+  static std::once_flag registered;
+  std::call_once(registered, [] { std::atexit(joinServerThreadsAtExit); });
   return x;
 }
 
@@ -46,7 +56,13 @@ static void runTestServer(int ps, int pe) {
 
 int testServerPort() {
   if (serverPort < 0) {
+    // If a previous attempt left a finished thread, join it before reassigning
+    // (move-assigning into a joinable std::thread calls std::terminate).
+    if (serverThread.joinable()) {
+      serverThread.join();
+    }
     std::unique_lock<std::mutex> lk(serverMtx);
+    serverReady = false;
     serverThread = std::thread([] { return runTestServer(8765, 9500); });
     serverStartup.wait(lk, []{ return serverReady; });
     if (serverPort < 0) {
@@ -88,7 +104,11 @@ static void runTestServerWithHost(int ps, int pe, const std::string &host) {
 
 int testServerWithHostPort(const std::string &host = "") {
   if (serverPortWithHost < 0) {
+    if (serverWithHostThread.joinable()) {
+      serverWithHostThread.join();
+    }
     std::unique_lock<std::mutex> lk(serverMtxWithHost);
+    serverWithHostReady = false;
     serverWithHostThread = std::thread(
         [host] { return runTestServerWithHost(9501, 10500, host); });
     serverWithHostStartup.wait(lk, []{ return serverWithHostReady; });
@@ -99,19 +119,16 @@ int testServerWithHostPort(const std::string &host = "") {
   return serverPortWithHost;
 }
 
-// Clean up server threads at process exit
-static struct NetTestCleanup {
-  ~NetTestCleanup() {
-    serverStop = true;
-    serverWithHostStop = true;
-    if (serverThread.joinable()) {
-      serverThread.join();
-    }
-    if (serverWithHostThread.joinable()) {
-      serverWithHostThread.join();
-    }
+static void joinServerThreadsAtExit() {
+  serverStop = true;
+  serverWithHostStop = true;
+  if (serverThread.joinable()) {
+    serverThread.join();
   }
-} netTestCleanup;
+  if (serverWithHostThread.joinable()) {
+    serverWithHostThread.join();
+  }
+}
 /**************************
  * types/data for net communication
  **************************/
