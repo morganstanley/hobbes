@@ -15,6 +15,7 @@
             gccConstraints = [
               { gccVersion = 13; llvmVersions = [ 16 18 20 21 ]; }
               { gccVersion = 14; llvmVersions = [ 16 18 20 21 ]; }
+              { gccVersion = 15; llvmVersions = [ 16 18 20 21 ]; }
             ];
           })
         ];

@@ -28,7 +28,10 @@ using OptDescs = std::map<std::string, std::string>;
 OptDescs getAllOptions();
 
 ExprPtr translateExprWithOpts(const ModulePtr&, const ExprPtr&);
-ExprPtr translateExprWithOpts(const std::vector<std::string>&, const ExprPtr&, std::function<void(std::string const&)> const& = [](std::string const& err) -> void { throw std::runtime_error(err); });
+[[noreturn]] inline void translateExprWithOptsThrow(std::string const& err) {
+  throw std::runtime_error(err);
+}
+ExprPtr translateExprWithOpts(const std::vector<std::string>&, const ExprPtr&, std::function<void(std::string const&)> const& = &translateExprWithOptsThrow);
 
 // change set of safe/unsafe expressions allowed in Safe mode
 class SafeSet {

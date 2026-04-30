@@ -2124,8 +2124,8 @@ public:
   }
 
   nat with(const OpaquePtr*  v) const override { return v->storedContiguously() ? v->size() : sizeof(void*); }
-  nat with(const TVar*       v) const override { throw std::runtime_error("Can't determine size of type variable '" + v->name() + "'"); }
-  nat with(const TGen*       v) const override { throw std::runtime_error("Can't determine size of polytype argument #" + str::from(v->id())); }
+  [[noreturn]] nat with(const TVar*       v) const override { throw std::runtime_error("Can't determine size of type variable '" + v->name() + "'"); }
+  [[noreturn]] nat with(const TGen*       v) const override { throw std::runtime_error("Can't determine size of polytype argument #" + str::from(v->id())); }
   nat with(const FixedArray* v) const override { return r(v->type()) * v->requireLength(); }
   nat with(const Array*       ) const override { return sizeof(void*); }
   nat with(const Variant*    v) const override { return rv(v); }
@@ -2134,7 +2134,7 @@ public:
   nat with(const Exists*      ) const override { return sizeof(void*); }
   nat with(const Recursive*   ) const override { return sizeof(void*); }
 
-  nat with(const TAbs* v) const override {
+  [[noreturn]] nat with(const TAbs* v) const override {
     throw std::runtime_error("Can't determine size of type abstraction: " + show(v));
   }
 

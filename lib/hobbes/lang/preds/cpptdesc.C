@@ -69,19 +69,19 @@ struct defineCPPTy : public switchType<UnitV> {
     return unitv;
   }
 
-  UnitV with(const TVar*) const override {
+  [[noreturn]] UnitV with(const TVar*) const override {
     throw annotated_error(this->la, "Can't translate type with variables to C++ type.");
   }
 
-  UnitV with(const TGen*) const override {
+  [[noreturn]] UnitV with(const TGen*) const override {
     throw annotated_error(this->la, "Can't translate polymorphic type to C++ type.");
   }
 
-  UnitV with(const TAbs*) const override {
+  [[noreturn]] UnitV with(const TAbs*) const override {
     throw annotated_error(this->la, "Can't translate type abstraction to C++ type.");
   }
 
-  UnitV with(const TApp*) const override {
+  [[noreturn]] UnitV with(const TApp*) const override {
     throw annotated_error(this->la, "Can't translate type application to C++ type.");
   }
 
@@ -158,23 +158,23 @@ struct defineCPPTy : public switchType<UnitV> {
     return unitv;
   }
 
-  UnitV with(const Exists*) const override {
+  [[noreturn]] UnitV with(const Exists*) const override {
     throw annotated_error(this->la, "Can't translate existential type to C++ type.");
   }
 
-  UnitV with(const Recursive*) const override {
+  [[noreturn]] UnitV with(const Recursive*) const override {
     throw annotated_error(this->la, "Can't translate recursive type to C++ type.");
   }
 
-  UnitV with(const TString*) const override {
+  [[noreturn]] UnitV with(const TString*) const override {
     throw annotated_error(this->la, "Can't translate type string to C++ type.");
   }
 
-  UnitV with(const TLong*) const override {
+  [[noreturn]] UnitV with(const TLong*) const override {
     throw annotated_error(this->la, "Can't translate type number to C++ type.");
   }
 
-  UnitV with(const TExpr*) const override {
+  [[noreturn]] UnitV with(const TExpr*) const override {
     throw annotated_error(this->la, "Can't translate type expression to C++ type.");
   }
 };

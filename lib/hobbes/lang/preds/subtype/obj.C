@@ -21,9 +21,12 @@ bool Objs::pathExists(const std::string&, const std::string&) const {
   return false;
 }
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wmissing-noreturn"
 PtrAdjustmentPath Objs::adjustment(const std::string& derived, const std::string& base) const {
   throw std::runtime_error("No path exists from the class '" + derived + "' to '" + base + "'.");
 }
+#pragma clang diagnostic pop
 #else
 // object relationship recording and resolution
 void Objs::add(const class_type* ct) {
