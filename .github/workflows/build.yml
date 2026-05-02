@@ -161,6 +161,31 @@ jobs:
         with:
           name: ubuntu2604-build-logs
           path: build/
+  python-compat:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10', '3.11', '3.12', '3.13', '3.14']
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake clang-18 llvm-18-dev libncurses-dev libreadline-dev zlib1g-dev
+      - name: Configure
+        run: |
+          export PATH="/usr/lib/llvm-18/bin:$PATH"
+          CC=clang-18 CXX=clang++-18 cmake -B build -DCMAKE_BUILD_TYPE=Release \
+            -DLLVM_DIR=/usr/lib/llvm-18/lib/cmake/llvm \
+            -DPython_EXECUTABLE="$(which python3)"
+      - name: Build
+        run: cmake --build build -j$(nproc)
+      - name: Run Python tests
+        run: ./build/hobbes-test --tests Python
   macos-build:
     runs-on: macos-latest
     strategy:
