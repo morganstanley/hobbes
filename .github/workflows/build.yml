@@ -6,7 +6,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-24.04]
-        clang: [16, 18, 20]
+        clang: [16, 18, 20, 21]
     steps:
       - uses: actions/checkout@v6
         with:
@@ -37,7 +37,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-24.04]
-        clang: [16, 18, 20]
+        clang: [16, 18, 20, 21]
     steps:
       - uses: actions/checkout@v6
         with:
@@ -71,8 +71,8 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-24.04]
-        gcc: [13, 14]
-        llvm: [16, 18, 20]
+        gcc: [13, 14, 15]
+        llvm: [16, 18, 20, 21]
     steps:
       - uses: actions/checkout@v6
         with:
@@ -128,6 +128,38 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: rhel9-build-logs
+          path: build/
+  ubuntu2604-build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    container:
+      image: ubuntu:26.04
+    steps:
+      - name: Install dependencies
+        run: |
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential cmake make git ca-certificates \
+            libncurses-dev zlib1g-dev libreadline-dev libzstd-dev \
+            python3 \
+            llvm-dev clang libclang-dev
+      - uses: actions/checkout@v6
+      - name: Build hobbes
+        run: |
+          mkdir -p build && cd build
+          CC=clang CXX=clang++ cmake ..
+          VERBOSE=1 make -j2
+      - name: Test hobbes
+        run: |
+          cd build
+          make test
+      - name: Upload build logs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ubuntu2604-build-logs
           path: build/
   macos-build:
     runs-on: macos-latest

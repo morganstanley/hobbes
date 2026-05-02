@@ -795,7 +795,7 @@ struct makeSuccStateF : public switchPattern<MStatePtr> {
   size_t c;
   makeSuccStateF(MDFA* dfa, const PatternRows& ps, size_t c) : dfa(dfa), ps(ps), c(c) { }
 
-  MStatePtr with(const MatchAny* ma) const override {
+  [[noreturn]] MStatePtr with(const MatchAny* ma) const override {
     throw annotated_error(*ma, "Internal error, can't deconstruct wildcard columns in match expression");
   }
 
@@ -1470,11 +1470,11 @@ struct makePrimDFASF : public switchMState<UnitV> {
     return unitv;
   }
 
-  UnitV with(const LoadVars*) const override {
+  [[noreturn]] UnitV with(const LoadVars*) const override {
     throw std::runtime_error("Internal error, not a primitive match table (load vars)");
   }
 
-  UnitV with(const SwitchVariant*) const override {
+  [[noreturn]] UnitV with(const SwitchVariant*) const override {
     throw std::runtime_error("Internal error, not a primitive match table (switch variant)");
   }
 

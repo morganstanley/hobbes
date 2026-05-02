@@ -386,7 +386,7 @@ public:
 #define LIFTCTY(cc, e) (cc).liftMonoType<decltype(e)>()
 
 template <typename T> struct rccF {
-  static T compile(cc *, const str::seq &, const std::string &) {
+  [[noreturn]] static T compile(cc *, const str::seq &, const std::string &) {
     throw std::runtime_error(
         "Internal error, unsupported compilation target type");
   }

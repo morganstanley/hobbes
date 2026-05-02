@@ -60,7 +60,7 @@ public:
   llvm::ConstantInt* with(const Float*  v) const override { return fail(*v); }
   llvm::ConstantInt* with(const Double* v) const override { return fail(*v); }
 private:
-  llvm::ConstantInt* fail(const LexicallyAnnotated& la) const {
+  [[noreturn]] llvm::ConstantInt* fail(const LexicallyAnnotated& la) const {
     throw annotated_error(la, "Internal error, can't switch on non-integral type");
   }
 };

@@ -60,15 +60,15 @@ public:
     }
   }
 
-  llvm::Type* with(const TVar* v) const override {
+  [[noreturn]] llvm::Type* with(const TVar* v) const override {
     throw std::runtime_error("Internal compiler error: Cannot translate type variable '" + v->name() + "' to LLVM type");
   }
 
-  llvm::Type* with(const TGen*) const override {
+  [[noreturn]] llvm::Type* with(const TGen*) const override {
     throw std::runtime_error("Internal compiler error: Cannot translate polytype instantiation point to LLVM type.");
   }
 
-  llvm::Type* with(const TAbs* v) const override {
+  [[noreturn]] llvm::Type* with(const TAbs* v) const override {
     throw std::runtime_error("Can't translate to LLVM monotype: " + show(v));
   }
 
@@ -144,15 +144,15 @@ public:
     return ptrType(byteType());
   }
 
-  llvm::Type* with(const TString* v) const override {
+  [[noreturn]] llvm::Type* with(const TString* v) const override {
     throw std::runtime_error("Internal compiler error: Cannot translate value to LLVM type: '" + v->value() + "'");
   }
 
-  llvm::Type* with(const TLong* v) const override {
+  [[noreturn]] llvm::Type* with(const TLong* v) const override {
     throw std::runtime_error("Internal compiler error: Cannot translate value to LLVM type: " + str::from(v->value()));
   }
 
-  llvm::Type* with(const TExpr* v) const override {
+  [[noreturn]] llvm::Type* with(const TExpr* v) const override {
     throw std::runtime_error("Internal compiler error: Cannot translate expression to LLVM type: " + show(v->expr()));
   }
 private:
