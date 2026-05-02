@@ -4,20 +4,34 @@
 #include <hobbes/ipc/net.H>
 #include <hobbes/net.H>
 
+#include <atomic>
 #include <condition_variable>
+#include <cstdlib>
 #include <mutex>
 #include <thread>
 
 using namespace hobbes;
+
+// Forward declaration so the atexit cleanup can reach both server thread sets.
+static void joinServerThreadsAtExit();
+
 static cc &c() {
   static cc x;
+  // Register the thread-join cleanup AFTER cc x is fully constructed, so at
+  // process exit the handler runs before cc x is destroyed (atexit handlers
+  // run in reverse registration order, interleaved with static destructors).
+  static std::once_flag registered;
+  std::call_once(registered, [] { std::atexit(joinServerThreadsAtExit); });
   return x;
 }
 
 // start a basic server to validate RPC communication
 static int serverPort = -1;
+static bool serverReady = false;
 static std::mutex serverMtx;
 static std::condition_variable serverStartup;
+static std::atomic<bool> serverStop{false};
+static std::thread serverThread;
 
 static void runTestServer(int ps, int pe) {
   std::unique_lock<std::mutex> lk(serverMtx);
@@ -25,23 +39,32 @@ static void runTestServer(int ps, int pe) {
   while (serverPort < pe) {
     try {
       installNetREPL(serverPort, &c());
+      serverReady = true;
       lk.unlock();
       serverStartup.notify_one();
-      runEventLoop();
+      runEventLoop([&]{ return serverStop.load(); });
       return;
     } catch (std::exception &) {
       ++serverPort;
     }
   }
   serverPort = -1;
+  serverReady = true;
+  lk.unlock();
+  serverStartup.notify_one();
 }
 
 int testServerPort() {
   if (serverPort < 0) {
+    // If a previous attempt left a finished thread, join it before reassigning
+    // (move-assigning into a joinable std::thread calls std::terminate).
+    if (serverThread.joinable()) {
+      serverThread.join();
+    }
     std::unique_lock<std::mutex> lk(serverMtx);
-    std::thread serverProc([] { return runTestServer(8765, 9500); });
-    serverProc.detach();
-    serverStartup.wait(lk);
+    serverReady = false;
+    serverThread = std::thread([] { return runTestServer(8765, 9500); });
+    serverStartup.wait(lk, []{ return serverReady; });
     if (serverPort < 0) {
       throw std::runtime_error("Couldn't allocate port for test server");
     }
@@ -52,8 +75,11 @@ int testServerPort() {
 // start a basic server with configurable hostname and port to validate RPC
 // communication
 static int serverPortWithHost = -1;
+static bool serverWithHostReady = false;
 static std::mutex serverMtxWithHost;
 static std::condition_variable serverWithHostStartup;
+static std::atomic<bool> serverWithHostStop{false};
+static std::thread serverWithHostThread;
 
 static void runTestServerWithHost(int ps, int pe, const std::string &host) {
   std::unique_lock<std::mutex> lk(serverMtxWithHost);
@@ -61,29 +87,47 @@ static void runTestServerWithHost(int ps, int pe, const std::string &host) {
   while (serverPortWithHost < pe) {
     try {
       installNetREPL(host, serverPortWithHost, &c());
+      serverWithHostReady = true;
       lk.unlock();
       serverWithHostStartup.notify_one();
-      runEventLoop();
+      runEventLoop([&]{ return serverWithHostStop.load(); });
       return;
     } catch (std::exception &) {
       ++serverPortWithHost;
     }
   }
   serverPortWithHost = -1;
+  serverWithHostReady = true;
+  lk.unlock();
+  serverWithHostStartup.notify_one();
 }
 
 int testServerWithHostPort(const std::string &host = "") {
   if (serverPortWithHost < 0) {
+    if (serverWithHostThread.joinable()) {
+      serverWithHostThread.join();
+    }
     std::unique_lock<std::mutex> lk(serverMtxWithHost);
-    std::thread serverWithHostProc(
+    serverWithHostReady = false;
+    serverWithHostThread = std::thread(
         [host] { return runTestServerWithHost(9501, 10500, host); });
-    serverWithHostProc.detach();
-    serverWithHostStartup.wait(lk);
+    serverWithHostStartup.wait(lk, []{ return serverWithHostReady; });
     if (serverPortWithHost < 0) {
       throw std::runtime_error("Couldn't allocate port for test server");
     }
   }
   return serverPortWithHost;
+}
+
+static void joinServerThreadsAtExit() {
+  serverStop = true;
+  serverWithHostStop = true;
+  if (serverThread.joinable()) {
+    serverThread.join();
+  }
+  if (serverWithHostThread.joinable()) {
+    serverWithHostThread.join();
+  }
 }
 /**************************
  * types/data for net communication
@@ -455,12 +499,19 @@ void eventLoopShutdownWithStopFImpl(EventLoopFn elFn, ExpectPred expectPred) {
     stopper.flag = true;
   });
 
-  const auto startTime = Clock::now();
-  elFn(f);
-  const auto endTime = Clock::now();
-  const auto millisecs =
-      std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime)
-          .count();
+  long long millisecs = 0;
+  try {
+    const auto startTime = Clock::now();
+    elFn(f);
+    const auto endTime = Clock::now();
+    millisecs =
+        std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime)
+            .count();
+  } catch (...) {
+    stopper.flag = true;
+    t.join();
+    throw;
+  }
   t.join();
   EXPECT_TRUE(expectPred(millisecs));
 }
