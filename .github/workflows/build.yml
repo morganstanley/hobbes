@@ -161,6 +161,37 @@ jobs:
         with:
           name: ubuntu2604-build-logs
           path: build/
+  apt-llvm22-build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install LLVM 22 from apt.llvm.org
+        run: |
+          export DEBIAN_FRONTEND=noninteractive
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake make python3 \
+            libncurses-dev zlib1g-dev libreadline-dev libzstd-dev \
+            wget gnupg lsb-release software-properties-common
+          wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s -- 22
+          sudo apt-get install -y --no-install-recommends \
+            clang-22 llvm-22-dev libclang-22-dev
+      - name: Configure
+        run: |
+          export PATH="/usr/lib/llvm-22/bin:$PATH"
+          CC=clang-22 CXX=clang++-22 cmake -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DLLVM_DIR=/usr/lib/llvm-22/lib/cmake/llvm
+      - name: Build
+        run: cmake --build build -j$(nproc)
+      - name: Test
+        run: cd build && ctest --output-on-failure
+      - name: Upload build logs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: apt-llvm22-build-logs
+          path: build/
   macos-build:
     runs-on: macos-latest
     strategy:
