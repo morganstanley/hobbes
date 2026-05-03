@@ -11,11 +11,11 @@
             inherit system;
             version = "${nixpkgs.lib.substring 0 8 self.lastModifiedDate}.${self.shortRev or "dirty"}";
             src = self;
-            llvmVersions = [ 16 18 20 21 ];
+            llvmVersions = [ 16 18 20 21 22 ];
             gccConstraints = [
-              { gccVersion = 13; llvmVersions = [ 16 18 20 21 ]; }
-              { gccVersion = 14; llvmVersions = [ 16 18 20 21 ]; }
-              { gccVersion = 15; llvmVersions = [ 16 18 20 21 ]; }
+              { gccVersion = 13; llvmVersions = [ 16 18 20 21 22 ]; }
+              { gccVersion = 14; llvmVersions = [ 16 18 20 21 22 ]; }
+              { gccVersion = 15; llvmVersions = [ 16 18 20 21 22 ]; }
             ];
           })
         ];
