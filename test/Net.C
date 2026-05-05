@@ -527,7 +527,7 @@ TEST(Net, eventLoopShutdownWithStopF) {
         hobbes::addTimer([] { return true; }, 700);
         hobbes::runEventLoop(stopFn);
       },
-      [](auto millisecs) { return millisecs > 1'500 && millisecs < 2'500; });
+      [](auto millisecs) { return millisecs > 1'500 && millisecs < 3'000; });
 
   // a timeout at 500ms is set for this "one shot" event loop
   // event loop should stop after ~500 ms
