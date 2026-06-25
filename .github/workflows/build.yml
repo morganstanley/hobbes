@@ -8,7 +8,7 @@ jobs:
         os: [ubuntu-24.04]
         clang: [16, 18, 20, 21]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
             # Nix Flakes doesn't work on shallow clones
             fetch-depth: 0
@@ -39,7 +39,7 @@ jobs:
         os: [ubuntu-24.04]
         clang: [16, 18, 20, 21]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
             # Nix Flakes doesn't work on shallow clones
             fetch-depth: 0
@@ -74,7 +74,7 @@ jobs:
         gcc: [13, 14, 15]
         llvm: [16, 18, 20, 21]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
             # Nix Flakes doesn't work on shallow clones
             fetch-depth: 0
@@ -105,7 +105,7 @@ jobs:
     container:
       image: rockylinux:9
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Install dependencies
         run: |
           dnf update -y
@@ -145,7 +145,7 @@ jobs:
             libncurses-dev zlib1g-dev libreadline-dev libzstd-dev \
             python3 \
             llvm-dev clang libclang-dev
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Build hobbes
         run: |
           mkdir -p build && cd build
@@ -167,7 +167,7 @@ jobs:
       matrix:
         llvm: [18]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v6
         with:
           python-version: '3.10'
