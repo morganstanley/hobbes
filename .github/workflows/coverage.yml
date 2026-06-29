@@ -11,7 +11,7 @@ jobs:
     container:
       image: rockylinux:9
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Install dependencies
         run: |
           dnf update -y
