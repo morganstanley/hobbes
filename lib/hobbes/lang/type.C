@@ -103,6 +103,14 @@ bool TEnv::hasImmediateBinding(const std::string& vname) const {
   return (this->ptenv.find(vname) != this->ptenv.end()) || (this->unquals && this->unquals->lookup(vname) != PolyTypePtr());
 }
 
+std::string TEnv::toString() const {
+  std::ostringstream out;
+  for (const auto& pe: ptenv) {
+    out << "    " << pe.first << ": " << pe.second->toString() << '\n';
+  }
+  return std::move(out).str();
+}
+
 void TEnv::bind(const std::string& vname, const PolyTypePtr& pt) {
   if (hasImmediateBinding(vname)) {
     throw std::runtime_error("Variable already defined: " + vname);
@@ -365,6 +373,12 @@ void PolyType::show(std::ostream& out) const {
   simplifyVarNames(instantiate())->show(out);
 }
 
+std::string PolyType::toString() const {
+  std::ostringstream out;
+  this->show(out);
+  return std::move(out).str();
+}
+
 bool PolyType::operator==(const PolyType& rhs) const {
   return this->vs == rhs.vs && *this->qt == *rhs.qt;
 }
@@ -406,7 +420,14 @@ void QualType::show(std::ostream& out) const {
   }
 }
 
+std::string QualType::toString() const {
+  std::ostringstream out;
+  this->show(out);
+  return std::move(out).str();
+}
+
 bool QualType::operator==(const QualType& rhs) const {
+
   return this->cs == rhs.cs && *this->mt == *rhs.mt;
 }
 
@@ -474,6 +495,12 @@ void Constraint::show(std::ostream& out) const {
   }
 }
 
+std::string Constraint::toString() const {
+  std::ostringstream out;
+  this->show(out);
+  return std::move(out).str();
+}
+
 bool Constraint::operator==(const Constraint& rhs) const {
   if (this->cat != rhs.cat || this->mts.size() != rhs.mts.size()) {
     return false;
@@ -492,6 +519,11 @@ bool Constraint::operator==(const Constraint& rhs) const {
 ////////
 MonoType::MonoType(int cid) : cid(cid), tgenCount(0), memorySize(-1) { }
 int MonoType::case_id() const { return this->cid; }
+std::string MonoType::toString() const {
+  std::ostringstream out;
+  this->show(out);
+  return std::move(out).str();
+}
 MonoType::~MonoType() = default;
 
 bool MonoType::operator==(const MonoType& rhs) const {

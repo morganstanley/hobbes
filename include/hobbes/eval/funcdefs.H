@@ -15,6 +15,8 @@ char* memalloc(size_t, size_t);
 const array<char>* makeString(const std::string& x);
 std::string makeStdString(const array<char>* x);
 
+[[nodiscard]] std::string showDetailedMemoryPool();
+
 }
 
 #endif

@@ -8,15 +8,23 @@
 #include <llvm/IR/Constant.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
+#include <llvm/IR/Function.h>
 #include <llvm/IR/GlobalVariable.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Value.h>
 #include <llvm/IR/ValueHandle.h>
+#include <llvm/IR/ValueSymbolTable.h>
 #include <llvm/Support/Casting.h>
 #include <llvm/Support/Compiler.h>
 #include <llvm/Support/Error.h>
+#include <llvm/Support/FileSystem.h>
+#include <llvm/Support/raw_ostream.h>
 #include <llvm/Target/TargetMachine.h>
+
+#include <algorithm>
+#include <cstdint>
 #include <stdexcept>
+#include <system_error>
 #include <utility>
 
 #pragma GCC diagnostic push
@@ -557,7 +565,8 @@ private:
 jitcc::jitcc(const TEnvPtr& tenv)
     : tenv(tenv), vtenv(std::make_unique<VTEnv>()), ignoreLocalScope(false),
       globals(std::make_unique<Globals>()), globalData(32768 /* min global page size = 32K */),
-      constants(std::make_unique<ConstantList>()) {
+      constants(std::make_unique<ConstantList>())
+       {
   llvm::InitializeNativeTarget();
   llvm::InitializeNativeTargetAsmParser();
   llvm::InitializeNativeTargetAsmPrinter();
@@ -668,6 +677,21 @@ llvm::Module* jitcc::module() {
     this->modules.push_back(this->currentModule);
   }
   return this->currentModule;
+}
+
+std::string jitcc::showJitMemoryAddresses() {
+  std::string s;
+  llvm::raw_string_ostream os(s);
+  for (const auto* m: this->modules) {
+    for (const auto& f: *m) {
+      if (!f.isDeclaration()) {
+        if (void* addr = this->getSymbolAddress(f.getName().str())) {
+          os << f.getName() << ':' << addr << '\n';
+        }
+      }
+    }
+  }
+  return s;
 }
 #endif
 
@@ -807,7 +831,7 @@ void* jitcc::getMachineCode(llvm::Function* f, llvm::JITEventListener* listener)
   ee->finalizeObject();
 
   // now we can't touch this module again
-  this->currentModule = 0;
+  this->currentModule = nullptr;
 
   // and _now_ we must be able to get machine code for this function
   void* pf = ee->getPointerToFunction(f);
@@ -1216,7 +1240,6 @@ void jitcc::defineGlobal(const std::string& vn, const ExprPtr& ue) {
     // compile and run this function, it should then perform the global variable assignment
     // (make sure that any allocation happens in the global context iff we need it)
     auto f = reinterpret_cast<Thunk>(getMachineCode(initfn));
-
     if (hasPointerRep(uety)) {
       size_t oldregion = pushGlobalRegion();
       f();
