@@ -454,6 +454,29 @@ TEST(Matching, noRaceInterpMatch) {
   c().buildInterpretedMatches(false);
 }
 
+TEST(Matching, interpMatchMultiState) {
+  // a multi-column primitive match produces an interpreted DFA with several
+  // switch states; the state array used to be under-allocated for more than
+  // one state, corrupting the heap while copying state definitions
+  c().alwaysLowerPrimMatchTables(true);
+  c().buildInterpretedMatches(true);
+  auto f = c().compileFn<int(long, long)>("x", "y",
+                                          "match x y with\n"
+                                          "| 1L 10L -> 1\n"
+                                          "| 2L 20L -> 2\n"
+                                          "| 3L 30L -> 3\n"
+                                          "| 4L 40L -> 4\n"
+                                          "| _  _   -> 0");
+  EXPECT_EQ(f(1, 10), 1);
+  EXPECT_EQ(f(2, 20), 2);
+  EXPECT_EQ(f(3, 30), 3);
+  EXPECT_EQ(f(4, 40), 4);
+  EXPECT_EQ(f(1, 20), 0);
+  EXPECT_EQ(f(9, 99), 0);
+  c().alwaysLowerPrimMatchTables(false);
+  c().buildInterpretedMatches(false);
+}
+
 TEST(Matching, isPrimSelectionWithVariant) {
   std::ostringstream rows;
   rows << "(\\a b.match a b with\n";

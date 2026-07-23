@@ -1715,7 +1715,7 @@ void makeInterpretedPrimMatchFunction(const std::string& fname, MDFA* dfa, state
   mapStatesFrom(dfa, state, &localstate);
 
   // construct the DFA description in a consumable format
-  size_t msz = sizeof(long) + (localstate.size() + sizeof(IDFAState));
+  size_t msz = sizeof(long) + (localstate.size() * sizeof(IDFAState));
   auto* dfaStates = reinterpret_cast<array<IDFAState>*>(malloc(msz));
   memset(reinterpret_cast<void*>(dfaStates), 0, msz);
   dfaStates->size = localstate.size();
