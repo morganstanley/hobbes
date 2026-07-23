@@ -164,7 +164,7 @@ jobs:
   apt-llvm22-build:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Install LLVM 22 from apt.llvm.org
         run: |
           export DEBIAN_FRONTEND=noninteractive
