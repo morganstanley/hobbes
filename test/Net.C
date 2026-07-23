@@ -518,10 +518,12 @@ void eventLoopShutdownWithStopFImpl(EventLoopFn elFn, ExpectPred expectPred) {
 } // namespace
 
 TEST(Net, eventLoopShutdownWithStopF) {
-  // eventLoopShutdownWithStopFImpl setup a stopFn returns true after 2000 ms
+  // eventLoopShutdownWithStopFImpl sets up a stopFn that returns true after 2000 ms
 
-  // a repeatable timer triggers on every 700ms is added to check stopFn periodically
-  // event loop should stop after ~2000 ms
+  // a repeatable timer triggering every 700ms is added to check stopFn periodically,
+  // so the loop notices the flag on the first tick after 2000ms plus scheduling
+  // overhead; macOS CI runners consistently land around ~2600ms, hence the 3000ms
+  // upper bound (do not tighten it back to 2500ms)
   eventLoopShutdownWithStopFImpl(
       [](const std::function<bool()> &stopFn) {
         hobbes::addTimer([] { return true; }, 700);
