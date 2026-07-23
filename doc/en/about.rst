@@ -21,7 +21,7 @@ Contributing to Hobbes is easy.
 
       b. Include docstrings for the new modules/classes/functions and the functionality is fully described in the `documentation <https://github.com/Morgan-Stanley/hobbes/tree/master/doc/en>`_.
 
-  4. Follow the contributing `instructions <https://github.com/Morgan-Stanley/hobbes/blob/master/CONTRIBUTING.rst>`_ and make sure you include the "Covered by <dco>" line in the commits.
+  4. Follow the contributing `instructions <https://github.com/Morgan-Stanley/hobbes/blob/master/CONTRIBUTING.md>`_ and make sure the first line of each commit message includes a "Covered by" reference to your DCO file path, written without angle brackets (e.g. ``Covered by dco/Jane_Doe.md``).
 
   5. Make a pull request.
 

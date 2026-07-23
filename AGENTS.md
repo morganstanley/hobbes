@@ -117,7 +117,8 @@ doc/                  Documentation
 
 See `CONTRIBUTING.md`. Key points:
 - Developer Certificate of Origin (DCO) required for first contribution
-- Commits must include `"Covered by <dco>"` line
+- The first line of each commit message must include a `Covered by` reference
+  to your DCO file path, written without angle brackets (e.g. `Covered by dco/Jane_Doe.md`)
 - Update README for API/behavior changes
 - Add or update tests for all changes
 - Squashed commits preferred
