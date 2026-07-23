@@ -6,6 +6,21 @@
 #include <hobbes/util/perf.H>
 #include <thread>
 
+// compile-time bounds are skipped in sanitized builds, where instrumentation
+// overhead swamps what those bounds measure
+#ifndef HOBBES_TEST_SKIP_TIMING_BOUNDS
+#  if defined(__SANITIZE_ADDRESS__) || defined(__SANITIZE_THREAD__)
+#    define HOBBES_TEST_SKIP_TIMING_BOUNDS 1
+#  elif defined(__has_feature)
+#    if __has_feature(address_sanitizer) || __has_feature(thread_sanitizer)
+#      define HOBBES_TEST_SKIP_TIMING_BOUNDS 1
+#    endif
+#  endif
+#endif
+#ifndef HOBBES_TEST_SKIP_TIMING_BOUNDS
+#  define HOBBES_TEST_SKIP_TIMING_BOUNDS 0
+#endif
+
 using namespace hobbes;
 static cc &c() {
   static cc x;
@@ -536,34 +551,20 @@ TEST(Matching, largeMatchTableCompileTime) {
   }
   m << ")";
 
-  // measure CPU time rather than wall clock so that contended or throttled
-  // CI hosts don't turn scheduler delays into spurious failures
-  auto cpuNs = []() {
-    timespec ts{};
-    clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &ts);
-    return static_cast<size_t>(ts.tv_sec) * 1000000000UL + static_cast<size_t>(ts.tv_nsec);
-  };
-
-  auto t0 = cpuNs();
+  // measure process CPU time (std::clock) rather than wall clock so that
+  // contended or throttled CI hosts don't turn scheduler delays into
+  // spurious failures
+  auto t0 = std::clock();
   auto f = c().compileFn<int()>(m.str());
-  [[maybe_unused]] auto dt = cpuNs() - t0;
+  [[maybe_unused]] auto dt = std::clock() - t0;
 
   EXPECT_EQ(f(), expected);
 
   // ~20s of CPU on Apple M-series, ~2.3 minutes on instrumented CI runners;
   // the regression this guards (one full expression rewrite per class
   // constraint) is a ~7x slowdown, putting those figures at ~2.6 and ~16
-  // minutes respectively, so a 10 minute bound separates cleanly on both.
-  // Sanitized builds skip the timing check: their overhead swamps what this
-  // test measures, and the correctness checks above still run.
-#if defined(__SANITIZE_ADDRESS__) || defined(__SANITIZE_THREAD__)
-#  define HOBBES_TEST_SANITIZED 1
-#elif defined(__has_feature)
-#  if __has_feature(address_sanitizer) || __has_feature(thread_sanitizer)
-#    define HOBBES_TEST_SANITIZED 1
-#  endif
-#endif
-#ifndef HOBBES_TEST_SANITIZED
-  EXPECT_TRUE(dt < 10UL * 60 * 1000 * 1000 * 1000);
+  // minutes respectively, so a 10 minute bound separates cleanly on both
+#if !HOBBES_TEST_SKIP_TIMING_BOUNDS
+  EXPECT_TRUE(dt < 10L * 60 * CLOCKS_PER_SEC);
 #endif
 }
