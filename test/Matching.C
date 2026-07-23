@@ -452,6 +452,7 @@ TEST(Matching, noRaceInterpMatch) {
   }
   EXPECT_EQ(wrongMatches.load(), size_t(0));
   c().buildInterpretedMatches(false);
+  c().alwaysLowerPrimMatchTables(false);
 }
 
 TEST(Matching, isPrimSelectionWithVariant) {
