@@ -458,6 +458,12 @@ TEST(Matching, interpMatchMultiState) {
   // a multi-column primitive match produces an interpreted DFA with several
   // switch states; the state array used to be under-allocated for more than
   // one state, corrupting the heap while copying state definitions
+  struct FlagGuard {
+    ~FlagGuard() {
+      c().alwaysLowerPrimMatchTables(false);
+      c().buildInterpretedMatches(false);
+    }
+  } flagGuard;
   c().alwaysLowerPrimMatchTables(true);
   c().buildInterpretedMatches(true);
   auto f = c().compileFn<int(long, long)>("x", "y",
@@ -473,8 +479,6 @@ TEST(Matching, interpMatchMultiState) {
   EXPECT_EQ(f(4, 40), 4);
   EXPECT_EQ(f(1, 20), 0);
   EXPECT_EQ(f(9, 99), 0);
-  c().alwaysLowerPrimMatchTables(false);
-  c().buildInterpretedMatches(false);
 }
 
 TEST(Matching, isPrimSelectionWithVariant) {

@@ -4,6 +4,7 @@
 #include <hobbes/lang/pat/regex.H>
 #include <hobbes/lang/pat/print.H>
 #include <hobbes/util/perf.H>
+#include <cstddef>
 #include <limits>
 #include <sstream>
 #include <fstream>
@@ -1669,7 +1670,7 @@ IDFATransitions* transitions(const ArgPos& argpos, MDFA* dfa, const SwitchVal::J
     }
   }
 
-  size_t msz = sizeof(long) + (ssvj.size() * sizeof(std::pair<long, IDFATransition>));
+  size_t msz = offsetof(IDFATransitions, data) + (ssvj.size() * sizeof(std::pair<long, IDFATransition>));
   auto* result = reinterpret_cast<IDFATransitions*>(malloc(msz));
   memset(reinterpret_cast<void*>(result), 0, msz);
   result->size = ssvj.size();
@@ -1715,7 +1716,7 @@ void makeInterpretedPrimMatchFunction(const std::string& fname, MDFA* dfa, state
   mapStatesFrom(dfa, state, &localstate);
 
   // construct the DFA description in a consumable format
-  size_t msz = sizeof(long) + (localstate.size() * sizeof(IDFAState));
+  size_t msz = offsetof(array<IDFAState>, data) + (localstate.size() * sizeof(IDFAState));
   auto* dfaStates = reinterpret_cast<array<IDFAState>*>(malloc(msz));
   memset(reinterpret_cast<void*>(dfaStates), 0, msz);
   dfaStates->size = localstate.size();
