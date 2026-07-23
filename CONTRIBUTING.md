@@ -41,10 +41,18 @@ holder then in a file under `dco/<your name>-<copyright holder name(s)>`.
 
 When you create a pull request, follow these steps:
 
-1. Your commit message for the code you are submitting must include a
-`“Covered by <dco>“` line which indicates your acceptance of the DCO terms and conditions. 
-`<dco>` here is the file name of the DCO.
-2. Your commit must include a change to the `NOTICE.txt` file that contains complete
+1. The first line (subject) of each commit message must include
+`Covered by dco/<your name>.md`, which indicates your acceptance of the DCO
+terms and conditions. `dco/<your name>.md` is the path of your DCO file, written
+without angle brackets, for example:
+
+   ```
+   Fix widget frobnication (Covered by dco/Jane_Doe.md)
+   ```
+
+   The automated DCO check only inspects the first line of each commit message,
+   so a `Covered by` line in the commit body will not be recognized.
+2. Your commit must include a change to the `NOTICE.md` file that contains complete
 details of any applicable copyright notice for your submission and including any
 applicable third party license(s) or other restrictions associated with any part
 of your contribution, and of all matters required to be disclosed under such third
