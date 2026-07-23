@@ -52,6 +52,9 @@ public:
   TCInstances matches(const TEnvPtr& tenv, const ConstraintPtr& c, MonoTypeUnifier*, Definitions* ds) const;
   TCInstances matches(const TEnvPtr& tenv, const MonoTypes& mts, MonoTypeUnifier*, Definitions* ds) const;
 
+  // the instance that matches a given constraint, iff exactly one does
+  TCInstancePtr uniqueInstance(const TEnvPtr& tenv, const ConstraintPtr& c, Definitions* ds) const;
+
   // unqualifier interface
   bool        refine     (const TEnvPtr& tenv, const ConstraintPtr& cst, MonoTypeUnifier* s, Definitions* ds) override;
   bool        satisfied  (const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions* ds)                   const override;
@@ -170,6 +173,11 @@ bool isClassSatisfied(const TEnvPtr&, const std::string&, const MonoTypes&, Defi
 bool isClassSatisfiable(const TEnvPtr&, const std::string&, const MonoTypes&, Definitions*);
 
 ExprPtr unqualifyClass(const TEnvPtr&, const std::string&, const MonoTypes&, const ExprPtr&, Definitions*);
+
+// eliminate a batch of class constraints (each paired with its uniquely-matching instance)
+// in a single traversal of the input expression, rather than one full rewrite per constraint
+using TCInstConstraints = std::vector<std::pair<ConstraintPtr, TCInstancePtr>>;
+ExprPtr unqualifyClassConstraints(const TEnvPtr&, const TCInstConstraints&, const ExprPtr&, Definitions*);
 
 // utility for generating new classes from existing ones
 void definePrivateClass(const TEnvPtr& tenv, const std::string& memberName, const ExprPtr& expr);

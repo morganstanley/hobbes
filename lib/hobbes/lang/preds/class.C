@@ -8,6 +8,7 @@
 #include <hobbes/util/codec.H>
 #include <hobbes/util/perf.H>
 #include <memory>
+#include <unordered_map>
 
 namespace hobbes {
 
@@ -368,6 +369,14 @@ ExprPtr TClass::unqualify(const TEnvPtr& tenv, const ConstraintPtr& cst, const E
   }
 }
 
+TCInstancePtr TClass::uniqueInstance(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions* ds) const {
+  TCInstances tis = matches(tenv, cst, nullptr, ds);
+  if (tis.size() == 1) {
+    return tis[0];
+  }
+  return TCInstancePtr();
+}
+
 PolyTypePtr TClass::lookup(const std::string& vn) const {
   auto m = this->tcmembers.find(vn);
   if (m != this->tcmembers.end()) {
@@ -511,6 +520,55 @@ void TCInstance::bind(const TEnvPtr& tenv, const TClass* c, Definitions* ds) {
 
 ExprPtr TCInstance::unqualify(Definitions* ds, const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPtr& e) const {
   return switchOf(e, TCUnqualify(this, ds, tenv, cst));
+}
+
+// eliminate a batch of class constraints in a single traversal
+// (equivalent to sequentially applying TCUnqualify for each constraint, but
+//  avoids one full expression rewrite and teardown per eliminated constraint)
+struct TCUnqualifyBatch : public switchExprTyFn {
+  // member-name -> [(constraint, resolved member expr)] in batch order
+  using MemberSubs = std::unordered_map<std::string, std::vector<std::pair<ConstraintPtr, ExprPtr>>>;
+  Constraints cs;
+  MemberSubs  subs;
+
+  explicit TCUnqualifyBatch(const TCInstConstraints& cis) {
+    for (const auto& ci : cis) {
+      this->cs.push_back(ci.first);
+      for (const auto& mm : ci.second->memberMapping()) {
+        this->subs[mm.first].push_back(std::make_pair(ci.first, mm.second));
+      }
+    }
+  }
+
+  QualTypePtr withTy(const QualTypePtr& qt) const override {
+    Constraints r;
+    for (const auto& c : qt->constraints()) {
+      if (!hasConstraint(c, this->cs)) {
+        r.push_back(c);
+      }
+    }
+    if (r.size() == qt->constraints().size()) {
+      return qt;
+    }
+    return qualtype(r, qt->monoType());
+  }
+
+  ExprPtr with(const Var* v) const override {
+    // if we can resolve this symbol as an overload of any batched constraint, replace it
+    auto s = this->subs.find(v->value());
+    if (s != this->subs.end()) {
+      for (const auto& ce : s->second) {
+        if (hasConstraint(ce.first, v->type())) {
+          return ce.second;
+        }
+      }
+    }
+    return wrapWithTy(v->type(), v->clone());
+  }
+};
+
+ExprPtr unqualifyClassConstraints(const TEnvPtr&, const TCInstConstraints& cis, const ExprPtr& e, Definitions*) {
+  return switchOf(e, TCUnqualifyBatch(cis));
 }
 
 void TCInstance::show(std::ostream& out) const {
