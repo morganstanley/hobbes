@@ -1,9 +1,25 @@
 
 #include "hobbes/lang/pat/pattern.H"
 #include "test.H"
+#include <ctime>
 #include <hobbes/hobbes.H>
 #include <hobbes/util/perf.H>
 #include <thread>
+
+// compile-time bounds are skipped in sanitized builds, where instrumentation
+// overhead swamps what those bounds measure
+#ifndef HOBBES_TEST_SKIP_TIMING_BOUNDS
+#  if defined(__SANITIZE_ADDRESS__) || defined(__SANITIZE_THREAD__)
+#    define HOBBES_TEST_SKIP_TIMING_BOUNDS 1
+#  elif defined(__has_feature)
+#    if __has_feature(address_sanitizer) || __has_feature(thread_sanitizer)
+#      define HOBBES_TEST_SKIP_TIMING_BOUNDS 1
+#    endif
+#  endif
+#endif
+#ifndef HOBBES_TEST_SKIP_TIMING_BOUNDS
+#  define HOBBES_TEST_SKIP_TIMING_BOUNDS 0
+#endif
 
 using namespace hobbes;
 static cc &c() {
@@ -467,3 +483,88 @@ TEST(Matching, isPrimSelectionWithVariant) {
   EXPECT_EQ(f(), 11);
 }
 
+
+// Guards against compile-time blowup on large match tables (many rows, a
+// dozen or more columns, wildcards scattered throughout, regex patterns in
+// the string columns). Before class constraints were eliminated in batches
+// (one expression rewrite per batch instead of one per constraint), this
+// table took ~2.6 minutes to compile on Apple M-series hardware; it now
+// takes ~20 seconds. The regex columns disqualify the table from the
+// isPrimSelection fast path, so alwaysLowerPrimMatchTables does not affect
+// this test. The table is generated from a fixed-seed LCG so it is
+// deterministic across runs and platforms.
+TEST(Matching, largeMatchTableCompileTime) {
+  const size_t nrows = 70;
+  const size_t ncols = 12;
+
+  // fixed-seed LCG; draw from the high bits since the low bits of an LCG are
+  // periodic, which would place wildcards in a regular (cheap to compile)
+  // pattern rather than scattering them like a production rule table
+  uint32_t seed = 42;
+  auto rnd = [&seed]() {
+    seed = static_cast<uint32_t>((1103515245ULL * seed + 12345) & 0x7fffffffULL);
+    return seed >> 16;
+  };
+
+  std::ostringstream m;
+  m << "(\\";
+  for (size_t c = 0; c < ncols; ++c) {
+    m << (c ? " " : "") << "x" << c;
+  }
+  m << ".match";
+  for (size_t c = 0; c < ncols; ++c) {
+    m << " x" << c;
+  }
+  m << " with\n";
+
+  // even columns are ints matched by literals, odd columns are strings
+  // matched by regexes; the scrutinees (99 and "zz") can't match any
+  // generated literal or regex, so a row can only match if every one of
+  // its cells is a wildcard
+  int expected = -1;
+  for (size_t r = 0; r < nrows; ++r) {
+    m << "|";
+    bool allWild = true;
+    for (size_t c = 0; c < ncols; ++c) {
+      if (rnd() % 10 < 3) {
+        m << " _";
+      } else if (c % 2 == 0) {
+        m << " " << (rnd() % 50);
+        allWild = false;
+      } else {
+        m << " 's" << (rnd() % 50) << ".*'";
+        allWild = false;
+      }
+    }
+    m << " -> " << r << "\n";
+    if (allWild && expected == -1) {
+      expected = static_cast<int>(r);
+    }
+  }
+  m << "|";
+  for (size_t c = 0; c < ncols; ++c) {
+    m << " _";
+  }
+  m << " -> -1\n)(";
+  for (size_t c = 0; c < ncols; ++c) {
+    m << (c ? ", " : "") << (c % 2 == 0 ? "99" : "\"zz\"");
+  }
+  m << ")";
+
+  // measure process CPU time (std::clock) rather than wall clock so that
+  // contended or throttled CI hosts don't turn scheduler delays into
+  // spurious failures
+  auto t0 = std::clock();
+  auto f = c().compileFn<int()>(m.str());
+  [[maybe_unused]] auto dt = std::clock() - t0;
+
+  EXPECT_EQ(f(), expected);
+
+  // ~20s of CPU on Apple M-series, ~2.3 minutes on instrumented CI runners;
+  // the regression this guards (one full expression rewrite per class
+  // constraint) is a ~7x slowdown, putting those figures at ~2.6 and ~16
+  // minutes respectively, so a 10 minute bound separates cleanly on both
+#if !HOBBES_TEST_SKIP_TIMING_BOUNDS
+  EXPECT_TRUE(dt < 10L * 60 * CLOCKS_PER_SEC);
+#endif
+}
