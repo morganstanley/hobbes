@@ -41,10 +41,10 @@ holder then in a file under `dco/<your name>-<copyright holder name(s)>`.
 
 When you create a pull request, follow these steps:
 
-1. The first line (subject) of each commit message must include
-`Covered by dco/<your name>.md`, which indicates your acceptance of the DCO
-terms and conditions. `dco/<your name>.md` is the path of your DCO file, written
-without angle brackets, for example:
+1. The first line (subject) of each commit message must include `Covered by`
+followed by the path of your DCO file, which indicates your acceptance of the
+DCO terms and conditions. Write the path literally, with no angle brackets or
+quotes around it. For example, if your DCO file is `dco/Jane_Doe.md`:
 
    ```
    Fix widget frobnication (Covered by dco/Jane_Doe.md)
