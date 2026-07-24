@@ -299,8 +299,6 @@ public:
   void releaseMachineCode(void *);
 
   // compile/optimization options
-  void enableModuleInlining(bool f);
-  bool enableModuleInlining() const;
   void buildInterpretedMatches(bool f);
   bool buildInterpretedMatches() const;
   void requireMatchReachability(bool f);
@@ -346,7 +344,6 @@ private:
   SearchCache searchCache;
 
   // optimization options
-  bool runModInlinePass;
   bool genInterpretedMatch;
   bool checkMatchReachability;
   bool ignoreUnreachablePatternMatchRows = false;
