@@ -46,7 +46,6 @@ cc::cc() :
   readExprF(&defReadExpr),
   drainingDefs(false),
   unreachableMatchRowsPtr(nullptr),
-  runModInlinePass(true),
   genInterpretedMatch(false),
   checkMatchReachability(true),
   lowerPrimMatchTables(false),
@@ -652,8 +651,6 @@ void cc::releaseMachineCode(void* f) {
   this->jit->releaseMachineCode(f);
 }
 
-void cc::enableModuleInlining(bool f) { this->runModInlinePass = f; }
-bool cc::enableModuleInlining() const { return this->runModInlinePass; }
 
 void cc::buildInterpretedMatches(bool f) { this->genInterpretedMatch = f; }
 bool cc::buildInterpretedMatches() const { return this->genInterpretedMatch; }
