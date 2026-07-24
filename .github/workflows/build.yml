@@ -72,7 +72,7 @@ jobs:
       matrix:
         os: [ubuntu-24.04]
         gcc: [13, 14, 15]
-        llvm: [16, 18, 20, 21]
+        llvm: [16, 18, 19, 20, 21]
     steps:
       - uses: actions/checkout@v7
         with:
