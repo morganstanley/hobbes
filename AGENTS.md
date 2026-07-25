@@ -6,7 +6,7 @@ Hobbes is a compiled, strongly-typed language with an embedded JIT compiler and 
 
 ## Build
 
-Requires CMake 3.4+, LLVM 12-16, a C++17 compiler (GCC or Clang), and system libraries (zlib, readline, ncurses, zstd).
+Requires CMake 3.19+, LLVM (see the supported-version list in `include/hobbes/util/llvm.H`), a C++17 compiler (GCC or Clang), and system libraries (zlib, readline, ncurses, zstd).
 
 ```bash
 cmake --build /path/to/build -j$(nproc)
