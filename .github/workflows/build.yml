@@ -214,7 +214,6 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@v7
         with:
-          name: apt-llvm22-build-logs
           name: rhel10-build-logs
           path: build/
   python-compat:
