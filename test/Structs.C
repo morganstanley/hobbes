@@ -104,6 +104,29 @@ TEST(Structs, Bindings) {
   EXPECT_TRUE(c().compileFn<array<char>*()>("show(genstruct)") != nullptr);
 }
 
+// a record with opaque C++ types (stored inline) in non-final field positions
+// (issue #506: 'Show' could not be derived when an inline opaque field had any
+// fields after it, because record deconstruction failed on such records)
+DEFINE_STRUCT(
+  InteriorOpaque,
+  (std::string, a),
+  (double,      b),
+  (std::string, c),
+  (int,         d)
+);
+
+TEST(Structs, ShowInteriorOpaqueFields) {
+  static InteriorOpaque io;
+  io.a = "x";
+  io.b = 3.25;
+  io.c = "y";
+  io.d = 7;
+  c().bind("interiorOpaque", &io);
+
+  EXPECT_EQ(makeStdString(c().compileFn<const array<char>*()>("show(interiorOpaque)")()), "{a=\"x\", b=3.25, c=\"y\", d=7}");
+  EXPECT_EQ(makeStdString(c().compileFn<const array<char>*()>("show(recordTail(interiorOpaque))")()), "{b=3.25, c=\"y\", d=7}");
+}
+
 TEST(Structs, NoDuplicateFieldNames) {
   // reject outright construction of structs with duplicate field names
   bool introExn = false;

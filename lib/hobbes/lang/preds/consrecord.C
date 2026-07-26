@@ -37,6 +37,48 @@ MonoTypePtr stripHiddenFields(const MonoTypePtr& ty) {
   }
 }
 
+static bool isVisibleField(const std::string& f) {
+  return f.size() < 2 || (f[0] != '.' || f[1] != 'p');
+}
+
+static bool hasVisibleField(const Record* rty) {
+  for (const auto& m : rty->members()) {
+    if (isVisibleField(m.field)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// do two types describe records with the same visible fields (by name and type)?
+// (compared member-wise so that neither hidden padding fields nor member offsets --
+// which legitimately differ between a standalone record and the tail of a larger
+// one -- affect the answer)
+static bool equalVisibleFields(const MonoTypePtr& aty, const MonoTypePtr& bty) {
+  if (*aty == *bty) {
+    return true;
+  }
+  const Record* a = is<Record>(aty);
+  const Record* b = is<Record>(bty);
+  if ((a == nullptr) || (b == nullptr)) {
+    return false;
+  }
+  const auto& ams = a->members();
+  const auto& bms = b->members();
+  size_t i = 0, j = 0;
+  while (true) {
+    while (i < ams.size() && !isVisibleField(ams[i].field)) ++i;
+    while (j < bms.size() && !isVisibleField(bms[j].field)) ++j;
+    if (i == ams.size() || j == bms.size()) {
+      return i == ams.size() && j == bms.size();
+    }
+    if (ams[i].field != bms[j].field || !(*ams[i].type == *bms[j].type)) {
+      return false;
+    }
+    ++i; ++j;
+  }
+}
+
 struct ConsRecord {
   bool        forward;
   bool        asTuple;
@@ -137,15 +179,27 @@ bool RecordDeconstructor::satisfied(const TEnvPtr&, const ConstraintPtr& cst, De
     return false;
   }
 
+  if (!hasVisibleField(rty)) {
+    return false;
+  }
+
+  // compare the head and tail of the record independently (as 'refine' unifies them)
+  // rather than reconstructing a record out of the constraint's head and tail types --
+  // 'headMember' normalizes opaque types stored inline to their by-reference form, so a
+  // reconstructed record can never match a record whose head field is an inline opaque
+  // type (eg: a lifted struct with a std::string field followed by any other field)
   if (cr.asTuple) {
     if (tty != nullptr) {
-      return *stripHiddenFields(rty) == *stripHiddenFields(Record::make(cr.headType, tty->members()));
+      return *rty->headMember().type == *cr.headType &&
+             equalVisibleFields(rty->tailType(), cr.tailType);
     } else {
       return *rty->headMember().type == *cr.headType;
     }
   } else {
     if (tty != nullptr) {
-      return *stripHiddenFields(rty) == *stripHiddenFields(Record::make(fname->value(), cr.headType, tty->members()));
+      return rty->headMember().field == fname->value() &&
+             *rty->headMember().type == *cr.headType &&
+             equalVisibleFields(rty->tailType(), cr.tailType);
     } else {
       return rty->headMember().field == fname->value() && *rty->headMember().type == *cr.headType;
     }
