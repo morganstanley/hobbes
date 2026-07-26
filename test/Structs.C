@@ -127,6 +127,43 @@ TEST(Structs, ShowInteriorOpaqueFields) {
   EXPECT_EQ(makeStdString(c().compileFn<const array<char>*()>("show(recordTail(interiorOpaque))")()), "{b=3.25, c=\"y\", d=7}");
 }
 
+// the same decomposition through the tuple branch: an inline opaque type in
+// non-final tuple position
+TEST(Structs, ShowInteriorOpaqueTuple) {
+  hobbes::tuple<std::string, int, double> p("abc", 42, 1.5);
+  EXPECT_EQ(makeStdString(c().compileFn<const array<char>*(const hobbes::tuple<std::string, int, double>&)>("p", "show(p)")(p)), "(\"abc\", 42, 1.5)");
+  EXPECT_EQ(makeStdString(c().compileFn<const array<char>*(const hobbes::tuple<std::string, int, double>&)>("p", "show(tupleTail(p))")(p)), "(42, 1.5)");
+}
+
+// and one level deeper: a nested struct member (with its own padding and its
+// own interior opaque field) between other fields
+DEFINE_STRUCT(
+  InnerOpaque,
+  (std::string, s),
+  (int,         y),
+  (long,        z)
+);
+
+DEFINE_STRUCT(
+  OuterOpaque,
+  (std::string, a),
+  (InnerOpaque, in),
+  (double,      d)
+);
+
+TEST(Structs, ShowNestedInteriorOpaqueFields) {
+  static OuterOpaque oo;
+  oo.a = "x";
+  oo.in.s = "y";
+  oo.in.y = 2;
+  oo.in.z = 3;
+  oo.d = 1.5;
+  c().bind("outerOpaque", &oo);
+
+  EXPECT_EQ(makeStdString(c().compileFn<const array<char>*()>("show(outerOpaque)")()), "{a=\"x\", in={s=\"y\", y=2, z=3}, d=1.5}");
+  EXPECT_EQ(makeStdString(c().compileFn<const array<char>*()>("show(recordTail(outerOpaque))")()), "{in={s=\"y\", y=2, z=3}, d=1.5}");
+}
+
 TEST(Structs, NoDuplicateFieldNames) {
   // reject outright construction of structs with duplicate field names
   bool introExn = false;

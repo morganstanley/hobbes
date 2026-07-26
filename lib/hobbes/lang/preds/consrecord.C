@@ -19,10 +19,14 @@ namespace hobbes {
 #define REF_REC_TAIL  "recordTail"
 #define REF_TUP_TAIL  "tupleTail"
 
+static bool isVisibleField(const std::string& f) {
+  return f.size() < 2 || (f[0] != '.' || f[1] != 'p');
+}
+
 MonoTypePtr stripHiddenFields(const Record* rty) {
   Record::Members ms;
   for (const auto& m : rty->members()) {
-    if (m.field.size() < 2 || (m.field[0] != '.' || m.field[1] != 'p')) {
+    if (isVisibleField(m.field)) {
       ms.push_back(Record::Member(m.field, m.type));
     }
   }
@@ -35,10 +39,6 @@ MonoTypePtr stripHiddenFields(const MonoTypePtr& ty) {
   } else {
     return ty;
   }
-}
-
-static bool isVisibleField(const std::string& f) {
-  return f.size() < 2 || (f[0] != '.' || f[1] != 'p');
 }
 
 static bool hasVisibleField(const Record* rty) {
