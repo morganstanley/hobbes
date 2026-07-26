@@ -193,7 +193,7 @@ bool RecordDeconstructor::satisfied(const TEnvPtr&, const ConstraintPtr& cst, De
       return *rty->headMember().type == *cr.headType &&
              equalVisibleFields(rty->tailType(), cr.tailType);
     } else {
-      return *rty->headMember().type == *cr.headType;
+      return *rty->headMember().type == *cr.headType && isUnit(rty->tailType());
     }
   } else {
     if (tty != nullptr) {
@@ -201,7 +201,9 @@ bool RecordDeconstructor::satisfied(const TEnvPtr&, const ConstraintPtr& cst, De
              *rty->headMember().type == *cr.headType &&
              equalVisibleFields(rty->tailType(), cr.tailType);
     } else {
-      return rty->headMember().field == fname->value() && *rty->headMember().type == *cr.headType;
+      return rty->headMember().field == fname->value() &&
+             *rty->headMember().type == *cr.headType &&
+             isUnit(rty->tailType());
     }
   }
 }
