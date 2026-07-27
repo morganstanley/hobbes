@@ -1,4 +1,5 @@
-cmake_minimum_required(VERSION 3.5)
+# 3.19 is needed for COMMAND_ERROR_IS_FATAL in the llvm-config calls below
+cmake_minimum_required(VERSION 3.19)
 project(hobbes)
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
@@ -13,7 +14,17 @@ set(CURSES_NEED_NCURSES TRUE)
 find_package(Curses REQUIRED)
 include_directories(${CURSES_INCLUDE_DIRS})
 
-find_package(LLVM 12 CONFIG QUIET)
+# Prefer LLVM 12 when several LLVM installs are discoverable. LLVM's package
+# version files only accept an exact major.minor match, so this probe fails on
+# any other version, and a failed find_package caches LLVM_DIR-NOTFOUND --
+# clobbering an explicitly provided -DLLVM_DIR. Only probe when the user
+# hasn't chosen an install, and undo the probe's cache write if it fails.
+if(NOT LLVM_DIR)
+  find_package(LLVM 12 CONFIG QUIET)
+  if(NOT LLVM_FOUND)
+    unset(LLVM_DIR CACHE)
+  endif()
+endif()
 find_package(LLVM REQUIRED CONFIG)
 include_directories(SYSTEM ${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})

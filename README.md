@@ -23,7 +23,7 @@ Hobbes is built for high performance integration with C/C++ applications. While 
 
 ## Building <a name="building"></a>
 
-To build hobbes, you will need [LLVM](http://llvm.org/) 3.3 or later, [cmake](http://cmake.org/) 3.4 or later, [GNU gcc](https://gcc.gnu.org/) 4.8 or later, and a version 2.5 or later Linux kernel.
+To build hobbes, you will need [LLVM](http://llvm.org/) 3.3 or later, [cmake](http://cmake.org/) 3.19 or later, [GNU gcc](https://gcc.gnu.org/) 4.8 or later, and a version 2.5 or later Linux kernel.
 
 With LLVM, cmake, and g++ installed, after downloading this code you should be able to build and install hobbes just by running:
 
