@@ -460,7 +460,9 @@ class saelem : public op {
       llvm::Type* elemLLTy = toLLVM(rty, isElemPtr);
       llvm::Value* p = offset(c->builder(), elemLLTy, c->compile(es[0]), c->compile(es[1]));
 #else
+#if LLVM_VERSION_MAJOR >= 16
       llvm::Type* elemLLTy = toLLVM(rty, true);
+#endif
       llvm::Value* p = offset(c->builder(), c->compile(es[0]), 0, c->compile(es[1]));
 #endif
 
