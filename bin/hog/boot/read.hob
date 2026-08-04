@@ -74,7 +74,14 @@ hstoreReadFixedArray txn =
    (let
       n = (unsafeCast(hstoreUnsafeRead(txn, nn))::{x:long}).x
     in
+      // 'n' is the element count; the array occupies n * tn bytes. Bounding n
+      // against the remaining bytes first keeps n * tn (tn is small) from
+      // overflowing, then the second check confirms the whole span is present --
+      // hstoreUnsafeReadFixedArray copies n * tn bytes, so checking only n let a
+      // client over-read up to n * (tn - 1) bytes past the transaction buffer.
       if (not(hstoreCanRead(txn, n))) then
+        nothing
+      else if (not(hstoreCanRead(txn, n * tn))) then
         nothing
       else
         just(unsafeCast(hstoreUnsafeReadFixedArray(txn, n * tn, n))))
