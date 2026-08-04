@@ -1191,7 +1191,15 @@ template <typename T, size_t N>
   struct store<carray<T,N>, typename tbool<store<T>::can_memcpy>::type> : public storeCArrayDef<T,N> {
     static const bool can_memcpy = true;
     static void write(imagefile*, void*       p, const carray<T,N>& x) { memcpy(p, &x, storeCArrayDef<T,N>::alignment()+sizeof(T)*x.size); }
-    static void read(imagefile*,  const void* p, carray<T,N>*       x) { memcpy(reinterpret_cast<void*>(x),  p, storeCArrayDef<T,N>::alignment()+sizeof(T)*(*reinterpret_cast<const size_t*>(p))); }
+    static void read(imagefile*,  const void* p, carray<T,N>*       x) {
+      // the stored length comes from the file image and must not exceed the
+      // fixed capacity N, or the copy overruns x->data[N]
+      const size_t n = *reinterpret_cast<const size_t*>(p);
+      if (n > N) {
+        throw std::runtime_error("Not a valid structured data file: carray length (" + hobbes::string::from(n) + ") exceeds capacity (" + hobbes::string::from(N) + ")");
+      }
+      memcpy(reinterpret_cast<void*>(x), p, storeCArrayDef<T,N>::alignment()+sizeof(T)*n);
+    }
   };
 
 template <typename T, size_t N>
@@ -1206,9 +1214,15 @@ template <typename T, size_t N>
       }
     }
     static void read(imagefile* f, const void* p, carray<T,N>* x) {
-      x->size = *reinterpret_cast<const size_t*>(p);
+      // the stored length comes from the file image and must not exceed the
+      // fixed capacity N, or the loop writes past x->data[N]
+      const size_t n = *reinterpret_cast<const size_t*>(p);
+      if (n > N) {
+        throw std::runtime_error("Not a valid structured data file: carray length (" + hobbes::string::from(n) + ") exceeds capacity (" + hobbes::string::from(N) + ")");
+      }
+      x->size = n;
       p = reinterpret_cast<const uint8_t*>(p) + storeCArrayDef<T,N>::alignment();
-      for (size_t i = 0; i < x->size; ++i) {
+      for (size_t i = 0; i < n; ++i) {
         store<T>::read(f, p, &x->data[i]);
         p = reinterpret_cast<const uint8_t*>(p) + store<T>::size();
       }
