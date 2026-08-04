@@ -1074,3 +1074,27 @@ TEST(Storage, AvoidTornRead) {
   }
 }
 
+
+TEST(Storage, FRegionCArrayRejectsOversizedLength) {
+  // the carray reader must reject a stored length larger than the fixed
+  // capacity N instead of copying it into x->data[N] (a file-image-driven
+  // out-of-bounds write)
+  using CA = hobbes::carray<double, 4>;
+  std::vector<uint8_t> buf(hobbes::fregion::storeCArrayDef<double, 4>::size(), 0);
+  CA dst;
+
+  // stored length 100 >> capacity 4 must throw, not overrun
+  *reinterpret_cast<size_t*>(buf.data()) = 100;
+  bool threw = false;
+  try { hobbes::fregion::store<CA>::read(nullptr, buf.data(), &dst); }
+  catch (const std::exception&) { threw = true; }
+  EXPECT_TRUE(threw);
+
+  // a within-capacity length is still accepted
+  *reinterpret_cast<size_t*>(buf.data()) = 3;
+  threw = false;
+  try { hobbes::fregion::store<CA>::read(nullptr, buf.data(), &dst); }
+  catch (const std::exception&) { threw = true; }
+  EXPECT_TRUE(!threw);
+  EXPECT_EQ(dst.size, size_t(3));
+}
