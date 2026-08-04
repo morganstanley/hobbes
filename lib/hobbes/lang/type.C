@@ -2353,9 +2353,23 @@ template <typename T>
     }
   }
 
+// the type decoders below consume a byte buffer that may be malformed or
+// truncated (it can originate from a file or an untrusted network peer), so
+// every read must confirm the requested span is present before touching it --
+// checked overflow-safely, since 'in.size() - *n' underflows once the cursor
+// has been advanced past the end.
+static void ensureAvail(const bytes& in, unsigned int n, size_t sz) {
+  if (n > in.size() || (in.size() - n) < sz) {
+    throw std::runtime_error(
+      "Encoded type information is truncated (need " + str::from(sz) +
+      " bytes at offset " + str::from(n) + " but only " + str::from(in.size()) + " available)");
+  }
+}
+
 template <typename T>
   struct readF {
     static T read(const bytes& in, unsigned int* n) {
+      ensureAvail(in, *n, sizeof(T));
       T r;
       std::memcpy(&r, &in[*n], sizeof(T));
       *n += sizeof(T);
@@ -2374,9 +2388,7 @@ template <>
   struct readF<std::string> {
     static std::string read(const bytes& in, unsigned int* n) {
       size_t sz = readF<size_t>::read(in, n);
-      if (sz > (in.size()-*n)) {
-        throw std::runtime_error("Encoded type information is invalid (recorded string with size=" + str::from(sz) + " but only " + str::from(in.size()-*n) + " bytes are available to read)");
-      }
+      ensureAvail(in, *n, sz);
       std::string r(reinterpret_cast<const char*>(&(in[*n])), sz);
       *n += sz;
       return r;
