@@ -152,6 +152,13 @@ void runRecvConnection(SessionGroup* sg, NetConnection* pc, const std::string& d
     // get the log group for incoming data
     const std::string group = receiveString(*connection);
 
+    // the group name is attacker-controlled and is substituted into a filesystem
+    // path; reject anything that is not a single, non-hidden path component so a
+    // client cannot direct storage outside the configured data directory
+    if (!isValidGroupName(group)) {
+      throw std::runtime_error("rejected log session: invalid group name");
+    }
+
     // get the (compressed) init message data
     std::vector<uint8_t> inb = receiveBuffer(*connection);
     gzbuffer zb(inb, &outb);
