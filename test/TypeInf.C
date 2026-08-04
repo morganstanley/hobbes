@@ -1,6 +1,7 @@
 
 #include "test.H"
 #include <hobbes/hobbes.H>
+#include <cstring>
 #include <memory>
 
 using namespace hobbes;
@@ -24,3 +25,39 @@ TEST(TypeInf, Unification) {
   EXPECT_TRUE(*substitute(&u, t0) == *t5);
 }
 
+
+TEST(TypeInf, DecodeRejectsTruncatedInput) {
+  // the binary type decoder consumes buffers that can be malformed or truncated
+  // (they may arrive from a file or an untrusted network peer), so a short or
+  // hostile buffer must throw rather than read out of bounds
+  MonoTypePtr ty = tuplety(list(primty("int"), arrayty(primty("char")), tvar("elephant")));
+
+  std::vector<unsigned char> enc;
+  encode(ty, &enc);
+  EXPECT_TRUE(enc.size() > 0);
+
+  // the full buffer round-trips
+  EXPECT_TRUE(show(decode(enc)) == show(ty));
+
+  // every proper-prefix truncation is rejected with an exception, not an
+  // out-of-bounds read
+  for (size_t k = 0; k < enc.size(); ++k) {
+    std::vector<unsigned char> trunc(enc.begin(), enc.begin() + static_cast<long>(k));
+    bool threw = false;
+    try { decode(trunc); } catch (const std::exception&) { threw = true; }
+    EXPECT_TRUE(threw);
+  }
+
+  // a length field that overruns the buffer must be rejected rather than trusted:
+  // encode a bare type variable ([int tag][size_t namelen][name...]) and rewrite
+  // the name length to SIZE_MAX -- the pre-fix code trusted this via a subtraction
+  // that underflows once the cursor passes the end of the buffer
+  std::vector<unsigned char> craft;
+  encode(tvar("x"), &craft);
+  EXPECT_TRUE(craft.size() >= sizeof(int) + sizeof(size_t));
+  size_t huge = ~static_cast<size_t>(0);
+  memcpy(&craft[sizeof(int)], &huge, sizeof(huge));
+  bool threw = false;
+  try { decode(craft); } catch (const std::exception&) { threw = true; }
+  EXPECT_TRUE(threw);
+}
