@@ -139,6 +139,14 @@ if(USE_ASAN_AND_UBSAN)
   message(STATUS "address and undefined sanitizers enabled")
 endif()
 
+option(BUILD_FUZZERS "Build fuzzing harnesses (libFuzzer with Clang, standalone runners otherwise)" OFF)
+if(BUILD_FUZZERS AND CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+  # instrument everything (not just the harnesses) so the fuzzers see
+  # coverage inside libhobbes; the fuzzer runtime itself only links into the
+  # harness executables
+  add_compile_options(-fsanitize=fuzzer-no-link)
+endif()
+
 add_library(hobbes STATIC ${lib_files})
 target_link_libraries(hobbes PUBLIC ${llvm_ldflags} ${llvm_libs} ${ZLIB_LIBRARIES} ${CURSES_LIBRARIES} ${sys_libs})
 add_library(hobbes-pic STATIC ${lib_files})
@@ -149,6 +157,10 @@ add_executable(hi ${hi_files})
 target_link_libraries(hi PUBLIC "-rdynamic" PRIVATE hobbes ${Readline_LIBRARIES})
 add_executable(hog ${hog_files})
 target_link_libraries(hog PRIVATE hobbes)
+
+if(BUILD_FUZZERS)
+  add_subdirectory(fuzz)
+endif()
 
 enable_testing()
 add_executable(mock-proc test/mocks/proc.C)

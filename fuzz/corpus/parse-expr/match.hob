@@ -1,0 +1,1 @@
+match (1, "a") with | (0, _) -> "zero" | _ -> "other"
