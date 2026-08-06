@@ -1318,3 +1318,31 @@ Another example we've seen earlier is the hobbes `Connect` constraint.  This als
 
 These are just some examples of extensions to hobbes through the `Unqualifier` interface, but there are undoubtedly many other ways that this option can be useful to applications using hobbes.
 
+
+## Releases
+
+Releases are source-only: Hobbes is consumed by compiling it, so no build
+artifacts are published. Each release consists of a reproducible source
+archive, a `SHA256SUMS` file, and a Sigstore signature over those checksums.
+
+Signing is keyless — the signature is bound to the release workflow's OIDC
+identity and recorded in the public Rekor transparency log — so there is no
+signing key to manage. To verify a release:
+
+```bash
+cosign verify-blob \
+  --certificate SHA256SUMS.pem \
+  --signature SHA256SUMS.sig \
+  --certificate-identity-regexp '^https://github.com/morganstanley/hobbes/' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  SHA256SUMS
+
+sha256sum -c SHA256SUMS
+```
+
+Releases are cut by pushing a signed tag, which names the release:
+
+```bash
+git tag -s v1.0.0 -m "hobbes 1.0.0"
+git push origin v1.0.0
+```
