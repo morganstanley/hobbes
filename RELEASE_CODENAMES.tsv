@@ -1,0 +1,33 @@
+# Release codenames, one per major version: v<major>.x.y is named by the
+# <major>'th letter. Two alliterative words drawn from philosophy.
+#
+# Read by .github/workflows/release.yml to title the release. Adding a row
+# here is all that is needed to name a future major version.
+#
+# major	letter	codename
+1	A	Analytic Aporia
+2	B	Being Becoming
+3	C	Categorical Cogito
+4	D	Dialectical Dasein
+5	E	Empirical Epoché
+6	F	Fallibilist Forms
+7	G	Given Ground
+8	H	Hermeneutic Horizon
+9	I	Immanent Idea
+10	J	Just Judgment
+11	K	Kantian Kingdom
+12	L	Logical Logos
+13	M	Material Monad
+14	N	Noumenal Now
+15	O	Ontic Openness
+16	P	Phenomenal Praxis
+17	Q	Quiet Quietism
+18	R	Rational Recurrence
+19	S	Skeptical Sublime
+20	T	Transcendental Telos
+21	U	Universal Unmoved
+22	V	Virtuous Void
+23	W	Willed World
+24	X	Xenial
+25	Y	Yielding Yoke
+26	Z	Zeno's Zenith

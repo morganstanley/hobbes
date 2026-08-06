@@ -57,6 +57,24 @@ jobs:
           ref: ${{ steps.tag.outputs.name }}
           persist-credentials: false
 
+      - name: Resolve the codename
+        id: codename
+        env:
+          TAG: ${{ steps.tag.outputs.name }}
+        run: |
+          set -euo pipefail
+          version="${TAG#v}"
+          major="${version%%.*}"
+          # each major version is named by the matching row in
+          # RELEASE_CODENAMES.tsv; an unnamed major simply has no codename
+          codename="$(awk -F'\t' -v m="$major" '!/^#/ && $1 == m { print $3 }' RELEASE_CODENAMES.tsv)"
+          if [ -n "$codename" ]; then
+            echo "title=${TAG} \"${codename}\"" >> "$GITHUB_OUTPUT"
+          else
+            echo "title=${TAG}" >> "$GITHUB_OUTPUT"
+          fi
+          echo "codename=${codename}" >> "$GITHUB_OUTPUT"
+
       - name: Build the source archive
         id: archive
         env:
@@ -90,7 +108,7 @@ jobs:
         uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
           tag_name: ${{ steps.tag.outputs.name }}
-          name: ${{ steps.tag.outputs.name }}
+          name: ${{ steps.codename.outputs.title }}
           generate_release_notes: true
           files: |
             ${{ steps.archive.outputs.name }}.tar.gz

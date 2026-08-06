@@ -1346,3 +1346,11 @@ Releases are cut by pushing a signed tag, which names the release:
 git tag -s v1.0.0 -m "hobbes 1.0.0"
 git push origin v1.0.0
 ```
+
+Each major version also carries a codename — two alliterative words from
+philosophy, lettered in order, so `v1.x` is *Analytic Aporia*, `v2.x` is
+*Being Becoming*, and so on through *Zeno's Zenith*. The full list lives in
+[RELEASE_CODENAMES.tsv](RELEASE_CODENAMES.tsv); the release workflow reads it
+to title the release (`v1.0.0 "Analytic Aporia"`). The tag remains the
+authoritative version — the codename is decoration, and a major version with
+no row simply has none.
