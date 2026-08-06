@@ -41,6 +41,11 @@ inline void encode(bool x, std::ostream& out) {
 inline void decode(bool* x, std::istream& in) {
   unsigned char b = 0;
   in.read(reinterpret_cast<char*>(&b), sizeof(b));
+  if (in.gcount() != static_cast<std::streamsize>(sizeof(b))) {
+    // a short read must not silently decode as false: this flag decides
+    // whether more fields follow, so it changes how the rest is interpreted
+    throw std::runtime_error("Truncated input decoding a boolean value");
+  }
   if (b > 1) {
     throw std::runtime_error(
       "Invalid boolean value in encoded data: " + std::to_string(static_cast<unsigned int>(b)));

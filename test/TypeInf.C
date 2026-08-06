@@ -4,6 +4,7 @@
 #include <hobbes/util/codec.H>
 #include <cstring>
 #include <memory>
+#include <limits>
 #include <sstream>
 
 using namespace hobbes;
@@ -100,7 +101,7 @@ TEST(TypeInf, CodecRejectsOversizedLength) {
   // input can supply, else a hostile count drives an unbounded allocation
   // before the read that would fail
   std::ostringstream out;
-  encode(static_cast<size_t>(1) << 40, out);   // absurd length, no payload
+  encode(std::numeric_limits<size_t>::max(), out);   // absurd length, no payload
   out.write("hi", 2);
 
   {
