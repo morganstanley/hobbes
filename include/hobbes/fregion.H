@@ -43,6 +43,7 @@
 #include <unordered_map>
 #include <functional>
 #include <stack>
+#include <limits>
 #include <stdexcept>
 #include <sstream>
 #include <array>
@@ -300,10 +301,43 @@ template <typename T>
   inline void reads(const imagefile* f, size_t sz, T* x) {
     fdread(f, reinterpret_cast<char*>(x), sz * sizeof(T));
   }
+// A length read out of the file image cannot describe more data than the file
+// itself holds. Without this check a corrupt or crafted image drives an
+// enormous allocation before the read that would fail, so validate the count
+// against the file size the same way other malformed-image cases are handled.
+inline void ensureLengthInFile(const imagefile* f, size_t n, size_t esz) {
+  if (n == 0) {
+    return;
+  }
+  if (esz != 0 && n > (std::numeric_limits<size_t>::max() / esz)) {
+    throw std::runtime_error(
+      "Not a valid structured data file: length (" + hobbes::string::from(n) + ") overflows: " + f->path);
+  }
+  const size_t need = n * esz;
+
+  // Bound by the bytes actually left from the current offset rather than the
+  // whole file: a length near the end can be smaller than the file and still
+  // describe far more data than remains.
+  size_t avail = f->file_size;
+  if (f->fd >= 0) {
+    const off_t cur = lseek(f->fd, 0, SEEK_CUR);
+    if (cur >= 0 && static_cast<size_t>(cur) <= f->file_size) {
+      avail = f->file_size - static_cast<size_t>(cur);
+    }
+  }
+
+  if (need > avail) {
+    throw std::runtime_error(
+      "Not a valid structured data file: length (" + hobbes::string::from(need) +
+      " bytes) exceeds the " + hobbes::string::from(avail) + " bytes remaining: " + f->path);
+  }
+}
+
 inline void read(imagefile* f, std::string* x) {
   size_t sz = 0;
   read(f, &sz);
 
+  ensureLengthInFile(f, sz, sizeof(char));
   x->resize(sz);
   if (sz > 0) {
     reads(f, sz, &((*x)[0]));
@@ -313,6 +347,7 @@ inline void read(imagefile* f, std::vector<unsigned char>* xs) {
   size_t sz = 0;
   read(f, &sz);
 
+  ensureLengthInFile(f, sz, sizeof(unsigned char));
   xs->resize(sz);
   if (sz > 0) {
     reads(f, sz, &((*xs)[0]));
