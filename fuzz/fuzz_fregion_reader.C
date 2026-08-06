@@ -47,7 +47,14 @@ void writeInput(const uint8_t* data, size_t size) {
 } // namespace
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
-  writeInput(data, size);
+  try {
+    writeInput(data, size);
+  } catch (const std::exception& e) {
+    // an unwritable scratch file is an environment problem, not a finding --
+    // fail loudly rather than letting it look like a fuzzer crash
+    fprintf(stderr, "fuzz-fregion-reader: fatal environment error: %s\n", e.what());
+    exit(1);
+  }
   try {
     hobbes::fregion::reader r(scratchPath());
   } catch (const std::exception&) {

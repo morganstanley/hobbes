@@ -2,6 +2,7 @@
 // reproducers with any compiler): runs each file named on the command line
 // through the harness entry point once.
 
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <vector>
@@ -20,6 +21,11 @@ int main(int argc, char** argv) {
     size_t n;
     while ((n = fread(buf, 1, sizeof(buf), f)) > 0) {
       data.insert(data.end(), buf, buf + n);
+    }
+    if (ferror(f)) {
+      fprintf(stderr, "read error: %s\n", argv[i]);
+      fclose(f);
+      return 1;
     }
     fclose(f);
 

@@ -1,7 +1,8 @@
 # Fuzzing harnesses
 
 Hobbes consumes untrusted bytes in exactly three places (see the security
-model in `doc/en/security.rst`), and each has a harness here:
+model documentation in `doc/en/security.rst`, added by #514), and each has a
+harness here:
 
 | Harness              | Surface                                                          |
 | -------------------- | ---------------------------------------------------------------- |
