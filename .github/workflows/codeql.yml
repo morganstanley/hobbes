@@ -1,0 +1,63 @@
+# CodeQL static analysis for the C/C++ sources.
+#
+# C/C++ analysis requires CodeQL to observe a real compilation, so this uses
+# build-mode: manual with the same stock-apt LLVM toolchain as the other
+# Ubuntu build jobs. The build is heavy (~15-25 min), so this runs on pushes
+# to main and weekly rather than on every pull request.
+name: "CodeQL"
+on:
+  push:
+    branches: [main]
+  # Also validate the workflow itself when it changes
+  pull_request:
+    paths: ['.github/workflows/codeql.yml']
+  schedule:
+    - cron: '17 3 * * 1'
+  workflow_dispatch:
+
+# Least privilege by default; the analysis job opts into more
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze C/C++
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      # Needed by actions/checkout to clone the repository
+      contents: read
+      # Needed to upload the analysis results to the code-scanning dashboard
+      security-events: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Install dependencies
+        run: |
+          export DEBIAN_FRONTEND=noninteractive
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake make ca-certificates \
+            libncurses-dev zlib1g-dev libreadline-dev libzstd-dev \
+            python3 \
+            llvm-18-dev clang-18 libclang-18-dev
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@5595ccaf912efad79be6eef63a5619ff05969be3 # v4
+        with:
+          languages: c-cpp
+          build-mode: manual
+
+      - name: Build hobbes
+        run: |
+          CC=clang-18 CXX=clang++-18 cmake -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DLLVM_DIR=/usr/lib/llvm-18/lib/cmake/llvm
+          cmake --build build -j"$(nproc)"
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@5595ccaf912efad79be6eef63a5619ff05969be3 # v4
+        with:
+          category: "/language:c-cpp"
