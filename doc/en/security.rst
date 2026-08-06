@@ -48,7 +48,8 @@ authenticated tunnels such as TLS or SSH).
 
 Protocol handling on the near side of the boundary must still be robust:
 malformed bytes on the wire — in particular the binary type descriptions
-decoded by ``ty::decode`` before any expression is accepted — must be
+decoded by ``hobbes::decode`` (``hobbes/lang/type.H``) before any expression
+is accepted — must be
 rejected cleanly, never cause memory unsafety. Defects here are in scope for
 security reports.
 
@@ -56,7 +57,8 @@ Structured data files assume a trusted writer
 ---------------------------------------------
 
 Structured data (fregion) files — as produced by ``hog`` and read by ``hi``
-and the ``fregion.H`` reader — are memory-mapped into the reading process.
+and the ``hobbes::fregion::reader`` API (declared in ``hobbes/fregion.H``) —
+are memory-mapped into the reading process.
 The reader validates file structure (malformed images are rejected with an
 error rather than trusted), but these files are designed as a
 high-performance shared medium between cooperating processes, not as an

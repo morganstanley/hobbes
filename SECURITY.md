@@ -22,8 +22,9 @@ design choices here. The full threat model is documented in
 
 * Memory unsafety (out-of-bounds read/write, use-after-free, unchecked
   allocation sizes) reachable from *malformed data*: structured data files
-  read by `fregion.H` / `hi` / `hog`, binary type descriptions decoded by
-  `ty::decode`, or network payloads processed before a peer would be trusted.
+  read by `hobbes::fregion::reader` / `hi` / `hog`, binary type descriptions
+  decoded by `hobbes::decode` (`hobbes/lang/type.H`), or network payloads
+  processed before a peer would be trusted.
 * Crashes or memory corruption in the lexer/parser triggered by malformed
   *source text*, as distinct from the behavior of successfully compiled code.
 * Vulnerabilities in the build, release, or CI pipeline of this repository.
