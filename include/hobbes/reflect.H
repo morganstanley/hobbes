@@ -511,6 +511,15 @@ template <size_t i, typename R, template <size_t,class,class> class F, typename 
     // the erased signature. Casting the function pointer itself and calling
     // through the mismatched type is undefined behavior even where the ABI
     // agrees, and -fsanitize=function traps on it.
+    //
+    // The thunk calls fn rather than binding its address, which would accept
+    // implicitly convertible arguments and hide a signature mismatch, so
+    // require the exact signature explicitly -- the check the previous
+    // 'TPF tpf = &F<i, Ctor, U>::fn;' assignment performed implicitly.
+    static_assert(
+      std::is_same<decltype(&F<i, Ctor, U>::fn), R (*)(Ctor *, Args...)>::value,
+      "variant payload function must have signature R(Ctor*, Args...)");
+
     static R thunk(void* p, Args... args) {
       return F<i, Ctor, U>::fn(reinterpret_cast<Ctor*>(p), args...);
     }
