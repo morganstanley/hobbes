@@ -4,7 +4,7 @@
 
 If you believe you have found a security issue or vulnerability in Hobbes, we
 encourage you to let us know right away. Please report it through Morgan
-Stanley's coordinated vulnerability disclosure process:
+Stanley's responsible disclosure program:
 
 https://www.morganstanley.com/vulnerability-disclosure
 
