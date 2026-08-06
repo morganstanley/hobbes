@@ -4,7 +4,10 @@
 
 #include <cstring>
 #include <iostream>
+#include <limits>
 #include <map>
+#include <stdexcept>
+#include <string>
 #include <unistd.h>
 #include <vector>
 
@@ -16,7 +19,6 @@ using int128_t = __int128;
   inline void encode(T x, std::ostream& out) { out.write(reinterpret_cast<const char*>(&x), sizeof(x)); } \
   inline void decode(T* x, std::istream& in) { in.read(reinterpret_cast<char*>(x), sizeof(*x)); }
 
-PRIM_CODEC(bool);
 PRIM_CODEC(unsigned char);
 PRIM_CODEC(char);
 PRIM_CODEC(short);
@@ -27,6 +29,52 @@ PRIM_CODEC(size_t);
 PRIM_CODEC(float);
 PRIM_CODEC(double);
 
+// bool is decoded explicitly rather than through PRIM_CODEC: these decoders
+// run on data that can be malformed or hostile (the RPC layer decodes type
+// and expression descriptions supplied by a peer), and loading any byte other
+// than 0 or 1 into a bool is undefined behavior.
+inline void encode(bool x, std::ostream& out) {
+  const auto b = static_cast<unsigned char>(x ? 1 : 0);
+  out.write(reinterpret_cast<const char*>(&b), sizeof(b));
+}
+
+inline void decode(bool* x, std::istream& in) {
+  unsigned char b = 0;
+  in.read(reinterpret_cast<char*>(&b), sizeof(b));
+  if (b > 1) {
+    throw std::runtime_error(
+      "Invalid boolean value in encoded data: " + std::to_string(static_cast<unsigned int>(b)));
+  }
+  *x = (b != 0);
+}
+
+// A length field read out of untrusted data must be checked against what the
+// input can actually supply; otherwise a corrupt or hostile count drives an
+// unbounded allocation long before the read that would fail. Streams that
+// cannot report their extent are left to the read itself.
+inline void ensureAvail(std::istream& in, size_t n, size_t esz) {
+  if (n == 0) {
+    return;
+  }
+  if (esz != 0 && n > (std::numeric_limits<size_t>::max() / esz)) {
+    throw std::runtime_error("Encoded data length overflows: " + std::to_string(n));
+  }
+  const size_t need = n * esz;
+
+  const std::streampos cur = in.tellg();
+  if (cur < 0) {
+    return;
+  }
+  in.seekg(0, std::ios::end);
+  const std::streampos end = in.tellg();
+  in.seekg(cur, std::ios::beg);
+  if (end < cur || static_cast<size_t>(end - cur) < need) {
+    throw std::runtime_error(
+      "Encoded data is truncated (need " + std::to_string(need) + " bytes but only " +
+      std::to_string(end < cur ? 0 : static_cast<size_t>(end - cur)) + " available)");
+  }
+}
+
 inline void encode(const std::string& x, std::ostream& out) {
   encode(static_cast<size_t>(x.size()), out);
   out.write(x.c_str(), x.size());
@@ -36,6 +84,7 @@ inline void decode(std::string* x, std::istream& in) {
   size_t n = 0;
   decode(&n, in);
 
+  ensureAvail(in, n, sizeof(char));
   x->resize(n);
   in.read(&((*x)[0]), n);
 }
@@ -53,6 +102,9 @@ template <typename T>
     size_t sz = 0;
     decode(&sz, in);
 
+    // every element consumes at least a byte, so a count larger than the
+    // remaining input cannot be satisfied however the elements are encoded
+    ensureAvail(in, sz, 1);
     for (size_t i = 0; i < sz; ++i) {
       T x;
       decode(&x, in);
