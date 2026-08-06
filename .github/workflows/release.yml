@@ -1,0 +1,135 @@
+# Publish a signed source release.
+#
+# Hobbes is consumed as source -- downstream applications compile it -- so no
+# build artifacts are published. What is published is the source archive that
+# corresponds to a tag, a checksum file, and a signature over that checksum
+# file, so a consumer can verify that the source they built came from this
+# repository at this tag.
+#
+# Signing is keyless (Sigstore): the signature is bound to this workflow's
+# OIDC identity and recorded in the public Rekor transparency log, so there is
+# no signing key to issue, store or rotate.
+#
+# To cut a release, push a signed tag:
+#
+#   git tag -s v1.0.0 -m "hobbes 1.0.0"
+#   git push origin v1.0.0
+#
+# The tag name is the release name; nothing here invents a version.
+name: "Release"
+on:
+  push:
+    tags: ['v*']
+  # allows re-running against an existing tag without re-pushing it
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to publish (e.g. v1.0.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Publish signed source release
+    runs-on: ubuntu-latest
+    permissions:
+      # create the release and upload its assets
+      contents: write
+      # keyless signing via Sigstore
+      id-token: write
+
+    steps:
+      - name: Resolve tag
+        id: tag
+        env:
+          # via env rather than inline expansion, so the value cannot be
+          # interpreted as shell
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            tag="$INPUT_TAG"
+          else
+            tag="$GITHUB_REF_NAME"
+          fi
+
+          # The tag name becomes an archive filename and a tar prefix, and
+          # workflow_dispatch will accept any ref, so require it to look like a
+          # version tag and contain nothing path-like before going further.
+          case "$tag" in
+            v[0-9]*) ;;
+            *) echo "refusing to release from '$tag': expected a v<version> tag" >&2; exit 1 ;;
+          esac
+          case "$tag" in
+            *[!A-Za-z0-9.+_-]*) echo "refusing to release from '$tag': unexpected characters" >&2; exit 1 ;;
+          esac
+
+          echo "name=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout the tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ steps.tag.outputs.name }}
+          persist-credentials: false
+
+      - name: Resolve the codename
+        id: codename
+        env:
+          TAG: ${{ steps.tag.outputs.name }}
+        run: |
+          set -euo pipefail
+          version="${TAG#v}"
+          major="${version%%.*}"
+          # each major version is named by the matching row in
+          # RELEASE_CODENAMES.tsv; an unnamed major simply has no codename
+          codename="$(awk -F'\t' -v m="$major" '!/^#/ && $1 == m { print $3 }' RELEASE_CODENAMES.tsv)"
+          if [ -n "$codename" ]; then
+            echo "title=${TAG} \"${codename}\"" >> "$GITHUB_OUTPUT"
+          else
+            echo "title=${TAG}" >> "$GITHUB_OUTPUT"
+          fi
+          echo "codename=${codename}" >> "$GITHUB_OUTPUT"
+
+      - name: Build the source archive
+        id: archive
+        env:
+          TAG: ${{ steps.tag.outputs.name }}
+        run: |
+          set -euo pipefail
+          version="${TAG#v}"
+          name="hobbes-${version}"
+          # git archive is reproducible for a given tree, unlike the
+          # auto-generated GitHub tarball whose compression has changed before
+          git archive --format=tar --prefix="${name}/" "$TAG" \
+            | gzip -n > "${name}.tar.gz"
+          sha256sum "${name}.tar.gz" > SHA256SUMS
+          cat SHA256SUMS
+          echo "name=${name}" >> "$GITHUB_OUTPUT"
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Sign the checksum file
+        run: |
+          set -euo pipefail
+          # sign the checksums rather than the archive: one signature covers
+          # every asset listed, and verifying it needs no large download
+          cosign sign-blob --yes \
+            --output-signature SHA256SUMS.sig \
+            --output-certificate SHA256SUMS.pem \
+            SHA256SUMS
+
+      - name: Publish the release
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
+        with:
+          tag_name: ${{ steps.tag.outputs.name }}
+          name: ${{ steps.codename.outputs.title }}
+          generate_release_notes: true
+          files: |
+            ${{ steps.archive.outputs.name }}.tar.gz
+            SHA256SUMS
+            SHA256SUMS.sig
+            SHA256SUMS.pem
