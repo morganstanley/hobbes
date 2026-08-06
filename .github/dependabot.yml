@@ -1,15 +1,31 @@
 version: 2
 updates:
+  # Every workflow pins its actions to a commit SHA, so these updates are the
+  # only thing that moves those pins. Grouping keeps a quiet week to one PR.
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
+    open-pull-requests-limit: 5
     groups:
       codeql-actions:
         patterns:
           - "github/codeql-action/*"
+      actions-minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
 
+  # Base image for the devcontainer; both .devcontainer/docker/devcontainer.json
+  # and .devcontainer/podman/devcontainer.json build from this Dockerfile.
   - package-ecosystem: "docker"
     directory: "/.devcontainer"
+    schedule:
+      interval: "weekly"
+
+  # Images the CI build containers are based on --
+  # docker/build/rhel9.Dockerfile and docker/build/xenial.Dockerfile.
+  - package-ecosystem: "docker"
+    directory: "/docker/build"
     schedule:
       interval: "weekly"
