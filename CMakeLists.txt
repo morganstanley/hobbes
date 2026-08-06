@@ -126,7 +126,11 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${cxx_flags}")
 set(CMAKE_CXX_FLAGS_DEBUG "-g")
 set(CMAKE_CXX_FLAGS_RELEASE "-O2")
 
-option(USE_ASAN_UBSAN "Use address,undefined sanitizers" OFF)
+option(USE_ASAN_AND_UBSAN "Use address,undefined sanitizers" OFF)
+if(USE_ASAN_UBSAN)
+  message(DEPRECATION "USE_ASAN_UBSAN is deprecated (it previously had no effect); use USE_ASAN_AND_UBSAN")
+  set(USE_ASAN_AND_UBSAN ON)
+endif()
 if(USE_ASAN_AND_UBSAN)
   # _FORTIFY_SOURCE doesn't play well with asan
   # https://github.com/google/sanitizers/issues/247
