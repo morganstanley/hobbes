@@ -5,13 +5,17 @@ on:
   pull_request:
     branches: [main]
 
+# Least privilege by default; jobs opt into more where needed
+permissions:
+  contents: read
+
 jobs:
   coverage:
     runs-on: ubuntu-latest
     container:
       image: rockylinux:9
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Install dependencies
         run: |
           dnf update -y
@@ -63,7 +67,7 @@ jobs:
           cat coverage-summary.txt >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v5
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
         with:
           path: coverage-html
   deploy:
@@ -79,4 +83,4 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v5
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5
