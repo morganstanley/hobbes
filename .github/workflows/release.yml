@@ -44,17 +44,35 @@ jobs:
     steps:
       - name: Resolve tag
         id: tag
+        env:
+          # via env rather than inline expansion, so the value cannot be
+          # interpreted as shell
+          INPUT_TAG: ${{ inputs.tag }}
         run: |
+          set -euo pipefail
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "name=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+            tag="$INPUT_TAG"
           else
-            echo "name=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+            tag="$GITHUB_REF_NAME"
           fi
+
+          # The tag name becomes an archive filename and a tar prefix, and
+          # workflow_dispatch will accept any ref, so require it to look like a
+          # version tag and contain nothing path-like before going further.
+          case "$tag" in
+            v[0-9]*) ;;
+            *) echo "refusing to release from '$tag': expected a v<version> tag" >&2; exit 1 ;;
+          esac
+          case "$tag" in
+            *[!A-Za-z0-9.+_-]*) echo "refusing to release from '$tag': unexpected characters" >&2; exit 1 ;;
+          esac
+
+          echo "name=$tag" >> "$GITHUB_OUTPUT"
 
       - name: Checkout the tag
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ steps.tag.outputs.name }}
+          ref: refs/tags/${{ steps.tag.outputs.name }}
           persist-credentials: false
 
       - name: Resolve the codename

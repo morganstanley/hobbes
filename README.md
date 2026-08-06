@@ -1327,20 +1327,25 @@ archive, a `SHA256SUMS` file, and a Sigstore signature over those checksums.
 
 Signing is keyless — the signature is bound to the release workflow's OIDC
 identity and recorded in the public Rekor transparency log — so there is no
-signing key to manage. To verify a release:
+signing key to manage. Verify against that exact identity: the pattern below
+binds to this repository, this workflow file *and* a tag ref, so a signature
+produced by any other workflow here would not be accepted.
 
 ```bash
 cosign verify-blob \
   --certificate SHA256SUMS.pem \
   --signature SHA256SUMS.sig \
-  --certificate-identity-regexp '^https://github.com/morganstanley/hobbes/' \
+  --certificate-identity-regexp \
+    '^https://github\.com/morganstanley/hobbes/\.github/workflows/release\.yml@refs/tags/v' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   SHA256SUMS
 
 sha256sum -c SHA256SUMS
 ```
 
-Releases are cut by pushing a signed tag, which names the release:
+Releases are cut by pushing a tag matching `v*`, which names the release.
+Signing the tag is recommended — it attests who cut it — but the workflow
+does not require it, and the release signature is independent of it:
 
 ```bash
 git tag -s v1.0.0 -m "hobbes 1.0.0"
