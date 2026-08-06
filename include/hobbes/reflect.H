@@ -506,10 +506,17 @@ template <size_t i, typename R, template <size_t,class,class> class F, typename 
 template <size_t i, typename R, template <size_t,class,class> class F, typename U, typename ... Args, typename Ctor, typename ... Ctors>
   struct variantAppInit<i, R, F, U, tuple<Args...>, Ctor, Ctors...> {
     using PF = R (*)(void *, Args...);
+
+    // Reach the constructor-typed function through a thunk that genuinely has
+    // the erased signature. Casting the function pointer itself and calling
+    // through the mismatched type is undefined behavior even where the ABI
+    // agrees, and -fsanitize=function traps on it.
+    static R thunk(void* p, Args... args) {
+      return F<i, Ctor, U>::fn(reinterpret_cast<Ctor*>(p), args...);
+    }
+
     static bool init(PF* pfs) {
-      using TPF = R (*)(Ctor *, Args...);
-      TPF tpf = &F<i, Ctor, U>::fn;
-      pfs[i] = reinterpret_cast<PF>(tpf);
+      pfs[i] = &thunk;
       return variantAppInit<i+1, R, F, U, tuple<Args...>, Ctors...>::init(pfs);
     }
   };
