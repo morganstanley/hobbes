@@ -506,10 +506,26 @@ template <size_t i, typename R, template <size_t,class,class> class F, typename 
 template <size_t i, typename R, template <size_t,class,class> class F, typename U, typename ... Args, typename Ctor, typename ... Ctors>
   struct variantAppInit<i, R, F, U, tuple<Args...>, Ctor, Ctors...> {
     using PF = R (*)(void *, Args...);
+
+    // Reach the constructor-typed function through a thunk that genuinely has
+    // the erased signature. Casting the function pointer itself and calling
+    // through the mismatched type is undefined behavior even where the ABI
+    // agrees, and -fsanitize=function traps on it.
+    //
+    // The thunk calls fn rather than binding its address, which would accept
+    // implicitly convertible arguments and hide a signature mismatch, so
+    // require the exact signature explicitly -- the check the previous
+    // 'TPF tpf = &F<i, Ctor, U>::fn;' assignment performed implicitly.
+    static_assert(
+      std::is_same<decltype(&F<i, Ctor, U>::fn), R (*)(Ctor *, Args...)>::value,
+      "variant payload function must have signature R(Ctor*, Args...)");
+
+    static R thunk(void* p, Args... args) {
+      return F<i, Ctor, U>::fn(reinterpret_cast<Ctor*>(p), args...);
+    }
+
     static bool init(PF* pfs) {
-      using TPF = R (*)(Ctor *, Args...);
-      TPF tpf = &F<i, Ctor, U>::fn;
-      pfs[i] = reinterpret_cast<PF>(tpf);
+      pfs[i] = &thunk;
       return variantAppInit<i+1, R, F, U, tuple<Args...>, Ctors...>::init(pfs);
     }
   };
