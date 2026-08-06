@@ -9,14 +9,18 @@ on:
   push:
     branches: [main]
 
-# Default to no permissions; the analysis job requests what it needs
+# Read-only by default; the analysis job adds the write scopes it needs
 permissions: read-all
 
 jobs:
   analysis:
     name: Scorecard analysis
     runs-on: ubuntu-latest
+    # Job-level permissions replace the workflow-level ones entirely, so
+    # grant the checkout read scope here alongside the write scopes
     permissions:
+      # Needed by actions/checkout to clone the repository
+      contents: read
       # Needed to upload the SARIF results to the code-scanning dashboard
       security-events: write
       # Needed to publish results to the OpenSSF REST API (for the badge)
