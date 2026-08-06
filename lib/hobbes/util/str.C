@@ -1,5 +1,6 @@
 
 #include <hobbes/util/str.H>
+#include <iterator>
 #include <memory>
 #include <wordexp.h>
 #include <glob.h>
@@ -376,9 +377,13 @@ std::string unescape(const std::string& cs) {
         result.put('\0');
         break;
       case 'x': {
+          // only step onto a digit that exists: incrementing an iterator that
+          // is already at the end is undefined, and leaves the following
+          // 'c != cs.end()' guard passing on a past-the-end iterator, so a
+          // string ending in "\x" read one byte beyond the buffer
           char b1 = 0; char b2 = 0;
-          ++c; if (c != cs.end()) b1 = *c;
-          ++c; if (c != cs.end()) b2 = *c;
+          if (std::next(c) != cs.end()) { ++c; b1 = *c; }
+          if (std::next(c) != cs.end()) { ++c; b2 = *c; }
           result.put((denyb(b1) << 4) + denyb(b2));
           break;
         }
