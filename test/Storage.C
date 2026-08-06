@@ -1098,3 +1098,34 @@ TEST(Storage, FRegionCArrayRejectsOversizedLength) {
   EXPECT_TRUE(!threw);
   EXPECT_EQ(dst.size, size_t(3));
 }
+
+TEST(Storage, FRegionRejectsLengthBeyondFileSize) {
+  // string and byte-vector lengths in a structured data file come straight out
+  // of the image; a corrupt or crafted length larger than the file itself must
+  // be rejected rather than driving an enormous allocation
+  hobbes::fregion::imagefile f;
+  f.path      = "synthetic";
+  f.fd        = -1;
+  f.file_size = 4096;
+
+  // a length that cannot fit in the file is rejected
+  bool threw = false;
+  try { hobbes::fregion::ensureLengthInFile(&f, size_t(1) << 40, sizeof(char)); }
+  catch (const std::exception&) { threw = true; }
+  EXPECT_TRUE(threw);
+
+  // so is one whose byte count overflows
+  threw = false;
+  try { hobbes::fregion::ensureLengthInFile(&f, ~size_t(0), sizeof(double)); }
+  catch (const std::exception&) { threw = true; }
+  EXPECT_TRUE(threw);
+
+  // plausible lengths are still accepted, including zero
+  threw = false;
+  try {
+    hobbes::fregion::ensureLengthInFile(&f, 0, sizeof(char));
+    hobbes::fregion::ensureLengthInFile(&f, 128, sizeof(char));
+    hobbes::fregion::ensureLengthInFile(&f, 4096, sizeof(char));
+  } catch (const std::exception&) { threw = true; }
+  EXPECT_TRUE(!threw);
+}
