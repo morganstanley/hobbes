@@ -313,10 +313,23 @@ inline void ensureLengthInFile(const imagefile* f, size_t n, size_t esz) {
     throw std::runtime_error(
       "Not a valid structured data file: length (" + hobbes::string::from(n) + ") overflows: " + f->path);
   }
-  if ((n * esz) > f->file_size) {
+  const size_t need = n * esz;
+
+  // Bound by the bytes actually left from the current offset rather than the
+  // whole file: a length near the end can be smaller than the file and still
+  // describe far more data than remains.
+  size_t avail = f->file_size;
+  if (f->fd >= 0) {
+    const off_t cur = lseek(f->fd, 0, SEEK_CUR);
+    if (cur >= 0 && static_cast<size_t>(cur) <= f->file_size) {
+      avail = f->file_size - static_cast<size_t>(cur);
+    }
+  }
+
+  if (need > avail) {
     throw std::runtime_error(
-      "Not a valid structured data file: length (" + hobbes::string::from(n * esz) +
-      " bytes) exceeds file size (" + hobbes::string::from(f->file_size) + "): " + f->path);
+      "Not a valid structured data file: length (" + hobbes::string::from(need) +
+      " bytes) exceeds the " + hobbes::string::from(avail) + " bytes remaining: " + f->path);
   }
 }
 

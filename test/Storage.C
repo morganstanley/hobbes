@@ -1128,4 +1128,38 @@ TEST(Storage, FRegionRejectsLengthBeyondFileSize) {
     hobbes::fregion::ensureLengthInFile(&f, 4096, sizeof(char));
   } catch (const std::exception&) { threw = true; }
   EXPECT_TRUE(!threw);
+
+  // with a real descriptor the bound is what remains from the current offset,
+  // not the whole file: a length smaller than the file but larger than the
+  // bytes left after it must still be rejected
+  std::string tmpl = "/tmp/hobbes-fregion-len-XXXXXX";
+  std::vector<char> path(tmpl.begin(), tmpl.end());
+  path.push_back('\0');
+  int fd = mkstemp(path.data());
+  EXPECT_TRUE(fd >= 0);
+  if (fd >= 0) {
+    std::vector<char> zeros(4096, 0);
+    EXPECT_TRUE(::write(fd, zeros.data(), zeros.size()) == 4096);
+
+    hobbes::fregion::imagefile rf;
+    rf.path      = path.data();
+    rf.fd        = fd;
+    rf.file_size = 4096;
+
+    // seek near the end: only 96 bytes remain
+    EXPECT_TRUE(lseek(fd, 4000, SEEK_SET) == 4000);
+
+    threw = false;
+    try { hobbes::fregion::ensureLengthInFile(&rf, 1024, sizeof(char)); }
+    catch (const std::exception&) { threw = true; }
+    EXPECT_TRUE(threw); // 1024 < file_size, but > the 96 bytes remaining
+
+    threw = false;
+    try { hobbes::fregion::ensureLengthInFile(&rf, 96, sizeof(char)); }
+    catch (const std::exception&) { threw = true; }
+    EXPECT_TRUE(!threw); // exactly what remains is fine
+
+    close(fd);
+    unlink(path.data());
+  }
 }
