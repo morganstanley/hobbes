@@ -9,15 +9,25 @@ TEST(Str, UnescapeTruncatedHexEscape) {
   // the parser reads before anything is compiled, so it has to be safe on
   // arbitrary input. A truncated "\x" escape used to step its iterator past
   // the end of the string and read the byte beyond it.
-  EXPECT_TRUE(str::unescape("\\x").empty() || str::unescape("\\x").size() == 1);
+  // missing digits are treated as zero, so "\x" yields exactly one NUL byte
+  std::string none = str::unescape("\\x");
+  EXPECT_EQ(none.size(), size_t(1));
+  EXPECT_EQ(int(static_cast<unsigned char>(none[0])), 0);
 
-  // a hex escape with only one digit, at the very end
+  // a hex escape with only one digit, at the very end: the present digit is
+  // the high nibble and the missing one is zero
   std::string one = str::unescape("\\xA");
-  EXPECT_TRUE(one.size() == 1);
+  EXPECT_EQ(one.size(), size_t(1));
+  EXPECT_EQ(int(static_cast<unsigned char>(one[0])), 0xA0);
 
   // the same cases with leading text, so the escape is not also the first char
-  EXPECT_TRUE(str::unescape("ab\\x").size() >= 2);
-  EXPECT_TRUE(str::unescape("ab\\xA").size() == 3);
+  std::string pre = str::unescape("ab\\x");
+  EXPECT_EQ(pre.size(), size_t(3));
+  EXPECT_EQ(int(static_cast<unsigned char>(pre[2])), 0);
+
+  std::string preOne = str::unescape("ab\\xA");
+  EXPECT_EQ(preOne.size(), size_t(3));
+  EXPECT_EQ(int(static_cast<unsigned char>(preOne[2])), 0xA0);
 
   // well-formed escapes are unaffected
   EXPECT_TRUE(str::unescape("\\x41") == "A");
@@ -26,6 +36,7 @@ TEST(Str, UnescapeTruncatedHexEscape) {
   EXPECT_TRUE(str::unescape("\\t").size() == 1 && str::unescape("\\t")[0] == '\t');
   EXPECT_TRUE(str::unescape("plain") == "plain");
 
-  // a trailing lone backslash must also be handled without overrunning
-  EXPECT_TRUE(str::unescape("abc\\").size() >= 3);
+  // a trailing lone backslash must also be handled without overrunning: it
+  // opens an escape that never completes, so it contributes nothing
+  EXPECT_TRUE(str::unescape("abc\\") == "abc");
 }
