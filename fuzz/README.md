@@ -68,9 +68,13 @@ be invoked repeatedly by a scheduler (cron, systemd, launchd), so a campaign
 survives reboots and OOM kills:
 
 ```bash
-export FUZZ_HOME=~/hobbes-fuzz       # holds build/, corpus/, artifacts/, logs/
-$FUZZ_HOME/bin/run-fuzzer.sh parse-expr 3600
+export FUZZ_HOME=~/hobbes-fuzz   # holds the build, corpus/, artifacts/, logs/
+./fuzz/run-fuzzer.sh parse-expr 3600
 ```
+
+The build directory is `$FUZZ_BUILD` if you set it, otherwise whichever of
+`build-fuzz/` or `build/` it finds under `$FUZZ_HOME`. Copy the script into
+your campaign directory if you would rather not run it from a checkout.
 
 It runs libFuzzer in **fork mode**, which matters once anything has been
 found: by default libFuzzer stops at the first crash, so a single known bug
@@ -99,6 +103,9 @@ markdown report per distinct issue:
 ```bash
 FUZZ_HOME=~/hobbes-fuzz ./fuzz/triage.py
 ```
+
+It resolves the build directory the same way as `run-fuzzer.sh`, and the
+reproduce command in each report uses the paths it actually found.
 
 Each `reports/<issue>.md` contains the reproduce command, the sanitizer
 output, the hobbes stack frames, a hexdump of the smallest reproducer, and a

@@ -16,10 +16,29 @@ from collections import OrderedDict
 FUZZ = pathlib.Path(os.environ.get("FUZZ_HOME", pathlib.Path.cwd()))
 ART = FUZZ / "artifacts"
 REPORTS = FUZZ / "reports"
+
+
+def build_dir():
+    """Locate the fuzzing build directory.
+
+    FUZZ_BUILD wins if set; otherwise probe the name the README uses and the
+    one a campaign layout typically uses.
+    """
+    env = os.environ.get("FUZZ_BUILD")
+    if env:
+        return pathlib.Path(env)
+    for name in ("build-fuzz", "build"):
+        if (FUZZ / name / "fuzz").is_dir():
+            return FUZZ / name
+    return FUZZ / "build"
+
+
+BUILD = build_dir()
 HARNESSES = ["type-decode", "fregion-reader", "parse-expr"]
 
 ENV = dict(os.environ)
-ENV["ASAN_OPTIONS"] = "detect_container_overflow=0"
+_asan = ENV.get("ASAN_OPTIONS", "")
+ENV["ASAN_OPTIONS"] = (_asan + ":" if _asan else "") + "detect_container_overflow=0"
 ENV.setdefault("UBSAN_OPTIONS", "print_stacktrace=1")
 
 ERR_RE = re.compile(
@@ -31,7 +50,7 @@ FRAME_RE = re.compile(r"^\s*#\d+ .*", re.M)
 
 
 def replay(harness, artifact):
-    binary = FUZZ / "build" / "fuzz" / f"fuzz-{harness}"
+    binary = BUILD / "fuzz" / f"fuzz-{harness}"
     cmd = [str(binary), str(artifact)]
     if harness == "parse-expr":
         cmd.insert(1, "-detect_leaks=0")
@@ -117,9 +136,9 @@ def main():
 ## Reproduce
 
 ```bash
-cd ~/fuzz
+cd {FUZZ}
 ASAN_OPTIONS=detect_container_overflow=0 \\
-  ./build/fuzz/fuzz-{h}{' -detect_leaks=0' if h == 'parse-expr' else ''} artifacts/{smallest.name}
+  {BUILD}/fuzz/fuzz-{h}{' -detect_leaks=0' if h == 'parse-expr' else ''} {smallest}
 ```
 
 ## Sanitizer report
@@ -137,7 +156,8 @@ ASAN_OPTIONS=detect_container_overflow=0 \\
 ## Reproducer bytes
 
 ```
-{hexdump}```
+{hexdump.rstrip()}
+```
 
 ## Triage notes
 

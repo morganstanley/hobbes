@@ -8,15 +8,27 @@
 #
 #   FUZZ_HOME=~/hobbes-fuzz ./run-fuzzer.sh parse-expr 3600
 #
-# Expects $FUZZ_HOME to contain a build/ directory configured with
-# -DBUILD_FUZZERS=ON -DUSE_ASAN_AND_UBSAN=ON. See README.md.
+# Expects $FUZZ_HOME to hold the campaign state (corpus/, artifacts/, logs/)
+# and a fuzzing build configured with -DBUILD_FUZZERS=ON
+# -DUSE_ASAN_AND_UBSAN=ON. The build directory is $FUZZ_BUILD if set,
+# otherwise whichever of build-fuzz/ or build/ is found. See README.md.
 set -u
 
 FUZZ_HOME="${FUZZ_HOME:-$PWD}"
 HARNESS="${1:?usage: run-fuzzer.sh <type-decode|fregion-reader|parse-expr> [seconds]}"
 DURATION="${2:-3600}"
 
-BIN="$FUZZ_HOME/build/fuzz/fuzz-$HARNESS"
+# Locate the fuzzing build: explicit override, else the name the README uses,
+# else the one a campaign layout typically uses.
+BUILD="${FUZZ_BUILD:-}"
+if [ -z "$BUILD" ]; then
+  for d in "$FUZZ_HOME/build-fuzz" "$FUZZ_HOME/build"; do
+    [ -d "$d/fuzz" ] && BUILD="$d" && break
+  done
+  BUILD="${BUILD:-$FUZZ_HOME/build}"
+fi
+
+BIN="$BUILD/fuzz/fuzz-$HARNESS"
 CORPUS="$FUZZ_HOME/corpus/$HARNESS"
 LOG="$FUZZ_HOME/logs/$HARNESS-$(date +%Y%m%d-%H%M%S).log"
 
