@@ -1,8 +1,11 @@
 
 #include "test.H"
 #include <hobbes/hobbes.H>
+#include <hobbes/util/codec.H>
 #include <cstring>
 #include <memory>
+#include <limits>
+#include <sstream>
 
 using namespace hobbes;
 
@@ -60,4 +63,67 @@ TEST(TypeInf, DecodeRejectsTruncatedInput) {
   bool threw = false;
   try { decode(craft); } catch (const std::exception&) { threw = true; }
   EXPECT_TRUE(threw);
+}
+
+TEST(TypeInf, CodecRejectsInvalidBoolValue) {
+  // the stream codec decodes data that can arrive from an untrusted peer;
+  // loading any byte other than 0 or 1 into a bool is undefined behavior, so
+  // an out-of-range byte must be rejected rather than read into a bool
+  for (unsigned int v = 0; v < 256; ++v) {
+    std::string raw(1, static_cast<char>(static_cast<unsigned char>(v)));
+    std::istringstream in(raw);
+
+    bool x = false;
+    bool threw = false;
+    try { decode(&x, in); } catch (const std::exception&) { threw = true; }
+
+    if (v <= 1) {
+      EXPECT_TRUE(!threw);
+      EXPECT_TRUE(x == (v == 1));
+    } else {
+      EXPECT_TRUE(threw);
+    }
+  }
+
+  // valid values still round-trip
+  for (bool b : {false, true}) {
+    std::ostringstream out;
+    encode(b, out);
+    std::istringstream in(out.str());
+    bool r = !b;
+    decode(&r, in);
+    EXPECT_TRUE(r == b);
+  }
+}
+
+TEST(TypeInf, CodecRejectsOversizedLength) {
+  // a length field taken from untrusted data must be checked against what the
+  // input can supply, else a hostile count drives an unbounded allocation
+  // before the read that would fail
+  std::ostringstream out;
+  encode(std::numeric_limits<size_t>::max(), out);   // absurd length, no payload
+  out.write("hi", 2);
+
+  {
+    std::istringstream in(out.str());
+    std::string s;
+    bool threw = false;
+    try { decode(&s, in); } catch (const std::exception&) { threw = true; }
+    EXPECT_TRUE(threw);
+  }
+  {
+    std::istringstream in(out.str());
+    std::vector<int> xs;
+    bool threw = false;
+    try { decode(&xs, in); } catch (const std::exception&) { threw = true; }
+    EXPECT_TRUE(threw);
+  }
+
+  // well-formed data is unaffected
+  std::ostringstream good;
+  encode(std::string("elephant"), good);
+  std::istringstream gin(good.str());
+  std::string s;
+  decode(&s, gin);
+  EXPECT_TRUE(s == "elephant");
 }
