@@ -360,6 +360,19 @@ inline size_t pageOffset(const imagefile* f, file_pageindex_t page) { return f->
 // the page index implied by an absolute position
 inline file_pageindex_t pageIndex(const imagefile* f, uint64_t fpos) { return fpos / f->page_size; }
 
+// A page index derived from a file position is only meaningful if the page
+// table actually describes that page. Reading a record can leave the cursor
+// anywhere when the image is malformed, so the index has to be checked before
+// it is used to look up page metadata.
+inline void ensurePageInTable(const imagefile* f, file_pageindex_t page) {
+  if (static_cast<size_t>(page) >= f->pages.size()) {
+    throw std::runtime_error(
+      "Not a valid structured data file: page index (" + hobbes::string::from(page) +
+      ") is outside the page table of " + hobbes::string::from(f->pages.size()) +
+      " page(s): " + f->path);
+  }
+}
+
 // an absolute file position from a page and relative position
 inline size_t position(const imagefile* f, file_pageindex_t page, uint16_t offset) { return pageOffset(f, page) + static_cast<uint64_t>(offset); }
 
@@ -852,6 +865,10 @@ inline size_t readEnvironmentPage(imagefile* f, file_pageindex_t p) {
     size_t           pos   = filePosition(f) - 1;
     auto tpage = file_pageindex_t(pos / f->page_size);
     uint16_t         rpos  = (pos % f->page_size) + 1;
+
+    // a crafted image can make the record above run past the end of the page
+    // table, and this loop only terminates by consulting that page's metadata
+    ensurePageInTable(f, tpage);
 
     if (rpos == (f->page_size - f->pages[tpage].availBytes())) {
       break;

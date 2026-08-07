@@ -1163,3 +1163,50 @@ TEST(Storage, FRegionRejectsLengthBeyondFileSize) {
     unlink(path.data());
   }
 }
+
+TEST(Storage, FRegionRejectsPageIndexBeyondPageTable) {
+  // reading environment records walks the cursor forward and then asks the
+  // page table how much of the current page is in use, to decide whether to
+  // keep going. In a crafted image a record can leave the cursor past the end
+  // of the table, so the derived page index has to be checked before it is
+  // used to index it -- otherwise that lookup reads out of bounds, which is
+  // what fuzzing the reader turns up first and by a wide margin.
+  hobbes::fregion::imagefile f;
+  f.path      = "synthetic";
+  f.fd        = -1;
+  f.page_size = 4096;
+  f.file_size = 4096 * 3;
+  f.pages.resize(3);
+
+  // every page the table describes is fine, including the last
+  bool threw = false;
+  try {
+    hobbes::fregion::ensurePageInTable(&f, 0);
+    hobbes::fregion::ensurePageInTable(&f, 2);
+  } catch (const std::exception&) { threw = true; }
+  EXPECT_TRUE(!threw);
+
+  // one past the end is not
+  threw = false;
+  try { hobbes::fregion::ensurePageInTable(&f, 3); }
+  catch (const std::exception&) { threw = true; }
+  EXPECT_TRUE(threw);
+
+  // nor is a wildly out-of-range index
+  threw = false;
+  try { hobbes::fregion::ensurePageInTable(&f, 1u << 30); }
+  catch (const std::exception&) { threw = true; }
+  EXPECT_TRUE(threw);
+
+  // an empty table accepts nothing
+  hobbes::fregion::imagefile e;
+  e.path      = "synthetic-empty";
+  e.fd        = -1;
+  e.page_size = 4096;
+  e.file_size = 0;
+
+  threw = false;
+  try { hobbes::fregion::ensurePageInTable(&e, 0); }
+  catch (const std::exception&) { threw = true; }
+  EXPECT_TRUE(threw);
+}
