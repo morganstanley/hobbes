@@ -95,8 +95,17 @@ inline void ensureAvail(std::istream& in, size_t n, size_t esz) {
     return;
   }
 
-  // For a stream that cannot report a position, what is buffered is all the
-  // input there is -- these are backed by a byte range fixed at construction.
+  // Otherwise fall back to what the buffer currently holds. in_avail() is a
+  // lower bound in general -- it reports what can be read without blocking,
+  // which for some streambufs is less than the input still to come -- so this
+  // is deliberately a conservative test rather than a statement about the
+  // stream as a whole. Erring in that direction is the safe one: a streambuf
+  // that under-reports makes this reject a length it could have satisfied,
+  // never accept one it cannot. in_avail() does not over-report, so a hostile
+  // count cannot pass here.
+  //
+  // For raw_istream, the case this exists for, the get area is the entire
+  // input and is fixed at construction, so the bound is exact.
   std::streambuf* buf = in.rdbuf();
   if (buf != nullptr) {
     const std::streamsize avail = buf->in_avail();
