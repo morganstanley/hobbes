@@ -1232,8 +1232,10 @@ TEST(Storage, FRegionRejectsEnvironmentRunningPastPageTable) {
   // the page table does not describe -- and page 2 is present in the file, so
   // the reads succeed and the only thing standing between that and an
   // out-of-bounds read of the page table is the bound being checked.
-  const uint16_t pageSize  = 256;   // HFREGION_MIN_PAGE_SIZE
-  const size_t   pageCount = 4;
+  // the smallest page the format allows, so the image stays small; the record
+  // size below is what matters, not this particular value
+  const auto   pageSize  = static_cast<uint16_t>(HFREGION_MIN_PAGE_SIZE);
+  const size_t pageCount = 4;
   std::vector<unsigned char> img(pageSize * pageCount, 0);
 
   auto put16 = [&](size_t at, uint16_t v) {
@@ -1247,7 +1249,7 @@ TEST(Storage, FRegionRejectsEnvironmentRunningPastPageTable) {
   };
 
   // filehead: magic, page size, format version
-  put32(0, 0x10a1db0dU);
+  put32(0, HFREGION_FILE_PREFIX_BYTES);
   put16(4, pageSize);
   put16(6, HFREGION_CURRENT_FILE_FORMAT_VERSION);
 
