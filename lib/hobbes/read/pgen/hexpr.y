@@ -693,8 +693,8 @@ l4expr: l4expr "*" l4expr { $$ = TAPP2(var("*", m(@2)), $1, $3, m(@1, @3)); }
 l5expr: l6expr { $$ = $1; }
 
       /* local variable introduction */
-      | "let" letbindings "in" l0expr { $$ = compileNestedLetMatch(*$2, ExprPtr($4), m(@1,@4))->clone(); }
-      | "let" letbindings ";" "in" l0expr { $$ = compileNestedLetMatch(*$2, ExprPtr($5), m(@1,@5))->clone(); }
+      | "let" letbindings "in" l0expr { $$ = compileNestedLetMatch(*$2, ExprPtr($4), m(@1,@4)); }
+      | "let" letbindings ";" "in" l0expr { $$ = compileNestedLetMatch(*$2, ExprPtr($5), m(@1,@5)); }
 
       /* pattern matching */
       | "match" l6exprs "with" patternexps { $$ = compileMatch(yyParseCC, *$2, normPatternRules(*$4, m(@1,@4)), m(@1,@4))->clone(); }

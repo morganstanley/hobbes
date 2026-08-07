@@ -3676,13 +3676,13 @@ yyreduce:
 
   case 129: /* l5expr: "let" letbindings "in" l0expr  */
 #line 696 "hexpr.y"
-                                      { (yyval.exp) = compileNestedLetMatch(*(yyvsp[-2].letbindings), ExprPtr((yyvsp[0].exp)), m((yylsp[-3]),(yylsp[0])))->clone(); }
+                                      { (yyval.exp) = compileNestedLetMatch(*(yyvsp[-2].letbindings), ExprPtr((yyvsp[0].exp)), m((yylsp[-3]),(yylsp[0]))); }
 #line 3681 "hexpr.parse.C"
     break;
 
   case 130: /* l5expr: "let" letbindings ";" "in" l0expr  */
 #line 697 "hexpr.y"
-                                          { (yyval.exp) = compileNestedLetMatch(*(yyvsp[-3].letbindings), ExprPtr((yyvsp[0].exp)), m((yylsp[-4]),(yylsp[0])))->clone(); }
+                                          { (yyval.exp) = compileNestedLetMatch(*(yyvsp[-3].letbindings), ExprPtr((yyvsp[0].exp)), m((yylsp[-4]),(yylsp[0]))); }
 #line 3687 "hexpr.parse.C"
     break;
 
