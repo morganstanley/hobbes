@@ -2,10 +2,13 @@
 #include "test.H"
 #include <hobbes/hobbes.H>
 #include <hobbes/util/codec.H>
+#include <hobbes/util/stream.H>
 #include <cstring>
 #include <memory>
 #include <limits>
 #include <sstream>
+#include <vector>
+#include <functional>
 
 using namespace hobbes;
 
@@ -123,6 +126,55 @@ TEST(TypeInf, CodecRejectsOversizedLength) {
   std::ostringstream good;
   encode(std::string("elephant"), good);
   std::istringstream gin(good.str());
+  std::string s;
+  decode(&s, gin);
+  EXPECT_TRUE(s == "elephant");
+}
+
+TEST(TypeInf, CodecRejectsOversizedLengthOnNonSeekableStream) {
+  // The length check above passes over a std::istringstream, which can seek.
+  // The stream the RPC path actually decodes expressions over cannot:
+  // stream::raw_istream sets its get area with setg() and never overrides
+  // seekoff, so tellg() on it fails. A check that consulted only tellg() was
+  // therefore inert on exactly the untrusted surface it guards, and a hostile
+  // length reached the allocation unchecked.
+  std::ostringstream out;
+  encode(std::numeric_limits<size_t>::max(), out);   // absurd length, no payload
+  out.write("hi", 2);
+  const std::string enc = out.str();
+  std::vector<uint8_t> raw(enc.begin(), enc.end());
+
+  // the premise: this stream really cannot report a position
+  {
+    stream::raw_istream<char> in(raw);
+    EXPECT_TRUE(in.tellg() == std::streampos(-1));
+  }
+
+  // Check the message, not merely that something was thrown: resize() on an
+  // absurd count throws std::length_error all by itself, so a test that only
+  // asked "did it throw" would pass just as happily with the check removed.
+  auto rejectedAsTruncated = [](const std::function<void(std::istream&)>& f,
+                                const std::vector<uint8_t>& d) {
+    stream::raw_istream<char> in(d);
+    try {
+      f(in);
+    } catch (const std::exception& ex) {
+      return std::string(ex.what()).find("truncated") != std::string::npos;
+    }
+    return false;
+  };
+
+  EXPECT_TRUE(rejectedAsTruncated(
+    [](std::istream& in) { std::string s; decode(&s, in); }, raw));
+  EXPECT_TRUE(rejectedAsTruncated(
+    [](std::istream& in) { std::vector<int> xs; decode(&xs, in); }, raw));
+
+  // and a well-formed payload still round-trips over the same stream type
+  std::ostringstream good;
+  encode(std::string("elephant"), good);
+  const std::string genc = good.str();
+  std::vector<uint8_t> graw(genc.begin(), genc.end());
+  stream::raw_istream<char> gin(graw);
   std::string s;
   decode(&s, gin);
   EXPECT_TRUE(s == "elephant");
