@@ -1218,3 +1218,67 @@ TEST(Storage, FRegionRejectsPageIndexBeyondPageTable) {
   catch (const std::exception&) { threw = true; }
   EXPECT_TRUE(threw);
 }
+
+TEST(Storage, FRegionRejectsEnvironmentRunningPastPageTable) {
+  // The test above checks the bound in isolation, which leaves the thing that
+  // actually mattered untested: that reading an image consults it. This one
+  // opens a crafted image and drives the real path, so removing the check
+  // from readEnvironmentPage fails here rather than passing quietly.
+  //
+  // The image describes two pages but is four pages long. Page 1 is marked as
+  // an environment page whose free-byte count says it is full, while the
+  // records on it are 24 bytes each and so never land on the offset that ends
+  // the walk. The reader therefore keeps consuming records into page 2, which
+  // the page table does not describe -- and page 2 is present in the file, so
+  // the reads succeed and the only thing standing between that and an
+  // out-of-bounds read of the page table is the bound being checked.
+  const uint16_t pageSize  = 256;   // HFREGION_MIN_PAGE_SIZE
+  const size_t   pageCount = 4;
+  std::vector<unsigned char> img(pageSize * pageCount, 0);
+
+  auto put16 = [&](size_t at, uint16_t v) {
+    img[at]     = static_cast<unsigned char>(v & 0xFF);
+    img[at + 1] = static_cast<unsigned char>((v >> 8) & 0xFF);
+  };
+  auto put32 = [&](size_t at, uint32_t v) {
+    for (size_t i = 0; i < 4; ++i) {
+      img[at + i] = static_cast<unsigned char>((v >> (8 * i)) & 0xFF);
+    }
+  };
+
+  // filehead: magic, page size, format version
+  put32(0, 0x10a1db0dU);
+  put16(4, pageSize);
+  put16(6, HFREGION_CURRENT_FILE_FORMAT_VERSION);
+
+  // the page table: page 0 is the TOC page, page 1 claims to be a full
+  // environment page, and the null entry ends the table at two pages
+  put16(8,  static_cast<uint16_t>(hobbes::fregion::pagedata::encode(hobbes::fregion::pagetype::toc, 0)));
+  put16(10, static_cast<uint16_t>(hobbes::fregion::pagedata::encode(hobbes::fregion::pagetype::environment, 0)));
+  put16(12, static_cast<uint16_t>(hobbes::fregion::pagedata::encode(hobbes::fregion::pagetype::null, 0)));
+
+  // page 1 onward stays zeroed: each environment record then decodes as an
+  // offset of 0, an empty name and an empty type, consuming 24 bytes, which
+  // never divides the page evenly and so never terminates the walk
+
+  std::string tmpl = "/tmp/hobbes-fregion-envwalk-XXXXXX";
+  std::vector<char> path(tmpl.begin(), tmpl.end());
+  path.push_back('\0');
+  int fd = mkstemp(path.data());
+  EXPECT_TRUE(fd >= 0);
+  if (fd >= 0) {
+    EXPECT_TRUE(::write(fd, img.data(), img.size()) == static_cast<ssize_t>(img.size()));
+    close(fd);
+
+    // a malformed image must be reported, not read out of bounds
+    bool threw = false;
+    try {
+      hobbes::fregion::reader r(path.data());
+    } catch (const std::exception&) {
+      threw = true;
+    }
+    EXPECT_TRUE(threw);
+
+    unlink(path.data());
+  }
+}
