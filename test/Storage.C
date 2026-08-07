@@ -1198,6 +1198,14 @@ TEST(Storage, FRegionRejectsPageIndexBeyondPageTable) {
   catch (const std::exception&) { threw = true; }
   EXPECT_TRUE(threw);
 
+  // a page index is 64 bits wide, so an index whose low 32 bits land inside
+  // the table must still be rejected -- narrowing it to size_t first would
+  // let this through wherever size_t is 32 bits
+  threw = false;
+  try { hobbes::fregion::ensurePageInTable(&f, hobbes::fregion::file_pageindex_t(1) << 32); }
+  catch (const std::exception&) { threw = true; }
+  EXPECT_TRUE(threw);
+
   // an empty table accepts nothing
   hobbes::fregion::imagefile e;
   e.path      = "synthetic-empty";

@@ -365,7 +365,10 @@ inline file_pageindex_t pageIndex(const imagefile* f, uint64_t fpos) { return fp
 // anywhere when the image is malformed, so the index has to be checked before
 // it is used to look up page metadata.
 inline void ensurePageInTable(const imagefile* f, file_pageindex_t page) {
-  if (static_cast<size_t>(page) >= f->pages.size()) {
+  // widen the table size to the index type rather than narrowing the index:
+  // file_pageindex_t is 64 bits, so where size_t is narrower the cast would
+  // truncate and a large index could wrap into range and pass this check
+  if (page >= static_cast<file_pageindex_t>(f->pages.size())) {
     throw std::runtime_error(
       "Not a valid structured data file: page index (" + hobbes::string::from(page) +
       ") is outside the page table of " + hobbes::string::from(f->pages.size()) +
