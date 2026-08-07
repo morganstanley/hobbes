@@ -53,10 +53,28 @@ inline void decode(bool* x, std::istream& in) {
   *x = (b != 0);
 }
 
+[[noreturn]] inline void throwTruncated(size_t need, size_t have) {
+  throw std::runtime_error(
+    "Encoded data is truncated (need " + std::to_string(need) + " bytes but only " +
+    std::to_string(have) + " available)");
+}
+
 // A length field read out of untrusted data must be checked against what the
 // input can actually supply; otherwise a corrupt or hostile count drives an
-// unbounded allocation long before the read that would fail. Streams that
-// cannot report their extent are left to the read itself.
+// unbounded allocation long before the read that would fail.
+//
+// Two ways to learn what the input can supply, because the streams that carry
+// untrusted data do not all support the same one:
+//
+//  - seeking to the end and back, for file and string streams;
+//  - the buffered count, for memory-backed streams that cannot seek.
+//
+// The second case is not a rare fallback: hobbes::stream::raw_istream sets its
+// get area with setg() and does not override seekoff, so tellg() on it always
+// fails. That is the stream the RPC path decodes expressions over
+// (lang/expr.C decode(const bytes&, ExprPtr*)), so a check that gave up when
+// tellg() failed would be inert on exactly the untrusted surface it is meant
+// to guard.
 inline void ensureAvail(std::istream& in, size_t n, size_t esz) {
   if (n == 0) {
     return;
@@ -67,16 +85,24 @@ inline void ensureAvail(std::istream& in, size_t n, size_t esz) {
   const size_t need = n * esz;
 
   const std::streampos cur = in.tellg();
-  if (cur < 0) {
+  if (cur >= 0) {
+    in.seekg(0, std::ios::end);
+    const std::streampos end = in.tellg();
+    in.seekg(cur, std::ios::beg);
+    if (end < cur || static_cast<size_t>(end - cur) < need) {
+      throwTruncated(need, end < cur ? 0 : static_cast<size_t>(end - cur));
+    }
     return;
   }
-  in.seekg(0, std::ios::end);
-  const std::streampos end = in.tellg();
-  in.seekg(cur, std::ios::beg);
-  if (end < cur || static_cast<size_t>(end - cur) < need) {
-    throw std::runtime_error(
-      "Encoded data is truncated (need " + std::to_string(need) + " bytes but only " +
-      std::to_string(end < cur ? 0 : static_cast<size_t>(end - cur)) + " available)");
+
+  // For a stream that cannot report a position, what is buffered is all the
+  // input there is -- these are backed by a byte range fixed at construction.
+  std::streambuf* buf = in.rdbuf();
+  if (buf != nullptr) {
+    const std::streamsize avail = buf->in_avail();
+    if (avail >= 0 && static_cast<size_t>(avail) < need) {
+      throwTruncated(need, static_cast<size_t>(avail));
+    }
   }
 }
 
