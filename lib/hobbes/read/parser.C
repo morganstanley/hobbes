@@ -74,6 +74,32 @@ template <typename T>
     }
   }
 
+// KNOWN LEAK ON THE SYNTAX-ERROR PATH (documented, not fixed)
+//
+// When yyparse hits a syntax error it recovers by discarding the semantic
+// values on its stack. Those values are partly-built AST fragments, and the
+// grammar declares no bison %destructor for them, so whichever ones are not
+// registered with the AutoreleaseSet are orphaned -- notably the bare `new`
+// results from defVarCtor / defPatVarCtor below, and the source-text copy that
+// pushLiteralContext attaches to each fragment's LexicalAnnotation. A
+// successful parse does not leak: the completed tree is returned and owned by
+// the caller's ExprPtr.
+//
+// Measured at ~200 bytes per rejected parse, linear (LeakSanitizer roots it at
+// the yyparse call below, defPatVarCtor, and pushLiteralContext; live-heap
+// bytes are flat across valid parses and climb only on rejected ones). The RSS
+// growth visible while fuzzing is a separate thing and is not this: it is
+// AddressSanitizer quarantine/shadow retention, which a release build does not
+// have.
+//
+// This is left as-is deliberately. In the deployed shape -- an embedded
+// compiler parsing source it is given, or an RPC peer sending expressions --
+// malformed input is the rare case, so a few hundred bytes per rejection is a
+// slow leak that a process restart clears. A real fix means giving the grammar
+// %destructor coverage (or autoreleasing every semantic-value allocation) and
+// touching the checked-in generated parser, which is not worth the risk for
+// the exposure. Revisit if a path ever parses attacker-controlled input in a
+// tight loop without restarting.
 void runParserOnBuffer(cc* c, int initTok, YY_BUFFER_STATE bs) {
   yyParseCC   = c;
   yyInitToken = initTok;
@@ -175,6 +201,8 @@ ExprPtr defReadExpr(cc* c, const std::string& expr) {
 }
 
 // allow variable and pattern variable overloading
+// (these bare `new`s are not autoreleased, so a syntax error that discards them
+// mid-parse leaks -- see runParserOnBuffer above)
 Expr* defVarCtor(const std::string& vn, const LexicalAnnotation& la) { return new Var(vn, la); }
 VarCtorFn varCtorFn = &defVarCtor;
 void overrideVarCtor(VarCtorFn f) { varCtorFn = f; }
