@@ -80,7 +80,15 @@ done
 # The parser harness reuses one hobbes::cc across iterations and its arenas are
 # not reclaimed per input, so LeakSanitizer reports the accumulated corpus as
 # leaked. Revisit if per-iteration allocation is ever made reclaimable.
+#
+# Disabled on both sides, as fuzz/run-fuzzer.sh does locally: the [asan] entry
+# turns LeakSanitizer itself off, which is what suppresses the report, and the
+# [libfuzzer] entry stops libFuzzer running its own per-input leak check that
+# would then find nothing.
 cat >> "$OUT/fuzz-parse-expr.options" <<'OPTS'
+detect_leaks=0
+
+[libfuzzer]
 detect_leaks=0
 OPTS
 

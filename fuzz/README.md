@@ -120,9 +120,12 @@ access, an RPC peer executing code) is not a vulnerability.
 
 ## OSS-Fuzz
 
-The same harnesses run continuously on Google's OSS-Fuzz. The configuration
-lives in `projects/hobbes/` in the [OSS-Fuzz
-repository](https://github.com/google/oss-fuzz) — a `project.yaml`, a
+The same harnesses are meant to run continuously on Google's OSS-Fuzz. That
+needs a submission to the [OSS-Fuzz
+repository](https://github.com/google/oss-fuzz) which has not been accepted
+yet, so nothing runs there until it is; ClusterFuzzLite below is what covers
+pull requests in the meantime. What gets submitted is a `projects/hobbes/`
+directory there — a `project.yaml`, a
 `Dockerfile` that installs LLVM and clones this repository, and a `build.sh`
 that is a one-line wrapper around `fuzz/oss-fuzz-build.sh` here. Keeping the
 real build script in this tree means harness changes and build changes land in
