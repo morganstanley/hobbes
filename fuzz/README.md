@@ -117,3 +117,43 @@ wire bytes or source text is a security issue and should be reported through
 the process in `SECURITY.md` — *not* a public issue. Behaviour that the
 threat model calls out as intended (Hobbes code having full host-process
 access, an RPC peer executing code) is not a vulnerability.
+
+## OSS-Fuzz
+
+The same harnesses run continuously on Google's OSS-Fuzz. The configuration
+lives in `projects/hobbes/` in the [OSS-Fuzz
+repository](https://github.com/google/oss-fuzz) — a `project.yaml`, a
+`Dockerfile` that installs LLVM and clones this repository, and a `build.sh`
+that is a one-line wrapper around `fuzz/oss-fuzz-build.sh` here. Keeping the
+real build script in this tree means harness changes and build changes land in
+the same commit.
+
+`oss-fuzz-build.sh` differs from a local fuzzing build in three ways worth
+knowing about:
+
+* It links `$LIB_FUZZING_ENGINE` through the `FUZZING_ENGINE_LIB` CMake
+  variable instead of `-fsanitize=fuzzer`, so the harnesses also build under
+  AFL++, honggfuzz and centipede.
+* It writes a `.options` file per target disabling ASan's
+  `detect_container_overflow`. hobbes links an LLVM that OSS-Fuzz did not
+  build, and the two disagree about `std::vector` container annotations — the
+  same problem `run-fuzzer.sh` works around locally.
+* It drops `-stdlib=libc++` from `CXXFLAGS`. OSS-Fuzz defaults C++ builds to
+  libc++, and the packaged LLVM is built against libstdc++; mixing them breaks
+  the link. MemorySanitizer is not enabled for the same underlying reason —
+  MSan needs every dependency instrumented, LLVM included.
+
+To reproduce an OSS-Fuzz build locally you need Docker and a checkout of the
+OSS-Fuzz repository:
+
+```bash
+python3 infra/helper.py build_image hobbes
+python3 infra/helper.py build_fuzzers --sanitizer address hobbes
+python3 infra/helper.py check_build hobbes
+python3 infra/helper.py run_fuzzer hobbes fuzz-parse-expr
+```
+
+Findings arrive as OSS-Fuzz issues with a reproducer attached; `triage.py`
+above is for local campaigns, but the same rule applies — check a finding
+against the threat model in `doc/en/security.rst` before treating it as a
+vulnerability.
