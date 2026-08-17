@@ -1,0 +1,48 @@
+# Fuzz the harnesses in fuzz/ on pull requests that touch code they cover.
+# ClusterFuzzLite reuses the OSS-Fuzz build (fuzz/oss-fuzz-build.sh) and needs
+# no registration with any service, so it covers changes whether or not the
+# OSS-Fuzz submission is accepted. See fuzz/README.md.
+name: "ClusterFuzzLite"
+on:
+  pull_request:
+    paths:
+      - 'lib/**'
+      - 'include/**'
+      - 'fuzz/**'
+      - 'CMakeLists.txt'
+      - '.clusterfuzzlite/**'
+      - '.github/workflows/clusterfuzzlite.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    # The image installs LLVM and the build links it statically into each
+    # harness, so this is a long job by CI standards.
+    timeout-minutes: 120
+    concurrency:
+      group: ${{ github.workflow }}-${{ matrix.sanitizer }}-${{ github.ref }}
+      cancel-in-progress: true
+    strategy:
+      fail-fast: false
+      matrix:
+        # Undefined can be added here once address has settled; each sanitizer
+        # is a full rebuild. Memory is not usable while LLVM comes from a
+        # distribution package -- it would need every dependency instrumented.
+        sanitizer: [address]
+    steps:
+      - name: Build fuzzers (${{ matrix.sanitizer }})
+        uses: google/clusterfuzzlite/actions/build_fuzzers@884713a6c30a92e5e8544c39945cd7cb630abcd1 # v1
+        with:
+          language: c++
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          sanitizer: ${{ matrix.sanitizer }}
+      - name: Run fuzzers (${{ matrix.sanitizer }})
+        uses: google/clusterfuzzlite/actions/run_fuzzers@884713a6c30a92e5e8544c39945cd7cb630abcd1 # v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          fuzz-seconds: 300
+          mode: 'code-change'
+          sanitizer: ${{ matrix.sanitizer }}
