@@ -157,3 +157,27 @@ Findings arrive as OSS-Fuzz issues with a reproducer attached; `triage.py`
 above is for local campaigns, but the same rule applies — check a finding
 against the threat model in `doc/en/security.rst` before treating it as a
 vulnerability.
+
+## ClusterFuzzLite
+
+`.clusterfuzzlite/` and `.github/workflows/clusterfuzzlite.yml` run the same
+harnesses on pull requests that touch code they cover, for a few minutes each,
+against the change itself rather than against `main`. Unlike OSS-Fuzz this
+needs no registration with any service, so it applies to every pull request
+regardless of how the OSS-Fuzz submission is received.
+
+The image mirrors the OSS-Fuzz one and the build script is shared; the only
+difference is that the source is copied in from the checkout being tested
+instead of cloned. A finding fails the check and attaches the reproducer to the
+workflow run, which `fuzz-<harness> <reproducer>` replays locally.
+
+Two extensions are deliberately not configured, because both need a separate
+repository to hold state that this project does not have yet:
+
+* **Batch fuzzing** on a schedule, which builds up a corpus over time rather
+  than starting cold on each pull request.
+* **Continuous builds** on pushes to `main`, which is what lets pull request
+  fuzzing tell a newly introduced crash from one that was already there.
+
+See the [ClusterFuzzLite documentation](https://google.github.io/clusterfuzzlite/)
+for both.
