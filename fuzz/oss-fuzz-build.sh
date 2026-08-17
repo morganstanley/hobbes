@@ -24,8 +24,10 @@ LLVM_CMAKE_DIR="/usr/lib/llvm-${LLVM_VERSION}/lib/cmake/llvm"
 # OSS-Fuzz defaults C++ builds to libc++, but the LLVM hobbes links against
 # comes from a distribution package built against libstdc++, and mixing the two
 # standard libraries breaks the link on LLVM's std::string/StringRef APIs.
-# Nothing is lost by dropping it: MemorySanitizer is the sanitizer that needs an
-# instrumented libc++, and it is not enabled for this project.
+# Two things are given up by dropping it, neither of which this project uses:
+# MemorySanitizer, which needs an instrumented libc++, and the centipede engine,
+# whose prebuilt runner is itself compiled against libc++ and so cannot be
+# linked into a libstdc++ binary. project.yaml enables neither.
 CXXFLAGS="${CXXFLAGS//-stdlib=libc++/}"
 
 # hobbes compiles with -Werror on Linux, appended after CMAKE_CXX_FLAGS, so it
@@ -35,6 +37,15 @@ CXXFLAGS="${CXXFLAGS//-stdlib=libc++/}"
 cat > "$BUILD-overrides.cmake" <<'CMAKE'
 add_compile_options(-Wno-error -Wno-error=old-style-cast)
 CMAKE
+
+# Configure from scratch. $WORK survives between runs when the same tree is
+# rebuilt for another sanitizer or engine (infra/helper.py does this, and so
+# does anyone reproducing a build by hand). Switching engine changes the
+# compiler to a wrapper such as afl-clang-fast++, and CMake responds by
+# deleting the cache and re-configuring itself -- which drops the -D options
+# from this command line, leaving BUILD_FUZZERS at its OFF default so that the
+# harnesses are silently never defined.
+rm -rf "$BUILD"
 
 cmake -S "$SRCDIR" -B "$BUILD" \
   -DCMAKE_BUILD_TYPE=Release \

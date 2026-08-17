@@ -133,7 +133,8 @@ knowing about:
 
 * It links `$LIB_FUZZING_ENGINE` through the `FUZZING_ENGINE_LIB` CMake
   variable instead of `-fsanitize=fuzzer`, so the harnesses also build under
-  AFL++, honggfuzz and centipede.
+  AFL++ and honggfuzz. Not centipede: its runner is prebuilt against libc++,
+  which the dropped `-stdlib=libc++` below rules out.
 * It writes a `.options` file per target disabling ASan's
   `detect_container_overflow`. hobbes links an LLVM that OSS-Fuzz did not
   build, and the two disagree about `std::vector` container annotations — the
