@@ -179,3 +179,93 @@ TEST(TypeInf, CodecRejectsOversizedLengthOnNonSeekableStream) {
   decode(&s, gin);
   EXPECT_TRUE(s == "elephant");
 }
+
+TEST(TypeInf, DecodeRejectsNonPrimitiveSwitchSelector) {
+  // A switch selector is encoded as an ordinary expression but is held as a
+  // PrimitivePtr once decoded, and nothing in the encoding obliges a peer to
+  // put a primitive constant there. Reinterpreting the decoded pointer skipped
+  // the check, so a selector encoded as some other expression produced a
+  // shared_ptr<Primitive> aimed at an unrelated object, and the first virtual
+  // call on it -- the duplicate-selector check in Switch's own constructor --
+  // dispatched through the wrong vtable (oss-fuzz 549508407, fuzz-type-decode,
+  // reached from the RPC path through TExpr).
+  auto unitExpr = [](std::ostream& out) {
+    encode(Unit::type_case_id, out);
+    encode(false, out);                                // no annotated type
+  };
+  auto switchWithSelector = [&](const std::function<void(std::ostream&)>& sel) {
+    std::ostringstream ss;
+    encode(Switch::type_case_id, ss);
+    unitExpr(ss);                                      // scrutinee: ()
+    encode(static_cast<size_t>(1), ss);                // one binding...
+    sel(ss);                                           // ...with this selector
+    unitExpr(ss);                                      // ...and this body
+    encode(false, ss);                                 // no default case
+    encode(false, ss);                                 // no annotated type
+    const std::string s = ss.str();
+    return std::vector<uint8_t>(s.begin(), s.end());
+  };
+
+  // a variable, and a nested switch (the shape the fuzzer found): neither is a
+  // primitive constant, so both must be rejected
+  std::vector<std::vector<uint8_t>> hostile;
+  hostile.push_back(switchWithSelector([](std::ostream& out) {
+    encode(Var::type_case_id, out);
+    encode(std::string("x"), out);
+    encode(false, out);
+  }));
+  hostile.push_back(switchWithSelector([&](std::ostream& out) {
+    encode(Switch::type_case_id, out);
+    unitExpr(out);                                     // scrutinee: ()
+    encode(static_cast<size_t>(0), out);               // no bindings...
+    encode(true, out);                                 // ...but a default case,
+    unitExpr(out);                                     // so this switch is valid
+    encode(false, out);
+  }));
+
+  for (const auto& enc : hostile) {
+    // rejected where the expression is decoded ...
+    std::string msg;
+    try {
+      ExprPtr e;
+      decode(enc, &e);
+    } catch (const std::exception& ex) {
+      msg = ex.what();
+    }
+    EXPECT_TRUE(msg.find("primitive constant") != std::string::npos);
+
+    // ... and so also on the type-decoder surface the fuzzer drives, where the
+    // same bytes arrive wrapped in a type-level expression
+    std::vector<unsigned char> tenc;
+    auto append = [&](const void* p, size_t n) {
+      const auto* b = static_cast<const unsigned char*>(p);
+      tenc.insert(tenc.end(), b, b + n);
+    };
+    const int tag = TExpr::type_case_id;
+    const size_t len = enc.size();
+    append(&tag, sizeof(tag));
+    append(&len, sizeof(len));
+    tenc.insert(tenc.end(), enc.begin(), enc.end());
+
+    msg.clear();
+    try {
+      decode(tenc);
+    } catch (const std::exception& ex) {
+      msg = ex.what();
+    }
+    EXPECT_TRUE(msg.find("primitive constant") != std::string::npos);
+  }
+
+  // a well-formed switch still round-trips over the same path
+  Switch::Bindings bs;
+  bs.push_back(Switch::Binding(
+    PrimitivePtr(new Unit(LexicalAnnotation::null())),
+    ExprPtr(new Unit(LexicalAnnotation::null()))));
+  ExprPtr sw(new Switch(ExprPtr(new Unit(LexicalAnnotation::null())), bs, LexicalAnnotation::null()));
+
+  std::vector<uint8_t> good;
+  encode(sw, &good);
+  ExprPtr rt;
+  decode(good, &rt);
+  EXPECT_TRUE(show(rt) == show(sw));
+}

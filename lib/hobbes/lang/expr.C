@@ -5,6 +5,7 @@
 #include <hobbes/util/time.H>
 #include <hobbes/util/codec.H>
 #include <hobbes/util/stream.H>
+#include <memory>
 #include <sstream>
 
 namespace hobbes {
@@ -720,7 +721,7 @@ Expr* Switch::clone() const {
   ExprPtr cdef = this->def ? ExprPtr(this->def->clone()) : ExprPtr();
   Bindings cbs;
   for (const auto& b : this->bs) {
-    cbs.push_back(Binding(PrimitivePtr(reinterpret_cast<Primitive*>(b.value->clone())), ExprPtr(b.exp->clone())));
+    cbs.push_back(Binding(PrimitivePtr(static_cast<Primitive*>(b.value->clone())), ExprPtr(b.exp->clone())));
   }
   return new Switch(ExprPtr(this->v->clone()), cbs, cdef, la());
 }
@@ -1648,11 +1649,27 @@ struct encodeExprF : public switchExpr<UnitV> {
 };
 
 void encode(const PrimitivePtr& p, std::ostream& out) {
-  encode(reinterpret_cast<const ExprPtr&>(p), out);
+  encode(std::static_pointer_cast<Expr>(p), out);
 }
 
 void decode(PrimitivePtr* p, std::istream& in) {
-  decode(reinterpret_cast<ExprPtr*>(p), in);
+  // A primitive constant is encoded as an ordinary expression, so decoding one
+  // means decoding an arbitrary expression and confirming that it really is a
+  // primitive. Reinterpreting the pointer instead skipped that check, and the
+  // encoded form can come from an untrusted peer: a switch selector encoded as,
+  // say, a nested switch yielded a shared_ptr<Primitive> aimed at an object of
+  // an unrelated type, and the first virtual call on it -- the duplicate-selector
+  // check in Switch's own constructor -- dispatched through the wrong vtable.
+  ExprPtr e;
+  decode(&e, in);
+
+  PrimitivePtr r = std::dynamic_pointer_cast<Primitive>(e);
+  if (!r) {
+    throw std::runtime_error(
+      "Expected a primitive constant in encoded expression, but read expression type: " +
+      str::from(e->case_id()));
+  }
+  *p = r;
 }
 
 void encode(const ExprPtr& e, std::ostream& out) {
