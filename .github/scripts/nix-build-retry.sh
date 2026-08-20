@@ -34,7 +34,11 @@ for attempt in $(seq 1 "$attempts"); do
     exit 0
   fi
 
-  if ! grep -qE 'HTTP error 429|error: unable to download' "$log"; then
+  # Match the rate limit itself, not download failures in general: a 404 from a
+  # bad flake ref is a download failure too, and it will still be a 404 three
+  # attempts and two waits later. Both spellings below come from the same 429 --
+  # nix prints the status line, then quotes GitHub's body.
+  if ! grep -qE 'HTTP error 429|429: Too Many Requests' "$log"; then
     echo "nix build $attr failed, and not on a GitHub rate limit -- not retrying" >&2
     exit 1
   fi
