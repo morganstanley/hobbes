@@ -5,6 +5,7 @@
 #include <hobbes/util/time.H>
 #include <hobbes/util/codec.H>
 #include <hobbes/util/stream.H>
+#include <memory>
 #include <sstream>
 
 namespace hobbes {
@@ -1650,7 +1651,7 @@ struct encodeExprF : public switchExpr<UnitV> {
 };
 
 void encode(const PrimitivePtr& p, std::ostream& out) {
-  encode(ExprPtr(p), out);
+  encode(std::static_pointer_cast<Expr>(p), out);
 }
 
 // A primitive is encoded as a plain expression, so what comes back is whatever
