@@ -1,6 +1,8 @@
 # hobbes
 
 ![Lifecycle Active](https://img.shields.io/badge/Lifecycle-Active-brightgreen)
+[![OSS-Fuzz](https://oss-fuzz-build-logs.storage.googleapis.com/badges/hobbes.svg)](https://issues.oss-fuzz.com/issues?q=project:hobbes)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/morganstanley/hobbes/badge)](https://scorecard.dev/viewer/?uri=github.com/morganstanley/hobbes)
 
 a language, embedded compiler, and runtime for efficient dynamic expression evaluation, data storage and analysis
 

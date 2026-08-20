@@ -120,16 +120,24 @@ access, an RPC peer executing code) is not a vulnerability.
 
 ## OSS-Fuzz
 
-The same harnesses are meant to run continuously on Google's OSS-Fuzz. That
-needs a submission to the [OSS-Fuzz
-repository](https://github.com/google/oss-fuzz) which has not been accepted
-yet, so nothing runs there until it is; ClusterFuzzLite below is what covers
-pull requests in the meantime. What gets submitted is a `projects/hobbes/`
-directory there — a `project.yaml`, a
-`Dockerfile` that installs LLVM and clones this repository, and a `build.sh`
-that is a one-line wrapper around `fuzz/oss-fuzz-build.sh` here. Keeping the
-real build script in this tree means harness changes and build changes land in
-the same commit.
+The same harnesses run continuously on Google's
+[OSS-Fuzz](https://github.com/google/oss-fuzz), which accepted the project in
+August 2026 and builds `main` daily; ClusterFuzzLite below is what covers pull
+requests, before a change lands. The submission is the `projects/hobbes/`
+directory there — a `project.yaml`, a `Dockerfile` that installs LLVM and
+clones this repository, and a `build.sh` that is a one-line wrapper around
+`fuzz/oss-fuzz-build.sh` here. Keeping the real build script in this tree
+means harness changes and build changes land in the same commit.
+
+Three places show what it is doing: the build badge at the top of the
+repository `README.md`, the [project
+profile](https://introspector.oss-fuzz.com/project-profile?project=hobbes),
+which links the daily coverage report, and the [issue
+tracker](https://issues.oss-fuzz.com/issues?q=project:hobbes). The badge
+covers the coverage and introspector builds as well as the fuzzing one, so it
+can go yellow over a report that failed to generate while fuzzing itself is
+fine. Findings are restricted until they are fixed or the disclosure deadline
+passes, so the tracker looks empty to anyone who is not a project contact.
 
 `oss-fuzz-build.sh` differs from a local fuzzing build in three ways worth
 knowing about:
@@ -166,9 +174,9 @@ vulnerability.
 
 `.clusterfuzzlite/` and `.github/workflows/clusterfuzzlite.yml` run the same
 harnesses on pull requests that touch code they cover, for a few minutes each,
-against the change itself rather than against `main`. Unlike OSS-Fuzz this
-needs no registration with any service, so it applies to every pull request
-regardless of how the OSS-Fuzz submission is received.
+against the change itself rather than against `main`. That is the half
+OSS-Fuzz cannot do: it builds what has already been merged, so a crash it
+finds is a crash that already shipped to `main`.
 
 The image mirrors the OSS-Fuzz one and the build script is shared; the only
 difference is that the source is copied in from the checkout being tested
