@@ -117,3 +117,71 @@ wire bytes or source text is a security issue and should be reported through
 the process in `SECURITY.md` — *not* a public issue. Behaviour that the
 threat model calls out as intended (Hobbes code having full host-process
 access, an RPC peer executing code) is not a vulnerability.
+
+## OSS-Fuzz
+
+The same harnesses are meant to run continuously on Google's OSS-Fuzz. That
+needs a submission to the [OSS-Fuzz
+repository](https://github.com/google/oss-fuzz) which has not been accepted
+yet, so nothing runs there until it is; ClusterFuzzLite below is what covers
+pull requests in the meantime. What gets submitted is a `projects/hobbes/`
+directory there — a `project.yaml`, a
+`Dockerfile` that installs LLVM and clones this repository, and a `build.sh`
+that is a one-line wrapper around `fuzz/oss-fuzz-build.sh` here. Keeping the
+real build script in this tree means harness changes and build changes land in
+the same commit.
+
+`oss-fuzz-build.sh` differs from a local fuzzing build in three ways worth
+knowing about:
+
+* It links `$LIB_FUZZING_ENGINE` through the `FUZZING_ENGINE_LIB` CMake
+  variable instead of `-fsanitize=fuzzer`, so the harnesses also build under
+  AFL++ and honggfuzz. Not centipede: its runner is prebuilt against libc++,
+  which the dropped `-stdlib=libc++` below rules out.
+* It writes a `.options` file per target disabling ASan's
+  `detect_container_overflow`. hobbes links an LLVM that OSS-Fuzz did not
+  build, and the two disagree about `std::vector` container annotations — the
+  same problem `run-fuzzer.sh` works around locally.
+* It drops `-stdlib=libc++` from `CXXFLAGS`. OSS-Fuzz defaults C++ builds to
+  libc++, and the packaged LLVM is built against libstdc++; mixing them breaks
+  the link. MemorySanitizer is not enabled for the same underlying reason —
+  MSan needs every dependency instrumented, LLVM included.
+
+To reproduce an OSS-Fuzz build locally you need Docker and a checkout of the
+OSS-Fuzz repository:
+
+```bash
+python3 infra/helper.py build_image hobbes
+python3 infra/helper.py build_fuzzers --sanitizer address hobbes
+python3 infra/helper.py check_build hobbes
+python3 infra/helper.py run_fuzzer hobbes fuzz-parse-expr
+```
+
+Findings arrive as OSS-Fuzz issues with a reproducer attached; `triage.py`
+above is for local campaigns, but the same rule applies — check a finding
+against the threat model in `doc/en/security.rst` before treating it as a
+vulnerability.
+
+## ClusterFuzzLite
+
+`.clusterfuzzlite/` and `.github/workflows/clusterfuzzlite.yml` run the same
+harnesses on pull requests that touch code they cover, for a few minutes each,
+against the change itself rather than against `main`. Unlike OSS-Fuzz this
+needs no registration with any service, so it applies to every pull request
+regardless of how the OSS-Fuzz submission is received.
+
+The image mirrors the OSS-Fuzz one and the build script is shared; the only
+difference is that the source is copied in from the checkout being tested
+instead of cloned. A finding fails the check and attaches the reproducer to the
+workflow run, which `fuzz-<harness> <reproducer>` replays locally.
+
+Two extensions are deliberately not configured, because both need a separate
+repository to hold state that this project does not have yet:
+
+* **Batch fuzzing** on a schedule, which builds up a corpus over time rather
+  than starting cold on each pull request.
+* **Continuous builds** on pushes to `main`, which is what lets pull request
+  fuzzing tell a newly introduced crash from one that was already there.
+
+See the [ClusterFuzzLite documentation](https://google.github.io/clusterfuzzlite/)
+for both.
