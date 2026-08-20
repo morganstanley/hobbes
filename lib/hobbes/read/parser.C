@@ -85,12 +85,14 @@ template <typename T>
 // successful parse does not leak: the completed tree is returned and owned by
 // the caller's ExprPtr.
 //
-// Measured at ~200 bytes per rejected parse, linear (LeakSanitizer roots it at
-// the yyparse call below, defPatVarCtor, and pushLiteralContext; live-heap
-// bytes are flat across valid parses and climb only on rejected ones). The RSS
-// growth visible while fuzzing is a separate thing and is not this: it is
-// AddressSanitizer quarantine/shadow retention, which a release build does not
-// have.
+// Measured at ~200 bytes per rejected parse for the tested short input. Because
+// an orphaned fragment's LexicalAnnotation shares ownership of the complete
+// source-text buffer created by pushLiteralContext, the retained bytes can
+// also grow with input length. LeakSanitizer roots it at the yyparse call below,
+// defPatVarCtor, and pushLiteralContext; live-heap bytes are flat across valid
+// parses and climb only on rejected ones. The RSS growth visible while fuzzing
+// is separate AddressSanitizer quarantine/shadow retention, which release
+// builds do not have.
 //
 // This is left as-is deliberately. In the deployed shape -- an embedded
 // compiler parsing source it is given, or an RPC peer sending expressions --
