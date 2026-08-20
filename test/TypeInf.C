@@ -68,6 +68,30 @@ TEST(TypeInf, DecodeRejectsTruncatedInput) {
   EXPECT_TRUE(threw);
 }
 
+TEST(TypeInf, DecodeRejectsOutOfRangeTGen) {
+  // a TGen carries an index into the type variables quantified by the enclosing
+  // polytype, and the type constructor derives a count of 'index + 1' from it.
+  // A decoded index of INT_MAX overflows that increment (signed overflow is
+  // undefined behavior), and a negative index is meaningless, so both must be
+  // rejected rather than constructed.
+  auto encodeTGenIndex = [](int i) {
+    std::vector<unsigned char> bs(sizeof(int) + sizeof(int));
+    int tag = TGen::type_case_id;
+    memcpy(&bs[0], &tag, sizeof(tag));
+    memcpy(&bs[sizeof(int)], &i, sizeof(i));
+    return bs;
+  };
+
+  // a well-formed index still round-trips
+  EXPECT_TRUE(show(decode(encodeTGenIndex(3))) == show(TGen::make(3)));
+
+  for (int i : {std::numeric_limits<int>::max(), std::numeric_limits<int>::min(), -1}) {
+    bool threw = false;
+    try { decode(encodeTGenIndex(i)); } catch (const std::exception&) { threw = true; }
+    EXPECT_TRUE(threw);
+  }
+}
+
 TEST(TypeInf, CodecRejectsInvalidBoolValue) {
   // the stream codec decodes data that can arrive from an untrusted peer;
   // loading any byte other than 0 or 1 into a bool is undefined behavior, so
