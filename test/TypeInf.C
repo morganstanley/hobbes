@@ -179,3 +179,85 @@ TEST(TypeInf, CodecRejectsOversizedLengthOnNonSeekableStream) {
   decode(&s, gin);
   EXPECT_TRUE(s == "elephant");
 }
+
+TEST(TypeInf, DecodeRejectsNonPrimitiveSwitchSelector) {
+  // A switch binding holds its selector as a Primitive, and the switch
+  // constructor calls Primitive's virtuals on it (operator< via PrimPtrLT, to
+  // reject duplicate selectors). The selector is encoded as an ordinary
+  // expression, though, so a hostile buffer can name any expression case there
+  // -- a record, say. Converting that pointer unchecked dispatched Primitive's
+  // virtuals through the vtable of an unrelated Expr subclass and read past the
+  // end of the object (OSS-Fuzz 549385905, reached through hobbes::decode via
+  // an encoded TExpr type).
+  auto expr = [](int cid) {
+    std::ostringstream e;
+    encode(cid, e);
+    return e.str();
+  };
+  auto untyped = [](std::ostringstream& out) { encode(false, out); };
+
+  std::ostringstream out;
+  encode(Switch::type_case_id, out);
+
+  // the value being switched over
+  out << expr(Unit::type_case_id); untyped(out);
+
+  // two bindings: the second selector is compared against the first, which is
+  // what reaches Primitive's virtuals
+  encode(static_cast<size_t>(2), out);
+
+  out << expr(Unit::type_case_id); untyped(out);   // selector 0: a unit constant
+  out << expr(Unit::type_case_id); untyped(out);   // its result expression
+
+  out << expr(MkRecord::type_case_id);             // selector 1: a record, not a constant
+  encode(static_cast<size_t>(1), out);             //   one field...
+  encode(std::string("x"), out);                   //   ...named x...
+  out << expr(Unit::type_case_id); untyped(out);   //   ...holding unit
+  untyped(out);
+  out << expr(Unit::type_case_id); untyped(out);   // its result expression
+
+  encode(false, out);                              // no default case
+  untyped(out);                                    // the switch carries no type
+
+  const std::string enc = out.str();
+  std::vector<uint8_t> raw(enc.begin(), enc.end());
+
+  {
+    stream::raw_istream<char> in(raw);
+    ExprPtr e;
+    bool threw = false;
+    try { decode(&e, in); } catch (const std::exception&) { threw = true; }
+    EXPECT_TRUE(threw);
+  }
+
+  // and through the surface the fuzzer drives: a TExpr type carries an encoded
+  // expression, so hobbes::decode(bytes) reaches the same decoder
+  std::vector<unsigned char> tenc;
+  const int texpr = TExpr::type_case_id;
+  const size_t len = enc.size();
+  tenc.insert(tenc.end(), reinterpret_cast<const unsigned char*>(&texpr),
+                          reinterpret_cast<const unsigned char*>(&texpr) + sizeof(texpr));
+  tenc.insert(tenc.end(), reinterpret_cast<const unsigned char*>(&len),
+                          reinterpret_cast<const unsigned char*>(&len) + sizeof(len));
+  tenc.insert(tenc.end(), enc.begin(), enc.end());
+
+  bool threw = false;
+  try { decode(tenc); } catch (const std::exception&) { threw = true; }
+  EXPECT_TRUE(threw);
+
+  // a switch whose selectors really are primitive constants still round-trips
+  Switch::Bindings bs;
+  bs.push_back(Switch::Binding(
+    PrimitivePtr(new Bool(true, LexicalAnnotation::null())),
+    ExprPtr(new Unit(LexicalAnnotation::null()))));
+  bs.push_back(Switch::Binding(
+    PrimitivePtr(new Bool(false, LexicalAnnotation::null())),
+    ExprPtr(new Unit(LexicalAnnotation::null()))));
+  ExprPtr sw(new Switch(ExprPtr(new Unit(LexicalAnnotation::null())), bs, LexicalAnnotation::null()));
+
+  std::vector<uint8_t> good;
+  encode(sw, &good);
+  ExprPtr rt;
+  decode(good, &rt);
+  EXPECT_TRUE(*rt == *sw);
+}

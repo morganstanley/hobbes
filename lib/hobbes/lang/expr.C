@@ -720,7 +720,9 @@ Expr* Switch::clone() const {
   ExprPtr cdef = this->def ? ExprPtr(this->def->clone()) : ExprPtr();
   Bindings cbs;
   for (const auto& b : this->bs) {
-    cbs.push_back(Binding(PrimitivePtr(reinterpret_cast<Primitive*>(b.value->clone())), ExprPtr(b.exp->clone())));
+    // a downcast, not a reinterpretation: clone() is declared on Expr but the
+    // object really is a Primitive, so let the compiler adjust the pointer
+    cbs.push_back(Binding(PrimitivePtr(static_cast<Primitive*>(b.value->clone())), ExprPtr(b.exp->clone())));
   }
   return new Switch(ExprPtr(this->v->clone()), cbs, cdef, la());
 }
@@ -1648,11 +1650,26 @@ struct encodeExprF : public switchExpr<UnitV> {
 };
 
 void encode(const PrimitivePtr& p, std::ostream& out) {
-  encode(reinterpret_cast<const ExprPtr&>(p), out);
+  encode(ExprPtr(p), out);
 }
 
+// A primitive is encoded as a plain expression, so what comes back is whatever
+// expression the input names -- it is not necessarily a Primitive. Decoding a
+// case id into a PrimitivePtr must therefore be a checked conversion: these
+// bytes can come from a file or an untrusted peer, and a Switch binding holds
+// its selector as a Primitive and calls Primitive's virtuals on it. Casting the
+// pointer unchecked would dispatch those calls through the vtable of an
+// unrelated Expr subclass and read past the end of the object.
 void decode(PrimitivePtr* p, std::istream& in) {
-  decode(reinterpret_cast<ExprPtr*>(p), in);
+  ExprPtr e;
+  decode(&e, in);
+
+  PrimitivePtr r = std::dynamic_pointer_cast<Primitive>(e);
+  if (!r) {
+    throw std::runtime_error(
+      "Expected a primitive constant in encoded expression, but found: " + show(e));
+  }
+  *p = r;
 }
 
 void encode(const ExprPtr& e, std::ostream& out) {
