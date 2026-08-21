@@ -11,6 +11,7 @@
 #include <hobbes/util/codec.H>
 #include <hobbes/util/perf.H>
 #include <hobbes/util/str.H>
+#include <limits>
 #include <memory>
 #include <sstream>
 #include <stdexcept>
@@ -639,6 +640,15 @@ const std::string& TVar::name() const { return this->nm; }
 void TVar::show(std::ostream& out) const { out << this->nm; }
 
 MonoTypePtr TGen::make(int x) {
+  // a TGen is an index into the type variables quantified by the enclosing
+  // polytype, so it is always non-negative, and the constructor derives a
+  // count of 'x + 1' from it -- that increment overflows at INT_MAX. Reject
+  // both out-of-domain cases here rather than in the decoder alone, since
+  // every path that can carry an attacker-supplied index (the binary type
+  // decoder in particular) funnels through this constructor.
+  if (x < 0 || x == std::numeric_limits<int>::max()) {
+    throw std::runtime_error("Invalid type variable index: " + str::from(x));
+  }
   return makeType<TGenMem, TGen>(x);
 }
 
