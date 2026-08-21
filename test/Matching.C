@@ -439,6 +439,45 @@ TEST(Matching, largeRegexDFAFinishesReasonablyQuickly) {
   EXPECT_TRUE(size_t(tick() - t0) < 1UL * 60 * 60 * 1000 * 1000 * 1000);
 }
 
+// a regex literal is parsed, translated to an NFA, and walked for its capture
+// names by recursive functions, so each term in it is a stack frame several
+// times over. these two shapes each ran the stack out where the regex is read
+// (OSS-Fuzz 549863810 reported the first as a stack overflow in seqR).
+static std::string matchRegex(const std::string &regex) {
+  return "match \"x\" with | '" + regex + "' -> 1 | _ -> 0";
+}
+
+static std::string repeated(const std::string &unit, size_t n) {
+  std::string r;
+  r.reserve(unit.size() * n);
+  for (size_t i = 0; i < n; ++i) {
+    r += unit;
+  }
+  return r;
+}
+
+TEST(Matching, longRegexIsRejected) {
+  // recursion in the parser itself: one term deeper for every character read
+  EXPECT_EXCEPTION_MSG(c().readExpr(matchRegex(repeated("a", 5000))),
+                       std::exception, "regex is too complex to compile");
+}
+
+TEST(Matching, deeplyNestedRegexIsRejected) {
+  // the parser returns to its caller at every ')' and so stays shallow here,
+  // but the regex it builds nests one level deeper for every 'a' -- the stack
+  // runs out later, translating that regex to an NFA
+  EXPECT_EXCEPTION_MSG(c().readExpr(matchRegex(repeated("a)", 2500))),
+                       std::exception, "regex is too complex to compile");
+}
+
+TEST(Matching, regexesUnderTheTermLimitStillCompile) {
+  const size_t n = 500;
+  auto f = c().compileFn<bool(const std::string &)>(
+      "x", "match x with | '" + repeated("a", n) + "' -> true | _ -> false");
+  EXPECT_TRUE(f(repeated("a", n)));
+  EXPECT_FALSE(f(repeated("a", n - 1)));
+}
+
 TEST(Matching, noRaceInterpMatch) {
   c().alwaysLowerPrimMatchTables(true);
   c().buildInterpretedMatches(true);

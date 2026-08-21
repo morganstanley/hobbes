@@ -32,6 +32,12 @@ text (lexing and parsing, before anything is compiled or evaluated) must be
 safe on arbitrary bytes. A crash or memory error in the lexer/parser on
 malformed input is a defect.
 
+Being safe on arbitrary bytes includes not being asked for unbounded work.
+A regex literal is read into a tree that the parser, the NFA translation, and
+the tree's own destructor each walk recursively, so a regex literal is bounded
+at 1,000 terms; past that the read fails with an error rather than running the
+stack out.
+
 Networking and RPC assume a trusted network
 -------------------------------------------
 

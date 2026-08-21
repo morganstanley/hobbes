@@ -252,7 +252,27 @@ DCharset readCharset(const std::string& x, size_t i) {
 
 // parse a complete regex
 using DRegex = std::pair<size_t, RegexPtr>;
-DRegex diffRegex(const RegexPtr& lhs, const std::string& x, size_t i);
+
+// every term in a regex is a level of nesting in the tree it parses to, and
+// that tree is built and consumed by recursive functions -- the parser here,
+// the NFA translation in linkStateF, bindingNames, and the tree's own
+// destructor. so the term count of a regex literal is stack depth several
+// times over, and a regex only as exotic as a few thousand characters can run
+// the stack out where it is read. bound it once, here, where every regex has
+// to pass, rather than in each of those walks.
+const size_t maxRegexTerms = 1000;
+
+struct TermBudget {
+  size_t taken = 0;
+
+  void take() {
+    if (++this->taken > maxRegexTerms) {
+      throw std::runtime_error("regex is too complex to compile (more than " + str::from(maxRegexTerms) + " terms)");
+    }
+  }
+};
+
+DRegex diffRegex(const RegexPtr& lhs, const std::string& x, size_t i, TermBudget* tb);
 
 DRegex returnR(const std::string& x, size_t k, const RegexPtr& r) {
   switch (k==x.size() ? '\0' : x[k]) {
@@ -263,15 +283,18 @@ DRegex returnR(const std::string& x, size_t k, const RegexPtr& r) {
   }
 }
 
-DRegex seqR(const RegexPtr& lhs, const RegexPtr& c, const std::string& x, size_t k) {
+DRegex seqR(const RegexPtr& lhs, const RegexPtr& c, const std::string& x, size_t k, TermBudget* tb) {
   DRegex cm = returnR(x, k, c);
-  return diffRegex(sequence(lhs, cm.second), x, cm.first);
+  return diffRegex(sequence(lhs, cm.second), x, cm.first, tb);
 }
 
-DRegex diffRegex(const RegexPtr& lhs, const std::string& x, size_t i) {
+DRegex diffRegex(const RegexPtr& lhs, const std::string& x, size_t i, TermBudget* tb) {
   if (i == x.size()) {
     return DRegex(i, lhs);
   } else {
+    // one term of the regex is read below, whichever case it takes
+    tb->take();
+
     rchar_t n = (i+1==x.size()) ? '\0' : x[i+1];
 
     switch (x[i]) {
@@ -302,15 +325,15 @@ DRegex diffRegex(const RegexPtr& lhs, const std::string& x, size_t i) {
 
       // now the group body just matches as if inline
       // (but we may bind to the group match result)
-      DRegex g = diffRegex(epsilon(), x, i+1);
-      return diffRegex(sequence(lhs, bindTo(b, g.second)), x, g.first);
+      DRegex g = diffRegex(epsilon(), x, i+1, tb);
+      return diffRegex(sequence(lhs, bindTo(b, g.second)), x, g.first, tb);
     }
     case '|': {
-      DRegex n = diffRegex(epsilon(), x, i+1);
+      DRegex n = diffRegex(epsilon(), x, i+1, tb);
       return DRegex(n.first, either(lhs, n.second));
     }
     case '.': {
-      return seqR(lhs, anyOf(anyChars()), x, i+1);
+      return seqR(lhs, anyOf(anyChars()), x, i+1, tb);
     }
     case '[': {
       if (i+1 < x.size()) {
@@ -318,28 +341,29 @@ DRegex diffRegex(const RegexPtr& lhs, const std::string& x, size_t i) {
         auto p      = readCharset(x, invert ? (i+2) : (i+1));
         auto cs     = invert ? setDifference(anyChars(), p.second) : p.second;
 
-        return seqR(lhs, anyOf(cs), x, p.first);
+        return seqR(lhs, anyOf(cs), x, p.first, tb);
       } else {
         throw std::runtime_error("Unexpected end in regex (expecting ']')");
       }
     }
     case '\\': {
       if (i+1 < x.size()) {
-        return seqR(lhs, unescapePatChar(x[i+1]), x, i+2);
+        return seqR(lhs, unescapePatChar(x[i+1]), x, i+2, tb);
       } else {
         throw std::runtime_error("Unexpected end in regex (expecting escape code)");
       }
     }
     default: {
-      return seqR(lhs, charLit(x[i]), x, i+1);
+      return seqR(lhs, charLit(x[i]), x, i+1, tb);
     }}
   }
 }
 
 RegexPtr parseRegex(const std::string& x) {
-  DRegex dr = diffRegex(epsilon(), x, 0);
+  TermBudget tb;
+  DRegex dr = diffRegex(epsilon(), x, 0, &tb);
   while (dr.first < x.size()) {
-    dr = diffRegex(dr.second, x, dr.first);
+    dr = diffRegex(dr.second, x, dr.first, &tb);
   }
   return dr.second;
 }
