@@ -1972,6 +1972,14 @@ public:
     auto si = this->s.find(v->name());
     if (si != this->s.end()) {
       if (this->transitive) {
+        // a substitution can be cyclic ('a' |-> 'a', or 'a' |-> 'b' with 'b' |-> 'a'),
+        // in which case it has no fixed point to reach -- unification avoids producing
+        // one, but a substitution derived from decoded type data can be cyclic, and
+        // expanding a variable already under expansion would never terminate
+        if (expanding(v->name())) {
+          return TVar::make(v->name());
+        }
+        expansion e(this, v->name());
         return switchOf(si->second, *this);
       } else {
         return si->second;
@@ -2003,6 +2011,29 @@ public:
 private:
   bool transitive;
   const MonoTypeSubst& s;
+
+  // the chain of type variables currently being expanded, held as stack frames
+  // linked through the visitor so that a cycle can be detected without allocating
+  struct expansion {
+    expansion(const substituteF* f, const std::string& n) : f(f), n(n), next(f->expansions) { f->expansions = this; }
+    ~expansion() { this->f->expansions = this->next; }
+    expansion(const expansion&) = delete;
+    expansion& operator=(const expansion&) = delete;
+
+    const substituteF* f;
+    const std::string& n;
+    const expansion*   next;
+  };
+  mutable const expansion* expansions = nullptr;
+
+  bool expanding(const std::string& n) const {
+    for (const expansion* e = this->expansions; e != nullptr; e = e->next) {
+      if (e->n == n) {
+        return true;
+      }
+    }
+    return false;
+  }
 };
 
 MonoTypePtr substituteStep(const MonoTypeSubst& s, const MonoTypePtr& mt) {
@@ -2091,17 +2122,41 @@ MonoTypes simplifyVarNames(const MonoTypes& mts) {
 }
 
 // reduce types to their ultimate primitive representation
-MonoTypePtr repType(const MonoTypePtr& t) {
-  if (const Prim* pt = is<Prim>(t)) {
-    if (pt->representation()) {
-      return repType(pt->representation());
+// type-level application is untyped, so a type description can describe a reduction
+// with no normal form (the type-level reading of '(\x.x x) (\x.x x)'). Type
+// descriptions are read from files and from network peers, so reduction is bounded
+// and the type rejected, rather than reduced until the stack runs out.
+static const size_t maxRepTypeSteps = 1000;
+
+// the step budget is shared with the reduction of the applied type function, so that
+// the whole reduction is bounded rather than each nested one starting over
+static MonoTypePtr repTypeWithin(const MonoTypePtr& ty, size_t* steps) {
+  MonoTypePtr t = ty;
+
+  while (true) {
+    if (*steps == 0) {
+      throw std::runtime_error("Type-level application does not reduce: " + show(ty));
     }
-  } else if (const TApp* a = is<TApp>(t)) {
-    if (const TAbs* tf = is<TAbs>(repType(a->fn()))) {
-      return repType(substitute(substitution(tf->args(), a->args()), tf->body()));
+    --*steps;
+
+    if (const Prim* pt = is<Prim>(t)) {
+      if (pt->representation()) {
+        t = pt->representation();
+        continue;
+      }
+    } else if (const TApp* a = is<TApp>(t)) {
+      if (const TAbs* tf = is<TAbs>(repTypeWithin(a->fn(), steps))) {
+        t = substitute(substitution(tf->args(), a->args()), tf->body());
+        continue;
+      }
     }
+    return t;
   }
-  return t;
+}
+
+MonoTypePtr repType(const MonoTypePtr& t) {
+  size_t steps = maxRepTypeSteps;
+  return repTypeWithin(t, &steps);
 }
 
 // one step of unrolling the representation type
@@ -2178,8 +2233,14 @@ public:
         return 0;
       } else if (f->name() == "promise") {
         return sizeof(long);
-      } else if (const TAbs* tf = is<TAbs>(f->representation())) {
-        return r(substitute(substitution(tf->args(), v->args()), tf->body()));
+      } else if (is<TAbs>(f->representation()) != nullptr) {
+        // reduce to a normal form first: recurring on a single reduction step
+        // would not terminate for an application that has no normal form
+        MonoTypePtr app = clone(v);
+        MonoTypePtr rty = repType(app);
+        if (rty != app) {
+          return r(rty);
+        }
       }
     }
     throw std::runtime_error("Can't determine size of monotype: " + show(v));
