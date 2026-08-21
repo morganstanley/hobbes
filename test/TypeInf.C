@@ -203,3 +203,123 @@ TEST(TypeInf, CodecRejectsOversizedLengthOnNonSeekableStream) {
   decode(&s, gin);
   EXPECT_TRUE(s == "elephant");
 }
+
+TEST(TypeInf, DecodeRejectsNonPrimitiveSwitchSelector) {
+  // A switch binding holds its selector as a Primitive, and the switch
+  // constructor calls Primitive's virtuals on it (operator< via PrimPtrLT, to
+  // reject duplicate selectors). The selector is encoded as an ordinary
+  // expression, though, and nothing in the encoding obliges a peer to put a
+  // primitive constant there. Converting the decoded pointer unchecked
+  // dispatched those virtuals through the vtable of an unrelated Expr subclass.
+  //
+  // Two OSS-Fuzz reports of the same defect, differing only in what the
+  // selector named and therefore in which sanitizer caught it first:
+  //   549385905 -- a record selector, reaching MkRecord::operator==, which read
+  //                its std::vector member past the end of the object (ASan
+  //                heap-buffer-overflow)
+  //   549508407 -- a variable and a nested switch (UBSan bad-cast)
+  // Both were found by fuzz-type-decode, which reaches the expression decoder
+  // through a type-level expression.
+  auto unitExpr = [](std::ostream& out) {
+    encode(Unit::type_case_id, out);
+    encode(false, out);                                // no annotated type
+  };
+  auto switchWithSelectors =
+    [&](const std::vector<std::function<void(std::ostream&)>>& sels) {
+      std::ostringstream ss;
+      encode(Switch::type_case_id, ss);
+      unitExpr(ss);                                    // scrutinee: ()
+      encode(static_cast<size_t>(sels.size()), ss);
+      for (const auto& sel : sels) {
+        sel(ss);                                       // the selector...
+        unitExpr(ss);                                  // ...and its body
+      }
+      encode(false, ss);                               // no default case
+      encode(false, ss);                               // no annotated type
+      const std::string s = ss.str();
+      return std::vector<uint8_t>(s.begin(), s.end());
+    };
+
+  // a record, a variable, and a nested switch: none is a primitive constant, so
+  // all three must be rejected
+  auto recordSel = [&](std::ostream& out) {
+    encode(MkRecord::type_case_id, out);
+    encode(static_cast<size_t>(1), out);               // one field...
+    encode(std::string("x"), out);                     // ...named x...
+    unitExpr(out);                                     // ...holding unit
+    encode(false, out);
+  };
+  auto varSel = [](std::ostream& out) {
+    encode(Var::type_case_id, out);
+    encode(std::string("x"), out);
+    encode(false, out);
+  };
+  auto nestedSwitchSel = [&](std::ostream& out) {
+    encode(Switch::type_case_id, out);
+    unitExpr(out);                                     // scrutinee: ()
+    encode(static_cast<size_t>(0), out);               // no bindings...
+    encode(true, out);                                 // ...but a default case,
+    unitExpr(out);                                     // so this switch is valid
+    encode(false, out);
+  };
+
+  std::vector<std::vector<uint8_t>> hostile;
+  hostile.push_back(switchWithSelectors({varSel}));
+  hostile.push_back(switchWithSelectors({nestedSwitchSel}));
+  // the record needs a preceding primitive selector to compare against: with a
+  // single binding the duplicate check never invokes the comparator, and it is
+  // that comparison which reached MkRecord::operator== in 549385905
+  hostile.push_back(switchWithSelectors({unitExpr, recordSel}));
+
+  // Check the message, not merely that something was thrown: constructing a
+  // switch can throw on its own (inexhaustive coverage, duplicate selectors),
+  // so a test that only asked "did it throw" would pass with the check removed.
+  for (const auto& enc : hostile) {
+    // rejected where the expression is decoded ...
+    std::string msg;
+    try {
+      ExprPtr e;
+      decode(enc, &e);
+    } catch (const std::exception& ex) {
+      msg = ex.what();
+    }
+    EXPECT_TRUE(msg.find("primitive constant") != std::string::npos);
+
+    // ... and so also on the type-decoder surface the fuzzer drives, where the
+    // same bytes arrive wrapped in a type-level expression
+    std::vector<unsigned char> tenc;
+    auto append = [&](const void* p, size_t n) {
+      const auto* b = static_cast<const unsigned char*>(p);
+      tenc.insert(tenc.end(), b, b + n);
+    };
+    const int tag = TExpr::type_case_id;
+    const size_t len = enc.size();
+    append(&tag, sizeof(tag));
+    append(&len, sizeof(len));
+    tenc.insert(tenc.end(), enc.begin(), enc.end());
+
+    msg.clear();
+    try {
+      decode(tenc);
+    } catch (const std::exception& ex) {
+      msg = ex.what();
+    }
+    EXPECT_TRUE(msg.find("primitive constant") != std::string::npos);
+  }
+
+  // a switch whose selectors really are primitive constants still round-trips
+  Switch::Bindings bs;
+  bs.push_back(Switch::Binding(
+    PrimitivePtr(new Bool(true, LexicalAnnotation::null())),
+    ExprPtr(new Unit(LexicalAnnotation::null()))));
+  bs.push_back(Switch::Binding(
+    PrimitivePtr(new Bool(false, LexicalAnnotation::null())),
+    ExprPtr(new Unit(LexicalAnnotation::null()))));
+  ExprPtr sw(new Switch(ExprPtr(new Unit(LexicalAnnotation::null())), bs, LexicalAnnotation::null()));
+
+  std::vector<uint8_t> good;
+  encode(sw, &good);
+  ExprPtr rt;
+  decode(good, &rt);
+  EXPECT_TRUE(*rt == *sw);
+}
