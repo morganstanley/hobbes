@@ -1284,3 +1284,120 @@ TEST(Storage, FRegionRejectsEnvironmentRunningPastPageTable) {
     unlink(path.data());
   }
 }
+
+TEST(Storage, FRegionRejectsUnusablePageTableLinks) {
+  // the page table is a chain of TOC pages, each ending in the index of the
+  // next one; that index comes out of the image, so it has to be checked
+  // before it is followed
+  hobbes::fregion::imagefile f;
+  f.path      = "synthetic";
+  f.fd        = -1;
+  f.page_size = 4096;
+  f.file_size = 4096 * 3;
+
+  // page 0 is where the chain starts, so it has already been read
+  std::set<hobbes::fregion::file_pageindex_t> readPages;
+  readPages.insert(0);
+
+  // any page the file actually holds and has not been read yet is fine
+  bool threw = false;
+  try {
+    hobbes::fregion::ensureTOCPageLink(&f, 1, readPages);
+    hobbes::fregion::ensureTOCPageLink(&f, 2, readPages);
+  } catch (const std::exception&) { threw = true; }
+  EXPECT_TRUE(!threw);
+
+  // a page past the end of the file is not
+  threw = false;
+  try { hobbes::fregion::ensureTOCPageLink(&f, 3, readPages); }
+  catch (const std::exception&) { threw = true; }
+  EXPECT_TRUE(threw);
+
+  // nor is one so large that the byte offset it implies would wrap
+  threw = false;
+  try { hobbes::fregion::ensureTOCPageLink(&f, ~hobbes::fregion::file_pageindex_t(0), readPages); }
+  catch (const std::exception&) { threw = true; }
+  EXPECT_TRUE(threw);
+
+  // and neither is a page the chain has already read: that closes a cycle,
+  // which the read loop has no other way to escape
+  threw = false;
+  try { hobbes::fregion::ensureTOCPageLink(&f, 0, readPages); }
+  catch (const std::exception&) { threw = true; }
+  EXPECT_TRUE(threw);
+}
+
+TEST(Storage, FRegionRejectsCyclicPageTable) {
+  // As above, this drives the real path so that removing the check from
+  // readPageData fails here rather than passing quietly. Reading the page
+  // table stops only when it finds a null page entry, so a link that points
+  // back at a page already read never stops it: the same pages are read
+  // forever while the page table grows without bound. Fuzzing the reader
+  // reports that as a timeout rather than as a crash.
+  //
+  // The image is two pages long and both are packed with non-null page
+  // entries. The link at the end of page 1 names page 1, so following it
+  // returns to the page it was just read from.
+  const auto   pageSize  = static_cast<uint16_t>(HFREGION_MIN_PAGE_SIZE);
+  const size_t pageCount = 2;
+  std::vector<unsigned char> img(pageSize * pageCount, 0);
+
+  auto put16 = [&](size_t at, uint16_t v) {
+    img[at]     = static_cast<unsigned char>(v & 0xFF);
+    img[at + 1] = static_cast<unsigned char>((v >> 8) & 0xFF);
+  };
+  auto put32 = [&](size_t at, uint32_t v) {
+    for (size_t i = 0; i < 4; ++i) {
+      img[at + i] = static_cast<unsigned char>((v >> (8 * i)) & 0xFF);
+    }
+  };
+  auto put64 = [&](size_t at, uint64_t v) {
+    for (size_t i = 0; i < 8; ++i) {
+      img[at + i] = static_cast<unsigned char>((v >> (8 * i)) & 0xFF);
+    }
+  };
+
+  // filehead: magic, page size, format version
+  put32(0, HFREGION_FILE_PREFIX_BYTES);
+  put16(4, pageSize);
+  put16(6, HFREGION_CURRENT_FILE_FORMAT_VERSION);
+
+  // fill both pages with data-page entries, up to the link at the end of each
+  // page -- a null entry anywhere would end the read before the link is
+  // reached, which is exactly what this image is built to avoid
+  const auto full  = static_cast<uint16_t>(hobbes::fregion::pagedata::encode(hobbes::fregion::pagetype::data, 0));
+  const size_t link0 = pageSize - sizeof(hobbes::fregion::file_pageindex_t);
+  const size_t link1 = (2 * pageSize) - sizeof(hobbes::fregion::file_pageindex_t);
+
+  for (size_t at = sizeof(hobbes::fregion::filehead); at < link0; at += sizeof(hobbes::fregion::pagedata)) {
+    put16(at, full);
+  }
+  for (size_t at = pageSize; at < link1; at += sizeof(hobbes::fregion::pagedata)) {
+    put16(at, full);
+  }
+
+  // page 0 continues on page 1, and page 1 continues on itself
+  put64(link0, 1);
+  put64(link1, 1);
+
+  std::string tmpl = "/tmp/hobbes-fregion-toccycle-XXXXXX";
+  std::vector<char> path(tmpl.begin(), tmpl.end());
+  path.push_back('\0');
+  int fd = mkstemp(path.data());
+  EXPECT_TRUE(fd >= 0);
+  if (fd >= 0) {
+    EXPECT_TRUE(::write(fd, img.data(), img.size()) == static_cast<ssize_t>(img.size()));
+    close(fd);
+
+    // a malformed image must be reported, and reported promptly
+    bool threw = false;
+    try {
+      hobbes::fregion::reader r(path.data());
+    } catch (const std::exception&) {
+      threw = true;
+    }
+    EXPECT_TRUE(threw);
+
+    unlink(path.data());
+  }
+}

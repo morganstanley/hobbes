@@ -98,3 +98,7 @@ cp "$SRCDIR/fuzz/parse-expr.dict" "$OUT/fuzz-parse-expr.dict"
 if [ -d "$SRCDIR/fuzz/corpus/parse-expr" ]; then
   zip -jq "$OUT/fuzz-parse-expr_seed_corpus.zip" "$SRCDIR/fuzz/corpus/parse-expr/"*
 fi
+
+if [ -d "$SRCDIR/fuzz/corpus/fregion-reader" ]; then
+  zip -jq "$OUT/fuzz-fregion-reader_seed_corpus.zip" "$SRCDIR/fuzz/corpus/fregion-reader/"*
+fi
