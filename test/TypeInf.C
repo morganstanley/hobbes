@@ -125,6 +125,17 @@ TEST(TypeInf, SizeAndLayoutRejectUnrepresentableTypes) {
   }
   EXPECT_EXCEPTION(Record::make(ms));
 
+  // a record that ends exactly at the last representable offset is in range
+  // until its trailing padding is added, and adding it is what carries the
+  // layout past what an offset can hold -- so that record is rejected too,
+  // rather than being built and then refusing to give its size
+  EXPECT_EXCEPTION(
+    Record::make(list(
+      Record::Member("a", primty("long")),
+      Record::Member("b", MonoTypePtr(FixedArray::make(primty("char"), MonoTypePtr(TLong::make(std::numeric_limits<int>::max() - 8)))))
+    ))
+  );
+
   // and the same record arriving as an encoded type description -- which is
   // what the binary decoder consumes -- is rejected rather than crashing it
   std::vector<unsigned char> enc;

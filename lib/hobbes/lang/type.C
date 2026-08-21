@@ -1307,7 +1307,20 @@ Record::Members Record::withExplicitPadding(const Members& ms, const std::string
   unsigned int talign = maxFieldAlignmentF(ms);
 
   if (talign > 0) {
+    // a record that ends exactly at the last representable offset is within
+    // range until it is aligned, and aligning it here is what would carry it
+    // past: reject it rather than describing a padded layout whose extent no
+    // offset or size can hold (Record::size() refuses to size such a record, so
+    // without this it exists only to throw the first time anything asks)
     const long asz = align<long>(o, static_cast<long>(talign));
+    if (!representableOffset(asz)) {
+      throw
+        std::runtime_error(
+          "Record with trailing padding is out of range "
+          "(" + str::from(asz) + " is not within [0, " + str::from(maxRecordOffset) + "]) in record: " +
+          showRecord(ms)
+        );
+    }
     if (asz > o) {
       r.push_back(Member(pfx + str::from(p++), arrayty(prim<char>(), static_cast<size_t>(asz - o))));
     }
