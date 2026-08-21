@@ -38,6 +38,13 @@ the tree's own destructor each walk recursively, so a regex literal is bounded
 at 1,000 terms; past that the read fails with an error rather than running the
 stack out.
 
+Safe is not the same as cheap. A regex literal is also turned into a DFA where it
+is read, and determinizing a regex is exponential in the worst case, so a
+short literal can ask for an unreasonable amount of work. Construction stops
+at ``cc::regexMaxDFAStates`` states (10,000 by default) and the read fails
+with an error rather than running on; raise it on the ``cc`` if a legitimate
+regex needs more.
+
 Networking and RPC assume a trusted network
 -------------------------------------------
 

@@ -670,6 +670,9 @@ bool cc::buildColumnwiseMatches() const { return this->columnwiseMatches; }
 void cc::regexMaxExprDFASize(size_t f) { this->maxExprDFASize = f; }
 size_t cc::regexMaxExprDFASize() const { return this->maxExprDFASize; }
 
+void cc::regexMaxDFAStates(size_t f) { this->maxDFAStates = f; }
+size_t cc::regexMaxDFAStates() const { return this->maxDFAStates; }
+
 void cc::throwOnHugeRegexDFA(bool f) { this->shouldThrowOnHugeRegexDFA = f; }
 bool cc::throwOnHugeRegexDFA() const { return this-> shouldThrowOnHugeRegexDFA; }
 

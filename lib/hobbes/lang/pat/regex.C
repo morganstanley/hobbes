@@ -5,8 +5,10 @@
 #include <hobbes/util/str.H>
 #include <hobbes/util/rmap.H>
 
+#include <algorithm>
 #include <memory>
-#include <queue>
+#include <tuple>
+#include <unordered_map>
 
 namespace hobbes {
 
@@ -751,6 +753,15 @@ state dfaState(const cc* c, const NFA& nfa, const EpsClosure& ec, Nss2Ds* nss2ds
   state result = dfa->size();
   dfa->resize(dfa->size() + 1);
 
+  // determinizing is exponential in the worst case, and it doesn't take an
+  // exotic regex to hit it: ' *...........,...............' is 29 characters
+  // that determinize to over 50k states. cap the construction so that a regex
+  // literal can't hang the compiler (or the parser -- regex literals are
+  // compiled where they're read).
+  if (dfa->size() > c->regexMaxDFAStates()) {
+    throw std::runtime_error("regex is too complex to compile (needs more than " + str::from(c->regexMaxDFAStates()) + " DFA states)");
+  }
+
   if (c->throwOnHugeRegexDFA() and c->regexDFAOverNFAMaxRatio() > 0 and (dfa->size() / nfa.size() > size_t(c->regexDFAOverNFAMaxRatio()))) {
     throw std::runtime_error("regexes DFA over NFA Max ratio was breached");
   }
@@ -1152,81 +1163,108 @@ void mergeCharRangesAndEqResults(DFA* dfa, const RStates& fstates, RStates* rsta
  **************************/
 using EqStates = std::map<state, state>;
 
-void visitGraph(const std::vector<std::vector<state>>& g, state m, std::vector<bool>& visited, const std::function<void(state)>& visitFn) {
-  std::queue<state> q;
-
-  q.push(m);
-  while (!q.empty()) {
-    auto s = q.front();
-    q.pop();
-
-    visited[s] = true;
-    visitFn(s);
-
-    for (auto t : g[s]) {
-      if (!visited[t]) {
-        q.push(t);
-      }
+// a union-find over DFA states where a class is always named by its least
+// member (removeEquivStates relies on a representative never being merged away
+// itself, and on state 0 staying the start state)
+class StatePartition {
+public:
+  explicit StatePartition(size_t states) : reps(states) {
+    for (size_t s = 0; s < states; ++s) {
+      this->reps[s] = static_cast<state>(s);
     }
+  }
+
+  state find(state s) {
+    while (this->reps[s] != s) {
+      this->reps[s] = this->reps[this->reps[s]];
+      s = this->reps[s];
+    }
+    return s;
+  }
+
+  bool merge(state s0, state s1) {
+    state r0 = find(s0);
+    state r1 = find(s1);
+    if (r0 == r1) {
+      return false;
+    }
+    this->reps[std::max(r0, r1)] = std::min(r0, r1);
+    return true;
+  }
+private:
+  std::vector<state> reps;
+};
+
+// everything about a state that merging can never change
+using Observation = std::tuple<result, srcmarkers, srcmarkers>;
+
+void appendKey(std::string* k, uint64_t x) {
+  for (size_t b = 0; b < sizeof(x); ++b) {
+    k->push_back(static_cast<char>((x >> (8 * b)) & 0xff));
   }
 }
 
-EqStates findEquivStates(const DFA& dfa) {
-  bit_table eqStates(dfa.size(), dfa.size(), false); // a sparse simple matrix
-  std::vector<std::vector<state>> graph(dfa.size()); // an adjacency list of `eqStates`
-  std::vector<dtransitions::Mapping> mappings(dfa.size());
+// how a state behaves: what it observes, plus the class each of its char ranges
+// leads to (which shifts as states are merged, so this must be recomputed)
+std::string stateKey(size_t obs, const dtransitions::Mapping& ts, StatePartition* p) {
+  std::string k;
+  k.reserve(sizeof(uint64_t) * (1 + (3 * ts.size())));
+  appendKey(&k, obs);
+  for (const auto& t : ts) {
+    appendKey(&k, t.first.first);
+    appendKey(&k, t.first.second);
+    appendKey(&k, p->find(t.second));
+  }
+  return k;
+}
 
-  for (size_t i = 0; i < dfa.size(); ++i) {
-    eqStates.set(i, i, true);
-    mappings[i] = dfa[i].chars.mapping();
+EqStates findEquivStates(const DFA& dfa) {
+  StatePartition p(dfa.size());
+
+  // acceptance and capture marking are fixed for the life of a state, so reduce
+  // them to a single comparable number once rather than per pass
+  std::map<Observation, size_t> obsIdx;
+  std::vector<size_t> obs(dfa.size());
+  std::vector<dtransitions::Mapping> mappings(dfa.size());
+  for (size_t s = 0; s < dfa.size(); ++s) {
+    size_t nid = obsIdx.size();
+    obs[s]      = obsIdx.insert(std::make_pair(Observation(dfa[s].acc, dfa[s].begins, dfa[s].ends), nid)).first->second;
+    mappings[s] = dfa[s].chars.mapping();
   }
 
-  for (size_t s0 = 0; s0 < dfa.size(); ++s0) {
-    for (size_t s1 = 0; s1 < s0; ++s1) {
-      // if we already know that two states are equivalent, they're still equivalent
-      if (eqStates(s0, s1)) continue;
+  // two states are equivalent when they observe the same thing and their
+  // transitions agree on the classes established so far. merging states can
+  // bring more states into agreement, so keep refining until a pass finds
+  // nothing new -- a pass that stops short only leaves the DFA larger, never
+  // wrong, so the states left unmerged in a cycle are safe to keep.
+  bool merging = true;
+  while (merging) {
+    merging = false;
 
-      // if two states have different accepting bits, they can't be equivalent
-      if (dfa[s0].acc != dfa[s1].acc) continue;
+    std::unordered_map<std::string, state> keys;
+    std::vector<std::pair<state, state>> merges;
+    for (state s = 0; s < dfa.size(); ++s) {
+      if (p.find(s) != s) continue; // one key per class, not per state
 
-      // if two states have different capture sets, they can't be equivalent
-      if (dfa[s0].begins != dfa[s1].begins) continue;
-      if (dfa[s0].ends   != dfa[s1].ends)   continue;
-
-      const auto & m0 = mappings[s0];
-      const auto & m1 = mappings[s1];
-
-      // if the shape of mapping sets differs between states, they can't be equivalent
-      if (m0.size() != m1.size()) continue;
-
-      // if there is a transition (c,q) in s0 and (c,q') in s1 and q != q', then s0 != s1 (in this cycle)
-      bool tsEq = true;
-      for (size_t i = 0; i < m0.size() && tsEq; ++i) {
-        tsEq = m0[i].first == m1[i].first && eqStates(m0[i].second, m1[i].second);
+      auto k = keys.insert(std::make_pair(stateKey(obs[s], mappings[s], &p), s));
+      if (!k.second) {
+        merges.push_back(std::make_pair(k.first->second, s));
       }
-      if (tsEq) {
-        eqStates.set(s0, s1, true);
-        eqStates.set(s1, s0, true);
-        graph[s0].push_back(s1);
-        graph[s1].push_back(s0);
-      }
+    }
+
+    // deferred so that every key in a pass is read against the same classes
+    for (const auto& m : merges) {
+      merging = p.merge(m.first, m.second) || merging;
     }
   }
 
   EqStates result;
-  std::vector<bool> visited(dfa.size(), false);
-  for (state i = 0; i < graph.size(); ++i) {
-    // the first non-visited node is considered as the representative of the
-    // current equivalence classes (connected component)
-    if (!visited[i]) {
-      visitGraph(graph, i, visited, [&result, i](state s) {
-        if (s != i) {
-          result[s] = i;
-        }
-      });
+  for (state s = 0; s < dfa.size(); ++s) {
+    state r = p.find(s);
+    if (r != s) {
+      result[s] = r;
     }
   }
-
   return result;
 }
 

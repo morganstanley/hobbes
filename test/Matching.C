@@ -478,6 +478,45 @@ TEST(Matching, regexesUnderTheTermLimitStillCompile) {
   EXPECT_FALSE(f(repeated("a", n - 1)));
 }
 
+// The regex a match row is written with is determinized where it is read, and
+// determinizing is exponential in the worst case. It doesn't take an exotic
+// regex to get there: the 57 characters below determinize to over 50,000 DFA
+// states. Reading them is capped rather than attempted (OSS-Fuzz 549752449,
+// where this ran past the fuzzer's 60s budget on a 78 byte input).
+static const char pathologicalRegex[] =
+    "' *...........,.............................../:&l->:d50xd'";
+
+TEST(Matching, pathologicalRegexIsRejected) {
+  auto t0 = std::clock();
+  EXPECT_EXCEPTION_MSG(c().readExpr(pathologicalRegex), std::exception,
+                       "regex is too complex to compile");
+  [[maybe_unused]] auto dt = std::clock() - t0;
+
+  // rejection happens on the way to the cap, so this is the cost of building
+  // 10,000 DFA states and no more: milliseconds here, seconds if instrumented
+#if !HOBBES_TEST_SKIP_TIMING_BOUNDS
+  EXPECT_TRUE(dt < 30L * CLOCKS_PER_SEC);
+#endif
+}
+
+// The cap is what keeps that regex out, but the DFA behind it also has to be
+// cheap to build for anyone who raises the cap to let it through. Merging
+// equivalent DFA states used to compare every pair of states against every
+// other, which is where all ~20 seconds of the original report went.
+TEST(Matching, hugeRegexDFACompilesWithoutQuadraticBlowup) {
+  cc lc;
+  lc.regexMaxDFAStates(1000000);
+
+  auto t0 = std::clock();
+  lc.readExpr(pathologicalRegex);
+  [[maybe_unused]] auto dt = std::clock() - t0;
+
+  // ~0.4s unoptimized, ~20s before state merging stopped being quadratic
+#if !HOBBES_TEST_SKIP_TIMING_BOUNDS
+  EXPECT_TRUE(dt < 10L * CLOCKS_PER_SEC);
+#endif
+}
+
 TEST(Matching, noRaceInterpMatch) {
   c().alwaysLowerPrimMatchTables(true);
   c().buildInterpretedMatches(true);
