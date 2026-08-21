@@ -17,29 +17,30 @@ ENV HOBBES_LLVM_VERSION=18
 ENV LLVM_SH_COMMIT=6dc0d1ad7de83d0782731687fd555a7859b4da58
 ENV LLVM_SH_SHA256=03878e08f47b66cc95bc4b544b0db3c6d9ce8d60e6cf2492ae357984330a9eae
 
+# One layer, so that the apt indexes this writes are removed by the cleanup at
+# the end of it rather than being kept in a layer the cleanup cannot reach.
+#
+# The retry is around the installer: it decides whether this distribution is
+# supported by asking apt.llvm.org for its repository index, and reports a
+# request that did not come back as an unsupported distribution -- so a single
+# dropped request fails the build with a message about the distribution rather
+# than about the network. The subshell leaves with the installer's success, or
+# fails the layer once three attempts have not come back.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         cmake make python3 zip \
         zlib1g-dev libncurses-dev libzstd-dev libreadline-dev \
-        wget gnupg lsb-release software-properties-common
-
-RUN wget -q -O /tmp/llvm.sh \
+        wget gnupg lsb-release software-properties-common && \
+    wget -q -O /tmp/llvm.sh \
       "https://raw.githubusercontent.com/opencollab/llvm-jenkins.debian.net/${LLVM_SH_COMMIT}/llvm.sh" && \
-    echo "${LLVM_SH_SHA256}  /tmp/llvm.sh" | sha256sum -c -
-
-# The installer decides whether this distribution is supported by asking
-# apt.llvm.org for its repository index, and reports a request that did not
-# come back as an unsupported distribution -- so a single dropped request fails
-# the build with a message about the distribution rather than about the
-# network. Retry before believing it.
-RUN for i in 1 2 3; do \
-      if bash /tmp/llvm.sh "$HOBBES_LLVM_VERSION"; then exit 0; fi; \
-      echo "llvm.sh failed (attempt $i), retrying"; \
-      sleep 15; \
-    done; \
-    exit 1
-
-RUN apt-get install -y --no-install-recommends llvm-$HOBBES_LLVM_VERSION-dev && \
+    echo "${LLVM_SH_SHA256}  /tmp/llvm.sh" | sha256sum -c - && \
+    ( for i in 1 2 3; do \
+        bash /tmp/llvm.sh "$HOBBES_LLVM_VERSION" && exit 0; \
+        echo "llvm.sh failed (attempt $i), retrying"; \
+        sleep 15; \
+      done; \
+      exit 1 ) && \
+    apt-get install -y --no-install-recommends llvm-$HOBBES_LLVM_VERSION-dev && \
     rm -f /tmp/llvm.sh && \
     rm -rf /var/lib/apt/lists/*
 
