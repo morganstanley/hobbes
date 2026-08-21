@@ -8,6 +8,8 @@ jobs:
   linux-clang-ASanAndUBSan-build:
     runs-on: ${{matrix.os}}
     strategy:
+      # One pairing failing says nothing about the rest, as python-compat below
+      fail-fast: false
       matrix:
         os: [ubuntu-24.04]
         clang: [16, 18, 20, 21]
@@ -25,7 +27,7 @@ jobs:
           python-version: '3.10'
       - name: nix build hobbesPackages/clang-${{ matrix.clang }}-ASanAndUBSan/hobbes
         run: |
-          nix build .#hobbesPackages/clang-${{ matrix.clang }}-ASanAndUBSan/hobbes
+          .github/scripts/nix-build-retry.sh .#hobbesPackages/clang-${{ matrix.clang }}-ASanAndUBSan/hobbes
       - name: nix log hobbesPackages/clang-${{ matrix.clang }}-ASanAndUBSan/hobbes
         if: ${{ always() }}
         run: |
@@ -39,6 +41,8 @@ jobs:
   linux-clang-build:
     runs-on: ${{matrix.os}}
     strategy:
+      # One pairing failing says nothing about the rest, as python-compat below
+      fail-fast: false
       matrix:
         os: [ubuntu-24.04]
         clang: [16, 18, 20, 21]
@@ -56,7 +60,7 @@ jobs:
           python-version: '3.10'
       - name: nix build hobbesPackages/clang-${{ matrix.clang }}/hobbes
         run: |
-          nix build .#hobbesPackages/clang-${{ matrix.clang }}/hobbes
+          .github/scripts/nix-build-retry.sh .#hobbesPackages/clang-${{ matrix.clang }}/hobbes
       - name: Rosetta Code examples
         run: |
           bash examples/rosetta/run_tests.sh result/bin/hi
@@ -73,6 +77,8 @@ jobs:
   linux-gcc-build:
     runs-on: ${{matrix.os}}
     strategy:
+      # One pairing failing says nothing about the rest, as python-compat below
+      fail-fast: false
       matrix:
         os: [ubuntu-24.04]
         gcc: [13, 14, 15]
@@ -91,7 +97,7 @@ jobs:
           python-version: '3.10'
       - name: nix build hobbesPackages/gcc-${{ matrix.gcc }}/llvm-${{ matrix.llvm }}/hobbes
         run: |
-          nix build .#hobbesPackages/gcc-${{ matrix.gcc }}/llvm-${{ matrix.llvm }}/hobbes
+          .github/scripts/nix-build-retry.sh .#hobbesPackages/gcc-${{ matrix.gcc }}/llvm-${{ matrix.llvm }}/hobbes
       - name: nix log hobbesPackages/gcc-${{ matrix.gcc }}/llvm-${{ matrix.llvm }}/hobbes
         if: ${{ always() }}
         run: |
