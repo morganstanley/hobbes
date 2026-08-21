@@ -473,15 +473,29 @@ TEST(TypeInf, DecodeRejectsDeeplyNestedDescriptions) {
     std::vector<unsigned char> bs;
     const int tag = Array::type_case_id;
     const auto* b = reinterpret_cast<const unsigned char*>(&tag);
+    bs.reserve(levels * sizeof(tag));
     for (size_t i = 0; i < levels; ++i) {
       bs.insert(bs.end(), b, b + sizeof(tag));
     }
     return bs;
   };
 
+  // one level past the bound is enough to be rejected, and the depths here are
+  // written in terms of the bound so that they still say what they mean if it
+  // is ever retuned
   std::string msg;
   try {
-    decode(arrayNest(200000));
+    decode(arrayNest(maxDecodeNesting + 1));
+  } catch (const std::exception& ex) {
+    msg = ex.what();
+  }
+  EXPECT_TRUE(msg.find("nests more than") != std::string::npos);
+
+  // however deep it goes past that, the answer is the same rejection rather
+  // than a deeper walk
+  msg = "";
+  try {
+    decode(arrayNest(100 * maxDecodeNesting));
   } catch (const std::exception& ex) {
     msg = ex.what();
   }
@@ -490,7 +504,7 @@ TEST(TypeInf, DecodeRejectsDeeplyNestedDescriptions) {
   // an expression description is bounded the same way, through the same guard:
   // this is the decoder the type decoder calls for a TExpr
   ExprPtr deep(new Unit(LexicalAnnotation::null()));
-  for (size_t i = 0; i < 4000; ++i) {
+  for (size_t i = 0; i < maxDecodeNesting + 1; ++i) {
     deep = ExprPtr(new App(deep, list(ExprPtr(new Unit(LexicalAnnotation::null()))), LexicalAnnotation::null()));
   }
   std::vector<uint8_t> denc;
@@ -512,8 +526,11 @@ TEST(TypeInf, DecodeRejectsDeeplyNestedDescriptions) {
   encode(ty, &enc);
   EXPECT_TRUE(show(decode(enc)) == show(ty));
 
+  // and the boundary itself is where it says it is: an array wrapped one level
+  // short of the bound is a description of exactly maxDecodeNesting levels --
+  // the deepest the decoder accepts -- and it round-trips
   MonoTypePtr nested = primty("int");
-  for (size_t i = 0; i < 100; ++i) {
+  for (size_t i = 0; i < maxDecodeNesting - 1; ++i) {
     nested = arrayty(nested);
   }
   std::vector<unsigned char> nenc;
