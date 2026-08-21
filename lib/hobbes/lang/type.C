@@ -2856,6 +2856,10 @@ MonoTypePtr decodeTExpr(const bytes& in, unsigned int* n) {
 }
 
 MonoTypePtr decodeFrom(const bytes& in, unsigned int* n) {
+  // every nested type is decoded through here, so this is where the nesting a
+  // description describes is bounded
+  decodeNesting nesting;
+
   switch (read<int>(in, n)) {
   case Prim::type_case_id:       return decodePrim(in, n);
   case OpaquePtr::type_case_id:  return decodeOpaquePtr(in, n);
