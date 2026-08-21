@@ -40,6 +40,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <set>
 #include <unordered_map>
 #include <functional>
 #include <stack>
@@ -810,8 +811,34 @@ inline void createFile(imagefile* f) {
   f->head_toc_pos = sizeof(filehead) + sizeof(pagedata);
 }
 
+// The page table is a chain of TOC pages, each ending with the index of the
+// next one. That link is read out of the image, so a corrupt or crafted file
+// can point it at a page the file does not have, or back at a page the chain
+// has already read. The read loop below only ends when it finds a null page
+// entry, so a link that closes a cycle never ends it: the same pages are read
+// forever while the page table grows without bound, which surfaces as a hang
+// rather than as the malformed image it is. Requiring each link to name a page
+// that lies wholly within the file and that this chain has not read yet bounds
+// the chain by the number of pages in the file.
+inline void ensureTOCPageLink(const imagefile* f, file_pageindex_t page, const std::set<file_pageindex_t>& readPages) {
+  const uint64_t pagesInFile = f->file_size / f->page_size;
+
+  if (page >= pagesInFile) {
+    throw std::runtime_error(
+      "Not a valid structured data file: page table continues on page (" + hobbes::string::from(page) +
+      ") beyond the " + hobbes::string::from(pagesInFile) + " page(s) in the file: " + f->path);
+  } else if (readPages.find(page) != readPages.end()) {
+    throw std::runtime_error(
+      "Not a valid structured data file: page table returns to page (" + hobbes::string::from(page) +
+      "), which it has already read: " + f->path);
+  }
+}
+
 // read all of the page data entries possible from the current file position
 inline void readPageData(imagefile* f) {
+  // the TOC pages read so far, seeded with the page the caller started on
+  std::set<file_pageindex_t> readpages(f->tocpages.begin(), f->tocpages.end());
+
   // we stop reading page data when we hit the 0 page
   // and if we get to the end of a page, there's a link to the next page
   while (true) {
@@ -826,6 +853,8 @@ inline void readPageData(imagefile* f) {
     if (restInPage(f, f->head_toc_pos) == sizeof(file_pageindex_t)) {
       file_pageindex_t nextpage = -1;
       read(f, &nextpage);
+      ensureTOCPageLink(f, nextpage, readpages);
+      readpages.insert(nextpage);
       f->head_toc_pos = pageOffset(f, nextpage);
       f->tocpages.push_back(nextpage);
       seekAbs(f, f->head_toc_pos);
