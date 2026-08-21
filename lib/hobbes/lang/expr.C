@@ -1690,6 +1690,11 @@ void encode(const ExprPtr& e, std::ostream& out) {
 }
 
 void decode(ExprPtr* out, std::istream& in) {
+  // as with types, every nested expression is decoded through here: an
+  // expression description nests as deeply as its bytes say, and the decoder
+  // recurs once per level
+  decodeNesting nesting;
+
   int cid = 0;
   decode(&cid, in);
 

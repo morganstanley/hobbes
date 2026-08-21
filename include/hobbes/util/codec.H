@@ -115,6 +115,35 @@ inline void ensureAvail(std::istream& in, size_t n, size_t esz) {
   }
 }
 
+// A type or expression description nests as deeply as its bytes say it does,
+// and decoding recurses once per level -- as does everything that walks the
+// result afterwards, including its own destructor. That data is untrusted (see
+// SECURITY.md: it is read from files and handed over by network peers), so
+// nesting is bounded here, in a guard the decoders take at each level, rather
+// than by running the stack out on a description that is merely deep.
+//
+// The bound is above the nesting the compiler itself will build, so anything
+// hobbes can produce still round-trips through the codec.
+static const unsigned int maxDecodeNesting = 2000;
+
+inline thread_local unsigned int decodeNestingDepth = 0;
+
+class decodeNesting {
+public:
+  decodeNesting() {
+    if (decodeNestingDepth >= maxDecodeNesting) {
+      throw std::runtime_error(
+        "Encoded data nests more than " + std::to_string(maxDecodeNesting) + " levels deep"
+      );
+    }
+    ++decodeNestingDepth;
+  }
+  ~decodeNesting() { --decodeNestingDepth; }
+
+  decodeNesting(const decodeNesting&) = delete;
+  decodeNesting& operator=(const decodeNesting&) = delete;
+};
+
 inline void encode(const std::string& x, std::ostream& out) {
   encode(static_cast<size_t>(x.size()), out);
   out.write(x.c_str(), x.size());
