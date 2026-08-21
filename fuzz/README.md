@@ -45,10 +45,11 @@ Notes per harness:
   `hobbes::encode(type, &bytes)`; short random inputs also make progress
   quickly since the format is compact.
 * **fuzz-fregion-reader** — writes each input to one scratch file under
-  `$TMPDIR` and opens it. Seed by copying small structured data files
-  produced by `hog` or the `Storage` tests. Malformed page metadata can make
-  the reader attempt large mappings, so keep the default `-rss_limit_mb` in
-  place.
+  `$TMPDIR` and opens it. Seeds in `corpus/fregion-reader/`, which holds past
+  reproducers; add to them by copying small structured data files produced by
+  `hog` or the `Storage` tests. Malformed page metadata can make the reader
+  attempt large mappings, so keep the default `-rss_limit_mb` in place, and a
+  malformed page table can make it spin, so keep `-timeout` in place too.
 * **fuzz-parse-expr** — seeds in `corpus/parse-expr/`. The compiler instance
   is constructed once and reused; parsing allocates from arenas that are not
   reclaimed per-iteration, so run with `-detect_leaks=0` and let
