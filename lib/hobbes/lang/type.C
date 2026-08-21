@@ -1170,22 +1170,39 @@ MonoTypePtr Record::tailType() const {
   }
 }
 
+// a type description can be read from a file or handed over by an untrusted
+// peer, naming member sizes that no value in memory could have. A member offset
+// is held in an 'int' (with -1 reserved for 'not yet determined'), so a layout
+// running past INT_MAX has no representation here: determine it in a 'long' and
+// reject it at that bound, rather than wrapping around into a nonsensical one.
+static const long maxRecordOffset = static_cast<long>(std::numeric_limits<int>::max());
+
+static bool representableOffset(long o) { return o >= 0 && o <= maxRecordOffset; }
+
 Record::Members Record::withResolvedMemoryLayout(const Members& ms) {
   Members r;
 
   // infer offsets and/or insert padding as necessary
-  int o = 0;
+  long o = 0;
   for (auto m = ms.begin(); m != ms.end(); ++m) {
     if (!isMonoSingular(m->type)) {
       return ms;
     }
 
-    o = align<unsigned int>(o, alignment(m->type));
+    o = align<long>(o, static_cast<long>(alignment(m->type)));
+    if (!representableOffset(o)) {
+      throw
+        std::runtime_error(
+          "Member offset is out of range at field '" + m->field + "' "
+          "(" + str::from(o) + " is not within [0, " + str::from(maxRecordOffset) + "]) in record: " +
+          showRecord(ms)
+        );
+    }
 
     // determine the 'in-memory' layout of this structure
     //   (must be consistent with GCC so that we can interoperate)
     if (m->offset == -1) {
-      r.push_back(addoffset(*m, o));
+      r.push_back(addoffset(*m, static_cast<int>(o)));
     } else if (m->offset > o) {
       throw
         std::runtime_error(
@@ -1206,6 +1223,14 @@ Record::Members Record::withResolvedMemoryLayout(const Members& ms) {
     }
 
     o += sizeOf(m->type);
+    if (!representableOffset(o)) {
+      throw
+        std::runtime_error(
+          "Record extends past the end of the memory layout at field '" + m->field + "' "
+          "(" + str::from(o) + " is not within [0, " + str::from(maxRecordOffset) + "]) in record: " +
+          showRecord(ms)
+        );
+    }
   }
 
   return r;
@@ -1240,7 +1265,17 @@ unsigned int Record::size() const {
     size_t fsz = sizeOf(m->type);
 
     if (fsz > 0) {
-      return align<unsigned int>(m->offset + fsz, malign);
+      const long sz =
+        align<long>(static_cast<long>(m->offset) + static_cast<long>(fsz), static_cast<long>(malign));
+      if (!representableOffset(sz)) {
+        throw
+          std::runtime_error(
+            "Record size is out of range "
+            "(" + str::from(sz) + " is not within [0, " + str::from(maxRecordOffset) + "]) in record: " +
+            showRecord(this->ms)
+          );
+      }
+      return static_cast<unsigned int>(sz);
     }
   }
 
@@ -1250,15 +1285,18 @@ unsigned int Record::size() const {
 
 Record::Members Record::withExplicitPadding(const Members& ms, const std::string& pfx) {
   Members r;
-  int     o = 0; // the active determined offset in memory
+  long    o = 0; // the active determined offset in memory
   int     p = 0; // unique names for pad fields
 
+  // as in withResolvedMemoryLayout, the offset is tracked in a 'long': an
+  // offset and a size taken from a decoded type description are added and
+  // differenced here, and neither the sum nor the gap need fit in an 'int'
   for (const auto &m : ms) {
     if (m.offset > o) {
-      r.push_back(Member(pfx + str::from(p++), arrayty(prim<char>(), m.offset - o)));
+      r.push_back(Member(pfx + str::from(p++), arrayty(prim<char>(), static_cast<size_t>(m.offset - o))));
     }
     size_t msz = sizeOf(m.type);
-    o = m.offset + msz;
+    o = static_cast<long>(m.offset) + static_cast<long>(msz);
 
     if (msz > 0) {
       r.push_back(m);
@@ -1269,9 +1307,22 @@ Record::Members Record::withExplicitPadding(const Members& ms, const std::string
   unsigned int talign = maxFieldAlignmentF(ms);
 
   if (talign > 0) {
-    auto asz = align<unsigned int>(o, talign);
-    if (int(asz) > o) {
-      r.push_back(Member(pfx + str::from(p++), arrayty(prim<char>(), asz - o)));
+    // a record that ends exactly at the last representable offset is within
+    // range until it is aligned, and aligning it here is what would carry it
+    // past: reject it rather than describing a padded layout whose extent no
+    // offset or size can hold (Record::size() refuses to size such a record, so
+    // without this it exists only to throw the first time anything asks)
+    const long asz = align<long>(o, static_cast<long>(talign));
+    if (!representableOffset(asz)) {
+      throw
+        std::runtime_error(
+          "Record with trailing padding is out of range "
+          "(" + str::from(asz) + " is not within [0, " + str::from(maxRecordOffset) + "]) in record: " +
+          showRecord(ms)
+        );
+    }
+    if (asz > o) {
+      r.push_back(Member(pfx + str::from(p++), arrayty(prim<char>(), static_cast<size_t>(asz - o))));
     }
   }
 
@@ -2191,7 +2242,22 @@ public:
   nat with(const OpaquePtr*  v) const override { return v->storedContiguously() ? v->size() : sizeof(void*); }
   [[noreturn]] nat with(const TVar*       v) const override { throw std::runtime_error("Can't determine size of type variable '" + v->name() + "'"); }
   [[noreturn]] nat with(const TGen*       v) const override { throw std::runtime_error("Can't determine size of polytype argument #" + str::from(v->id())); }
-  nat with(const FixedArray* v) const override { return r(v->type()) * v->requireLength(); }
+  nat with(const FixedArray* v) const override {
+    // the length is part of a type description that can be read from a file or
+    // handed over by an untrusted peer, and the size is returned as a 'nat', so
+    // a length that cannot describe a value in memory has to be rejected rather
+    // than multiplied out into a wrapped-around answer
+    const long len = v->requireLength();
+    if (len < 0) {
+      throw std::runtime_error("Can't determine size of array of negative length: " + show(v));
+    }
+
+    const nat esz = r(v->type());
+    if (esz != 0 && static_cast<unsigned long>(len) > (std::numeric_limits<nat>::max() / esz)) {
+      throw std::runtime_error("Array size exceeds the maximum representable type size: " + show(v));
+    }
+    return static_cast<nat>(esz * static_cast<unsigned long>(len));
+  }
   nat with(const Array*       ) const override { return sizeof(void*); }
   nat with(const Variant*    v) const override { return rv(v); }
   nat with(const Record*     v) const override { return rv(v); }
