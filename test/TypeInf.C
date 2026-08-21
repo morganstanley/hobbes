@@ -323,3 +323,50 @@ TEST(TypeInf, DecodeRejectsNonPrimitiveSwitchSelector) {
   decode(good, &rt);
   EXPECT_TRUE(*rt == *sw);
 }
+
+TEST(TypeInf, SubstitutionTerminatesOnCyclicSubstitutions) {
+  // substitution is applied to its fixed point, which only exists while no variable
+  // stands for a type that mentions it -- unification maintains that, but a
+  // substitution derived from decoded type data can be cyclic, and the fixed point it
+  // asks for is an infinite type
+  MonoTypeSubst self;
+  self["a"] = tvar("a");
+  EXPECT_TRUE(show(substitute(self, MonoTypePtr(tvar("a")))) == "a");
+
+  MonoTypeSubst nested;
+  nested["a"] = arrayty(tvar("a"));
+  EXPECT_TRUE(show(substitute(nested, MonoTypePtr(tvar("a")))) == "[a]");
+
+  MonoTypeSubst mutual;
+  mutual["a"] = tvar("b");
+  mutual["b"] = tvar("a");
+  EXPECT_TRUE(show(substitute(mutual, MonoTypePtr(tvar("a")))) == "a");
+
+  // an acyclic substitution must still be carried all the way to its fixed point
+  MonoTypeSubst chain;
+  chain["a"] = arrayty(tvar("b"));
+  chain["b"] = tvar("c");
+  chain["c"] = primty("int");
+  EXPECT_TRUE(show(substitute(chain, MonoTypePtr(tvar("a")))) == "[int]");
+}
+
+TEST(TypeInf, TypeApplicationReductionIsBounded) {
+  // '\x.(x x)' named as a type alias, so that applying it to itself is the type-level
+  // reading of the term whose reduction never reaches a normal form
+  auto omega = [](const std::string& n) {
+    return MonoTypePtr(
+      Prim::make(n, TAbs::make(str::strings("x"), TApp::make(tvar("x"), list(MonoTypePtr(tvar("x")))))));
+  };
+  MonoTypePtr diverges = TApp::make(omega("p"), list(omega("q")));
+
+  EXPECT_EXCEPTION(repType(diverges));
+  EXPECT_EXCEPTION(sizeOf(diverges));
+
+  // and as the field of a record, where laying the record out in memory is what
+  // reduces the application (this is how a decoded type reaches the reduction)
+  EXPECT_EXCEPTION(Record::make(list(Record::Member("f", diverges, 0))));
+
+  // an application that does reduce is still reduced, to a normal form
+  MonoTypePtr ident = Prim::make("id", TAbs::make(str::strings("x"), tvar("x")));
+  EXPECT_TRUE(show(repType(TApp::make(ident, list(primty("int"))))) == "int");
+}
