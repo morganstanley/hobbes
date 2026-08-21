@@ -176,6 +176,13 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Install LLVM 22 from apt.llvm.org
+        env:
+          # the installer that adds apt.llvm.org's repository, pinned to a
+          # revision and checked against its hash rather than run as whatever
+          # the site serves at the time (see .clusterfuzzlite/Dockerfile, which
+          # installs LLVM the same way)
+          LLVM_SH_COMMIT: 6dc0d1ad7de83d0782731687fd555a7859b4da58
+          LLVM_SH_SHA256: 03878e08f47b66cc95bc4b544b0db3c6d9ce8d60e6cf2492ae357984330a9eae
         run: |
           export DEBIAN_FRONTEND=noninteractive
           sudo apt-get update
@@ -183,7 +190,20 @@ jobs:
             cmake make python3 \
             libncurses-dev zlib1g-dev libreadline-dev libzstd-dev \
             wget gnupg lsb-release software-properties-common
-          wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s -- 22
+          wget -q -O /tmp/llvm.sh \
+            "https://raw.githubusercontent.com/opencollab/llvm-jenkins.debian.net/${LLVM_SH_COMMIT}/llvm.sh"
+          echo "${LLVM_SH_SHA256}  /tmp/llvm.sh" | sha256sum -c -
+          # the installer asks apt.llvm.org for its repository index to decide
+          # whether this distribution is supported, and reports a request that
+          # did not come back as an unsupported distribution, so retry before
+          # believing it
+          ok=
+          for i in 1 2 3; do
+            if sudo bash /tmp/llvm.sh 22; then ok=1; break; fi
+            echo "llvm.sh failed (attempt $i), retrying"
+            sleep 15
+          done
+          [ -n "$ok" ]
           sudo apt-get install -y --no-install-recommends \
             clang-22 llvm-22-dev libclang-22-dev
       - name: Configure
