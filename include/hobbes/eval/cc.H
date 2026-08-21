@@ -311,6 +311,8 @@ public:
   bool buildColumnwiseMatches() const;
   void regexMaxExprDFASize(size_t f);
   size_t regexMaxExprDFASize() const;
+  void regexMaxDFAStates(size_t f);
+  size_t regexMaxDFAStates() const;
   void throwOnHugeRegexDFA(bool f);
   bool throwOnHugeRegexDFA() const;
   void regexDFAOverNFAMaxRatio(int f);
@@ -350,6 +352,10 @@ private:
   bool lowerPrimMatchTables;
   bool columnwiseMatches;
   size_t maxExprDFASize = {1000};
+  // a regex's DFA can be exponentially larger than the regex, so refuse to
+  // build one past this many states rather than let a short regex literal
+  // consume the machine
+  size_t maxDFAStates = {10000};
   // abort compilation of regexes which translate into huge dfa transition
   // states
   bool shouldThrowOnHugeRegexDFA = false;
