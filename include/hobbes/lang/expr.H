@@ -72,6 +72,18 @@ std::string showAnnotated(const Expr* e);
 std::string showAnnotated(const ExprPtr& e);
 std::string showAnnotated(const Definition& d);
 
+// the sub-expressions immediately under an expression
+Exprs subExprs(const ExprPtr&);
+
+// how many levels of expression an expression nests, determined with an
+// explicit stack so that it can be asked of a tree too deep to walk recursively
+size_t nestingDepth(const ExprPtr&);
+
+// release an expression, one level at a time rather than through the recursive
+// destructor chain that dropping the root would otherwise run (so a tree of any
+// depth can be discarded safely)
+void releaseNesting(ExprPtr&);
+
 //////////////////
 // primitive constants
 //////////////////

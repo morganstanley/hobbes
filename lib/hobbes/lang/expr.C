@@ -5,8 +5,11 @@
 #include <hobbes/util/time.H>
 #include <hobbes/util/codec.H>
 #include <hobbes/util/stream.H>
+#include <algorithm>
 #include <memory>
 #include <sstream>
+#include <unordered_map>
+#include <unordered_set>
 
 namespace hobbes {
 
@@ -1022,6 +1025,156 @@ struct isConstP : switchExprC<bool> {
 
 bool isConst(const ExprPtr& e) {
   return switchOf(e, isConstP());
+}
+
+// the sub-expressions immediately under an expression
+struct subExprsF : public switchExprC<Exprs> {
+  Exprs withConst(const Expr*) const override { return Exprs(); }
+  Exprs with(const Var*)       const override { return Exprs(); }
+
+  Exprs with(const Let* v) const override { return list(v->varExpr(), v->bodyExpr()); }
+
+  Exprs with(const LetRec* v) const override {
+    Exprs r;
+    for (const auto& b : v->bindings()) {
+      r.push_back(b.second);
+    }
+    r.push_back(v->bodyExpr());
+    return r;
+  }
+
+  Exprs with(const Fn* v) const override { return list(v->body()); }
+
+  Exprs with(const App* v) const override {
+    Exprs r = list(v->fn());
+    r.insert(r.end(), v->args().begin(), v->args().end());
+    return r;
+  }
+
+  Exprs with(const Assign* v)    const override { return list(v->left(), v->right()); }
+  Exprs with(const MkArray* v)   const override { return v->values(); }
+  Exprs with(const MkVariant* v) const override { return list(v->value()); }
+
+  Exprs with(const MkRecord* v) const override {
+    Exprs r;
+    for (const auto& f : v->fields()) {
+      r.push_back(f.second);
+    }
+    return r;
+  }
+
+  Exprs with(const AIndex* v) const override { return list(v->array(), v->index()); }
+
+  Exprs with(const Case* v) const override {
+    Exprs r = list(v->variant());
+    for (const auto& b : v->bindings()) {
+      r.push_back(b.exp);
+    }
+    if (v->defaultExpr()) {
+      r.push_back(v->defaultExpr());
+    }
+    return r;
+  }
+
+  // a switch selects on constants, so only its branches are sub-expressions
+  Exprs with(const Switch* v) const override {
+    Exprs r = list(v->expr());
+    for (const auto& b : v->bindings()) {
+      r.push_back(b.exp);
+    }
+    if (v->defaultExpr()) {
+      r.push_back(v->defaultExpr());
+    }
+    return r;
+  }
+
+  Exprs with(const Proj* v)   const override { return list(v->record()); }
+  Exprs with(const Assump* v) const override { return list(v->expr()); }
+  Exprs with(const Pack* v)   const override { return list(v->expr()); }
+  Exprs with(const Unpack* v) const override { return list(v->package(), v->expr()); }
+};
+
+Exprs subExprs(const ExprPtr& e) {
+  return e ? switchOf(e, subExprsF()) : Exprs();
+}
+
+// the two functions below walk expressions with an explicit stack rather than
+// by recursion: they are what a caller reaches for when a tree may be nested
+// more deeply than the call stack can follow, so they cannot recur themselves
+
+size_t nestingDepth(const ExprPtr& root) {
+  if (!root) {
+    return 0;
+  }
+
+  // an expression can reach the same sub-expression by more than one path, so
+  // depths are memoized -- without that, a tree of shared sub-expressions takes
+  // exponential time to measure
+  std::unordered_map<const Expr*, size_t> depths;
+  std::unordered_set<const Expr*>         pushed;
+
+  using Frame = std::pair<ExprPtr, bool>; // the expression, and whether its children are on the stack
+  std::vector<Frame> stack;
+  stack.push_back(Frame(root, false));
+  pushed.insert(root.get());
+
+  while (!stack.empty()) {
+    if (!stack.back().second) {
+      stack.back().second = true;
+
+      const Exprs cs = subExprs(stack.back().first);
+      for (const auto& c : cs) {
+        if (c && pushed.insert(c.get()).second) {
+          stack.push_back(Frame(c, false));
+        }
+      }
+    } else {
+      const ExprPtr e = stack.back().first;
+      stack.pop_back();
+
+      size_t d = 1;
+      for (const auto& c : subExprs(e)) {
+        if (c) {
+          d = std::max(d, depths[c.get()] + 1);
+        }
+      }
+      depths[e.get()] = d;
+    }
+  }
+
+  return depths[root.get()];
+}
+
+void releaseNesting(ExprPtr& root) {
+  if (!root) {
+    return;
+  }
+
+  // hold a reference to every sub-expression before letting go of the root:
+  // with that second reference in hand, releasing a level only decrements its
+  // children rather than destroying them in turn, so the destructor chain never
+  // runs deeper than one level
+  Exprs nodes;
+  Exprs pending = list(root);
+  root.reset();
+
+  while (!pending.empty()) {
+    const ExprPtr e = pending.back();
+    pending.pop_back();
+
+    for (const auto& c : subExprs(e)) {
+      if (c) {
+        pending.push_back(c);
+      }
+    }
+    nodes.push_back(e);
+  }
+
+  // released from the root down, so that each level is already unreferenced by
+  // its parent by the time it is dropped here
+  for (auto& n : nodes) {
+    n.reset();
+  }
 }
 
 // a convenient encapsulation of type-directed term transformation (e.g.: for unqualification)

@@ -102,6 +102,33 @@ template <typename T>
 // touching the checked-in generated parser, which is not worth the risk for
 // the exposure. Revisit if a path ever parses attacker-controlled input in a
 // tight loop without restarting.
+
+// Every function that walks an expression recurs through its levels of nesting
+// -- type inference, unsweetening, printing, and the expression's own
+// destructor -- so how deeply an expression nests is stack depth in everything
+// downstream of the parse, and the parser will build a tree as deep as its
+// input describes. Source nested this deeply is not written by hand; it is
+// generated, or it is hostile: reading source text is on the near side of the
+// trust boundary (see SECURITY.md), and `x+x+x...` repeated enough times is all
+// it takes. Bound it here, where every expression the parser returns has to
+// pass, rather than in each of those walks.
+const size_t maxExprNestingDepth = 1000;
+
+// takes the expression by pointer, and must be given the only reference to it:
+// an expression past the limit is let go here one level at a time, and a second
+// reference left anywhere would run the destructor chain that the limit is
+// meant to prevent when it went out of scope
+void checkNestingDepth(ExprPtr* e) {
+  const size_t d = nestingDepth(*e);
+  if (d > maxExprNestingDepth) {
+    releaseNesting(*e);
+
+    throw std::runtime_error(
+      "Expression nests " + str::from(d) + " levels deep, past the limit of " + str::from(maxExprNestingDepth)
+    );
+  }
+}
+
 void runParserOnBuffer(cc* c, int initTok, YY_BUFFER_STATE bs) {
   yyParseCC   = c;
   yyInitToken = initTok;
@@ -190,7 +217,9 @@ ExprDefn defReadExprDefn(cc* c, const std::string& expr) {
   yyParsedExpr = nullptr;
   runParserOnString(c, TPARSEDEFN, expr.c_str());
 
-  return ExprDefn(yyParsedVar, checkReturn(yyParsedExpr != nullptr ? ExprPtr(yyParsedExpr) : ExprPtr()));
+  ExprPtr e = checkReturn(yyParsedExpr != nullptr ? ExprPtr(yyParsedExpr) : ExprPtr());
+  checkNestingDepth(&e);
+  return ExprDefn(yyParsedVar, e);
 }
 
 ExprPtr defReadExpr(cc* c, const std::string& expr) {
@@ -199,7 +228,9 @@ ExprPtr defReadExpr(cc* c, const std::string& expr) {
   yyParsedExpr = nullptr;
   runParserOnString(c, TPARSEEXPR, expr.c_str());
 
-  return checkReturn(yyParsedExpr != nullptr ? ExprPtr(yyParsedExpr) : ExprPtr());
+  ExprPtr e = checkReturn(yyParsedExpr != nullptr ? ExprPtr(yyParsedExpr) : ExprPtr());
+  checkNestingDepth(&e);
+  return e;
 }
 
 // allow variable and pattern variable overloading
