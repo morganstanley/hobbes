@@ -239,6 +239,14 @@ DCharset readCharset(const std::string& x, size_t i) {
     if (c0 == ']') {
       return r;
     } else if (c0 == '\\') {
+      // c1 is the escaped character, and the increment below steps over it --
+      // but when the backslash is the last character there is no c1 (the read
+      // above substituted a nul for it), and stepping over it lands one past
+      // the end. diffRegex rejects a trailing escape outside a charset; do the
+      // same within one rather than returning a position that cannot be read.
+      if (r.first == x.size()) {
+        throw std::runtime_error("Unexpected end in regex (expecting escape code)");
+      }
       unescapeInto(c1, &r.second);
       ++r.first;
     } else if (c1 == '-' && (r.first+1) < x.size()) {
@@ -291,6 +299,19 @@ DRegex seqR(const RegexPtr& lhs, const RegexPtr& c, const std::string& x, size_t
 }
 
 DRegex diffRegex(const RegexPtr& lhs, const std::string& x, size_t i, TermBudget* tb) {
+  // a position past the end is a step this function's own cases got wrong, not
+  // something an input can ask for -- each of them advances at most one past
+  // the character it consumed. Nothing downstream rechecks, though: reading
+  // from out there does not stop, it walks further off the end for as many
+  // terms as the budget allows (OSS-Fuzz testcase 4831270021693440 read ~1,000
+  // bytes past a 3-byte buffer that way). Two steps did get it wrong -- an
+  // unterminated capturing group name below, and a trailing escape in
+  // readCharset -- and both now reject instead. This is what keeps a third
+  // from being an out-of-bounds read rather than an error.
+  if (i > x.size()) {
+    throw std::runtime_error("Internal error: regex read position is past the end of the regex");
+  }
+
   if (i == x.size()) {
     return DRegex(i, lhs);
   } else {
@@ -320,6 +341,14 @@ DRegex diffRegex(const RegexPtr& lhs, const std::string& x, size_t i, TermBudget
         }
         size_t j = k;
         while (j < x.size() && x[j] != ed) { ++j; }
+
+        // the scan above stops either on the closing delimiter or on the end of
+        // the regex. Only the first is a group name: the second means there is
+        // no delimiter to resume after, and reading on from it steps past the
+        // end (`i` becomes x.size(), and the recursion below starts at i+1).
+        if (j == x.size()) {
+          throw std::runtime_error(std::string("Unexpected end in regex (expecting '") + static_cast<char>(ed) + "' to close a capturing group name)");
+        }
 
         b = x.substr(k, j-k);
         i = j;
