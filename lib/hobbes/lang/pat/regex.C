@@ -740,9 +740,10 @@ stateset nfaTransition(const NFA& nfa, const EpsClosure& ec, const stateset& ss,
 // sets of NFA states are mapped to distinct DFA states
 using Nss2Ds = std::map<stateset, state>;
 
-// create a DFA state from a set of NFA states
-// (or if it's already been made, just return the existing state)
-state dfaState(const cc* c, const NFA& nfa, const EpsClosure& ec, Nss2Ds* nss2ds, DFA* dfa, const stateset& ss, RStates* rstates) {
+// the DFA state for a set of NFA states: the one already made for it, or a
+// new one, allocated here and left on the worklist for its transitions to be
+// filled in
+state dfaState(const cc* c, const NFA& nfa, Nss2Ds* nss2ds, DFA* dfa, std::vector<std::pair<state, stateset>>* pending, const stateset& ss) {
   // did we already make this state?  if so, just return it
   auto didIt = nss2ds->find(ss);
   if (didIt != nss2ds->end()) {
@@ -767,37 +768,7 @@ state dfaState(const cc* c, const NFA& nfa, const EpsClosure& ec, Nss2Ds* nss2ds
   }
 
   (*nss2ds)[ss] = result;
-
-  // ok, how can we transition out of here?
-  // for each case, we'll go to a set of NFA states (recursively)
-  for (auto cr : usedCharRanges(nfa, ss)) {
-    auto ns = dfaState(c, nfa, ec, nss2ds, dfa, nfaTransition(nfa, ec, ss, cr), rstates);
-    (*dfa)[result].chars.insert(cr, ns);
-  }
-
-  // our DFA state accepts if any of its NFA states accept
-  // we may have multiple potential matches here, so we should
-  // keep track of every such set so that outer match compilation
-  // can choose the right one
-  for (state s : ss) {
-    auto nr = nfa[s].acc;
-    if (nr != nullResult) {
-      (*dfa)[result].acc = result;
-      (*rstates)[result].insert(nr);
-    }
-  }
-
-  // our DFA state begins/ends subrange recording for each collapsed NFA state
-  for (state s : ss) {
-    for (const auto& b : nfa[s].begins) {
-      (*dfa)[result].begins[b.first].insert(b.second.begin(), b.second.end());
-    }
-    for (const auto& e : nfa[s].ends) {
-      (*dfa)[result].ends[e.first].insert(e.second.begin(), e.second.end());
-    }
-  }
-
-  // that's it, we're done
+  pending->push_back(std::make_pair(result, ss));
   return result;
 }
 
@@ -806,10 +777,56 @@ void disambiguate(const cc* c, const NFA& nfa, DFA* dfa, RStates* rstates) {
   EpsClosure ec;
   findEpsClosure(nfa, &ec);
 
-  // starting from the eps* start state,
-  // follow non-eps transitions to eps* successor states
+  // starting from the eps* start state, follow non-eps transitions to eps*
+  // successor states, making a DFA state for each set of NFA states reached.
+  //
+  // this is a walk over the DFA as it is built, and it is done with an
+  // explicit worklist rather than by recursing into each successor as it is
+  // found: the walk can be as deep as the DFA has states -- a chain of
+  // transitions with no repeats is one frame per state -- and the cap on
+  // state count above bounds how many there are, not how deep a chain of them
+  // goes. A regex well inside that cap ran the stack out this way once its
+  // frames were made large by instrumentation (each carried the sets of NFA
+  // states it was visiting). The order states are made in is not significant
+  // to anything downstream, only that each set of NFA states gets one.
   Nss2Ds nss2ds;
-  dfaState(c, nfa, ec, &nss2ds, dfa, epsState(ec, 0), rstates);
+  std::vector<std::pair<state, stateset>> pending;
+  dfaState(c, nfa, &nss2ds, dfa, &pending, epsState(ec, 0));
+
+  while (!pending.empty()) {
+    const state    result = pending.back().first;
+    const stateset ss     = pending.back().second;
+    pending.pop_back();
+
+    // ok, how can we transition out of here?
+    // for each case, we'll go to a set of NFA states
+    for (auto cr : usedCharRanges(nfa, ss)) {
+      auto ns = dfaState(c, nfa, &nss2ds, dfa, &pending, nfaTransition(nfa, ec, ss, cr));
+      (*dfa)[result].chars.insert(cr, ns);
+    }
+
+    // our DFA state accepts if any of its NFA states accept
+    // we may have multiple potential matches here, so we should
+    // keep track of every such set so that outer match compilation
+    // can choose the right one
+    for (state s : ss) {
+      auto nr = nfa[s].acc;
+      if (nr != nullResult) {
+        (*dfa)[result].acc = result;
+        (*rstates)[result].insert(nr);
+      }
+    }
+
+    // our DFA state begins/ends subrange recording for each collapsed NFA state
+    for (state s : ss) {
+      for (const auto& b : nfa[s].begins) {
+        (*dfa)[result].begins[b.first].insert(b.second.begin(), b.second.end());
+      }
+      for (const auto& e : nfa[s].ends) {
+        (*dfa)[result].ends[e.first].insert(e.second.begin(), e.second.end());
+      }
+    }
+  }
 }
 
 /*****************************
