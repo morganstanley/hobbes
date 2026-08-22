@@ -104,11 +104,13 @@ void popIndent() {
 // scanning a token longer than that wrote past the end of it. Matching the
 // lookahead and handing it back leaves no rule with trailing context, and flex
 // emits no such buffer at all, so the length of a token is bounded only by the
-// input. yyless rewinds yyleng, which YY_USER_ACTION has already used, so the
-// end of the token's location is restated here.
+// input. yyless rewinds yyleng and, for any newline among the characters it
+// gives back, yylineno -- both of which YY_USER_ACTION has already used, so
+// the token's line and end column are restated here once they are right.
 #define pushBackLookahead(n)                                   \
   do {                                                         \
     yyless(yyleng - (n));                                      \
+    yylloc.first_line = yylloc.last_line = yylineno;           \
     yylloc.last_column = yylloc.first_column + yyleng - 1;     \
   } while (false)
 
