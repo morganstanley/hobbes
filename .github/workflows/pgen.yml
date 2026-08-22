@@ -1,0 +1,46 @@
+name: "Generated parser"
+
+# hexpr.parse.C, hexpr.parse.H and hexpr.lex.C are checked in, generated from
+# hexpr.y and hexpr.l by the bison and flex versions lib/hobbes/read/pgen/pgen.sh
+# pins. This regenerates them with those versions and fails if the result
+# differs from what is checked in: a change to a grammar file has to come with
+# its regenerated output, and the output has to come from the pinned
+# generators, so that the diff reviewers see is the change and not the
+# generator.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'lib/hobbes/read/pgen/**'
+      - 'include/hobbes/read/pgen/**'
+      - '.github/workflows/pgen.yml'
+  pull_request:
+    paths:
+      - 'lib/hobbes/read/pgen/**'
+      - 'include/hobbes/read/pgen/**'
+      - '.github/workflows/pgen.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  regenerate:
+    # ubuntu-24.04 packages the pinned versions (flex 2.6.4, bison 3.8.2), so
+    # the generators run natively here; pgen.sh checks the versions before it
+    # runs them, and locally it runs the same thing in a container of the same
+    # release
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Install the pinned generators
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends bison flex
+          bison --version | head -1
+          flex --version
+      - name: Regenerate
+        run: PGEN_NATIVE=1 lib/hobbes/read/pgen/pgen.sh
+      - name: Compare with the checked-in files
+        run: |
+          git status --short -- lib/hobbes/read/pgen include/hobbes/read/pgen
+          git diff --exit-code -- lib/hobbes/read/pgen include/hobbes/read/pgen
