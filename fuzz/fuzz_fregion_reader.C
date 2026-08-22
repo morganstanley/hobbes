@@ -8,8 +8,16 @@
 //
 // libFuzzer hands us a byte buffer while the reader wants a file path, so
 // each input is written to one scratch file that is rewritten per iteration.
+//
+// The type descriptions in those environment records go through the same
+// decoder fuzz-type-decode exercises, and so into the same process-wide type
+// memo, which keeps every type it has ever interned until compactMTypeMemory()
+// is called. The memo is compacted every few dozen inputs for the reason given
+// in fuzz_type_decode.C: otherwise a campaign that mutates type descriptions
+// grows by every distinct one it has read.
 
 #include <hobbes/fregion.H>
+#include <hobbes/lang/type.H>
 
 #include <cstddef>
 #include <cstdint>
@@ -22,6 +30,16 @@
 #include <unistd.h>
 
 namespace {
+
+const unsigned inputsPerCompaction = 64;
+
+void compactTypeMemoPeriodically() {
+  static unsigned sinceCompaction = 0;
+  if (++sinceCompaction >= inputsPerCompaction) {
+    sinceCompaction = 0;
+    hobbes::compactMTypeMemory();
+  }
+}
 
 const std::string& scratchPath() {
   static const std::string p = [] {
@@ -60,5 +78,6 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   } catch (const std::exception&) {
     // rejecting a malformed image is the expected behavior
   }
+  compactTypeMemoPeriodically();
   return 0;
 }
