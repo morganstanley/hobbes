@@ -522,13 +522,37 @@ TEST(Matching, hugeRegexDFACompilesWithoutQuadraticBlowup) {
 // first time rather than defining another. Reuse has to be by the regex
 // itself, not by how it prints: 'a|b' (either) and 'a\|b' (three literals)
 // print alike but match differently, and must not share a matcher.
+// a compiled matcher is a function defined in the compiler under a ".regex."
+// name, so counting those in its type environment counts the matchers it holds
+// (dumpTypeEnv hides dot-prefixed names, so go to the environment directly)
+static size_t regexMatchersDefinedIn(cc &x) {
+  size_t n = 0;
+  for (const auto &s : x.typeEnv()->boundVariables()) {
+    if (s.rfind(".regex.", 0) == 0) {
+      ++n;
+    }
+  }
+  return n;
+}
+
 TEST(Matching, regexMatchersAreReusedButOnlyForTheSameRegex) {
-  auto either1 = c().compileFn<int(const std::string &)>(
+  // a fresh compiler, so that the count of matchers is this test's to reason about
+  cc lc;
+  const size_t before = regexMatchersDefinedIn(lc);
+
+  auto either1 = lc.compileFn<int(const std::string &)>(
       "s", "match s with | 'a|b' -> 1 | _ -> 0");
-  auto either2 = c().compileFn<int(const std::string &)>(
+  EXPECT_EQ(regexMatchersDefinedIn(lc), before + 1);
+
+  // the same regex again: no new matcher
+  auto either2 = lc.compileFn<int(const std::string &)>(
       "s", "match s with | 'a|b' -> 2 | _ -> 0");
-  auto literal = c().compileFn<int(const std::string &)>(
+  EXPECT_EQ(regexMatchersDefinedIn(lc), before + 1);
+
+  // a regex that merely prints the same: a new one
+  auto literal = lc.compileFn<int(const std::string &)>(
       "s", "match s with | 'a\\|b' -> 3 | _ -> 0");
+  EXPECT_EQ(regexMatchersDefinedIn(lc), before + 2);
 
   EXPECT_EQ(either1("a"), 1);
   EXPECT_EQ(either1("b"), 1);

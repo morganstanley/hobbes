@@ -315,6 +315,16 @@ void runMachineREPLStep(cc* c) {
     int cmd = 0;
     fdread(STDIN_FILENO, &cmd);
 
+    // the meta commands below decode types and expressions sent by the peer,
+    // and every type that builds is interned in the process-wide type memo,
+    // which holds on to it until asked not to. Ask once this step is over,
+    // however it ends: what the command needed is held by the compiler and
+    // stays, what it only passed through -- including everything a rejected
+    // input interned before it was rejected -- goes. Invoking a compiled
+    // function (the default case) decodes nothing and is the hot path, so it
+    // is left alone.
+    CompactMTypeMemoryAtExit compactAfter(cmd < CMD_COUNT);
+
     switch (cmd) {
     case CMD_REFINE_VNAME: {
       // legacy method to refine the type of a variable given an initial type "guess"
@@ -507,16 +517,6 @@ void runMachineREPLStep(cc* c) {
       thunkFs[cmd]();
       resetMemoryPool();
       break;
-    }
-
-    // the meta commands above decode types and expressions sent by the peer,
-    // and every type that builds is interned in the process-wide type memo,
-    // which holds on to it until asked not to. Ask after each one: what the
-    // command needed is held by the compiler and stays, what it only passed
-    // through goes. Invoking a compiled function (the default case) decodes
-    // nothing and is the hot path, so it is left alone.
-    if (cmd < CMD_COUNT) {
-      compactMTypeMemory();
     }
   } catch (std::exception& ex) {
     std::string exn = ex.what();

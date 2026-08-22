@@ -234,6 +234,11 @@ void evaluateNetREPLRequest(int c, void *d) {
     case 0:
       // prepare a lexical expression with input and output types given
       try {
+        // the type descriptions read below are interned in the process-wide
+        // type memo whether or not they are accepted; release what this
+        // request does not end up keeping, on every way out of here
+        CompactMTypeMemoryAtExit compactAfter;
+
         exprid eid = 0;
         fdread(c, &eid);
 
@@ -259,11 +264,12 @@ void evaluateNetREPLRequest(int c, void *d) {
         fdwrite(c, uint8_t(0));
         fdwrite(c, std::string(ex.what()));
       }
-      compactMTypeMemory();
       break;
     case 1:
       // prepare a serialized expression, also return its type
       try {
+        CompactMTypeMemoryAtExit compactAfter;
+
         exprid eid = 0;
         fdread(c, &eid);
         RawData exprd;
@@ -287,7 +293,6 @@ void evaluateNetREPLRequest(int c, void *d) {
         fdwrite(c, uint8_t(0));
         fdwrite(c, std::string(ex.what()));
       }
-      compactMTypeMemory();
       break;
     case 2:
       // invoke a prepared expression

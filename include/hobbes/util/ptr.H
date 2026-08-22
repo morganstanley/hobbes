@@ -26,11 +26,23 @@ template <typename T, typename ... Args>
     std::shared_ptr<T> get(const std::function<T*(Args...)>& mk, const Args&... args) {
       std::lock_guard<std::recursive_mutex> lock(mutex);
       auto k = std::tuple<Args...>(args...);
-      auto& r = this->values[k];
-      if (!r) {
-        r = std::shared_ptr<T>(mk(args...));
+
+      auto found = this->values.find(k);
+      if (found != this->values.end() && found->second) {
+        return found->second;
       }
-      return r;
+
+      // no reference into the map is held across mk(): constructing a type can
+      // intern the types it is made of, re-entering this map (the mutex is
+      // recursive for that reason), and an insertion there can rehash it. So
+      // construct first, then look the key up again, and keep whichever entry
+      // is there -- mk() may have interned this very key on the way.
+      std::shared_ptr<T> made(mk(args...));
+      std::shared_ptr<T>& slot = this->values[k];
+      if (!slot) {
+        slot = made;
+      }
+      return slot;
     }
 
     size_t compact() {
