@@ -25,17 +25,20 @@ permissions:
 
 jobs:
   regenerate:
-    # ubuntu-24.04 packages the pinned versions (flex 2.6.4, bison 3.8.2), so
-    # the generators run natively here; pgen.sh checks the versions before it
-    # runs them, and locally it runs the same thing in a container of the same
-    # release
+    # the exact package builds pgen.sh pins come from Ubuntu 24.04's archive, so
+    # on that runner the generators run natively; the versions installed here
+    # are the same strings pgen.sh names, so the two cannot drift apart without
+    # a change to both, and pgen.sh checks what it got before it runs
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Install the pinned generators
         run: |
+          # read the package pins from the script rather than restating them
+          eval "$(grep -E '^PGEN_(FLEX|BISON)_PACKAGE=' lib/hobbes/read/pgen/pgen.sh)"
+          echo "installing $PGEN_BISON_PACKAGE $PGEN_FLEX_PACKAGE"
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends bison flex
+          sudo apt-get install -y --no-install-recommends --allow-downgrades "$PGEN_BISON_PACKAGE" "$PGEN_FLEX_PACKAGE"
           bison --version | head -1
           flex --version
       - name: Regenerate

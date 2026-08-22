@@ -19,11 +19,17 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
-# Ubuntu 24.04 (noble) as of the digest below ships flex 2.6.4-8.2build1 and
-# bison 2:3.8.2+dfsg-1build2. The digest pins the image; the versions are
-# asserted after install, so a moved image or repository cannot silently
-# change what generates these files.
+# Ubuntu 24.04 (noble), pinned by digest, and the exact package builds of flex
+# and bison from its archive, pinned by version. The image digest alone would
+# not do: apt-get reads the release's repositories, which move, and a new
+# build of the same upstream version can generate differently (that is how
+# the checked-in lexer came to differ by hundreds of lines from one flex
+# 2.6.4 to another). If either package version ever leaves the archive the
+# install fails here, loudly, and the pin has to be moved on purpose --
+# with the generated files regenerated alongside it.
 PGEN_IMAGE="docker.io/library/ubuntu:24.04@sha256:7607b6f97024ef850f1bd6e91a89273beb5973d04432c5b87f15f813d64b9c05"
+PGEN_FLEX_PACKAGE="flex=2.6.4-8.2build1"
+PGEN_BISON_PACKAGE="bison=2:3.8.2+dfsg-1build2"
 PGEN_FLEX_VERSION="2.6.4"
 PGEN_BISON_VERSION="3.8.2"
 
@@ -78,9 +84,9 @@ fi
 ROOT="$(cd ../../../.. && pwd)"
 exec "$RUNTIME" run --rm \
   -v "$ROOT:/hobbes:Z" -w /hobbes/lib/hobbes/read/pgen \
-  -e PGEN_NATIVE=1 \
+  -e PGEN_NATIVE=1 -e PGEN_FLEX_PACKAGE="$PGEN_FLEX_PACKAGE" -e PGEN_BISON_PACKAGE="$PGEN_BISON_PACKAGE" \
   "$PGEN_IMAGE" \
   bash -c 'export DEBIAN_FRONTEND=noninteractive
            apt-get update -qq >/dev/null
-           apt-get install -y -qq --no-install-recommends bison flex >/dev/null
+           apt-get install -y -qq --no-install-recommends "$PGEN_BISON_PACKAGE" "$PGEN_FLEX_PACKAGE" >/dev/null
            exec ./pgen.sh'
