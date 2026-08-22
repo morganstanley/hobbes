@@ -65,3 +65,51 @@ TEST(Parse, NestingDepthAndRelease) {
   releaseNesting(e);
   EXPECT_TRUE(e == nullptr);
 }
+
+// The scanner used to carry a backtracking state stack -- one entry per
+// character scanned while matching a token -- in a buffer allocated once at
+// (YY_BUF_SIZE + 2) states and never grown, so a token longer than 16,386
+// characters wrote four bytes past the end of it for every further character
+// (OSS-Fuzz testcase 6480698828193792, which ASan reports as a
+// heap-buffer-overflow WRITE in yylex). The buffer existed only to support one
+// rule's trailing context; nothing bounded a token against it.
+static const size_t pastTheOldStateBuffer = 20000;
+
+TEST(Parse, TokensLongerThanTheScanBufferAreSafe) {
+  // an identifier is the plainest way to ask for one long token
+  const std::string longIdent(pastTheOldStateBuffer, 'a');
+  ExprPtr e = c().readExpr(longIdent);
+  EXPECT_TRUE(e != nullptr);
+  EXPECT_EQ(show(e), longIdent);
+
+  // as is a string literal, which reads as one token of its own
+  EXPECT_TRUE(c().readExpr("\"" + longIdent + "\"") != nullptr);
+
+  // a regex literal that long is one token too, and is rejected for its term
+  // count -- the point here is that it is rejected rather than overrunning the
+  // scanner on the way
+  EXPECT_EXCEPTION(c().readExpr("'" + longIdent + "'"));
+
+  // and the compiler still works afterwards
+  EXPECT_EQ(show(c().readExpr("1+2")), "+(1, 2)");
+}
+
+TEST(Parse, IndentedDefinitionsStillRead) {
+  // the rule that reads indentation needs a character or two of lookahead to
+  // tell an indented definition from a comment, and it asks for that by
+  // matching and giving back rather than by trailing context. This is the
+  // behaviour that depends on it: members of a class or instance are found by
+  // their indentation, and an indented comment is not one of them.
+  // (test/Objects.C covers this too, but only on a non-clang build.)
+  cc lc;
+  compile(&lc, lc.readModule(
+    "class Sizeable a where\n"
+    "  sizeOfIt :: a -> int\n"
+    "instance Sizeable int where\n"
+    "  sizeOfIt _ = 4\n"
+    "instance Sizeable [char] where\n"
+    "  // an indented comment is not a member\n"
+    "  sizeOfIt _ = 7\n"
+  ));
+  EXPECT_EQ(lc.compileFn<int()>("sizeOfIt(1) + sizeOfIt(\"ab\")")(), 11);
+}
