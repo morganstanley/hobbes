@@ -5,6 +5,7 @@
 #include <hobbes/eval/jitcc.H>
 #include <hobbes/eval/search.H>
 #include <hobbes/lang/expr.H>
+#include <hobbes/lang/pat/regex.H>
 #include <hobbes/lang/preds/subtype/obj.H>
 #include <hobbes/lang/tylift.H>
 #include <hobbes/lang/type.H>
@@ -360,6 +361,16 @@ private:
   // states
   bool shouldThrowOnHugeRegexDFA = false;
   int dfaOverNfaMaxRatio = 4;
+
+  // the regex matchers compiled into this compiler so far, by an encoding of
+  // the regexes each one matches. A match on the same regexes reuses the
+  // matcher already defined for them rather than defining another: every
+  // regex literal read is determinized and compiled into a function here, and
+  // nothing removes those, so this is what keeps a process that keeps reading
+  // the same regexes -- the same expression text over RPC, say -- from
+  // growing by a matcher per read (see makeRegexFn)
+  friend CRegexes makeRegexFn(cc *, const Regexes &, const LexicalAnnotation &);
+  std::unordered_map<std::string, CRegexes> regexFnCache;
 
   // the bound root type-def environment
   using TypeAliasMap = std::map<std::string, PolyTypePtr>;

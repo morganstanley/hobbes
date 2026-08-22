@@ -508,6 +508,16 @@ void runMachineREPLStep(cc* c) {
       resetMemoryPool();
       break;
     }
+
+    // the meta commands above decode types and expressions sent by the peer,
+    // and every type that builds is interned in the process-wide type memo,
+    // which holds on to it until asked not to. Ask after each one: what the
+    // command needed is held by the compiler and stays, what it only passed
+    // through goes. Invoking a compiled function (the default case) decodes
+    // nothing and is the hot path, so it is left alone.
+    if (cmd < CMD_COUNT) {
+      compactMTypeMemory();
+    }
   } catch (std::exception& ex) {
     std::string exn = ex.what();
     dbglog("*** " + exn);

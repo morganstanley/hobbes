@@ -18,14 +18,19 @@ template <typename T, typename ... Args>
   public:
     using object_type = T;
 
-    const std::shared_ptr<T>& get(const std::function<T*(Args...)>& mk, const Args&... args) {
+    // returned by value rather than by reference into the map: compact() can
+    // erase an entry from another thread as soon as the lock is released, and
+    // a reference handed out here would then be to storage that is gone. A
+    // copy is a reference of its own, which also keeps the entry from being
+    // the one compact() erases while the caller still holds it.
+    std::shared_ptr<T> get(const std::function<T*(Args...)>& mk, const Args&... args) {
       std::lock_guard<std::recursive_mutex> lock(mutex);
       auto k = std::tuple<Args...>(args...);
-      const auto& r = this->values[k];
-      if (r) return r;
-      
-      this->values[k] = std::shared_ptr<T>(mk(args...));
-      return this->values[k];
+      auto& r = this->values[k];
+      if (!r) {
+        r = std::shared_ptr<T>(mk(args...));
+      }
+      return r;
     }
 
     size_t compact() {

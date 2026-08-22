@@ -259,6 +259,7 @@ void evaluateNetREPLRequest(int c, void *d) {
         fdwrite(c, uint8_t(0));
         fdwrite(c, std::string(ex.what()));
       }
+      compactMTypeMemory();
       break;
     case 1:
       // prepare a serialized expression, also return its type
@@ -286,6 +287,7 @@ void evaluateNetREPLRequest(int c, void *d) {
         fdwrite(c, uint8_t(0));
         fdwrite(c, std::string(ex.what()));
       }
+      compactMTypeMemory();
       break;
     case 2:
       // invoke a prepared expression
