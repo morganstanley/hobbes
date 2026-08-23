@@ -1,0 +1,1 @@
+match "aaab" with | '(?<pre>a+)b' -> length(pre) | _ -> 0L

@@ -470,6 +470,49 @@ TEST(Matching, deeplyNestedRegexIsRejected) {
                        std::exception, "regex is too complex to compile");
 }
 
+// A capturing group name runs to a closing '>' or '\''. The scan for it used
+// to stop just as happily at the end of the regex, and reading resumed one
+// character past where that delimiter would have been -- out of the string.
+// Nothing downstream rechecks the read position, so the walk did not stop
+// there: it ran further out for as many terms as the budget allowed, ~1,000
+// bytes past a 3-byte buffer (OSS-Fuzz 4831270021693440, reported by ASan as a
+// stack-buffer-overflow in diffRegex, from a 5-byte input).
+TEST(Matching, unterminatedCaptureGroupNameIsRejected) {
+  EXPECT_EXCEPTION_MSG(c().readExpr("'(?<'"), std::exception,
+                       "capturing group name");
+  EXPECT_EXCEPTION_MSG(c().readExpr("'(?P<abc'"), std::exception,
+                       "capturing group name");
+  EXPECT_EXCEPTION_MSG(c().readExpr("'(?'"), std::exception,
+                       "capturing group name");
+
+  // the rest are reached through parseRegex rather than through a regex
+  // literal: it is public API, and the lexer will not hand it either a body
+  // whose group name is quote-delimited (a bare ' closes the literal) or one
+  // ending in a lone backslash
+  EXPECT_EXCEPTION_MSG(parseRegex("(?'abc"), std::exception,
+                       "capturing group name");
+
+  // a trailing escape inside a character class stepped past the end the same
+  // way, one function over in readCharset
+  EXPECT_EXCEPTION_MSG(parseRegex("[\\"), std::exception,
+                       "expecting escape code");
+
+  // named groups and character classes that are properly closed still read
+  EXPECT_TRUE(parseRegex("(?<n>a)") != nullptr);
+  EXPECT_TRUE(parseRegex("(?'n'a)") != nullptr);
+  EXPECT_TRUE(parseRegex("(?P<n>a)") != nullptr);
+  EXPECT_TRUE(parseRegex("[a-c\\]]") != nullptr);
+}
+
+TEST(Matching, capturedGroupsStillBind) {
+  // the delimiter scan is what capture binding runs on, so check it still
+  // binds what it captures
+  auto f = c().compileFn<long(const std::string &)>(
+      "x", "match x with | '(?<pre>a+)b' -> length(pre) | _ -> 0L");
+  EXPECT_EQ(f("aaab"), 3L);
+  EXPECT_EQ(f("zzz"), 0L);
+}
+
 TEST(Matching, regexesUnderTheTermLimitStillCompile) {
   const size_t n = 500;
   auto f = c().compileFn<bool(const std::string &)>(
