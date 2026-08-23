@@ -94,6 +94,26 @@ void popIndent() {
   }
 }
 
+// Give back the last n characters of the current match.
+//
+// The indentation rules below need one or two characters of lookahead to tell
+// an indented line from a comment, and they used to ask flex for it as
+// trailing context. Variable trailing context makes flex carry a backtracking
+// state stack -- one entry per character scanned while matching a token -- in
+// a buffer it allocates once at (YY_BUF_SIZE + 2) states and never grows, so
+// scanning a token longer than that wrote past the end of it. Matching the
+// lookahead and handing it back leaves no rule with trailing context, and flex
+// emits no such buffer at all, so the length of a token is bounded only by the
+// input. yyless rewinds yyleng and, for any newline among the characters it
+// gives back, yylineno -- both of which YY_USER_ACTION has already used, so
+// the token's line and end column are restated here once they are right.
+#define pushBackLookahead(n)                                   \
+  do {                                                         \
+    yyless(yyleng - (n));                                      \
+    yylloc.first_line = yylloc.last_line = yylineno;           \
+    yylloc.last_column = yylloc.first_column + yyleng - 1;     \
+  } while (false)
+
 std::string* identifier(const char* b, const char* e) {
   if ((b+1) == e && *b == '_') {
     return hobbes::autorelease(new std::string(hobbes::freshName()));
@@ -120,7 +140,8 @@ std::string* identifier(const char* b, const char* e) {
 
 \n                              { yycolumn = 1; }
 [ \t\r\f]                       { }
-"\n"[ \t]+/([^ \t\n/]|"/"[^*/]) { yycolumn = 2; if (wantIndent()) { return TINDENT; } }
+"\n"[ \t]+[^ \t\n/]             { pushBackLookahead(1); yycolumn = 2; if (wantIndent()) { return TINDENT; } }
+"\n"[ \t]+"/"[^*/]              { pushBackLookahead(2); yycolumn = 2; if (wantIndent()) { return TINDENT; } }
 "\n "                           { yycolumn = 2; if (wantIndent()) { return TINDENT; } }
 "\r "                           {               if (wantIndent()) { return TINDENT; } }
 "\n\t"                          { yycolumn = 2; if (wantIndent()) { return TINDENT; } }
