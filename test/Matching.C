@@ -4,6 +4,7 @@
 #include <ctime>
 #include <hobbes/hobbes.H>
 #include <hobbes/util/perf.H>
+#include <pthread.h>
 #include <thread>
 
 // compile-time bounds are skipped in sanitized builds, where instrumentation
@@ -540,6 +541,50 @@ TEST(Matching, pathologicalRegexIsRejected) {
 #if !HOBBES_TEST_SKIP_TIMING_BOUNDS
   EXPECT_TRUE(dt < 30L * CLOCKS_PER_SEC);
 #endif
+}
+
+// The cap bounds how many DFA states are built, not how deep the walk that
+// builds them goes: a chain of transitions with no repeats is one state per
+// step, and the construction used to recurse once per step, so a regex within
+// the cap could still be up to 10,000 frames deep. Each frame carried the sets
+// of NFA states being visited, and once instrumentation made them larger that
+// was more stack than a thread has. This regex is from a local fuzz run of an
+// unoptimized UBSan build, where it overflowed the stack in dfaState before
+// reaching the cap; the construction is now a worklist, so the depth of the
+// walk is heap and the only bound that matters is the cap.
+static const char deepChainRegex[] =
+    "match \"a \" with | ' *......++...,..............................@./' -> 1 | _ -> 0";
+
+TEST(Matching, deepDFAChainIsRejectedNotOverflowed) {
+  EXPECT_EXCEPTION_MSG(c().readExpr(deepChainRegex), std::exception,
+                       "regex is too complex to compile");
+}
+
+TEST(Matching, dfaConstructionDoesNotDependOnStackSize) {
+  // the same read on a thread with a 1MB stack: room for the parse and the
+  // rejection, not for ten thousand recursive frames. An unfixed build
+  // overflows here rather than failing the test.
+  pthread_attr_t attr;
+  pthread_attr_init(&attr);
+  pthread_attr_setstacksize(&attr, 1024 * 1024);
+
+  std::string outcome;
+  auto body = [](void* p) -> void* {
+    std::string* out = static_cast<std::string*>(p);
+    try {
+      c().readExpr(deepChainRegex);
+      *out = "parsed";
+    } catch (const std::exception& ex) {
+      *out = ex.what();
+    }
+    return nullptr;
+  };
+  pthread_t t;
+  EXPECT_EQ(pthread_create(&t, &attr, body, &outcome), 0);
+  pthread_join(t, nullptr);
+  pthread_attr_destroy(&attr);
+
+  EXPECT_TRUE(outcome.find("regex is too complex to compile") != std::string::npos);
 }
 
 // The cap is what keeps that regex out, but the DFA behind it also has to be
