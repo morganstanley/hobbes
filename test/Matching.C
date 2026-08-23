@@ -605,6 +605,60 @@ TEST(Matching, hugeRegexDFACompilesWithoutQuadraticBlowup) {
 #endif
 }
 
+// A regex literal is compiled into a matching function where it is read, and
+// a match on the same regexes now reuses the function compiled for them the
+// first time rather than defining another. Reuse has to be by the regex
+// itself, not by how it prints: 'a|b' (either) and 'a\|b' (three literals)
+// print alike but match differently, and must not share a matcher.
+// a compiled matcher is a function defined in the compiler under a ".regex."
+// name, so counting those in its type environment counts the matchers it holds
+// (dumpTypeEnv hides dot-prefixed names, so go to the environment directly)
+static size_t regexMatchersDefinedIn(cc &x) {
+  size_t n = 0;
+  for (const auto &s : x.typeEnv()->boundVariables()) {
+    if (s.rfind(".regex.", 0) == 0) {
+      ++n;
+    }
+  }
+  return n;
+}
+
+TEST(Matching, regexMatchersAreReusedButOnlyForTheSameRegex) {
+  // a fresh compiler, so that the count of matchers is this test's to reason about
+  cc lc;
+  const size_t before = regexMatchersDefinedIn(lc);
+
+  auto either1 = lc.compileFn<int(const std::string &)>(
+      "s", "match s with | 'a|b' -> 1 | _ -> 0");
+  EXPECT_EQ(regexMatchersDefinedIn(lc), before + 1);
+
+  // the same regex again: no new matcher
+  auto either2 = lc.compileFn<int(const std::string &)>(
+      "s", "match s with | 'a|b' -> 2 | _ -> 0");
+  EXPECT_EQ(regexMatchersDefinedIn(lc), before + 1);
+
+  // a regex that merely prints the same: a new one
+  auto literal = lc.compileFn<int(const std::string &)>(
+      "s", "match s with | 'a\\|b' -> 3 | _ -> 0");
+  EXPECT_EQ(regexMatchersDefinedIn(lc), before + 2);
+
+  EXPECT_EQ(either1("a"), 1);
+  EXPECT_EQ(either1("b"), 1);
+  EXPECT_EQ(either1("a|b"), 0);
+  EXPECT_EQ(either2("a"), 2);
+  EXPECT_EQ(either2("a|b"), 0);
+  EXPECT_EQ(literal("a|b"), 3);
+  EXPECT_EQ(literal("a"), 0);
+
+  // and captured groups still bind in a reused matcher
+  auto cap1 = c().compileFn<long(const std::string &)>(
+      "x", "match x with | '(?<pre>a+)b' -> length(pre) | _ -> 0L");
+  auto cap2 = c().compileFn<long(const std::string &)>(
+      "x", "match x with | '(?<pre>a+)b' -> length(pre) * 10L | _ -> 0L");
+  EXPECT_EQ(cap1("aaab"), 3L);
+  EXPECT_EQ(cap2("aaab"), 30L);
+}
+
 TEST(Matching, noRaceInterpMatch) {
   c().alwaysLowerPrimMatchTables(true);
   c().buildInterpretedMatches(true);

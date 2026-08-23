@@ -1391,6 +1391,58 @@ ExprPtr makeRegexCaptureBuffer(const Regexes& regexes, const LexicalAnnotation& 
 /**************************
  * make a function to determine which among the input regexes here a later string matches
  **************************/
+// an encoding of a regex that two regexes share only if they are the same
+// regex: every node is tagged, and every name is length-prefixed, so the
+// encodings of different trees cannot run together. (show() is not that: it
+// prints characters raw, so 'a|b' and the three literals a, |, b look alike.)
+struct regexKeyF : public switchRegex<UnitV> {
+  std::string* out;
+  explicit regexKeyF(std::string* out) : out(out) { }
+
+  UnitV with(const REps*) const override { *this->out += "e;"; return unitv; }
+  UnitV with(const RCharRange* x) const override {
+    *this->out += "r" + str::from(static_cast<int>(x->b)) + "," + str::from(static_cast<int>(x->e)) + ";";
+    return unitv;
+  }
+  UnitV with(const RStar* x) const override {
+    *this->out += "*(";
+    switchOf(x->v, *this);
+    *this->out += ")";
+    return unitv;
+  }
+  UnitV with(const REither* x) const override {
+    *this->out += "|(";
+    switchOf(x->lhs, *this);
+    *this->out += ",";
+    switchOf(x->rhs, *this);
+    *this->out += ")";
+    return unitv;
+  }
+  UnitV with(const RSeq* x) const override {
+    *this->out += ".(";
+    switchOf(x->lhs, *this);
+    *this->out += ",";
+    switchOf(x->rhs, *this);
+    *this->out += ")";
+    return unitv;
+  }
+  UnitV with(const RBind* x) const override {
+    *this->out += "b" + str::from(x->var.size()) + ":" + x->var + "(";
+    switchOf(x->def, *this);
+    *this->out += ")";
+    return unitv;
+  }
+};
+
+std::string regexFnKey(const Regexes& regexes) {
+  std::string k;
+  for (const auto& r : regexes) {
+    switchOf(r, regexKeyF(&k));
+    k += "\n";
+  }
+  return k;
+}
+
 CRegexes makeRegexFn(cc* c, const Regexes& regexes, const LexicalAnnotation& rootLA) {
   CRegexes result;
 
@@ -1398,6 +1450,20 @@ CRegexes makeRegexFn(cc* c, const Regexes& regexes, const LexicalAnnotation& roo
   result.captureBuffer = makeRegexCaptureBuffer(regexes, rootLA);
   for (size_t i = 0; i < regexes.size(); ++i) {
     result.captureVarsAt[i] = bindingNames(regexes[i]);
+  }
+
+  // if these regexes have been compiled into this compiler before, the
+  // function and the result mapping made then serve now: the function is
+  // pure in its input and the mapping is a property of the regexes, so
+  // neither depends on where the match that uses them is. (The capture
+  // buffer expression above is remade with this match's annotation, and the
+  // binding names recomputed, because they are cheap and carry a location.)
+  const std::string key = regexFnKey(regexes);
+  auto cached = c->regexFnCache.find(key);
+  if (cached != c->regexFnCache.end()) {
+    result.fname   = cached->second.fname;
+    result.rstates = cached->second.rstates;
+    return result;
   }
 
   // our NFA will non-deterministically jump to every possible start state
@@ -1425,6 +1491,13 @@ CRegexes makeRegexFn(cc* c, const Regexes& regexes, const LexicalAnnotation& roo
 
   // and that's the function that the outer match logic should use
   result.fname = fname;
+
+  // remember the function and the result mapping for the next match on these
+  // regexes; not the capture buffer expression, which carries this match's
+  // source location and would pin it for the life of the compiler
+  CRegexes& kept = c->regexFnCache[key];
+  kept.fname   = result.fname;
+  kept.rstates = result.rstates;
   return result;
 }
 

@@ -1260,6 +1260,20 @@ inline MonoTypePtr fnresult(const MonoTypePtr& fty) {
 
 void compactMTypeMemory();
 
+// compact the type memo when the enclosing scope ends, however it ends: for
+// code that decodes types it may not keep -- a request handler, say -- so that
+// the types a rejected input interned are released on the failure path as
+// well as on success
+class CompactMTypeMemoryAtExit {
+public:
+  explicit CompactMTypeMemoryAtExit(bool armed = true) : armed(armed) { }
+  ~CompactMTypeMemoryAtExit() { if (this->armed) { compactMTypeMemory(); } }
+  CompactMTypeMemoryAtExit(const CompactMTypeMemoryAtExit&) = delete;
+  CompactMTypeMemoryAtExit& operator=(const CompactMTypeMemoryAtExit&) = delete;
+private:
+  bool armed;
+};
+
 // shorthand for making file ref types
 MonoTypePtr fileRefTy(const MonoTypePtr&, const MonoTypePtr&);
 MonoTypePtr fileRefTy(const MonoTypePtr&);
