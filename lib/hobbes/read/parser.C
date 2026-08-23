@@ -37,6 +37,8 @@ extern int             yycolumn;
 extern YYLTYPE         yyErrPos;
 
 extern int yyparse();
+extern void pushLexerParseState();
+extern void popLexerParseState();
 #define YY_BUF_SIZE 16384
 struct yy_buffer_state;
 using YY_BUFFER_STATE = yy_buffer_state *;
@@ -63,6 +65,10 @@ void freeParserData() {
   if (activeParseBuffers.empty()) {
     AutoreleaseSet::reset();
   }
+}
+
+size_t openParseCount() {
+  return activeParseBuffers.size();
 }
 
 template <typename T>
@@ -129,20 +135,59 @@ void checkNestingDepth(ExprPtr* e) {
   }
 }
 
+// One parse, from the scanner's point of view: the buffer it reads from, the
+// lexer state it starts with, and the undoing of both when it is over.
+//
+// The undoing is what matters, and it is in a destructor so that it happens
+// however the parse ends. yyparse can return -- on success, or on a syntax
+// error it has recovered from -- or it can throw, when a grammar action does
+// (a regex literal over its term limit, a numeric literal too large for its
+// type). Teardown used to follow yyparse as plain statements, so the throwing
+// path skipped it: the buffer was never closed, the count of open parses never
+// came back down, and since that count is how the parser decides it is
+// between parses and may release what the last one autoreleased, nothing was
+// released again for the rest of the process (the OSS-Fuzz parse-expr harness
+// grew by about 44KB per rejected input that way).
+//
+// The lexer state is the other half. The scanner keeps the start condition
+// and the off-side-rule bookkeeping between tokens, and a parse that ends
+// early leaves them wherever the failure found them; see pushLexerParseState
+// in hexpr.l for what that did to the next parse. Saved on the way in and put
+// back on the way out, every parse starts as a fresh process would, and the
+// parse of an imported script -- which runs nested inside its importer's --
+// hands the importer's state back when it is done.
+class ParseScope {
+public:
+  ParseScope(cc* c, int initTok, YY_BUFFER_STATE bs) : bs(bs) {
+    yyParseCC      = c;
+    yyInitToken    = initTok;
+    yylineno       = 1;
+    yycolumn       = 1;
+    yyVexpLexError = ""; // a lexer error left by a parse that threw is not this one's
+    pushLexerParseState();
+    yy_switch_to_buffer(bs);
+    activeParseBuffers.push(bs);
+  }
+
+  ~ParseScope() {
+    activeParseBuffers.pop();
+    freeParserData();
+    yy_delete_buffer(this->bs);
+    if (!activeParseBuffers.empty()) { yy_switch_to_buffer(activeParseBuffers.top()); }
+    popLexerParseState();
+  }
+
+  ParseScope(const ParseScope&) = delete;
+  ParseScope& operator=(const ParseScope&) = delete;
+private:
+  YY_BUFFER_STATE bs;
+};
+
 void runParserOnBuffer(cc* c, int initTok, YY_BUFFER_STATE bs) {
-  yyParseCC   = c;
-  yyInitToken = initTok;
-  yylineno    = 1;
-  yycolumn    = 1;
-  yy_switch_to_buffer(bs);
-  activeParseBuffers.push(bs);
-
-  yyparse();
-
-  activeParseBuffers.pop();
-  freeParserData();
-  yy_delete_buffer(bs);
-  if (!activeParseBuffers.empty()) { yy_switch_to_buffer(activeParseBuffers.top()); }
+  {
+    ParseScope scope(c, initTok, bs);
+    yyparse();
+  }
 
   if (!yyVexpLexError.empty()) {
     std::string msg = yyVexpLexError;

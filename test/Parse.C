@@ -113,3 +113,35 @@ TEST(Parse, IndentedDefinitionsStillRead) {
   ));
   EXPECT_EQ(lc.compileFn<int()>("sizeOfIt(1) + sizeOfIt(\"ab\")")(), 11);
 }
+
+// The lexer keeps state between tokens -- which start condition it is in, and
+// the off-side-rule bookkeeping (whether an indent is significant, and a stack
+// of that for each bracket opened) -- and a parse that fails leaves that state
+// wherever the failure found it. It used to stay there for the next parse, of
+// any text, in the same process: an unterminated block comment left every
+// later input read as comment, and a class body cut short left later inputs
+// with an indent token where none belongs. Each parse now begins and ends with
+// the lexer's state as a fresh process would have it.
+TEST(Parse, AFailedParseLeavesNoLexerStateBehind) {
+  // an unterminated block comment: the scanner is left inside it
+  EXPECT_EXCEPTION(c().readExpr("1 + /* never closed"));
+  EXPECT_EQ(show(c().readExpr("1+2")), "+(1, 2)");
+
+  // a class body cut short: 'class' made indentation significant, and nothing
+  // made it insignificant again
+  cc lc;
+  EXPECT_EXCEPTION(lc.readModule("class Foo a where\n  f :: int ->"));
+  EXPECT_EQ(lc.compileFn<int()>("1 +\n  2")(), 3);
+
+  // a bracket left open inside that class body: the indent flag was saved on
+  // the bracket stack and never popped
+  EXPECT_EXCEPTION(lc.readModule("class Bar a where\n  g :: (int,"));
+  EXPECT_EQ(lc.compileFn<int()>("(1 +\n  2) +\n  3")(), 6);
+
+  // and a parse that ends by throwing from inside a reduction (here a regex
+  // literal over its term limit) is finished the same as one that returns:
+  // the buffer it ran on is closed and nothing of it is left open
+  EXPECT_EXCEPTION(c().readExpr("'" + std::string(2000, 'a') + "'"));
+  EXPECT_EQ(openParseCount(), size_t(0));
+  EXPECT_EQ(show(c().readExpr("1+2")), "+(1, 2)");
+}

@@ -94,6 +94,50 @@ void popIndent() {
   }
 }
 
+// The scanner keeps state from one token to the next: the start condition it
+// is in (INITIAL, or inside a block comment), whether an indent is currently
+// significant, and the stack of that for each bracket opened. A parse that
+// ends early -- a syntax error, an exception out of a grammar action -- leaves
+// all of it wherever the failure found it, and nothing used to reset it, so
+// the next parse in the process inherited it: an unterminated block comment
+// left every later input read as comment, and a class body cut short left
+// later inputs with an indent token where none belongs.
+//
+// So the parser brackets every parse with these. pushLexerParseState saves
+// the state and resets it to what a fresh process has; popLexerParseState
+// puts the saved state back. Saving rather than just resetting is for the
+// parse of an imported script, which runs nested inside its importer's parse
+// and must hand the importer's state back when it is done.
+struct LexerParseState {
+  int              start;
+  int              wantIndent;
+  std::vector<int> indentStack;
+};
+std::vector<LexerParseState> yySavedLexerParseStates;
+
+void pushLexerParseState() {
+  LexerParseState s;
+  s.start       = YY_START;
+  s.wantIndent  = yyWantIndent;
+  s.indentStack = yyIndentStack;
+  yySavedLexerParseStates.push_back(s);
+
+  BEGIN(0); // INITIAL -- which flex defines only after this prologue, as 0
+  yyWantIndent = 0;
+  yyIndentStack.clear();
+}
+
+void popLexerParseState() {
+  if (yySavedLexerParseStates.empty()) {
+    return;
+  }
+  const LexerParseState& s = yySavedLexerParseStates.back();
+  BEGIN(s.start);
+  yyWantIndent  = s.wantIndent;
+  yyIndentStack = s.indentStack;
+  yySavedLexerParseStates.pop_back();
+}
+
 // Give back the last n characters of the current match.
 //
 // The indentation rules below need one or two characters of lookahead to tell
