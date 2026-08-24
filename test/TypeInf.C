@@ -411,6 +411,69 @@ TEST(TypeInf, DecodeRejectsNonPrimitiveSwitchSelector) {
   EXPECT_TRUE(*rt == *sw);
 }
 
+TEST(TypeInf, ShowToleratesFileRefWithoutArguments) {
+  // "fileref" applied to one or two arguments is printed in a special spelling
+  // ("t@?", "t@off"), and showFileRef read its first argument before asking how
+  // many there were. The compiler only ever applies "fileref" to one or two
+  // arguments, but the binary decoder builds a TApp from whatever the buffer
+  // says, and nothing in the encoding obliges a peer to supply any -- so a
+  // decoded application of "fileref" to nothing indexed an empty vector.
+  //
+  // OSS-Fuzz 550998929 reaches show() without leaving the decoder: the record
+  // layout diagnostics added with SizeAndLayoutRejectUnrepresentableTypes above
+  // render the record they reject, member types and all. But any rendering of a
+  // decoded type gets there too, e.g. a type error against a peer-supplied
+  // type description (ipc/net.C feeds both sides' decoded types to the
+  // typechecker, whose errors print them).
+
+  // an application of "fileref" to no arguments, arriving as encoded bytes the
+  // way the fuzz harness and the RPC layer receive it, falls back to the
+  // generic constructor spelling instead of reading absent arguments
+  std::vector<unsigned char> noargs;
+  encode(MonoTypePtr(TApp::make(primty("fileref"), MonoTypes())), &noargs);
+  EXPECT_EQ(show(decode(noargs)), "(fileref)");
+
+  // more arguments than the spelling has slots for fall back the same way
+  // (before, the extras were silently dropped rather than shown)
+  std::vector<unsigned char> extra;
+  encode(MonoTypePtr(TApp::make(primty("fileref"), list(primty("int"), primty("long"), primty("char")))), &extra);
+  EXPECT_EQ(show(decode(extra)), "(fileref int long char)");
+
+  // the reproducer's own shape: a record whose member -- a variant carrying the
+  // no-argument application -- has an offset the layout check rejects, where
+  // the rejection message renders the record; it must throw, not crash
+  const MonoTypePtr payload(TApp::make(primty("fileref"), MonoTypes()));
+  Variant::Members vms;
+  vms.push_back(Variant::Member(".f0", payload, 0));
+
+  std::vector<unsigned char> rec;
+  auto put = [&](const void* p, size_t n) {
+    const auto* b = static_cast<const unsigned char*>(p);
+    rec.insert(rec.end(), b, b + n);
+  };
+  const int          tcode  = Record::type_case_id;
+  const size_t       nmems  = 1;
+  const size_t       namesz = 1;
+  const unsigned int offset = 2; // calculated offset is 0; mismatch is rejected
+  put(&tcode,  sizeof(tcode));
+  put(&nmems,  sizeof(nmems));
+  put(&namesz, sizeof(namesz));
+  put("a", 1);
+  put(&offset, sizeof(offset));
+  encode(MonoTypePtr(Variant::make(vms)), &rec);
+
+  bool threw = false;
+  try { decode(rec); } catch (const std::exception&) { threw = true; }
+  EXPECT_TRUE(threw);
+
+  // the spellings for one and two arguments are unchanged
+  std::vector<unsigned char> one, two;
+  encode(fileRefTy(primty("int")), &one);
+  EXPECT_EQ(show(decode(one)), "int@?");
+  encode(fileRefTy(primty("int"), tlong(42)), &two);
+  EXPECT_EQ(show(decode(two)), "int@42L");
+}
+
 TEST(TypeInf, SubstitutionTerminatesOnCyclicSubstitutions) {
   // substitution is applied to its fixed point, which only exists while no variable
   // stands for a type that mentions it -- unification maintains that, but a

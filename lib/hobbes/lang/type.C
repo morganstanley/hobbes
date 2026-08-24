@@ -676,12 +676,14 @@ const MonoTypePtr& TAbs::body() const { return this->b; }
 // TODO: come up with a nicer way to generically print types in constructor form
 bool showFileRef(const MonoTypePtr& f, const MonoTypes& targs, std::ostream& out) {
   if (const Prim* fn = is<Prim>(f)) {
-    if (fn->name() == "fileref") {
+    // a decoded type description can apply "fileref" to any number of
+    // arguments, not just the one or two this spelling has slots for
+    if (fn->name() == "fileref" && (targs.size() == 1 || targs.size() == 2)) {
       targs[0]->show(out);
       out << "@";
       if (targs.size() == 1) {
         out << "?";
-      } else if (targs.size() == 2) {
+      } else {
         targs[1]->show(out);
       }
       return true;
