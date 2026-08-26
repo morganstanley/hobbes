@@ -5,6 +5,7 @@
 #include <hobbes/lang/module.H>
 #include <hobbes/lang/expr.H>
 #include <hobbes/lang/pat/pattern.H>
+#include <cstddef>
 #include <stdexcept>
 #include <string>
 
@@ -22,6 +23,11 @@ using ExprDefn = std::pair<std::string, ExprPtr>;
 ExprDefn defReadExprDefn(cc*, const std::string&);
 
 ExprPtr defReadExpr(cc*, const std::string&);
+
+// how many parses are open: zero between parses, and nonzero only while one is
+// running (reading an imported script runs nested inside its importer's parse).
+// A parse that ends in an error leaves this where it found it.
+size_t openParseCount();
 
 // allow users to override AST construction for variable names in expressions and patterns
 // (this can be used for alternate resolution of variable names as global values)

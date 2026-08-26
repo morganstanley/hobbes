@@ -767,6 +767,50 @@ void popIndent() {
   }
 }
 
+// The scanner keeps state from one token to the next: the start condition it
+// is in (INITIAL, or inside a block comment), whether an indent is currently
+// significant, and the stack of that for each bracket opened. A parse that
+// ends early -- a syntax error, an exception out of a grammar action -- leaves
+// all of it wherever the failure found it, and nothing used to reset it, so
+// the next parse in the process inherited it: an unterminated block comment
+// left every later input read as comment, and a class body cut short left
+// later inputs with an indent token where none belongs.
+//
+// So the parser brackets every parse with these. pushLexerParseState saves
+// the state and resets it to what a fresh process has; popLexerParseState
+// puts the saved state back. Saving rather than just resetting is for the
+// parse of an imported script, which runs nested inside its importer's parse
+// and must hand the importer's state back when it is done.
+struct LexerParseState {
+  int              start;
+  int              wantIndent;
+  std::vector<int> indentStack;
+};
+std::vector<LexerParseState> yySavedLexerParseStates;
+
+void pushLexerParseState() {
+  LexerParseState s;
+  s.start       = YY_START;
+  s.wantIndent  = yyWantIndent;
+  s.indentStack = yyIndentStack;
+  yySavedLexerParseStates.push_back(s);
+
+  BEGIN(0); // INITIAL -- which flex defines only after this prologue, as 0
+  yyWantIndent = 0;
+  yyIndentStack.clear();
+}
+
+void popLexerParseState() {
+  if (yySavedLexerParseStates.empty()) {
+    return;
+  }
+  const LexerParseState& s = yySavedLexerParseStates.back();
+  BEGIN(s.start);
+  yyWantIndent  = s.wantIndent;
+  yyIndentStack = s.indentStack;
+  yySavedLexerParseStates.pop_back();
+}
+
 // Give back the last n characters of the current match.
 //
 // The indentation rules below need one or two characters of lookahead to tell
@@ -794,9 +838,9 @@ std::string* identifier(const char* b, const char* e) {
     return hobbes::autorelease(new std::string(b, e));
   }
 }
-#line 798 "hexpr.lex.C"
+#line 842 "hexpr.lex.C"
 
-#line 800 "hexpr.lex.C"
+#line 844 "hexpr.lex.C"
 
 #define INITIAL 0
 #define BLOCK_COMMENT 1
@@ -1014,11 +1058,11 @@ YY_DECL
 		}
 
 	{
-#line 130 "hexpr.l"
+#line 174 "hexpr.l"
 
 
 
-#line 134 "hexpr.l"
+#line 178 "hexpr.l"
   /* simulate multiple start symbols in our grammar by supporting a distinguished prefix token to switch on pseudo-start symbol productions */
   if (yyInitToken) {
     int r = yyInitToken;
@@ -1027,7 +1071,7 @@ YY_DECL
   }
 
 
-#line 1031 "hexpr.lex.C"
+#line 1075 "hexpr.lex.C"
 
 	while ( /*CONSTCOND*/1 )		/* loops until end-of-file is reached */
 		{
@@ -1097,622 +1141,622 @@ do_action:	/* This label is used only to access EOF actions. */
 case 1:
 /* rule 1 can match eol */
 YY_RULE_SETUP
-#line 142 "hexpr.l"
+#line 186 "hexpr.l"
 { yycolumn = 1; }
 	YY_BREAK
 case 2:
 YY_RULE_SETUP
-#line 143 "hexpr.l"
+#line 187 "hexpr.l"
 { }
 	YY_BREAK
 case 3:
 /* rule 3 can match eol */
 YY_RULE_SETUP
-#line 144 "hexpr.l"
+#line 188 "hexpr.l"
 { pushBackLookahead(1); yycolumn = 2; if (wantIndent()) { return TINDENT; } }
 	YY_BREAK
 case 4:
 /* rule 4 can match eol */
 YY_RULE_SETUP
-#line 145 "hexpr.l"
+#line 189 "hexpr.l"
 { pushBackLookahead(2); yycolumn = 2; if (wantIndent()) { return TINDENT; } }
 	YY_BREAK
 case 5:
 /* rule 5 can match eol */
 YY_RULE_SETUP
-#line 146 "hexpr.l"
+#line 190 "hexpr.l"
 { yycolumn = 2; if (wantIndent()) { return TINDENT; } }
 	YY_BREAK
 case 6:
 YY_RULE_SETUP
-#line 147 "hexpr.l"
+#line 191 "hexpr.l"
 {               if (wantIndent()) { return TINDENT; } }
 	YY_BREAK
 case 7:
 /* rule 7 can match eol */
 YY_RULE_SETUP
-#line 148 "hexpr.l"
+#line 192 "hexpr.l"
 { yycolumn = 2; if (wantIndent()) { return TINDENT; } }
 	YY_BREAK
 case 8:
 YY_RULE_SETUP
-#line 149 "hexpr.l"
+#line 193 "hexpr.l"
 {               if (wantIndent()) { return TINDENT; } }
 	YY_BREAK
 case 9:
 /* rule 9 can match eol */
 YY_RULE_SETUP
-#line 150 "hexpr.l"
+#line 194 "hexpr.l"
 { yycolumn = 1; }
 	YY_BREAK
 case 10:
 YY_RULE_SETUP
-#line 152 "hexpr.l"
+#line 196 "hexpr.l"
 { BEGIN(BLOCK_COMMENT); }
 	YY_BREAK
 case 11:
 YY_RULE_SETUP
-#line 153 "hexpr.l"
+#line 197 "hexpr.l"
 { BEGIN(INITIAL); }
 	YY_BREAK
 case 12:
 /* rule 12 can match eol */
 YY_RULE_SETUP
-#line 154 "hexpr.l"
+#line 198 "hexpr.l"
 { yycolumn = 1; }
 	YY_BREAK
 case 13:
 YY_RULE_SETUP
-#line 155 "hexpr.l"
+#line 199 "hexpr.l"
 { }
 	YY_BREAK
 case 14:
 YY_RULE_SETUP
-#line 157 "hexpr.l"
+#line 201 "hexpr.l"
 { return TOPTION; }
 	YY_BREAK
 case 15:
 YY_RULE_SETUP
-#line 158 "hexpr.l"
+#line 202 "hexpr.l"
 { return TMODULE; }
 	YY_BREAK
 case 16:
 YY_RULE_SETUP
-#line 159 "hexpr.l"
+#line 203 "hexpr.l"
 { return TWHERE; }
 	YY_BREAK
 case 17:
 YY_RULE_SETUP
-#line 160 "hexpr.l"
+#line 204 "hexpr.l"
 { return TIMPORT; }
 	YY_BREAK
 case 18:
 YY_RULE_SETUP
-#line 161 "hexpr.l"
+#line 205 "hexpr.l"
 { return TTYPE; }
 	YY_BREAK
 case 19:
 YY_RULE_SETUP
-#line 162 "hexpr.l"
+#line 206 "hexpr.l"
 { return TDATA; }
 	YY_BREAK
 case 20:
 YY_RULE_SETUP
-#line 163 "hexpr.l"
+#line 207 "hexpr.l"
 { wantIndent(true); return TCLASS; }
 	YY_BREAK
 case 21:
 YY_RULE_SETUP
-#line 164 "hexpr.l"
+#line 208 "hexpr.l"
 { wantIndent(true); return TINST; }
 	YY_BREAK
 case 22:
 YY_RULE_SETUP
-#line 165 "hexpr.l"
+#line 209 "hexpr.l"
 { return TEXISTS; }
 	YY_BREAK
 case 23:
 YY_RULE_SETUP
-#line 166 "hexpr.l"
+#line 210 "hexpr.l"
 { return TUNSAFE; }
 	YY_BREAK
 case 24:
 YY_RULE_SETUP
-#line 167 "hexpr.l"
+#line 211 "hexpr.l"
 { return TSAFE; } 
 	YY_BREAK
 case 25:
 YY_RULE_SETUP
-#line 169 "hexpr.l"
+#line 213 "hexpr.l"
 { return TASSIGN; }
 	YY_BREAK
 case 26:
 YY_RULE_SETUP
-#line 170 "hexpr.l"
+#line 214 "hexpr.l"
 { return TEQUALS; }
 	YY_BREAK
 case 27:
 YY_RULE_SETUP
-#line 171 "hexpr.l"
+#line 215 "hexpr.l"
 { return TASSUMP; }
 	YY_BREAK
 case 28:
 YY_RULE_SETUP
-#line 172 "hexpr.l"
+#line 216 "hexpr.l"
 { return TCSTARROW; }
 	YY_BREAK
 case 29:
 YY_RULE_SETUP
-#line 173 "hexpr.l"
+#line 217 "hexpr.l"
 { return TPARROW; }
 	YY_BREAK
 case 30:
 YY_RULE_SETUP
-#line 174 "hexpr.l"
+#line 218 "hexpr.l"
 { return TCOLON; }
 	YY_BREAK
 case 31:
 YY_RULE_SETUP
-#line 175 "hexpr.l"
+#line 219 "hexpr.l"
 { return TARROW; }
 	YY_BREAK
 case 32:
 YY_RULE_SETUP
-#line 176 "hexpr.l"
+#line 220 "hexpr.l"
 { return TEQUIV; }
 	YY_BREAK
 case 33:
 YY_RULE_SETUP
-#line 177 "hexpr.l"
+#line 221 "hexpr.l"
 { return TEQ; }
 	YY_BREAK
 case 34:
 YY_RULE_SETUP
-#line 178 "hexpr.l"
+#line 222 "hexpr.l"
 { return TCIEQ; }
 	YY_BREAK
 case 35:
 YY_RULE_SETUP
-#line 179 "hexpr.l"
+#line 223 "hexpr.l"
 { return TNEQ; }
 	YY_BREAK
 case 36:
 YY_RULE_SETUP
-#line 180 "hexpr.l"
+#line 224 "hexpr.l"
 { return TLT; }
 	YY_BREAK
 case 37:
 YY_RULE_SETUP
-#line 181 "hexpr.l"
+#line 225 "hexpr.l"
 { return TLTE; }
 	YY_BREAK
 case 38:
 YY_RULE_SETUP
-#line 182 "hexpr.l"
+#line 226 "hexpr.l"
 { return TGT; }
 	YY_BREAK
 case 39:
 YY_RULE_SETUP
-#line 183 "hexpr.l"
+#line 227 "hexpr.l"
 { return TGTE; }
 	YY_BREAK
 case 40:
 YY_RULE_SETUP
-#line 184 "hexpr.l"
+#line 228 "hexpr.l"
 { return TNOT; }
 	YY_BREAK
 case 41:
 YY_RULE_SETUP
-#line 185 "hexpr.l"
+#line 229 "hexpr.l"
 { return TNOT; }
 	YY_BREAK
 case 42:
 YY_RULE_SETUP
-#line 186 "hexpr.l"
+#line 230 "hexpr.l"
 { return TLET; }
 	YY_BREAK
 case 43:
 YY_RULE_SETUP
-#line 187 "hexpr.l"
+#line 231 "hexpr.l"
 { return TCASE; }
 	YY_BREAK
 case 44:
 YY_RULE_SETUP
-#line 188 "hexpr.l"
+#line 232 "hexpr.l"
 { return TDEFAULT; }
 	YY_BREAK
 case 45:
 YY_RULE_SETUP
-#line 189 "hexpr.l"
+#line 233 "hexpr.l"
 { return TMATCH; }
 	YY_BREAK
 case 46:
 YY_RULE_SETUP
-#line 190 "hexpr.l"
+#line 234 "hexpr.l"
 { return TMATCHES; }
 	YY_BREAK
 case 47:
 YY_RULE_SETUP
-#line 191 "hexpr.l"
+#line 235 "hexpr.l"
 { return TPARSE; }
 	YY_BREAK
 case 48:
 YY_RULE_SETUP
-#line 192 "hexpr.l"
+#line 236 "hexpr.l"
 { return TWITH; }
 	YY_BREAK
 case 49:
 YY_RULE_SETUP
-#line 193 "hexpr.l"
+#line 237 "hexpr.l"
 { return TOF; }
 	YY_BREAK
 case 50:
 YY_RULE_SETUP
-#line 194 "hexpr.l"
+#line 238 "hexpr.l"
 { return TAND; }
 	YY_BREAK
 case 51:
 YY_RULE_SETUP
-#line 195 "hexpr.l"
+#line 239 "hexpr.l"
 { return TOR; }
 	YY_BREAK
 case 52:
 YY_RULE_SETUP
-#line 196 "hexpr.l"
+#line 240 "hexpr.l"
 { return TIF; }
 	YY_BREAK
 case 53:
 YY_RULE_SETUP
-#line 197 "hexpr.l"
+#line 241 "hexpr.l"
 { return TTHEN; }
 	YY_BREAK
 case 54:
 YY_RULE_SETUP
-#line 198 "hexpr.l"
+#line 242 "hexpr.l"
 { return TELSE; }
 	YY_BREAK
 case 55:
 YY_RULE_SETUP
-#line 199 "hexpr.l"
+#line 243 "hexpr.l"
 { SAVE_BOOL; return TBOOL; }
 	YY_BREAK
 case 56:
 YY_RULE_SETUP
-#line 200 "hexpr.l"
+#line 244 "hexpr.l"
 { SAVE_BOOL; return TBOOL; }
 	YY_BREAK
 case 57:
 YY_RULE_SETUP
-#line 201 "hexpr.l"
+#line 245 "hexpr.l"
 { return TIN; }
 	YY_BREAK
 case 58:
 YY_RULE_SETUP
-#line 202 "hexpr.l"
+#line 246 "hexpr.l"
 { return TPACK; }
 	YY_BREAK
 case 59:
 YY_RULE_SETUP
-#line 203 "hexpr.l"
+#line 247 "hexpr.l"
 { return TUNPACK; }
 	YY_BREAK
 case 60:
 YY_RULE_SETUP
-#line 204 "hexpr.l"
+#line 248 "hexpr.l"
 { return TDO; }
 	YY_BREAK
 case 61:
 YY_RULE_SETUP
-#line 205 "hexpr.l"
+#line 249 "hexpr.l"
 { return TRETURN; }
 	YY_BREAK
 case 62:
 YY_RULE_SETUP
-#line 207 "hexpr.l"
+#line 251 "hexpr.l"
 { return TLPRAGMA; }
 	YY_BREAK
 case 63:
 YY_RULE_SETUP
-#line 208 "hexpr.l"
+#line 252 "hexpr.l"
 { return TRPRAGMA; }   
 	YY_BREAK
 case 64:
 YY_RULE_SETUP
-#line 210 "hexpr.l"
+#line 254 "hexpr.l"
 { pushIndent(); return TLPAREN; }
 	YY_BREAK
 case 65:
 YY_RULE_SETUP
-#line 211 "hexpr.l"
+#line 255 "hexpr.l"
 { popIndent();  return TRPAREN; }
 	YY_BREAK
 case 66:
 YY_RULE_SETUP
-#line 212 "hexpr.l"
+#line 256 "hexpr.l"
 { pushIndent(); return TLBRACKET; }
 	YY_BREAK
 case 67:
 YY_RULE_SETUP
-#line 213 "hexpr.l"
+#line 257 "hexpr.l"
 { popIndent();  return TRBRACKET; }
 	YY_BREAK
 case 68:
 YY_RULE_SETUP
-#line 214 "hexpr.l"
+#line 258 "hexpr.l"
 { pushIndent(); return TLBRACE; }
 	YY_BREAK
 case 69:
 YY_RULE_SETUP
-#line 215 "hexpr.l"
+#line 259 "hexpr.l"
 { popIndent();  return TRBRACE; }
 	YY_BREAK
 case 70:
 YY_RULE_SETUP
-#line 217 "hexpr.l"
+#line 261 "hexpr.l"
 { return TBAR; }
 	YY_BREAK
 case 71:
 YY_RULE_SETUP
-#line 218 "hexpr.l"
+#line 262 "hexpr.l"
 { return TCOMMA; }
 	YY_BREAK
 case 72:
 YY_RULE_SETUP
-#line 219 "hexpr.l"
+#line 263 "hexpr.l"
 { return TSEMICOLON; }
 	YY_BREAK
 case 73:
 YY_RULE_SETUP
-#line 220 "hexpr.l"
+#line 264 "hexpr.l"
 { return TAPPEND; }
 	YY_BREAK
 case 74:
 YY_RULE_SETUP
-#line 221 "hexpr.l"
+#line 265 "hexpr.l"
 { return TPLUS; }
 	YY_BREAK
 case 75:
 YY_RULE_SETUP
-#line 222 "hexpr.l"
+#line 266 "hexpr.l"
 { return TMINUS; }
 	YY_BREAK
 case 76:
 YY_RULE_SETUP
-#line 223 "hexpr.l"
+#line 267 "hexpr.l"
 { return TTIMES; }
 	YY_BREAK
 case 77:
 YY_RULE_SETUP
-#line 224 "hexpr.l"
+#line 268 "hexpr.l"
 { return TDIVIDE; }
 	YY_BREAK
 case 78:
 YY_RULE_SETUP
-#line 225 "hexpr.l"
+#line 269 "hexpr.l"
 { return TREM; }
 	YY_BREAK
 case 79:
 YY_RULE_SETUP
-#line 226 "hexpr.l"
+#line 270 "hexpr.l"
 { return TFN; }
 	YY_BREAK
 case 80:
 YY_RULE_SETUP
-#line 227 "hexpr.l"
+#line 271 "hexpr.l"
 { return TFNL; }
 	YY_BREAK
 case 81:
 YY_RULE_SETUP
-#line 228 "hexpr.l"
+#line 272 "hexpr.l"
 { return TCOMPOSE; }
 	YY_BREAK
 case 82:
 YY_RULE_SETUP
-#line 229 "hexpr.l"
+#line 273 "hexpr.l"
 { return TDOT; }
 	YY_BREAK
 case 83:
 YY_RULE_SETUP
-#line 230 "hexpr.l"
+#line 274 "hexpr.l"
 { return TUPTO; }
 	YY_BREAK
 case 84:
 YY_RULE_SETUP
-#line 231 "hexpr.l"
+#line 275 "hexpr.l"
 { return TCARET; }
 	YY_BREAK
 case 85:
 YY_RULE_SETUP
-#line 232 "hexpr.l"
+#line 276 "hexpr.l"
 { return TAT; }
 	YY_BREAK
 case 86:
 YY_RULE_SETUP
-#line 233 "hexpr.l"
+#line 277 "hexpr.l"
 { return TDOLLAR; }
 	YY_BREAK
 case 87:
 YY_RULE_SETUP
-#line 234 "hexpr.l"
+#line 278 "hexpr.l"
 { return TQUESTION; }
 	YY_BREAK
 case 88:
 YY_RULE_SETUP
-#line 235 "hexpr.l"
+#line 279 "hexpr.l"
 { SAVE_STR;    return (hobbes::str::unescape(hobbes::str::trimq(*yylval.string, '\'')).size() <= 1) ? TCHAR : TREGEX; }
 	YY_BREAK
 case 89:
 YY_RULE_SETUP
-#line 236 "hexpr.l"
+#line 280 "hexpr.l"
 { return TSQUOTE; }
 	YY_BREAK
 case 90:
 YY_RULE_SETUP
-#line 237 "hexpr.l"
+#line 281 "hexpr.l"
 { return TEQUOTE; }
 	YY_BREAK
 case 91:
 YY_RULE_SETUP
-#line 238 "hexpr.l"
+#line 282 "hexpr.l"
 { SAVE_STR;    return TBYTE; }
 	YY_BREAK
 case 92:
 YY_RULE_SETUP
-#line 239 "hexpr.l"
+#line 283 "hexpr.l"
 { SAVE_STR;    return TBYTES; }
 	YY_BREAK
 case 93:
 YY_RULE_SETUP
-#line 240 "hexpr.l"
+#line 284 "hexpr.l"
 { SAVE_IDENT;  return TIDENT; }
 	YY_BREAK
 case 94:
 YY_RULE_SETUP
-#line 241 "hexpr.l"
+#line 285 "hexpr.l"
 { SAVE_STR;    return TTUPSECTION; }
 	YY_BREAK
 case 95:
 YY_RULE_SETUP
-#line 242 "hexpr.l"
+#line 286 "hexpr.l"
 { SAVE_FLOAT;  return TFLOAT; }
 	YY_BREAK
 case 96:
 YY_RULE_SETUP
-#line 243 "hexpr.l"
+#line 287 "hexpr.l"
 { SAVE_DOUBLE; return TDOUBLE; }
 	YY_BREAK
 case 97:
 YY_RULE_SETUP
-#line 244 "hexpr.l"
+#line 288 "hexpr.l"
 { SAVE_DOUBLE; yylval.doublev *= 0.01; return TDOUBLE; }
 	YY_BREAK
 case 98:
 YY_RULE_SETUP
-#line 245 "hexpr.l"
+#line 289 "hexpr.l"
 { SAVE_INT128; return TINT128; }
 	YY_BREAK
 case 99:
 YY_RULE_SETUP
-#line 246 "hexpr.l"
+#line 290 "hexpr.l"
 { SAVE_LONG;   return TLONG; }
 	YY_BREAK
 case 100:
 YY_RULE_SETUP
-#line 247 "hexpr.l"
+#line 291 "hexpr.l"
 { SAVE_SHORT;  return TSHORT; }
 	YY_BREAK
 case 101:
 YY_RULE_SETUP
-#line 248 "hexpr.l"
+#line 292 "hexpr.l"
 { SAVE_INT;    return TINT; }
 	YY_BREAK
 case 102:
 /* rule 102 can match eol */
 YY_RULE_SETUP
-#line 249 "hexpr.l"
+#line 293 "hexpr.l"
 { SAVE_STR;    return TSTRING; }
 	YY_BREAK
 case 103:
 YY_RULE_SETUP
-#line 251 "hexpr.l"
+#line 295 "hexpr.l"
 { SAVE_STR;    return TTIMEINTERVAL; }
 	YY_BREAK
 case 104:
 YY_RULE_SETUP
-#line 252 "hexpr.l"
+#line 296 "hexpr.l"
 { SAVE_STR;    return TTIMEINTERVAL; }
 	YY_BREAK
 case 105:
 YY_RULE_SETUP
-#line 253 "hexpr.l"
+#line 297 "hexpr.l"
 { SAVE_STR;    return TTIMEINTERVAL; }
 	YY_BREAK
 case 106:
 YY_RULE_SETUP
-#line 254 "hexpr.l"
+#line 298 "hexpr.l"
 { SAVE_STR;    return TTIMEINTERVAL; }
 	YY_BREAK
 case 107:
 YY_RULE_SETUP
-#line 255 "hexpr.l"
+#line 299 "hexpr.l"
 { SAVE_STR;    return TTIMEINTERVAL; }
 	YY_BREAK
 case 108:
 YY_RULE_SETUP
-#line 256 "hexpr.l"
+#line 300 "hexpr.l"
 { SAVE_STR;    return TTIMEINTERVAL; }
 	YY_BREAK
 case 109:
 YY_RULE_SETUP
-#line 257 "hexpr.l"
+#line 301 "hexpr.l"
 { SAVE_STR;    return TTIMEINTERVAL; }
 	YY_BREAK
 case 110:
 YY_RULE_SETUP
-#line 258 "hexpr.l"
+#line 302 "hexpr.l"
 { SAVE_STR;    return TTIMEINTERVAL; }
 	YY_BREAK
 case 111:
 YY_RULE_SETUP
-#line 259 "hexpr.l"
+#line 303 "hexpr.l"
 { SAVE_STR;    return TTIMEINTERVAL; }
 	YY_BREAK
 case 112:
 YY_RULE_SETUP
-#line 261 "hexpr.l"
+#line 305 "hexpr.l"
 { SAVE_STR; return TTIME; }
 	YY_BREAK
 case 113:
 YY_RULE_SETUP
-#line 262 "hexpr.l"
+#line 306 "hexpr.l"
 { SAVE_STR; return TTIME; }
 	YY_BREAK
 case 114:
 YY_RULE_SETUP
-#line 263 "hexpr.l"
+#line 307 "hexpr.l"
 { SAVE_STR; return TTIME; }
 	YY_BREAK
 case 115:
 YY_RULE_SETUP
-#line 264 "hexpr.l"
+#line 308 "hexpr.l"
 { SAVE_STR; return TTIME; }
 	YY_BREAK
 case 116:
 YY_RULE_SETUP
-#line 266 "hexpr.l"
+#line 310 "hexpr.l"
 { SAVE_STR; return TDATETIME; }
 	YY_BREAK
 case 117:
 YY_RULE_SETUP
-#line 267 "hexpr.l"
+#line 311 "hexpr.l"
 { SAVE_STR; return TDATETIME; }
 	YY_BREAK
 case 118:
 YY_RULE_SETUP
-#line 268 "hexpr.l"
+#line 312 "hexpr.l"
 { SAVE_STR; return TDATETIME; }
 	YY_BREAK
 case 119:
 YY_RULE_SETUP
-#line 269 "hexpr.l"
+#line 313 "hexpr.l"
 { SAVE_STR; return TDATETIME; }
 	YY_BREAK
 case 120:
 YY_RULE_SETUP
-#line 270 "hexpr.l"
+#line 314 "hexpr.l"
 { SAVE_STR; return TDATETIME; }
 	YY_BREAK
 case 121:
 YY_RULE_SETUP
-#line 272 "hexpr.l"
+#line 316 "hexpr.l"
 { yyVexpLexError = "Unknown character: " + std::string(yytext); yyterminate(); if (false) { yyrealloc(0, 0); yyunput(0, 0); } }
 	YY_BREAK
 case 122:
 YY_RULE_SETUP
-#line 274 "hexpr.l"
+#line 318 "hexpr.l"
 ECHO;
 	YY_BREAK
-#line 1716 "hexpr.lex.C"
+#line 1760 "hexpr.lex.C"
 case YY_STATE_EOF(INITIAL):
 case YY_STATE_EOF(BLOCK_COMMENT):
 	yyterminate();
@@ -2730,7 +2774,7 @@ void yyfree (void * ptr )
 
 #define YYTABLES_NAME "yytables"
 
-#line 274 "hexpr.l"
+#line 318 "hexpr.l"
 
 #pragma GCC diagnostic pop
 
