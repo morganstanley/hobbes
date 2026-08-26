@@ -1,7 +1,9 @@
 
 #include "hobbes/lang/pat/pattern.H"
 #include "test.H"
+#include <chrono>
 #include <ctime>
+#include <future>
 #include <hobbes/hobbes.H>
 #include <hobbes/util/perf.H>
 #include <pthread.h>
@@ -558,6 +560,68 @@ static const char deepChainRegex[] =
 TEST(Matching, deepDFAChainIsRejectedNotOverflowed) {
   EXPECT_EXCEPTION_MSG(c().readExpr(deepChainRegex), std::exception,
                        "regex is too complex to compile");
+}
+
+// 'E+' desugars to 'E E*', and the two E's are one shared sub-tree, not two
+// copies. So a group quantified and nested k deep parses to a term count linear
+// in k, but the tree those terms stand for -- what every pass that walks it
+// sees -- has 2^k nodes. The term budget stays well under its limit while
+// building the capture buffer, the matcher cache key, and the NFA each take
+// time exponential in k. OSS-Fuzz 552139281 timed out past the fuzzer's 60s on
+// a 970-byte literal of this shape; the fix rejects it on the size of the
+// unshared tree, which is the quantity those passes cost.
+//
+// An unfixed build does not throw on this shape, it disappears into one of the
+// exponential walks -- so the test has to hold a deadline over the first of
+// them rather than call into the compiler and hang. It cannot hold that
+// deadline over readExpr itself: compilation runs under a process-wide lock
+// (hlock in cc.C), and a thread abandoned inside it keeps that lock, which
+// deadlocks the rest of the suite at its next compile. bindingNames is that
+// same first walk without the lock -- it is public, pure, and what the
+// original profile showed all the time going to -- so the deadline goes over
+// it, a thread abandoned there holds nothing, and the readExpr rejection is
+// only attempted once the probe has shown the walk terminates.
+static std::string nestedQuantifiedGroups(size_t depth) {
+  return std::string(depth, '(') + "a" + repeated(")+", depth);
+}
+
+TEST(Matching, nestedQuantifiedGroupsAreRejected) {
+  // the walk over the shared tree must be linear in its distinct nodes: on an
+  // unfixed build this takes 2^40 visits and the deadline expires
+  std::promise<bool> prom;
+  auto walked = prom.get_future();
+  std::thread th([prom = std::move(prom)]() mutable {
+    bindingNames(parseRegex(nestedQuantifiedGroups(40)));
+    prom.set_value(true);
+  });
+
+  if (walked.wait_for(std::chrono::seconds(30)) != std::future_status::ready) {
+    th.detach();
+    EXPECT_TRUE(false); // still walking after 30s: shared sub-trees are being re-walked per path
+    return;             // and readExpr would hang the same way, so don't try it
+  }
+  th.join();
+
+  // the walks terminate; the compile itself must reject the regex on the size
+  // of its unshared tree, before the capture buffer, cache key, or NFA is built
+  EXPECT_EXCEPTION_MSG(c().readExpr(matchRegex(nestedQuantifiedGroups(40))),
+                       std::exception, "regex is too complex to compile");
+}
+
+// The bound is on the unshared tree size, not on how many groups are quantified
+// or how long the regex is: a flat run of quantified groups shares nothing
+// between them, so its tree grows linearly and it compiles as it always has.
+// This is what tells the two apart -- the same 40 '+'s that are rejected when
+// nested are accepted when they are laid side by side.
+TEST(Matching, flatQuantifiedGroupsStillCompile) {
+  std::string regex;
+  for (size_t i = 0; i < 40; ++i) {
+    regex += "(a)+";
+  }
+  auto f = c().compileFn<bool(const std::string&)>(
+      "x", "match x with | '" + regex + "' -> true | _ -> false");
+  EXPECT_TRUE(f(repeated("a", 40)));
+  EXPECT_FALSE(f(""));
 }
 
 TEST(Matching, dfaConstructionDoesNotDependOnStackSize) {

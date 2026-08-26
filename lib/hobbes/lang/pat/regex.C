@@ -6,9 +6,11 @@
 #include <hobbes/util/rmap.H>
 
 #include <algorithm>
+#include <limits>
 #include <memory>
 #include <tuple>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace hobbes {
 
@@ -272,6 +274,22 @@ using DRegex = std::pair<size_t, RegexPtr>;
 // to pass, rather than in each of those walks.
 const size_t maxRegexTerms = 1000;
 
+// the term budget above counts the distinct nodes a regex parses to, but a
+// quantified group shares its sub-tree rather than copying it: 'E+' desugars
+// to 'E E*', and the two E's are one node pointed at twice (see returnR). So a
+// literal with quantifiers nested k deep has a term count linear in k while the
+// tree those terms stand for, walked as a tree, has 2^k nodes -- and every walk
+// here (bindingNames, the cache key in regexFnKey, the NFA translation in
+// linkStateF) does walk it as a tree. The term budget is the wrong quantity to
+// stop that: it is comfortably under 1000 while the walks take exponential time.
+// Bound the size of the tree once it is unshared instead -- the count of nodes
+// counting each shared node once per path to it, which is what those walks cost
+// and what the NFA state count comes to. A regex a person writes is a small
+// multiple of its term count here (a group is expanded at most once per '+'
+// applied to it); nothing legitimate approaches this bound, and a regex that
+// does could not compile in reasonable time even if it were allowed to.
+const size_t maxRegexExpandedSize = 100000;
+
 struct TermBudget {
   size_t taken = 0;
 
@@ -399,35 +417,90 @@ RegexPtr parseRegex(const std::string& x) {
   return dr.second;
 }
 
+// the set of names a regex binds. A quantified group shares its sub-tree
+// between two parents (see the note on maxRegexExpandedSize), so a plain
+// recursion over it visits shared nodes once per path -- exponentially often
+// when groups nest. The names are a set, and a node contributes the same names
+// however many paths reach it, so each distinct node is visited once here: the
+// walk skips a node it has already seen. This is what keeps bindingNames linear
+// in the distinct nodes rather than in the unshared tree.
 struct bnamesF : public switchRegex<UnitV> {
   str::set* bnames;
+  std::unordered_set<const Regex*>* seen;
 
-  bnamesF(str::set* bnames) : bnames(bnames) { }
+  bnamesF(str::set* bnames, std::unordered_set<const Regex*>* seen) : bnames(bnames), seen(seen) { }
+
+  UnitV visit(const RegexPtr& p) const {
+    if (this->seen->insert(p.get()).second) {
+      switchOf(p, *this);
+    }
+    return unitv;
+  }
 
   UnitV with(const REps*) const override { return unitv; }
   UnitV with(const RCharRange*) const override { return unitv; }
-  UnitV with(const RStar* x) const override { return switchOf(x->v, *this); }
+  UnitV with(const RStar* x) const override { return visit(x->v); }
 
   UnitV with(const REither* x) const override {
-    switchOf(x->lhs, *this);
-    return switchOf(x->rhs, *this);
+    visit(x->lhs);
+    return visit(x->rhs);
   }
 
   UnitV with(const RSeq* x) const override {
-    switchOf(x->lhs, *this);
-    return switchOf(x->rhs, *this);
+    visit(x->lhs);
+    return visit(x->rhs);
   }
 
   UnitV with(const RBind* x) const override {
     this->bnames->insert(x->var);
-    return switchOf(x->def, *this);
+    return visit(x->def);
   }
 };
 
 str::seq bindingNames(const RegexPtr& rgx) {
   str::set ns;
-  switchOf(rgx, bnamesF(&ns));
+  std::unordered_set<const Regex*> seen;
+  bnamesF(&ns, &seen).visit(rgx);
   return str::seq(ns.begin(), ns.end());
+}
+
+// the number of nodes in a regex's tree once its shared sub-trees are unshared
+// -- the size the tree-walking passes over it (bindingNames, regexFnKey, the
+// NFA translation) actually see. A quantified group shares one sub-tree between
+// its two uses, so this can be exponentially larger than the term count; it is
+// computed here in one pass over the distinct nodes by remembering each node's
+// size the first time it is reached, and saturated at size_t's max so the sum
+// cannot itself overflow on the way to being rejected.
+struct expandedSizeF : public switchRegex<size_t> {
+  std::unordered_map<const Regex*, size_t>* memo;
+  explicit expandedSizeF(std::unordered_map<const Regex*, size_t>* memo) : memo(memo) { }
+
+  static size_t satAdd(size_t a, size_t b) {
+    size_t s = a + b;
+    return s < a ? std::numeric_limits<size_t>::max() : s;
+  }
+
+  size_t sizeOf(const RegexPtr& p) const {
+    auto i = this->memo->find(p.get());
+    if (i != this->memo->end()) {
+      return i->second;
+    }
+    size_t r = switchOf(p, *this);
+    (*this->memo)[p.get()] = r;
+    return r;
+  }
+
+  size_t with(const REps*)            const override { return 1; }
+  size_t with(const RCharRange*)      const override { return 1; }
+  size_t with(const RStar* x)         const override { return satAdd(1, sizeOf(x->v)); }
+  size_t with(const REither* x)       const override { return satAdd(1, satAdd(sizeOf(x->lhs), sizeOf(x->rhs))); }
+  size_t with(const RSeq* x)          const override { return satAdd(1, satAdd(sizeOf(x->lhs), sizeOf(x->rhs))); }
+  size_t with(const RBind* x)         const override { return satAdd(1, sizeOf(x->def)); }
+};
+
+size_t expandedRegexSize(const RegexPtr& rgx) {
+  std::unordered_map<const Regex*, size_t> memo;
+  return expandedSizeF(&memo).sizeOf(rgx);
 }
 
 /******************************
@@ -1445,6 +1518,16 @@ std::string regexFnKey(const Regexes& regexes) {
 
 CRegexes makeRegexFn(cc* c, const Regexes& regexes, const LexicalAnnotation& rootLA) {
   CRegexes result;
+
+  // reject a regex whose tree is too large before anything walks it: every pass
+  // below (the capture buffer's bindingNames, the cache key, the NFA build) is
+  // linear in the unshared tree size, which a quantified group can blow up far
+  // past the term count. Checked here, once, ahead of the first of those walks.
+  for (const auto& r : regexes) {
+    if (expandedRegexSize(r) > maxRegexExpandedSize) {
+      throw std::runtime_error("regex is too complex to compile (expands to more than " + str::from(maxRegexExpandedSize) + " terms)");
+    }
+  }
 
   // save capturing-group settings
   result.captureBuffer = makeRegexCaptureBuffer(regexes, rootLA);
