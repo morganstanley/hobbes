@@ -102,3 +102,7 @@ fi
 if [ -d "$SRCDIR/fuzz/corpus/fregion-reader" ]; then
   zip -jq "$OUT/fuzz-fregion-reader_seed_corpus.zip" "$SRCDIR/fuzz/corpus/fregion-reader/"*
 fi
+
+if [ -d "$SRCDIR/fuzz/corpus/type-decode" ]; then
+  zip -jq "$OUT/fuzz-type-decode_seed_corpus.zip" "$SRCDIR/fuzz/corpus/type-decode/"*
+fi
