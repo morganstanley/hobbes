@@ -62,6 +62,10 @@ It also has consequences an embedding application must respect:
   outlive the transaction must be copied into memory you own before the
   reset; a pointer held across ``resetMemoryPool()`` silently becomes a
   pointer into whatever the next transaction writes there.
+* **Region data must not outlive its thread.** The region is thread-local,
+  and the regions Hobbes makes for a thread are freed when that thread
+  exits. Results that must cross a thread boundary are results that must
+  outlive a transaction: copy them out, on the thread that produced them.
 * **No destructors means no RAII.** C++ types whose destructors matter
   (owning pointers, file handles, locks) do not belong inside
   region-allocated data. Nothing will ever run them.
