@@ -33,6 +33,48 @@ We've already seen one place where the Hobbes compiler is used. In its simplest 
     }
   }
 
+That call to ``hobbes::resetMemoryPool()`` at the bottom of the loop is doing
+more than tidying up, and it deserves its own section.
+
+.. _hobbes_memory_model:
+
+The memory model: transactions, not destructors
+===============================================
+
+Hobbes evaluation runs inside what is best thought of as a *transaction*.
+Memory allocated while evaluating — by Hobbes code itself, and by the
+``hobbes::make``/``makeString``/``makeArray`` helpers described below — comes
+from a thread-local memory region (an arena of pages with a bump pointer, see
+``hobbes/util/region.H``). Ending the transaction with
+``hobbes::resetMemoryPool()`` does not free those objects one at a time: it
+resets the region's heap pointer, and later transactions allocate straight
+over the old data. No destructors run, then or ever.
+
+This is a deliberate trade, made for the same reason Hobbes exists at all:
+processes that cannot pause during the working day. A reset costs the same
+whether the transaction allocated a kilobyte or a gigabyte, the pages are
+reused so steady-state evaluation never touches the system allocator, and
+evaluated code pays nothing for ownership bookkeeping it does not need.
+
+It also has consequences an embedding application must respect:
+
+* **Copy out what you keep.** Anything produced by an evaluation that should
+  outlive the transaction must be copied into memory you own before the
+  reset; a pointer held across ``resetMemoryPool()`` silently becomes a
+  pointer into whatever the next transaction writes there.
+* **No destructors means no RAII.** C++ types whose destructors matter
+  (owning pointers, file handles, locks) do not belong inside
+  region-allocated data. Nothing will ever run them.
+* **Per-allocation audit tools will misreport this design.** Tools built on
+  the model that every allocation is individually owned and freed —
+  LeakSanitizer above all — will report region-backed and
+  transaction-scoped data as leaked, at process exit especially. This is the
+  audit's model failing to fit, not memory being lost: leak detection is
+  disabled as a matter of policy for the fuzz targets (see
+  ``fuzz/README.md``), and heap growth *across* transactions in a long-lived
+  process, the thing actually worth watching, is caught by resident-size
+  monitoring rather than by exit-time leak checks.
+
 Binding Functions
 =================
 
@@ -106,8 +148,9 @@ Then, in the Hobbes REPL:
   (34, "Sam")
 
   
-.. note **hobbes::make**
-  ``hobbes::make`` and its cousins ``hobbes::makeString`` and ``hobbes::makeArray`` (up next!) allow Hobbes to allocate memory itself from a thread-local memory region, which is released when we ultimately call ``cc::resetMemoryPool()``. They have the added advantage of outputting hobbes-native types which, amongst other things, are able to pretty-print themselves.
+.. note::
+
+  ``hobbes::make`` and its cousins ``hobbes::makeString`` and ``hobbes::makeArray`` (up next!) allow Hobbes to allocate memory itself from the thread-local memory region described in :ref:`hobbes_memory_model` — released by resetting the region, not by destructors. They have the added advantage of outputting hobbes-native types which, amongst other things, are able to pretty-print themselves.
 
 Structs
 =======
