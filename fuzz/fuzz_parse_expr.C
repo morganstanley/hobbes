@@ -40,6 +40,33 @@
 #include <memory>
 #include <string>
 
+// Hobbes reclaims evaluation memory by resetting an arena at the end of a
+// transaction, not by releasing objects one at a time -- so a per-allocation
+// leak audit reports transaction-scoped data as lost by design. For this
+// target that means two families of expected reports: allocations made by
+// grammar actions during a parse (yyparse and the paths into it), which the
+// compiler's bootstrap parse strands once per cc, and a little that LLVM
+// keeps for itself. The .options file ships detect_leaks=0 for exactly this
+// reason, but ClusterFuzz's progression task replays old testcases without
+// honoring that file, and an at-exit leak report then pins a long-fixed
+// crash at "still reproduces" (OSS-Fuzz 549863810 sat that way: its stack
+// overflow was fixed, and the "crash" progression kept seeing was
+// LeakSanitizer complaining about bootstrap allocations after a clean run).
+//
+// LSan reads default suppressions from this hook, so naming the expected
+// stacks here makes the policy travel inside the binary, whatever
+// environment it is run with -- while leaving leak detection itself alive:
+// an allocation leaked from anywhere else (the harness, the compiler's own
+// bookkeeping, a future regression that strands genuinely owned memory)
+// still fails the run. This is deliberately narrower than turning the
+// checker off.
+extern "C" const char* __lsan_default_suppressions() {
+  return
+    "leak:yyparse\n"                    // grammar-action allocations, arena-scoped by design
+    "leak:hobbes::runParserOnBuffer\n"  // the same parse, when yyparse is inlined out of the stack
+    "leak:llvm::\n";                    // LLVM's own retained allocations are not ours to free
+}
+
 namespace {
 
 const unsigned long inputsPerCompaction = 64;
