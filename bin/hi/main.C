@@ -592,6 +592,7 @@ void printUsage() {
             << "    -e          : evaluate <expr>"                                                          << std::endl
             << "    -s          : run in 'silent' mode without normal formatting"                           << std::endl
             << "    -x          : exit after input scripts are evaluated"                                   << std::endl
+            << "    -n          : just check that input scripts parse; compile and evaluate nothing"        << std::endl
             << "    -o opt      : enable language option 'opt'"                                             << std::endl
             << "    -a name=val : add a name/val pair to the set of arguments passed to subsequent scripts" << std::endl
             << "    files       : hobbes script files to evaluate"                                          << std::endl
@@ -625,6 +626,8 @@ Args processCommandLine(int argc, char** argv) {
       r.silent = true;
     } else if (arg == "-x" || arg == "--exitAfterEval") {
       r.exitAfterEval = true;
+    } else if (arg == "-n" || arg == "--check") {
+      r.checkOnly = true;
     } else if (arg == "-z") {
       r.machineREPL = true;
       r.silent = true;
@@ -684,6 +687,34 @@ int main(int argc, char** argv) {
   try {
     // read command-line arguments
     Args args = processCommandLine(argc, argv);
+
+    // just verify that the named scripts parse, in the spirit of 'python -m
+    // py_compile' or 'ruby -c'. A script is typically loaded after other
+    // files and definitions it depends on, so syntax is all that can be
+    // checked about it in isolation -- nothing is compiled or evaluated,
+    // imports are not resolved, and ~/.hirc is not loaded. Errors go to
+    // stderr with their locations; the exit status says whether every file
+    // parsed.
+    if (args.checkOnly) {
+      if (args.mfiles.empty()) {
+        std::cerr << "hi: -n/--check requires at least one script file" << std::endl;
+        return 1;
+      }
+      hobbes::cc c;
+      int badFiles = 0;
+      for (const auto& mfile : args.mfiles) {
+        try {
+          c.readModuleFile(str::expandPath(mfile));
+          if (!args.silent) {
+            std::cout << mfile << ": syntax OK" << std::endl;
+          }
+        } catch (std::exception& ex) {
+          std::cerr << ex.what() << std::endl;
+          ++badFiles;
+        }
+      }
+      return badFiles == 0 ? 0 : 1;
+    }
 
     // start an evaluator and process ~/.hirc if it exists
     // (this should apply whatever settings the user prefers)

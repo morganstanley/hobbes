@@ -21,11 +21,12 @@ struct Args {
   int                      replPort;
   int                      httpdPort;
   bool                     exitAfterEval;
+  bool                     checkOnly;      // just verify that script files parse; compile and evaluate nothing
   NameVals                 scriptNameVals;
   bool                     machineREPL;    // should we structure console I/O for machine-reading?
   strs                     opts;
 
-  Args() : useDefColors(false), silent(false), replPort(-1), httpdPort(-1), exitAfterEval(false), machineREPL(false) {
+  Args() : useDefColors(false), silent(false), replPort(-1), httpdPort(-1), exitAfterEval(false), checkOnly(false), machineREPL(false) {
     opts.push_back("Safe");
   }
 };

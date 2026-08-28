@@ -103,3 +103,30 @@ Commandline options
 
 -p nnnn
   Listen on port *nnnn*
+
+-n, --check
+  Syntax-check mode: verify that the named script files parse, and do nothing
+  else. In the spirit of ``python -m py_compile`` or ``ruby -c``: a script is
+  typically loaded after other files and definitions it depends on, so its
+  syntax is all that can be validated in isolation — nothing is compiled or
+  evaluated, imports are not resolved, unresolved names are not an error, and
+  ``~/.hirc`` is not loaded. Each file that parses is reported with
+  ``syntax OK`` (suppressed under ``-s``); each that does not gets its parse
+  error, with location, on stderr. The exit status is 0 when every file
+  parsed and 1 otherwise, so it slots directly into CI or an editor hook:
+
+  ::
+
+    $ hi -n broken.hob
+    broken.hob:3,16-16: syntax error, unexpected end of file
+    $ echo $?
+    1
+
+-x, --exitAfterEval
+  Exit after evaluating the input scripts instead of starting the REPL
+
+-e expr
+  Evaluate the expression *expr*
+
+-o opt
+  Enable language option *opt*
