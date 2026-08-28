@@ -40,6 +40,20 @@
 #include <memory>
 #include <string>
 
+// Leak detection is off for this target as a matter of policy, not oversight:
+// parsing allocates from arenas that are not reclaimed per iteration, the
+// compiler's bootstrap parse strands a few grammar allocations, and LLVM
+// leaves a little of its own -- all documented in fuzz/README.md, and encoded
+// as detect_leaks=0 in the .options file this target ships with. ClusterFuzz's
+// progression task replays old testcases without honoring that file, so an
+// at-exit leak report can pin a long-fixed crash at "still reproduces"
+// (OSS-Fuzz 549863810 sat that way: the stack overflow it reports was fixed,
+// and the "crash" its progression kept seeing was LeakSanitizer complaining
+// about the bootstrap allocations after a clean run). LSan consults this hook
+// before its at-exit check, so defining it makes the policy binding wherever
+// the binary runs, whatever environment it is run with.
+extern "C" int __lsan_is_turned_off() { return 1; }
+
 namespace {
 
 const unsigned long inputsPerCompaction = 64;
