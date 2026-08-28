@@ -93,16 +93,23 @@ void registerInterruptHandler(const std::function<void()>& fn) {
 
 bool stepEventLoop(int timeoutMS, const std::function<bool()>& stopFn) {
   while (!stopFn()) {
+    int effectiveTimeoutMS = timeoutMS;
+
     if (!timers.empty()) {
       auto next = timers.top().callTime;
       auto timeUntilNext = next - std::chrono::high_resolution_clock::now();
       int millis = std::chrono::duration_cast<std::chrono::milliseconds>(timeUntilNext).count();
-      timeoutMS = std::max(1, millis);
+      int timerTimeout = std::max(1, millis);
+      if (timeoutMS >= 0) {
+        effectiveTimeoutMS = std::min(timeoutMS, timerTimeout);
+      } else {
+        effectiveTimeoutMS = timerTimeout;
+      }
+    } else if (timeoutMS < 0) {
+      // When stopFn is provided with no explicit timeout, poll every 500ms
+      // so the stop condition gets checked instead of blocking indefinitely.
+      effectiveTimeoutMS = 500;
     }
-
-    // When stopFn is provided with no explicit timeout, poll every 500ms
-    // so the stop condition gets checked instead of blocking indefinitely.
-    int effectiveTimeoutMS = timeoutMS < 0 ? 500 : timeoutMS;
 
     struct epoll_event evts[64];
     int fds = epoll_wait(threadEPollFD(), evts, sizeof(evts)/sizeof(evts[0]), effectiveTimeoutMS);
