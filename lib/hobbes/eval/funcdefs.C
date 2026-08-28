@@ -11,6 +11,7 @@
 #include <stack>
 #include <iostream>
 #include <iomanip>
+#include <pthread.h>
 #include <strings.h>
 #include <zlib.h>
 
@@ -18,17 +19,64 @@ namespace hobbes {
 
 static __thread region* threadRegionp = nullptr;
 
-using NamedRegion = std::pair<std::string, region *>;
+// a region in the thread's list is either made by this machinery (the scratch
+// region, and anything from makeMemRegion) or handed in by address from a
+// caller who keeps ownership (addThreadRegion is called with the addresses of
+// member variables -- see series.C and jitcc.C). Only the former are ours to
+// free when the thread goes away.
+struct NamedRegion {
+  std::string name;
+  region*     r     = nullptr;
+  bool        owned = false;
+  NamedRegion() = default;
+  NamedRegion(const std::string& name, region* r, bool owned) : name(name), r(r), owned(owned) { }
+};
 using Regions = std::vector<NamedRegion>;
 static __thread Regions* threadRegionsp = nullptr;
 static __thread size_t   currentRegion = 0;
+
+// evaluation memory is transaction-scoped and reclaimed in bulk, so nothing
+// releases a thread's regions along the way -- but the thread's death is the
+// end of every transaction it will ever run, and a region that outlives its
+// thread is unreachable memory, not a fast one. Registering a TSD destructor
+// on the thread's first allocation frees the regions this machinery made
+// when the thread exits. The destructor runs in the exiting thread, so the
+// __thread variables above are still its own; they are nulled so that a
+// later-running destructor of some other key that evaluates hobbes gets a
+// fresh region (pthread then runs another destructor pass to collect it,
+// bounded by PTHREAD_DESTRUCTOR_ITERATIONS). The main thread is deliberately
+// left alone: exit() does not run TSD destructors for it, which suits us --
+// freeing at process exit buys nothing and shutdown ordering against LLVM
+// statics is treacherous.
+static pthread_key_t  regionCleanupKey;
+static pthread_once_t regionCleanupKeyOnce = PTHREAD_ONCE_INIT;
+
+static void releaseThreadRegions(void*) {
+  if (threadRegionsp != nullptr) {
+    for (const auto& nr : *threadRegionsp) {
+      if (nr.owned) {
+        delete nr.r;
+      }
+    }
+    delete threadRegionsp;
+    threadRegionsp = nullptr;
+    threadRegionp  = nullptr;
+  }
+}
+
+static void makeRegionCleanupKey() {
+  pthread_key_create(&regionCleanupKey, &releaseThreadRegions);
+}
 
 region& threadRegion() {
   if (threadRegionp == nullptr) {
     threadRegionp  = new region(32768 /* min page size = 32K */);
     threadRegionsp = new Regions();
-    threadRegionsp->push_back(NamedRegion("scratch", threadRegionp));
+    threadRegionsp->push_back(NamedRegion("scratch", threadRegionp, true /*owned*/));
     currentRegion = 0;
+
+    pthread_once(&regionCleanupKeyOnce, &makeRegionCleanupKey);
+    pthread_setspecific(regionCleanupKey, threadRegionsp);
   }
   return *threadRegionp;
 }
@@ -42,14 +90,14 @@ static Regions& threadRegions() {
 
 size_t addThreadRegion(const std::string& n, region* r) {
   Regions& rs = threadRegions();
-  rs.push_back(NamedRegion(n, r));
+  rs.push_back(NamedRegion(n, r, false /*caller keeps ownership*/));
   return rs.size() - 1;
 }
 
 size_t findThreadRegion(const std::string& n) {
   const Regions& rs = threadRegions();
   for (size_t i = 0; i < rs.size(); ++i) {
-    if (rs[i].first == n) {
+    if (rs[i].name == n) {
       return i;
     }
   }
@@ -57,18 +105,23 @@ size_t findThreadRegion(const std::string& n) {
 }
 
 void removeThreadRegion(size_t n) {
+  // removal only takes the region out of the list -- data allocated from it
+  // stays valid, and an owned region removed here is no longer tracked, so it
+  // lives until the process does (as every region did before thread-exit
+  // cleanup existed)
   Regions& rs = threadRegions();
   if (n == rs.size()-1) {
     rs.resize(n);
   } else if (n < rs.size()) {
-    rs[n].second = 0;
+    rs[n].r     = nullptr;
+    rs[n].owned = false;
   }
 }
 
 size_t setThreadRegion(size_t n) {
   const Regions& rs = threadRegions();
   if (n < rs.size()) {
-    threadRegionp = rs[n].second;
+    threadRegionp = rs[n].r;
   } else {
     throw std::runtime_error("Invalid region : " + str::from(n));
   }
@@ -79,7 +132,9 @@ size_t setThreadRegion(size_t n) {
 }
 
 size_t makeMemRegion(const array<char>* n) {
-  return addThreadRegion(makeStdString(n), new region(32768));
+  Regions& rs = threadRegions();
+  rs.push_back(NamedRegion(makeStdString(n), new region(32768), true /*owned*/));
+  return rs.size() - 1;
 }
 
 char* memalloc(size_t n, size_t asz) {
@@ -108,10 +163,10 @@ array<RegionState>* getMemoryPool() {
   for (size_t i = 0; i < tr.size(); ++i) {
     RegionState& rs = rsa->data[i];
     
-    rs.name = makeString(tr[i].first);
+    rs.name = makeString(tr[i].name);
     rs.id   = i;
 
-    if (const region* r = tr[i].second) {
+    if (const region* r = tr[i].r) {
       rs.allocated = r->allocated();
       rs.used      = r->used();
       rs.wasted    = r->wasted();
@@ -135,9 +190,9 @@ std::string showMemoryPool() {
   
   const Regions& rs = threadRegions();
   for (size_t i = 0; i < rs.size(); ++i) {
-    tbl[0].push_back(rs[i].first);
+    tbl[0].push_back(rs[i].name);
     tbl[1].push_back(str::from(i));
-    if (const region* r = rs[i].second) {
+    if (const region* r = rs[i].r) {
       tbl[2].push_back(str::showDataSize(r->allocated()));
       tbl[3].push_back(str::showDataSize(r->used()));
       tbl[4].push_back(str::showDataSize(r->wasted()));

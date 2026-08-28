@@ -1,6 +1,8 @@
 #include <hobbes/hobbes.H>
 #include <hobbes/lang/tylift.H>
 #include <hobbes/db/file.H>
+#include <hobbes/util/region.H>
+#include <atomic>
 #include <iomanip>
 #include <thread>
 #include "hobbes/eval/funcdefs.H"
@@ -139,5 +141,50 @@ TEST(Compiler, liftWithoutRVO) {
   using strref = hobbes::fileref<const hobbes::array<char> *>;
 
   EXPECT_EQ(c().compileFn<strref(int)>("x", "unsafeCast(42L)")(0).index, strref(42UL).index);
+}
+
+TEST(Compiler, threadRegionsAreReleasedOnThreadExit) {
+  // A thread's scratch region is created on its first hobbes allocation and
+  // used to outlive the thread: the __thread pointer to it died with the
+  // thread and the region -- every page it had grown to -- became memory
+  // nothing could reach or free. That is invisible to a process with pinned
+  // evaluation threads, and a steady drip for one that evaluates on a
+  // churning thread pool. Regions this machinery makes are now freed by a
+  // TSD destructor when their thread exits; regions handed in by address
+  // through addThreadRegion stay the caller's to free, exactly as before.
+  //
+  // The freeing itself is asserted by LeakSanitizer on the Linux fuzz builds
+  // (an unfixed build reports one leaked region per departed thread); what
+  // is asserted portably here is the behavior around it.
+
+  // allocation works on short-lived threads, repeatedly
+  std::atomic<size_t> ok{0};
+  for (size_t i = 0; i < 4; ++i) {
+    std::thread([&ok]{
+      const array<char>* s = makeString("thread-scoped");
+      if (s != nullptr && s->size == 13) { ++ok; }
+    }).join();
+  }
+  EXPECT_EQ(ok.load(), size_t(4));
+
+  // a region added by address is not this machinery's to free: it must
+  // survive its thread untouched (a cleanup that wrongly freed it would
+  // double-free when it is destroyed at scope end below)
+  region ext(32768);
+  std::atomic<bool> extOk{false};
+  std::thread([&]{
+    size_t rid = addThreadRegion("ext", &ext);
+    size_t old = setThreadRegion(rid);
+    char* p = memalloc(64, sizeof(size_t));
+    if (p != nullptr) { p[0] = 'x'; p[63] = 'y'; }
+    setThreadRegion(old);
+    removeThreadRegion(rid);
+    extOk = (p != nullptr);
+  }).join();
+  EXPECT_TRUE(extOk.load());
+  EXPECT_TRUE(ext.used() > 0);
+
+  // and the main thread's region is unaffected by other threads coming and going
+  EXPECT_TRUE(makeString("still here") != nullptr);
 }
 
