@@ -110,4 +110,8 @@ Guidance for embedding applications
   encrypted transports if they must cross anything else.
 * Restrict write access to structured data files to the processes that are
   supposed to produce them.
+* Know the memory model before pointing analysis tooling at an embedding
+  process: evaluation memory is transaction-scoped and reclaimed by resetting
+  an arena rather than by destructors, so per-allocation leak checkers report
+  it as lost by design (see :ref:`hobbes_memory_model`).
 * Keep up with ``main``: security fixes land there (see ``SECURITY.md``).

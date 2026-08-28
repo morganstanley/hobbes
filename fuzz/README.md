@@ -56,7 +56,13 @@ Notes per harness:
   regexes grows without bound unless the harness intervenes: it compacts the
   memo every 64 inputs and replaces the compiler every 1024 (see the harness
   for the figures). Parsing also allocates from arenas that are not reclaimed
-  per-iteration, so run with `-detect_leaks=0`.
+  per-iteration, so run with `-detect_leaks=0`. That is policy, not a
+  workaround: hobbes reclaims evaluation memory by resetting an arena at the
+  end of a transaction rather than by running destructors, so a
+  per-allocation leak checker reports transaction-scoped data as lost by
+  design (see the memory model section in `doc/en/embedding/compiler.rst`).
+  What is worth watching is growth *across* iterations, which the harnesses
+  bound themselves and the fuzzer's RSS limit catches.
 
 Replaying a reproducer (works in both build modes):
 
