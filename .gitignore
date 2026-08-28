@@ -1,5 +1,6 @@
 *.sw?
 /build/
+/build-*/
 __pycache__/
 *.py[cod]
 CMakeCache.txt
@@ -14,11 +15,16 @@ CMakeFiles/
 CTestTestfile.cmake
 Makefile
 cmake_install.cmake
-hi
-hobbes-test
-hog
-libhobbes-pic.a
-libhobbes.a
-macos_setup.sh
-mock-proc
+
+# binaries and libraries an in-tree build drops at the repository root.
+# anchored to the root: the bare names used to shadow real source paths
+# (the pattern 'hi' ignored the bin/hi/ source directory, 'hog' bin/hog/),
+# so a new file added under those directories was silently ignored.
+/hi
+/hobbes-test
+/hog
+/libhobbes-pic.a
+/libhobbes.a
+/macos_setup.sh
+/mock-proc
 test_report.json
