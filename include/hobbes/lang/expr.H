@@ -314,6 +314,7 @@ class Let : public ExprCase<Let> {
 public:
   Let(const std::string& id, const ExprPtr& e, const ExprPtr& b, const LexicalAnnotation&);
   bool operator==(const Let&) const override;
+  ~Let() override;
 
   const std::string& var() const;
   const ExprPtr&     varExpr() const;
@@ -342,6 +343,7 @@ public:
 
   LetRec(const Bindings&, const ExprPtr&, const LexicalAnnotation&);
   bool operator==(const LetRec&) const override;
+  ~LetRec() override;
 
   const Bindings& bindings() const;
   const ExprPtr& bodyExpr() const;
@@ -367,6 +369,7 @@ public:
 
   Fn(const VarNames& vs, const ExprPtr& e, const LexicalAnnotation&);
   bool operator==(const Fn&) const override;
+  ~Fn() override;
 
   const VarNames& varNames() const;
   const ExprPtr&  body() const;
@@ -389,6 +392,7 @@ class App : public ExprCase<App> {
 public:
   App(const ExprPtr& fn, const Exprs& args, const LexicalAnnotation&);
   bool operator==(const App&) const override;
+  ~App() override;
 
   const ExprPtr& fn() const;
   const Exprs& args() const;
@@ -411,6 +415,7 @@ class Assign : public ExprCase<Assign> {
 public:
   Assign(const ExprPtr& lhs, const ExprPtr& rhs, const LexicalAnnotation&);
   bool operator==(const Assign&) const override;
+  ~Assign() override;
 
   const ExprPtr& left() const;
   const ExprPtr& right() const;
@@ -433,6 +438,7 @@ class MkArray : public ExprCase<MkArray> {
 public:
   MkArray(const Exprs& es, const LexicalAnnotation&);
   bool operator==(const MkArray&) const override;
+  ~MkArray() override;
 
   const Exprs& values() const;
   Exprs& values();
@@ -451,6 +457,7 @@ class MkVariant : public ExprCase<MkVariant> {
 public:
   MkVariant(const std::string& lbl, const ExprPtr& e, const LexicalAnnotation&);
   bool operator==(const MkVariant&) const override;
+  ~MkVariant() override;
 
   const std::string& label() const;
   const ExprPtr& value() const;
@@ -476,6 +483,7 @@ public:
 
   MkRecord(const FieldDefs& fs, const LexicalAnnotation&);
   bool operator==(const MkRecord&) const override;
+  ~MkRecord() override;
 
   const FieldDefs& fields() const;
   FieldDefs& fields();
@@ -500,6 +508,7 @@ class AIndex : public ExprCase<AIndex> {
 public:
   AIndex(const ExprPtr&, const ExprPtr&, const LexicalAnnotation&);
   bool operator==(const AIndex&) const override;
+  ~AIndex() override;
 
   const ExprPtr& array() const;
   const ExprPtr& index() const;
@@ -533,6 +542,7 @@ public:
   Case(const ExprPtr& v, const Bindings& bs, const LexicalAnnotation&);
   Case(const ExprPtr& v, const Bindings& bs, const ExprPtr& def, const LexicalAnnotation&);
   bool operator==(const Case&) const override;
+  ~Case() override;
 
   const ExprPtr&  variant() const;
   const Bindings& bindings() const;
@@ -571,6 +581,7 @@ public:
   Switch(const ExprPtr& v, const Bindings& bs, const LexicalAnnotation&);
   Switch(const ExprPtr& v, const Bindings& bs, const ExprPtr& def, const LexicalAnnotation&);
   bool operator==(const Switch&) const override;
+  ~Switch() override;
 
   const ExprPtr&  expr()        const;
   const Bindings& bindings()    const;
@@ -596,6 +607,7 @@ class Proj : public ExprCase<Proj> {
 public:
   Proj(const ExprPtr& r, const std::string& fn, const LexicalAnnotation&);
   bool operator==(const Proj&) const override;
+  ~Proj() override;
 
   const ExprPtr& record() const;
   const std::string& field() const;
@@ -618,6 +630,7 @@ class Assump : public ExprCase<Assump> {
 public:
   Assump(const ExprPtr& e, const QualTypePtr& t, const LexicalAnnotation&);
   bool operator==(const Assump&) const override;
+  ~Assump() override;
 
   const ExprPtr& expr() const;
   const QualTypePtr& ty() const;
@@ -640,6 +653,7 @@ class Pack : public ExprCase<Pack> {
 public:
   Pack(const ExprPtr& e, const LexicalAnnotation&);
   bool operator==(const Pack&) const override;
+  ~Pack() override;
 
   const ExprPtr& expr() const;
   void expr(const ExprPtr&);
@@ -658,6 +672,7 @@ class Unpack : public ExprCase<Unpack> {
 public:
   Unpack(const std::string&, const ExprPtr&, const ExprPtr&, const LexicalAnnotation&);
   bool operator==(const Unpack&) const override;
+  ~Unpack() override;
 
   const std::string& varName() const;
   const ExprPtr&     package() const;
