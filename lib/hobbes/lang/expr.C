@@ -7,6 +7,7 @@
 #include <hobbes/util/stream.H>
 #include <algorithm>
 #include <memory>
+#include <new>
 #include <sstream>
 #include <unordered_map>
 #include <unordered_set>
@@ -61,9 +62,19 @@ Expr::~Expr() = default;
 // same way, so the recursion never runs more than one level deep no matter
 // how the tree nests or who lets go of it.
 namespace {
+  // expression teardown can run at any point in a thread's life -- including
+  // during static destruction, after thread_local destructors have already
+  // run: the fuzz harnesses hold their compiler in a static slot, and
+  // destroying that compiler at exit releases every expression it still
+  // holds. So the list lives in trivially-destructible thread-local storage
+  // and is never destructed (a list with a destructor was freed first, and
+  // deferring into it then was a use-after-free). Its heap buffer is handed
+  // back at the end of every drain, so between teardowns it retains nothing
+  // and a thread's exit leaks nothing.
   Exprs& deferredReleases() {
-    thread_local Exprs es;
-    return es;
+    alignas(Exprs) thread_local unsigned char storage[sizeof(Exprs)];
+    thread_local Exprs* es = new (storage) Exprs();
+    return *es;
   }
   thread_local bool drainingReleases = false;
 
@@ -92,6 +103,7 @@ namespace {
       es.pop_back();
       e.reset();
     }
+    Exprs().swap(es); // hand the buffer back: the list must hold no heap between teardowns
     drainingReleases = false;
   }
 }
