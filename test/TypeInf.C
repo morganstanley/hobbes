@@ -7,6 +7,7 @@
 #include <memory>
 #include <limits>
 #include <sstream>
+#include <chrono>
 #include <vector>
 #include <functional>
 
@@ -519,6 +520,39 @@ TEST(TypeInf, TypeApplicationReductionIsBounded) {
   // an application that does reduce is still reduced, to a normal form
   MonoTypePtr ident = Prim::make("id", TAbs::make(str::strings("x"), tvar("x")));
   EXPECT_TRUE(show(repType(TApp::make(ident, list(primty("int"))))) == "int");
+}
+
+TEST(TypeInf, RecordLayoutCostsTheTypesSharedSize) {
+  // Interning makes a type with two same-typed fields per level a DAG: k
+  // levels hold k+1 distinct types, but 2^k paths reach the innermost one.
+  // Laying out each record asks for its members' alignment and representation
+  // type, and before those were memoized on the type (as sizeOf already was),
+  // each was recomputed per path -- building this type cost 2^k, which is what
+  // OSS-Fuzz 554911449 ran into through the same layout walk on a decoded
+  // description (its reproducer is in the type-decode fuzz corpus).
+  //
+  // 24 levels is small enough that every offset stays far inside the record
+  // arithmetic bounds, and big enough to tell the two costs apart from either
+  // side: measured on one machine (ASan+UBSan), ~39s unmemoized against ~1ms
+  // memoized. The 10s deadline sits well away from both.
+  const size_t levels = 24;
+  const auto t0 = std::chrono::steady_clock::now();
+
+  MonoTypePtr ty = primty("int");
+  for (size_t i = 0; i < levels; ++i) {
+    Record::Members ms;
+    ms.push_back(Record::Member("a", ty));
+    ms.push_back(Record::Member("b", ty));
+    ty = Record::make(ms);
+  }
+
+  const auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - t0);
+  EXPECT_TRUE(elapsed.count() < 10);
+
+  // and the layout it computed is the real one: int is 4 bytes aligned to
+  // itself, doubling per level
+  EXPECT_EQ(alignment(ty), 4U);
+  EXPECT_EQ(sizeOf(ty), 4U << levels);
 }
 
 TEST(TypeInf, DecodeRejectsDeeplyNestedDescriptions) {

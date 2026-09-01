@@ -491,7 +491,7 @@ bool Constraint::operator==(const Constraint& rhs) const {
 ////////
 // monotypes
 ////////
-MonoType::MonoType(int cid) : cid(cid), tgenCount(0), memorySize(-1) { }
+MonoType::MonoType(int cid) : cid(cid), tgenCount(0), memorySize(-1), memoryAlignment(-1) { }
 int MonoType::case_id() const { return this->cid; }
 MonoType::~MonoType() = default;
 
@@ -510,7 +510,7 @@ bool isFileRef(const MonoTypePtr& mt) {
 }
 
 // memory alignment for monotypes -- this may need to be looked at more closely and factored out of this module
-unsigned int alignment(const MonoTypePtr& pty) {
+static unsigned int computeAlignment(const MonoTypePtr& pty) {
   MonoTypePtr ty = repType(pty);
 
   if (is<Prim>(ty) != nullptr) {
@@ -542,6 +542,18 @@ unsigned int alignment(const MonoTypePtr& pty) {
   } else {
     return 1;
   }
+}
+
+// memoized on the type, as sizeOf() and unaliasType() are: a type's alignment
+// is a function of that type alone, and record layout asks for it once per
+// member at every level of a nested type. Without the memo a shared subterm is
+// measured once per path that reaches it, so the cost of laying out a decoded
+// description grows with its paths rather than its size.
+unsigned int alignment(const MonoTypePtr& pty) {
+  if (pty->memoryAlignment == static_cast<unsigned int>(-1)) {
+    pty->memoryAlignment = computeAlignment(pty);
+  }
+  return pty->memoryAlignment;
 }
 
 ////////////
@@ -2207,9 +2219,25 @@ static MonoTypePtr repTypeWithin(const MonoTypePtr& ty, size_t* steps) {
   }
 }
 
+// memoized for the same reason alignment() is, and it is the reduction that
+// dominates: laying out a record reduces each member's type, at every level of
+// a nested description, and each of those reductions substitutes over the term
+// it reduces.
+//
+// The memo does not weaken the bound above. A reduction that fails to reach a
+// normal form throws with nothing memoized, and one that reduces to itself is
+// over in one case-check, so only completed reductions to a different type are
+// stored -- and re-serving one of those is what the memo is for.
 MonoTypePtr repType(const MonoTypePtr& t) {
+  if (t->repTypeMemo) {
+    return t->repTypeMemo;
+  }
   size_t steps = maxRepTypeSteps;
-  return repTypeWithin(t, &steps);
+  MonoTypePtr r = repTypeWithin(t, &steps);
+  if (r.get() != t.get()) {
+    t->repTypeMemo = r;
+  }
+  return r;
 }
 
 // one step of unrolling the representation type
