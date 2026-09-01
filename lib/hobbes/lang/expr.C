@@ -7,6 +7,7 @@
 #include <hobbes/util/stream.H>
 #include <algorithm>
 #include <memory>
+#include <new>
 #include <sstream>
 #include <unordered_map>
 #include <unordered_set>
@@ -41,6 +42,116 @@ inline void showTy(std::ostream& out, const QualTypePtr& qty) {
 
 Expr::Expr(int cid, const LexicalAnnotation& la) : LexicallyAnnotated(la), cid(cid) { }
 Expr::~Expr() = default;
+
+// Destroying an expression used to recurse through its nesting: each node's
+// destructor released its children, whose destructors released theirs, one
+// stack frame per level. The parser builds a tree as deep as its input
+// describes -- a chain of left-associative operators gains a level per term
+// -- and while the nesting bound in parser.C rejects what the parser
+// *returns*, a deep tree can be torn down from places the bound cannot
+// reach: the parser's autorelease set holds argument-list vectors whose
+// elements reference deep subtrees, and after a syntax error discards the
+// enclosing nodes, deleting such a vector released a chain tens of
+// thousands of levels deep (OSS-Fuzz 554085275: stack overflow in
+// App::~App under fuzz-parse-expr, from 116KB of `N<N<N<...`).
+//
+// So teardown is iterative at the source, for every owner: a destructor
+// moves its children onto a thread-local list instead of releasing them in
+// place, and the outermost destructor drains the list one expression at a
+// time. Each drained expression's destructor defers its own children the
+// same way, so the recursion never runs more than one level deep no matter
+// how the tree nests or who lets go of it.
+namespace {
+  // expression teardown can run at any point in a thread's life -- including
+  // during static destruction, after thread_local destructors have already
+  // run: the fuzz harnesses hold their compiler in a static slot, and
+  // destroying that compiler at exit releases every expression it still
+  // holds. So the list lives in trivially-destructible thread-local storage
+  // and is never destructed (a list with a destructor was freed first, and
+  // deferring into it then was a use-after-free). Its heap buffer is handed
+  // back at the end of every drain, so between teardowns it retains nothing
+  // and a thread's exit leaks nothing.
+  Exprs& deferredReleases() {
+    alignas(Exprs) thread_local unsigned char storage[sizeof(Exprs)];
+    thread_local Exprs* es = new (storage) Exprs();
+    return *es;
+  }
+  thread_local bool drainingReleases = false;
+
+  void deferRelease(ExprPtr& e) {
+    if (e) {
+      deferredReleases().push_back(std::move(e));
+    }
+  }
+  void deferRelease(Exprs& es) {
+    for (auto& e : es) {
+      deferRelease(e);
+    }
+  }
+
+  // called at the end of every child-deferring destructor; only the
+  // outermost one on this thread does the work, so a destructor reached
+  // from inside the drain just leaves its children on the list
+  void drainDeferredReleases() {
+    if (drainingReleases) {
+      return;
+    }
+    drainingReleases = true;
+    Exprs& es = deferredReleases();
+    while (!es.empty()) {
+      ExprPtr e = std::move(es.back());
+      es.pop_back();
+      e.reset();
+    }
+    Exprs().swap(es); // hand the buffer back: the list must hold no heap between teardowns
+    drainingReleases = false;
+  }
+}
+
+Let::~Let()       { deferRelease(this->e); deferRelease(this->b); drainDeferredReleases(); }
+Fn::~Fn()         { deferRelease(this->e); drainDeferredReleases(); }
+App::~App()       { deferRelease(this->fne); deferRelease(this->argl); drainDeferredReleases(); }
+Assign::~Assign() { deferRelease(this->lhs); deferRelease(this->rhs); drainDeferredReleases(); }
+MkArray::~MkArray()     { deferRelease(this->es); drainDeferredReleases(); }
+MkVariant::~MkVariant() { deferRelease(this->e); drainDeferredReleases(); }
+AIndex::~AIndex() { deferRelease(this->arr); deferRelease(this->i); drainDeferredReleases(); }
+Proj::~Proj()     { deferRelease(this->r); drainDeferredReleases(); }
+Assump::~Assump() { deferRelease(this->e); drainDeferredReleases(); }
+Pack::~Pack()     { deferRelease(this->e); drainDeferredReleases(); }
+Unpack::~Unpack() { deferRelease(this->pkg); deferRelease(this->body); drainDeferredReleases(); }
+
+LetRec::~LetRec() {
+  for (auto& b : this->bs) {
+    deferRelease(b.second);
+  }
+  deferRelease(this->e);
+  drainDeferredReleases();
+}
+
+MkRecord::~MkRecord() {
+  for (auto& f : this->fs) {
+    deferRelease(f.second);
+  }
+  drainDeferredReleases();
+}
+
+Case::~Case() {
+  deferRelease(this->v);
+  for (auto& b : this->bs) {
+    deferRelease(b.exp);
+  }
+  deferRelease(this->def);
+  drainDeferredReleases();
+}
+
+Switch::~Switch() {
+  deferRelease(this->v);
+  for (auto& b : this->bs) {
+    deferRelease(b.exp);
+  }
+  deferRelease(this->def);
+  drainDeferredReleases();
+}
 const QualTypePtr& Expr::type() const { return this->annotatedType; }
 void Expr::type(const QualTypePtr& ty) { this->annotatedType = ty; }
 int Expr::case_id() const { return this->cid; }

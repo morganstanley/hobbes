@@ -39,6 +39,31 @@ TEST(Parse, DeeplyNestedExpressionsAreRejected) {
   EXPECT_EQ(show(c().readExpr("1+2")), "+(1, 2)");
 }
 
+TEST(Parse, FailedParsesReleaseDeepExpressionsIteratively) {
+  // the nesting bound guards what the parser returns, but a parse that fails
+  // can strand a deep tree where the bound cannot reach it: an operator chain
+  // inside a call that is never closed fails at end of file ("expecting ) or
+  // ','"), and by then the chain -- one level of nesting per term -- is
+  // referenced from the parser's book-keeping rather than from any expression
+  // the nesting check will see. Releasing it ran the recursive destructor
+  // cascade, one stack frame per level, that OSS-Fuzz 554085275 reports as a
+  // stack overflow in App::~App under fuzz-parse-expr (116KB of `N<N<N<...`
+  // with one unclosed paren). Expression teardown is now iterative at the
+  // source (see expr.C), so the failed parse throws its syntax error and the
+  // stranded tree is drained a node at a time; an unfixed build crashes here
+  // -- measured at 300,000 terms even without sanitizer-sized frames --
+  // rather than failing the test.
+  std::string chain = "N(";
+  for (size_t i = 0; i < 300000; ++i) {
+    chain += "N<";
+  }
+  chain += "N"; // and the '(' is never closed
+  EXPECT_EXCEPTION(c().readExpr(chain));
+
+  // and the process is still usable afterwards
+  EXPECT_EQ(show(c().readExpr("1+2")), "+(1, 2)");
+}
+
 TEST(Parse, ExpressionsWithinTheNestingLimitStillParse) {
   // ordinary expressions are nowhere near the limit, and expressions that are
   // deeply nested but still within it read as they always have
