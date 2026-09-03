@@ -64,6 +64,53 @@ TEST(Parse, FailedParsesReleaseDeepExpressionsIteratively) {
   EXPECT_EQ(show(c().readExpr("1+2")), "+(1, 2)");
 }
 
+// whether reading the source fails for nesting past the limit, as opposed to
+// any other reason (a syntax error would also throw, and would prove nothing)
+static bool rejectedForNesting(const std::string& src) {
+  try {
+    c().readExpr(src);
+    return false;
+  } catch (const std::exception& ex) {
+    return std::string(ex.what()).find("past the limit") != std::string::npos;
+  }
+}
+
+TEST(Parse, DeepExpressionsCompiledMidParseAreRejected) {
+  // the nesting bound is checked on what the parser returns, but some grammar
+  // actions compile a sub-expression while the parse is still under way -- a
+  // pattern function's body, a match row's result, the body under a `let` with
+  // a pattern, a comprehension's body, a parse rule's reduction -- and
+  // compiling walks it, one stack frame per level: the match compiler renames
+  // pattern variables by substitution, for one. OSS-Fuzz 556791547 is a `\x.`
+  // whose body is a chain of 11,000 `<` comparisons; the parser never got to
+  // bound it, because substVarF overflowed the stack first. Those compilers
+  // now bound what they are handed, so each shape below is rejected for its
+  // depth (checked by message, since a syntax error would also throw); an
+  // unfixed build crashes here rather than failing the test.
+  std::string chain = "N";
+  for (size_t i = 0; i < 300000; ++i) {
+    chain += "<N";
+  }
+
+  // each shape reads as the construct it is meant to be when it is shallow
+  EXPECT_TRUE(c().readExpr("\\x.y<-N<N")                     != nullptr);
+  EXPECT_TRUE(c().readExpr("match 1 with | _ -> N<N")         != nullptr);
+  EXPECT_TRUE(c().readExpr("let (a, b) = p in N<N")           != nullptr);
+  EXPECT_TRUE(c().readExpr("[N<N | x <- xs]")                 != nullptr);
+  EXPECT_TRUE(c().readExpr("parse { S := x:\"a\" { N<N } }") != nullptr);
+
+  // and is rejected for its depth when it is not
+  EXPECT_TRUE(rejectedForNesting("\\x.y<-" + chain));                     // the reported shape
+  EXPECT_TRUE(rejectedForNesting("match 1 with | _ -> " + chain));
+  EXPECT_TRUE(rejectedForNesting("let (a, b) = p in " + chain));
+  EXPECT_TRUE(rejectedForNesting("[" + chain + " | x <- xs]"));
+  EXPECT_TRUE(rejectedForNesting("parse { S := x:\"a\" { " + chain + " } }"));
+
+  // and the process is still usable afterwards
+  EXPECT_EQ(show(c().readExpr("1+2")), "+(1, 2)");
+  EXPECT_EQ(c().compileFn<int()>("(\\x.x+1)(1)")(), 2);
+}
+
 TEST(Parse, ExpressionsWithinTheNestingLimitStillParse) {
   // ordinary expressions are nowhere near the limit, and expressions that are
   // deeply nested but still within it read as they always have

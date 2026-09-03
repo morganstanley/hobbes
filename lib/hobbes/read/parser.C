@@ -109,31 +109,19 @@ template <typename T>
 // the exposure. Revisit if a path ever parses attacker-controlled input in a
 // tight loop without restarting.
 
-// Every function that walks an expression recurs through its levels of nesting
-// -- type inference, unsweetening, printing, and the expression's own
-// destructor -- so how deeply an expression nests is stack depth in everything
-// downstream of the parse, and the parser will build a tree as deep as its
-// input describes. Source nested this deeply is not written by hand; it is
-// generated, or it is hostile: reading source text is on the near side of the
-// trust boundary (see SECURITY.md), and `x+x+x...` repeated enough times is all
-// it takes. Bound it here, where every expression the parser returns has to
-// pass, rather than in each of those walks.
-const size_t maxExprNestingDepth = 1000;
-
-// takes the expression by pointer, and must be given the only reference to it:
-// an expression past the limit is let go here one level at a time, and a second
-// reference left anywhere would run the destructor chain that the limit is
-// meant to prevent when it went out of scope
-void checkNestingDepth(ExprPtr* e) {
-  const size_t d = nestingDepth(*e);
-  if (d > maxExprNestingDepth) {
-    releaseNesting(*e);
-
-    throw std::runtime_error(
-      "Expression nests " + str::from(d) + " levels deep, past the limit of " + str::from(maxExprNestingDepth)
-    );
-  }
-}
+// Every expression the parser returns is bounded in how deeply it nests
+// (checkNestingDepth, and the reasoning behind it, in lang/expr.H): the parser
+// builds a tree as deep as its input describes, and everything that walks the
+// tree afterwards recurs through its levels. The check throws with the tree
+// still referenced from here, which is safe: expression teardown is iterative
+// whoever lets go of the tree, so unwinding past it costs one frame, not one
+// per level.
+//
+// The same bound is applied a second time, earlier, by the compilers that
+// grammar actions run mid-parse on sub-expressions (compileMatch for `\`,
+// `match`, `let` with a pattern and comprehensions; makeParser for `parse`
+// blocks) -- those walk what they are given before the parse is over and the
+// check here can see it (OSS-Fuzz 556791547).
 
 // One parse, from the scanner's point of view: the buffer it reads from, the
 // lexer state it starts with, and the undoing of both when it is over.
@@ -263,7 +251,7 @@ ExprDefn defReadExprDefn(cc* c, const std::string& expr) {
   runParserOnString(c, TPARSEDEFN, expr.c_str());
 
   ExprPtr e = checkReturn(yyParsedExpr != nullptr ? ExprPtr(yyParsedExpr) : ExprPtr());
-  checkNestingDepth(&e);
+  checkNestingDepth(e);
   return ExprDefn(yyParsedVar, e);
 }
 
@@ -274,7 +262,7 @@ ExprPtr defReadExpr(cc* c, const std::string& expr) {
   runParserOnString(c, TPARSEEXPR, expr.c_str());
 
   ExprPtr e = checkReturn(yyParsedExpr != nullptr ? ExprPtr(yyParsedExpr) : ExprPtr());
-  checkNestingDepth(&e);
+  checkNestingDepth(e);
   return e;
 }
 
