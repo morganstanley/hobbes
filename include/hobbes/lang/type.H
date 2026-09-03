@@ -66,6 +66,17 @@ public:
 
   // improves performance of unhiding opaque type aliases
   mutable ptr unaliasedType;
+
+  // improves performance of computing memory alignment
+  mutable unsigned int memoryAlignment;
+
+  // improves performance of reducing a type to its representation type.
+  // null means not-yet-reduced or reduces-to-itself; only a reduction to a
+  // different type is stored. A self-reference would keep the type from ever
+  // looking unreferenced to interning's compaction, and a type that reduces to
+  // itself finds that out in one case-check anyway, so there is nothing worth
+  // storing for it.
+  mutable ptr repTypeMemo;
 };
 
 using MonoTypePtr = MonoType::ptr;
