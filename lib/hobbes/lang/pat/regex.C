@@ -828,12 +828,18 @@ void insert(stateset* o, const stateset& i) {
   o->insert(i.begin(), i.end());
 }
 
-// find the set of NFA states we'd transition to from a char from within a set of states
-stateset nfaTransition(const NFA& nfa, const EpsClosure& ec, const stateset& ss, const CharRange& cr) {
+// find the set of NFA states we'd transition to from a char from within a set of states.
+// *steps counts every state carried into the union; disambiguate() bounds the
+// whole walk by that count.
+stateset nfaTransition(const NFA& nfa, const EpsClosure& ec, const stateset& ss, const CharRange& cr, size_t* steps) {
   stateset result;
   for (state s : ss) {
     if (const auto* tss = nfa[s].chars.lookupRangeSubset(cr)) {
-      insert(&result, epsState(ec, *tss));
+      for (state t : *tss) {
+        const stateset& cts = epsState(ec, t);
+        *steps += cts.size();
+        insert(&result, cts);
+      }
     }
   }
   return result;
@@ -874,6 +880,21 @@ state dfaState(const cc* c, const NFA& nfa, Nss2Ds* nss2ds, DFA* dfa, std::vecto
   return result;
 }
 
+// the walk over the DFA costs a product per state made -- the NFA states in
+// its set, the char ranges they use, and the eps-closed successors unioned
+// per range -- and the state cap in dfaState() bounds only how many states
+// there are. 143 bytes of regex (OSS-Fuzz 554287846) held every other factor
+// high at once: ~35M of the steps counted below and minutes of instrumented
+// time before the state cap finally spoke, a minute and a half in. So the
+// steps are counted where they are taken and the regex is rejected past a
+// budget, the same way an oversized DFA is, while the answer still costs
+// seconds rather than a fuzzer's whole time budget. The margin is measured, not guessed: the largest
+// deliberately-huge regex in the test suite (Matching/
+// hugeRegexDFACompilesWithoutQuadraticBlowup) costs 1.32M steps and ordinary
+// regexes cost thousands, so triple the former still rejects the reported
+// input at an eighth of its budgeted run.
+static const size_t maxDisambiguationSteps = 4000000;
+
 void disambiguate(const cc* c, const NFA& nfa, DFA* dfa, RStates* rstates) {
   // determine eps* for this NFA
   EpsClosure ec;
@@ -895,6 +916,8 @@ void disambiguate(const cc* c, const NFA& nfa, DFA* dfa, RStates* rstates) {
   std::vector<std::pair<state, stateset>> pending;
   dfaState(c, nfa, &nss2ds, dfa, &pending, epsState(ec, 0));
 
+  size_t steps = 0;
+
   while (!pending.empty()) {
     const state    result = pending.back().first;
     const stateset ss     = pending.back().second;
@@ -902,8 +925,14 @@ void disambiguate(const cc* c, const NFA& nfa, DFA* dfa, RStates* rstates) {
 
     // ok, how can we transition out of here?
     // for each case, we'll go to a set of NFA states
-    for (auto cr : usedCharRanges(nfa, ss)) {
-      auto ns = dfaState(c, nfa, &nss2ds, dfa, &pending, nfaTransition(nfa, ec, ss, cr));
+    const CharRanges crs = usedCharRanges(nfa, ss);
+    steps += ss.size() * (crs.size() + 1);
+    if (steps > maxDisambiguationSteps) {
+      throw std::runtime_error("regex is too complex to compile (needs more than " + str::from(maxDisambiguationSteps) + " determinization steps)");
+    }
+    for (const auto& cr : crs) {
+      stateset nss = nfaTransition(nfa, ec, ss, cr, &steps);
+      auto ns = dfaState(c, nfa, &nss2ds, dfa, &pending, nss);
       (*dfa)[result].chars.insert(cr, ns);
     }
 
