@@ -84,6 +84,24 @@ size_t nestingDepth(const ExprPtr&);
 // depth can be discarded safely)
 void releaseNesting(ExprPtr&);
 
+// the deepest an expression may nest
+//
+// Every function that walks an expression recurs through its levels of nesting
+// -- type inference, unsweetening, substitution, printing -- so how deeply an
+// expression nests is stack depth in everything that handles it. Source nested
+// this deeply is not written by hand; it is generated, or it is hostile:
+// reading source text is on the near side of the trust boundary (see
+// SECURITY.md), and the parser will build a tree as deep as its input
+// describes. So the bound is applied where trees come in from the parser
+// rather than in each of those walks: to every expression the parser returns,
+// and to every expression a grammar action hands to a compiler while the parse
+// is still under way (the match compiler, the parser generator), since those
+// walk what they are given before the parser's own check can see it.
+extern const size_t maxExprNestingDepth;
+
+// throws if the expression nests past that limit
+void checkNestingDepth(const ExprPtr&);
+
 //////////////////
 // primitive constants
 //////////////////

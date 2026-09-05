@@ -1288,6 +1288,17 @@ void releaseNesting(ExprPtr& root) {
   }
 }
 
+const size_t maxExprNestingDepth = 1000;
+
+void checkNestingDepth(const ExprPtr& e) {
+  const size_t d = nestingDepth(e);
+  if (d > maxExprNestingDepth) {
+    throw std::runtime_error(
+      "Expression nests " + str::from(d) + " levels deep, past the limit of " + str::from(maxExprNestingDepth)
+    );
+  }
+}
+
 // a convenient encapsulation of type-directed term transformation (e.g.: for unqualification)
 QualTypePtr switchExprTyFn::withTy(const QualTypePtr& qt) const {
   return qt;

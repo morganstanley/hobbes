@@ -615,6 +615,21 @@ void assignNames(const str::seq& vns, PatternRows& ps, bool* mappedVs) {
 }
 
 ExprPtr compileMatch(cc* c, const Exprs& es, const PatternRows& ps, const LexicalAnnotation& rootLA) {
+  // everything handed in is walked below (each row's result and guard are
+  // renamed by substitution, for one), and every walk recurs through nesting.
+  // This is run from grammar actions, on sub-expressions of a parse still under
+  // way that the parser's nesting bound has not yet had a chance to see:
+  // OSS-Fuzz 556791547 is a `\x.` whose body is a chain of 11,000 comparisons,
+  // and the substitution overflowed the stack before the parse finished. So
+  // the bound is applied here, before any of it is walked.
+  for (const auto& e : es) {
+    checkNestingDepth(e);
+  }
+  for (const auto& p : ps) {
+    checkNestingDepth(p.guard);
+    checkNestingDepth(p.result);
+  }
+
   validate(c->typeEnv(), es.size(), ps, rootLA);
 
   // make variables to store each of the expressions being matched

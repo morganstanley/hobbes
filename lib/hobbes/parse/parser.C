@@ -52,7 +52,13 @@ void prepareEvalInfo(cc* c, const Parser& p, terminal* root, const precedence& p
   pei->arrty = freshTypeVar();
 
   // remember reduce expressions (translating bound names to canonical names)
+  //
+  // a reduce expression comes straight from a `parse` block's grammar action,
+  // mid-parse, and the substitution below walks all of it -- so it is bounded
+  // here first, as the parser bounds what it returns (see lang/expr.H)
   for (const ParseRule& pr : p) {
+    checkNestingDepth(pr.reducer);
+
     VarMapping vm;
     for (size_t i = 0; i < pr.bindings.size(); ++i) {
       if (pr.bindings[i].first != "_") {
