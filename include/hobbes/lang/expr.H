@@ -19,6 +19,7 @@ public:
   virtual ~Expr();
 
   virtual void show(std::ostream&) const = 0;
+  [[nodiscard]] std::string toString() const;
   virtual void showAnnotated(std::ostream&) const = 0;
   virtual Expr* clone() const = 0;
   virtual bool operator==(const Expr&) const = 0;

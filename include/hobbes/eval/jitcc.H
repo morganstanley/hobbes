@@ -57,6 +57,8 @@ public:
   void* getSymbolAddress(const std::string&);
 
 #if LLVM_VERSION_MAJOR < 11
+  [[nodiscard]] std::string showJitMemoryAddresses();
+
   // print all module contents
   void dump() const;
 #endif

@@ -71,6 +71,7 @@ public:
 
   // show this class definition
   void show(std::ostream&) const;
+  [[nodiscard]] std::string toString() const;
 public:
   const TCInstances& instances() const;
   bool hasGroundInstanceAt(const MonoTypes&) const;
@@ -125,6 +126,7 @@ public:
 
   // show this instance definition
   void show(std::ostream&) const;
+  [[nodiscard]] std::string toString() const;
 private:
   std::string   tcname;
   MonoTypes     itys;
@@ -155,6 +157,7 @@ public:
 
   // show this instance-generator definition
   void show(std::ostream&) const;
+  [[nodiscard]] std::string toString() const;
 
   // produce a sequence of type variables and constraints unique to this invocation
   using IFnDef = std::pair<Constraints, MonoTypes>;

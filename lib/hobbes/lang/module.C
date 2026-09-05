@@ -19,6 +19,11 @@ void Module::show(std::ostream& out) const {
     out << std::endl;
   }
 }
+std::string Module::toString() const {
+  std::ostringstream out;
+  this->show(out);
+  return std::move(out).str();
+}
 
 bool isValidOption(const std::string& o) {
   return o == "Safe" || o == "SafeArrays" || o == "IgnoreUnreachableMatches";
@@ -39,6 +44,11 @@ const std::vector<std::string>& Module::options() const {
 /* module defs */
 ModuleDef::ModuleDef(int cid, const LexicalAnnotation& la) : LexicallyAnnotated(la), cid(cid) { }
 int ModuleDef::case_id() const { return this->cid; }
+std::string ModuleDef::toString() const {
+  std::ostringstream out;
+  this->show(out);
+  return std::move(out).str();
+}
 ModuleDef::~ModuleDef() = default;
 
 // module imports
