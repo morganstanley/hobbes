@@ -772,11 +772,16 @@ static const size_t maxEpsClosureStates = 2000000;
 // than a stack holds. (The DFA walk in disambiguate() was made iterative for
 // the same reason.)
 //
-// Order is preserved exactly: successors are pushed in reverse so they pop in
-// the ascending order std::set gave them, and a state's closure is combined
-// only once everything reachable from it is done. That matters because eps
-// edges can form cycles, and which of a state's descendants happen to be
-// finished when it is combined decides what its closure ends up holding.
+// Order is preserved exactly, and that matters because eps edges can form
+// cycles: a state on a cycle is combined while a state that reaches it is
+// still in progress, so neither this walk nor the recursion it replaces
+// computes a complete closure over a cycle -- what a closure ends up holding
+// depends on which of its descendants happen to be finished by the time it is
+// combined. The recursion descended into successors in the ascending order
+// std::set gave them and combined a state after returning from all of them,
+// so this pushes successors in reverse to pop them in that same order, and
+// combines a state only after the ones it descended into. The two therefore
+// arrive at the same incomplete closure rather than at two different ones.
 void findEpsClosure(const NFA& nfa, state s0, statemarks* sms, EpsClosure* ec, size_t* held) {
   // false: visit this state and schedule its successors; true: combine it
   std::vector<std::pair<state, bool>> walk(1, std::make_pair(s0, false));

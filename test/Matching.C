@@ -516,9 +516,13 @@ TEST(Matching, epsilonClosureIsBounded) {
     rx = "(" + rx + ")+";
   }
 
+  // the specific bound, not just "too complex to compile": every other
+  // complexity bound on a regex reports with that same phrase, so matching it
+  // alone would leave this passing if the closures stopped being what
+  // rejected this input -- which is the whole of what it is here to pin
   const auto t0 = std::chrono::steady_clock::now();
   EXPECT_EXCEPTION_MSG(c().readExpr(matchRegex(rx)),
-                       std::exception, "regex is too complex to compile");
+                       std::exception, "epsilon-closure states");
   [[maybe_unused]] const auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - t0);
 #if !HOBBES_TEST_SKIP_TIMING_BOUNDS
   EXPECT_TRUE(elapsed.count() < 20);
