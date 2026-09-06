@@ -23,13 +23,18 @@ set(FUZZING_ENGINE_LIB "" CACHE STRING
 # wants the corpus replayed -- the standalone runner replays it just as well.
 include(CheckCXXSourceCompiles)
 if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-  set(CMAKE_REQUIRED_FLAGS "-fsanitize=fuzzer")
+  # append rather than replace, and put back whatever was there: a toolchain
+  # file may have set flags the probe needs to compile at all (a sysroot, a
+  # stdlib), and the rest of the configuration needs them after it
+  set(saved_required_flags "${CMAKE_REQUIRED_FLAGS}")
+  set(CMAKE_REQUIRED_FLAGS "${CMAKE_REQUIRED_FLAGS} -fsanitize=fuzzer")
   check_cxx_source_compiles("
     #include <cstddef>
     #include <cstdint>
     extern \"C\" int LLVMFuzzerTestOneInput(const uint8_t*, size_t) { return 0; }
   " HAVE_LIBFUZZER)
-  unset(CMAKE_REQUIRED_FLAGS)
+  set(CMAKE_REQUIRED_FLAGS "${saved_required_flags}")
+  unset(saved_required_flags)
 endif()
 
 if(FUZZING_ENGINE_LIB)
