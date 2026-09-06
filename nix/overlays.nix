@@ -84,6 +84,11 @@ let
       cmakeBuildType="Debug";
       cmakeFlags = [
         "-DUSE_ASAN_AND_UBSAN:BOOL=ON"
+        # builds the fuzz harnesses so that ctest replays their corpora here.
+        # this is the one build in the matrix with both sanitizers on, which
+        # is what those inputs are worth replaying under -- every one of them
+        # is a reproducer for something that once crashed hobbes
+        "-DBUILD_FUZZERS:BOOL=ON"
       ];
       ninjaFlags = [ "-v" ];
       UBSAN_OPTIONS="print_stacktrace=1";

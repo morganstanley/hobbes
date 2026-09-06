@@ -162,11 +162,14 @@ target_link_libraries(hi PUBLIC "-rdynamic" PRIVATE hobbes ${Readline_LIBRARIES}
 add_executable(hog ${hog_files})
 target_link_libraries(hog PRIVATE hobbes)
 
+# before add_subdirectory(fuzz): the corpus replay tests it registers only
+# take effect in a directory where testing is already enabled
+enable_testing()
+
 if(BUILD_FUZZERS)
   add_subdirectory(fuzz)
 endif()
 
-enable_testing()
 add_executable(mock-proc test/mocks/proc.C)
 add_executable(hobbes-test ${test_files})
 target_link_libraries(hobbes-test PRIVATE hobbes)
