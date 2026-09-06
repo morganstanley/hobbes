@@ -1109,14 +1109,26 @@ stateidx_t makeColPivotDFAState(MDFA* dfa, const PatternRows& ps) {
 // tens of millions of cells.
 //
 // The cell budget is set by what a cell costs rather than by that ratio
-// alone, because a state's table is retained, not just visited: it is the key
-// this state is memoised under in tableCfgStates. Measured on a match of N
-// rows over three columns with wildcards scattered through them -- the shape
-// that keeps tables from shrinking as they split -- the resident cost past a
-// bare compiler's ~780MB runs 72MB at 46,609 cells, 316MB at 333,190, 657MB
-// at 1,081,804 and 1,415MB at 2,515,309, converging on ~600 bytes a cell. A
-// million cells is therefore about 600MB, which leaves the whole read inside
-// half of the 2560MB the report was filed against.
+// alone. Measured on a match of N rows over three columns with wildcards
+// scattered through them -- the shape that keeps tables from shrinking as
+// they split -- the resident cost past a bare compiler's ~780MB runs 72MB at
+// 46,609 cells, 316MB at 333,190, 657MB at 1,081,804 and 1,415MB at
+// 2,515,309, converging on ~600 bytes a cell. A million cells is therefore
+// about 600MB on that shape, which leaves the whole read inside half of the
+// 2560MB the report was filed against.
+//
+// What is counted is every table this walk builds, not only the ones a new
+// state keeps: the count is taken above the memoisation check, so a table
+// that turns out to have been seen before is charged for too. That is
+// deliberate. By the time the check can say so, dropUnusedColumns has already
+// copied the whole table and the probe has hashed and compared it, so a
+// repeat costs the same transient memory and very nearly the same time as a
+// first sight -- and it is peak and time, not what survives, that took the
+// process out. It does make the budget conservative wherever a table shares
+// sub-tables, and measurably so: over the 13,391 matches the test suite
+// compiles, 9.7% of counted cells are repeats, and in the largest single
+// table (Matching/largeMatchTableCompileTime) it is 51%. Charged at that
+// worst rate a legitimate table still reaches only 236,011 of the million.
 //
 // Depth is held much looser, and deliberately, because the tables that cost
 // the most cells are not the ones that recurse deepest. A production match
