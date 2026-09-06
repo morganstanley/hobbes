@@ -739,33 +739,93 @@ using EpsClosure = std::map<state, stateset>;
 
 using statemarks = std::vector<bool>;
 
-void findEpsClosure(const NFA& nfa, state s, statemarks* sms, EpsClosure* ec) {
-  if (!(*sms)[s]) {
-    (*sms)[s] = true;
-    for (auto et : nfa[s].eps) {
-      if (!(*sms)[et]) {
-        findEpsClosure(nfa, et, sms, ec);
+// eps* is kept as a set per NFA state, so what it costs is the sum of those
+// sets' sizes -- and that is the square of the NFA's size for a regex whose
+// eps edges make a chain, because then every state's closure is the whole
+// chain below it. `(a?a?...a?)+` is exactly that regex: 300 of the `a?` under
+// five nested '+' expand to 28,867 NFA states, every one of them closing over
+// all the others, for 83M states held at once and ~4.9GB (OSS-Fuzz 557561539
+// reported it as an out-of-memory against a 2560MB limit; the same shape one
+// '+' shallower reaches 2.7GB).
+//
+// None of the bounds around this one reaches it. maxRegexTerms bounds the
+// regex as parsed and maxRegexExpandedSize the tree it expands to, but a tree
+// of 100,000 terms is a hundredth of what its closures can cost; the DFA
+// state cap and maxDisambiguationSteps bound the subset construction, which
+// runs after eps* is already built. So the states carried into closures are
+// counted here and the regex rejected past a budget, the same way an
+// oversized DFA or an overlong determinization is. The margin is measured,
+// not guessed: across the whole test suite the costliest regex holds 6,105
+// states this way (the deliberately-huge Matching/
+// hugeRegexDFACompilesWithoutQuadraticBlowup one, whose 4,911-state NFA
+// closes over 1.24 states per state on average), and ordinary regexes hold
+// tens, so a budget of two million leaves legitimate regexes -- including
+// wide alternations, whose closures really are large -- a factor of a few
+// hundred of room while holding this phase to a couple of hundred MB.
+static const size_t maxEpsClosureStates = 2000000;
+
+// the walk is iterative rather than one frame per eps edge: the descent below
+// reaches the end of a chain of eps edges before it closes over anything, so
+// a budget on what the closures hold cannot speak until the deepest frame is
+// already on the stack, and each frame carries a set of its own. The NFA can
+// have as many states as maxRegexExpandedSize allows, which is far more chain
+// than a stack holds. (The DFA walk in disambiguate() was made iterative for
+// the same reason.)
+//
+// Order is preserved exactly: successors are pushed in reverse so they pop in
+// the ascending order std::set gave them, and a state's closure is combined
+// only once everything reachable from it is done. That matters because eps
+// edges can form cycles, and which of a state's descendants happen to be
+// finished when it is combined decides what its closure ends up holding.
+void findEpsClosure(const NFA& nfa, state s0, statemarks* sms, EpsClosure* ec, size_t* held) {
+  // false: visit this state and schedule its successors; true: combine it
+  std::vector<std::pair<state, bool>> walk(1, std::make_pair(s0, false));
+
+  while (!walk.empty()) {
+    const state s = walk.back().first;
+
+    if (!walk.back().second) {
+      if ((*sms)[s]) {
+        walk.pop_back();
+        continue;
       }
-    }
+      (*sms)[s] = true;
+      walk.back().second = true;
 
-    stateset stes = (*ec)[s];
-    stes.insert(s);
-    for (auto et : nfa[s].eps) {
-      stes.insert(et);
+      const stateset& ets = nfa[s].eps;
+      for (auto et = ets.rbegin(); et != ets.rend(); ++et) {
+        if (!(*sms)[*et]) {
+          walk.push_back(std::make_pair(*et, false));
+        }
+      }
+    } else {
+      walk.pop_back();
 
-      const stateset& rstes = (*ec)[et];
-      stes.insert(rstes.begin(), rstes.end());
+      stateset stes = (*ec)[s];
+      stes.insert(s);
+      for (auto et : nfa[s].eps) {
+        stes.insert(et);
+
+        const stateset& rstes = (*ec)[et];
+        stes.insert(rstes.begin(), rstes.end());
+      }
+
+      *held += stes.size();
+      if (*held > maxEpsClosureStates) {
+        throw std::runtime_error("regex is too complex to compile (needs more than " + str::from(maxEpsClosureStates) + " epsilon-closure states)");
+      }
+      (*ec)[s] = std::move(stes);
     }
-    (*ec)[s] = stes;
   }
 }
 
 void findEpsClosure(const NFA& nfa, EpsClosure* ec) {
   statemarks ms(nfa.size(), false);
+  size_t     held = 0;
 
   for (state s = 0; s < nfa.size(); ++s) {
     if (!ms[s]) {
-      findEpsClosure(nfa, s, &ms, ec);
+      findEpsClosure(nfa, s, &ms, ec, &held);
     }
   }
 }
