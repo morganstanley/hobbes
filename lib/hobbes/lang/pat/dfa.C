@@ -1091,10 +1091,76 @@ stateidx_t makeColPivotDFAState(MDFA* dfa, const PatternRows& ps) {
   return result;
 }
 
+// Compiling a pattern-match table is worst-case exponential in general, and
+// this construction pays for it in two currencies at once. Splitting a column
+// hands every match-any row to every branch it did not name, so a table can
+// come out of a split barely smaller than it went in -- and each such state
+// holds a copy of its table, keyed by the whole table again in
+// tableCfgStates. Where the rows leave nothing to share, the recursion is a
+// straight chain, one state and one full table copy per row: 7,483 rows of
+// wildcard cost 4,000 states and 75M table cells before the process ran out
+// of memory at 2560MB (OSS-Fuzz 557561539, whose 90KB of input is ~7,500
+// repetitions of one row shape).
+//
+// So both currencies are budgeted. The margins are measured, not guessed.
+// Over 11,495 match tables compiled by the test suite the costliest holds
+// 236,011 cells and none recurses deeper than 22, while the report above is
+// past both by orders of magnitude -- a chain thousands of states deep and
+// tens of millions of cells.
+//
+// The cell budget is set by what a cell costs rather than by that ratio
+// alone, because a state's table is retained, not just visited: it is the key
+// this state is memoised under in tableCfgStates. Measured on a match of N
+// rows over three columns with wildcards scattered through them -- the shape
+// that keeps tables from shrinking as they split -- the resident cost past a
+// bare compiler's ~780MB runs 72MB at 46,609 cells, 316MB at 333,190, 657MB
+// at 1,081,804 and 1,415MB at 2,515,309, converging on ~600 bytes a cell. A
+// million cells is therefore about 600MB, which leaves the whole read inside
+// half of the 2560MB the report was filed against.
+//
+// Depth is held much looser, and deliberately, because the tables that cost
+// the most cells are not the ones that recurse deepest. A production match
+// big enough to be worth compiling columnwise (buildColumnwiseMatches -- the
+// only way a table of a few hundred rows compiles at all, the row-pivot path
+// below does not finish on one) recurses about 0.78 states per row while
+// holding almost no table at once: a 400-row, 13-column limit table measures
+// 312 deep and 5,213 cells, and a 200-row one 171 deep and 2,613. Rows are
+// in turn capped near 600 by the parser's nesting limit, so ~470 is about as
+// deep as a match that parses can legitimately go, and a bound that merely
+// looked generous against the row-pivot suite maximum of 22 would sit right
+// on top of real code. So depth is a backstop against runaway recursion
+// eating the C stack, not a second opinion on size: to reach a chain deep
+// enough to trip it the cells above are long since spent, since a chain of D
+// states starts from a table of D rows and sums ~D^2/2 cells.
+static const size_t maxMatchTableCells = 1000000;
+static const size_t maxMatchDFADepth   = 10000;
+
+// count a state's recursion into the match being compiled, and back out again
+// however the state is left -- the budgets below are reported by throwing.
+struct MatchDepth {
+  MDFA* dfa;
+  explicit MatchDepth(MDFA* dfa) : dfa(dfa) { ++this->dfa->stateDepth; }
+  ~MatchDepth() { --this->dfa->stateDepth; }
+  MatchDepth(const MatchDepth&) = delete;
+  MatchDepth& operator=(const MatchDepth&) = delete;
+};
+
 // make a state out of the input pattern table (recursively constructing sub-states as necessary)
 stateidx_t makeDFAState(MDFA* dfa, const PatternRows& xps) {
+  MatchDepth depth(dfa);
+  if (dfa->stateDepth > maxMatchDFADepth) {
+    throw annotated_error(dfa->rootLA, "match expression is too complex to compile (nests more than " + str::from(maxMatchDFADepth) + " states deep)");
+  }
+
   PatternRows ps;
   dropUnusedColumns(&ps, xps);
+
+  if (!ps.empty()) {
+    dfa->tableCells += ps.size() * ps[0].patterns.size();
+    if (dfa->tableCells > maxMatchTableCells) {
+      throw annotated_error(dfa->rootLA, "match expression is too complex to compile (needs more than " + str::from(maxMatchTableCells) + " pattern table cells)");
+    }
+  }
 
   // if we can deconstruct strings here, do it before anything else
   // (it has a potential runtime performance impact and should only be done to reduce compilation time for large schemas)
