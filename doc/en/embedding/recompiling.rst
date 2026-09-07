@@ -37,24 +37,28 @@ the equivalent C++ — and it is a dangling pointer the moment the ``cc`` that
 produced it is destroyed. Whoever holds the pointer must keep the ``cc``
 alive.
 
-**Definitions are permanent.** ``cc::define`` refuses to redefine a name
-that is already bound (``Variable already defined``), and machine code is
-never unloaded: ``cc::releaseMachineCode`` is a no-op. A ``cc`` only grows.
-Replacing logic therefore means compiling a *new* function — under a new
-name, or anonymously via ``compileFn`` — and switching to it, never editing
-the old one in place.
+**Definitions are permanent.** ``cc::define`` throws rather than redefine a
+name that is already bound, and there is no way to unload machine code
+(``cc::releaseMachineCode`` exists, but what it forwards to currently does
+nothing). A ``cc`` only grows. Replacing logic therefore means compiling a
+*new* function — under a new name, or anonymously via ``compileFn`` — and
+switching to it, never editing the old one in place.
 
-**Every ``cc`` method holds one process-wide lock.** All ``cc`` operations —
-``compileFn``, ``define``, ``bind``, ``readExpr``, ``search`` and the rest —
-take ``hobbes::hlock``, a single recursive mutex shared by every ``cc`` in
-the process, for the whole duration of the call. ``compileFn`` holds it for
-the entire compile. Separate ``cc`` objects on separate threads are
-supported (the ``Compiler/ccInManyThreads`` test exercises exactly that),
-but their compiles serialise, and *any* ``cc`` method called on another
-thread while a compile is running waits for the compile to finish. On the
-handling thread this is the whole hazard in miniature: a "cheap" lazy
-``compileFn`` or ``bind`` that happens to land during a background compile
-stalls for the full length of it.
+**Compiling holds one process-wide lock.** The ``cc`` operations that touch
+the compiler or the JIT — ``compileFn``, ``define``, ``bind``, ``readExpr``,
+``search``, ``compileModule`` and their relatives — each take
+``hobbes::hlock``, a single recursive mutex shared by every ``cc`` in the
+process, for the duration of the call. (Plain option setters such as
+``buildColumnwiseMatches`` do not.) ``compileFn`` takes it once to parse
+and again for the compile proper, which is where the seconds go, so for
+practical purposes the lock is held for the length of the compile. Separate
+``cc`` objects on separate threads are supported (the
+``Compiler/ccInManyThreads`` test exercises exactly that), but their
+compiles serialise, and a locking ``cc`` method called on another thread
+while a compile is running waits for the compile to finish. On the handling
+thread this is the whole hazard in miniature: a "cheap" lazy ``compileFn``
+or ``bind`` that happens to land during a background compile stalls for the
+remaining length of it.
 
 Together these give the rules for the handling thread:
 
