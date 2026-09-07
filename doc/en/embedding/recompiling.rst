@@ -134,7 +134,7 @@ down a JIT session with a large module in it is itself not free.
 
   // compiler thread
   Matcher build(uint64_t version, const Logic& logic) {
-    std::shared_ptr<hobbes::cc> c = makeCC(logic);
+    std::shared_ptr<hobbes::cc> c = makeCC(logic);  // unique_ptr converts; shared so Matcher can own it
     MatchFn f = c->compileFn<MatchFnSig>(...);
     f(sampleInput);                       // first call off the hot path
     return {version, f, c};
