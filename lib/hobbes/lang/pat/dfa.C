@@ -1168,10 +1168,12 @@ stateidx_t makeDFAState(MDFA* dfa, const PatternRows& xps) {
   dropUnusedColumns(&ps, xps);
 
   if (!ps.empty()) {
-    dfa->tableCells += ps.size() * ps[0].patterns.size();
-    if (dfa->tableCells > maxMatchTableCells) {
+    // charged against what is left of the budget, so the sum cannot wrap
+    const size_t cells = ps.size() * ps[0].patterns.size();
+    if (cells > maxMatchTableCells - dfa->tableCells) {
       throw annotated_error(dfa->rootLA, "match expression is too complex to compile (needs more than " + str::from(maxMatchTableCells) + " pattern table cells)");
     }
+    dfa->tableCells += cells;
   }
 
   // if we can deconstruct strings here, do it before anything else
