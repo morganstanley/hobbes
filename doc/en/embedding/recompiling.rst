@@ -23,9 +23,9 @@ What a ``hobbes::cc`` is
 Four facts about the compiler object drive everything below.
 
 **It is state, not a value.** A ``cc`` accumulates everything done to it:
-each ``bind``, ``define``, ``compileModule``, type alias, class instance, and
-every option set on it (``buildColumnwiseMatches``,
-``ignoreUnreachableMatches``, and the rest). It has no copy constructor, and
+each ``bind``, ``define``, module compiled into it with ``hobbes::compile``,
+type alias, class instance, and every option set on it
+(``buildColumnwiseMatches``, ``ignoreUnreachableMatches``, and the rest). It has no copy constructor, and
 there is no way to clone one — the state includes a JIT session holding
 machine code. Two ``cc`` objects are identical only if they were built by
 the same sequence of operations.
@@ -38,15 +38,15 @@ produced it is destroyed. Whoever holds the pointer must keep the ``cc``
 alive.
 
 **Definitions are permanent.** ``cc::define`` throws rather than redefine a
-name that is already bound, and there is no way to unload machine code
-(``cc::releaseMachineCode`` exists, but what it forwards to currently does
-nothing). A ``cc`` only grows. Replacing logic therefore means compiling a
+name that already has a definition, and there is no way to unload machine
+code (``cc::releaseMachineCode`` exists, but what it forwards to currently
+does nothing). A ``cc`` only grows. Replacing logic therefore means compiling a
 *new* function — under a new name, or anonymously via ``compileFn`` — and
 switching to it, never editing the old one in place.
 
 **Compiling holds one process-wide lock.** The ``cc`` operations that touch
 the compiler or the JIT — ``compileFn``, ``define``, ``bind``, ``readExpr``,
-``search``, ``compileModule`` and their relatives — each take
+``search``, ``readModule`` and their relatives — each take
 ``hobbes::hlock``, a single recursive mutex shared by every ``cc`` in the
 process, for the duration of the call. (Plain option setters such as
 ``buildColumnwiseMatches`` do not.) ``compileFn`` takes it once to parse
@@ -92,9 +92,9 @@ objects faithful copies of each other.
 
   std::unique_ptr<hobbes::cc> makeCC(const Logic& logic) {
     auto c = std::make_unique<hobbes::cc>();
-    c->buildColumnwiseMatches(true);            // every option, every time
-    c->bind("lookupAccount", &lookupAccount);   // every binding, every time
-    c->compileModule(prelude());
+    c->buildColumnwiseMatches(true);                             // every option, every time
+    c->bind("lookupAccount", &lookupAccount);                    // every binding, every time
+    hobbes::compile(c.get(), c->readModuleFile("trading.hob"));  // every module, every time
     for (const auto& n : logic.order) {
       c->define(n, logic.source.at(n));
     }
