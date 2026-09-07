@@ -1277,7 +1277,7 @@ void makeInterpDFAFunc(cc* c, const std::string& fname, const MonoTypePtr& captu
 static size_t dfaTransitions(const DFA& dfa) {
   size_t n = 0;
   for (const auto& s : dfa) {
-    n += s.chars.mapping().size();
+    n += s.chars.size();
   }
   return n;
 }
