@@ -354,14 +354,15 @@ private:
   bool ignoreUnreachablePatternMatchRows = false;
   bool lowerPrimMatchTables;
   bool columnwiseMatches;
-  // a regex's DFA is compiled one of two ways: under maxExprDFASize states it
-  // is spelled out as an expression (one switch case per state, one range
-  // test per transition) and typed and compiled like any other code; past
-  // that it is handed to an interpreter as a table. The expression form costs
-  // compile time in proportion to its size -- both figures below bound it,
-  // since a DFA can be wide (many transitions per state) as easily as it can
-  // be long -- and a regex with capture groups has no interpreter to fall
-  // back on, so past either bound it is rejected instead
+  // a regex's DFA is compiled one of two ways: under maxExprDFASize states
+  // and maxExprDFATransitions transitions it is spelled out as an expression
+  // (one switch case per state, one range test per transition) and typed and
+  // compiled like any other code; past either bound it is handed to an
+  // interpreter as a table. The expression form costs compile time in
+  // proportion to its size, and both figures bound it since a DFA can be wide
+  // (many transitions per state) as easily as it can be long. A regex with
+  // capture groups has no interpreter to fall back on, so past either bound
+  // it is rejected instead
   size_t maxExprDFASize = {1000};
   size_t maxExprDFATransitions = {10000};
   // a regex's DFA can be exponentially larger than the regex, so refuse to
