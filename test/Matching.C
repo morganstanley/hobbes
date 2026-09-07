@@ -753,6 +753,39 @@ TEST(Matching, regexMatchersAreReusedButOnlyForTheSameRegex) {
   EXPECT_EQ(cap2("aaab"), 30L);
 }
 
+// A regex column is matched by one function for the whole column, whatever
+// subset of its regexes the DFA state that tests it holds. Splitting on the
+// first column here leaves three states that test the second, each with a
+// different subset of its regexes (the last of them tests one alone), and a
+// naive translation compiles a matcher for each. The rows with the same regex
+// in the second column count once, and each state must still select only
+// its own rows and bind only its own captures.
+TEST(Matching, regexColumnSharesOneMatcher) {
+  cc lc;
+  const size_t before = regexMatchersDefinedIn(lc);
+
+  auto f = lc.compileFn<long(int, const std::string &)>(
+      "n", "s",
+      "match n s with\n"
+      "| 1 '(?<x>a+)b'   -> length(x)\n"
+      "| 1 'c(?<y>d*)'   -> 10L + length(y)\n"
+      "| 2 '(?<x>a+)b'   -> 100L + length(x)\n"
+      "| 2 'e(?<z>f+)'   -> 1000L + length(z)\n"
+      "| _ 'e(?<z>f+)'   -> 10000L + length(z)\n"
+      "| _ _             -> -1L");
+  EXPECT_EQ(regexMatchersDefinedIn(lc), before + 1);
+
+  EXPECT_EQ(f(1, "aaab"), 3L);
+  EXPECT_EQ(f(1, "cdd"), 12L);
+  EXPECT_EQ(f(1, "eff"), 10002L); // row 5, not row 4: n is 1
+  EXPECT_EQ(f(2, "aab"), 102L);
+  EXPECT_EQ(f(2, "ef"), 1001L);
+  EXPECT_EQ(f(2, "cdd"), -1L);    // row 2 is not among the rows n=2 selects
+  EXPECT_EQ(f(3, "efff"), 10003L);
+  EXPECT_EQ(f(3, "aaab"), -1L);
+  EXPECT_EQ(f(1, "zz"), -1L);
+}
+
 TEST(Matching, noRaceInterpMatch) {
   c().alwaysLowerPrimMatchTables(true);
   c().buildInterpretedMatches(true);
@@ -830,11 +863,14 @@ TEST(Matching, isPrimSelectionWithVariant) {
 // dozen or more columns, wildcards scattered throughout, regex patterns in
 // the string columns). Before class constraints were eliminated in batches
 // (one expression rewrite per batch instead of one per constraint), this
-// table took ~2.6 minutes to compile on Apple M-series hardware; it now
-// takes ~20 seconds. The regex columns disqualify the table from the
-// isPrimSelection fast path, so alwaysLowerPrimMatchTables does not affect
-// this test. The table is generated from a fixed-seed LCG so it is
-// deterministic across runs and platforms.
+// table took ~2.6 minutes to compile on Apple M-series hardware, then ~20
+// seconds; compiling one regex function per column rather than per DFA state,
+// and bounding inlined states per function rather than per match, then cut
+// it by a further 3x (49s to 16s on a release build of an x86 Linux box). The
+// regex columns disqualify the table from the isPrimSelection fast path, so
+// alwaysLowerPrimMatchTables does not affect this test. The table is
+// generated from a fixed-seed LCG so it is deterministic across runs and
+// platforms.
 TEST(Matching, largeMatchTableCompileTime) {
   const size_t nrows = 70;
   const size_t ncols = 12;
@@ -902,10 +938,11 @@ TEST(Matching, largeMatchTableCompileTime) {
 
   EXPECT_EQ(f(), expected);
 
-  // ~20s of CPU on Apple M-series, ~2.3 minutes on instrumented CI runners;
-  // the regression this guards (one full expression rewrite per class
-  // constraint) is a ~7x slowdown, putting those figures at ~2.6 and ~16
-  // minutes respectively, so a 10 minute bound separates cleanly on both
+  // ~16s of CPU on a release build, ~40s on an ASan/UBSan build (from ~49s
+  // and ~1.8 minutes before regex columns shared one function); the
+  // regression this guards (one full expression rewrite per class constraint)
+  // is a ~7x slowdown on top of that, so a 10 minute bound separates cleanly
+  // on both
 #if !HOBBES_TEST_SKIP_TIMING_BOUNDS
   EXPECT_TRUE(dt < 10L * 60 * CLOCKS_PER_SEC);
 #endif

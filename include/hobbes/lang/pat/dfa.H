@@ -6,6 +6,7 @@
 #define HOBBES_LANG_PAT_DFA_HPP_INCLUDED
 
 #include <hobbes/lang/pat/pattern.H>
+#include <hobbes/lang/pat/regex.H>
 #include <hobbes/util/str.H>
 #include <hobbes/util/lannotation.H>
 #include <unordered_map>
@@ -175,6 +176,15 @@ using TableCfgStates = std::unordered_map<PatternRows, stateidx_t, hobbes::genHa
 
 using ExprIdxs = std::unordered_map<Expr *, size_t>; // map back from result expressions to row IDs
 
+// the regexes that a column of a match table can test, in the order they
+// first appear down the column, with each regex's position in that order
+// keyed by the encoding that regexFnKey gives it
+struct ColumnRegexes {
+  Regexes regexes;
+  std::unordered_map<std::string, size_t> index;
+};
+using ColumnRegexTables = std::unordered_map<std::string, ColumnRegexes>;
+
 struct MDFA {
   // the lexical extent of the whole match in the original source program
   LexicalAnnotation rootLA;
@@ -189,6 +199,10 @@ struct MDFA {
   str::set rootVars;
   cc*      c;
 
+  // every regex a column of the match can test, keyed by the column's
+  // variable name (see collectColumnRegexes)
+  ColumnRegexTables columnRegexes;
+
   // memo expressions
   VarNames       varExps;
   VarArrayElem   elementExps;
@@ -198,6 +212,9 @@ struct MDFA {
   // fold states with multiple references into local functions
   FoldedStates     foldedStates;
   FoldedStateCalls foldedStateCalls;
+
+  // how many states have been inlined into the function currently being lifted
+  size_t inlinedStates = 0;
 };
 
 stateidx_t makeDFA(MDFA*, const PatternRows&, const LexicalAnnotation&);
