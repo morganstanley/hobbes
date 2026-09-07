@@ -1313,7 +1313,7 @@ void makeDFAFunc(cc* c, const std::string& fname, const MonoTypePtr& captureTy, 
   const bool   underStates = dfa.size() < maxStates;
   const size_t transitions = (underStates || !isUnit(captureTy)) ? dfaTransitions(dfa) : 0;
 
-  if (underStates && transitions <= maxTransitions) {
+  if (underStates && transitions < maxTransitions) {
     makeExprDFAFunc(c, fname, captureTy, dfa, rootLA);
   } else if (isUnit(captureTy)) {
     makeInterpDFAFunc(c, fname, captureTy, dfa, rootLA);
