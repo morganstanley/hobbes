@@ -178,7 +178,7 @@ using ExprIdxs = std::unordered_map<Expr *, size_t>; // map back from result exp
 
 // the regexes that a column of a match table can test, in the order they
 // first appear down the column, with each regex's position in that order
-// keyed by the encoding that regexFnKey gives it
+// keyed by the encoding that regexKey gives it
 struct ColumnRegexes {
   Regexes regexes;
   std::unordered_map<std::string, size_t> index;

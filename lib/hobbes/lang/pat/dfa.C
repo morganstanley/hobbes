@@ -874,9 +874,11 @@ MStatePtr makeRegexState(MDFA* dfa, const PatternRows& ps, size_t c) {
     if (!cvds.empty()) {
       nextState = addState(dfa, MStatePtr(new LoadVars(cvds, nextState)));
     }
-    for (size_t result : rr.second) {
-      sjmps.push_back(SwitchVal::Jump(PrimitivePtr(new Int(static_cast<int>(result), dfa->rootLA)), nextState));
-      if (rr.second.size() > 1) {
+    // (the state was made with one reference; each further result that
+    // jumps to it is another)
+    for (size_t i = 0; i < rr.second.size(); ++i) {
+      sjmps.push_back(SwitchVal::Jump(PrimitivePtr(new Int(static_cast<int>(rr.second[i]), dfa->rootLA)), nextState));
+      if (i > 0) {
         addRef(dfa, nextState);
       }
     }
