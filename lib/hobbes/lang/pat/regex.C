@@ -1308,15 +1308,19 @@ void makeDFAFunc(cc* c, const std::string& fname, const MonoTypePtr& captureTy, 
   const size_t maxStates      = c->regexMaxExprDFASize();
   const size_t maxTransitions = c->regexMaxExprDFATransitions();
 
-  // (a DFA past the state cap is not counted, unless the count is to be reported)
-  if (dfa.size() < maxStates && dfaTransitions(dfa) <= maxTransitions) {
+  // the transitions are counted once, and only where the count decides
+  // something (a DFA under the state cap) or is reported (one with captures)
+  const bool   underStates = dfa.size() < maxStates;
+  const size_t transitions = (underStates || !isUnit(captureTy)) ? dfaTransitions(dfa) : 0;
+
+  if (underStates && transitions <= maxTransitions) {
     makeExprDFAFunc(c, fname, captureTy, dfa, rootLA);
   } else if (isUnit(captureTy)) {
     makeInterpDFAFunc(c, fname, captureTy, dfa, rootLA);
   } else {
     throw std::runtime_error(
       "regex is too complex to compile (its capture groups require it to be compiled as an expression, "
-      "but its DFA has " + str::from(dfa.size()) + " states and " + str::from(dfaTransitions(dfa)) + " transitions, "
+      "but its DFA has " + str::from(dfa.size()) + " states and " + str::from(transitions) + " transitions, "
       "past the " + str::from(maxStates) + " states or " + str::from(maxTransitions) + " transitions "
       "an expression may hold)"
     );
