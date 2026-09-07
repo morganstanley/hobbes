@@ -245,9 +245,13 @@ environment:
 
 .. code-block:: c++
 
-  auto a = side[0]->typeEnv()->typeEnvTable();   // std::map<std::string, PolyTypePtr>
-  auto b = side[1]->typeEnv()->typeEnvTable();
-  // same key set, and hobbes::show(a[n]) == hobbes::show(b[n]) for each n
+  const auto a = side[0]->typeEnv()->typeEnvTable();   // std::map<std::string, PolyTypePtr>
+  const auto b = side[1]->typeEnv()->typeEnvTable();
+  bool same = a.size() == b.size();
+  for (const auto& [name, ty] : a) {
+    auto it = b.find(name);   // not operator[]: that would insert the missing name
+    same = same && it != b.end() && hobbes::show(ty) == hobbes::show(it->second);
+  }
 
 This catches a binding or definition present on one side and missing on the
 other. It does not catch two definitions of the same name and type with
