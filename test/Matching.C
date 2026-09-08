@@ -733,6 +733,99 @@ TEST(Matching, hugeRegexDFACompilesWithoutQuadraticBlowup) {
 #endif
 }
 
+// A DFA is turned into a matching function one of two ways: spelled out as an
+// expression -- a switch case per state, a range test per transition -- that
+// the compiler types and compiles like any other code, or handed to an
+// interpreter as a table. The expression form costs compile time in
+// proportion to its size, so a regex without capture groups goes to the
+// interpreter past regexMaxExprDFASize states, and now also past
+// regexMaxExprDFATransitions transitions, since a DFA can be wide as easily
+// as it can be long. A regex with capture groups has no interpreter to fall
+// back on (it cannot record captures), so it used to take the expression form
+// at any size: OSS-Fuzz 557846266 is a 709 byte captured regex whose 4,906
+// states and 38,354 transitions took 4-6s to type in an optimized build, and
+// past the fuzzer's minute under ASan. Past either budget it is now rejected.
+//
+// '.*a' followed by n '.'s is the textbook DFA blowup: 2^(n+1) states, each
+// with about three byte ranges. A class of every other letter in place of the
+// 'a' makes each of those states wide instead: ~63 ranges each.
+static std::string dotStarThen(const std::string &cls, size_t dots) {
+  return ".*" + cls + repeated(".", dots);
+}
+
+static std::string matchCapturedRegexLength(const std::string &regex) {
+  return "match x with | '(?<v>" + regex + ")' -> length(v) | _ -> 0L";
+}
+
+TEST(Matching, capturedRegexPastTheExpressionStateCapIsRejected) {
+  // 1,025 states: past regexMaxExprDFASize, well under regexMaxDFAStates.
+  // Without a capture it is interpreted and matches; with one it is rejected
+  // rather than compiled as an expression of a thousand cases.
+  const std::string tall = dotStarThen("a", 9);
+  auto f = c().compileFn<bool(const std::string &)>(
+      "x", "match x with | '" + tall + "' -> true | _ -> false");
+  EXPECT_TRUE(f("zzza123456789"));
+  EXPECT_FALSE(f("zzzb123456789"));
+  EXPECT_FALSE(f("a"));
+
+  EXPECT_EXCEPTION_MSG(c().readExpr(matchRegex("(?<v>" + tall + ")")),
+                       std::exception, "regex is too complex to compile");
+}
+
+TEST(Matching, wideDFAIsNotCompiledAsAnExpression) {
+  // 257 states -- a quarter of the state cap -- but 63 ranges in each, 16,191
+  // transitions in all: past regexMaxExprDFATransitions. Without a capture it
+  // is interpreted, and the interpreter has to get the ranges right; with
+  // one it is rejected.
+  const std::string wide = dotStarThen("[acegikmoqsuwyACEGIKMOQSUWY13579]", 7);
+  auto f = c().compileFn<bool(const std::string &)>(
+      "x", "match x with | '" + wide + "' -> true | _ -> false");
+  EXPECT_TRUE(f("zzzzzzzzzza1234567"));
+  EXPECT_TRUE(f("Q1234567"));
+  EXPECT_FALSE(f("zzzzzzzzzzb1234567")); // 'b' is not in the class
+  EXPECT_FALSE(f("a123456"));            // one short
+
+  EXPECT_EXCEPTION_MSG(c().readExpr(matchRegex("(?<v>" + wide + ")")),
+                       std::exception, "regex is too complex to compile");
+}
+
+TEST(Matching, capturedRegexUnderTheExpressionBudgetsStillBinds) {
+  // 129 states and 387 transitions: under both budgets, so it compiles as it
+  // always has, capture and all
+  auto f = c().compileFn<long(const std::string &)>(
+      "x", matchCapturedRegexLength(dotStarThen("a", 6)));
+  EXPECT_EQ(f("zza123456"), 9L);
+  EXPECT_EQ(f("zzb123456"), 0L);
+}
+
+TEST(Matching, expressionBudgetsAreSettings) {
+  // both budgets are cc settings, so a caller can move them: lowered under a
+  // 129-state, 387-transition regex, each one rejects it in turn, and
+  // restored, it compiles again. (Raising them is the same mechanism, and is
+  // how a caller that wants a larger captured regex, and will wait for its
+  // compile, gets it.) The regex differs from the one the test above compiled
+  // because a matcher, once compiled, is reused by regex, ahead of any budget.
+  struct BudgetGuard {
+    size_t states      = c().regexMaxExprDFASize();
+    size_t transitions = c().regexMaxExprDFATransitions();
+    ~BudgetGuard() {
+      c().regexMaxExprDFASize(states);
+      c().regexMaxExprDFATransitions(transitions);
+    }
+  } guard;
+  const std::string small = matchRegex("(?<v>" + dotStarThen("b", 6) + ")");
+
+  c().regexMaxExprDFASize(100);
+  EXPECT_EXCEPTION_MSG(c().readExpr(small), std::exception, "regex is too complex to compile");
+  c().regexMaxExprDFASize(guard.states);
+
+  c().regexMaxExprDFATransitions(300);
+  EXPECT_EXCEPTION_MSG(c().readExpr(small), std::exception, "regex is too complex to compile");
+  c().regexMaxExprDFATransitions(guard.transitions);
+
+  c().readExpr(small);
+}
+
 // A regex literal is compiled into a matching function where it is read, and
 // a match on the same regexes now reuses the function compiled for them the
 // first time rather than defining another. Reuse has to be by the regex

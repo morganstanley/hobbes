@@ -1338,11 +1338,57 @@ void makeInterpDFAFunc(cc* c, const std::string& fname, const MonoTypePtr& captu
   c->define(fname, assume(fndef, qualtype(qarrT->constraints(), functy(list(captureTy, arrT, primty("long"), primty("long"), primty("int")), primty("int"))), rootLA));
 }
 
+// how many range tests the expression form of a DFA would spell out
+static size_t dfaTransitions(const DFA& dfa) {
+  size_t n = 0;
+  for (const auto& s : dfa) {
+    n += s.chars.size();
+  }
+  return n;
+}
+
+// The expression form of a DFA (makeExprDFAFunc) is a switch with a case per
+// state and a range test per transition, and the compiler types and compiles
+// it like any other expression: measured in an optimized build, that costs
+// about 270us per state and 50-100us per transition, so a DFA of a few
+// thousand states and a few tens of thousands of transitions is seconds of
+// compile time for one regex literal. The interpreter (makeInterpDFAFunc) is
+// free of that, since its table is built directly, but it knows nothing of
+// the markers that record where a capture begins and ends -- so a regex with
+// capture groups used to take the expression form at any size, and was
+// bounded only by the DFA state cap. OSS-Fuzz 557846266 is a 709 byte
+// captured regex that determinizes to 4,906 states and 38,354 transitions:
+// 4-6s of type inference in an optimized build, and past the fuzzer's
+// minute under ASan.
+//
+// Both figures are budgeted, because the DFA state cap alone does not bound
+// the expression: a state can carry up to 256 disjoint byte ranges, and a
+// 257-state DFA with 63 per state (16,191 transitions) took longer to type
+// than one with 2,049 states and three each. Past either budget a regex
+// without captures is interpreted, as it was past the state cap before, and
+// one with captures is rejected. The bounds are cc settings, so a caller that
+// wants a larger captured regex compiled, and will wait for it, can raise
+// them.
 void makeDFAFunc(cc* c, const std::string& fname, const MonoTypePtr& captureTy, const DFA& dfa, const LexicalAnnotation& rootLA) {
-  if (dfa.size() < c->regexMaxExprDFASize() || !isUnit(captureTy)) {
+  const size_t maxStates      = c->regexMaxExprDFASize();
+  const size_t maxTransitions = c->regexMaxExprDFATransitions();
+
+  // the transitions are counted once, and only where the count decides
+  // something (a DFA under the state cap) or is reported (one with captures)
+  const bool   underStates = dfa.size() < maxStates;
+  const size_t transitions = (underStates || !isUnit(captureTy)) ? dfaTransitions(dfa) : 0;
+
+  if (underStates && transitions < maxTransitions) {
     makeExprDFAFunc(c, fname, captureTy, dfa, rootLA);
-  } else {
+  } else if (isUnit(captureTy)) {
     makeInterpDFAFunc(c, fname, captureTy, dfa, rootLA);
+  } else {
+    throw std::runtime_error(
+      "regex is too complex to compile (its capture groups require it to be compiled as an expression, "
+      "but its DFA has " + str::from(dfa.size()) + " states and " + str::from(transitions) + " transitions, "
+      "past the " + str::from(maxStates) + " states or " + str::from(maxTransitions) + " transitions "
+      "an expression may hold)"
+    );
   }
 }
 
