@@ -835,6 +835,40 @@ TEST(Matching, isPrimSelectionWithVariant) {
 // isPrimSelection fast path, so alwaysLowerPrimMatchTables does not affect
 // this test. The table is generated from a fixed-seed LCG so it is
 // deterministic across runs and platforms.
+// Splitting a match table on a column hands every match-any row to every
+// branch that did not name it, so a table can come out of a split barely
+// smaller than it went in -- and each state that results holds a copy of its
+// table, memoised under the whole table as its key. Where the rows leave
+// nothing to share, the construction is a chain: one state and one nearly
+// full table per row. OSS-Fuzz 557561539 is 90KB of one row shape repeated
+// ~7,500 times, and it reached 4,000 states and 75M table cells on the way to
+// running the process out of memory at 2560MB.
+//
+// The table here is the same shape at a size that fits a test: wildcards
+// scattered across three columns so that splitting any one of them keeps
+// almost every row. Both the cell budget and the depth budget stop the
+// reported input -- whichever is reached first -- so this pins the rejection
+// rather than which bound reports it, and pins that the memory it takes to
+// get there stays bounded: ~350MB over a bare compiler here, against the
+// gigabytes an unbudgeted build spends before it is stopped by anything.
+TEST(Matching, matchTableSizeIsBounded) {
+  const size_t nrows = 800;
+
+  std::ostringstream m;
+  m << "(\\x0 x1 x2.match x0 x1 x2 with";
+  for (size_t r = 0; r < nrows; ++r) {
+    m << " |";
+    for (size_t c = 0; c < 3; ++c) {
+      m << " " << (c == (r % 3) ? str::from(r + 1) : std::string("_"));
+    }
+    m << " -> " << r;
+  }
+  m << " | _ _ _ -> 0)";
+
+  EXPECT_EXCEPTION_MSG(c().readExpr(m.str()),
+                       std::exception, "match expression is too complex to compile");
+}
+
 TEST(Matching, largeMatchTableCompileTime) {
   const size_t nrows = 70;
   const size_t ncols = 12;
