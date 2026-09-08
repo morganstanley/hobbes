@@ -495,6 +495,40 @@ TEST(Matching, determinizationStepsAreBounded) {
   EXPECT_TRUE(elapsed.count() < 20);
 }
 
+// eps* is kept as a set per NFA state, so a regex whose eps edges chain gives
+// every state a closure of the whole chain below it and the closures together
+// cost the square of the NFA's size. '+' expands the group it quantifies, so
+// five nested ones take 300 of `a?` -- 640 bytes of regex -- to 28,867 NFA
+// states closing over 83M states between them, ~4.9GB resident; OSS-Fuzz
+// 557561539 reported the shape one '+' shallower as an out-of-memory against
+// a 2560MB limit. Nothing else bounds this: the term and expanded-size caps
+// bound the regex, not its closures, and the DFA state cap and the
+// determinization step budget bound the walk that runs after eps* is built.
+//
+// The budget on what the closures hold rejects it instead, and both of what
+// that costs is pinned here -- the message, and that it arrives before the
+// process has grown out of a fuzzer's limit. Rejected, the whole read stays
+// within ~120MB of a bare compiler's footprint and answers in a second or
+// two; unbudgeted it is gigabytes and most of a minute.
+TEST(Matching, epsilonClosureIsBounded) {
+  std::string rx = repeated("a?", 300);
+  for (size_t i = 0; i < 5; ++i) {
+    rx = "(" + rx + ")+";
+  }
+
+  // the specific bound, not just "too complex to compile": every other
+  // complexity bound on a regex reports with that same phrase, so matching it
+  // alone would leave this passing if the closures stopped being what
+  // rejected this input -- which is the whole of what it is here to pin
+  const auto t0 = std::chrono::steady_clock::now();
+  EXPECT_EXCEPTION_MSG(c().readExpr(matchRegex(rx)),
+                       std::exception, "epsilon-closure states");
+  [[maybe_unused]] const auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - t0);
+#if !HOBBES_TEST_SKIP_TIMING_BOUNDS
+  EXPECT_TRUE(elapsed.count() < 20);
+#endif
+}
+
 TEST(Matching, deeplyNestedRegexIsRejected) {
   // the parser returns to its caller at every ')' and so stays shallow here,
   // but the regex it builds nests one level deeper for every 'a' -- the stack
