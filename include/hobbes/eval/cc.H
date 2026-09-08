@@ -95,6 +95,13 @@ template <typename... NamesAndExpr> struct PArgl<std::string, NamesAndExpr...> {
 
 // the main compiler
 class cc : public typedb {
+private:
+  // the types a compiler interns live in a process-wide memo that only
+  // releases entries when compacted. Declared first so that it is destroyed
+  // last: by then every other member has dropped its type references, and
+  // the compaction releases whatever this compiler alone was keeping alive
+  CompactMTypeMemoryAtExit compactTypesOnDestroy;
+
 public:
   cc();
   virtual ~cc();

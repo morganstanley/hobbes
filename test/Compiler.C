@@ -188,3 +188,24 @@ TEST(Compiler, threadRegionsAreReleasedOnThreadExit) {
   EXPECT_TRUE(makeString("still here") != nullptr);
 }
 
+
+TEST(Compiler, destroyingCCReleasesItsTypes) {
+  // every type a compiler interns lands in a process-wide memo that only
+  // releases entries when compacted, and nothing on the compile path
+  // compacts it: a process that compiled a large definition kept its types
+  // for good, even after the cc that made them was gone (a 400-row match
+  // table pinned ~150MB per compile). A cc now compacts the memo as the last
+  // step of its destruction, so what it alone was keeping alive is released.
+  std::weak_ptr<MonoType> t;
+  {
+    cc lc;
+    // a type nothing else in the process will have interned
+    MonoTypePtr rt = lc.readMonoType("{ccDestroyReleasesTypesF0:int, ccDestroyReleasesTypesF1:[char], ccDestroyReleasesTypesF2:{a:double, b:[byte]}}");
+    EXPECT_TRUE(is<Record>(rt));
+    t = rt;
+    // rt is released here, before lc; a live cc does not by itself free
+    // types (they are shared with every other cc), so the entry survives
+    // until the compiler goes
+  }
+  EXPECT_TRUE(t.expired());
+}

@@ -587,8 +587,11 @@ MTypeCtorMaps* tctorMaps() {
   return x;
 }
 
+// releasing a type releases its references to the types it is made of, which
+// a single pass over the memo may already have walked past, so repeat until a
+// pass frees nothing
 void compactMTypeMemory() {
-  tctorMaps()->compact();
+  while (tctorMaps()->compact() > 0) { }
 }
 
 template <typename Class, typename T, typename ... Args>
