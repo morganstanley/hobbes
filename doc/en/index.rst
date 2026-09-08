@@ -64,6 +64,7 @@ License information `here <https://github.com/Morgan-Stanley/hobbes/blob/master/
   :caption: Embedding
 
   embedding/compiler
+  embedding/recompiling
 
 .. toctree::
   :hidden:
