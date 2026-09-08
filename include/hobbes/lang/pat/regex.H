@@ -58,10 +58,16 @@ struct CRegexes {
 
 CRegexes makeRegexFn(cc*, const Regexes&, const LexicalAnnotation&);
 
+// an encoding of a regex that two regexes share only if they are the same regex
+// (a walk of the regex as a tree, so only for one that rejectOversizedRegex
+// has passed)
+std::string regexKey(const RegexPtr&);
+void rejectOversizedRegex(const RegexPtr&);
+
 using CVarDef = std::pair<std::string, ExprPtr>;
 using CVarDefs = std::vector<CVarDef>;
 
-CVarDefs unpackCaptureVars(const std::string& strVar, const std::string& bufferVar, const CRegexes&, size_t state, const LexicalAnnotation&);
+CVarDefs unpackCaptureVars(const std::string& strVar, const std::string& bufferVar, const CRegexes&, size_t regex, const LexicalAnnotation&);
 
 }
 

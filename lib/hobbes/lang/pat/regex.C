@@ -503,6 +503,12 @@ size_t expandedRegexSize(const RegexPtr& rgx) {
   return expandedSizeF(&memo).sizeOf(rgx);
 }
 
+void rejectOversizedRegex(const RegexPtr& rgx) {
+  if (expandedRegexSize(rgx) > maxRegexExpandedSize) {
+    throw std::runtime_error("regex is too complex to compile (expands to more than " + str::from(maxRegexExpandedSize) + " terms)");
+  }
+}
+
 /******************************
  * translate the regex AST to an NFA
  ******************************/
@@ -1647,10 +1653,16 @@ struct regexKeyF : public switchRegex<UnitV> {
   }
 };
 
+std::string regexKey(const RegexPtr& r) {
+  std::string k;
+  switchOf(r, regexKeyF(&k));
+  return k;
+}
+
 std::string regexFnKey(const Regexes& regexes) {
   std::string k;
   for (const auto& r : regexes) {
-    switchOf(r, regexKeyF(&k));
+    k += regexKey(r);
     k += "\n";
   }
   return k;
@@ -1664,9 +1676,7 @@ CRegexes makeRegexFn(cc* c, const Regexes& regexes, const LexicalAnnotation& roo
   // linear in the unshared tree size, which a quantified group can blow up far
   // past the term count. Checked here, once, ahead of the first of those walks.
   for (const auto& r : regexes) {
-    if (expandedRegexSize(r) > maxRegexExpandedSize) {
-      throw std::runtime_error("regex is too complex to compile (expands to more than " + str::from(maxRegexExpandedSize) + " terms)");
-    }
+    rejectOversizedRegex(r);
   }
 
   // save capturing-group settings
@@ -1725,30 +1735,25 @@ CRegexes makeRegexFn(cc* c, const Regexes& regexes, const LexicalAnnotation& roo
 }
 
 /**************************
- * produce code to load capture vars out of a buffer for a given DFA accept state (which may map back to multiple source regexes)
+ * produce code to load capture vars out of a buffer for a given source regex
  **************************/
-CVarDefs unpackCaptureVars(const std::string& strVar, const std::string& bufferVar, const CRegexes& crgxs, size_t state, const LexicalAnnotation& rootLA) {
-  auto rss = crgxs.rstates.find(state);
-  if (rss == crgxs.rstates.end()) return CVarDefs();
-
+CVarDefs unpackCaptureVars(const std::string& strVar, const std::string& bufferVar, const CRegexes& crgxs, size_t regex, const LexicalAnnotation& rootLA) {
   CVarDefs result;
-  for (auto rs : rss->second) {
-    auto cvars = crgxs.captureVarsAt.find(rs);
-    if (cvars == crgxs.captureVarsAt.end()) continue;
+  auto cvars = crgxs.captureVarsAt.find(regex);
+  if (cvars == crgxs.captureVarsAt.end()) return result;
 
-    for (const auto& vn : cvars->second) {
-      result.push_back(CVarDef(vn,
-        fncall(
-          var("slice", rootLA),
-          list(
-            var(strVar, rootLA),
-            proj(var(bufferVar, rootLA), str::from(rs) + "_begin_" + vn, rootLA),
-            proj(var(bufferVar, rootLA), str::from(rs) + "_end_"   + vn, rootLA)
-          ),
-          rootLA
-        )
-      ));
-    }
+  for (const auto& vn : cvars->second) {
+    result.push_back(CVarDef(vn,
+      fncall(
+        var("slice", rootLA),
+        list(
+          var(strVar, rootLA),
+          proj(var(bufferVar, rootLA), str::from(regex) + "_begin_" + vn, rootLA),
+          proj(var(bufferVar, rootLA), str::from(regex) + "_end_"   + vn, rootLA)
+        ),
+        rootLA
+      )
+    ));
   }
   return result;
 }

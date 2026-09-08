@@ -689,29 +689,120 @@ MStatePtr makeVariantState(MDFA* dfa, const PatternRows& ps, size_t c) {
 }
 
 // split on regex switch/matches
-MStatePtr makeRegexState(MDFA* dfa, const PatternRows& ps, size_t c) {
-  // remember the match-any rows
-  std::set<size_t> matchAnyRows;
+// Regex columns are matched by one function per column rather than one per
+// DFA state. A split on any other column hands each branch a subset of the
+// rows, so as the table is deconstructed the same column is tested at many
+// states, each with its own subset of the column's regexes -- and a function
+// compiled for each subset would repeat the NFA/DFA construction, definition,
+// type inference and machine code generation once per state. Since a state
+// needs to know only which of *its* rows a string matches, the function
+// compiled for every regex the column can test answers at every state: the
+// result it returns is a set of matched column regexes, and the rows to
+// follow are those of the state whose regex lies in that set.
+//
+// Measured on the test suite's 70x12 table (Matching/largeMatchTableCompileTime)
+// this replaces 888 regex functions with six.
 
-  // select this column as a sequence of regular expressions
-  Regexes regexes;
+// gather every regex a column can test, walking nested patterns in the same
+// order that deconstruction later assigns them names. Arrays of chars are
+// counted too, since regexNormalize turns them into regexes wherever a column
+// mixes them with real ones; those that cannot be so translated are left out
+// here (the column will fail the same way it does now if it comes to one).
+struct collectColumnRegexesF : public switchPattern<UnitV> {
+  ColumnRegexTables* out;
+  explicit collectColumnRegexesF(ColumnRegexTables* out) : out(out) { }
+
+  static void add(ColumnRegexTables* out, const std::string& name, const RegexPtr& r) {
+    ColumnRegexes& crs = (*out)[name];
+    rejectOversizedRegex(r);
+    const std::string k = regexKey(r);
+    if (crs.index.find(k) == crs.index.end()) {
+      crs.index[k] = crs.regexes.size();
+      crs.regexes.push_back(r);
+    }
+  }
+
+  UnitV with(const MatchAny*)     const override { return unitv; }
+  UnitV with(const MatchLiteral*) const override { return unitv; }
+  UnitV with(const MatchRegex* x) const override { add(this->out, x->name(), x->value()); return unitv; }
+  UnitV with(const MatchArray* x) const override {
+    try {
+      PatternPtr rp = MatchRegex::toRegex(*x);
+      add(this->out, x->name(), is<MatchRegex>(rp)->value());
+    } catch (std::exception&) {
+    }
+    for (size_t i = 0; i < x->size(); ++i) {
+      switchOf(x->pattern(i), *this);
+    }
+    return unitv;
+  }
+  UnitV with(const MatchRecord* x) const override {
+    for (size_t i = 0; i < x->size(); ++i) {
+      switchOf(x->pattern(i).second, *this);
+    }
+    return unitv;
+  }
+  UnitV with(const MatchVariant* x) const override {
+    switchOf(x->value(), *this);
+    return unitv;
+  }
+};
+
+void collectColumnRegexes(ColumnRegexTables* out, const PatternRows& ps) {
+  collectColumnRegexesF f(out);
+  for (const auto& r : ps) {
+    for (const auto& p : r.patterns) {
+      switchOf(p, f);
+    }
+  }
+}
+
+// the regexes tested at a column, extended (it should not need to be, after
+// collectColumnRegexes, but correctness only asks that every regex the state
+// tests be among them) with any not already there
+const ColumnRegexes& columnRegexesFor(MDFA* dfa, const std::string& colVar, const Regexes& rs) {
+  ColumnRegexes& crs = dfa->columnRegexes[colVar];
+  for (const auto& r : rs) {
+    collectColumnRegexesF::add(&dfa->columnRegexes, colVar, r);
+  }
+  return crs;
+}
+
+MStatePtr makeRegexState(MDFA* dfa, const PatternRows& ps, size_t c) {
+  // remember the match-any rows, and which column regex each other row tests
+  std::set<size_t> matchAnyRows;
+  Regexes          rowRegexes;
   for (size_t r = 0; r < ps.size(); ++r) {
     if (const MatchRegex* mr = is<MatchRegex>(ps[r].patterns[c])) {
-      regexes.push_back(mr->value());
+      rowRegexes.push_back(mr->value());
     } else if (is<MatchAny>(ps[r].patterns[c]) != nullptr) {
       matchAnyRows.insert(r);
-      regexes.push_back(parseRegex(""));
+      rowRegexes.push_back(RegexPtr());
     } else {
       throw annotated_error(*ps[r].patterns[c], "Internal error, invalid pattern table received");
     }
   }
 
-  // make a function to do the regex matching
-  CRegexes regexFn = makeRegexFn(dfa->c, regexes, dfa->rootLA);
+  std::string switchVar = ps[0].patterns[c]->name();
+
+  Regexes testedRegexes;
+  for (const auto& r : rowRegexes) {
+    if (r) { testedRegexes.push_back(r); }
+  }
+  const ColumnRegexes& colRegexes = columnRegexesFor(dfa, switchVar, testedRegexes);
+
+  std::vector<size_t> rowRegexIdx(ps.size(), 0);
+  for (size_t r = 0; r < ps.size(); ++r) {
+    if (rowRegexes[r]) {
+      rowRegexIdx[r] = colRegexes.index.find(regexKey(rowRegexes[r]))->second;
+    }
+  }
+
+  // make (or reuse) the function that matches every regex in this column
+  CRegexes regexFn = makeRegexFn(dfa->c, colRegexes.regexes, dfa->rootLA);
 
   // open a char array on the match value (usually this will be a no-op)
   // then call the regex function to get the set of continuation rows to follow and a buffer for captured data
-  std::string switchVar   = ps[0].patterns[c]->name();
   std::string oarrayVar   = switchVar + ".a";
   std::string rcaptureVar = switchVar + ".rgxcapture";
   std::string rcheckVar   = switchVar + ".rgxcheck";
@@ -731,13 +822,34 @@ MStatePtr makeRegexState(MDFA* dfa, const PatternRows& ps, size_t c) {
     )
   ));
 
+  // each result of the column function selects the rows here whose regex it
+  // matched; results that select the same rows lead to the same state, and a
+  // result that selects none of them is the same as no match at all
+  using MatchedRows = std::vector<size_t>;
+  std::map<MatchedRows, std::vector<size_t>> resultsByRows;
+  for (const auto& rstate : regexFn.rstates) {
+    MatchedRows rows;
+    for (size_t r = 0; r < ps.size(); ++r) {
+      if (rowRegexes[r] && rstate.second.count(rowRegexIdx[r]) > 0) {
+        rows.push_back(r);
+      }
+    }
+    if (!rows.empty()) {
+      resultsByRows[rows].push_back(rstate.first);
+    }
+  }
+
   // based on the match result, branch to a reduced table
   SwitchVal::Jumps sjmps;
-  for (const auto& rstate : regexFn.rstates) {
+  for (const auto& rr : resultsByRows) {
     PatternRows ktbl;
     auto anyr = matchAnyRows.begin();
 
-    for (const auto& r : rstate.second) {
+    // the captured data to load: that of every regex matched here, in row order
+    CVarDefs cvds;
+    std::set<size_t> unpacked;
+
+    for (const auto& r : rr.first) {
       // all match-any values prior to this row must take priority
       for (; anyr != matchAnyRows.end() && *anyr < r; ++anyr) {
         copyRowWithoutColumn(&ktbl, ps[*anyr], c);
@@ -746,9 +858,9 @@ MStatePtr makeRegexState(MDFA* dfa, const PatternRows& ps, size_t c) {
       // then we've matched this row at this column
       copyRowWithoutColumn(&ktbl, ps[r], c);
 
-      // and in case this is already a match-any row, consider it consumed to avoid redundant references
-      if (anyr != matchAnyRows.end() && *anyr == r) {
-        ++anyr;
+      if (unpacked.insert(rowRegexIdx[r]).second) {
+        CVarDefs rcvds = unpackCaptureVars(switchVar, rcaptureVar, regexFn, rowRegexIdx[r], dfa->rootLA);
+        cvds.insert(cvds.end(), rcvds.begin(), rcvds.end());
       }
     }
 
@@ -758,18 +870,18 @@ MStatePtr makeRegexState(MDFA* dfa, const PatternRows& ps, size_t c) {
     }
 
     // in this case, follow this continuation and load variables for it
-    sjmps.push_back(
-      SwitchVal::Jump(PrimitivePtr(new Int(static_cast<int>(rstate.first), dfa->rootLA)),
-        addState(dfa,
-          MStatePtr(
-            new LoadVars(
-              unpackCaptureVars(switchVar, rcaptureVar, regexFn, rstate.first, dfa->rootLA),
-              makeDFAState(dfa, ktbl)
-            )
-          )
-        )
-      )
-    );
+    stateidx_t nextState = makeDFAState(dfa, ktbl);
+    if (!cvds.empty()) {
+      nextState = addState(dfa, MStatePtr(new LoadVars(cvds, nextState)));
+    }
+    // (the state was made with one reference; each further result that
+    // jumps to it is another)
+    for (size_t i = 0; i < rr.second.size(); ++i) {
+      sjmps.push_back(SwitchVal::Jump(PrimitivePtr(new Int(static_cast<int>(rr.second[i]), dfa->rootLA)), nextState));
+      if (i > 0) {
+        addRef(dfa, nextState);
+      }
+    }
   }
 
   // otherwise if we didn't match anything, branch to a default table containing just the match-any states (if applicable)
@@ -1203,6 +1315,9 @@ stateidx_t makeDFAState(MDFA* dfa, const PatternRows& xps) {
 stateidx_t makeDFA(MDFA* dfa, const PatternRows& ps, const LexicalAnnotation& la) {
   dfa->rootLA = la;
 
+  // every regex column is matched by one function, over all of its regexes
+  collectColumnRegexes(&dfa->columnRegexes, ps);
+
   // start by adding 0-ref states and placeholder parameters for each final expression
   std::vector<stateidx_t> finalStates;
   for (const auto& pr : ps) {
@@ -1360,26 +1475,42 @@ ExprPtr liftDFAExprWithSwitchCompression(MDFA* dfa, stateidx_t state) {
   return switchOf(s, liftDFAExprF(dfa));
 }
 
+// A state referenced once is written into the function that references it,
+// up to a bound on how many states one function may accumulate, past which
+// further states are folded into functions of their own. The bound keeps any
+// one function small enough for LLVM to compile in reasonable time (its
+// codegen has passes superlinear in function size). It is a bound per
+// function, not on how many states a match may inline in total: folding every
+// state past the first N into a function of its own -- which is what a total
+// bound amounts to -- leaves a large match as thousands of two-instruction
+// functions, and the JIT pays per function (symbol resolution, inlining them
+// back) far more than it pays per instruction.
+//
+// The default is from the test suite's 70x12 table (Matching/
+// largeMatchTableCompileTime, ~6,800 states) on a release build: a bound of
+// 2,000 compiles it in 34s, 500 in 19s, 200 in 18.4s, 100 in 17s, 50 in
+// 18.5s, and no bound at all in 51s. The curve is flat from 75 to 200, so a
+// smaller table is not hurt by picking the low end of it.
+//
+// HOBBES_DFA_INLINE_THRESHOLD sets the bound; 0 removes it.
+size_t dfaInlineThreshold() {
+  static const size_t inlineThreshold = [] {
+    const char* v = std::getenv("HOBBES_DFA_INLINE_THRESHOLD");
+    if (v == nullptr) {
+      return static_cast<size_t>(100);
+    }
+    const auto i = strtoul(v, nullptr, 10);
+    return i == 0 ? std::numeric_limits<size_t>::max() : static_cast<size_t>(i);
+  }();
+  return inlineThreshold;
+}
+
 bool shouldInlineState(const MDFA* dfa, stateidx_t state) {
   const MStatePtr& s = dfa->states[state];
 
-  // stop adding state related IR code into current function, if the state value
-  // is above `HOBBES_DFA_INLINE_THRESHOLD`. If a DFA has too many states,
-  // otherwise IR function can get so large that llvm cannot handle
-  static const auto inlineThreshold = [] {
-    // setting it to 0 makes no threshold. It must be a non-negative integer
-    const char* v = std::getenv("HOBBES_DFA_INLINE_THRESHOLD");
-    if (v == nullptr) {
-      return 2'000UL; // empirical data
-    }
-    static_assert(std::is_same<stateidx_t, unsigned long>::value, "");
-    const auto i = strtoul(v, nullptr, 10);
-    return i == 0 ? std::numeric_limits<stateidx_t>::max() : i;
-  }();
-
   if (dfa->states[state]->isPrimMatchRoot) {
     return false;
-  } else if (state < inlineThreshold && s->refs <= 1) {
+  } else if (s->refs <= 1 && dfa->inlinedStates < dfaInlineThreshold()) {
     return true;
   } else if (const FinishExpr* fe = is<FinishExpr>(s)) {
     return isConst(fe->expr()) || (is<Var>(fe->expr()) != nullptr);
@@ -1392,6 +1523,7 @@ ExprPtr liftPrimMatchExpr(MDFA* dfa, stateidx_t state);
 
 ExprPtr liftDFAExpr(MDFA* dfa, stateidx_t state) {
   if (shouldInlineState(dfa, state)) {
+    ++dfa->inlinedStates;
     return liftDFAExprWithSwitchCompression(dfa, state);
   } else {
     FoldedStateCalls::const_iterator fsc = dfa->foldedStateCalls.find(state);
@@ -1401,7 +1533,11 @@ ExprPtr liftDFAExpr(MDFA* dfa, stateidx_t state) {
     } else if (dfa->states[state]->isPrimMatchRoot) {
       return liftPrimMatchExpr(dfa, state);
     } else {
+      // a folded state starts a function of its own, with its own room to inline into
+      size_t   outerInlined = dfa->inlinedStates;
+      dfa->inlinedStates = 0;
       ExprPtr  def   = liftDFAExprWithSwitchCompression(dfa, state);
+      dfa->inlinedStates = outerInlined;
       str::set fvnst = setDifference(freeVars(def), dfa->rootVars);
       str::seq fvns  = str::seq(fvnst.begin(), fvnst.end());
 
