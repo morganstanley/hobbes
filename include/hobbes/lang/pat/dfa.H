@@ -203,6 +203,13 @@ struct MDFA {
   // variable name (see collectColumnRegexes)
   ColumnRegexTables columnRegexes;
 
+  // how much of the pattern table this match has cost to compile so far, and
+  // how deep the construction is currently recursing. both are bounded --
+  // see makeDFAState -- and both belong to the match being compiled rather
+  // than to the process, because matches compile concurrently.
+  size_t tableCells   = 0;
+  size_t stateDepth   = 0;
+
   // memo expressions
   VarNames       varExps;
   VarArrayElem   elementExps;

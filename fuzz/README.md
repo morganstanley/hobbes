@@ -18,9 +18,12 @@ these should run under sanitizers.
 ## Building
 
 Requires a Clang that ships libFuzzer (upstream or Homebrew Clang; Apple's
-Xcode Clang does not). With any other compiler the same targets build as
-standalone runners that replay input files named on the command line, which
-is also the convenient way to check a crash reproducer.
+Xcode Clang does not). Whether a Clang has it is decided by trying to link
+against it rather than by assuming, since a distribution can package the
+sanitizer runtimes apart from the compiler. With any other compiler -- or a
+Clang without libFuzzer -- the same targets build as standalone runners that
+replay input files named on the command line, which is also the convenient
+way to check a crash reproducer.
 
 With Clang, `BUILD_FUZZERS=ON` compiles the whole build (including
 `libhobbes`) with `-fsanitize=fuzzer-no-link` so the fuzzers observe coverage
@@ -31,6 +34,28 @@ for fuzzing rather than sharing one with normal development builds.
 cmake -B build-fuzz -DCMAKE_BUILD_TYPE=Debug -DBUILD_FUZZERS=ON -DUSE_ASAN_AND_UBSAN=ON
 cmake --build build-fuzz -j --target fuzz-type-decode fuzz-fregion-reader fuzz-parse-expr
 ```
+
+## Replaying the corpus
+
+`BUILD_FUZZERS=ON` also registers a ctest test per harness that replays every
+input in its `corpus/` directory once:
+
+```bash
+ctest --test-dir build-fuzz -R corpus
+```
+
+This needs no fuzzing engine and says nothing about coverage -- it is a
+regression check. Each of those inputs is a reproducer for something that
+once crashed hobbes, so replaying them under whatever sanitizers the build
+enables is worth the seconds it costs (the parse-expr corpus, the largest, is
+about fifteen). The corpus is read when the test runs rather than when cmake
+configured, so a reproducer committed alongside a fix is picked up by the next
+`ctest` with nothing to reconfigure.
+
+CI runs this in the `clang-*-ASanAndUBSan` builds, which are the ones with
+both sanitizers on. It is distinct from the ClusterFuzzLite job, which hands
+the same corpus to a real fuzzer for a few minutes on pull requests that touch
+covered code.
 
 ## Running
 

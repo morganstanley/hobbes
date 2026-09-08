@@ -1203,10 +1203,90 @@ stateidx_t makeColPivotDFAState(MDFA* dfa, const PatternRows& ps) {
   return result;
 }
 
+// Compiling a pattern-match table is worst-case exponential in general, and
+// this construction pays for it in two currencies at once. Splitting a column
+// hands every match-any row to every branch it did not name, so a table can
+// come out of a split barely smaller than it went in -- and each such state
+// holds a copy of its table, keyed by the whole table again in
+// tableCfgStates. Where the rows leave nothing to share, the recursion is a
+// straight chain, one state and one full table copy per row: 7,483 rows of
+// wildcard cost 4,000 states and 75M table cells before the process ran out
+// of memory at 2560MB (OSS-Fuzz 557561539, whose 90KB of input is ~7,500
+// repetitions of one row shape).
+//
+// So both currencies are budgeted. The margins are measured, not guessed.
+// Over 11,495 match tables compiled by the test suite the costliest holds
+// 236,011 cells and none recurses deeper than 22, while the report above is
+// past both by orders of magnitude -- a chain thousands of states deep and
+// tens of millions of cells.
+//
+// The cell budget is set by what a cell costs rather than by that ratio
+// alone. Measured on a match of N rows over three columns with wildcards
+// scattered through them -- the shape that keeps tables from shrinking as
+// they split -- the resident cost past a bare compiler's ~780MB runs 72MB at
+// 46,609 cells, 316MB at 333,190, 657MB at 1,081,804 and 1,415MB at
+// 2,515,309, converging on ~600 bytes a cell. A million cells is therefore
+// about 600MB on that shape, which leaves the whole read inside half of the
+// 2560MB the report was filed against.
+//
+// What is counted is every table this walk builds, not only the ones a new
+// state keeps: the count is taken above the memoisation check, so a table
+// that turns out to have been seen before is charged for too. That is
+// deliberate. By the time the check can say so, dropUnusedColumns has already
+// copied the whole table and the probe has hashed and compared it, so a
+// repeat costs the same transient memory and very nearly the same time as a
+// first sight -- and it is peak and time, not what survives, that took the
+// process out. It does make the budget conservative wherever a table shares
+// sub-tables, and measurably so: over the 13,391 matches the test suite
+// compiles, 9.7% of counted cells are repeats, and in the largest single
+// table (Matching/largeMatchTableCompileTime) it is 51%. Charged at that
+// worst rate a legitimate table still reaches only 236,011 of the million.
+//
+// Depth is held much looser, and deliberately, because the tables that cost
+// the most cells are not the ones that recurse deepest. A production match
+// big enough to be worth compiling columnwise (buildColumnwiseMatches -- the
+// only way a table of a few hundred rows compiles at all, the row-pivot path
+// below does not finish on one) recurses about 0.78 states per row while
+// holding almost no table at once: a 400-row, 13-column limit table measures
+// 312 deep and 5,213 cells, and a 200-row one 171 deep and 2,613. Rows are
+// in turn capped near 600 by the parser's nesting limit, so ~470 is about as
+// deep as a match that parses can legitimately go, and a bound that merely
+// looked generous against the row-pivot suite maximum of 22 would sit right
+// on top of real code. So depth is a backstop against runaway recursion
+// eating the C stack, not a second opinion on size: to reach a chain deep
+// enough to trip it the cells above are long since spent, since a chain of D
+// states starts from a table of D rows and sums ~D^2/2 cells.
+static const size_t maxMatchTableCells = 1000000;
+static const size_t maxMatchDFADepth   = 10000;
+
+// count a state's recursion into the match being compiled, and back out again
+// however the state is left -- the budgets below are reported by throwing.
+struct MatchDepth {
+  MDFA* dfa;
+  explicit MatchDepth(MDFA* dfa) : dfa(dfa) { ++this->dfa->stateDepth; }
+  ~MatchDepth() { --this->dfa->stateDepth; }
+  MatchDepth(const MatchDepth&) = delete;
+  MatchDepth& operator=(const MatchDepth&) = delete;
+};
+
 // make a state out of the input pattern table (recursively constructing sub-states as necessary)
 stateidx_t makeDFAState(MDFA* dfa, const PatternRows& xps) {
+  MatchDepth depth(dfa);
+  if (dfa->stateDepth > maxMatchDFADepth) {
+    throw annotated_error(dfa->rootLA, "match expression is too complex to compile (nests more than " + str::from(maxMatchDFADepth) + " states deep)");
+  }
+
   PatternRows ps;
   dropUnusedColumns(&ps, xps);
+
+  if (!ps.empty()) {
+    // charged against what is left of the budget, so the sum cannot wrap
+    const size_t cells = ps.size() * ps[0].patterns.size();
+    if (cells > maxMatchTableCells - dfa->tableCells) {
+      throw annotated_error(dfa->rootLA, "match expression is too complex to compile (needs more than " + str::from(maxMatchTableCells) + " pattern table cells)");
+    }
+    dfa->tableCells += cells;
+  }
 
   // if we can deconstruct strings here, do it before anything else
   // (it has a potential runtime performance impact and should only be done to reduce compilation time for large schemas)

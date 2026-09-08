@@ -495,6 +495,40 @@ TEST(Matching, determinizationStepsAreBounded) {
   EXPECT_TRUE(elapsed.count() < 20);
 }
 
+// eps* is kept as a set per NFA state, so a regex whose eps edges chain gives
+// every state a closure of the whole chain below it and the closures together
+// cost the square of the NFA's size. '+' expands the group it quantifies, so
+// five nested ones take 300 of `a?` -- 640 bytes of regex -- to 28,867 NFA
+// states closing over 83M states between them, ~4.9GB resident; OSS-Fuzz
+// 557561539 reported the shape one '+' shallower as an out-of-memory against
+// a 2560MB limit. Nothing else bounds this: the term and expanded-size caps
+// bound the regex, not its closures, and the DFA state cap and the
+// determinization step budget bound the walk that runs after eps* is built.
+//
+// The budget on what the closures hold rejects it instead, and both of what
+// that costs is pinned here -- the message, and that it arrives before the
+// process has grown out of a fuzzer's limit. Rejected, the whole read stays
+// within ~120MB of a bare compiler's footprint and answers in a second or
+// two; unbudgeted it is gigabytes and most of a minute.
+TEST(Matching, epsilonClosureIsBounded) {
+  std::string rx = repeated("a?", 300);
+  for (size_t i = 0; i < 5; ++i) {
+    rx = "(" + rx + ")+";
+  }
+
+  // the specific bound, not just "too complex to compile": every other
+  // complexity bound on a regex reports with that same phrase, so matching it
+  // alone would leave this passing if the closures stopped being what
+  // rejected this input -- which is the whole of what it is here to pin
+  const auto t0 = std::chrono::steady_clock::now();
+  EXPECT_EXCEPTION_MSG(c().readExpr(matchRegex(rx)),
+                       std::exception, "epsilon-closure states");
+  [[maybe_unused]] const auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - t0);
+#if !HOBBES_TEST_SKIP_TIMING_BOUNDS
+  EXPECT_TRUE(elapsed.count() < 20);
+#endif
+}
+
 TEST(Matching, deeplyNestedRegexIsRejected) {
   // the parser returns to its caller at every ')' and so stays shallow here,
   // but the regex it builds nests one level deeper for every 'a' -- the stack
@@ -699,6 +733,99 @@ TEST(Matching, hugeRegexDFACompilesWithoutQuadraticBlowup) {
 #endif
 }
 
+// A DFA is turned into a matching function one of two ways: spelled out as an
+// expression -- a switch case per state, a range test per transition -- that
+// the compiler types and compiles like any other code, or handed to an
+// interpreter as a table. The expression form costs compile time in
+// proportion to its size, so a regex without capture groups goes to the
+// interpreter past regexMaxExprDFASize states, and now also past
+// regexMaxExprDFATransitions transitions, since a DFA can be wide as easily
+// as it can be long. A regex with capture groups has no interpreter to fall
+// back on (it cannot record captures), so it used to take the expression form
+// at any size: OSS-Fuzz 557846266 is a 709 byte captured regex whose 4,906
+// states and 38,354 transitions took 4-6s to type in an optimized build, and
+// past the fuzzer's minute under ASan. Past either budget it is now rejected.
+//
+// '.*a' followed by n '.'s is the textbook DFA blowup: 2^(n+1) states, each
+// with about three byte ranges. A class of every other letter in place of the
+// 'a' makes each of those states wide instead: ~63 ranges each.
+static std::string dotStarThen(const std::string &cls, size_t dots) {
+  return ".*" + cls + repeated(".", dots);
+}
+
+static std::string matchCapturedRegexLength(const std::string &regex) {
+  return "match x with | '(?<v>" + regex + ")' -> length(v) | _ -> 0L";
+}
+
+TEST(Matching, capturedRegexPastTheExpressionStateCapIsRejected) {
+  // 1,025 states: past regexMaxExprDFASize, well under regexMaxDFAStates.
+  // Without a capture it is interpreted and matches; with one it is rejected
+  // rather than compiled as an expression of a thousand cases.
+  const std::string tall = dotStarThen("a", 9);
+  auto f = c().compileFn<bool(const std::string &)>(
+      "x", "match x with | '" + tall + "' -> true | _ -> false");
+  EXPECT_TRUE(f("zzza123456789"));
+  EXPECT_FALSE(f("zzzb123456789"));
+  EXPECT_FALSE(f("a"));
+
+  EXPECT_EXCEPTION_MSG(c().readExpr(matchRegex("(?<v>" + tall + ")")),
+                       std::exception, "regex is too complex to compile");
+}
+
+TEST(Matching, wideDFAIsNotCompiledAsAnExpression) {
+  // 257 states -- a quarter of the state cap -- but 63 ranges in each, 16,191
+  // transitions in all: past regexMaxExprDFATransitions. Without a capture it
+  // is interpreted, and the interpreter has to get the ranges right; with
+  // one it is rejected.
+  const std::string wide = dotStarThen("[acegikmoqsuwyACEGIKMOQSUWY13579]", 7);
+  auto f = c().compileFn<bool(const std::string &)>(
+      "x", "match x with | '" + wide + "' -> true | _ -> false");
+  EXPECT_TRUE(f("zzzzzzzzzza1234567"));
+  EXPECT_TRUE(f("Q1234567"));
+  EXPECT_FALSE(f("zzzzzzzzzzb1234567")); // 'b' is not in the class
+  EXPECT_FALSE(f("a123456"));            // one short
+
+  EXPECT_EXCEPTION_MSG(c().readExpr(matchRegex("(?<v>" + wide + ")")),
+                       std::exception, "regex is too complex to compile");
+}
+
+TEST(Matching, capturedRegexUnderTheExpressionBudgetsStillBinds) {
+  // 129 states and 387 transitions: under both budgets, so it compiles as it
+  // always has, capture and all
+  auto f = c().compileFn<long(const std::string &)>(
+      "x", matchCapturedRegexLength(dotStarThen("a", 6)));
+  EXPECT_EQ(f("zza123456"), 9L);
+  EXPECT_EQ(f("zzb123456"), 0L);
+}
+
+TEST(Matching, expressionBudgetsAreSettings) {
+  // both budgets are cc settings, so a caller can move them: lowered under a
+  // 129-state, 387-transition regex, each one rejects it in turn, and
+  // restored, it compiles again. (Raising them is the same mechanism, and is
+  // how a caller that wants a larger captured regex, and will wait for its
+  // compile, gets it.) The regex differs from the one the test above compiled
+  // because a matcher, once compiled, is reused by regex, ahead of any budget.
+  struct BudgetGuard {
+    size_t states      = c().regexMaxExprDFASize();
+    size_t transitions = c().regexMaxExprDFATransitions();
+    ~BudgetGuard() {
+      c().regexMaxExprDFASize(states);
+      c().regexMaxExprDFATransitions(transitions);
+    }
+  } guard;
+  const std::string small = matchRegex("(?<v>" + dotStarThen("b", 6) + ")");
+
+  c().regexMaxExprDFASize(100);
+  EXPECT_EXCEPTION_MSG(c().readExpr(small), std::exception, "regex is too complex to compile");
+  c().regexMaxExprDFASize(guard.states);
+
+  c().regexMaxExprDFATransitions(300);
+  EXPECT_EXCEPTION_MSG(c().readExpr(small), std::exception, "regex is too complex to compile");
+  c().regexMaxExprDFATransitions(guard.transitions);
+
+  c().readExpr(small);
+}
+
 // A regex literal is compiled into a matching function where it is read, and
 // a match on the same regexes now reuses the function compiled for them the
 // first time rather than defining another. Reuse has to be by the regex
@@ -858,6 +985,40 @@ TEST(Matching, isPrimSelectionWithVariant) {
   EXPECT_EQ(f(), 11);
 }
 
+
+// Splitting a match table on a column hands every match-any row to every
+// branch that did not name it, so a table can come out of a split barely
+// smaller than it went in -- and each state that results holds a copy of its
+// table, memoised under the whole table as its key. Where the rows leave
+// nothing to share, the construction is a chain: one state and one nearly
+// full table per row. OSS-Fuzz 557561539 is 90KB of one row shape repeated
+// ~7,500 times, and it reached 4,000 states and 75M table cells on the way to
+// running the process out of memory at 2560MB.
+//
+// The table here is the same shape at a size that fits a test: wildcards
+// scattered across three columns so that splitting any one of them keeps
+// almost every row. Both the cell budget and the depth budget stop the
+// reported input -- whichever is reached first -- so this pins the rejection
+// rather than which bound reports it, and pins that the memory it takes to
+// get there stays bounded: ~350MB over a bare compiler here, against the
+// gigabytes an unbudgeted build spends before it is stopped by anything.
+TEST(Matching, matchTableSizeIsBounded) {
+  const size_t nrows = 800;
+
+  std::ostringstream m;
+  m << "(\\x0 x1 x2.match x0 x1 x2 with";
+  for (size_t r = 0; r < nrows; ++r) {
+    m << " |";
+    for (size_t c = 0; c < 3; ++c) {
+      m << " " << (c == (r % 3) ? str::from(r + 1) : std::string("_"));
+    }
+    m << " -> " << r;
+  }
+  m << " | _ _ _ -> 0)";
+
+  EXPECT_EXCEPTION_MSG(c().readExpr(m.str()),
+                       std::exception, "match expression is too complex to compile");
+}
 
 // Guards against compile-time blowup on large match tables (many rows, a
 // dozen or more columns, wildcards scattered throughout, regex patterns in

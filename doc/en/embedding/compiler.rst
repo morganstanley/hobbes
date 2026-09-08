@@ -36,6 +36,10 @@ We've already seen one place where the Hobbes compiler is used. In its simplest 
 That call to ``hobbes::resetMemoryPool()`` at the bottom of the loop is doing
 more than tidying up, and it deserves its own section.
 
+(The REPL compiles on the thread that waits for input, which is fine for a
+REPL. An application whose main thread must not pause needs the compile
+somewhere else; see :ref:`hobbes_recompiling`.)
+
 .. _hobbes_memory_model:
 
 The memory model: transactions, not destructors

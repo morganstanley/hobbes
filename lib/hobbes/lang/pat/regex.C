@@ -745,33 +745,98 @@ using EpsClosure = std::map<state, stateset>;
 
 using statemarks = std::vector<bool>;
 
-void findEpsClosure(const NFA& nfa, state s, statemarks* sms, EpsClosure* ec) {
-  if (!(*sms)[s]) {
-    (*sms)[s] = true;
-    for (auto et : nfa[s].eps) {
-      if (!(*sms)[et]) {
-        findEpsClosure(nfa, et, sms, ec);
+// eps* is kept as a set per NFA state, so what it costs is the sum of those
+// sets' sizes -- and that is the square of the NFA's size for a regex whose
+// eps edges make a chain, because then every state's closure is the whole
+// chain below it. `(a?a?...a?)+` is exactly that regex: 300 of the `a?` under
+// five nested '+' expand to 28,867 NFA states, every one of them closing over
+// all the others, for 83M states held at once and ~4.9GB (OSS-Fuzz 557561539
+// reported it as an out-of-memory against a 2560MB limit; the same shape one
+// '+' shallower reaches 2.7GB).
+//
+// None of the bounds around this one reaches it. maxRegexTerms bounds the
+// regex as parsed and maxRegexExpandedSize the tree it expands to, but a tree
+// of 100,000 terms is a hundredth of what its closures can cost; the DFA
+// state cap and maxDisambiguationSteps bound the subset construction, which
+// runs after eps* is already built. So the states carried into closures are
+// counted here and the regex rejected past a budget, the same way an
+// oversized DFA or an overlong determinization is. The margin is measured,
+// not guessed: across the whole test suite the costliest regex holds 6,105
+// states this way (the deliberately-huge Matching/
+// hugeRegexDFACompilesWithoutQuadraticBlowup one, whose 4,911-state NFA
+// closes over 1.24 states per state on average), and ordinary regexes hold
+// tens, so a budget of two million leaves legitimate regexes -- including
+// wide alternations, whose closures really are large -- a factor of a few
+// hundred of room while holding this phase to a couple of hundred MB.
+static const size_t maxEpsClosureStates = 2000000;
+
+// the walk is iterative rather than one frame per eps edge: the descent below
+// reaches the end of a chain of eps edges before it closes over anything, so
+// a budget on what the closures hold cannot speak until the deepest frame is
+// already on the stack, and each frame carries a set of its own. The NFA can
+// have as many states as maxRegexExpandedSize allows, which is far more chain
+// than a stack holds. (The DFA walk in disambiguate() was made iterative for
+// the same reason.)
+//
+// Order is preserved exactly, and that matters because eps edges can form
+// cycles: a state on a cycle is combined while a state that reaches it is
+// still in progress, so neither this walk nor the recursion it replaces
+// computes a complete closure over a cycle -- what a closure ends up holding
+// depends on which of its descendants happen to be finished by the time it is
+// combined. The recursion descended into successors in the ascending order
+// std::set gave them and combined a state after returning from all of them,
+// so this pushes successors in reverse to pop them in that same order, and
+// combines a state only after the ones it descended into. The two therefore
+// arrive at the same incomplete closure rather than at two different ones.
+void findEpsClosure(const NFA& nfa, state s0, statemarks* sms, EpsClosure* ec, size_t* held) {
+  // false: visit this state and schedule its successors; true: combine it
+  std::vector<std::pair<state, bool>> walk(1, std::make_pair(s0, false));
+
+  while (!walk.empty()) {
+    const state s = walk.back().first;
+
+    if (!walk.back().second) {
+      if ((*sms)[s]) {
+        walk.pop_back();
+        continue;
       }
-    }
+      (*sms)[s] = true;
+      walk.back().second = true;
 
-    stateset stes = (*ec)[s];
-    stes.insert(s);
-    for (auto et : nfa[s].eps) {
-      stes.insert(et);
+      const stateset& ets = nfa[s].eps;
+      for (auto et = ets.rbegin(); et != ets.rend(); ++et) {
+        if (!(*sms)[*et]) {
+          walk.push_back(std::make_pair(*et, false));
+        }
+      }
+    } else {
+      walk.pop_back();
 
-      const stateset& rstes = (*ec)[et];
-      stes.insert(rstes.begin(), rstes.end());
+      stateset stes = (*ec)[s];
+      stes.insert(s);
+      for (auto et : nfa[s].eps) {
+        stes.insert(et);
+
+        const stateset& rstes = (*ec)[et];
+        stes.insert(rstes.begin(), rstes.end());
+      }
+
+      *held += stes.size();
+      if (*held > maxEpsClosureStates) {
+        throw std::runtime_error("regex is too complex to compile (needs more than " + str::from(maxEpsClosureStates) + " epsilon-closure states)");
+      }
+      (*ec)[s] = std::move(stes);
     }
-    (*ec)[s] = stes;
   }
 }
 
 void findEpsClosure(const NFA& nfa, EpsClosure* ec) {
   statemarks ms(nfa.size(), false);
+  size_t     held = 0;
 
   for (state s = 0; s < nfa.size(); ++s) {
     if (!ms[s]) {
-      findEpsClosure(nfa, s, &ms, ec);
+      findEpsClosure(nfa, s, &ms, ec, &held);
     }
   }
 }
@@ -1279,11 +1344,57 @@ void makeInterpDFAFunc(cc* c, const std::string& fname, const MonoTypePtr& captu
   c->define(fname, assume(fndef, qualtype(qarrT->constraints(), functy(list(captureTy, arrT, primty("long"), primty("long"), primty("int")), primty("int"))), rootLA));
 }
 
+// how many range tests the expression form of a DFA would spell out
+static size_t dfaTransitions(const DFA& dfa) {
+  size_t n = 0;
+  for (const auto& s : dfa) {
+    n += s.chars.size();
+  }
+  return n;
+}
+
+// The expression form of a DFA (makeExprDFAFunc) is a switch with a case per
+// state and a range test per transition, and the compiler types and compiles
+// it like any other expression: measured in an optimized build, that costs
+// about 270us per state and 50-100us per transition, so a DFA of a few
+// thousand states and a few tens of thousands of transitions is seconds of
+// compile time for one regex literal. The interpreter (makeInterpDFAFunc) is
+// free of that, since its table is built directly, but it knows nothing of
+// the markers that record where a capture begins and ends -- so a regex with
+// capture groups used to take the expression form at any size, and was
+// bounded only by the DFA state cap. OSS-Fuzz 557846266 is a 709 byte
+// captured regex that determinizes to 4,906 states and 38,354 transitions:
+// 4-6s of type inference in an optimized build, and past the fuzzer's
+// minute under ASan.
+//
+// Both figures are budgeted, because the DFA state cap alone does not bound
+// the expression: a state can carry up to 256 disjoint byte ranges, and a
+// 257-state DFA with 63 per state (16,191 transitions) took longer to type
+// than one with 2,049 states and three each. Past either budget a regex
+// without captures is interpreted, as it was past the state cap before, and
+// one with captures is rejected. The bounds are cc settings, so a caller that
+// wants a larger captured regex compiled, and will wait for it, can raise
+// them.
 void makeDFAFunc(cc* c, const std::string& fname, const MonoTypePtr& captureTy, const DFA& dfa, const LexicalAnnotation& rootLA) {
-  if (dfa.size() < c->regexMaxExprDFASize() || !isUnit(captureTy)) {
+  const size_t maxStates      = c->regexMaxExprDFASize();
+  const size_t maxTransitions = c->regexMaxExprDFATransitions();
+
+  // the transitions are counted once, and only where the count decides
+  // something (a DFA under the state cap) or is reported (one with captures)
+  const bool   underStates = dfa.size() < maxStates;
+  const size_t transitions = (underStates || !isUnit(captureTy)) ? dfaTransitions(dfa) : 0;
+
+  if (underStates && transitions < maxTransitions) {
     makeExprDFAFunc(c, fname, captureTy, dfa, rootLA);
-  } else {
+  } else if (isUnit(captureTy)) {
     makeInterpDFAFunc(c, fname, captureTy, dfa, rootLA);
+  } else {
+    throw std::runtime_error(
+      "regex is too complex to compile (its capture groups require it to be compiled as an expression, "
+      "but its DFA has " + str::from(dfa.size()) + " states and " + str::from(transitions) + " transitions, "
+      "past the " + str::from(maxStates) + " states or " + str::from(maxTransitions) + " transitions "
+      "an expression may hold)"
+    );
   }
 }
 
