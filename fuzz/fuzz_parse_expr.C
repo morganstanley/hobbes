@@ -23,14 +23,24 @@
 // So two things are done periodically, one for each half. The type memo is
 // compacted every few dozen inputs, as the decoder harnesses do; that gives
 // back the memo's half and costs about as much as a parse. The compiler is
-// replaced every thousand or so; that gives back its half, and costs the
-// fraction of a second it takes to build one, amortised over enough inputs
-// not to show. Neither alone is enough: each leaves the other half growing
-// without bound. Counts of inputs are a coarse stand-in for how much has
-// accumulated, but a portable and predictable one -- resident size is not,
-// because freeing memory does not hand it back to the operating system, so a
-// harness that watched RSS rebuilt the compiler on every input once it first
-// went over.
+// replaced every couple of thousand inputs that could have compiled a regex;
+// that gives back its half, and costs what it takes to build one. Neither
+// alone is enough: each leaves the other half growing without bound. Counts
+// of inputs are a coarse stand-in for how much has accumulated, but a
+// portable and predictable one -- resident size is not, because freeing
+// memory does not hand it back to the operating system, so a harness that
+// watched RSS rebuilt the compiler on every input once it first went over.
+//
+// Building a compiler is the one expensive thing this harness does: it
+// compiles the bootstrap modules, about half a second unsanitized and several
+// seconds under ASan. That matters under AFL++, whose driver forks a fresh
+// process for the run and times every input against a fixed budget (OSS-Fuzz
+// runs it with -t 5000+): a compiler built on the first input is charged to
+// that input, and the seed corpus dry run then fails the build with a timeout
+// before fuzzing starts. So the first compiler is built in
+// LLVMFuzzerInitialize, which every driver runs before the fork server and
+// before any input is timed. Replacements still land inside a timed input;
+// counting only the inputs that can have grown the compiler keeps them rare.
 
 #include <hobbes/hobbes.H>
 
@@ -71,15 +81,15 @@ extern "C" int __lsan_is_turned_off() {
 
 namespace {
 
-const unsigned long inputsPerCompaction = 64;
-const unsigned long inputsPerCompiler   = 1024;
+const unsigned long inputsPerCompaction  = 64;
+const unsigned long regexInputsPerCompiler = 2048;
 
-// The first compiler is built in the initializer rather than on first use.
-// Constructing a cc also constructs the LLVM statics it depends on, and at
-// exit everything static is destroyed in reverse order of construction: a slot
-// that was registered empty and filled afterwards would be destroyed after
-// those statics, and the cc inside it would tear down against an LLVM context
-// that was already gone.
+// The first compiler is built in the slot's initializer rather than on first
+// use. Constructing a cc also constructs the LLVM statics it depends on, and
+// at exit everything static is destroyed in reverse order of construction: a
+// slot that was registered empty and filled afterwards would be destroyed
+// after those statics, and the cc inside it would tear down against an LLVM
+// context that was already gone.
 std::unique_ptr<hobbes::cc>& compilerSlot() {
   static std::unique_ptr<hobbes::cc> c(new hobbes::cc());
   return c;
@@ -93,10 +103,21 @@ hobbes::cc& compiler() {
   return *c;
 }
 
-void reclaimPeriodically() {
+// A regex literal is quoted with single quotes, and nothing else the reader
+// does leaves anything behind in the compiler, so an input without a quote
+// cannot have grown it. (A quote is also how a character literal and a
+// quote inside a string look, and a match can be defined before the parse
+// that holds it fails, so this is a superset: inputs that could have compiled
+// a regex, not inputs that did.)
+bool mayHaveCompiledRegex(const std::string& src) {
+  return src.find('\'') != std::string::npos;
+}
+
+void reclaimPeriodically(bool grewCompiler) {
   static unsigned long read = 0;
+  static unsigned long regexReads = 0;
   ++read;
-  if (read % inputsPerCompiler == 0) {
+  if (grewCompiler && ++regexReads % regexInputsPerCompiler == 0) {
     compilerSlot().reset();
   }
   if (read % inputsPerCompaction == 0) {
@@ -108,6 +129,11 @@ void reclaimPeriodically() {
 
 } // namespace
 
+extern "C" int LLVMFuzzerInitialize(int*, char***) {
+  compiler();
+  return 0;
+}
+
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   std::string src(reinterpret_cast<const char*>(data), size);
   try {
@@ -115,6 +141,6 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   } catch (const std::exception&) {
     // rejecting malformed source is the expected behavior
   }
-  reclaimPeriodically();
+  reclaimPeriodically(mayHaveCompiledRegex(src));
   return 0;
 }
