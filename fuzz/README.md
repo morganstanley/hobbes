@@ -126,6 +126,9 @@ Two environment notes it handles for you:
   LLVM *is* instrumented.
 * Leak detection needs disabling for `parse-expr` in two places — libFuzzer's
   `-detect_leaks=0` and LeakSanitizer's own at-exit check via `ASAN_OPTIONS`.
+  The harness also turns the at-exit check off from inside the binary
+  (`__lsan_is_turned_off`), because not every engine that replays a testcase
+  on OSS-Fuzz reads the `.options` file; see the comment there.
 
 ## Triaging findings
 
