@@ -9,7 +9,14 @@
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size);
 
+// optional, as it is for libFuzzer: a harness that has one-time setup
+// defines it, and the engines run it before the first input
+extern "C" __attribute__((weak)) int LLVMFuzzerInitialize(int* argc, char*** argv);
+
 int main(int argc, char** argv) {
+  if (LLVMFuzzerInitialize != nullptr) {
+    LLVMFuzzerInitialize(&argc, &argv);
+  }
   for (int i = 1; i < argc; ++i) {
     FILE* f = fopen(argv[i], "rb");
     if (f == nullptr) {
