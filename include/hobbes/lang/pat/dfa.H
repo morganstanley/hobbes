@@ -196,7 +196,10 @@ struct MDFA {
   ExprIdxs       exprIdxs;
   bool           inPrimSel;
 
-  str::set rootVars;
+  // the state functions lifted out of this match so far. Together with the
+  // compiler's global environment these are the names a folded state must not
+  // take as parameters (see liftDFAExpr)
+  str::set liftedStateFns;
   cc*      c;
 
   // every regex a column of the match can test, keyed by the column's

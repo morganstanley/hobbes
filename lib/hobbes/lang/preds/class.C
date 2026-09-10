@@ -898,6 +898,12 @@ ExprPtr unqualifyClass(const TEnvPtr& tenv, const std::string& cname, const Mono
 }
 
 bool isClassMember(const TEnvPtr& tenv, const std::string& memberName) {
+  // a name that isn't bound at all can't be a class member, and asking for its
+  // type would build a "did you mean" suggestion list from every binding in
+  // the environment before throwing
+  if (!tenv->hasBinding(memberName)) {
+    return false;
+  }
   try {
     Constraints cs = tenv->lookup(memberName)->qualtype()->constraints();
     return (cs.size() == 1) && (tenv->lookupUnqualifier(cs[0])->lookup(memberName) != PolyTypePtr());

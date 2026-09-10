@@ -1538,15 +1538,24 @@ ExprPtr liftDFAExpr(MDFA* dfa, stateidx_t state) {
       dfa->inlinedStates = 0;
       ExprPtr  def   = liftDFAExprWithSwitchCompression(dfa, state);
       dfa->inlinedStates = outerInlined;
-      str::set fvnst = setDifference(freeVars(def), dfa->rootVars);
-      str::seq fvns  = str::seq(fvnst.begin(), fvnst.end());
+      // the state function takes the variables it uses as arguments, except
+      // those it can reach anyway: globals, and the state functions lifted
+      // before it. Asking the environment about each free variable is much
+      // cheaper than enumerating every global for every fold (boot alone
+      // folds over six hundred states against thousands of globals)
+      str::seq fvns;
+      for (const auto& fvn : freeVars(def)) {
+        if (dfa->liftedStateFns.count(fvn) == 0 && !dfa->c->typeEnv()->hasBinding(fvn)) {
+          fvns.push_back(fvn);
+        }
+      }
 
       std::string stateFn = ".patfs." + str::from(state);
       ExprPtr callexp = fncall(varName(dfa, stateFn), vars(fvns, dfa->rootLA), dfa->rootLA);
 
       dfa->foldedStates.push_back(FoldedState(stateFn, ExprPtr(new Fn(fvns, def, dfa->rootLA))));
       dfa->foldedStateCalls[state] = callexp;
-      dfa->rootVars.insert(stateFn);
+      dfa->liftedStateFns.insert(stateFn);
 
       return callexp;
     }
@@ -1555,7 +1564,6 @@ ExprPtr liftDFAExpr(MDFA* dfa, stateidx_t state) {
 
 ExprPtr liftDFAExpr(cc* c, const PatternRows& ps, const LexicalAnnotation& rootLA) {
   MDFA pdfa;
-  pdfa.rootVars  = c->typeEnv()->boundVariables();
   pdfa.c         = c;
   pdfa.inPrimSel = false;
 
