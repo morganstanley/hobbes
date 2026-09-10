@@ -161,9 +161,11 @@ Its properties:
   one. Keeping a *spare* ``cc`` — bootstrapped with the prelude ahead of
   time and refilled after each use — hides the prelude; it does not hide
   the other tables.
-* **Destroying the old ``cc`` reclaims little.** See
-  :ref:`hobbes_recompiling_budget`; do not choose this pattern for its
-  memory behaviour.
+* **Destroying the old ``cc`` reclaims what it compiled.** A ``cc``
+  compacts the process-wide type memo as the last step of its destruction,
+  so the types its tables interned go with it (see
+  :ref:`hobbes_recompiling_budget`). This is the pattern whose memory use
+  is bounded by one generation rather than by the number of edits.
 
 Pattern two: two compilers, alternating
 =======================================
@@ -267,26 +269,33 @@ What to budget
 ==============
 
 Measured on a release build (clang 18, LLVM 18, x86-64 Linux), compiling
-five successive versions of a generated match table into one long-lived
-``cc``, resident size read after ``malloc_trim`` so it reflects what is
-retained rather than what the allocator is holding:
+successive versions of a generated match table into one long-lived ``cc``,
+resident size read after ``malloc_trim`` so it reflects what is retained
+rather than what the allocator is holding. The process is 22 MB before the
+first ``cc`` and 68 MB with a fresh, empty one:
 
-====================================  ========  ====================  ==================================
-Table                                 Compile   Retained per version  Freed when the ``cc`` is destroyed
-====================================  ========  ====================  ==================================
-70 rows × 12 columns, row-pivot       ~17 s     ~150 MB               ~20%
-70 × 12, ``buildColumnwiseMatches``   ~0.7 s    ~24 MB                ~10%
-400 × 12, ``buildColumnwiseMatches``  ~5 s      ~150 MB               ~12%
-====================================  ========  ====================  ==================================
+====================================  ========  ====================  ====================================
+Table                                 Compile   Retained per version  Resident after the ``cc`` is destroyed
+====================================  ========  ====================  ====================================
+70 rows × 12 columns, row-pivot       ~17 s     ~150 MB               ~60 MB
+70 × 12, ``buildColumnwiseMatches``   ~0.7 s    ~24 MB                ~50 MB
+400 × 12, ``buildColumnwiseMatches``  ~5 s      ~150 MB               ~60 MB
+====================================  ========  ====================  ====================================
 
 Three things follow.
 
 * **Every compile of a large table pins on the order of 100 MB for the
-  life of the process**, in either pattern. Destroying the ``cc`` returns
-  only a small fraction of it, so building a fresh ``cc`` per change is not
-  a way to avoid the growth. Multiply by the number of edits per day and by
-  the number of days between restarts, and watch resident size in
-  production rather than assuming.
+  life of the ``cc``.** Most of it is the process-wide memo of interned
+  types, which a ``cc`` compacts as the last step of its destruction; the
+  rest is the annotated expression of every definition the compile drained,
+  which the ``cc`` keeps for inlining and which goes when it does. So
+  pattern one's memory is bounded by one generation, while pattern two
+  grows by roughly the figures above per edit until a side is rebuilt.
+  Nothing on the compile path compacts the memo by itself; a process that
+  keeps one ``cc`` for a long time and wants the growth back sooner can call
+  ``hobbes::compactMTypeMemory()`` after a compile, from any thread — it
+  takes the memo's own lock, not the compiler's. Either way, watch resident
+  size in production rather than assuming.
 * **``buildColumnwiseMatches`` is the largest lever available.** For the
   same 70-row table it is a 25× faster compile and 6× less memory; a
   400-row table compiles columnwise in the time a 70-row one takes
