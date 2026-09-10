@@ -15,7 +15,11 @@ extern "C" __attribute__((weak)) int LLVMFuzzerInitialize(int* argc, char*** arg
 
 int main(int argc, char** argv) {
   if (LLVMFuzzerInitialize != nullptr) {
-    LLVMFuzzerInitialize(&argc, &argv);
+    int rc = LLVMFuzzerInitialize(&argc, &argv);
+    if (rc != 0) {
+      fprintf(stderr, "LLVMFuzzerInitialize failed: %d\n", rc);
+      return rc;
+    }
   }
   for (int i = 1; i < argc; ++i) {
     FILE* f = fopen(argv[i], "rb");
