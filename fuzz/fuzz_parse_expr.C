@@ -47,24 +47,26 @@
 // grammar actions during a parse (yyparse and the paths into it), which the
 // compiler's bootstrap parse strands once per cc, and a little that LLVM
 // keeps for itself. The .options file ships detect_leaks=0 for exactly this
-// reason, but ClusterFuzz's progression task replays old testcases without
-// honoring that file, and an at-exit leak report then pins a long-fixed
-// crash at "still reproduces" (OSS-Fuzz 549863810 sat that way: its stack
-// overflow was fixed, and the "crash" progression kept seeing was
-// LeakSanitizer complaining about bootstrap allocations after a clean run).
+// reason. ClusterFuzz's libFuzzer and AFL engines apply that file when they
+// replay a testcase; its honggfuzz engine does not, so on the honggfuzz job
+// every replay ends in an at-exit leak report. A leak report is a crash, and
+// for a Stack-overflow testcase progression accepts any crash as "still
+// reproduces" (it compares crash state for the other types, but a stack
+// overflow's state is too unstable to compare), so a fixed stack overflow
+// found by honggfuzz stays open for as long as the bootstrap leaks are
+// reported. OSS-Fuzz 549863810 and 556791547 sat that way.
 //
-// LSan reads default suppressions from this hook, so naming the expected
-// stacks here makes the policy travel inside the binary, whatever
-// environment it is run with -- while leaving leak detection itself alive:
-// an allocation leaked from anywhere else (the harness, the compiler's own
-// bookkeeping, a future regression that strands genuinely owned memory)
-// still fails the run. This is deliberately narrower than turning the
-// checker off.
-extern "C" const char* __lsan_default_suppressions() {
-  return
-    "leak:yyparse\n"                    // grammar-action allocations, arena-scoped by design
-    "leak:hobbes::runParserOnBuffer\n"  // the same parse, when yyparse is inlined out of the stack
-    "leak:llvm::\n";                    // LLVM's own retained allocations are not ours to free
+// An earlier version of this file named the expected stacks in
+// __lsan_default_suppressions, to keep the checker alive for everything
+// else. That does not work where it is needed: ClusterFuzz runs every target
+// with symbolize=0 and symbolizes offline, and with symbolization off LSan
+// has no function names to match `leak:yyparse` against, so the suppressions
+// matched locally and never on a bot. Turning the checker off is the only
+// form of the policy that is binding whatever the engine or environment;
+// nothing is given up, since the shipped .options already turns it off for
+// the engines that honor it.
+extern "C" int __lsan_is_turned_off() {
+  return 1;
 }
 
 namespace {
