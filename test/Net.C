@@ -658,6 +658,27 @@ TEST(Net, staleInterestFromADuplicatedDescriptorIsNotDispatched) {
   close(p[1]);
   close(q[1]);
   close(dup0);
+
+  // the same when the number is unregistered after it was closed: the delete
+  // has nothing to remove, the interest is still live through the duplicate
+  EXPECT_EQ(pipe(p), 0);
+  std::atomic<int> lateRan{0};
+  registerEventHandler(p[0], [&lateRan](int fd) {
+    char b;
+    if (read(fd, &b, 1) == 1) {
+      ++lateRan;
+    }
+  });
+  dup0 = dup(p[0]);
+  close(p[0]);
+  unregisterEventHandler(p[0]);
+  EXPECT_EQ(write(p[1], "x", 1), ssize_t(1));
+  for (size_t s = 0; s < 3; ++s) {
+    runEventLoop(100 * 1000);
+  }
+  EXPECT_EQ(lateRan.load(), 0);
+  close(p[1]);
+  close(dup0);
 }
 
 namespace {

@@ -97,9 +97,9 @@ int threadEPollFD() {
 // the closure map owns exactly the closures the kernel can still deliver: an
 // entry is made only once the descriptor is in the epoll set, and is erased
 // when its closure is deleted. A stale entry is left only by closing a
-// descriptor without unregistering it, and then it is found when its number
-// is registered again. That closure cannot be freed, because its epoll
-// interest may still be live: the interest is attached to the open file
+// descriptor without unregistering it, and is then found when its number is
+// unregistered or registered again. That closure cannot be freed, because
+// its epoll interest may still be live: the interest is attached to the open file
 // description rather than the number, and survives this process's close of
 // the number for as long as any duplicate of it is open (one inherited by a
 // child this process forked, say). A wait can then return that interest with
@@ -121,8 +121,13 @@ void unregisterEventHandler(int fd) {
   auto ec = epClosures->find(fd);
   if (ec != epClosures->end()) {
     struct epoll_event evt;
-    epoll_ctl(threadEPollFD(), EPOLL_CTL_DEL, fd, &evt);
-    retireClosure(ec->second);
+    if (epoll_ctl(threadEPollFD(), EPOLL_CTL_DEL, fd, &evt) == 0) {
+      retireClosure(ec->second);
+    } else {
+      // the number is closed (EBADF) or someone else's (ENOENT): the interest
+      // registered for it could not be removed and may be live, as above
+      quarantineClosure(ec->second);
+    }
     epClosures->erase(ec);
   }
 }
