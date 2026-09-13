@@ -293,6 +293,15 @@ void registerEventHandler(int fd, const std::function<void(int)>& fn, bool vn) {
   }
 
   auto& slot = (*kqClosures)[fd];
+  if (slot != nullptr && slot->vnode != vn) {
+    // the previous closure under this key was registered with the other
+    // filter; the EV_ADD above replaced nothing, so if its descriptor is still
+    // open that registration is still live and would deliver to the closure
+    // retired below (a closed descriptor has already left the kqueue, and the
+    // delete is then a harmless ENOENT)
+    EV_SET(&ke, fd, slot->vnode ? EVFILT_VNODE : EVFILT_READ, EV_DELETE, 0, 0, 0);
+    kevent(kqfd, &ke, 1, 0, 0, 0);
+  }
   retireClosure(slot); // a previous closure left under this key after its fd was closed unregistered
   slot = c;
 }
