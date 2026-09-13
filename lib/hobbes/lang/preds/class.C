@@ -12,6 +12,49 @@
 
 namespace hobbes {
 
+// Instance resolution recurses through instance generators: applying one
+// resolves the constraints in its context, and each of those may apply
+// another. The memos in TClass (testedInstances, satfInstances) stop the
+// recursion when a constraint comes back to a type it has already been asked
+// about, which is what a well-founded recursive instance does. An instance
+// whose context asks about a type strictly larger than its head -- say
+// (Grow [a]) => Grow a -- never comes back to one: every step asks about a
+// new, bigger type, and nothing bounds the descent but the stack (the
+// compiler ran for minutes and then crashed on that instance). So the
+// descent is counted, and past this many nested generator steps the
+// constraint is rejected with a message that says why. Loading the Prelude
+// resolves at most 4 generators deep and the whole test suite at most 14, so
+// the limit is nowhere near ordinary code.
+const size_t maxInstanceResolutionDepth = 256;
+
+namespace {
+  struct instance_resolution_depth_error : public std::runtime_error {
+    using std::runtime_error::runtime_error;
+  };
+
+  thread_local size_t instanceResolutionDepth = 0;
+
+  // one instance generator step, entered at TCInstanceFn::apply and
+  // TCInstanceFn::satisfiable (the only places resolution recurses without a
+  // memo to stop it)
+  struct InstanceResolutionStep {
+    InstanceResolutionStep(const std::string& tcname, const MonoTypes& tys) {
+      if (instanceResolutionDepth >= maxInstanceResolutionDepth) {
+        throw instance_resolution_depth_error(
+          "instance resolution for " + show(Constraint(tcname, tys)) + " nests more than " +
+          str::from(maxInstanceResolutionDepth) + " instance generators deep (an instance whose context is larger than its head would do this)"
+        );
+      }
+      ++instanceResolutionDepth;
+    }
+    ~InstanceResolutionStep() {
+      --instanceResolutionDepth;
+    }
+    InstanceResolutionStep(const InstanceResolutionStep&) = delete;
+    InstanceResolutionStep& operator=(const InstanceResolutionStep&) = delete;
+  };
+}
+
 inline bool isHiddenTCName(const std::string& n) {
   return n.empty() || n[0] == '.';
 }
@@ -596,6 +639,8 @@ bool TCInstanceFn::satisfiable(const TEnvPtr& tenv, const MonoTypes& tys, Defini
     return false;
   }
 
+  InstanceResolutionStep step(this->tcname, tys);
+
   // can the input unify with this generator's head?  can it satisfy its constraints?
   MonoTypeSubst s;
   IFnDef        fdef  = freshDef(&s);
@@ -621,6 +666,8 @@ bool TCInstanceFn::satisfiable(const TEnvPtr& tenv, const MonoTypes& tys, Defini
         return false;
       }
     }
+  } catch (instance_resolution_depth_error&) {
+    throw;
   } catch (std::exception& ex) {
     return false;
   }
@@ -662,6 +709,8 @@ void TCInstanceFn::explainSatisfiability(const TEnvPtr& tenv, const MonoTypes& t
         fcs->push_back(c);
       }
     }
+  } catch (instance_resolution_depth_error&) {
+    throw;
   } catch (std::exception& ex) {
   }
 }
@@ -678,6 +727,8 @@ bool TCInstanceFn::apply(const TEnvPtr& tenv, const MonoTypes& tys, const TClass
   if (this->itys.size() != tys.size()) {
     return false;
   }
+
+  InstanceResolutionStep step(this->tcname, tys);
 
   // generate a fresh copy of this generator's type variables consistent between constraints and definition
   MonoTypeSubst s;
@@ -704,6 +755,8 @@ bool TCInstanceFn::apply(const TEnvPtr& tenv, const MonoTypes& tys, const TClass
         return false;
       }
     }
+  } catch (instance_resolution_depth_error&) {
+    throw;
   } catch (std::exception& ex) {
     return false;
   }

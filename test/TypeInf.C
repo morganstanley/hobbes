@@ -634,3 +634,53 @@ TEST(TypeInf, DecodeRejectsDeeplyNestedDescriptions) {
   encode(nested, &nenc);
   EXPECT_TRUE(show(decode(nenc)) == show(nested));
 }
+
+// Instance resolution recurses through instance generators, and the memos that
+// stop a well-founded recursive instance from looping never see an instance
+// whose context asks about a type larger than its head: every step asks about
+// a new type. Resolving `Grow int` under the instance below asks about
+// `Grow [int]`, then `Grow [[int]]`, and so on, and used to run for minutes and
+// then crash on the stack. It is now rejected past a fixed depth, in seconds,
+// with a message that names the instance.
+TEST(TypeInf, NonTerminatingInstanceResolutionIsRejected) {
+  cc lc;
+  compile(&lc, lc.readModule(
+    "class Grow a where\n"
+    "  grow :: a -> a\n"
+    "instance (Grow [a]) => Grow a where\n"
+    "  grow x = x\n"
+  ));
+
+  const auto t0 = std::chrono::steady_clock::now();
+  EXPECT_EXCEPTION_MSG(lc.compileFn<int()>("grow(1)"), std::exception, "instance resolution for Grow [");
+  EXPECT_EXCEPTION_MSG(lc.compileFn<int()>("grow(1)"), std::exception, "instance generators deep");
+  const auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - t0);
+  EXPECT_TRUE(elapsed.count() < 60);
+
+  // and the compiler is still usable afterwards
+  EXPECT_EQ(lc.compileFn<int()>("1+2")(), 3);
+}
+
+// the limit is far from what ordinary code resolves through: a recursive
+// instance whose context asks about a smaller type than its head bottoms out,
+// and one that nests sixty levels deep resolves as it always has
+TEST(TypeInf, WellFoundedRecursiveInstancesStillResolve) {
+  cc lc;
+  compile(&lc, lc.readModule(
+    "class Peel a where\n"
+    "  peel :: a -> int\n"
+    "instance Peel int where\n"
+    "  peel x = x\n"
+    "instance (Peel a) => Peel [a] where\n"
+    "  peel xs = peel(xs[0])\n"
+  ));
+
+  EXPECT_EQ(lc.compileFn<int()>("peel(7)")(), 7);
+  EXPECT_EQ(lc.compileFn<int()>("peel([[[7]]])")(), 7);
+
+  std::string nested = "7";
+  for (size_t i = 0; i < 60; ++i) {
+    nested = "[" + nested + "]";
+  }
+  EXPECT_EQ(lc.compileFn<int()>("peel(" + nested + ")")(), 7);
+}
