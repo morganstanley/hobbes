@@ -203,10 +203,20 @@ void runRecvConnection(SessionGroup* sg, NetConnection* pc, const std::string& d
       while (!zb.eof()) {
         uint64_t n = 0;
         read(&zb, &n);
+
+        // the length is read from the stream and is trusted no further than
+        // the data behind it: the buffer grows a piece at a time as that data
+        // is actually read, so a length the stream cannot back fails on the
+        // read that runs out, rather than sizing the buffer first (where an
+        // absurd length would wrap the sum, and the copy would run off the end)
         size_t off = txn.size();
-        txn.resize(off + n);
-        read(&zb, txn.data() + off, n);
-        txnLens.push_back(n);
+        for (uint64_t k = 0; k < n; ) {
+          size_t j = static_cast<size_t>(std::min<uint64_t>(n - k, 64 * 1024));
+          txn.resize(off + k + j);
+          read(&zb, txn.data() + off + k, j);
+          k += j;
+        }
+        txnLens.push_back(static_cast<size_t>(n));
       }
 
       size_t off = 0;
