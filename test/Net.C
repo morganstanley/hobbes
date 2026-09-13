@@ -3,12 +3,16 @@
 #include <hobbes/hobbes.H>
 #include <hobbes/ipc/net.H>
 #include <hobbes/net.H>
+#include <hobbes/util/codec.H>
 
 #include <atomic>
 #include <condition_variable>
 #include <cstdlib>
 #include <mutex>
 #include <thread>
+
+#include <sys/socket.h>
+#include <unistd.h>
 
 using namespace hobbes;
 
@@ -287,6 +291,23 @@ TEST(Net, syncClientAPI) {
             std::vector<int>({255, 0, 255}));
 }
 
+TEST(Net, rejectedHandshakeLeavesTheServerServing) {
+  // a peer that opens with a protocol version the server does not speak is
+  // dropped at the handshake. The drop used to fall through to register an
+  // event handler on the socket it had just closed; that registration failed,
+  // and the failure path closed the socket a second time -- by then possibly
+  // some other thread's. The peer should simply see its connection closed,
+  // and the next client should be served as usual.
+  int fd = connectSocket("localhost", testServerPort());
+  fdwrite(fd, static_cast<uint32_t>(0xdeadbeef));
+  char b = 0;
+  EXPECT_EQ(::recv(fd, &b, 1, 0), ssize_t(0)); // orderly EOF: the server hung up
+  ::close(fd);
+
+  SyncClient c("localhost", testServerPort());
+  EXPECT_EQ(c.add(1, 2), 3);
+}
+
 TEST(Net, syncClientAPIWithConfiguredHostName) {
   SyncClient c("localhost", testServerWithHostPort("localhost"));
   EXPECT_EQ(c.add(1, 2), 3);
@@ -481,6 +502,42 @@ TEST(Net, asyncClientAPIWithUnConfiguredHostName) {
     runEventLoop(1000 * 1000);
   }
   EXPECT_EQ(c.pendingRequests(), size_t(0));
+}
+
+TEST(Net, eventHandlerRegistrationTracksTheDescriptor) {
+  // a descriptor the kernel refuses must not leave a handler registered under
+  // its number, so unregistering that number afterwards has nothing to do
+  int p[2];
+  EXPECT_EQ(pipe(p), 0);
+  close(p[0]);
+  close(p[1]);
+  int dead = p[0];
+  EXPECT_EXCEPTION(registerEventHandler(dead, [](int) {}));
+  unregisterEventHandler(dead);
+  unregisterEventHandler(dead);
+
+  // when the number comes back into use, the handler registered for the new
+  // descriptor is the one that runs
+  EXPECT_EQ(pipe(p), 0);
+  std::atomic<int> fired{0};
+  registerEventHandler(p[0], [&fired](int fd) {
+    char b;
+    if (read(fd, &b, 1) == 1) {
+      ++fired;
+    }
+  });
+  EXPECT_EQ(write(p[1], "x", 1), ssize_t(1));
+  for (size_t s = 0; s < 30 && fired == 0; ++s) {
+    runEventLoop(100 * 1000);
+  }
+  EXPECT_EQ(fired.load(), 1);
+
+  // unregistering removes the handler outright, so doing it again is harmless
+  // (this used to delete the same closure twice)
+  unregisterEventHandler(p[0]);
+  unregisterEventHandler(p[0]);
+  close(p[0]);
+  close(p[1]);
 }
 
 namespace {

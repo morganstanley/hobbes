@@ -149,6 +149,14 @@ static bool hasBeenCorrectlyClosed(const std::vector<SenderState>& senderStates)
   return senderStates.empty() ? false : senderStates.back().status.value == SenderStatus::Enum::Closed;
 }
 
+static bool hasBeenCorrectlyClosed(const RecoveredDetails::SenderStateMap& senderStates, const hobbes::storage::ProcThread& senderId) {
+  // a sender that registered but never logged a state (it died before its
+  // first status record) has no entry at all, which is no more closed than
+  // an empty history is
+  auto ss = senderStates.find(senderId);
+  return ss != senderStates.end() && hasBeenCorrectlyClosed(ss->second);
+}
+
 struct RecoveryTask {
   const hobbes::storage::ProcThread writerId;
   const hobbes::storage::ProcThread readerId;
@@ -209,7 +217,7 @@ std::vector<RecoveryTask> getTasksRequiringRecovery(const RecoveredDetails& reco
     const SenderRegistration& senderReg = readerSenderReg.second;
 
     // is eligible for recovery
-    if (!hasBeenCorrectlyClosed(recoveredDetails.senderStates.find(senderReg.senderId)->second) && !hasBeenRecovered(recoveredDetails.sessionsRecovered, readerSenderReg)) {
+    if (!hasBeenCorrectlyClosed(recoveredDetails.senderStates, senderReg.senderId) && !hasBeenRecovered(recoveredDetails.sessionsRecovered, readerSenderReg)) {
       tasks.emplace_back(RecoveryTask{
         readerReg.writerId,
         senderReg.readerId, 
