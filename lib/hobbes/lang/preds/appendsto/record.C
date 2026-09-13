@@ -241,7 +241,7 @@ void insertFieldDefs(const MkRecord::FieldDefs& ifds, size_t c, MkRecord::FieldD
 }
 
 void insertFieldDefsSfx(const MkRecord::FieldDefs& ifds, size_t c, MkRecord::FieldDefs* out) {
-  out->insert(out->end(), ifds.begin() + (ifds.size() - c), ifds.end());
+  out->insert(out->end(), ifds.begin() + (ifds.size() - std::min<size_t>(ifds.size(), c)), ifds.end());
 }
 
 void insertFieldDefsFromProj(const ExprPtr& rec, const Record* rty, MkRecord::FieldDefs* out) {
@@ -408,8 +408,14 @@ struct ATRecordUnqualify : public switchExprTyFn {
     return result;
   }
 
+  // only a site that carries this constraint is rewritten with this
+  // constraint's types: a record function elsewhere in the expression may be
+  // qualified by a different AppendsTo, and it gets rewritten when that one
+  // is eliminated (as every other unqualifier here checks with hasConstraint)
   ExprPtr with(const Var* vn) const override {
-    if (vn->value() == REF_REC_APPEND) {
+    if (!hasConstraint(this->constraint, vn->type())) {
+      return wrapWithTy(vn->type(), new Var(vn->value(), vn->la()));
+    } else if (vn->value() == REF_REC_APPEND) {
       return recordAppendFunction(this->appto.leftType, this->appto.rightType, this->appto.resultType, vn->la());
     } else if (vn->value() == REF_REC_PREFIX) {
       return recordPrefixFunction(this->appto.resultType, this->appto.leftType, vn->la());
@@ -422,7 +428,9 @@ struct ATRecordUnqualify : public switchExprTyFn {
 
   ExprPtr with(const App* ap) const override {
     if (const Var* fn = is<Var>(stripAssumpHead(ap->fn()))) {
-      if (fn->value() == REF_REC_APPEND) {
+      if (!hasConstraint(this->constraint, fn->type())) {
+        // not this constraint's site
+      } else if (fn->value() == REF_REC_APPEND) {
         return recordAppendExpr(switchOf(ap->args()[0], *this), switchOf(ap->args()[1], *this));
       } else if (fn->value() == REF_REC_PREFIX) {
         return recordPrefix(switchOf(ap->args()[0], *this), this->appto.leftType);

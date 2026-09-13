@@ -284,3 +284,14 @@ TEST(Structs, Alignment) {
   EXPECT_EQ(makeStdString(c().compileFn<const array<char>*()>("show(padTest)")()), "{x=1, y=42}");
 }
 
+
+// Each recordSuffix site is rewritten by the AppendsTo constraint it carries.
+// The unqualifier used to rewrite every recordSuffix it saw with whichever
+// constraint it was resolving, so two sites in one expression both read with
+// the first site's layout.
+TEST(Structs, eachRecordSuffixSiteUsesItsOwnConstraint) {
+  EXPECT_EQ(makeStdString(c().compileFn<const array<char>*()>(
+    "show(((recordSuffix::(AppendsTo {z:int} {a:int,b:int,c:int,d:int} {z:int,a:int,b:int,c:int,d:int})=>_)({z=0,a=1,b=2,c=3,d=4}), "
+          "(recordSuffix::(AppendsTo {p:int} {q:int} {p:int,q:int})=>_)({p=1,q=2})))")()),
+    "({a=1, b=2, c=3, d=4}, {q=2})");
+}
