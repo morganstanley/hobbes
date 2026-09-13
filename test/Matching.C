@@ -1108,3 +1108,24 @@ TEST(Matching, largeMatchTableCompileTime) {
   EXPECT_TRUE(dt < 10L * 60 * CLOCKS_PER_SEC);
 #endif
 }
+
+// A string literal in a column that also holds regexes is matched as a
+// literal, not reinterpreted as a regex.
+TEST(Matching, literalsStayLiteralBesideRegexes) {
+  auto g = c().compileFn<int(const std::string&)>("s", "match s with | \"a*\" -> 1 | '(b+)' -> 2 | _ -> 0");
+  EXPECT_EQ(g("a*"), 1);
+  EXPECT_EQ(g("aaa"), 0);
+  EXPECT_EQ(g(""), 0);
+  EXPECT_EQ(g("bbb"), 2);
+
+  auto h = c().compileFn<int(const std::string&)>("s", "match s with | \".\" -> 1 | \"a|b\" -> 2 | \"(x)\" -> 3 | \"\\\\d\" -> 4 | 'z+' -> 5 | _ -> 0");
+  EXPECT_EQ(h("."), 1);
+  EXPECT_EQ(h("q"), 0);
+  EXPECT_EQ(h("a|b"), 2);
+  EXPECT_EQ(h("a"), 0);
+  EXPECT_EQ(h("(x)"), 3);
+  EXPECT_EQ(h("x"), 0);
+  EXPECT_EQ(h("\\d"), 4);
+  EXPECT_EQ(h("7"), 0);
+  EXPECT_EQ(h("zzz"), 5);
+}
