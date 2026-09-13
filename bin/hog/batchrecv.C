@@ -186,18 +186,34 @@ void runRecvConnection(SessionGroup* sg, NetConnection* pc, const std::string& d
 
     // now that we've prepared a log file,
     // just throw everything that we read into it
+    //
+    // a batch is decoded in full before any of it is applied: inflate can only
+    // report a corrupt segment when it reaches the trailer (that is where the
+    // CRC is), and a batch applied up to that point and then rejected would be
+    // applied again when the sender resends it. The sender steps a segment at
+    // ~10 MB of log data, so a decoded batch is small next to the receive
+    // buffers already held here.
+    std::vector<size_t> txnLens;
     while (true) {
       receiveIntoBuffer(*connection, &inb);
       gzbuffer zb(inb, &outb);
 
+      txn.clear();
+      txnLens.clear();
       while (!zb.eof()) {
         uint64_t n = 0;
         read(&zb, &n);
-        txn.resize(n);
-        read(&zb, txn.data(), txn.size());
+        size_t off = txn.size();
+        txn.resize(off + n);
+        read(&zb, txn.data() + off, n);
+        txnLens.push_back(n);
+      }
 
-        storage::Transaction stxn(txn.data(), txn.size());
+      size_t off = 0;
+      for (size_t n : txnLens) {
+        storage::Transaction stxn(txn.data() + off, n);
         txnF(stxn);
+        off += n;
       }
 
       connection->send(&ack, sizeof(ack));
