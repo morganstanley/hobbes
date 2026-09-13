@@ -3,12 +3,16 @@
 #include <hobbes/hobbes.H>
 #include <hobbes/ipc/net.H>
 #include <hobbes/net.H>
+#include <hobbes/util/codec.H>
 
 #include <atomic>
 #include <condition_variable>
 #include <cstdlib>
 #include <mutex>
 #include <thread>
+
+#include <sys/socket.h>
+#include <unistd.h>
 
 using namespace hobbes;
 
@@ -285,6 +289,23 @@ TEST(Net, syncClientAPI) {
   auto inv = c.inverse(RGB{{0, 255, 0}});
   EXPECT_EQ(std::vector<int>(inv.val, inv.val + 3),
             std::vector<int>({255, 0, 255}));
+}
+
+TEST(Net, rejectedHandshakeLeavesTheServerServing) {
+  // a peer that opens with a protocol version the server does not speak is
+  // dropped at the handshake. The drop used to fall through to register an
+  // event handler on the socket it had just closed; that registration failed,
+  // and the failure path closed the socket a second time -- by then possibly
+  // some other thread's. The peer should simply see its connection closed,
+  // and the next client should be served as usual.
+  int fd = connectSocket("localhost", testServerPort());
+  fdwrite(fd, static_cast<uint32_t>(0xdeadbeef));
+  char b = 0;
+  EXPECT_EQ(::recv(fd, &b, 1, 0), ssize_t(0)); // orderly EOF: the server hung up
+  ::close(fd);
+
+  SyncClient c("localhost", testServerPort());
+  EXPECT_EQ(c.add(1, 2), 3);
 }
 
 TEST(Net, syncClientAPIWithConfiguredHostName) {

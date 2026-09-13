@@ -68,7 +68,9 @@ struct gzbuffer {
   void decompressChunk() {
     this->zin.next_out  = outb->data();
     this->zin.avail_out = outb->size();
-    checkZLibRC(static_cast<int>(inflate(&this->zin, Z_NO_FLUSH) < 0));
+    // hand checkZLibRC the return code itself: comparing it against zero first
+    // reduced every result to 0 or 1, so a corrupt segment was never reported
+    checkZLibRC(inflate(&this->zin, Z_NO_FLUSH));
     this->off   = 0;
     this->avail = this->outb->size() - this->zin.avail_out;
   }
