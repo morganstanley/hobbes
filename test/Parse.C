@@ -289,6 +289,14 @@ TEST(Parse, ActionErrorsAreReportedAtTheirOwnPosition) {
 
   // a syntax error still reports where the parser found it
   EXPECT_EXCEPTION_MSG(lc.readExpr("let x = in x"), std::exception, "1,9-10");
+
+  // an empty input has no token for the lexer to place, so its end-of-file
+  // error was reported wherever the previous parse's last token was -- deep
+  // in the boot module for a fresh compiler, or here at line 5 -- instead of
+  // at the start of the (empty) input
+  EXPECT_TRUE(lc.readExpr("1+\n2+\n3+\n4+\n5+      6") != nullptr);
+  EXPECT_EXCEPTION_MSG(lc.readExpr(""), std::exception, "1,1-1");
+  EXPECT_EXCEPTION_MSG(lc.readExpr("   "), std::exception, "1,3-3"); // end of file sits on the last thing lexed
 }
 
 // the nesting bound on a parsed expression was checked on what readExpr and

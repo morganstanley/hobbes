@@ -153,6 +153,8 @@ public:
     yycolumn       = 1;
     yyVexpLexError = ""; // a lexer error left by a parse that threw is not this one's
     yyErrPos       = YYLTYPE(); // nor is the position of one (see parseErrorPos)
+    yylloc         = YYLTYPE{1, 1, 1, 1}; // the lexer sets this per token, and an empty parse has none: its
+                                          // end-of-file error would otherwise sit where the previous parse's last token was
     pushLexerParseState();
     yy_switch_to_buffer(bs);
     activeParseBuffers.push(bs);
