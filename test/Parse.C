@@ -237,3 +237,27 @@ TEST(Parse, GrammarsWithNullableRulesAreGenerated) {
   EXPECT_EQ(lc.compileFn<int()>("match np(\"bb\") with | |1=x| -> x | _ -> -1")(), -1);
   EXPECT_EQ(lc.compileFn<int()>("match np(\"\")   with | |1=x| -> x | _ -> -1")(), -1);
 }
+
+// an error thrown from a lexer or grammar action (an unsupported literal here)
+// goes past yyerror, which is what records where a syntax error was found. The
+// position reported for such an error used to be whatever the last syntax
+// error in the process had left there -- a location in some earlier input --
+// and 0,0 in a process that had seen none. It is now the token the parser was
+// on when the error was thrown.
+TEST(Parse, ActionErrorsAreReportedAtTheirOwnPosition) {
+  cc lc;
+  static const char* hugeLit = "9999999999999999999999999999";
+
+  // a fresh process: the literal's own position, not 0,0
+  EXPECT_EXCEPTION_MSG(lc.readExpr(hugeLit), std::exception, "1,1-28");
+
+  // after a syntax error at another position in another input
+  EXPECT_EXCEPTION_MSG(lc.readExpr("let x = in x"), std::exception, "1,9-10");
+  EXPECT_EXCEPTION_MSG(lc.readExpr(hugeLit), std::exception, "1,1-28");
+
+  // and further into the input, where the two positions differ
+  EXPECT_EXCEPTION_MSG(lc.readExpr(std::string("1 + ") + hugeLit), std::exception, "1,5-32");
+
+  // a syntax error still reports where the parser found it
+  EXPECT_EXCEPTION_MSG(lc.readExpr("let x = in x"), std::exception, "1,9-10");
+}
