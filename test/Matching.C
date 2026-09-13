@@ -1109,6 +1109,24 @@ TEST(Matching, largeMatchTableCompileTime) {
 #endif
 }
 
+// A postfix quantifier after a group applies to the whole group. The parser
+// used to attach it only to the last alternative inside the parentheses, so
+// '(a|b)*' meant 'a|b*' and rejected "ab".
+TEST(Matching, quantifiersApplyToTheWholeGroup) {
+  EXPECT_EQ(c().compileFn<int()>("match \"ab\"   with | '(a|b)*'   -> 0 | _ -> 1")(), 0);
+  EXPECT_EQ(c().compileFn<int()>("match \"baba\" with | '(a|b)*'   -> 0 | _ -> 1")(), 0);
+  EXPECT_EQ(c().compileFn<int()>("match \"abab\" with | '(ab|cd)+' -> 0 | _ -> 1")(), 0);
+  EXPECT_EQ(c().compileFn<int()>("match \"abcd\" with | '(ab|cd)+' -> 0 | _ -> 1")(), 0);
+  EXPECT_EQ(c().compileFn<int()>("match \"abc\"  with | '(ab|cd)+' -> 0 | _ -> 1")(), 1);
+  EXPECT_EQ(c().compileFn<int()>("match \"aaab\" with | '(a|b)*ab' -> 0 | _ -> 1")(), 0);
+  EXPECT_EQ(c().compileFn<int()>("match \"\"     with | '(a|b)?'   -> 0 | _ -> 1")(), 0);
+  EXPECT_EQ(c().compileFn<int()>("match \"ba\"   with | '(a|b)?'   -> 0 | _ -> 1")(), 1);
+
+  // a named group still binds, quantified or not
+  EXPECT_EQ(makeStdString(c().compileFn<const array<char>*()>("match \"abcd\" with | '(?<x>ab|cd)+' -> x | _ -> \"no\"")()), "abcd");
+  EXPECT_EQ(makeStdString(c().compileFn<const array<char>*()>("match \"cd\" with | '(?<x>ab|cd)' -> x | _ -> \"no\"")()), "cd");
+}
+
 // A string literal in a column that also holds regexes is matched as a
 // literal, not reinterpreted as a regex.
 TEST(Matching, literalsStayLiteralBesideRegexes) {

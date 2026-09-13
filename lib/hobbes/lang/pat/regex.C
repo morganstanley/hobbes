@@ -339,7 +339,11 @@ DRegex diffRegex(const RegexPtr& lhs, const std::string& x, size_t i, TermBudget
     rchar_t n = (i+1==x.size()) ? '\0' : x[i+1];
 
     switch (x[i]) {
-    case ')': return returnR(x, i+1, lhs);
+    // a group ends here; a quantifier after it belongs to the whole group, and
+    // the '(' case applies it once the body has been read (reading it here
+    // would attach it to the alternative being read at the time, so that
+    // '(a|b)*' meant 'a|b*')
+    case ')': return DRegex(i+1, lhs);
     case '(': {
       // maybe read a binding name for this group
       // (according to typical accepted regex syntax)
@@ -372,10 +376,12 @@ DRegex diffRegex(const RegexPtr& lhs, const std::string& x, size_t i, TermBudget
         i = j;
       }
 
-      // now the group body just matches as if inline
+      // now the group body just matches as if inline, with any quantifier
+      // after the group applied to the body as a whole
       // (but we may bind to the group match result)
       DRegex g = diffRegex(epsilon(), x, i+1, tb);
-      return diffRegex(sequence(lhs, bindTo(b, g.second)), x, g.first, tb);
+      DRegex q = returnR(x, g.first, g.second);
+      return diffRegex(sequence(lhs, bindTo(b, q.second)), x, q.first, tb);
     }
     case '|': {
       DRegex n = diffRegex(epsilon(), x, i+1, tb);
@@ -412,6 +418,10 @@ RegexPtr parseRegex(const std::string& x) {
   TermBudget tb;
   DRegex dr = diffRegex(epsilon(), x, 0, &tb);
   while (dr.first < x.size()) {
+    // only an unmatched ')' stops the read early; it closes an implicit group
+    // around everything read so far, so a quantifier after it applies to all
+    // of that (as it did when the ')' case read the quantifier itself)
+    dr = returnR(x, dr.first, dr.second);
     dr = diffRegex(dr.second, x, dr.first, &tb);
   }
   return dr.second;
