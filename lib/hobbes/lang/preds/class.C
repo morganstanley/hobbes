@@ -154,7 +154,13 @@ namespace {
     ~ProvisionalMemo() {
       --resolutionsInProgress;
       if (std::uncaught_exceptions() > this->unwinding) {
-        this->memo.insert(this->mts, false);
+        try {
+          this->memo.insert(this->mts, false);
+        } catch (...) {
+          // out of memory while an exception is in flight; the entry stays
+          // provisional, which is what the refusal being unwound already
+          // reports, and the next instance definition clears it anyway
+        }
       }
     }
     ProvisionalMemo(const ProvisionalMemo&) = delete;
