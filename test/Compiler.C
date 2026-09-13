@@ -209,3 +209,11 @@ TEST(Compiler, destroyingCCReleasesItsTypes) {
   }
   EXPECT_TRUE(t.expired());
 }
+
+// Each sizeOf / cppType site is folded by the constraint it carries, not by
+// whichever instance of the class is resolved first.
+TEST(Compiler, eachSizeOfSiteUsesItsOwnConstraint) {
+  EXPECT_EQ(makeStdString(c().compileFn<const array<char>*()>(
+    "show((sizeOf::(SizeOf char _)=>_, sizeOf::(SizeOf [:byte|9:] _)=>_, sizeOf::(SizeOf double _)=>_))")()),
+    "(1, 9, 8)");
+}
