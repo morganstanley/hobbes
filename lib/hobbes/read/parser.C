@@ -230,6 +230,21 @@ void runParserOnString(cc* c, int initTok, const char* s) {
   }
 }
 
+// a module's expressions get the same nesting bound as an expression read on
+// its own (see defReadExpr below): a definition's body, and the body of each
+// member of an instance, are the places a module holds an expression
+void checkNestingDepth(const ModulePtr& m) {
+  for (const auto& md : m->definitions()) {
+    if (const MVarDef* vd = is<MVarDef>(md)) {
+      checkNestingDepth(vd->varExpr());
+    } else if (const InstanceDef* id = is<InstanceDef>(md)) {
+      for (const auto& mvd : id->members()) {
+        checkNestingDepth(mvd->varExpr());
+      }
+    }
+  }
+}
+
 ModulePtr defReadModuleFile(cc* c, const std::string& file) {
   LOCK_PARSER;
 
@@ -238,7 +253,9 @@ ModulePtr defReadModuleFile(cc* c, const std::string& file) {
   runParserOnFile(c, TPARSEMODULE, file);
   yyModulePath = "";
 
-  return checkReturn(yyParsedModule != nullptr ? ModulePtr(yyParsedModule) : ModulePtr());
+  ModulePtr m = checkReturn(yyParsedModule != nullptr ? ModulePtr(yyParsedModule) : ModulePtr());
+  checkNestingDepth(m);
+  return m;
 }
 
 ModulePtr defReadModule(cc* c, const char* text) {
@@ -247,7 +264,9 @@ ModulePtr defReadModule(cc* c, const char* text) {
   yyParsedModule = nullptr;
   runParserOnString(c, TPARSEMODULE, text);
 
-  return checkReturn(yyParsedModule != nullptr ? ModulePtr(yyParsedModule) : ModulePtr());
+  ModulePtr m = checkReturn(yyParsedModule != nullptr ? ModulePtr(yyParsedModule) : ModulePtr());
+  checkNestingDepth(m);
+  return m;
 }
 
 ModulePtr defReadModule(cc* c, const std::string& text) {

@@ -261,3 +261,41 @@ TEST(Parse, ActionErrorsAreReportedAtTheirOwnPosition) {
   // a syntax error still reports where the parser found it
   EXPECT_EXCEPTION_MSG(lc.readExpr("let x = in x"), std::exception, "1,9-10");
 }
+
+// the nesting bound on a parsed expression was checked on what readExpr and
+// readExprDefn return, but not on the expressions inside a module, so a
+// script definition past it (`hi -x`) was compiled, and the compiler's walks
+// over it ran the stack out
+static bool moduleRejectedForNesting(const std::string& src) {
+  try {
+    c().readModule(src);
+    return false;
+  } catch (const std::exception& ex) {
+    return std::string(ex.what()).find("past the limit") != std::string::npos;
+  }
+}
+
+TEST(Parse, DeeplyNestedModuleDefinitionsAreRejected) {
+  // the 15,000-term definition that used to crash `hi -x`
+  EXPECT_TRUE(moduleRejectedForNesting("x = " + leftNestedSum(15000)));
+
+  // an instance member's body is an expression of the module too
+  EXPECT_TRUE(moduleRejectedForNesting(
+    "class Deep a where\n"
+    "  deep :: a -> a\n"
+    "instance Deep int where\n"
+    "  deep x = " + leftNestedSum(15000) + "\n"
+  ));
+
+  // and a module-level expression evaluated for its effect
+  EXPECT_TRUE(moduleRejectedForNesting("print(" + leftNestedSum(15000) + ")"));
+
+  // while a module within the limit reads as it always has
+  EXPECT_TRUE(c().readModule("x = " + leftNestedSum(500)) != nullptr);
+  EXPECT_TRUE(c().readModule(
+    "class Shallow a where\n"
+    "  shallow :: a -> a\n"
+    "instance Shallow int where\n"
+    "  shallow x = " + leftNestedSum(500) + "\n"
+  ) != nullptr);
+}
