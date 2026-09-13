@@ -43,7 +43,9 @@ struct gzbuffer {
 #pragma GCC diagnostic ignored "-Wold-style-cast"
     checkZLibRC(inflateInit2(&this->zin, 15 | 32)); // window bits + ENABLE_ZLIB_GZIP
 #pragma GCC diagnostic pop
-    decompressChunk();
+    // the first chunk is inflated by the first eof()/read(), not here: if it
+    // raised from the constructor there would be no destructor to run
+    // inflateEnd, and the zlib state would be leaked
   }
 
   ~gzbuffer() {
@@ -60,7 +62,10 @@ struct gzbuffer {
   }
 
   void checkZLibRC(int status) {
-    if (status < 0) {
+    // Z_NEED_DICT is positive but is not progress: inflate produces nothing
+    // more until a preset dictionary is supplied, and nothing here supplies
+    // one, so such a stream would otherwise read as an empty, complete batch
+    if (status < 0 || status == Z_NEED_DICT) {
       throw std::runtime_error("failed to decompress out of gzip segment (" + str::from(status) + ")");
     }
   }
