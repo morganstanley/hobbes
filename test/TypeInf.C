@@ -693,6 +693,32 @@ TEST(TypeInf, InstancesDefinedAfterARefusalAreFound) {
   EXPECT_EQ(lc.compileFn<int()>("grow(1)")(), 2);
 }
 
+// the instance that unblocks a refused constraint can belong to another class:
+// (Base a) => Derived a is refused at int until Base int is defined, and it
+// is Base's instance list that grows, not Derived's (Base has an instance
+// already because a class with none is taken to be satisfiable anywhere)
+TEST(TypeInf, InstancesOfAnotherClassDefinedAfterARefusalAreFound) {
+  cc lc;
+  compile(&lc, lc.readModule(
+    "class Base a where\n"
+    "  base :: a -> int\n"
+    "instance Base double where\n"
+    "  base x = 0\n"
+    "class Derived a where\n"
+    "  derived :: a -> int\n"
+    "instance (Base a) => Derived a where\n"
+    "  derived x = base(x) * 2\n"
+  ));
+  EXPECT_EXCEPTION_MSG(lc.compileFn<int()>("derived(3)"), std::exception, "Derived int");
+  EXPECT_EXCEPTION_MSG(lc.compileFn<int()>("derived(3)"), std::exception, "Derived int"); // the refusal is memoized by now
+
+  compile(&lc, lc.readModule(
+    "instance Base int where\n"
+    "  base x = x + 1\n"
+  ));
+  EXPECT_EQ(lc.compileFn<int()>("derived(3)")(), 8);
+}
+
 // the limit is far from what ordinary code resolves through: a recursive
 // instance whose context asks about a smaller type than its head bottoms out,
 // and one that nests sixty levels deep resolves as it always has

@@ -7,6 +7,7 @@
 #include <hobbes/util/array.H>
 #include <hobbes/util/codec.H>
 #include <hobbes/util/perf.H>
+#include <atomic>
 #include <exception>
 #include <memory>
 #include <unordered_map>
@@ -216,15 +217,29 @@ void TClass::insert(const TCInstanceFnPtr& ifp) {
   }
 }
 
-// the memos record what resolution found, and only the class's own set of
-// instances can change what it would find: a constraint refused as
-// unsatisfiable is satisfiable once the instance for it is defined (the REPL
-// pattern -- ask, define the instance, ask again), and one resolved to a
-// single instance could resolve to two. So each addition forgets both memos;
-// what is still true is rederived on the next request
+// the memos record what resolution found, and adding an instance can change
+// it: a constraint refused as unsatisfiable is satisfiable once the instance
+// for it is defined (the REPL pattern -- ask, define the instance, ask again),
+// and one resolved to a single instance could resolve to two. The instance
+// need not belong to the class asked, either: (B a) => A a refuses A int until
+// B int exists. So an addition to any class voids every class's memos, through
+// a generation count that each class compares with its own before it reads
+// them; what is still true is rederived on the next request
+namespace {
+  std::atomic<uint64_t> instanceGeneration{1};
+}
+
 void TClass::forgetResolutions() {
-  this->testedInstances.clear();
-  this->satfInstances.clear();
+  ++instanceGeneration;
+}
+
+void TClass::refreshResolutions() const {
+  uint64_t g = instanceGeneration.load();
+  if (this->memoGeneration != g) {
+    this->testedInstances.clear();
+    this->satfInstances.clear();
+    this->memoGeneration = g;
+  }
 }
 
 TCInstances TClass::matches(const TEnvPtr& tenv, const ConstraintPtr& c, MonoTypeUnifier* u, Definitions* ds) const {
@@ -244,6 +259,8 @@ void TClass::candidateTCInstFns(const TEnvPtr& tenv, const MonoTypes& mts, TCIns
 }
 
 TCInstances TClass::matches(const TEnvPtr& tenv, const MonoTypes& mts, MonoTypeUnifier* u, Definitions* ds) const {
+  refreshResolutions();
+
   // do any ground instances match?
   TCInstances r;
   this->tcinstdb.matches(tenv, mts, &r);
@@ -318,6 +335,7 @@ bool isLiteralFnTerm(const ExprPtr& e) {
 }
 
 bool TClass::satisfied(const TEnvPtr& tenv, const ConstraintPtr& c, Definitions* ds) const {
+  refreshResolutions();
   if (c->arguments().size() != this->tvs) {
     return false;
   } else if (c->hasFreeVariables()) {
@@ -356,6 +374,7 @@ bool TClass::satisfiable(const TEnvPtr& tenv, const ConstraintPtr& c, Definition
   MonoTypes mts = c->arguments();
 
   // did we already assume that this constraint was satisfiable?
+  refreshResolutions();
   if (bool* f = this->satfInstances.lookup(mts)) {
     return *f;
   }
@@ -401,6 +420,7 @@ void TClass::explain(const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPt
     const MonoTypes& mts = cst->arguments();
 
     // avoid infinitely-recursive explanations
+    refreshResolutions();
     if (bool* f = this->testedInstances.lookup(mts)) {
       if (*f) {
         return;
