@@ -22,38 +22,114 @@ namespace hobbes {
 // whose context asks about a type strictly larger than its head -- say
 // (Grow [a]) => Grow a -- never comes back to one: every step asks about a
 // new, bigger type, and nothing bounds the descent but the stack (the
-// compiler ran for minutes and then crashed on that instance). So the
-// descent is counted, and past this many nested generator steps the
-// constraint is rejected with a message that says why. Loading the Prelude
-// resolves at most 4 generators deep and the whole test suite at most 14, so
-// the limit is nowhere near ordinary code.
-const size_t maxInstanceResolutionDepth = 256;
+// compiler ran for minutes and then crashed on that instance).
+//
+// Depth alone doesn't tell the two apart. The Prelude's record and tuple
+// instances recurse once per field (ShowR, PrintR, Eq, ...), so a 300-field
+// record legitimately nests 300 generators deep, and a group of mutually
+// recursive instances nests once per member while their dictionaries are
+// bound. What marks divergence is growth: each step asks about a type larger
+// than the last, without bound. So each generator step measures the type it
+// is asked about, and a resolution is rejected, with a message that says
+// why, when either
+//
+//   * more than this many steps on the stack each ask about a larger type
+//     than the step that asked for them (a well-founded descent asks about
+//     smaller types -- a field of the record, a member of the group -- and
+//     the few legitimate steps that grow, like a compression model asking
+//     about the model type for its data type, are followed by shrinking
+//     ones; loading the Prelude and running the test suite never stack more
+//     than two such steps), or
+//
+//   * a step asks about a type this many times larger than the outermost
+//     request, plus a fixed allowance so that a small request is not held to
+//     a small bound (the count above stops slow growth in a few hundred
+//     steps; an instance whose context doubles its head would reach an
+//     unrepresentable type long before that many, and this stops it in a
+//     dozen; the largest growth the Prelude or the test suite asks for is
+//     11x, that compression model).
+const size_t maxInstanceResolutionGrowthSteps = 256;
+const size_t maxInstanceResolutionGrowth      = 32;
+const size_t instanceResolutionAllowance      = 4096;
 
 namespace {
   struct instance_resolution_depth_error : public std::runtime_error {
     using std::runtime_error::runtime_error;
   };
 
-  thread_local size_t instanceResolutionDepth = 0;
+  // the size of a type is its node count, the measure in which an instance
+  // context "larger than its head" is larger
+  struct typeSizeF : public walkTy {
+    mutable size_t n = 0;
+    UnitV with(const Prim*       v) const override { ++n; return walkTy::with(v); }
+    UnitV with(const OpaquePtr*  v) const override { ++n; return walkTy::with(v); }
+    UnitV with(const TVar*       v) const override { ++n; return walkTy::with(v); }
+    UnitV with(const TGen*       v) const override { ++n; return walkTy::with(v); }
+    UnitV with(const TAbs*       v) const override { ++n; return walkTy::with(v); }
+    UnitV with(const TApp*       v) const override { ++n; return walkTy::with(v); }
+    UnitV with(const FixedArray* v) const override { ++n; return walkTy::with(v); }
+    UnitV with(const Array*      v) const override { ++n; return walkTy::with(v); }
+    UnitV with(const Variant*    v) const override { ++n; return walkTy::with(v); }
+    UnitV with(const Record*     v) const override { ++n; return walkTy::with(v); }
+    UnitV with(const Func*       v) const override { ++n; return walkTy::with(v); }
+    UnitV with(const Exists*     v) const override { ++n; return walkTy::with(v); }
+    UnitV with(const Recursive*  v) const override { ++n; return walkTy::with(v); }
+    UnitV with(const TString*    v) const override { ++n; return walkTy::with(v); }
+    UnitV with(const TLong*      v) const override { ++n; return walkTy::with(v); }
+    UnitV with(const TExpr*      v) const override { ++n; return walkTy::with(v); }
+  };
+
+  size_t typeSize(const MonoTypes& tys) {
+    typeSizeF f;
+    for (const auto& ty : tys) {
+      switchOf(ty, f);
+    }
+    return f.n;
+  }
+
+  // the size of the request at each generator step on this thread's stack
+  // (the front is the outermost request), and how many of those steps grew
+  thread_local std::vector<size_t> instanceResolutionSizes;
+  thread_local size_t              instanceResolutionGrowthSteps = 0;
 
   // one instance generator step, entered at TCInstanceFn::apply and
   // TCInstanceFn::satisfiable (the only places resolution recurses without a
   // memo to stop it)
   struct InstanceResolutionStep {
-    InstanceResolutionStep(const std::string& tcname, const MonoTypes& tys) {
-      if (instanceResolutionDepth >= maxInstanceResolutionDepth) {
-        throw instance_resolution_depth_error(
-          "instance resolution for " + show(Constraint(tcname, tys)) + " nests more than " +
-          str::from(maxInstanceResolutionDepth) + " instance generators deep (an instance whose context is larger than its head would do this)"
-        );
+    InstanceResolutionStep(const std::string& tcname, const MonoTypes& tys) : grew(false) {
+      size_t n = typeSize(tys);
+      if (!instanceResolutionSizes.empty()) {
+        size_t root = instanceResolutionSizes.front();
+        if (n > maxInstanceResolutionGrowth * root + instanceResolutionAllowance) {
+          throw instance_resolution_depth_error(
+            "instance resolution for " + show(Constraint(tcname, tys)) + " asks about a type of " + str::from(n) +
+            " nodes, more than " + str::from(maxInstanceResolutionGrowth) + "x the " + str::from(root) +
+            "-node request it is resolving (an instance whose context is larger than its head would do this)"
+          );
+        }
+        this->grew = n > instanceResolutionSizes.back();
+        if (this->grew && instanceResolutionGrowthSteps >= maxInstanceResolutionGrowthSteps) {
+          throw instance_resolution_depth_error(
+            "instance resolution for " + show(Constraint(tcname, tys)) + " asks about a larger type than the step before it, for the " +
+            str::from(maxInstanceResolutionGrowthSteps + 1) + "th time (an instance whose context is larger than its head would do this)"
+          );
+        }
       }
-      ++instanceResolutionDepth;
+      instanceResolutionSizes.push_back(n);
+      if (this->grew) {
+        ++instanceResolutionGrowthSteps;
+      }
     }
     ~InstanceResolutionStep() {
-      --instanceResolutionDepth;
+      instanceResolutionSizes.pop_back();
+      if (this->grew) {
+        --instanceResolutionGrowthSteps;
+      }
     }
     InstanceResolutionStep(const InstanceResolutionStep&) = delete;
     InstanceResolutionStep& operator=(const InstanceResolutionStep&) = delete;
+  private:
+    bool grew;
   };
 
   // TClass::matches, satisfiable and explain memoize a type as "assumed
@@ -275,6 +351,13 @@ TCInstances TClass::matches(const TEnvPtr& tenv, const MonoTypes& mts, MonoTypeU
     for (const auto& f : ifns) {
       // for recursive instance definitions, initially assume that this instantiation is satisfiable
       // (this will prevent nested instance requests from recursing infinitely)
+      //
+      // a generator refused for growth (InstanceResolutionStep) unwinds through
+      // here without trying the generators after it, and the provisional memo
+      // settles this type as unsatisfiable, though a later generator might
+      // have resolved it. That is the refusal's cost: it is an error in the
+      // instance that diverged, reported as such, and defining another
+      // instance clears the memo
       TCInstancePtr ninst;
       if (f->apply(tenv, mts, this, u, ds, &ninst)) {
         const_cast<TClass*>(this)->insert(tenv, ninst, ds);

@@ -640,8 +640,9 @@ TEST(TypeInf, DecodeRejectsDeeplyNestedDescriptions) {
 // whose context asks about a type larger than its head: every step asks about
 // a new type. Resolving `Grow int` under the instance below asks about
 // `Grow [int]`, then `Grow [[int]]`, and so on, and used to run for minutes and
-// then crash on the stack. It is now rejected past a fixed depth, in seconds,
-// with a message that names the instance.
+// then crash on the stack. It is now rejected, in seconds, once the type asked
+// about has outgrown the request by a fixed factor, with a message that names
+// the instance.
 TEST(TypeInf, NonTerminatingInstanceResolutionIsRejected) {
   cc lc;
   compile(&lc, lc.readModule(
@@ -661,12 +662,75 @@ TEST(TypeInf, NonTerminatingInstanceResolutionIsRejected) {
   // not asked about before is resolved (and rejected) afresh
   EXPECT_EXCEPTION(lc.compileFn<int()>("grow(1)"));
   EXPECT_EXCEPTION(lc.compileFn<int()>("grow(2)"));
-  EXPECT_EXCEPTION_MSG(lc.compileFn<double()>("grow(1.5)"), std::exception, "instance generators deep");
+  EXPECT_EXCEPTION_MSG(lc.compileFn<double()>("grow(1.5)"), std::exception, "larger than its head");
   const auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - t0);
   EXPECT_TRUE(elapsed.count() < 60);
 
   // and the compiler is still usable afterwards
   EXPECT_EQ(lc.compileFn<int()>("1+2")(), 3);
+}
+
+// the bound is on the size of the type asked about, not on how many steps it
+// took to get there, so an instance that doubles its type at each step is
+// rejected after a handful of steps rather than after a fixed count of them
+// (by which point the type would be astronomically large, and the compiler
+// long since out of time and memory building it)
+TEST(TypeInf, ExponentiallyGrowingInstanceResolutionIsRejected) {
+  cc lc;
+  compile(&lc, lc.readModule(
+    "class Double a where\n"
+    "  double :: a -> a\n"
+    "instance (Double (a*a)) => Double a where\n"
+    "  double x = x\n"
+  ));
+
+  const auto t0 = std::chrono::steady_clock::now();
+  EXPECT_EXCEPTION_MSG(lc.compileFn<int()>("double(1)"), std::exception, "larger than its head");
+  const auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - t0);
+  EXPECT_TRUE(elapsed.count() < 10);
+  EXPECT_EQ(lc.compileFn<int()>("1+2")(), 3);
+}
+
+// depth by itself is not the signature of divergence: the Prelude's record and
+// tuple instances recurse once per field, so a wide record nests as many
+// generators deep as it has fields, and a group of mutually recursive
+// instances nests once per member while their dictionaries are bound. None of
+// these steps asks about a type larger than the request, and they resolve as
+// they always have (a fixed depth limit of 256 refused all three)
+TEST(TypeInf, DeepButNotGrowingInstanceResolutionIsAllowed) {
+  cc lc;
+
+  std::ostringstream rec;
+  rec << "{";
+  for (size_t i = 0; i < 300; ++i) {
+    rec << (i > 0 ? ", " : "") << "f" << i << "=" << i;
+  }
+  rec << "}";
+  EXPECT_TRUE(lc.compileFn<bool()>(rec.str() + " == " + rec.str())());
+
+  std::ostringstream tup;
+  tup << "(";
+  for (size_t i = 0; i < 300; ++i) {
+    tup << (i > 0 ? ", " : "") << i;
+  }
+  tup << ")";
+  EXPECT_TRUE(lc.compileFn<bool()>(tup.str() + " == " + tup.str())());
+
+  std::ostringstream group;
+  group << "class A a where\n  fa :: a -> int\n";
+  for (size_t i = 0; i < 300; ++i) {
+    group << "class B" << i << " a where\n  fb" << i << " :: a -> int\n";
+  }
+  group << "instance (";
+  for (size_t i = 0; i < 300; ++i) {
+    group << (i > 0 ? ", " : "") << "B" << i << " a";
+  }
+  group << ") => A a where\n  fa x = 300\n";
+  for (size_t i = 0; i < 300; ++i) {
+    group << "instance (A a) => B" << i << " a where\n  fb" << i << " x = 1\n";
+  }
+  compile(&lc, lc.readModule(group.str()));
+  EXPECT_EQ(lc.compileFn<int()>("fa(1)")(), 300);
 }
 
 // a class memoizes the constraints it has found unsatisfiable, and nothing
