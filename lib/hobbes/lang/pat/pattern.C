@@ -150,11 +150,28 @@ bool MatchRegex::operator==(const Pattern& rhs) const {
 void MatchRegex::assignSubNames(const std::string&) {
 }
 
+// a literal character that the regex parser would read as an operator
+// (diffRegex/returnR in regex.C: grouping, alternation, any-char, charsets,
+// quantifiers, and the escape itself) has to be escaped when a string literal
+// is spelled as a regex, or "a*" stops matching itself and matches "aaa"
+static bool isRegexMetaChar(char c) {
+  switch (c) {
+  case '\\': case '(': case ')': case '|': case '.': case '[': case ']':
+  case '?': case '*': case '+':
+    return true;
+  default:
+    return false;
+  }
+}
+
 PatternPtr MatchRegex::toRegex(const MatchArray& ma) {
   std::ostringstream ss;
   for (size_t i = 0; i < ma.size(); ++i) {
     if (const MatchLiteral* cm = is<MatchLiteral>(ma.pattern(i))) {
       if (const Char* c = is<Char>(cm->equivConstant())) {
+        if (isRegexMetaChar(c->value())) {
+          ss << '\\';
+        }
         ss << c->value();
       } else {
         throw annotated_error(*ma.pattern(i), "Internal error, can't normalize non-char array match to regex");

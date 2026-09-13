@@ -242,7 +242,9 @@ struct CPPTypeDescUnqualify : public switchExprTyFn {
   }
 
   ExprPtr with(const Var* vn) const override {
-    if (vn->value() == REF_CPPTDESC) {
+    // a cppType elsewhere in the expression may be qualified by a different
+    // CPPType constraint; it is rewritten when that one is eliminated
+    if (vn->value() == REF_CPPTDESC && hasConstraint(this->constraint, vn->type())) {
       return ExprPtr(mkarray(describeCPPType(this->tname, this->ty, vn->la()), vn->la()));
     } else {
       return wrapWithTy(vn->type(), new Var(vn->value(), vn->la()));

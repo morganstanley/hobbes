@@ -47,7 +47,9 @@ struct SizeOfPUnqualify : public switchExprTyFn {
   }
 
   ExprPtr with(const Var* vn) const override {
-    if (vn->value() == REF_SIZEOF) {
+    // a sizeOf elsewhere in the expression may be qualified by a different
+    // SizeOf constraint; it is folded when that one is eliminated
+    if (vn->value() == REF_SIZEOF && hasConstraint(this->constraint, vn->type())) {
       return constant(static_cast<size_t>(sizeOf(this->constraint->arguments()[0])), vn->la());
     } else {
       return wrapWithTy(vn->type(), new Var(vn->value(), vn->la()));
