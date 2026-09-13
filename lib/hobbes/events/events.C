@@ -96,8 +96,27 @@ int threadEPollFD() {
 
 // the closure map owns exactly the closures the kernel can still deliver: an
 // entry is made only once the descriptor is in the epoll set, and is erased
-// when its closure is deleted, so a descriptor number that comes back into
-// use later never finds a stale pointer under its key
+// when its closure is deleted. A stale entry is left only by closing a
+// descriptor without unregistering it, and then it is found when its number
+// is registered again. That closure cannot be freed, because its epoll
+// interest may still be live: the interest is attached to the open file
+// description rather than the number, and survives this process's close of
+// the number for as long as any duplicate of it is open (one inherited by a
+// child this process forked, say). A wait can then return that interest with
+// this closure as its data pointer. So it is quarantined instead: marked
+// retired (the dispatch loops skip it), its handler released, and the shell
+// kept for the life of the thread -- a few dozen bytes for each descriptor
+// closed while registered, which unregistering first avoids.
+thread_local std::vector<eventcbclosure*> quarantinedClosures;
+
+void quarantineClosure(eventcbclosure* c) {
+  if (c != nullptr) {
+    c->retired = true;
+    c->fn      = nullptr;
+    quarantinedClosures.push_back(c);
+  }
+}
+
 void unregisterEventHandler(int fd) {
   auto ec = epClosures->find(fd);
   if (ec != epClosures->end()) {
@@ -125,7 +144,7 @@ void registerEventHandler(int fd, const std::function<void(int)>& fn, bool) {
   }
 
   auto& slot = (*epClosures)[fd];
-  retireClosure(slot); // a previous closure left under this key after its fd was closed unregistered
+  quarantineClosure(slot);
   slot = c;
 }
 
