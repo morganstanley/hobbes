@@ -58,12 +58,17 @@ int threadEPollFD() {
   return epFD;
 }
 
+// the closure map owns exactly the closures the kernel can still deliver: an
+// entry is made only once the descriptor is in the epoll set, and is erased
+// when its closure is deleted, so a descriptor number that comes back into
+// use later never finds a stale pointer under its key
 void unregisterEventHandler(int fd) {
   auto ec = epClosures->find(fd);
   if (ec != epClosures->end()) {
     struct epoll_event evt;
     epoll_ctl(threadEPollFD(), EPOLL_CTL_DEL, fd, &evt);
     delete ec->second;
+    epClosures->erase(ec);
   }
 }
 
@@ -71,7 +76,6 @@ void registerEventHandler(int fd, const std::function<void(int)>& fn, bool) {
   int epfd = threadEPollFD();
 
   auto* c = new eventcbclosure(fd, fn);
-  (*epClosures)[fd] = c;
 
   struct epoll_event evt;
   memset(&evt, 0, sizeof(evt));
@@ -83,6 +87,10 @@ void registerEventHandler(int fd, const std::function<void(int)>& fn, bool) {
     delete c;
     throw std::runtime_error("Failed to add FD to epoll set: " + std::string(strerror(errno)));
   }
+
+  auto& slot = (*epClosures)[fd];
+  delete slot; // a previous closure left under this key after its fd was closed unregistered
+  slot = c;
 }
 
 void registerInterruptHandler(const std::function<void()>& fn) {
@@ -207,6 +215,9 @@ int threadKQFD() {
   return kqFD;
 }
 
+// as on Linux: the closure map holds only closures the kernel can still
+// deliver, entered once the descriptor is in the kqueue and erased with the
+// closure, so a reused descriptor number never finds a stale pointer
 void unregisterEventHandler(int fd) {
   auto ec = kqClosures->find(fd);
   if (ec != kqClosures->end()) {
@@ -214,6 +225,7 @@ void unregisterEventHandler(int fd) {
     EV_SET(&ke, fd, EVFILT_READ, EV_DELETE, 0, 0, 0);
     kevent(threadKQFD(), &ke, 1, 0, 0, 0);
     delete ec->second;
+    kqClosures->erase(ec);
   }
 }
 
@@ -221,7 +233,6 @@ void registerEventHandler(int fd, const std::function<void(int)>& fn, bool vn) {
   int kqfd = threadKQFD();
 
   eventcbclosure* c = new eventcbclosure(fd, fn);
-  (*kqClosures)[fd] = c;
 
   struct kevent ke;
   if (vn) {
@@ -233,6 +244,10 @@ void registerEventHandler(int fd, const std::function<void(int)>& fn, bool vn) {
     delete c;
     throw std::runtime_error("Failed to add FD to kqueue: " + std::string(strerror(errno)));
   }
+
+  auto& slot = (*kqClosures)[fd];
+  delete slot; // a previous closure left under this key after its fd was closed unregistered
+  slot = c;
 }
 
 void registerInterruptHandler(const std::function<void()>& fn) {
