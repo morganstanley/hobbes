@@ -92,6 +92,10 @@ namespace {
   thread_local std::vector<size_t> instanceResolutionSizes;
   thread_local size_t              instanceResolutionGrowthSteps = 0;
 
+  // how many resolutions are in progress on this thread: a generator step
+  // or a class holding a provisional memo entry (below) each count as one
+  thread_local size_t resolutionsInProgress = 0;
+
   // one instance generator step, entered at TCInstanceFn::apply and
   // TCInstanceFn::satisfiable (the only places resolution recurses without a
   // memo to stop it)
@@ -119,8 +123,10 @@ namespace {
       if (this->grew) {
         ++instanceResolutionGrowthSteps;
       }
+      ++resolutionsInProgress;
     }
     ~InstanceResolutionStep() {
+      --resolutionsInProgress;
       instanceResolutionSizes.pop_back();
       if (this->grew) {
         --instanceResolutionGrowthSteps;
@@ -143,8 +149,10 @@ namespace {
   struct ProvisionalMemo {
     ProvisionalMemo(type_map<bool>& memo, const MonoTypes& mts) : memo(memo), mts(mts), unwinding(std::uncaught_exceptions()) {
       memo.insert(mts, true);
+      ++resolutionsInProgress;
     }
     ~ProvisionalMemo() {
+      --resolutionsInProgress;
       if (std::uncaught_exceptions() > this->unwinding) {
         this->memo.insert(this->mts, false);
       }
@@ -300,9 +308,24 @@ void TClass::insert(const TCInstanceFnPtr& ifp) {
 // need not belong to the class asked, either: (B a) => A a refuses A int until
 // B int exists. So an addition to any class voids every class's memos, through
 // a generation count that each class compares with its own before it reads
-// them; what is still true is rederived on the next request
+// them; what is still true is rederived on the next request.
+//
+// Not in the middle of a request, though: the memos are also the recursion
+// guard, holding "assumed satisfiable" entries for the constraints being
+// resolved, and a resolution in progress adds instances of its own (the ones
+// it generates). Clearing then would drop the guard from under it. So the
+// count is read once, when a request starts with no resolution in progress,
+// and every class touched by that request is brought up to the count read
+// then; an addition made during the request takes effect at the next one,
+// which is the first that could ask about it anyway.
+//
+// The count is process-wide rather than per type environment: an instance
+// added in one compiler clears the memos of another's classes, which costs a
+// rederivation of what was memoized and nothing else, and is not a change
+// from before for the common case of one compiler per process.
 namespace {
   std::atomic<uint64_t> instanceGeneration{1};
+  thread_local uint64_t requestGeneration = 0;
 }
 
 void TClass::forgetResolutions() {
@@ -310,11 +333,13 @@ void TClass::forgetResolutions() {
 }
 
 void TClass::refreshResolutions() const {
-  uint64_t g = instanceGeneration.load();
-  if (this->memoGeneration != g) {
+  if (resolutionsInProgress == 0) {
+    requestGeneration = instanceGeneration.load();
+  }
+  if (this->memoGeneration != requestGeneration) {
     this->testedInstances.clear();
     this->satfInstances.clear();
-    this->memoGeneration = g;
+    this->memoGeneration = requestGeneration;
   }
 }
 
