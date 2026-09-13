@@ -21,6 +21,7 @@ struct eventcbclosure {
 
   int                      fd;
   std::function<void(int)> fn;
+  bool                     vnode   = false; // registered for file changes rather than readability
   bool                     retired = false; // unregistered or replaced while a batch was being dispatched
 };
 using EventClosures = std::map<int, eventcbclosure *>;
@@ -262,8 +263,12 @@ int threadKQFD() {
 void unregisterEventHandler(int fd) {
   auto ec = kqClosures->find(fd);
   if (ec != kqClosures->end()) {
+    // a kqueue registration is keyed by (fd, filter), so the delete must name
+    // the filter the handler was registered with: deleting EVFILT_READ for a
+    // file-change handler is ENOENT, and its EVFILT_VNODE registration stays
+    // live in the kqueue with udata pointing at the closure freed below
     struct kevent ke;
-    EV_SET(&ke, fd, EVFILT_READ, EV_DELETE, 0, 0, 0);
+    EV_SET(&ke, fd, ec->second->vnode ? EVFILT_VNODE : EVFILT_READ, EV_DELETE, 0, 0, 0);
     kevent(threadKQFD(), &ke, 1, 0, 0, 0);
     retireClosure(ec->second);
     kqClosures->erase(ec);
@@ -274,6 +279,7 @@ void registerEventHandler(int fd, const std::function<void(int)>& fn, bool vn) {
   int kqfd = threadKQFD();
 
   eventcbclosure* c = new eventcbclosure(fd, fn);
+  c->vnode = vn;
 
   struct kevent ke;
   if (vn) {
