@@ -609,6 +609,57 @@ TEST(Net, handlersRetiredMidBatchAreNotDispatched) {
   close(replacement[1]);
 }
 
+TEST(Net, staleInterestFromADuplicatedDescriptorIsNotDispatched) {
+  // a registered descriptor is closed (not unregistered) while a duplicate of
+  // it stays open, so the kernel keeps its interest, and its number is reused
+  // for another descriptor that is then registered: the old interest still
+  // delivers the old closure (which the loop used to have freed by then)
+  int p[2];
+  EXPECT_EQ(pipe(p), 0);
+  std::atomic<int> staleRan{0};
+  registerEventHandler(p[0], [&staleRan](int fd) {
+    char b;
+    if (read(fd, &b, 1) == 1) {
+      ++staleRan;
+    }
+  });
+  int dup0 = dup(p[0]);
+  EXPECT_TRUE(dup0 >= 0);
+
+  int q[2];
+  EXPECT_EQ(pipe(q), 0);
+  EXPECT_EQ(dup2(q[0], p[0]), p[0]); // p[0] is now the number of q's read end
+  close(q[0]);
+  std::atomic<int> freshRan{0};
+  registerEventHandler(p[0], [&freshRan](int fd) {
+    char b;
+    if (read(fd, &b, 1) == 1) {
+      ++freshRan;
+    }
+  });
+
+  // a byte on the old pipe is reported through the old interest
+  EXPECT_EQ(write(p[1], "x", 1), ssize_t(1));
+  for (size_t s = 0; s < 3; ++s) {
+    runEventLoop(100 * 1000);
+  }
+  EXPECT_EQ(staleRan.load(), 0);
+  EXPECT_EQ(freshRan.load(), 0);
+
+  // and one on the new pipe reaches its handler
+  EXPECT_EQ(write(q[1], "y", 1), ssize_t(1));
+  for (size_t s = 0; s < 30 && freshRan == 0; ++s) {
+    runEventLoop(100 * 1000);
+  }
+  EXPECT_EQ(freshRan.load(), 1);
+
+  unregisterEventHandler(p[0]);
+  close(p[0]);
+  close(p[1]);
+  close(q[1]);
+  close(dup0);
+}
+
 namespace {
 template <typename EventLoopFn, typename ExpectPred>
 void eventLoopShutdownWithStopFImpl(EventLoopFn elFn, ExpectPred expectPred) {
