@@ -43,7 +43,9 @@ struct gzbuffer {
 #pragma GCC diagnostic ignored "-Wold-style-cast"
     checkZLibRC(inflateInit2(&this->zin, 15 | 32)); // window bits + ENABLE_ZLIB_GZIP
 #pragma GCC diagnostic pop
-    decompressChunk();
+    // the first chunk is inflated by the first eof()/read(), not here: if it
+    // raised from the constructor there would be no destructor to run
+    // inflateEnd, and the zlib state would be leaked
   }
 
   ~gzbuffer() {
@@ -60,7 +62,10 @@ struct gzbuffer {
   }
 
   void checkZLibRC(int status) {
-    if (status < 0) {
+    // Z_NEED_DICT is positive but is not progress: inflate produces nothing
+    // more until a preset dictionary is supplied, and nothing here supplies
+    // one, so such a stream would otherwise read as an empty, complete batch
+    if (status < 0 || status == Z_NEED_DICT) {
       throw std::runtime_error("failed to decompress out of gzip segment (" + str::from(status) + ")");
     }
   }
@@ -68,7 +73,9 @@ struct gzbuffer {
   void decompressChunk() {
     this->zin.next_out  = outb->data();
     this->zin.avail_out = outb->size();
-    checkZLibRC(static_cast<int>(inflate(&this->zin, Z_NO_FLUSH) < 0));
+    // hand checkZLibRC the return code itself: comparing it against zero first
+    // reduced every result to 0 or 1, so a corrupt segment was never reported
+    checkZLibRC(inflate(&this->zin, Z_NO_FLUSH));
     this->off   = 0;
     this->avail = this->outb->size() - this->zin.avail_out;
   }
@@ -179,18 +186,44 @@ void runRecvConnection(SessionGroup* sg, NetConnection* pc, const std::string& d
 
     // now that we've prepared a log file,
     // just throw everything that we read into it
+    //
+    // a batch is decoded in full before any of it is applied: inflate can only
+    // report a corrupt segment when it reaches the trailer (that is where the
+    // CRC is), and a batch applied up to that point and then rejected would be
+    // applied again when the sender resends it. The sender steps a segment at
+    // ~10 MB of log data, so a decoded batch is small next to the receive
+    // buffers already held here.
+    std::vector<size_t> txnLens;
     while (true) {
       receiveIntoBuffer(*connection, &inb);
       gzbuffer zb(inb, &outb);
 
+      txn.clear();
+      txnLens.clear();
       while (!zb.eof()) {
         uint64_t n = 0;
         read(&zb, &n);
-        txn.resize(n);
-        read(&zb, txn.data(), txn.size());
 
-        storage::Transaction stxn(txn.data(), txn.size());
+        // the length is read from the stream and is trusted no further than
+        // the data behind it: the buffer grows a piece at a time as that data
+        // is actually read, so a length the stream cannot back fails on the
+        // read that runs out, rather than sizing the buffer first (where an
+        // absurd length would wrap the sum, and the copy would run off the end)
+        size_t off = txn.size();
+        for (uint64_t k = 0; k < n; ) {
+          size_t j = static_cast<size_t>(std::min<uint64_t>(n - k, 64 * 1024));
+          txn.resize(off + k + j);
+          read(&zb, txn.data() + off + k, j);
+          k += j;
+        }
+        txnLens.push_back(static_cast<size_t>(n));
+      }
+
+      size_t off = 0;
+      for (size_t n : txnLens) {
+        storage::Transaction stxn(txn.data() + off, n);
         txnF(stxn);
+        off += n;
       }
 
       connection->send(&ack, sizeof(ack));

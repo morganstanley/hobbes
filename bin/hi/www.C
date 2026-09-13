@@ -403,10 +403,15 @@ void WWWServer::printFileContents(int fd, const std::string& fpath) {
   int sfd = open(fpath.c_str(), O_RDONLY);
   if (sfd == -1) {
     print404(fd, fpath);
+    return;
   }
 
   struct stat sb;
-  fstat(sfd, &sb);
+  if (fstat(sfd, &sb) != 0) {
+    close(sfd);
+    print404(fd, fpath);
+    return;
+  }
 
   write(fd, "HTTP 200 OK\nContent-Type: " + mimeType(fpath) + "\nContent-Length: " + str::from(sb.st_size) + "\n\n");
 

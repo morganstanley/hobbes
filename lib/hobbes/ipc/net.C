@@ -321,7 +321,11 @@ void registerNetREPL(int s, Server *svr) {
             uint32_t version = 0;
             fdread(c, &version);
             if (version != 0x00010000) {
+              // the peer speaks another protocol: drop it here rather than
+              // falling through to register a handler on the closed socket
+              // (which then closed it again from the catch below)
               close(c);
+              return;
             }
 
             reinterpret_cast<Server *>(d)->connect(c);

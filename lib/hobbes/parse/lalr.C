@@ -193,11 +193,15 @@ terminalset symbolsDerivingNull(const grammar& g) {
 
   while (changed) {
     changed = false;
-    for (auto s = potentials.begin(); s != potentials.end(); ++s) {
+    // erasing the element an iterator refers to invalidates that iterator, so
+    // advance from what erase returns rather than incrementing the dead one
+    for (auto s = potentials.begin(); s != potentials.end(); ) {
       if (nulls.find(*s) == nulls.end() && derivesNull(g, nulls, *s)) {
         nulls.insert(*s);
-        potentials.erase(*s);
+        s = potentials.erase(s);
         changed = true;
+      } else {
+        ++s;
       }
     }
   }

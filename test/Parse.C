@@ -217,3 +217,23 @@ TEST(Parse, AFailedParseLeavesNoLexerStateBehind) {
   EXPECT_EQ(openParseCount(), size_t(0));
   EXPECT_EQ(show(c().readExpr("1+2")), "+(1, 2)");
 }
+
+// a parser generated from a `parse { ... }` grammar first works out which of
+// its rules can derive the empty string. That pass walked a set while erasing
+// from it -- erasing the element its iterator named, then stepping the dead
+// iterator -- which is undefined behaviour reached by any grammar with a rule
+// that can be empty (a debug libstdc++ reports "attempt to increment a
+// singular iterator"; an ordinary build reads freed memory and may crash or
+// mis-classify a rule). Nullable rules are common (an optional prefix, an
+// empty list), so the parser they produce should just work.
+TEST(Parse, GrammarsWithNullableRulesAreGenerated) {
+  // O is nullable directly, P only through O: both must be seen as such for
+  // "a" to be accepted at all
+  cc lc;
+  lc.define("np", "parse { S := p:P \"a\" { p }   P := o:O { o }   O := \"b\" { 1 } | { 0 } }");
+
+  EXPECT_EQ(lc.compileFn<int()>("match np(\"a\")  with | |1=x| -> x | _ -> -1")(), 0);
+  EXPECT_EQ(lc.compileFn<int()>("match np(\"ba\") with | |1=x| -> x | _ -> -1")(), 1);
+  EXPECT_EQ(lc.compileFn<int()>("match np(\"bb\") with | |1=x| -> x | _ -> -1")(), -1);
+  EXPECT_EQ(lc.compileFn<int()>("match np(\"\")   with | |1=x| -> x | _ -> -1")(), -1);
+}
