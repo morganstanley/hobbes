@@ -235,7 +235,7 @@ void runParserOnString(cc* c, int initTok, const char* s) {
 // a module's expressions get the same nesting bound as an expression read on
 // its own (see defReadExpr below): a definition's body, and the body of each
 // member of an instance, are the places a module holds an expression
-void checkNestingDepth(const ModulePtr& m) {
+static void checkNestingDepth(const ModulePtr& m) {
   for (const auto& md : m->definitions()) {
     if (const MVarDef* vd = is<MVarDef>(md)) {
       checkNestingDepth(vd->varExpr());
