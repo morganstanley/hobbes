@@ -21,12 +21,47 @@ struct eventcbclosure {
 
   int                      fd;
   std::function<void(int)> fn;
+  bool                     retired = false; // unregistered or replaced while a batch was being dispatched
 };
 using EventClosures = std::map<int, eventcbclosure *>;
 
 void registerEventHandler(int fd, eventhandler fn, void* ud, bool f) {
   registerEventHandler(fd, [fn,ud](int c){fn(c,ud);}, f);
 }
+
+// a closure is not deleted while a batch of events is being dispatched: the
+// batch holds raw closure pointers, and a callback in it can close another
+// descriptor of the same batch (or unregister it) and register a replacement
+// under the same number, which would free a closure the loop is about to
+// call. Closures retired during a batch are kept until it has been dispatched,
+// and the batch skips them: their descriptor is gone, or is someone else's now.
+thread_local std::vector<eventcbclosure*> retiredClosures;
+thread_local size_t                       dispatchDepth = 0;
+
+void retireClosure(eventcbclosure* c) {
+  if (c == nullptr) {
+    return;
+  } else if (dispatchDepth == 0) {
+    delete c;
+  } else {
+    c->retired = true;
+    retiredClosures.push_back(c);
+  }
+}
+
+struct DispatchingBatch {
+  DispatchingBatch() { ++dispatchDepth; }
+  ~DispatchingBatch() {
+    if (--dispatchDepth == 0) {
+      for (auto* c : retiredClosures) {
+        delete c;
+      }
+      retiredClosures.clear();
+    }
+  }
+  DispatchingBatch(const DispatchingBatch&) = delete;
+  DispatchingBatch& operator=(const DispatchingBatch&) = delete;
+};
 
 #ifdef BUILD_LINUX
 thread_local bool           epInitialized = false;
@@ -67,7 +102,7 @@ void unregisterEventHandler(int fd) {
   if (ec != epClosures->end()) {
     struct epoll_event evt;
     epoll_ctl(threadEPollFD(), EPOLL_CTL_DEL, fd, &evt);
-    delete ec->second;
+    retireClosure(ec->second);
     epClosures->erase(ec);
   }
 }
@@ -89,7 +124,7 @@ void registerEventHandler(int fd, const std::function<void(int)>& fn, bool) {
   }
 
   auto& slot = (*epClosures)[fd];
-  delete slot; // a previous closure left under this key after its fd was closed unregistered
+  retireClosure(slot); // a previous closure left under this key after its fd was closed unregistered
   slot = c;
 }
 
@@ -116,10 +151,13 @@ bool stepEventLoop(int timeoutMS, const std::function<bool()>& stopFn) {
     int fds = epoll_wait(threadEPollFD(), evts, sizeof(evts)/sizeof(evts[0]), effectiveTimeoutMS);
     bool status = true;
     if (fds > 0) {
+      DispatchingBatch batch;
       for (int fd = 0; fd < fds; ++fd) {
         auto* c = reinterpret_cast<eventcbclosure*>(evts[fd].data.ptr);
-        (c->fn)(c->fd);
-        resetMemoryPool();
+        if (!c->retired) {
+          (c->fn)(c->fd);
+          resetMemoryPool();
+        }
       }
     } else if (fds < 0) {
       if (errno != EINTR) {
@@ -186,10 +224,13 @@ void runEventLoop(int microsecondDuration, const std::function<bool()>& stopFn) 
     struct epoll_event evts[64];
     int fds = epoll_wait(threadEPollFD(), evts, sizeof(evts)/sizeof(evts[0]), timeout);
     if (fds > 0) {
+      DispatchingBatch batch;
       for (int fd = 0; fd < fds; ++fd) {
         auto* c = reinterpret_cast<eventcbclosure*>(evts[fd].data.ptr);
-        (c->fn)(c->fd);
-        resetMemoryPool();
+        if (!c->retired) {
+          (c->fn)(c->fd);
+          resetMemoryPool();
+        }
       }
     }
     t = hobbes::time();
@@ -224,7 +265,7 @@ void unregisterEventHandler(int fd) {
     struct kevent ke;
     EV_SET(&ke, fd, EVFILT_READ, EV_DELETE, 0, 0, 0);
     kevent(threadKQFD(), &ke, 1, 0, 0, 0);
-    delete ec->second;
+    retireClosure(ec->second);
     kqClosures->erase(ec);
   }
 }
@@ -246,7 +287,7 @@ void registerEventHandler(int fd, const std::function<void(int)>& fn, bool vn) {
   }
 
   auto& slot = (*kqClosures)[fd];
-  delete slot; // a previous closure left under this key after its fd was closed unregistered
+  retireClosure(slot); // a previous closure left under this key after its fd was closed unregistered
   slot = c;
 }
 
@@ -273,10 +314,13 @@ bool stepEventLoop(int timeoutMS, const std::function<bool()>& stopFn) {
     struct kevent evts[64];
     int fds = kevent(threadKQFD(), 0, 0, evts, sizeof(evts)/sizeof(evts[0]), &timeout);
     if (fds > 0) {
+      DispatchingBatch batch;
       for (size_t fd = 0; fd < fds; ++fd) {
         eventcbclosure* c = (eventcbclosure*)evts[fd].udata;
-        (c->fn)(c->fd);
-        resetMemoryPool();
+        if (!c->retired) {
+          (c->fn)(c->fd);
+          resetMemoryPool();
+        }
       }
       return true;
     } else if (fds == 0) {
@@ -333,10 +377,13 @@ void runEventLoop(int microsecondDuration, const std::function<bool()>& stopFn) 
     struct kevent evts[64];
     int fds = kevent(threadKQFD(), 0, 0, evts, sizeof(evts)/sizeof(evts[0]), &timeout);
     if (fds > 0) {
+      DispatchingBatch batch;
       for (size_t fd = 0; fd < fds; ++fd) {
         eventcbclosure* c = (eventcbclosure*)evts[fd].udata;
-        (c->fn)(c->fd);
-        resetMemoryPool();
+        if (!c->retired) {
+          (c->fn)(c->fd);
+          resetMemoryPool();
+        }
       }
     }
     t = hobbes::time();

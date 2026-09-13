@@ -541,6 +541,75 @@ TEST(Net, eventHandlerRegistrationTracksTheDescriptor) {
 }
 
 namespace {
+// two pipes, each with a byte waiting, so that both handlers are delivered in
+// one batch; whichever runs first does 'retire' to the other's pipe. The
+// second handler of the batch must then not run: its closure has been retired
+// (and freed, before this was fixed -- the loop called through freed memory)
+void retireTheOtherMidBatch(const std::function<void(int* other)>& retire, std::atomic<int>* replacementRan) {
+  int a[2], b[2];
+  EXPECT_EQ(pipe(a), 0);
+  EXPECT_EQ(pipe(b), 0);
+  int* pipes[2] = {a, b};
+
+  std::atomic<int> ran{0};
+  int first = -1;
+  auto handler = [&](int me) {
+    char c;
+    EXPECT_EQ(read(me, &c, 1), ssize_t(1));
+    first = me;
+    ++ran;
+    retire((me == a[0]) ? b : a);
+  };
+  for (int* p : pipes) {
+    registerEventHandler(p[0], handler);
+    EXPECT_EQ(write(p[1], "x", 1), ssize_t(1));
+  }
+
+  for (size_t s = 0; s < 30 && (ran == 0 || (replacementRan != nullptr && *replacementRan == 0)); ++s) {
+    runEventLoop(100 * 1000);
+  }
+  EXPECT_EQ(ran.load(), 1);
+
+  int* survivor = (first == a[0]) ? a : b;
+  unregisterEventHandler(survivor[0]);
+  close(survivor[0]);
+  close(survivor[1]);
+}
+}
+
+TEST(Net, handlersRetiredMidBatchAreNotDispatched) {
+  // a handler unregisters the other descriptor of its batch
+  retireTheOtherMidBatch([](int* other) {
+    unregisterEventHandler(other[0]);
+    close(other[0]);
+    close(other[1]);
+  }, nullptr);
+
+  // a handler closes the other descriptor of its batch (which drops it from
+  // the poll set without unregistering it) and registers a fresh descriptor
+  // that takes its number: the stale closure under that number is retired,
+  // and it is the new handler that runs, on the next batch
+  std::atomic<int> replacementRan{0};
+  int replacement[2] = {-1, -1};
+  retireTheOtherMidBatch([&](int* other) {
+    close(other[0]);
+    close(other[1]);
+    EXPECT_EQ(pipe(replacement), 0); // normally takes the numbers just freed
+    registerEventHandler(replacement[0], [&replacementRan](int fd) {
+      char d;
+      if (read(fd, &d, 1) == 1) {
+        ++replacementRan;
+      }
+    });
+    EXPECT_EQ(write(replacement[1], "y", 1), ssize_t(1));
+  }, &replacementRan);
+  EXPECT_EQ(replacementRan.load(), 1);
+  unregisterEventHandler(replacement[0]);
+  close(replacement[0]);
+  close(replacement[1]);
+}
+
+namespace {
 template <typename EventLoopFn, typename ExpectPred>
 void eventLoopShutdownWithStopFImpl(EventLoopFn elFn, ExpectPred expectPred) {
   struct {
