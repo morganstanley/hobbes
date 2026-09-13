@@ -81,8 +81,9 @@ template <typename K, typename V, typename KMap>
     prefix_tree& operator=(const prefix_tree&) = delete;
 
     void clear() {
+      node_t* fresh = new node_t; // before the old tree goes, so a failed allocation leaves it intact
       delete this->root;
-      this->root = new node_t;
+      this->root = fresh;
     }
 
     template <typename KIter>
