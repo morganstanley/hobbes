@@ -75,6 +75,16 @@ template <typename K, typename V, typename KMap>
       delete this->root;
     }
 
+    // the tree owns its nodes through one raw root pointer, so a copy would
+    // free them twice
+    prefix_tree(const prefix_tree&) = delete;
+    prefix_tree& operator=(const prefix_tree&) = delete;
+
+    void clear() {
+      delete this->root;
+      this->root = new node_t;
+    }
+
     template <typename KIter>
       void insert(KIter begin, KIter end, const V& v) {
         makeNode(begin, end)->value = v;

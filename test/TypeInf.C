@@ -669,6 +669,30 @@ TEST(TypeInf, NonTerminatingInstanceResolutionIsRejected) {
   EXPECT_EQ(lc.compileFn<int()>("1+2")(), 3);
 }
 
+// a class memoizes the constraints it has found unsatisfiable, and nothing
+// cleared that memo when an instance was added: once `Grow int` had been asked
+// about and refused, defining `instance Grow int` afterwards changed nothing,
+// and the constraint stayed unsatisfiable for the life of the compiler. That
+// is how a REPL session goes -- ask, see the error, define the instance, ask
+// again -- and it is where a resolution refused for depth (above) would have
+// been stuck for good. Adding an instance now resets the class's memos.
+TEST(TypeInf, InstancesDefinedAfterARefusalAreFound) {
+  cc lc;
+  compile(&lc, lc.readModule(
+    "class Grow a where\n"
+    "  grow :: a -> a\n"
+    "instance Grow [a] where\n"
+    "  grow x = x\n"
+  ));
+  EXPECT_EXCEPTION_MSG(lc.compileFn<int()>("grow(1)"), std::exception, "Grow int");
+
+  compile(&lc, lc.readModule(
+    "instance Grow int where\n"
+    "  grow x = x + 1\n"
+  ));
+  EXPECT_EQ(lc.compileFn<int()>("grow(1)")(), 2);
+}
+
 // the limit is far from what ordinary code resolves through: a recursive
 // instance whose context asks about a smaller type than its head bottoms out,
 // and one that nests sixty levels deep resolves as it always has

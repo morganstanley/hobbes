@@ -167,6 +167,7 @@ void TClass::insert(const TEnvPtr& tenv, const TCInstancePtr& ip, Definitions* d
   } else {
     this->tcinstances.push_back(ip);
     this->tcinstdb.insert(ip->types(), ip);
+    forgetResolutions();
     ip->bind(tenv, this, ds);
   }
 }
@@ -211,7 +212,19 @@ void TClass::insert(const TCInstanceFnPtr& ifp) {
       x.push_back(ifp);
       this->tcinstfndb.insert(ifp->itys, x);
     }
+    forgetResolutions();
   }
+}
+
+// the memos record what resolution found, and only the class's own set of
+// instances can change what it would find: a constraint refused as
+// unsatisfiable is satisfiable once the instance for it is defined (the REPL
+// pattern -- ask, define the instance, ask again), and one resolved to a
+// single instance could resolve to two. So each addition forgets both memos;
+// what is still true is rederived on the next request
+void TClass::forgetResolutions() {
+  this->testedInstances.clear();
+  this->satfInstances.clear();
 }
 
 TCInstances TClass::matches(const TEnvPtr& tenv, const ConstraintPtr& c, MonoTypeUnifier* u, Definitions* ds) const {
