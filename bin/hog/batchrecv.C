@@ -68,9 +68,25 @@ struct gzbuffer {
   void decompressChunk() {
     this->zin.next_out  = outb->data();
     this->zin.avail_out = outb->size();
-    // hand checkZLibRC the return code itself: comparing it against zero first
-    // reduced every result to 0 or 1, so a corrupt segment was never reported
-    checkZLibRC(inflate(&this->zin, Z_NO_FLUSH));
+    while (true) {
+      // hand checkZLibRC the return code itself: comparing it against zero first
+      // reduced every result to 0 or 1, so a corrupt segment was never reported
+      int rc = inflate(&this->zin, Z_NO_FLUSH);
+      checkZLibRC(rc);
+
+      // a segment file the sender re-opened for append (batchsend allocFile,
+      // after a restart) is a sequence of gzip members, and inflate stops at
+      // the end of each one; with input still unread, start on the next member
+      // -- and keep filling this chunk if it has room -- rather than treating
+      // the first member's end as the end of the batch
+      if (rc == Z_STREAM_END && this->zin.avail_in > 0) {
+        checkZLibRC(inflateReset(&this->zin));
+        if (this->zin.avail_out > 0) {
+          continue;
+        }
+      }
+      break;
+    }
     this->off   = 0;
     this->avail = this->outb->size() - this->zin.avail_out;
   }
