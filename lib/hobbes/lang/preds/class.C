@@ -7,6 +7,7 @@
 #include <hobbes/util/array.H>
 #include <hobbes/util/codec.H>
 #include <hobbes/util/perf.H>
+#include <exception>
 #include <memory>
 #include <unordered_map>
 
@@ -52,6 +53,31 @@ namespace {
     }
     InstanceResolutionStep(const InstanceResolutionStep&) = delete;
     InstanceResolutionStep& operator=(const InstanceResolutionStep&) = delete;
+  };
+
+  // TClass::matches, satisfiable and explain memoize a type as "assumed
+  // satisfiable" before recursing on it and settle the entry when they
+  // return. If the depth error above unwinds through them instead, the
+  // provisional entry must not be left behind: a later request for the same
+  // type would take it as an answer, skip resolution, and (having been told
+  // its context holds) generate an instance whose own context is the next
+  // type up, and so on without bound -- the third request for the same
+  // constraint hung where the first two had been rejected in milliseconds.
+  struct ProvisionalMemo {
+    ProvisionalMemo(type_map<bool>& memo, const MonoTypes& mts) : memo(memo), mts(mts), unwinding(std::uncaught_exceptions()) {
+      memo.insert(mts, true);
+    }
+    ~ProvisionalMemo() {
+      if (std::uncaught_exceptions() > this->unwinding) {
+        this->memo.insert(this->mts, false);
+      }
+    }
+    ProvisionalMemo(const ProvisionalMemo&) = delete;
+    ProvisionalMemo& operator=(const ProvisionalMemo&) = delete;
+  private:
+    type_map<bool>& memo;
+    MonoTypes       mts;
+    int             unwinding;
   };
 }
 
@@ -212,7 +238,7 @@ TCInstances TClass::matches(const TEnvPtr& tenv, const MonoTypes& mts, MonoTypeU
   // if no ground instances match, can we generate a ground instance to match?
   //  (this can only work when we can feed back derived type information)
   if (r.empty()) {
-    this->testedInstances.insert(mts, true);
+    ProvisionalMemo assumed(this->testedInstances, mts);
 
     TCInstanceFns ifns;
     candidateTCInstFns(tenv, mts, &ifns);
@@ -322,7 +348,7 @@ bool TClass::satisfiable(const TEnvPtr& tenv, const ConstraintPtr& c, Definition
   }
   
   // assume we're satisfiable until we can prove we're not
-  this->satfInstances.insert(mts, true);
+  ProvisionalMemo assumed(this->satfInstances, mts);
 
   // we're satisfiable if there's at least one satisfiable instance for this constraint
   if (this->tcinstdb.hasMatch(tenv, mts)) return true;
@@ -373,7 +399,7 @@ void TClass::explain(const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPt
     TCInstanceFnPtr likelyTarget;
     Constraints     fcs;
 
-    this->testedInstances.insert(mts, true);
+    ProvisionalMemo assumed(this->testedInstances, mts);
     TCInstanceFns ifns;
     candidateTCInstFns(tenv, mts, &ifns);
     for (const auto& f : ifns) {

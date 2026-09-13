@@ -653,7 +653,15 @@ TEST(TypeInf, NonTerminatingInstanceResolutionIsRejected) {
 
   const auto t0 = std::chrono::steady_clock::now();
   EXPECT_EXCEPTION_MSG(lc.compileFn<int()>("grow(1)"), std::exception, "instance resolution for Grow [");
-  EXPECT_EXCEPTION_MSG(lc.compileFn<int()>("grow(1)"), std::exception, "instance generators deep");
+
+  // a rejected resolution must not leave its "assumed satisfiable" memo
+  // entries behind: answered from those, a repeat request skipped resolution
+  // and hung where the first had been rejected in milliseconds. Now the memo
+  // is settled as unsatisfiable, so repeats are rejected outright, and a type
+  // not asked about before is resolved (and rejected) afresh
+  EXPECT_EXCEPTION(lc.compileFn<int()>("grow(1)"));
+  EXPECT_EXCEPTION(lc.compileFn<int()>("grow(2)"));
+  EXPECT_EXCEPTION_MSG(lc.compileFn<double()>("grow(1.5)"), std::exception, "instance generators deep");
   const auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - t0);
   EXPECT_TRUE(elapsed.count() < 60);
 
