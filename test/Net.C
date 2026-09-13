@@ -504,6 +504,42 @@ TEST(Net, asyncClientAPIWithUnConfiguredHostName) {
   EXPECT_EQ(c.pendingRequests(), size_t(0));
 }
 
+TEST(Net, eventHandlerRegistrationTracksTheDescriptor) {
+  // a descriptor the kernel refuses must not leave a handler registered under
+  // its number, so unregistering that number afterwards has nothing to do
+  int p[2];
+  EXPECT_EQ(pipe(p), 0);
+  close(p[0]);
+  close(p[1]);
+  int dead = p[0];
+  EXPECT_EXCEPTION(registerEventHandler(dead, [](int) {}));
+  unregisterEventHandler(dead);
+  unregisterEventHandler(dead);
+
+  // when the number comes back into use, the handler registered for the new
+  // descriptor is the one that runs
+  EXPECT_EQ(pipe(p), 0);
+  std::atomic<int> fired{0};
+  registerEventHandler(p[0], [&fired](int fd) {
+    char b;
+    if (read(fd, &b, 1) == 1) {
+      ++fired;
+    }
+  });
+  EXPECT_EQ(write(p[1], "x", 1), ssize_t(1));
+  for (size_t s = 0; s < 30 && fired == 0; ++s) {
+    runEventLoop(100 * 1000);
+  }
+  EXPECT_EQ(fired.load(), 1);
+
+  // unregistering removes the handler outright, so doing it again is harmless
+  // (this used to delete the same closure twice)
+  unregisterEventHandler(p[0]);
+  unregisterEventHandler(p[0]);
+  close(p[0]);
+  close(p[1]);
+}
+
 namespace {
 template <typename EventLoopFn, typename ExpectPred>
 void eventLoopShutdownWithStopFImpl(EventLoopFn elFn, ExpectPred expectPred) {
