@@ -37,6 +37,7 @@ void registerEventHandler(int fd, eventhandler fn, void* ud, bool f) {
 // call. Closures retired during a batch are kept until it has been dispatched,
 // and the batch skips them: their descriptor is gone, or is someone else's now.
 thread_local std::vector<eventcbclosure*> retiredClosures;
+thread_local std::vector<eventcbclosure*> handlersToRelease; // quarantined mid-batch (epoll); see quarantineClosure
 thread_local size_t                       dispatchDepth = 0;
 
 void retireClosure(eventcbclosure* c) {
@@ -58,6 +59,10 @@ struct DispatchingBatch {
         delete c;
       }
       retiredClosures.clear();
+      for (auto* c : handlersToRelease) {
+        c->fn = nullptr;
+      }
+      handlersToRelease.clear();
     }
   }
   DispatchingBatch(const DispatchingBatch&) = delete;
@@ -106,14 +111,21 @@ int threadEPollFD() {
 // this closure as its data pointer. So it is quarantined instead: marked
 // retired (the dispatch loops skip it), its handler released, and the shell
 // kept for the life of the thread -- a few dozen bytes for each descriptor
-// closed while registered, which unregistering first avoids.
+// closed while registered, which unregistering first avoids. The handler is
+// released only once no batch is being dispatched: the closure may be the one
+// whose handler is running (it closed its own descriptor and registered the
+// number again), and its captures live in that handler
 thread_local std::vector<eventcbclosure*> quarantinedClosures;
 
 void quarantineClosure(eventcbclosure* c) {
   if (c != nullptr) {
     c->retired = true;
-    c->fn      = nullptr;
     quarantinedClosures.push_back(c);
+    if (dispatchDepth == 0) {
+      c->fn = nullptr;
+    } else {
+      handlersToRelease.push_back(c);
+    }
   }
 }
 
