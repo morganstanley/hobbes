@@ -111,6 +111,35 @@ TEST(Parse, DeepExpressionsCompiledMidParseAreRejected) {
   EXPECT_EQ(c().compileFn<int()>("(\\x.x+1)(1)")(), 2);
 }
 
+TEST(Parse, DeepQuotedExpressionsAreRejected) {
+  // a quoted expression is folded into a type as it is parsed, and making
+  // that type prints the expression (TExpr::make interns it by its printed
+  // form) -- one stack frame per level, before the parse has returned
+  // anything the nesting bound could be checked on. That holds wherever a
+  // quote may appear: as an expression, and as a type in a module's type
+  // definition. The quote's expression is now bounded before the type is
+  // made; an unfixed build crashes in show() here rather than failing the
+  // test.
+  std::string chain = "N";
+  for (size_t i = 0; i < 150000; ++i) {
+    chain += "<N";
+  }
+
+  EXPECT_TRUE(c().readExpr("`N<N`") != nullptr);
+  EXPECT_TRUE(rejectedForNesting("`" + chain + "`"));
+
+  EXPECT_TRUE(c().readModule("type Q = `N<N`") != nullptr);
+  try {
+    c().readModule("type Q = `" + chain + "`");
+    EXPECT_TRUE(false);
+  } catch (const std::exception& ex) {
+    EXPECT_TRUE(std::string(ex.what()).find("past the limit") != std::string::npos);
+  }
+
+  // and the process is still usable afterwards
+  EXPECT_EQ(show(c().readExpr("1+2")), "+(1, 2)");
+}
+
 TEST(Parse, ExpressionsWithinTheNestingLimitStillParse) {
   // ordinary expressions are nowhere near the limit, and expressions that are
   // deeply nested but still within it read as they always have
