@@ -249,6 +249,33 @@ TEST(Compiler, destroyingCCReleasesItsTypes) {
   EXPECT_TRUE(t.expired());
 }
 
+// issue #586: the module compiler memoizes type-alias expansion by the address of
+// the parsed type. That type may be freed once the module is compiled (the type
+// memo is compacted whenever a compiler is destroyed), and a later parse can put
+// a different type at the same address and be handed the stale expansion.
+TEST(Compiler, typeDefStagingSurvivesTypeMemoCompaction) {
+  hobbes::cc lc;
+  for (int i = 0; i < 64; ++i) {
+    const std::string n = str::from(i);
+    // aliases whose expansion is a different type than their parse (so the
+    // cache does not keep the parsed type alive) and differs per iteration (so
+    // a stale expansion is always the wrong one), plus a staged definition
+    // that must be expanded from its own parse
+    compile(&lc, lc.readModule(
+      "type Box" + n + " = {v" + n + ":int}\n"
+      "b" + n + " :: Box" + n + "\n"
+      "b" + n + " = {v" + n + "=" + n + "}\n"
+      "v" + n + " = " + n + "\n"
+      "type T" + n + " = (TypeOf `v" + n + "` x) => x\n"
+      "f" + n + " :: T" + n + "\n"
+      "f" + n + " = " + n + "\n"
+    ));
+    EXPECT_EQ(lc.compileFn<int()>("f" + n)(), i);
+    EXPECT_EQ(lc.compileFn<int()>("b" + n + ".v" + n)(), i);
+    compactMTypeMemory(); // as any compiler going away would
+  }
+}
+
 // Each sizeOf / cppType site is folded by the constraint it carries, not by
 // whichever instance of the class is resolved first.
 TEST(Compiler, eachSizeOfSiteUsesItsOwnConstraint) {

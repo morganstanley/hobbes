@@ -412,7 +412,9 @@ private:
 
 public:
   // compiler-local type structure caches for internal use
-  std::unordered_map<MonoType *, MonoTypePtr> unappTyDefns;
+  // (keyed by the type itself, not its address: the key has to outlive its
+  //  entry, or a later type allocated at the same address gets its result)
+  std::unordered_map<MonoTypePtr, MonoTypePtr> unappTyDefns;
 
   cc(const cc &) = delete;
   void operator=(const cc &) = delete;
