@@ -209,7 +209,9 @@ public:
   // unqualification
   bool drainingDefs;
   LetRec::Bindings drainDefs;
+  str::seq drainTypeBindings; // names the current batch gave types to (undone if it fails)
   void drainUnqualifyDefs(const Definitions &ds);
+  void unsweetenDefs(const Definitions &ds);
 
   // compile an expression and associate it with a name
   void define(const std::string &vname, const ExprPtr &e);

@@ -247,10 +247,46 @@ ExprPtr cc::unsweetenExpression(const TEnvPtr& te, const std::string& vname, con
 
 void cc::drainUnqualifyDefs(const Definitions& ds) {
   hlock _;
-  bool finaldef = !this->drainingDefs;
-  this->drainingDefs = true;
 
-  // forward declare the polymorphic functions, batch letrec compile the monomorphic functions
+  // a nested drain just adds to the batch being accumulated
+  if (this->drainingDefs) {
+    unsweetenDefs(ds);
+    return;
+  }
+
+  // the outermost drain owns the batch, however it ends: left behind after a
+  // failure, it would silently poison every later compile ('drainingDefs' stuck
+  // on means nothing is ever handed to the JIT again)
+  this->drainingDefs = true;
+  str::seq typed;
+  try {
+    unsweetenDefs(ds);
+    this->drainingDefs = false; // compiling may drain batches of its own
+
+    LetRec::Bindings bs;
+    bs.swap(this->drainDefs);
+    typed.swap(this->drainTypeBindings);
+    if (!bs.empty()) {
+      this->jit->compileFunctions(bs);
+    }
+  } catch (...) {
+    this->drainingDefs = false;
+    this->drainDefs.clear();
+    typed.insert(typed.end(), this->drainTypeBindings.begin(), this->drainTypeBindings.end());
+    this->drainTypeBindings.clear();
+
+    // whatever the batch typed but never compiled must not stay visible
+    for (const auto& vname : typed) {
+      if (this->tenv->hasBinding(vname) && !hasValueBinding(vname)) {
+        this->tenv->unbind(vname);
+      }
+    }
+    throw;
+  }
+}
+
+// forward declare the polymorphic functions, batch letrec compile the monomorphic functions
+void cc::unsweetenDefs(const Definitions& ds) {
   for (const auto &d : ds) {
     const std::string& vname = d.first;
     const ExprPtr&     e     = d.second;
@@ -260,10 +296,13 @@ void cc::drainUnqualifyDefs(const Definitions& ds) {
     ExprPtr     ne   = forwardDeclared ? ExprPtr(new Assump(e, this->tenv->lookup(vname)->instantiate(), e->la())) : e;
     ExprPtr     xe   = unsweetenExpression(this->tenv, vname, ne);
     PolyTypePtr xety = hobbes::generalize(xe->type());
-    
+
     if (isMonotype(xety)) {
       this->drainDefs.push_back(LetRec::Binding(vname, xe));
-      if (!forwardDeclared) { this->tenv->bind(vname, xety); }
+      if (!forwardDeclared) {
+        this->tenv->bind(vname, xety);
+        this->drainTypeBindings.push_back(vname);
+      }
     } else {
       if (forwardDeclared) {
         if (vname.substr(0, 4) == ".rfn" || isMonotype(this->tenv->lookup(vname))) {
@@ -272,15 +311,6 @@ void cc::drainUnqualifyDefs(const Definitions& ds) {
         this->tenv->unbind(vname);
       }
       definePolyValue(vname, xe);
-    }
-  }
-
-  if (finaldef) {
-    this->drainingDefs = false;
-
-    if (!this->drainDefs.empty()) {
-      this->jit->compileFunctions(this->drainDefs);
-      this->drainDefs.clear();
     }
   }
 }
