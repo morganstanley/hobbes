@@ -217,6 +217,18 @@ MonoTypePtr accumTApp(const MonoTypes& ts) {
   }
 }
 
+// a qualified type that opens with "(" id ... ")" reads as a constraint list to
+// this LALR(1) parser, so a type application written that way -- "(Box0 int)",
+// "(Box0 int) -> int" -- is first reduced as a constraint and only then found
+// not to be followed by "=>".  Recover the type it spells.
+MonoTypePtr tyAppFromConstraints(const Constraints& cs) {
+  if (cs.size() != 1) {
+    throw std::runtime_error("syntax error, expecting => after a list of type constraints");
+  }
+  const auto& c = *cs[0];
+  return yyParseCC->replaceTypeAliases(MonoTypePtr(TApp::make(monoTypeByName(c.name()), c.arguments())));
+}
+
 MonoTypePtr makeTupleType(const MonoTypes& mts) {
   if (mts.size() == 1) {
     return clone(mts[0]);
@@ -512,7 +524,8 @@ extern PatVarCtorFn patVarCtorFn;
 %type <qualtype>     qtype
 %type <tconstraints> cst tpreds
 %type <tconstraint>  tpred
-%type <mtype>        l0mtype l1mtype tyind
+%type <mtype>        l0mtype l1mtype tyind pal0mtype pal1mtype
+%type <mtypes>       pamtuplist pamsumlist
 %type <mtypes>       ltmtype l1mtargl l0mtargl l0mtarglt
 
 /* associativity to give expected operator precedence */
@@ -954,6 +967,24 @@ cargs: /* nothing */    { $$ = autorelease(new Exprs()); }
 
 qtype : cst "=>" l0mtype { $$ = new QualType(*$1, *$3); }
       | l0mtype          { $$ = new QualType(Constraints(), *$1); }
+      | pal0mtype        { $$ = new QualType(Constraints(), *$1); }
+
+/* a type whose leading atom is a parenthesized type application, e.g. "(Box0 int) -> int":
+   the parser has already reduced "(Box0 int)" to a constraint list before it can see that
+   no "=>" follows, so these mirror l0mtype/l1mtype with that constraint list as the head */
+pal1mtype: cst                 { try { $$ = autorelease(new MonoTypePtr(tyAppFromConstraints(*$1))); } catch (std::exception& ex) { throw annotated_error(m(@1), ex.what()); } }
+         | pal1mtype "@" l1mtype { $$ = autorelease(new MonoTypePtr(fileRefTy(*$1, *$3))); }
+         | pal1mtype "@" "?"     { $$ = autorelease(new MonoTypePtr(fileRefTy(*$1))); }
+
+pamtuplist: pal1mtype              { $$ = autorelease(new MonoTypes()); $$->push_back(*$1); }
+          | pamtuplist "*" l1mtype { $$ = $1; $$->push_back(*$3); }
+
+pamsumlist: pal1mtype "+" l1mtype  { $$ = autorelease(new MonoTypes()); $$->push_back(*$1); $$->push_back(*$3); }
+          | pamsumlist "+" l1mtype { $$ = $1; $$->push_back(*$3); }
+
+pal0mtype: pal1mtype "->" l1mtype { $$ = autorelease(new MonoTypePtr(Func::make(tuplety(list(*$1)), *$3))); }
+         | pamtuplist             { $$ = autorelease(new MonoTypePtr(makeTupleType(*$1))); }
+         | pamsumlist             { $$ = autorelease(new MonoTypePtr(makeSumType(*$1))); }
 
 /* to avoid parsing ambiguity, we require all type constraints to be in parens (this could be solved with a better parser) */
 cst: "(" tpreds ")" { $$ = $2; }
