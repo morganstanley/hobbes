@@ -634,3 +634,175 @@ TEST(TypeInf, DecodeRejectsDeeplyNestedDescriptions) {
   encode(nested, &nenc);
   EXPECT_TRUE(show(decode(nenc)) == show(nested));
 }
+
+// Instance resolution recurses through instance generators, and the memos that
+// stop a well-founded recursive instance from looping never see an instance
+// whose context asks about a type larger than its head: every step asks about
+// a new type. Resolving `Grow int` under the instance below asks about
+// `Grow [int]`, then `Grow [[int]]`, and so on, and used to run for minutes and
+// then crash on the stack. It is now rejected, in seconds, once the type asked
+// about has outgrown the request by a fixed factor, with a message that names
+// the instance.
+TEST(TypeInf, NonTerminatingInstanceResolutionIsRejected) {
+  cc lc;
+  compile(&lc, lc.readModule(
+    "class Grow a where\n"
+    "  grow :: a -> a\n"
+    "instance (Grow [a]) => Grow a where\n"
+    "  grow x = x\n"
+  ));
+
+  const auto t0 = std::chrono::steady_clock::now();
+  EXPECT_EXCEPTION_MSG(lc.compileFn<int()>("grow(1)"), std::exception, "instance resolution for Grow [");
+
+  // a rejected resolution must not leave its "assumed satisfiable" memo
+  // entries behind: answered from those, a repeat request skipped resolution
+  // and hung where the first had been rejected in milliseconds. Now the memo
+  // is settled as unsatisfiable, so repeats are rejected outright, and a type
+  // not asked about before is resolved (and rejected) afresh
+  EXPECT_EXCEPTION(lc.compileFn<int()>("grow(1)"));
+  EXPECT_EXCEPTION(lc.compileFn<int()>("grow(2)"));
+  EXPECT_EXCEPTION_MSG(lc.compileFn<double()>("grow(1.5)"), std::exception, "larger than its head");
+  const auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - t0);
+  EXPECT_TRUE(elapsed.count() < 60);
+
+  // and the compiler is still usable afterwards
+  EXPECT_EQ(lc.compileFn<int()>("1+2")(), 3);
+}
+
+// the bound is on the size of the type asked about, not on how many steps it
+// took to get there, so an instance that doubles its type at each step is
+// rejected after a handful of steps rather than after a fixed count of them
+// (by which point the type would be astronomically large, and the compiler
+// long since out of time and memory building it)
+TEST(TypeInf, ExponentiallyGrowingInstanceResolutionIsRejected) {
+  cc lc;
+  compile(&lc, lc.readModule(
+    "class Double a where\n"
+    "  double :: a -> a\n"
+    "instance (Double (a*a)) => Double a where\n"
+    "  double x = x\n"
+  ));
+
+  const auto t0 = std::chrono::steady_clock::now();
+  EXPECT_EXCEPTION_MSG(lc.compileFn<int()>("double(1)"), std::exception, "larger than its head");
+  const auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - t0);
+  EXPECT_TRUE(elapsed.count() < 10);
+  EXPECT_EQ(lc.compileFn<int()>("1+2")(), 3);
+}
+
+// depth by itself is not the signature of divergence: the Prelude's record and
+// tuple instances recurse once per field, so a wide record nests as many
+// generators deep as it has fields, and a group of mutually recursive
+// instances nests once per member while their dictionaries are bound. None of
+// these steps asks about a type larger than the request, and they resolve as
+// they always have (a fixed depth limit of 256 refused all three)
+TEST(TypeInf, DeepButNotGrowingInstanceResolutionIsAllowed) {
+  cc lc;
+
+  std::ostringstream rec;
+  rec << "{";
+  for (size_t i = 0; i < 300; ++i) {
+    rec << (i > 0 ? ", " : "") << "f" << i << "=" << i;
+  }
+  rec << "}";
+  EXPECT_TRUE(lc.compileFn<bool()>(rec.str() + " == " + rec.str())());
+
+  std::ostringstream tup;
+  tup << "(";
+  for (size_t i = 0; i < 300; ++i) {
+    tup << (i > 0 ? ", " : "") << i;
+  }
+  tup << ")";
+  EXPECT_TRUE(lc.compileFn<bool()>(tup.str() + " == " + tup.str())());
+
+  std::ostringstream group;
+  group << "class A a where\n  fa :: a -> int\n";
+  for (size_t i = 0; i < 300; ++i) {
+    group << "class B" << i << " a where\n  fb" << i << " :: a -> int\n";
+  }
+  group << "instance (";
+  for (size_t i = 0; i < 300; ++i) {
+    group << (i > 0 ? ", " : "") << "B" << i << " a";
+  }
+  group << ") => A a where\n  fa x = 300\n";
+  for (size_t i = 0; i < 300; ++i) {
+    group << "instance (A a) => B" << i << " a where\n  fb" << i << " x = 1\n";
+  }
+  compile(&lc, lc.readModule(group.str()));
+  EXPECT_EQ(lc.compileFn<int()>("fa(1)")(), 300);
+}
+
+// a class memoizes the constraints it has found unsatisfiable, and nothing
+// cleared that memo when an instance was added: once `Grow int` had been asked
+// about and refused, defining `instance Grow int` afterwards changed nothing,
+// and the constraint stayed unsatisfiable for the life of the compiler. That
+// is how a REPL session goes -- ask, see the error, define the instance, ask
+// again -- and it is where a resolution refused for depth (above) would have
+// been stuck for good. Adding an instance now resets the class's memos.
+TEST(TypeInf, InstancesDefinedAfterARefusalAreFound) {
+  cc lc;
+  compile(&lc, lc.readModule(
+    "class Grow a where\n"
+    "  grow :: a -> a\n"
+    "instance Grow [a] where\n"
+    "  grow x = x\n"
+  ));
+  EXPECT_EXCEPTION_MSG(lc.compileFn<int()>("grow(1)"), std::exception, "Grow int");
+
+  compile(&lc, lc.readModule(
+    "instance Grow int where\n"
+    "  grow x = x + 1\n"
+  ));
+  EXPECT_EQ(lc.compileFn<int()>("grow(1)")(), 2);
+}
+
+// the instance that unblocks a refused constraint can belong to another class:
+// (Base a) => Derived a is refused at int until Base int is defined, and it
+// is Base's instance list that grows, not Derived's (Base has an instance
+// already because a class with none is taken to be satisfiable anywhere)
+TEST(TypeInf, InstancesOfAnotherClassDefinedAfterARefusalAreFound) {
+  cc lc;
+  compile(&lc, lc.readModule(
+    "class Base a where\n"
+    "  base :: a -> int\n"
+    "instance Base double where\n"
+    "  base x = 0\n"
+    "class Derived a where\n"
+    "  derived :: a -> int\n"
+    "instance (Base a) => Derived a where\n"
+    "  derived x = base(x) * 2\n"
+  ));
+  EXPECT_EXCEPTION_MSG(lc.compileFn<int()>("derived(3)"), std::exception, "Derived int");
+  EXPECT_EXCEPTION_MSG(lc.compileFn<int()>("derived(3)"), std::exception, "Derived int"); // the refusal is memoized by now
+
+  compile(&lc, lc.readModule(
+    "instance Base int where\n"
+    "  base x = x + 1\n"
+  ));
+  EXPECT_EQ(lc.compileFn<int()>("derived(3)")(), 8);
+}
+
+// the limit is far from what ordinary code resolves through: a recursive
+// instance whose context asks about a smaller type than its head bottoms out,
+// and one that nests sixty levels deep resolves as it always has
+TEST(TypeInf, WellFoundedRecursiveInstancesStillResolve) {
+  cc lc;
+  compile(&lc, lc.readModule(
+    "class Peel a where\n"
+    "  peel :: a -> int\n"
+    "instance Peel int where\n"
+    "  peel x = x\n"
+    "instance (Peel a) => Peel [a] where\n"
+    "  peel xs = peel(xs[0])\n"
+  ));
+
+  EXPECT_EQ(lc.compileFn<int()>("peel(7)")(), 7);
+  EXPECT_EQ(lc.compileFn<int()>("peel([[[7]]])")(), 7);
+
+  std::string nested = "7";
+  for (size_t i = 0; i < 60; ++i) {
+    nested = "[" + nested + "]";
+  }
+  EXPECT_EQ(lc.compileFn<int()>("peel(" + nested + ")")(), 7);
+}

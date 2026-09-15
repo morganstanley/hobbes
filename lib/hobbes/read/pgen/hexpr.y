@@ -170,6 +170,18 @@ Expr* makeProjSeq(Expr* rec, const str::seq& fields, const LexicalAnnotation& la
   return rec;
 }
 
+// a quoted expression becomes part of a type, and making that type prints
+// the expression (TExpr::make interns it by its printed form). That runs in
+// the parser action, before the nesting check readExpr/readModule apply to
+// what the parse returns (see parser.C), so it is applied here first: a
+// quoted expression that nests past the bound would otherwise run the stack
+// out in show() before the parse finished
+MonoTypePtr quotedExprType(Expr* e) {
+  ExprPtr ep(e);
+  checkNestingDepth(ep);
+  return TApp::make(primty("quote"), list(texpr(ep)));
+}
+
 Expr* mkAIndex(const ExprPtr& arr, const ExprPtr& idx, const LexicalAnnotation& la) {
   return new AIndex(arr, fncall(var("arrayIndexFrom", la), list(idx), la), la);
 }
@@ -818,7 +830,7 @@ l6expr: l6expr "(" cargs ")"    { $$ = new App(ExprPtr($1), *$3, m(@1, @4)); }
       | "(" "!" ")"   { $$ = new Var("not",    m(@2)); }
 
       /* quoted expressions */
-      | "`" l0expr "`" { $$ = new Assump(fncall(var("unsafeCast", m(@2)), list(mktunit(m(@2))), m(@2)), qualtype(tapp(primty("quote"), list(texpr(ExprPtr($2))))), m(@2)); }
+      | "`" l0expr "`" { $$ = new Assump(fncall(var("unsafeCast", m(@2)), list(mktunit(m(@2))), m(@2)), qualtype(quotedExprType($2)), m(@2)); }
 
 prules: prules prule { $$ = $1; $$->push_back(*$2); }
       | prule        { $$ = autorelease(new Grammar()); $$->push_back(*$1); }
@@ -1002,7 +1014,7 @@ l1mtype: id                                { $$ = autorelease(new MonoTypePtr(mo
        | l1mtype "@" "?"                   { $$ = autorelease(new MonoTypePtr(fileRefTy(*$1))); }
        | "^" id "." l1mtype                { $$ = autorelease(new MonoTypePtr(Recursive::make(*$2, *$4))); }
        | "stringV"                         { $$ = autorelease(new MonoTypePtr(TString::make(str::unescape(str::trimq(*$1))))); }
-       | "`" l0expr "`"                    { $$ = autorelease(new MonoTypePtr(TApp::make(primty("quote"), list(texpr(ExprPtr($2)))))); }
+       | "`" l0expr "`"                    { $$ = autorelease(new MonoTypePtr(quotedExprType($2))); }
 
 tyind: id     { $$ = autorelease(new MonoTypePtr(TVar::make(*$1))); }
      | "intV" { $$ = autorelease(new MonoTypePtr(TLong::make($1))); }
