@@ -11,6 +11,7 @@
 #include <mutex>
 #include <thread>
 
+#include <fcntl.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -502,6 +503,239 @@ TEST(Net, asyncClientAPIWithUnConfiguredHostName) {
     runEventLoop(1000 * 1000);
   }
   EXPECT_EQ(c.pendingRequests(), size_t(0));
+}
+
+namespace {
+// a pipe whose reads cannot block, so a handler run on the wrong descriptor
+// fails its read instead of hanging the suite
+int nbpipe(int p[2]) {
+  if (pipe(p) != 0) return -1;
+  for (int fd : {p[0], p[1]}) {
+    if (fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK) != 0) return -1;
+  }
+  return 0;
+}
+}
+
+TEST(Net, eventHandlerRegistrationTracksTheDescriptor) {
+  // a descriptor the kernel refuses must not leave a handler registered under
+  // its number, so unregistering that number afterwards has nothing to do
+  runEventLoop(1000); // so the poll set exists, and does not take the number below
+  int p[2];
+  EXPECT_EQ(nbpipe(p), 0);
+  close(p[0]);
+  close(p[1]);
+  int dead = p[0];
+  EXPECT_EXCEPTION(registerEventHandler(dead, [](int) {}));
+  unregisterEventHandler(dead);
+  unregisterEventHandler(dead);
+
+  // when the number comes back into use, the handler registered for the new
+  // descriptor is the one that runs
+  EXPECT_EQ(nbpipe(p), 0);
+  std::atomic<int> fired{0};
+  registerEventHandler(p[0], [&fired](int fd) {
+    char b;
+    if (read(fd, &b, 1) == 1) {
+      ++fired;
+    }
+  });
+  EXPECT_EQ(write(p[1], "x", 1), ssize_t(1));
+  for (size_t s = 0; s < 30 && fired == 0; ++s) {
+    runEventLoop(100 * 1000);
+  }
+  EXPECT_EQ(fired.load(), 1);
+
+  // unregistering removes the handler outright, so doing it again is harmless
+  // (this used to delete the same closure twice)
+  unregisterEventHandler(p[0]);
+  unregisterEventHandler(p[0]);
+  close(p[0]);
+  close(p[1]);
+}
+
+namespace {
+// two pipes, each with a byte waiting, so that both handlers are delivered in
+// one batch; whichever runs first does 'retire' to the other's pipe. The
+// second handler of the batch must then not run: its closure has been retired
+// (and freed, before this was fixed -- the loop called through freed memory)
+void retireTheOtherMidBatch(const std::function<void(int* other)>& retire, std::atomic<int>* replacementRan) {
+  int a[2], b[2];
+  EXPECT_EQ(nbpipe(a), 0);
+  EXPECT_EQ(nbpipe(b), 0);
+  int* pipes[2] = {a, b};
+
+  std::atomic<int> ran{0};
+  int first = -1;
+  auto handler = [&](int me) {
+    char c;
+    EXPECT_EQ(read(me, &c, 1), ssize_t(1));
+    first = me;
+    ++ran;
+    retire((me == a[0]) ? b : a);
+  };
+  for (int* p : pipes) {
+    registerEventHandler(p[0], handler);
+    EXPECT_EQ(write(p[1], "x", 1), ssize_t(1));
+  }
+
+  for (size_t s = 0; s < 30 && (ran == 0 || (replacementRan != nullptr && *replacementRan == 0)); ++s) {
+    runEventLoop(100 * 1000);
+  }
+  EXPECT_EQ(ran.load(), 1);
+
+  int* survivor = (first == a[0]) ? a : b;
+  unregisterEventHandler(survivor[0]);
+  close(survivor[0]);
+  close(survivor[1]);
+}
+}
+
+TEST(Net, handlersRetiredMidBatchAreNotDispatched) {
+  // a handler unregisters the other descriptor of its batch
+  retireTheOtherMidBatch([](int* other) {
+    unregisterEventHandler(other[0]);
+    close(other[0]);
+    close(other[1]);
+  }, nullptr);
+
+  // a handler replaces the other descriptor of its batch with a fresh one
+  // under the same number (the old one is closed without being unregistered)
+  // and registers that: the stale closure under the number is retired, and it
+  // is the new handler that runs, on the next batch
+  std::atomic<int> replacementRan{0};
+  int replacement[2] = {-1, -1};
+  retireTheOtherMidBatch([&](int* other) {
+    EXPECT_EQ(nbpipe(replacement), 0);
+    EXPECT_EQ(dup2(replacement[0], other[0]), other[0]); // closes the other's, and takes its number whatever else is open
+    close(replacement[0]);
+    replacement[0] = other[0];
+    close(other[1]);
+    registerEventHandler(replacement[0], [&replacementRan](int fd) {
+      char d;
+      if (read(fd, &d, 1) == 1) {
+        ++replacementRan;
+      }
+    });
+    EXPECT_EQ(write(replacement[1], "y", 1), ssize_t(1));
+  }, &replacementRan);
+  EXPECT_EQ(replacementRan.load(), 1);
+  unregisterEventHandler(replacement[0]);
+  close(replacement[0]);
+  close(replacement[1]);
+}
+
+TEST(Net, staleInterestFromADuplicatedDescriptorIsNotDispatched) {
+  // a registered descriptor is closed (not unregistered) while a duplicate of
+  // it stays open, so the kernel keeps its interest, and its number is reused
+  // for another descriptor that is then registered: the old interest still
+  // delivers the old closure (which the loop used to have freed by then)
+  int p[2];
+  EXPECT_EQ(nbpipe(p), 0);
+  std::atomic<int> staleRan{0};
+  registerEventHandler(p[0], [&staleRan](int fd) {
+    char b;
+    if (read(fd, &b, 1) == 1) {
+      ++staleRan;
+    }
+  });
+  int dup0 = dup(p[0]);
+  EXPECT_TRUE(dup0 >= 0);
+
+  int q[2];
+  EXPECT_EQ(nbpipe(q), 0);
+  EXPECT_EQ(dup2(q[0], p[0]), p[0]); // p[0] is now the number of q's read end
+  close(q[0]);
+  std::atomic<int> freshRan{0};
+  registerEventHandler(p[0], [&freshRan](int fd) {
+    char b;
+    if (read(fd, &b, 1) == 1) {
+      ++freshRan;
+    }
+  });
+
+  // a byte on the old pipe is reported through the old interest
+  EXPECT_EQ(write(p[1], "x", 1), ssize_t(1));
+  for (size_t s = 0; s < 3; ++s) {
+    runEventLoop(100 * 1000);
+  }
+  EXPECT_EQ(staleRan.load(), 0);
+  EXPECT_EQ(freshRan.load(), 0);
+
+  // and one on the new pipe reaches its handler
+  EXPECT_EQ(write(q[1], "y", 1), ssize_t(1));
+  for (size_t s = 0; s < 30 && freshRan == 0; ++s) {
+    runEventLoop(100 * 1000);
+  }
+  EXPECT_EQ(freshRan.load(), 1);
+
+  unregisterEventHandler(p[0]);
+  close(p[0]);
+  close(p[1]);
+  close(q[1]);
+  close(dup0);
+
+  // the same when the number is unregistered after it was closed: the delete
+  // has nothing to remove, the interest is still live through the duplicate
+  EXPECT_EQ(nbpipe(p), 0);
+  std::atomic<int> lateRan{0};
+  registerEventHandler(p[0], [&lateRan](int fd) {
+    char b;
+    if (read(fd, &b, 1) == 1) {
+      ++lateRan;
+    }
+  });
+  dup0 = dup(p[0]);
+  close(p[0]);
+  unregisterEventHandler(p[0]);
+  EXPECT_EQ(write(p[1], "x", 1), ssize_t(1));
+  for (size_t s = 0; s < 3; ++s) {
+    runEventLoop(100 * 1000);
+  }
+  EXPECT_EQ(lateRan.load(), 0);
+  close(p[1]);
+  close(dup0);
+}
+
+TEST(Net, aHandlerMayReplaceItsOwnRegistration) {
+  // a handler replaces its own descriptor with another under the same number
+  // and registers that: the closure it is running from is the one displaced,
+  // and its captures must outlive the handler (they were released under it once)
+  int p[2];
+  EXPECT_EQ(nbpipe(p), 0);
+  std::atomic<int> ran{0};
+  std::atomic<int> newRan{0};
+  int q[2] = {-1, -1};
+  registerEventHandler(p[0], [&, p](int fd) {
+    char b;
+    EXPECT_EQ(read(fd, &b, 1), ssize_t(1));
+    EXPECT_EQ(nbpipe(q), 0);
+    EXPECT_EQ(dup2(q[0], p[0]), p[0]); // closes this handler's descriptor and reuses its number
+    close(q[0]);
+    q[0] = p[0];
+    registerEventHandler(q[0], [&newRan](int nfd) {
+      char c;
+      if (read(nfd, &c, 1) == 1) {
+        ++newRan;
+      }
+    });
+    ++ran; // a capture, after this closure was displaced
+  });
+  EXPECT_EQ(write(p[1], "x", 1), ssize_t(1));
+  for (size_t s = 0; s < 30 && ran == 0; ++s) {
+    runEventLoop(100 * 1000);
+  }
+  EXPECT_EQ(ran.load(), 1);
+
+  EXPECT_EQ(write(q[1], "y", 1), ssize_t(1));
+  for (size_t s = 0; s < 30 && newRan == 0; ++s) {
+    runEventLoop(100 * 1000);
+  }
+  EXPECT_EQ(newRan.load(), 1);
+  unregisterEventHandler(q[0]);
+  close(q[0]);
+  close(q[1]);
+  close(p[1]);
 }
 
 namespace {

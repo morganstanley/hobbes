@@ -304,9 +304,10 @@ void evaluateNetREPLRequest(int c, void *d) {
       throw std::runtime_error("protocol violation: cmd=" + str::from(cmd));
     }
   } catch (std::exception &ex) {
-    // something went wrong, disconnect
-    close(c);
+    // something went wrong, disconnect (the handler must go before the
+    // descriptor: the number can be reused the moment it is closed)
     unregisterEventHandler(c);
+    close(c);
     s->disconnect(c);
   }
 }
@@ -401,9 +402,9 @@ public:
       // perform the call
       f->second(c);
     } else {
-      // invalid expression, disconnect
-      close(c);
+      // invalid expression, disconnect (handler first, then the descriptor)
       unregisterEventHandler(c);
+      close(c);
       disconnect(c);
     }
   }
