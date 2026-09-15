@@ -60,6 +60,45 @@ TEST(Compiler, compileFnTypes) {
   EXPECT_EQ(c().compileFn<int(*)(const std::string&)>("_","42")(""), 42);
 }
 
+// issue #584: a failed compile must not poison a long-lived compiler
+// (these run against the shared compiler on purpose: every later test in this
+//  group then also checks that the recovery was complete)
+static QualTypePtr intToInt() { return qualtype(functy(list(primty("int")), primty("int"))); }
+
+TEST(Compiler, compileRecoversAfterCodegenFailure) {
+  c().forwardDeclare("missingResidual", intToInt()); // type-checks, but there's nothing to call
+
+  EXPECT_EXCEPTION_MSG(c().compileFn<int(int)>("x", "missingResidual(x)"), std::exception, "missingResidual");
+  EXPECT_EQ(c().compileFn<int()>("42")(), 42);
+
+  // the same through a function definition and a data definition ...
+  EXPECT_EXCEPTION_MSG(c().define("recoverF", "\\x.missingResidual(x)"), std::exception, "missingResidual");
+  EXPECT_EXCEPTION_MSG(c().define("recoverG", "missingResidual(1)"), std::exception, "missingResidual");
+  EXPECT_EQ(c().compileFn<int()>("42")(), 42);
+
+  // ... and a name whose definition failed can be defined properly afterwards
+  c().define("recoverF", "\\x.x+1");
+  EXPECT_EQ(c().compileFn<int()>("recoverF(41)")(), 42);
+}
+
+TEST(Compiler, compileRecoversAfterResidualDefinitionFailure) {
+  c().forwardDeclare("recoverGood", intToInt());
+
+  // 'recoverGood' is accepted into the batch, then 'recoverBad' fails it
+  Definitions ds;
+  ds.emplace_back("recoverGood", c().readExpr("\\x.x"));
+  ds.emplace_back("recoverBad",  c().readExpr("unboundValue"));
+  EXPECT_EXCEPTION_MSG(c().drainUnqualifyDefs(ds), std::exception, "unboundValue");
+
+  // later batches (here: 'show' instances) must still be compiled
+  EXPECT_EQ(makeStdString(c().compileFn<const array<char>*()>("show([1, 2, 3])")()), "[1, 2, 3]");
+
+  // and nothing of the discarded batch lingers as a half-definition
+  EXPECT_FALSE(c().hasValueBinding("recoverGood"));
+  c().define("recoverGood", "\\x.x+2");
+  EXPECT_EQ(c().compileFn<int()>("recoverGood(40)")(), 42);
+}
+
 static int appC(const closure<int(int)>& c) { return c(7); }
 TEST(Compiler, liftClosTypes) {
   c().bind("appC", &appC);

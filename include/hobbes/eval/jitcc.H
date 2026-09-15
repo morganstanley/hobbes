@@ -94,6 +94,13 @@ public:
   void pushScope();
   void bindScope(const std::string& vn, llvm::Value* v);
   void popScope();
+  size_t scopeDepth() const;
+  bool   boundInScope(const std::string& vn) const; // in the innermost scope only
+  void   unbindScope(const std::string& vn);        // from the innermost scope only
+
+  // the registry of global declarations (a failed definition is taken back out of it)
+  bool hasGlobalDecl(const std::string& vn) const;
+  void forgetGlobalDecl(const std::string& vn);
 
   // produce some machine code from a function specification (input names, input types, expression body)
   void* reifyMachineCodeForFn(const MonoTypePtr& reqTy, const str::seq& names, const MonoTypes& tys, const ExprPtr& exp);
@@ -191,12 +198,19 @@ private:
     const ExprPtr&     exp;
 
     llvm::Function*    result;
+    bool               newScopeBinding; // did compiling this bind 'name' in the current scope?
+    bool               newGlobalDecl;   // did compiling this register 'name' as a global?
 
     inline UCF(const std::string& name, const str::seq& argns, const MonoTypes& argtys, const ExprPtr& exp)
-      : name(name), argns(argns), argtys(argtys), exp(exp) { }
+      : name(name), argns(argns), argtys(argtys), exp(exp), result(nullptr), newScopeBinding(false), newGlobalDecl(false) { }
   };
   using UCFS = std::vector<UCF>;
   void unsafeCompileFunctions(UCFS*);
+
+  // back out of functions whose compilation could not be completed
+  void discardPartialFunctions(UCFS&, size_t scopeDepth, llvm::BasicBlock* ibb);
+  void discardFunction(llvm::Function*);
+  void restoreInsertPoint(llvm::BasicBlock*);
 
   // keep track of global variables
 #if LLVM_VERSION_MAJOR >= 11

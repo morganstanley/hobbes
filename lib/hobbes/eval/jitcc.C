@@ -413,11 +413,22 @@ public:
         });
   }
 
+  /// Is \p name bound in the current (innermost) scope?
+  [[nodiscard]] bool containsInCurrentScope(llvm::StringRef name) const {
+    return this->vtenv.back().find(name) != this->vtenv.back().end();
+  }
+
+  /// Removes \p name from the current scope (no-op if it isn't bound there)
+  void removeFromCurrentScope(llvm::StringRef name) { this->vtenv.back().erase(name); }
+
   /// Create a new inner scope
   void pushScope() { vtenv.emplace_back(); }
 
   /// Destroys the inner scope
   void popScope() { vtenv.pop_back(); }
+
+  /// How many scopes are open
+  [[nodiscard]] size_t depth() const { return vtenv.size(); }
 };
 
 llvm::Value *VTEnv::getOrCreateDecl(llvm::StringRef name, llvm::Module &m) {
@@ -461,6 +472,9 @@ public:
   [[nodiscard]] bool contains(llvm::StringRef name) const {
     return globals.find(name) != globals.end();
   }
+
+  /// Forgets \p name (no-op if it isn't registered)
+  void remove(llvm::StringRef name) { globals.erase(name); }
 
   /// Gets a global variable \p name by possibly recreating decl in current
   /// module
@@ -1205,13 +1219,25 @@ void jitcc::defineGlobal(const std::string& vn, const ExprPtr& ue) {
     if (initfn == nullptr) {
       throw annotated_error(*ue, "Failed to allocate initializer function for '" + vname + "'.");
     }
-    withContext([&](llvm::LLVMContext& c) {
-      llvm::BasicBlock* bb = llvm::BasicBlock::Create(c, "entry", initfn);
-      this->builder()->SetInsertPoint(bb);
+    try {
+      withContext([&](llvm::LLVMContext& c) {
+        llvm::BasicBlock* bb = llvm::BasicBlock::Create(c, "entry", initfn);
+        this->builder()->SetInsertPoint(bb);
 
-      compile(assign(var(vname, uety, ue->la()), ue, ue->la()));
-      this->builder()->CreateRetVoid();
-    });
+        compile(assign(var(vname, uety, ue->la()), ue, ue->la()));
+        this->builder()->CreateRetVoid();
+      });
+    } catch (...) {
+      // don't leave the half-built initializer in the live module (the global
+      // itself stays bound: its symbol is already registered with the JIT)
+      withContext([&](auto&) {
+        restoreInsertPoint(ibb);
+        this->forgetGlobalDecl(initfn->getName().str());
+        discardFunction(initfn);
+      });
+      this->globalExprs.erase(vn);
+      throw;
+    }
 
     // compile and run this function, it should then perform the global variable assignment
     // (make sure that any allocation happens in the global context iff we need it)
@@ -1336,6 +1362,26 @@ void jitcc::bindScope(const std::string& vn, llvm::Value* v) {
 void jitcc::popScope() {
   this->vtenv->popScope();
 }
+
+size_t jitcc::scopeDepth() const {
+  return this->vtenv->depth();
+}
+
+bool jitcc::boundInScope(const std::string& vn) const {
+  return this->vtenv->containsInCurrentScope(vn);
+}
+
+void jitcc::unbindScope(const std::string& vn) {
+  this->vtenv->removeFromCurrentScope(vn);
+}
+
+bool jitcc::hasGlobalDecl(const std::string& vn) const {
+  return this->globals->contains(vn);
+}
+
+void jitcc::forgetGlobalDecl(const std::string& vn) {
+  this->globals->remove(vn);
+}
 #else
 void jitcc::pushScope() {
   this->vtenv.push_back(VarBindings());
@@ -1347,6 +1393,26 @@ void jitcc::bindScope(const std::string& vn, llvm::Value* v) {
 
 void jitcc::popScope() {
   this->vtenv.pop_back();
+}
+
+size_t jitcc::scopeDepth() const {
+  return this->vtenv.size();
+}
+
+bool jitcc::boundInScope(const std::string& vn) const {
+  return this->vtenv.back().find(vn) != this->vtenv.back().end();
+}
+
+void jitcc::unbindScope(const std::string& vn) {
+  this->vtenv.back().erase(vn);
+}
+
+bool jitcc::hasGlobalDecl(const std::string& vn) const {
+  return this->globals.find(vn) != this->globals.end();
+}
+
+void jitcc::forgetGlobalDecl(const std::string& vn) {
+  this->globals.erase(vn);
 }
 #endif
 
@@ -1392,22 +1458,29 @@ llvm::Function* jitcc::compileFunction(const std::string& name, const str::seq& 
 }
 
 void jitcc::compileFunctions(const LetRec::Bindings& bs, std::vector<llvm::Function*>* result) {
-  UCFS fs;
-  for (const auto& b : bs) {
-    this->globalExprs[b.first] = b.second;
+  UCFS     fs;
+  str::seq newExprs; // what this batch adds to 'globalExprs' (taken back out if it fails)
+  try {
+    for (const auto& b : bs) {
+      if (this->globalExprs.find(b.first) == this->globalExprs.end()) { newExprs.push_back(b.first); }
+      this->globalExprs[b.first] = b.second;
 
-    if (const Fn* f = is<Fn>(stripAssumpHead(b.second))) {
-      if (const Func* fty = is<Func>(requireMonotype(this->tenv, b.second))) {
-        fs.push_back(UCF(b.first, f->varNames(), fty->parameters(), f->body()));
+      if (const Fn* f = is<Fn>(stripAssumpHead(b.second))) {
+        if (const Func* fty = is<Func>(requireMonotype(this->tenv, b.second))) {
+          fs.push_back(UCF(b.first, f->varNames(), fty->parameters(), f->body()));
+        } else {
+          throw std::runtime_error("Internal error, mutual recursion must be defined over mono-typed functions");
+        }
       } else {
-        throw std::runtime_error("Internal error, mutual recursion must be defined over mono-typed functions");
+        throw std::runtime_error("Internal error, mutual recursion must be defined over functions");
       }
-    } else {
-      throw std::runtime_error("Internal error, mutual recursion must be defined over functions");
     }
-  }
 
-  unsafeCompileFunctions(&fs);
+    unsafeCompileFunctions(&fs);
+  } catch (...) {
+    for (const auto& vn : newExprs) { this->globalExprs.erase(vn); }
+    throw;
+  }
 
   if (result != nullptr) {
     for (const auto& f : fs) {
@@ -1426,18 +1499,29 @@ void jitcc::unsafeCompileFunctions(UCFS* ufs) {
   // save our current write context to restore later
   llvm::BasicBlock* ibb = withContext([this](auto&) { return this->builder()->GetInsertBlock(); });
 
+  // if anything below throws, back out of everything this call has done: a
+  // half-built function left in the live module crashes the optimizer the next
+  // time the module is finalized, and bindings to it would outlive it
+  struct Rollback {
+    jitcc*            c;
+    UCFS&             fs;
+    size_t            depth;
+    llvm::BasicBlock* ibb;
+    bool              armed = true;
+    ~Rollback() { if (armed) { c->discardPartialFunctions(fs, depth, ibb); } }
+  } rollback{this, fs, this->scopeDepth(), ibb};
+
   // prepare the environment for these mutually-recursive definitions
   for (auto &f : fs) {
+    f.newScopeBinding = !this->boundInScope(f.name);
+    f.newGlobalDecl   = f.name.empty() || !this->hasGlobalDecl(f.name);
+
     llvm::Function* fval = allocFunction(f.name.empty() ? ("/" + freshName()) : f.name, f.argtys, requireMonotype(this->tenv, f.exp));
     if (fval == nullptr) {
       throw std::runtime_error("Failed to allocate function");
     }
 
-#if LLVM_VERSION_MAJOR >= 11
-    this->bindScope(f.name, fval);
-#else
-    this->vtenv.back()[f.name] = fval;
-#endif
+    if (f.newScopeBinding) { this->bindScope(f.name, fval); }
     f.result = fval;
   }
 
@@ -1508,6 +1592,56 @@ void jitcc::unsafeCompileFunctions(UCFS* ufs) {
       }
     });
   }
+
+  rollback.armed = false;
+}
+
+void jitcc::restoreInsertPoint(llvm::BasicBlock* ibb) {
+  if (ibb != nullptr) {
+    this->builder()->SetInsertPoint(ibb);
+  } else {
+    this->builder()->ClearInsertionPoint();
+  }
+}
+
+// take a function whose body could not be completed out of the live module
+void jitcc::discardFunction(llvm::Function* f) {
+  f->deleteBody();
+  if (f->use_empty()) {
+    f->eraseFromParent();
+  } else {
+    // something emitted alongside it still refers to it (and is dead code itself
+    // now), so keep the module valid with a trapping body and free up the name
+    withContext([&](llvm::LLVMContext& c) {
+      llvm::IRBuilder<>(llvm::BasicBlock::Create(c, "discarded", f)).CreateUnreachable();
+      f->setName(f->getName() + ".discarded");
+    });
+  }
+}
+
+void jitcc::discardPartialFunctions(UCFS& fs, size_t scopeDepth, llvm::BasicBlock* ibb) {
+  withContext([&](auto&) {
+    // back out to the caller's write context and scope (a throw between pushScope
+    // and the body compile leaves the argument scope open)
+    restoreInsertPoint(ibb);
+    while (this->scopeDepth() > scopeDepth) { this->popScope(); }
+
+    // forget the names and drop the bodies (they may refer to each other) before
+    // removing the functions themselves
+    for (auto& f : fs) {
+      if (f.newScopeBinding) { this->unbindScope(f.name); }
+      if (f.result != nullptr) {
+        if (f.newGlobalDecl) { this->forgetGlobalDecl(f.result->getName().str()); }
+        f.result->deleteBody();
+      }
+    }
+    for (auto& f : fs) {
+      if (f.result != nullptr) {
+        discardFunction(f.result);
+        f.result = nullptr;
+      }
+    }
+  });
 }
 
 llvm::Value* jitcc::compileAllocStmt(llvm::Value* sz, llvm::Value* asz, llvm::Type* mty, bool zeroMem) {
