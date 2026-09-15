@@ -377,6 +377,11 @@ bool cc::isTypeAliasName(const std::string& name) const {
   return this->ttyDefs.find(name) != this->ttyDefs.end();
 }
 
+size_t cc::typeAliasArity(const std::string& name) const {
+  auto td = this->ttyDefs.find(name);
+  return td == this->ttyDefs.end() ? 0 : td->second.first.size();
+}
+
 struct repTypeAliasesF : public switchTyFn {
   using TTyDef = std::pair<str::seq, MonoTypePtr>;
   using TTyDefs = std::unordered_map<std::string, TTyDef>;

@@ -284,6 +284,10 @@ public:
   bool isTypeAliasName(const std::string &name) const override;
   MonoTypePtr replaceTypeAliases(const MonoTypePtr &ty) const override;
 
+  // the number of type arguments a transparent alias takes (0 for an alias
+  // without parameters, and for a name that is not an alias)
+  size_t typeAliasArity(const std::string &name) const;
+
   // typedb interface
   PolyTypePtr opaquePtrPolyType(const std::type_info &ti, unsigned int sz,
                                 bool inStruct) override;

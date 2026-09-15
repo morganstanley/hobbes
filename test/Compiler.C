@@ -123,6 +123,55 @@ TEST(Compiler, ParseTyDefStaging) {
   EXPECT_EQ(c().compileFn<int()>("frank")(), 3);
 }
 
+TEST(Compiler, ParameterizedTypeAliasInSignature) {
+  // a type application in a signature is written in parentheses; the parser
+  // first reads "(Box0 int)" as a constraint list and has to recover the type
+  // when no "=>" follows, wherever the application leads the type
+  compile(
+    &c(),
+    c().readModule(
+      "type Box0 a = {v:a}\n"
+      "b0 :: (Box0 int)\n"
+      "b0 = {v=0}\n"
+      "unbox0 :: (Box0 int) -> int\n"
+      "unbox0 b = b.v\n"
+      "pair0 :: (Box0 int) * int\n"
+      "pair0 = ({v=1}, 2)\n"
+      "boxed0 :: int -> (Box0 int)\n"
+      "boxed0 x = {v=x}\n"
+      "shown0 :: (Show a) => (Box0 a) -> [char]\n"
+      "shown0 b = show(b.v)\n"
+    )
+  );
+  EXPECT_EQ(c().compileFn<int()>("b0.v")(), 0);
+  EXPECT_EQ(c().compileFn<int()>("unbox0({v=7})")(), 7);
+  EXPECT_EQ(c().compileFn<int()>("pair0.0.v + pair0.1")(), 3);
+  EXPECT_EQ(c().compileFn<int()>("boxed0(9).v")(), 9);
+  EXPECT_EQ(makeStdString(c().compileFn<const array<char>*()>("shown0({v=42})")()), "42");
+}
+
+TEST(Compiler, ParameterizedTypeAliasWithoutArguments) {
+  // "b1 :: Box1 int" cannot be an application: newlines are not significant
+  // between definitions, so "int" begins the next definition and b1 is
+  // declared with the bare alias name, which has to be reported as such
+  EXPECT_EXCEPTION_MSG(
+    compile(&c(), c().readModule("type Box1 a = {v:a}\nb1 :: Box1\nb1 = {v=0}\n")),
+    std::exception,
+    "The type alias 'Box1' takes 1 type argument but is used here without any"
+  );
+  EXPECT_EXCEPTION_MSG(
+    compile(&c(), c().readModule("type Box2 a = {v:a}\nb2 :: (Box2 int int)\nb2 = {v=0}\n")),
+    std::exception,
+    "requires exactly 1 arguments"
+  );
+  // a constraint list still has to introduce a qualified type
+  EXPECT_EXCEPTION_MSG(
+    c().readModule("b3 :: (Show a, Show b)\nb3 = 0\n"),
+    std::exception,
+    "expecting =>"
+  );
+}
+
 TEST(Compiler, ccInManyThreads) {
   std::vector<std::thread*> ps;
   size_t badChecks = 0;

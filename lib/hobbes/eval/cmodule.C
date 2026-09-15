@@ -102,7 +102,19 @@ struct appTyDefnF : public switchTyFn {
   MonoTypePtr with(const TVar *v) const override {
     const auto &tn = v->name();
 
-    if (isPrimName(tn) || e->isTypeAliasName(tn)) {
+    if (isPrimName(tn)) {
+      return e->replaceTypeAliases(Prim::make(tn));
+    } else if (e->isTypeAliasName(tn)) {
+      // an alias with parameters only means something applied to arguments
+      // (the applied form is resolved by with(TApp)); bare, it would survive
+      // as an opaque primitive that nothing can satisfy
+      size_t n = e->typeAliasArity(tn);
+      if (n > 0) {
+        throw std::runtime_error(
+            "The type alias '" + tn + "' takes " + str::from(n) + " type argument" +
+            (n == 1 ? "" : "s") + " but is used here without any (apply it in "
+            "parentheses, as '(" + tn + " t)')");
+      }
       return e->replaceTypeAliases(Prim::make(tn));
     } else if (e->isTypeName(tn)) {
       return Prim::make(tn, e->namedTypeRepresentation(tn));
@@ -112,8 +124,18 @@ struct appTyDefnF : public switchTyFn {
   }
 
   MonoTypePtr with(const TApp *ap) const override {
-    return e->replaceTypeAliases(
-        TApp::make(switchOf(ap->fn(), *this), switchOf(ap->args(), *this)));
+    // the constructor of an application that names an alias is expanded
+    // together with its arguments below, so it is not a bare use
+    MonoTypePtr f;
+    if (const TVar *fv = is<TVar>(ap->fn())) {
+      if (e->isTypeAliasName(fv->name())) {
+        f = Prim::make(fv->name());
+      }
+    }
+    if (!f) {
+      f = switchOf(ap->fn(), *this);
+    }
+    return e->replaceTypeAliases(TApp::make(f, switchOf(ap->args(), *this)));
   }
 
   MonoTypePtr with(const TExpr *x) const override {
@@ -799,7 +821,14 @@ void compile(cc *e, const ModulePtr &m, std::function<bool()> stopFn) {
     if (stopFn()) {
       return;
     }
-    auto md = applyTypeDefns(m, e, tmd);
+    ModuleDefPtr md;
+    try {
+      md = applyTypeDefns(m, e, tmd);
+    } catch (const annotated_error &) {
+      throw;
+    } catch (const std::exception &ex) {
+      throw annotated_error(*tmd, ex.what());
+    }
 
     if (const MImport *imp = is<MImport>(md)) {
       compile(m, e, imp);
