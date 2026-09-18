@@ -109,6 +109,10 @@ private:
   size_t reno;
 };
 
+// true iff c points to a Client created by makeConnection and still registered
+// (defined with the connection registry in lib/hobbes/ipc/nbindings.C)
+bool isAllocatedConnection(Client*);
+
 }
 
 #endif
