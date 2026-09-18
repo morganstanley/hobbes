@@ -21,12 +21,53 @@ struct eventcbclosure {
 
   int                      fd;
   std::function<void(int)> fn;
+  bool                     vnode   = false; // registered for file changes rather than readability
+  bool                     retired = false; // unregistered or replaced while a batch was being dispatched
 };
 using EventClosures = std::map<int, eventcbclosure *>;
 
 void registerEventHandler(int fd, eventhandler fn, void* ud, bool f) {
   registerEventHandler(fd, [fn,ud](int c){fn(c,ud);}, f);
 }
+
+// a closure is not deleted while a batch of events is being dispatched: the
+// batch holds raw closure pointers, and a callback in it can close another
+// descriptor of the same batch (or unregister it) and register a replacement
+// under the same number, which would free a closure the loop is about to
+// call. Closures retired during a batch are kept until it has been dispatched,
+// and the batch skips them: their descriptor is gone, or is someone else's now.
+thread_local std::vector<eventcbclosure*> retiredClosures;
+thread_local std::vector<eventcbclosure*> handlersToRelease; // quarantined mid-batch (epoll); see quarantineClosure
+thread_local size_t                       dispatchDepth = 0;
+
+void retireClosure(eventcbclosure* c) {
+  if (c == nullptr) {
+    return;
+  } else if (dispatchDepth == 0) {
+    delete c;
+  } else {
+    c->retired = true;
+    retiredClosures.push_back(c);
+  }
+}
+
+struct DispatchingBatch {
+  DispatchingBatch() { ++dispatchDepth; }
+  ~DispatchingBatch() {
+    if (--dispatchDepth == 0) {
+      for (auto* c : retiredClosures) {
+        delete c;
+      }
+      retiredClosures.clear();
+      for (auto* c : handlersToRelease) {
+        c->fn = nullptr;
+      }
+      handlersToRelease.clear();
+    }
+  }
+  DispatchingBatch(const DispatchingBatch&) = delete;
+  DispatchingBatch& operator=(const DispatchingBatch&) = delete;
+};
 
 #ifdef BUILD_LINUX
 thread_local bool           epInitialized = false;
@@ -58,12 +99,48 @@ int threadEPollFD() {
   return epFD;
 }
 
+// the closure map owns exactly the closures the kernel can still deliver: an
+// entry is made only once the descriptor is in the epoll set, and is erased
+// when its closure is deleted. A stale entry is left only by closing a
+// descriptor without unregistering it, and is then found when its number is
+// unregistered or registered again. That closure cannot be freed, because
+// its epoll interest may still be live: the interest is attached to the open file
+// description rather than the number, and survives this process's close of
+// the number for as long as any duplicate of it is open (one inherited by a
+// child this process forked, say). A wait can then return that interest with
+// this closure as its data pointer. So it is quarantined instead: marked
+// retired (the dispatch loops skip it), its handler released, and the shell
+// kept for the life of the thread -- a few dozen bytes for each descriptor
+// closed while registered, which unregistering first avoids. The handler is
+// released only once no batch is being dispatched: the closure may be the one
+// whose handler is running (it closed its own descriptor and registered the
+// number again), and its captures live in that handler
+thread_local std::vector<eventcbclosure*> quarantinedClosures;
+
+void quarantineClosure(eventcbclosure* c) {
+  if (c != nullptr) {
+    c->retired = true;
+    quarantinedClosures.push_back(c);
+    if (dispatchDepth == 0) {
+      c->fn = nullptr;
+    } else {
+      handlersToRelease.push_back(c);
+    }
+  }
+}
+
 void unregisterEventHandler(int fd) {
   auto ec = epClosures->find(fd);
   if (ec != epClosures->end()) {
     struct epoll_event evt;
-    epoll_ctl(threadEPollFD(), EPOLL_CTL_DEL, fd, &evt);
-    delete ec->second;
+    if (epoll_ctl(threadEPollFD(), EPOLL_CTL_DEL, fd, &evt) == 0) {
+      retireClosure(ec->second);
+    } else {
+      // the number is closed (EBADF) or someone else's (ENOENT): the interest
+      // registered for it could not be removed and may be live, as above
+      quarantineClosure(ec->second);
+    }
+    epClosures->erase(ec);
   }
 }
 
@@ -71,7 +148,6 @@ void registerEventHandler(int fd, const std::function<void(int)>& fn, bool) {
   int epfd = threadEPollFD();
 
   auto* c = new eventcbclosure(fd, fn);
-  (*epClosures)[fd] = c;
 
   struct epoll_event evt;
   memset(&evt, 0, sizeof(evt));
@@ -83,6 +159,10 @@ void registerEventHandler(int fd, const std::function<void(int)>& fn, bool) {
     delete c;
     throw std::runtime_error("Failed to add FD to epoll set: " + std::string(strerror(errno)));
   }
+
+  auto& slot = (*epClosures)[fd];
+  quarantineClosure(slot);
+  slot = c;
 }
 
 void registerInterruptHandler(const std::function<void()>& fn) {
@@ -108,10 +188,13 @@ bool stepEventLoop(int timeoutMS, const std::function<bool()>& stopFn) {
     int fds = epoll_wait(threadEPollFD(), evts, sizeof(evts)/sizeof(evts[0]), effectiveTimeoutMS);
     bool status = true;
     if (fds > 0) {
+      DispatchingBatch batch;
       for (int fd = 0; fd < fds; ++fd) {
         auto* c = reinterpret_cast<eventcbclosure*>(evts[fd].data.ptr);
-        (c->fn)(c->fd);
-        resetMemoryPool();
+        if (!c->retired) {
+          (c->fn)(c->fd);
+          resetMemoryPool();
+        }
       }
     } else if (fds < 0) {
       if (errno != EINTR) {
@@ -178,10 +261,13 @@ void runEventLoop(int microsecondDuration, const std::function<bool()>& stopFn) 
     struct epoll_event evts[64];
     int fds = epoll_wait(threadEPollFD(), evts, sizeof(evts)/sizeof(evts[0]), timeout);
     if (fds > 0) {
+      DispatchingBatch batch;
       for (int fd = 0; fd < fds; ++fd) {
         auto* c = reinterpret_cast<eventcbclosure*>(evts[fd].data.ptr);
-        (c->fn)(c->fd);
-        resetMemoryPool();
+        if (!c->retired) {
+          (c->fn)(c->fd);
+          resetMemoryPool();
+        }
       }
     }
     t = hobbes::time();
@@ -207,13 +293,21 @@ int threadKQFD() {
   return kqFD;
 }
 
+// as on Linux: the closure map holds only closures the kernel can still
+// deliver, entered once the descriptor is in the kqueue and erased with the
+// closure, so a reused descriptor number never finds a stale pointer
 void unregisterEventHandler(int fd) {
   auto ec = kqClosures->find(fd);
   if (ec != kqClosures->end()) {
+    // a kqueue registration is keyed by (fd, filter), so the delete must name
+    // the filter the handler was registered with: deleting EVFILT_READ for a
+    // file-change handler is ENOENT, and its EVFILT_VNODE registration stays
+    // live in the kqueue with udata pointing at the closure freed below
     struct kevent ke;
-    EV_SET(&ke, fd, EVFILT_READ, EV_DELETE, 0, 0, 0);
+    EV_SET(&ke, fd, ec->second->vnode ? EVFILT_VNODE : EVFILT_READ, EV_DELETE, 0, 0, 0);
     kevent(threadKQFD(), &ke, 1, 0, 0, 0);
-    delete ec->second;
+    retireClosure(ec->second);
+    kqClosures->erase(ec);
   }
 }
 
@@ -221,7 +315,7 @@ void registerEventHandler(int fd, const std::function<void(int)>& fn, bool vn) {
   int kqfd = threadKQFD();
 
   eventcbclosure* c = new eventcbclosure(fd, fn);
-  (*kqClosures)[fd] = c;
+  c->vnode = vn;
 
   struct kevent ke;
   if (vn) {
@@ -233,6 +327,19 @@ void registerEventHandler(int fd, const std::function<void(int)>& fn, bool vn) {
     delete c;
     throw std::runtime_error("Failed to add FD to kqueue: " + std::string(strerror(errno)));
   }
+
+  auto& slot = (*kqClosures)[fd];
+  if (slot != nullptr && slot->vnode != vn) {
+    // the previous closure under this key was registered with the other
+    // filter; the EV_ADD above replaced nothing, so if its descriptor is still
+    // open that registration is still live and would deliver to the closure
+    // retired below (a closed descriptor has already left the kqueue, and the
+    // delete is then a harmless ENOENT)
+    EV_SET(&ke, fd, slot->vnode ? EVFILT_VNODE : EVFILT_READ, EV_DELETE, 0, 0, 0);
+    kevent(kqfd, &ke, 1, 0, 0, 0);
+  }
+  retireClosure(slot); // a previous closure left under this key after its fd was closed unregistered
+  slot = c;
 }
 
 void registerInterruptHandler(const std::function<void()>& fn) {
@@ -258,10 +365,13 @@ bool stepEventLoop(int timeoutMS, const std::function<bool()>& stopFn) {
     struct kevent evts[64];
     int fds = kevent(threadKQFD(), 0, 0, evts, sizeof(evts)/sizeof(evts[0]), &timeout);
     if (fds > 0) {
+      DispatchingBatch batch;
       for (size_t fd = 0; fd < fds; ++fd) {
         eventcbclosure* c = (eventcbclosure*)evts[fd].udata;
-        (c->fn)(c->fd);
-        resetMemoryPool();
+        if (!c->retired) {
+          (c->fn)(c->fd);
+          resetMemoryPool();
+        }
       }
       return true;
     } else if (fds == 0) {
@@ -318,10 +428,13 @@ void runEventLoop(int microsecondDuration, const std::function<bool()>& stopFn) 
     struct kevent evts[64];
     int fds = kevent(threadKQFD(), 0, 0, evts, sizeof(evts)/sizeof(evts[0]), &timeout);
     if (fds > 0) {
+      DispatchingBatch batch;
       for (size_t fd = 0; fd < fds; ++fd) {
         eventcbclosure* c = (eventcbclosure*)evts[fd].udata;
-        (c->fn)(c->fd);
-        resetMemoryPool();
+        if (!c->retired) {
+          (c->fn)(c->fd);
+          resetMemoryPool();
+        }
       }
     }
     t = hobbes::time();
