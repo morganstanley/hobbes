@@ -156,7 +156,7 @@ extern int yydebug;
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
 union YYSTYPE
 {
-#line 307 "hexpr.y"
+#line 319 "hexpr.y"
 
   hobbes::Module*              module;
   hobbes::ModuleDefs*          mdefs;
