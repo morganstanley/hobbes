@@ -101,6 +101,11 @@ private:
 
   // cache satisfiability tests
   mutable TestedInstances satfInstances;
+
+  // both memos are void once an instance is added to any class
+  mutable uint64_t memoGeneration = 0;
+  void forgetResolutions();
+  void refreshResolutions() const;
 };
 using TClassPtr = std::shared_ptr<TClass>;
 using TClassEnv = std::map<std::string, TClassPtr>;

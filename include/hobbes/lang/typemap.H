@@ -36,6 +36,10 @@ template <typename V>
       return this->d.lookup(mts.begin(), mts.end());
     }
 
+    void clear() {
+      this->d.clear();
+    }
+
     std::vector<V> values() const {
       return this->d.values();
     }

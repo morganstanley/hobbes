@@ -152,6 +152,9 @@ public:
     yylineno       = 1;
     yycolumn       = 1;
     yyVexpLexError = ""; // a lexer error left by a parse that threw is not this one's
+    yyErrPos       = YYLTYPE(); // nor is the position of one (see parseErrorPos)
+    yylloc         = YYLTYPE{1, 1, 1, 1}; // the lexer sets this per token, and an empty parse has none: its
+                                          // end-of-file error would otherwise sit where the previous parse's last token was
     pushLexerParseState();
     yy_switch_to_buffer(bs);
     activeParseBuffers.push(bs);
@@ -170,6 +173,16 @@ public:
 private:
   YY_BUFFER_STATE bs;
 };
+
+// where an error in the parse just run was found. yyerror records the
+// position of a syntax error, but an error thrown from a lexer or grammar
+// action (an unsupported literal, a duplicate field name) goes past yyerror,
+// and until ParseScope cleared it the position reported for one of those was
+// whatever the last syntax error in the process left behind. With it cleared,
+// such an error is reported at the token the parser was on when it was thrown.
+YYLTYPE parseErrorPos() {
+  return yyErrPos.first_line != 0 ? yyErrPos : yylloc;
+}
 
 void runParserOnBuffer(cc* c, int initTok, YY_BUFFER_STATE bs) {
   {
@@ -201,7 +214,7 @@ void runParserOnFile(cc* c, int initTok, const std::string& fname) {
   } catch (std::exception& ex) {
     fclose(f);
     LexicallyAnnotated::popContext();
-    throwFileError(fname, yyErrPos, ex.what());
+    throwFileError(fname, parseErrorPos(), ex.what());
   }
 }
 
@@ -215,7 +228,22 @@ void runParserOnString(cc* c, int initTok, const char* s) {
     throw;
   } catch (std::exception& ex) {
     LexicallyAnnotated::popContext();
-    throwBufferError(s, yyErrPos, ex.what());
+    throwBufferError(s, parseErrorPos(), ex.what());
+  }
+}
+
+// a module's expressions get the same nesting bound as an expression read on
+// its own (see defReadExpr below): a definition's body, and the body of each
+// member of an instance, are the places a module holds an expression
+static void checkNestingDepth(const ModulePtr& m) {
+  for (const auto& md : m->definitions()) {
+    if (const MVarDef* vd = is<MVarDef>(md)) {
+      checkNestingDepth(vd->varExpr());
+    } else if (const InstanceDef* id = is<InstanceDef>(md)) {
+      for (const auto& mvd : id->members()) {
+        checkNestingDepth(mvd->varExpr());
+      }
+    }
   }
 }
 
@@ -227,7 +255,9 @@ ModulePtr defReadModuleFile(cc* c, const std::string& file) {
   runParserOnFile(c, TPARSEMODULE, file);
   yyModulePath = "";
 
-  return checkReturn(yyParsedModule != nullptr ? ModulePtr(yyParsedModule) : ModulePtr());
+  ModulePtr m = checkReturn(yyParsedModule != nullptr ? ModulePtr(yyParsedModule) : ModulePtr());
+  checkNestingDepth(m);
+  return m;
 }
 
 ModulePtr defReadModule(cc* c, const char* text) {
@@ -236,7 +266,9 @@ ModulePtr defReadModule(cc* c, const char* text) {
   yyParsedModule = nullptr;
   runParserOnString(c, TPARSEMODULE, text);
 
-  return checkReturn(yyParsedModule != nullptr ? ModulePtr(yyParsedModule) : ModulePtr());
+  ModulePtr m = checkReturn(yyParsedModule != nullptr ? ModulePtr(yyParsedModule) : ModulePtr());
+  checkNestingDepth(m);
+  return m;
 }
 
 ModulePtr defReadModule(cc* c, const std::string& text) {

@@ -233,7 +233,12 @@ ExprPtr cc::unsweetenExpression(const TEnvPtr& te, const std::string& vname, con
   try {
     result = macroExpand(unqualifyTypes(te, validateType(te, vname, closureConvert(this->tenv, vname, e), &ds), &ds));
   } catch (std::exception& ex) {
-    drainUnqualifyDefs(ds);
+    // the residual definitions are half-resolved and the drain will usually
+    // fail on them too; that failure must not replace the one being reported
+    try {
+      drainUnqualifyDefs(ds);
+    } catch (...) {
+    }
     throw;
   }
 

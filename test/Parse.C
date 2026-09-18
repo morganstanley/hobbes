@@ -111,6 +111,35 @@ TEST(Parse, DeepExpressionsCompiledMidParseAreRejected) {
   EXPECT_EQ(c().compileFn<int()>("(\\x.x+1)(1)")(), 2);
 }
 
+TEST(Parse, DeepQuotedExpressionsAreRejected) {
+  // a quoted expression is folded into a type as it is parsed, and making
+  // that type prints the expression (TExpr::make interns it by its printed
+  // form) -- one stack frame per level, before the parse has returned
+  // anything the nesting bound could be checked on. That holds wherever a
+  // quote may appear: as an expression, and as a type in a module's type
+  // definition. The quote's expression is now bounded before the type is
+  // made; an unfixed build crashes in show() here rather than failing the
+  // test.
+  std::string chain = "N";
+  for (size_t i = 0; i < 150000; ++i) {
+    chain += "<N";
+  }
+
+  EXPECT_TRUE(c().readExpr("`N<N`") != nullptr);
+  EXPECT_TRUE(rejectedForNesting("`" + chain + "`"));
+
+  EXPECT_TRUE(c().readModule("type Q = `N<N`") != nullptr);
+  try {
+    c().readModule("type Q = `" + chain + "`");
+    EXPECT_TRUE(false);
+  } catch (const std::exception& ex) {
+    EXPECT_TRUE(std::string(ex.what()).find("past the limit") != std::string::npos);
+  }
+
+  // and the process is still usable afterwards
+  EXPECT_EQ(show(c().readExpr("1+2")), "+(1, 2)");
+}
+
 TEST(Parse, ExpressionsWithinTheNestingLimitStillParse) {
   // ordinary expressions are nowhere near the limit, and expressions that are
   // deeply nested but still within it read as they always have
@@ -236,4 +265,74 @@ TEST(Parse, GrammarsWithNullableRulesAreGenerated) {
   EXPECT_EQ(lc.compileFn<int()>("match np(\"ba\") with | |1=x| -> x | _ -> -1")(), 1);
   EXPECT_EQ(lc.compileFn<int()>("match np(\"bb\") with | |1=x| -> x | _ -> -1")(), -1);
   EXPECT_EQ(lc.compileFn<int()>("match np(\"\")   with | |1=x| -> x | _ -> -1")(), -1);
+}
+
+// an error thrown from a lexer or grammar action (an unsupported literal here)
+// goes past yyerror, which is what records where a syntax error was found. The
+// position reported for such an error used to be whatever the last syntax
+// error in the process had left there -- a location in some earlier input --
+// and 0,0 in a process that had seen none. It is now the token the parser was
+// on when the error was thrown.
+TEST(Parse, ActionErrorsAreReportedAtTheirOwnPosition) {
+  cc lc;
+  static const char* hugeLit = "9999999999999999999999999999";
+
+  // a fresh process: the literal's own position, not 0,0
+  EXPECT_EXCEPTION_MSG(lc.readExpr(hugeLit), std::exception, "1,1-28");
+
+  // after a syntax error at another position in another input
+  EXPECT_EXCEPTION_MSG(lc.readExpr("let x = in x"), std::exception, "1,9-10");
+  EXPECT_EXCEPTION_MSG(lc.readExpr(hugeLit), std::exception, "1,1-28");
+
+  // and further into the input, where the two positions differ
+  EXPECT_EXCEPTION_MSG(lc.readExpr(std::string("1 + ") + hugeLit), std::exception, "1,5-32");
+
+  // a syntax error still reports where the parser found it
+  EXPECT_EXCEPTION_MSG(lc.readExpr("let x = in x"), std::exception, "1,9-10");
+
+  // an empty input has no token for the lexer to place, so its end-of-file
+  // error was reported wherever the previous parse's last token was -- deep
+  // in the boot module for a fresh compiler, or here at line 5 -- instead of
+  // at the start of the (empty) input
+  EXPECT_TRUE(lc.readExpr("1+\n2+\n3+\n4+\n5+      6") != nullptr);
+  EXPECT_EXCEPTION_MSG(lc.readExpr(""), std::exception, "1,1-1");
+  EXPECT_EXCEPTION_MSG(lc.readExpr("   "), std::exception, "1,3-3"); // end of file sits on the last thing lexed
+}
+
+// the nesting bound on a parsed expression was checked on what readExpr and
+// readExprDefn return, but not on the expressions inside a module, so a
+// script definition past it (`hi -x`) was compiled, and the compiler's walks
+// over it ran the stack out
+static bool moduleRejectedForNesting(const std::string& src) {
+  try {
+    c().readModule(src);
+    return false;
+  } catch (const std::exception& ex) {
+    return std::string(ex.what()).find("past the limit") != std::string::npos;
+  }
+}
+
+TEST(Parse, DeeplyNestedModuleDefinitionsAreRejected) {
+  // the 15,000-term definition that used to crash `hi -x`
+  EXPECT_TRUE(moduleRejectedForNesting("x = " + leftNestedSum(15000)));
+
+  // an instance member's body is an expression of the module too
+  EXPECT_TRUE(moduleRejectedForNesting(
+    "class Deep a where\n"
+    "  deep :: a -> a\n"
+    "instance Deep int where\n"
+    "  deep x = " + leftNestedSum(15000) + "\n"
+  ));
+
+  // and a module-level expression evaluated for its effect
+  EXPECT_TRUE(moduleRejectedForNesting("print(" + leftNestedSum(15000) + ")"));
+
+  // while a module within the limit reads as it always has
+  EXPECT_TRUE(c().readModule("x = " + leftNestedSum(500)) != nullptr);
+  EXPECT_TRUE(c().readModule(
+    "class Shallow a where\n"
+    "  shallow :: a -> a\n"
+    "instance Shallow int where\n"
+    "  shallow x = " + leftNestedSum(500) + "\n"
+  ) != nullptr);
 }

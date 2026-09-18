@@ -7,10 +7,170 @@
 #include <hobbes/util/array.H>
 #include <hobbes/util/codec.H>
 #include <hobbes/util/perf.H>
+#include <atomic>
+#include <exception>
 #include <memory>
 #include <unordered_map>
 
 namespace hobbes {
+
+// Instance resolution recurses through instance generators: applying one
+// resolves the constraints in its context, and each of those may apply
+// another. The memos in TClass (testedInstances, satfInstances) stop the
+// recursion when a constraint comes back to a type it has already been asked
+// about, which is what a well-founded recursive instance does. An instance
+// whose context asks about a type strictly larger than its head -- say
+// (Grow [a]) => Grow a -- never comes back to one: every step asks about a
+// new, bigger type, and nothing bounds the descent but the stack (the
+// compiler ran for minutes and then crashed on that instance).
+//
+// Depth alone doesn't tell the two apart. The Prelude's record and tuple
+// instances recurse once per field (ShowR, PrintR, Eq, ...), so a 300-field
+// record legitimately nests 300 generators deep, and a group of mutually
+// recursive instances nests once per member while their dictionaries are
+// bound. What marks divergence is growth: each step asks about a type larger
+// than the last, without bound. So each generator step measures the type it
+// is asked about, and a resolution is rejected, with a message that says
+// why, when either
+//
+//   * more than this many steps on the stack each ask about a larger type
+//     than the step that asked for them (a well-founded descent asks about
+//     smaller types -- a field of the record, a member of the group -- and
+//     the few legitimate steps that grow, like a compression model asking
+//     about the model type for its data type, are followed by shrinking
+//     ones; loading the Prelude and running the test suite never stack more
+//     than two such steps), or
+//
+//   * a step asks about a type this many times larger than the outermost
+//     request, plus a fixed allowance so that a small request is not held to
+//     a small bound (the count above stops slow growth in a few hundred
+//     steps; an instance whose context doubles its head would reach an
+//     unrepresentable type long before that many, and this stops it in a
+//     dozen; the largest growth the Prelude or the test suite asks for is
+//     11x, that compression model).
+const size_t maxInstanceResolutionGrowthSteps = 256;
+const size_t maxInstanceResolutionGrowth      = 32;
+const size_t instanceResolutionAllowance      = 4096;
+
+namespace {
+  struct instance_resolution_depth_error : public std::runtime_error {
+    using std::runtime_error::runtime_error;
+  };
+
+  // the size of a type is its node count, the measure in which an instance
+  // context "larger than its head" is larger
+  struct typeSizeF : public walkTy {
+    mutable size_t n = 0;
+    UnitV with(const Prim*       v) const override { ++n; return walkTy::with(v); }
+    UnitV with(const OpaquePtr*  v) const override { ++n; return walkTy::with(v); }
+    UnitV with(const TVar*       v) const override { ++n; return walkTy::with(v); }
+    UnitV with(const TGen*       v) const override { ++n; return walkTy::with(v); }
+    UnitV with(const TAbs*       v) const override { ++n; return walkTy::with(v); }
+    UnitV with(const TApp*       v) const override { ++n; return walkTy::with(v); }
+    UnitV with(const FixedArray* v) const override { ++n; return walkTy::with(v); }
+    UnitV with(const Array*      v) const override { ++n; return walkTy::with(v); }
+    UnitV with(const Variant*    v) const override { ++n; return walkTy::with(v); }
+    UnitV with(const Record*     v) const override { ++n; return walkTy::with(v); }
+    UnitV with(const Func*       v) const override { ++n; return walkTy::with(v); }
+    UnitV with(const Exists*     v) const override { ++n; return walkTy::with(v); }
+    UnitV with(const Recursive*  v) const override { ++n; return walkTy::with(v); }
+    UnitV with(const TString*    v) const override { ++n; return walkTy::with(v); }
+    UnitV with(const TLong*      v) const override { ++n; return walkTy::with(v); }
+    UnitV with(const TExpr*      v) const override { ++n; return walkTy::with(v); }
+  };
+
+  size_t typeSize(const MonoTypes& tys) {
+    typeSizeF f;
+    for (const auto& ty : tys) {
+      switchOf(ty, f);
+    }
+    return f.n;
+  }
+
+  // the size of the request at each generator step on this thread's stack
+  // (the front is the outermost request), and how many of those steps grew
+  thread_local std::vector<size_t> instanceResolutionSizes;
+  thread_local size_t              instanceResolutionGrowthSteps = 0;
+
+  // how many resolutions are in progress on this thread: a generator step
+  // or a class holding a provisional memo entry (below) each count as one
+  thread_local size_t resolutionsInProgress = 0;
+
+  // one instance generator step, entered at TCInstanceFn::apply and
+  // TCInstanceFn::satisfiable (the only places resolution recurses without a
+  // memo to stop it)
+  struct InstanceResolutionStep {
+    InstanceResolutionStep(const std::string& tcname, const MonoTypes& tys) : grew(false) {
+      size_t n = typeSize(tys);
+      if (!instanceResolutionSizes.empty()) {
+        size_t root = instanceResolutionSizes.front();
+        if (n > maxInstanceResolutionGrowth * root + instanceResolutionAllowance) {
+          throw instance_resolution_depth_error(
+            "instance resolution for " + show(Constraint(tcname, tys)) + " asks about a type of " + str::from(n) +
+            " nodes, more than " + str::from(maxInstanceResolutionGrowth) + "x the " + str::from(root) +
+            "-node request it is resolving (an instance whose context is larger than its head would do this)"
+          );
+        }
+        this->grew = n > instanceResolutionSizes.back();
+        if (this->grew && instanceResolutionGrowthSteps >= maxInstanceResolutionGrowthSteps) {
+          throw instance_resolution_depth_error(
+            "instance resolution for " + show(Constraint(tcname, tys)) + " asks about a larger type than the step before it, for the " +
+            str::from(maxInstanceResolutionGrowthSteps + 1) + "th time (an instance whose context is larger than its head would do this)"
+          );
+        }
+      }
+      instanceResolutionSizes.push_back(n);
+      if (this->grew) {
+        ++instanceResolutionGrowthSteps;
+      }
+      ++resolutionsInProgress;
+    }
+    ~InstanceResolutionStep() {
+      --resolutionsInProgress;
+      instanceResolutionSizes.pop_back();
+      if (this->grew) {
+        --instanceResolutionGrowthSteps;
+      }
+    }
+    InstanceResolutionStep(const InstanceResolutionStep&) = delete;
+    InstanceResolutionStep& operator=(const InstanceResolutionStep&) = delete;
+  private:
+    bool grew;
+  };
+
+  // TClass::matches, satisfiable and explain memoize a type as "assumed
+  // satisfiable" before recursing on it and settle the entry when they
+  // return. If the depth error above unwinds through them instead, the
+  // provisional entry must not be left behind: a later request for the same
+  // type would take it as an answer, skip resolution, and (having been told
+  // its context holds) generate an instance whose own context is the next
+  // type up, and so on without bound -- the third request for the same
+  // constraint hung where the first two had been rejected in milliseconds.
+  struct ProvisionalMemo {
+    ProvisionalMemo(type_map<bool>& memo, const MonoTypes& mts) : memo(memo), mts(mts), unwinding(std::uncaught_exceptions()) {
+      memo.insert(mts, true);
+      ++resolutionsInProgress;
+    }
+    ~ProvisionalMemo() {
+      --resolutionsInProgress;
+      if (std::uncaught_exceptions() > this->unwinding) {
+        try {
+          this->memo.insert(this->mts, false);
+        } catch (...) {
+          // out of memory while an exception is in flight; the entry stays
+          // provisional, which is what the refusal being unwound already
+          // reports, and the next instance definition clears it anyway
+        }
+      }
+    }
+    ProvisionalMemo(const ProvisionalMemo&) = delete;
+    ProvisionalMemo& operator=(const ProvisionalMemo&) = delete;
+  private:
+    type_map<bool>& memo;
+    MonoTypes       mts;
+    int             unwinding;
+  };
+}
 
 inline bool isHiddenTCName(const std::string& n) {
   return n.empty() || n[0] == '.';
@@ -98,6 +258,7 @@ void TClass::insert(const TEnvPtr& tenv, const TCInstancePtr& ip, Definitions* d
   } else {
     this->tcinstances.push_back(ip);
     this->tcinstdb.insert(ip->types(), ip);
+    forgetResolutions();
     ip->bind(tenv, this, ds);
   }
 }
@@ -142,6 +303,49 @@ void TClass::insert(const TCInstanceFnPtr& ifp) {
       x.push_back(ifp);
       this->tcinstfndb.insert(ifp->itys, x);
     }
+    forgetResolutions();
+  }
+}
+
+// the memos record what resolution found, and adding an instance can change
+// it: a constraint refused as unsatisfiable is satisfiable once the instance
+// for it is defined (the REPL pattern -- ask, define the instance, ask again),
+// and one resolved to a single instance could resolve to two. The instance
+// need not belong to the class asked, either: (B a) => A a refuses A int until
+// B int exists. So an addition to any class voids every class's memos, through
+// a generation count that each class compares with its own before it reads
+// them; what is still true is rederived on the next request.
+//
+// Not in the middle of a request, though: the memos are also the recursion
+// guard, holding "assumed satisfiable" entries for the constraints being
+// resolved, and a resolution in progress adds instances of its own (the ones
+// it generates). Clearing then would drop the guard from under it. So the
+// count is read once, when a request starts with no resolution in progress,
+// and every class touched by that request is brought up to the count read
+// then; an addition made during the request takes effect at the next one,
+// which is the first that could ask about it anyway.
+//
+// The count is process-wide rather than per type environment: an instance
+// added in one compiler clears the memos of another's classes, which costs a
+// rederivation of what was memoized and nothing else, and is not a change
+// from before for the common case of one compiler per process.
+namespace {
+  std::atomic<uint64_t> instanceGeneration{1};
+  thread_local uint64_t requestGeneration = 0;
+}
+
+void TClass::forgetResolutions() {
+  ++instanceGeneration;
+}
+
+void TClass::refreshResolutions() const {
+  if (resolutionsInProgress == 0) {
+    requestGeneration = instanceGeneration.load();
+  }
+  if (this->memoGeneration != requestGeneration) {
+    this->testedInstances.clear();
+    this->satfInstances.clear();
+    this->memoGeneration = requestGeneration;
   }
 }
 
@@ -162,6 +366,8 @@ void TClass::candidateTCInstFns(const TEnvPtr& tenv, const MonoTypes& mts, TCIns
 }
 
 TCInstances TClass::matches(const TEnvPtr& tenv, const MonoTypes& mts, MonoTypeUnifier* u, Definitions* ds) const {
+  refreshResolutions();
+
   // do any ground instances match?
   TCInstances r;
   this->tcinstdb.matches(tenv, mts, &r);
@@ -169,13 +375,20 @@ TCInstances TClass::matches(const TEnvPtr& tenv, const MonoTypes& mts, MonoTypeU
   // if no ground instances match, can we generate a ground instance to match?
   //  (this can only work when we can feed back derived type information)
   if (r.empty()) {
-    this->testedInstances.insert(mts, true);
+    ProvisionalMemo assumed(this->testedInstances, mts);
 
     TCInstanceFns ifns;
     candidateTCInstFns(tenv, mts, &ifns);
     for (const auto& f : ifns) {
       // for recursive instance definitions, initially assume that this instantiation is satisfiable
       // (this will prevent nested instance requests from recursing infinitely)
+      //
+      // a generator refused for growth (InstanceResolutionStep) unwinds through
+      // here without trying the generators after it, and the provisional memo
+      // settles this type as unsatisfiable, though a later generator might
+      // have resolved it. That is the refusal's cost: it is an error in the
+      // instance that diverged, reported as such, and defining another
+      // instance clears the memo
       TCInstancePtr ninst;
       if (f->apply(tenv, mts, this, u, ds, &ninst)) {
         const_cast<TClass*>(this)->insert(tenv, ninst, ds);
@@ -236,6 +449,7 @@ bool isLiteralFnTerm(const ExprPtr& e) {
 }
 
 bool TClass::satisfied(const TEnvPtr& tenv, const ConstraintPtr& c, Definitions* ds) const {
+  refreshResolutions();
   if (c->arguments().size() != this->tvs) {
     return false;
   } else if (c->hasFreeVariables()) {
@@ -274,12 +488,13 @@ bool TClass::satisfiable(const TEnvPtr& tenv, const ConstraintPtr& c, Definition
   MonoTypes mts = c->arguments();
 
   // did we already assume that this constraint was satisfiable?
+  refreshResolutions();
   if (bool* f = this->satfInstances.lookup(mts)) {
     return *f;
   }
   
   // assume we're satisfiable until we can prove we're not
-  this->satfInstances.insert(mts, true);
+  ProvisionalMemo assumed(this->satfInstances, mts);
 
   // we're satisfiable if there's at least one satisfiable instance for this constraint
   if (this->tcinstdb.hasMatch(tenv, mts)) return true;
@@ -319,6 +534,7 @@ void TClass::explain(const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPt
     const MonoTypes& mts = cst->arguments();
 
     // avoid infinitely-recursive explanations
+    refreshResolutions();
     if (bool* f = this->testedInstances.lookup(mts)) {
       if (*f) {
         return;
@@ -330,7 +546,7 @@ void TClass::explain(const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPt
     TCInstanceFnPtr likelyTarget;
     Constraints     fcs;
 
-    this->testedInstances.insert(mts, true);
+    ProvisionalMemo assumed(this->testedInstances, mts);
     TCInstanceFns ifns;
     candidateTCInstFns(tenv, mts, &ifns);
     for (const auto& f : ifns) {
@@ -596,6 +812,8 @@ bool TCInstanceFn::satisfiable(const TEnvPtr& tenv, const MonoTypes& tys, Defini
     return false;
   }
 
+  InstanceResolutionStep step(this->tcname, tys);
+
   // can the input unify with this generator's head?  can it satisfy its constraints?
   MonoTypeSubst s;
   IFnDef        fdef  = freshDef(&s);
@@ -621,6 +839,8 @@ bool TCInstanceFn::satisfiable(const TEnvPtr& tenv, const MonoTypes& tys, Defini
         return false;
       }
     }
+  } catch (instance_resolution_depth_error&) {
+    throw;
   } catch (std::exception& ex) {
     return false;
   }
@@ -662,6 +882,8 @@ void TCInstanceFn::explainSatisfiability(const TEnvPtr& tenv, const MonoTypes& t
         fcs->push_back(c);
       }
     }
+  } catch (instance_resolution_depth_error&) {
+    throw;
   } catch (std::exception& ex) {
   }
 }
@@ -678,6 +900,8 @@ bool TCInstanceFn::apply(const TEnvPtr& tenv, const MonoTypes& tys, const TClass
   if (this->itys.size() != tys.size()) {
     return false;
   }
+
+  InstanceResolutionStep step(this->tcname, tys);
 
   // generate a fresh copy of this generator's type variables consistent between constraints and definition
   MonoTypeSubst s;
@@ -704,6 +928,8 @@ bool TCInstanceFn::apply(const TEnvPtr& tenv, const MonoTypes& tys, const TClass
         return false;
       }
     }
+  } catch (instance_resolution_depth_error&) {
+    throw;
   } catch (std::exception& ex) {
     return false;
   }
