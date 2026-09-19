@@ -577,11 +577,20 @@ char *Client::readValue(size_t x) {
 }
 
 size_t Client::unsafeAppendReadFn(size_t p, ReadFn f) {
-  return reinterpret_cast<Client *>(p)->appendReadFn(f);
+  auto *c = reinterpret_cast<Client *>(p);
+  if (!isAllocatedConnection(c)) {
+    throw std::runtime_error(
+        "unsafeAppendClientReadFn: handle is not a live connection");
+  }
+  return c->appendReadFn(f);
 }
 
 char *Client::unsafeRead(size_t p, size_t x) {
-  return reinterpret_cast<Client *>(p)->readValue(x);
+  auto *c = reinterpret_cast<Client *>(p);
+  if (!isAllocatedConnection(c)) {
+    throw std::runtime_error("unsafeClientRead: handle is not a live connection");
+  }
+  return c->readValue(x);
 }
 
 } // namespace hobbes
