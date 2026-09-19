@@ -1,6 +1,7 @@
 #include "test.H"
 #include <hobbes/util/str.H>
 #include <string>
+#include <unistd.h>
 
 using namespace hobbes;
 
@@ -39,4 +40,38 @@ TEST(Str, UnescapeTruncatedHexEscape) {
   // a trailing lone backslash must also be handled without overrunning: it
   // opens an escape that never completes, so it contributes nothing
   EXPECT_TRUE(str::unescape("abc\\") == "abc");
+}
+
+// STRFR-433916: expandPath reaches wordexp() with type-checker-controlled
+// text (LoadFile constraints, lib/hobbes/db/bindings.C), so a $(...)/`...`
+// command substitution embedded in the path used to run an arbitrary shell
+// command before any decision to evaluate the expression. WRDE_NOCMD makes
+// wordexp() fail instead of executing it; expandPath falls back to
+// returning the input unchanged on any wordexp failure, same as it always
+// did for other malformed input.
+TEST(Str, ExpandPathDoesNotExecuteCommandSubstitution) {
+  std::string marker = "/tmp/hobbes-test-433916-" + str::from(static_cast<long>(getpid()));
+  ::unlink(marker.c_str());
+
+  std::string cmdSub = "$(touch " + marker + ")x";
+  EXPECT_TRUE(str::expandPath(cmdSub) == cmdSub);
+  EXPECT_TRUE(access(marker.c_str(), F_OK) != 0); // command must not have run
+
+  std::string backtick = "`touch " + marker + "`x";
+  EXPECT_TRUE(str::expandPath(backtick) == backtick);
+  EXPECT_TRUE(access(marker.c_str(), F_OK) != 0);
+}
+
+TEST(Str, ExpandPathHandlesZeroWordExpansionWithoutCrashing) {
+  // an empty string expands to zero words (verified against libc directly);
+  // indexing we_wordv[0] in that case is undefined behavior, previously the
+  // ticket's second finding (a trivial DoS on empty/unset-var paths)
+  EXPECT_TRUE(str::expandPath("") == "");
+}
+
+TEST(Str, ExpandPathStillExpandsHomeDirectory) {
+  // negative control: the fix must not break expandPath's actual purpose
+  std::string home = str::env("HOME");
+  EXPECT_TRUE(!home.empty());
+  EXPECT_TRUE(str::expandPath("~") == home);
 }
