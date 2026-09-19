@@ -340,3 +340,40 @@ TEST(Compiler, eachCPPTypeSiteUsesItsOwnConstraint) {
   EXPECT_TRUE(d.find("typedef int A;") != std::string::npos);
   EXPECT_TRUE(d.find("typedef double B;") != std::string::npos);
 }
+
+// STRFR-433924: pexec/writefile/removefile/openfd/readfile (bin/hi/funcdefs.C)
+// and linkTarget/slurpFile (bin/hi/www.C) are process/filesystem primitives
+// that hi binds into the same compiler context its unauthenticated net REPL
+// and web server share. translateExprWithOpts(Safe) is what makes hi's
+// default-on 'option Safe' actually withhold them -- this check is purely
+// name-based against the parsed AST (see makeSafe::with(const Var*)) so it
+// applies whether or not the names are actually bound, exactly as they would
+// be in an expression string arriving over the wire before any binding
+// lookup happens.
+static void expectSafeRejects(const std::string& fnName, const std::string& expr) {
+  bool threw = false;
+  try {
+    hobbes::translateExprWithOpts(std::vector<std::string>{"Safe"}, c().readExpr(expr));
+  } catch (std::exception& ex) {
+    threw = true;
+    EXPECT_TRUE(std::string(ex.what()).find(fnName) != std::string::npos);
+  }
+  EXPECT_TRUE(threw);
+}
+
+TEST(Compiler, safeModeDeniesHiProcessAndFileSystemPrimitives) {
+  expectSafeRejects("pexec",      "pexec(\"/bin/sh\")");
+  expectSafeRejects("writefile",  "writefile(\"/tmp/x\", \"y\")");
+  expectSafeRejects("removefile", "removefile(\"/tmp/x\")");
+  expectSafeRejects("openfd",     "openfd(\"/tmp/x\", 0)");
+  expectSafeRejects("readfile",   "readfile(\"/tmp/x\")");
+  expectSafeRejects("linkTarget", "linkTarget(\"/tmp/x\")");
+  expectSafeRejects("slurpFile",  "slurpFile(\"/tmp/x\")");
+}
+
+TEST(Compiler, safeModeStillAllowsOrdinaryExpressions) {
+  // negative control: Safe mode's deny-list is name-specific, not a general
+  // lockdown -- an unrelated expression must still translate and compile
+  auto e = hobbes::translateExprWithOpts(std::vector<std::string>{"Safe"}, c().readExpr("1 + 2"));
+  EXPECT_EQ(c().compileFn<int()>(e)(), 3);
+}
