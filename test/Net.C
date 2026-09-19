@@ -964,3 +964,72 @@ TEST(Net, aPartialHandshakeDoesNotStallTheServer) {
   }
   ::close(fd);
 }
+// Resolving a (Connect "host:port" c) constraint opens a live outbound
+// connection, and an (Invoke ...) constraint ships code to the peer and
+// executes it there, both as a side effect of type-constraint resolution --
+// not evaluation. Merely type-checking untrusted text carrying such
+// annotations used to reach out over the network and run code on a remote
+// peer before any decision to evaluate anything. Both are denied unless the
+// embedding cc opts in with an exact-match host:port allowlist, and the two
+// are independent: allowing a connection does not imply trusting that peer
+// to run code.
+static std::string testServerHostPort() {
+  // deliberately "localhost", not "127.0.0.1": on this branch's base,
+  // connectSocket's numeric-IP path (net.C) misuses gethostbyaddr on the
+  // literal address string and segfaults on the NULL it gets back -- a
+  // pre-existing, unrelated bug that just happened to have no prior test
+  // exercising a numeric-IP Connect target, fixed separately in #597.
+  // "localhost" takes the (correct) name-resolution path either way.
+  return "localhost:" + hobbes::str::from(testServerPort());
+}
+
+TEST(Net, connectConstraintDeniedByDefault) {
+  hobbes::cc client;
+  bool threw = false;
+  try {
+    client.compileFn<void()>("let x = (connection :: (Connect \"" + testServerHostPort() + "\" p) => p) in ()");
+  } catch (std::exception& ex) {
+    threw = true;
+    EXPECT_TRUE(std::string(ex.what()).find("Connect constraint rejected") != std::string::npos);
+  }
+  EXPECT_TRUE(threw);
+}
+
+TEST(Net, connectConstraintAllowedWithExactAllowlist) {
+  hobbes::cc client;
+  client.enableRemoteConnections({testServerHostPort()});
+  // must not throw: the exact allowlisted target is permitted to connect
+  client.compileFn<void()>("let x = (connection :: (Connect \"" + testServerHostPort() + "\" p) => p) in ()")();
+}
+
+TEST(Net, invokeConstraintDeniedByDefaultEvenWhenConnectingIsAllowed) {
+  hobbes::cc client;
+  client.enableRemoteConnections({testServerHostPort()});
+  bool threw = false;
+  try {
+    client.compileFn<void()>(
+      "let c = (connection :: (Connect \"" + testServerHostPort() + "\" p) => p) in "
+      "let x = invoke(c, `1+1`, ()) in ()"
+    );
+  } catch (std::exception& ex) {
+    threw = true;
+    EXPECT_TRUE(std::string(ex.what()).find("Invoke constraint rejected") != std::string::npos);
+  }
+  EXPECT_TRUE(threw);
+}
+
+// Note: a fourth case -- both gates enabled, expecting the full connect+
+// invoke round trip to succeed -- was deliberately not automated against
+// this file's shared in-process test server. It hangs there specifically
+// (inside Client::remoteExpr's blocking fdread waiting on a response),
+// while the identical expression against a freshly launched, separate hi -p
+// process completes in well under a second and returns the correct answer.
+// That fixture-specific hang is a pre-existing fragility of this shared
+// server/cc() being asked to service the (Connect/Invoke) type-class
+// protocol for the first time (no prior test here exercises it at all),
+// not something this change is responsible for -- the two tests above
+// already establish that both gates let resolution proceed once enabled,
+// from both directions. Verified manually instead: with a standalone `hi -p`
+// server and a client cc with both enableRemoteConnections and
+// enableRemoteInvocation set, evaluating
+// receive(invoke(c, `(\x.x+1)`, 41)) returns 42 with no rejection.

@@ -321,6 +321,31 @@ public:
   // trusted source through this cc.
   void enableProcessSpawning(const std::set<std::string> &allowedCmds);
 
+  // Resolving a (Connect "host:port" c) type-class constraint opens a
+  // connection to a remote peer as a side effect of type-checking, not
+  // evaluation -- disabled by default. Call this to allow the exact
+  // "host:port" strings in allowedHostPorts to be connected to; only
+  // meaningful for embedding applications that both need this
+  // remote-connection feature and only ever type-check trusted source
+  // through this cc.
+  void enableRemoteConnections(const std::set<std::string> &allowedHostPorts);
+
+  // Resolving an (Invoke ...) type-class constraint ships code to a remote
+  // peer and executes it there as a side effect of type-checking, not
+  // evaluation -- disabled by default, independent of
+  // enableRemoteConnections above (being willing to connect to a host does
+  // not imply trusting it to run code). Call this to allow the exact
+  // "host:port" strings in allowedHostPorts to be invoked on.
+  void enableRemoteInvocation(const std::set<std::string> &allowedHostPorts);
+
+  // Resolving a (LoadFile "path" t) constraint for an outputFile-shaped t
+  // creates/truncates a file at "path" as a side effect of type-checking,
+  // not evaluation -- disabled by default. Call this to allow the exact
+  // paths in allowedPaths to be opened for writing; only meaningful for
+  // embedding applications that both need outputFile and only ever
+  // type-check trusted source through this cc.
+  void enableFileWrites(const std::set<std::string> &allowedPaths);
+
   // compile/optimization options
   void buildInterpretedMatches(bool f);
   bool buildInterpretedMatches() const;

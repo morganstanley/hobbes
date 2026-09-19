@@ -6,6 +6,7 @@
 #include <hobbes/eval/cc.H>
 #include <hobbes/eval/funcdefs.H>
 #include <memory>
+#include <set>
 #include <unordered_map>
 
 namespace hobbes {
@@ -1004,12 +1005,35 @@ public:
   };
   using LoadedFiles = std::map<std::string, LoadedFile>;
   mutable LoadedFiles loadedFiles;
+  std::set<std::string> allowedWritePaths;
+
+  // Resolving a (LoadFile "path" t) constraint for an outputFile-shaped t
+  // creates/truncates a file at "path" as a side effect of type-checking,
+  // not evaluation -- merely type-checking untrusted text carrying such an
+  // annotation touches the filesystem before any decision to evaluate it.
+  // Disabled unless the embedding application opts in with an exact-match
+  // allowlist of paths (checked against the constraint's literal path
+  // string, before expandPath() resolves it).
+  void enableFileWrites(const std::set<std::string>& allowedPaths) {
+    this->allowedWritePaths = allowedPaths;
+  }
+  bool fileWriteAllowed(const std::string& path) const {
+    return this->allowedWritePaths.count(path) > 0;
+  }
 
   const LoadedFile& loadedFile(bool writeable, const std::string& path) const {
     std::string k = (writeable ? "w:" : "r:") + path;
     auto lf = this->loadedFiles.find(k);
     if (lf != this->loadedFiles.end()) {
       return lf->second;
+    }
+
+    if (writeable && !fileWriteAllowed(path)) {
+      throw std::runtime_error(
+        "LoadFile constraint rejected: refusing to open '" + path + "' for writing "
+        "during type-constraint resolution (file writes are disabled by default; "
+        "the embedding application must call cc::enableFileWrites with an explicit "
+        "path allowlist to permit specific targets)");
     }
 
     LoadedFile& r = this->loadedFiles[k];
@@ -1219,6 +1243,12 @@ void initStorageFileDefs(FieldVerifier* fv, cc& c) {
 
   // import compressed storage functions
   initCStorageFileDefs(fv, c);
+}
+
+void enableFileWrites(cc& c, const std::set<std::string>& allowedPaths) {
+  if (auto lf = std::dynamic_pointer_cast<LoadFileP>(c.typeEnv()->lookupUnqualifier("LoadFile"))) {
+    lf->enableFileWrites(allowedPaths);
+  }
 }
 
 }

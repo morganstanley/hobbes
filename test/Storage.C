@@ -1626,3 +1626,58 @@ TEST(Storage, CorruptQueueSegmentsAreRejected) {
     EXPECT_EXCEPTION(p.read(buf.data(), buf.size(), &st, 0, []{}));
   }
 }
+
+// Resolving a (LoadFile "path" t) constraint for an outputFile-shaped t
+// (i.e. compiling a use of 'outputFile') creates/truncates the file at
+// "path" as a side effect of type-checking, not evaluation -- merely
+// type-checking untrusted text carrying such an annotation touches the
+// filesystem before any decision to evaluate it. Denied unless the
+// embedding cc opts in with an exact-match allowlist of paths.
+TEST(Storage, LoadFileWriteConstraintDeniedByDefault) {
+  std::string fname = mkFName();
+  unlink(fname.c_str());
+
+  hobbes::cc client;
+  bool threw = false;
+  try {
+    client.compileFn<void()>("let x = (outputFile :: (LoadFile \"" + fname + "\" w) => w) in ()");
+  } catch (std::exception& ex) {
+    threw = true;
+    EXPECT_TRUE(std::string(ex.what()).find("LoadFile constraint rejected") != std::string::npos);
+  }
+  EXPECT_TRUE(threw);
+  EXPECT_TRUE(access(fname.c_str(), F_OK) != 0); // the file must not have been created
+}
+
+TEST(Storage, LoadFileWriteConstraintAllowedWithExactAllowlist) {
+  std::string fname = mkFName();
+  unlink(fname.c_str());
+
+  hobbes::cc client;
+  client.enableFileWrites({fname});
+  // must not throw: the exact allowlisted path is permitted to be opened for writing
+  client.compileFn<void()>("let x = (outputFile :: (LoadFile \"" + fname + "\" w) => w) in ()")();
+  EXPECT_TRUE(access(fname.c_str(), F_OK) == 0); // the allowlisted write did create the file
+
+  unlink(fname.c_str());
+}
+
+TEST(Storage, LoadFileWriteConstraintAllowlistIsPathSpecific) {
+  // negative control: opting in for one path must not open the gate for every path
+  std::string allowedName = mkFName();
+  std::string otherName   = mkFName();
+  unlink(allowedName.c_str());
+  unlink(otherName.c_str());
+
+  hobbes::cc client;
+  client.enableFileWrites({allowedName});
+  bool threw = false;
+  try {
+    client.compileFn<void()>("let x = (outputFile :: (LoadFile \"" + otherName + "\" w) => w) in ()");
+  } catch (std::exception& ex) {
+    threw = true;
+    EXPECT_TRUE(std::string(ex.what()).find("LoadFile constraint rejected") != std::string::npos);
+  }
+  EXPECT_TRUE(threw);
+  EXPECT_TRUE(access(otherName.c_str(), F_OK) != 0);
+}
