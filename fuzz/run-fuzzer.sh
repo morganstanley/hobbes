@@ -15,7 +15,7 @@
 set -u
 
 FUZZ_HOME="${FUZZ_HOME:-$PWD}"
-HARNESS="${1:?usage: run-fuzzer.sh <type-decode|fregion-reader|parse-expr> [seconds]}"
+HARNESS="${1:?usage: run-fuzzer.sh <type-decode|fregion-reader|parse-expr|hog-session> [seconds]}"
 DURATION="${2:-3600}"
 
 # Locate the fuzzing build: explicit override, else the name the README uses,
@@ -47,10 +47,11 @@ case "${HOBBES_FUZZ_UNINSTRUMENTED_LLVM:-1}" in
 esac
 
 EXTRA=()
-if [ "$HARNESS" = "parse-expr" ]; then
-  # The compiler allocates from arenas that are not reclaimed per iteration,
-  # so leak detection reports the whole corpus as leaked. Both flags are
-  # needed: libFuzzer's own check and LeakSanitizer's at-exit check.
+if [ "$HARNESS" = "parse-expr" ] || [ "$HARNESS" = "hog-session" ]; then
+  # Both harnesses evaluate hobbes source and allocate from arenas that are
+  # not reclaimed per iteration, so leak detection reports the whole corpus
+  # as leaked. Both flags are needed: libFuzzer's own check and
+  # LeakSanitizer's at-exit check.
   EXTRA+=(-detect_leaks=0)
   ASAN_OPTIONS="$ASAN_OPTIONS:detect_leaks=0"
 fi

@@ -136,7 +136,23 @@ hstoreReadArr txn r i =
     | _     -> false)
 
 instance (HStoreRead t) => HStoreRead [t] where
-  hstoreRead txn = match (hstoreRead(txn)::(()+long)) with | |1=n| -> do { r = newArray(n); return (if hstoreReadArr(txn, r, 0L) then just(r) else nothing) } | _ -> nothing
+  // n is an attacker-supplied element count with no byte-count guard to check
+  // it against (t's own width is unknown/variable here, unlike the
+  // FixedWidth array case above): a negative n wraps newArray's allocation
+  // size arithmetic to a too-small buffer while leaving the logical size
+  // negative, so hstoreReadArr's i==size(r) never terminates and instead
+  // writes attacker-supplied elements past the undersized allocation until
+  // the transaction is exhausted (STRFR-433920). Reject it before newArray
+  // ever sees it.
+  // n is an attacker-supplied element count with no byte-count guard to check
+  // it against (t's own width is unknown/variable here, unlike the
+  // FixedWidth array case above): a negative n wraps newArray's allocation
+  // size arithmetic to a too-small buffer while leaving the logical size
+  // negative, so hstoreReadArr's i==size(r) never terminates and instead
+  // writes attacker-supplied elements past the undersized allocation until
+  // the transaction is exhausted (STRFR-433920). Reject it before newArray
+  // ever sees it.
+  hstoreRead txn = match (hstoreRead(txn)::(()+long)) with | |1=n| -> if (n < 0L) then nothing else do { r = newArray(n); return (if hstoreReadArr(txn, r, 0L) then just(r) else nothing) } | _ -> nothing
 
 // not the most efficient way to read fixed-length arrays, but a usable last resort
 hstoreReadFixedArr :: (HStoreRead t) => (<hobbes.storage.Transaction>, [:t|n:], long) -> (()+[:t|n:])
