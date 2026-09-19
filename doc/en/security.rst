@@ -66,6 +66,21 @@ is accepted — must be
 rejected cleanly, never cause memory unsafety. Defects here are in scope for
 security reports.
 
+``option Safe`` withholds process/filesystem primitives by default
+--------------------------------------------------------------------
+
+Peers on a trusted network are expected to execute code by design (above),
+but ``hi``'s ``pexec``/``writefile``/``removefile``/``openfd``/``readfile``
+(``bin/hi/funcdefs.C``) and ``linkTarget``/``slurpFile`` (``bin/hi/www.C``)
+raise the stakes of that design past "arbitrary code" to "arbitrary process
+execution and unrestricted file read/write/delete" — meant, per their own
+comment, for "local evaluations", not for whatever reaches ``hi -p`` or
+``hi -w``. ``option Safe`` (on by default, see ``bin/hi/evaluator.H``) denies
+these names, so an evaluated expression cannot name them unless the operator
+explicitly opts out with ``-o no-Safe`` (STRFR-433924). This is defense in
+depth on top of, not a substitute for, keeping these listeners off untrusted
+networks.
+
 Structured data files assume a trusted writer
 ---------------------------------------------
 
@@ -99,6 +114,8 @@ RPC peers (post-handshake semantics)             Trusted — peers execute code 
 RPC wire bytes (framing, type descriptions)      Untrusted — decoder must be safe
 Structured data files (fregion / hog logs)       Trusted writers — reader must still
                                                  reject malformed images safely
+hi's pexec/writefile/removefile/openfd/          Denied under 'option Safe' (default) —
+readfile/linkTarget/slurpFile                    opt out explicitly with -o no-Safe
 ===============================================  ==========================================
 
 Guidance for embedding applications
@@ -108,6 +125,10 @@ Guidance for embedding applications
   any Hobbes code they evaluate can do anything the process can do.
 * Keep RPC endpoints on trusted network segments; wrap them in authenticated,
   encrypted transports if they must cross anything else.
+* Don't pass ``-o no-Safe`` to a ``hi`` instance that also runs ``-p`` or
+  ``-w``: it restores ``pexec``/``writefile``/``removefile``/``openfd``/
+  ``readfile``/``linkTarget``/``slurpFile`` for every expression the listener
+  accepts, network-wide process execution and file access included.
 * Restrict write access to structured data files to the processes that are
   supposed to produce them.
 * Know the memory model before pointing analysis tooling at an embedding
