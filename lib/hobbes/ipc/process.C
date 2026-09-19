@@ -24,12 +24,35 @@ std::string ProcessP::constraintName() {
   return "Process";
 }
 
+void ProcessP::enableSpawning(const std::set<std::string>& cmds) {
+  this->spawningEnabled = true;
+  this->allowedCmds = cmds;
+}
+
+bool ProcessP::spawningAllowed(const std::string& cmd) const {
+  return this->spawningEnabled && this->allowedCmds.count(cmd) > 0;
+}
+
 // resolve process spawn constraints
+//
+// STRFR-433927: refuse to spawn unless the embedding application opted in
+// via enableSpawning with an exact-match allowlist. Type-constraint
+// resolution runs during type-checking, not evaluation -- spawning here
+// unconditionally let merely type-checking untrusted text (a net REPL
+// prepare(), a web GET /?<expr>, ':t' on pasted code) execute an
+// untrusted program before any decision to evaluate anything.
 bool ProcessP::refine(const TEnvPtr&, const ConstraintPtr& cst, MonoTypeUnifier* u, Definitions*) {
   size_t uc = u->size();
   MonoTypePtr cmdt, pidt;
   if (dec(cst, &cmdt, &pidt)) {
     if (const TString* cmd = is<TString>(cmdt)) {
+      if (!spawningAllowed(cmd->value())) {
+        throw std::runtime_error(
+          "Process constraint rejected: refusing to spawn '" + cmd->value() +
+          "' during type-constraint resolution (sub-process spawning is disabled by "
+          "default; the embedding application must call cc::enableProcessSpawning "
+          "with an explicit command allowlist to permit specific commands)");
+      }
       mgu(pidt, mkPidTy(this->procman->spawnedPid(cmd->value())), u);
     }
   }
@@ -40,6 +63,9 @@ bool ProcessP::satisfied(const TEnvPtr&, const ConstraintPtr& cst, Definitions*)
   MonoTypePtr cmdt, pidt;
   if (dec(cst, &cmdt, &pidt)) {
     if (const TString* cmd = is<TString>(cmdt)) {
+      if (!spawningAllowed(cmd->value())) {
+        return false;
+      }
       if (const TLong* pid = pidTy(pidt)) {
         return this->procman->isSpawnedPid(cmd->value(), pid->value());
       }
@@ -53,7 +79,13 @@ bool ProcessP::satisfiable(const TEnvPtr& tenv, const ConstraintPtr& cst, Defini
   if (dec(cst, &cmdt, &pidt)) {
     if (is<TVar>(cmdt) != nullptr) {
       return true;
-    } else if (is<TVar>(pidt) != nullptr) {
+    }
+    if (const TString* cmd = is<TString>(cmdt)) {
+      if (!spawningAllowed(cmd->value())) {
+        return false;
+      }
+    }
+    if (is<TVar>(pidt) != nullptr) {
       return true;
     } else {
       return satisfied(tenv, cst, ds);

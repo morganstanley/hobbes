@@ -20,6 +20,7 @@
 
 #include <iostream>
 #include <map>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
@@ -311,6 +312,14 @@ public:
   void *unsafeCompileFn(const MonoTypePtr &fnTy, const str::seq &names,
                         const std::string &exp);
   void releaseMachineCode(void *);
+
+  // Resolving a (Process "cmd" p) type-class constraint spawns "cmd" as a
+  // side effect of type-checking, not evaluation (STRFR-433927) -- disabled
+  // by default. Call this to allow the exact command strings in
+  // allowedCmds to be spawned; only meaningful for embedding applications
+  // that both need (Process ...) sub-process I/O and only ever type-check
+  // trusted source through this cc.
+  void enableProcessSpawning(const std::set<std::string> &allowedCmds);
 
   // compile/optimization options
   void buildInterpretedMatches(bool f);
