@@ -415,6 +415,7 @@ TEST(Compiler, safeModeDeniesHiProcessAndFileSystemPrimitives) {
   expectSafeRejects("removefile", "removefile(\"/tmp/x\")");
   expectSafeRejects("openfd",     "openfd(\"/tmp/x\", 0)");
   expectSafeRejects("readfile",   "readfile(\"/tmp/x\")");
+  expectSafeRejects("fdReadLine", "fdReadLine(3)");
   expectSafeRejects("linkTarget", "linkTarget(\"/tmp/x\")");
   expectSafeRejects("slurpFile",  "slurpFile(\"/tmp/x\")");
 }
