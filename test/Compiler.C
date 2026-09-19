@@ -353,10 +353,8 @@ TEST(Compiler, eachCPPTypeSiteUsesItsOwnConstraint) {
 // so these tests only need compileFn<void()> to type-check, independent of
 // that representation, and can focus on whether resolving the constraint
 // throws or not.
-static const char *processCmdExpr(const char *cmd) {
-  static std::string buf;
-  buf = std::string("let x = (spawn() :: (Process \"") + cmd + "\" q) => q) in ()";
-  return buf.c_str();
+static std::string processCmdExpr(const std::string& cmd) {
+  return "let x = (spawn() :: (Process \"" + cmd + "\" q) => q) in ()";
 }
 
 TEST(Compiler, processConstraintSpawningDeniedByDefault) {

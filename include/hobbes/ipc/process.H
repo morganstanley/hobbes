@@ -37,7 +37,8 @@ public:
   FunDeps     dependencies(const ConstraintPtr&)                                         const override;
 private:
   std::shared_ptr<ProcManager> procman{std::make_shared<ProcManager>()};
-  bool spawningEnabled = false;
+  // Empty (the default) means spawning is disabled for every command --
+  // enableSpawning populates this with the exact-match allowlist.
   std::set<std::string> allowedCmds;
 };
 

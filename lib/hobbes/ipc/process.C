@@ -25,12 +25,11 @@ std::string ProcessP::constraintName() {
 }
 
 void ProcessP::enableSpawning(const std::set<std::string>& cmds) {
-  this->spawningEnabled = true;
   this->allowedCmds = cmds;
 }
 
 bool ProcessP::spawningAllowed(const std::string& cmd) const {
-  return this->spawningEnabled && this->allowedCmds.count(cmd) > 0;
+  return this->allowedCmds.count(cmd) > 0;
 }
 
 // resolve process spawn constraints
