@@ -9,6 +9,7 @@
 #include <hobbes/fregion.H>
 
 #include "session.H"
+#include "hstore_bridge.H"
 #include "boot/gen/boot.H"
 
 #define out std::cout << "[" << hobbes::showDateTime(hobbes::time() / 1000) << "]: "
@@ -16,25 +17,6 @@
 using namespace hobbes;
 
 namespace hog {
-
-bool hstoreCanRead(storage::Transaction& txn, size_t n) {
-  return txn.canRead(n);
-}
-
-const uint8_t* hstoreUnsafeRead(storage::Transaction& txn, size_t n) {
-  const auto *p = txn.ptr();
-  txn.skip(n);
-  return p;
-}
-
-const uint8_t* hstoreUnsafeReadFixedArray(storage::Transaction& txn, size_t bytes, size_t asIfLen) {
-  array<uint8_t>* result = makeArray<uint8_t>(bytes);
-  result->size = asIfLen;
-
-  memcpy(result->data, txn.ptr(), bytes);
-  txn.skip(bytes);
-  return reinterpret_cast<const uint8_t*>(result);
-}
 
 cc* loggerCompiler() {
   static cc* c = nullptr;

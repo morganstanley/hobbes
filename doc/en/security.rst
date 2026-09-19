@@ -87,6 +87,27 @@ interchange format for data from arbitrary sources.
   bytes. An out-of-bounds read or write triggered by a corrupt or crafted
   file is a defect — report it.
 
+hog's transaction stream is also untrusted wire bytes
+-------------------------------------------------------
+
+``hog``'s network collector (``hog -s <port>``, batch-receive mode) accepts a
+live TCP stream of transactions from any connecting producer and deserializes
+them with the JIT-compiled ``HStoreRead`` instances in
+``bin/hog/boot/read.hob``, which read length and count fields directly off the
+wire (``hobbes::storage::Transaction``). This is untrusted wire input in the
+same sense as the RPC type-decoder above, not a trusted-writer structured data
+file: nothing authenticates or size-checks a producer's connection before its
+bytes drive allocation and copy sizes.
+
+**Implication:** a length or count field read out of a transaction must be
+validated (non-negative, no overflow, within the bytes actually received)
+before it sizes an allocation or a copy. STRFR-433920 was exactly this: a
+negative element count wrapped an allocation's size computation to a
+too-small buffer while the logical size stayed negative, so the array reader
+kept writing past it until the transaction was exhausted. Defects here are in
+scope for security reports; ``fuzz-hog-session`` (see ``fuzz/README.md``)
+covers this surface.
+
 Summary table
 =============
 
@@ -99,6 +120,7 @@ RPC peers (post-handshake semantics)             Trusted — peers execute code 
 RPC wire bytes (framing, type descriptions)      Untrusted — decoder must be safe
 Structured data files (fregion / hog logs)       Trusted writers — reader must still
                                                  reject malformed images safely
+hog's live transaction stream (hog -s <port>)    Untrusted — HStoreRead instances must be safe
 ===============================================  ==========================================
 
 Guidance for embedding applications

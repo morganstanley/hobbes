@@ -59,8 +59,10 @@ cmake -S "$SRCDIR" -B "$BUILD" \
   -DFUZZING_ENGINE_LIB="$LIB_FUZZING_ENGINE"
 
 # Only the harnesses: this pulls in libhobbes but skips hi, hog, hobbes-pic and
-# the test binary, none of which the fuzzers need.
-HARNESSES=(fuzz-type-decode fuzz-fregion-reader fuzz-parse-expr)
+# the test binary, none of which the fuzzers need. fuzz-hog-session pulls in
+# two extra hog sources directly (its CMakeLists.txt add_fuzzer call), not the
+# rest of bin/hog, so it needs nothing else added here.
+HARNESSES=(fuzz-type-decode fuzz-fregion-reader fuzz-parse-expr fuzz-hog-session)
 cmake --build "$BUILD" -j"$(nproc)" --target "${HARNESSES[@]}"
 
 for h in "${HARNESSES[@]}"; do
@@ -92,6 +94,15 @@ detect_leaks=0
 detect_leaks=0
 OPTS
 
+# fuzz-hog-session compiles its HStoreRead instances once against a reused
+# hobbes::cc, same non-reclaimed-arena situation as fuzz-parse-expr above.
+cat >> "$OUT/fuzz-hog-session.options" <<'OPTS'
+detect_leaks=0
+
+[libfuzzer]
+detect_leaks=0
+OPTS
+
 # Named after the target, so libFuzzer picks it up without an options entry.
 cp "$SRCDIR/fuzz/parse-expr.dict" "$OUT/fuzz-parse-expr.dict"
 
@@ -105,4 +116,8 @@ fi
 
 if [ -d "$SRCDIR/fuzz/corpus/type-decode" ]; then
   zip -jq "$OUT/fuzz-type-decode_seed_corpus.zip" "$SRCDIR/fuzz/corpus/type-decode/"*
+fi
+
+if [ -d "$SRCDIR/fuzz/corpus/hog-session" ]; then
+  zip -jq "$OUT/fuzz-hog-session_seed_corpus.zip" "$SRCDIR/fuzz/corpus/hog-session/"*
 fi
