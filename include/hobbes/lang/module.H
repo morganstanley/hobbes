@@ -17,6 +17,7 @@ namespace hobbes {
 struct ModuleDef : public LexicallyAnnotated {
   virtual ~ModuleDef();
   virtual void show(std::ostream&) const = 0;
+  [[nodiscard]] std::string toString() const;
 
   // improves performance of case-analysis over instances (to avoid 'dynamic_cast')
 public:
@@ -243,6 +244,7 @@ public:
   const ModuleDefs&  definitions() const;
 
   void show(std::ostream& out) const;
+  [[nodiscard]] std::string toString() const;
 
   // allow language options set within modules
   void setOption(const std::string&, const LexicalAnnotation&);
