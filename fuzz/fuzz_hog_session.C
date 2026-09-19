@@ -1,5 +1,5 @@
 // Fuzz the hog collector's transaction deserializer: the JIT-compiled
-// HStoreRead instances in bin/hog/boot/read.hob, which read attacker-supplied
+// HStoreRead instances in bin/hog/boot/read.hob, which read untrusted
 // length fields out of a storage::Transaction and feed them to
 // hstoreUnsafeReadFixedArray / newArray (see STRFR-433920). This is a fourth
 // untrusted-input surface -- hog's live "hog -s <port>" transaction stream --

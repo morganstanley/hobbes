@@ -2133,9 +2133,9 @@ public:
   bool canRead(size_t x) const {
     // ri+x (rather than x <= data_size-ri) would overflow and wrap back
     // below data_size when x is huge -- notably when a caller has cast a
-    // negative attacker-supplied count to size_t (STRFR-433920). ri is
-    // always <= *data_size here: it only advances via skip(), which callers
-    // may only invoke after a canRead() that already bounded the advance.
+    // negative, untrusted count to size_t (STRFR-433920). ri is always
+    // <= *data_size here: it only advances via skip(), which callers may
+    // only invoke after a canRead() that already bounded the advance.
     return x <= (*this->data_size - this->ri);
   }
 
