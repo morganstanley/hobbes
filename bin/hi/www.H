@@ -15,7 +15,7 @@ public:
   // expressions -- the web server has no other trust boundary against a
   // remote GET /?<expr> request, so this is what makes Safe mode (on by
   // default, see evaluator.H) actually apply to it (STRFR-433924).
-  WWWServer(int port, hobbes::cc*, std::vector<std::string> opts = {});
+  WWWServer(int port, hobbes::cc*, std::vector<std::string> opts = {"Safe"});
   ~WWWServer();
 private:
   hobbes::cc* c;

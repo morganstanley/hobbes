@@ -34,8 +34,12 @@ for hob in "$SCRIPT_DIR"/*.hob; do
   fi
   expr="${BASH_REMATCH[1]}"
 
-  # Run hi
-  actual=$("$HI" "$hob" -e "$expr" -s -x 2>&1) || true
+  # Run hi. These are local, trusted example scripts run non-interactively
+  # with no network listener involved -- exactly the "local evaluations"
+  # case 'option Safe' (on by default since STRFR-433924) is meant to be
+  # opted out of, e.g. by the file-I/O examples (create-a-file,
+  # read-entire-file, ...) that call writefile/readfile directly.
+  actual=$("$HI" "$hob" -e "$expr" -s -x -o no-Safe 2>&1) || true
 
   if [ "$UPDATE" = true ]; then
     printf '%s\n' "$actual" > "$expected"
