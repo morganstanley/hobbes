@@ -129,4 +129,9 @@ Commandline options
   Evaluate the expression *expr*
 
 -o opt
-  Enable language option *opt*
+  Enable language option *opt*. Prefix with ``no-`` to disable an option that
+  is on by default, e.g. ``-o no-Safe``. ``Safe`` is on by default: among
+  other restrictions, it denies ``pexec``, ``writefile``, ``removefile``,
+  ``openfd``, ``readfile``, ``linkTarget``, and ``slurpFile`` (see
+  :doc:`../security` for why) — pass ``-o no-Safe`` to use them in a local,
+  trusted session.

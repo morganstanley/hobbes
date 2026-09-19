@@ -85,7 +85,7 @@ evaluator::evaluator(const Args& args) : silent(args.silent), wwwd(nullptr), opt
 
   if (args.httpdPort > 0) {
     // run a local web server (for diagnostics and alternate queries) if requested
-    this->wwwd = new WWWServer(args.httpdPort, &this->ctx);
+    this->wwwd = new WWWServer(args.httpdPort, &this->ctx, this->opts);
   }
 }
 

@@ -558,6 +558,13 @@ private:
   }
 
   static auto instance() -> SafeExpr & {
+    // pexec/writefile/removefile/openfd/readfile (bin/hi/funcdefs.C) and
+    // linkTarget/slurpFile (bin/hi/www.C) are process/filesystem primitives
+    // meant for "local evaluations" (funcdefs.C's own comment) but bound
+    // into the same compiler context handed to hi's unauthenticated net
+    // REPL and web server; deny-listing them here is what makes 'option
+    // Safe' (on by default, bin/hi/evaluator.H) actually withhold them from
+    // those remote surfaces (STRFR-433924).
     thread_local SafeExpr ms{Map{{"element", {"element", "elementM"}},
                                  {"newArray", {"newArray", {}}},
                                  {"newPrim", {"newPrim", {}}},
@@ -570,7 +577,14 @@ private:
                                  {"unsafeAppendClientReadFn", {"unsafeAppendClientReadFn", {}}},
                                  {".unsafeClientRead", {".unsafeClientRead", {}}},
                                  {".unsafeAppendClientReadFn", {".unsafeAppendClientReadFn", {}}},
-                                 {".printConnection", {".printConnection", {}}}}};
+                                 {".printConnection", {".printConnection", {}}},
+                                 {"pexec", {"pexec", {}}},
+                                 {"writefile", {"writefile", {}}},
+                                 {"removefile", {"removefile", {}}},
+                                 {"openfd", {"openfd", {}}},
+                                 {"readfile", {"readfile", {}}},
+                                 {"linkTarget", {"linkTarget", {}}},
+                                 {"slurpFile", {"slurpFile", {}}}}};
     return ms;
   }
 
