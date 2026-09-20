@@ -894,6 +894,40 @@ inline QueueConnection consumeGroup(const std::string& gname, const ProcThread& 
   return consumeQueue(sharedMemName(gname, pt));
 }
 
+// a queue segment's header says where everything else in it is, and the
+// writer that filled it in shares the segment with this reader: hog's group
+// socket lets any process that can reach it hand over a segment, and one
+// producer must not be able to take down a collector serving every other
+// group. Hold the header to the segment it describes before any of it is
+// used as a position -- metasz placed the control block and the data outside
+// the mapping (a fault on the first poll), and a count of zero made
+// nextIndex divide by zero.
+[[noreturn]] inline void badQueueHeader(const QueueConnection& qc, const std::string& why) {
+  throw std::runtime_error("Invalid queue header in '" + qc.shmname + "': " + why);
+}
+
+inline void checkQueueHeader(const QueueConnection& qc, const ShQueueHeader* hdr) {
+  if (qc.datasz < sizeof(ShQueueHeader)) {
+    badQueueHeader(qc, "segment is too small to hold a queue header");
+  }
+  if (hdr->metasz > qc.datasz - sizeof(ShQueueHeader)) {
+    badQueueHeader(qc, "meta-data section runs past the end of the segment");
+  }
+
+  size_t metaLen = align<size_t>(sizeof(ShQueueHeader) + hdr->metasz, qc.pagesz);
+  if (metaLen > qc.datasz || qc.datasz - metaLen < sizeof(ShQueueData)) {
+    badQueueHeader(qc, "queue control block runs past the end of the segment");
+  }
+
+  size_t avail = qc.datasz - metaLen - sizeof(ShQueueData);
+  if (hdr->count == 0) {
+    badQueueHeader(qc, "queue holds no values");
+  }
+  if (hdr->valsz == 0 || hdr->valsz > avail / hdr->count) {
+    badQueueHeader(qc, "queue values run past the end of the segment");
+  }
+}
+
 // read data out of shared memory
 class reader {
 private:
@@ -907,12 +941,23 @@ private:
   inline volatile uint32_t* waitState()                     const { return this->cfg.wstate; }
   inline volatile uint32_t* readIndex()                     const { return this->cfg.readerIndex; }
   inline volatile uint32_t* writeIndex()                    const { return this->cfg.writerIndex; }
-  inline uint8_t*           value(size_t i)                 const { return this->cfg.data + (i*this->cfg.valuesz); }
+  // the read and write indexes live in the segment, where the writer can put
+  // anything in them, and they are otherwise only compared with each other --
+  // an index past the end of the queue addressed memory outside the mapping.
+  // One predictable comparison here is nothing beside the shared-memory
+  // traffic this sits on.
+  inline uint8_t*           value(size_t i)                 const {
+    if (PRIV_HSTORE_UNLIKELY(i >= this->cfg.count)) {
+      throw std::runtime_error("queue index " + std::to_string(i) + " out of range for a queue of " + std::to_string(this->cfg.count) + " values");
+    }
+    return this->cfg.data + (i*this->cfg.valuesz);
+  }
   inline uint32_t           nextIndex(volatile uint32_t* i) const { return (*i + 1) % this->cfg.count; }
 public:
   reader(const QueueConnection& qc, const WaitPolicy wp) : shfd(qc.shfd), waitFn(hobbes::storage::waitFn(wp)), wakeFn(hobbes::storage::wakeFn(wp)) {
     // prepare to read the queue description
     auto* hdr     = reinterpret_cast<ShQueueHeader*>(qc.data);
+    checkQueueHeader(qc, hdr);
     auto         metaLen = align<size_t>(sizeof(ShQueueHeader) + hdr->metasz, qc.pagesz);
     auto*   sqd     = reinterpret_cast<ShQueueData*>(qc.data + metaLen);
 
@@ -1023,6 +1068,16 @@ public:
       // how much can we copy out of the current page into the dest buffer?
       const volatile uint32_t* pend      = reinterpret_cast<const uint32_t*>(this->page + this->pagesz);
       size_t                   rpagesz   = *pend & ~(0xFF << 24);
+
+      // the low 24 bits of a page's end word say how much of the page the
+      // writer filled, and they came from the writer: a page of 64 bytes
+      // claiming 0xFFFFFF of them copied ~16MB out of the mapping, and a
+      // count behind the read offset wrapped 'rpagesz - offset' into a copy
+      // of nearly the whole address space
+      if (PRIV_HSTORE_UNLIKELY(rpagesz > this->pagesz || rpagesz < this->offset)) {
+        throw std::runtime_error("queue page claims " + std::to_string(rpagesz) + " bytes of a " + std::to_string(this->pagesz) + " byte page (read offset " + std::to_string(this->offset) + ")");
+      }
+
       size_t                   availPage = rpagesz - this->offset;
       size_t                   csz       = (sz < availPage) ? sz : availPage;
   
@@ -2086,9 +2141,23 @@ template <typename T>
     return rs(md, o, sizeof(T), reinterpret_cast<uint8_t*>(t));
   }
 
+// the length of a string or byte block in the meta-data section comes out of
+// the segment, and it sized the target before anything was read: a length
+// near 2^64 was asked of resize() (a bad_alloc, or a very large allocation
+// where memory is overcommitted) for a section that could never hold it. The
+// copy itself was already bounded -- rs copies nothing when the range does
+// not fit -- so a length the section cannot back now leaves an empty result
+// the same way, rather than being allocated for first.
+inline bool metaHas(const reader::MetaData& md, size_t o, size_t n) {
+  return o <= md.second && n <= md.second - o;
+}
+
 inline size_t rs(const reader::MetaData& md, size_t o, std::string* s) {
   size_t n = 0;
   o = r(md, o, &n);
+  if (!metaHas(md, o, n)) {
+    return md.second;
+  }
   s->resize(n);
   return rs(md, o, n, reinterpret_cast<uint8_t*>(&(*s)[0]));
 }
@@ -2096,6 +2165,9 @@ inline size_t rs(const reader::MetaData& md, size_t o, std::string* s) {
 inline size_t rs(const reader::MetaData& md, size_t o, bytes* s) {
   size_t n = 0;
   o = r(md, o, &n);
+  if (!metaHas(md, o, n)) {
+    return md.second;
+  }
   s->resize(n);
   return rs(md, o, n, &(*s)[0]);
 }
