@@ -19,9 +19,30 @@ ssize_t sendfile(int toFD, int fromFD, off_t* o, size_t sz) {
 
 namespace hi {
 
-// blocking non-blocking write shorthand
-void write(int fd, const char* s)        { auto rc = ::write(fd, s, strlen(s)); assert(rc > 0); }
-void write(int fd, const std::string& s) { auto rc = ::write(fd, s.c_str(), s.size()); assert(rc > 0); }
+// blocking write shorthand
+//
+// a client can close or reset its connection at any point in a reply, and a
+// reply is written in several pieces, so a failed write here is ordinary and
+// not a reason to bring the server down: it was an assert (which a client
+// could trip deliberately) on top of a single ::write whose short count was
+// never resumed. With SIGPIPE ignored (hi's main) the write reports EPIPE
+// instead of killing the process, and the rest of this reply is abandoned.
+void write(int fd, const char* s, size_t n) {
+  size_t o = 0;
+  while (o < n) {
+    ssize_t rc = ::write(fd, s + o, n - o);
+    if (rc > 0) {
+      o += static_cast<size_t>(rc);
+    } else if (rc < 0 && (errno == EINTR || errno == EAGAIN)) {
+      continue;
+    } else {
+      return; // the client is gone, or will not take the rest of this reply
+    }
+  }
+}
+
+void write(int fd, const char* s)        { write(fd, s, strlen(s)); }
+void write(int fd, const std::string& s) { write(fd, s.data(), s.size()); }
 
 // determine whether a file can be opened and read
 bool fileExists(const std::string& x) {
@@ -53,7 +74,20 @@ std::string exeDir() {
 }
 
 // find a www file by category
-bool catPathToFSPath(const std::string& cat, const std::string& cpath, std::string* fsPath) {
+//
+// the path from the request line is substituted straight into a filesystem
+// path, so without reducing it first a request for "/../../etc/hosts" walked
+// out of every document root searched here -- including out of the working
+// directory that the first of them serves -- and it is also what decides
+// whether a request reaches a .hxp file, which hi compiles and runs. The path
+// is not percent-decoded anywhere on this route, so there is no encoded
+// spelling of a segment to consider.
+bool catPathToFSPath(const std::string& cat, const std::string& urlPath, std::string* fsPath) {
+  std::string cpath;
+  if (!hobbes::str::relativePathInRoot(urlPath, &cpath)) {
+    return false;
+  }
+
   *fsPath = "./" + cpath;
   if (fileExists(*fsPath)) {
     return true;

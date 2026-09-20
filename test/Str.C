@@ -75,3 +75,34 @@ TEST(Str, ExpandPathStillExpandsHomeDirectory) {
   EXPECT_TRUE(!home.empty());
   EXPECT_TRUE(str::expandPath("~") == home);
 }
+
+TEST(Str, relativePathInRoot) {
+  std::string p;
+
+  // an ordinary path comes back relative, with no leading '/'
+  EXPECT_TRUE(str::relativePathInRoot("/index.html", &p) && p == "index.html");
+  EXPECT_TRUE(str::relativePathInRoot("/a/b/c.txt", &p) && p == "a/b/c.txt");
+  EXPECT_TRUE(str::relativePathInRoot("init.hob", &p) && p == "init.hob");
+
+  // '.' and empty segments drop out
+  EXPECT_TRUE(str::relativePathInRoot("/./a//b/./c", &p) && p == "a/b/c");
+  EXPECT_TRUE(str::relativePathInRoot("///", &p) && p.empty());
+
+  // '..' pops the segment before it, and is fine while it stays in the root
+  EXPECT_TRUE(str::relativePathInRoot("/a/../b", &p) && p == "b");
+  EXPECT_TRUE(str::relativePathInRoot("/a/b/../../a/c", &p) && p == "a/c");
+
+  // a '..' with nothing left to pop names a file outside the root: refused,
+  // not clamped to the root, so a request for it resolves to nothing at all
+  EXPECT_FALSE(str::relativePathInRoot("/../etc/hosts", &p));
+  EXPECT_FALSE(str::relativePathInRoot("/../../../../../../etc/hosts", &p));
+  EXPECT_FALSE(str::relativePathInRoot("/a/../../etc/hosts", &p));
+  EXPECT_FALSE(str::relativePathInRoot("..", &p));
+
+  // an empty path names nothing
+  EXPECT_FALSE(str::relativePathInRoot("", &p));
+
+  // a segment that merely starts with dots is an ordinary name
+  EXPECT_TRUE(str::relativePathInRoot("/..a/b", &p) && p == "..a/b");
+  EXPECT_TRUE(str::relativePathInRoot("/.hidden", &p) && p == ".hidden");
+}
