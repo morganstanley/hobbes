@@ -5,6 +5,7 @@
 #include <hobbes/db/signals.H>
 #include <hobbes/fregion.H>
 #include <hobbes/cfregion.H>
+#include <hobbes/storage.H>
 #include "test.H"
 
 #include <fstream>
@@ -1517,5 +1518,111 @@ TEST(Storage, CorruptStoredLengthsAreRejected) {
   } catch (...) {
     unlink(fname.c_str());
     throw;
+  }
+}
+
+// lay out a shared memory segment the way a queue writer would, so that a
+// single field can be corrupted in it the way a buggy or hostile producer
+// sharing the segment could
+struct TestQueueSegment {
+  std::string name;
+  int         fd;
+  uint8_t*    mem;
+  size_t      total;
+  size_t      metaLen;
+
+  TestQueueSegment(size_t valsz, size_t count, size_t metasz) {
+    long pg = sysconf(_SC_PAGESIZE);
+    this->name  = "/hobbes-unittest-q." + str::from(getpid());
+    this->total = 4 * static_cast<size_t>(pg);
+
+    shm_unlink(this->name.c_str());
+    this->fd = shm_open(this->name.c_str(), O_RDWR | O_CREAT, 0600);
+    if (this->fd < 0 || ftruncate(this->fd, this->total) != 0) {
+      throw std::runtime_error("cannot make a test queue segment");
+    }
+    this->mem = reinterpret_cast<uint8_t*>(mmap(nullptr, this->total, PROT_READ|PROT_WRITE, MAP_SHARED, this->fd, 0));
+
+    auto* h = reinterpret_cast<storage::ShQueueHeader*>(this->mem);
+    h->ready  = 1;
+    h->valsz  = valsz;
+    h->count  = count;
+    h->metasz = metasz;
+
+    this->metaLen = align<size_t>(sizeof(storage::ShQueueHeader) + metasz, static_cast<size_t>(pg));
+    auto* q = reinterpret_cast<storage::ShQueueData*>(this->mem + this->metaLen);
+    q->wstate = 0;
+    q->ri     = 0;
+    q->wi     = 1;
+  }
+
+  ~TestQueueSegment() {
+    munmap(this->mem, this->total);
+    close(this->fd);
+    shm_unlink(this->name.c_str());
+  }
+
+  storage::ShQueueHeader* header() { return reinterpret_cast<storage::ShQueueHeader*>(this->mem); }
+  storage::ShQueueData*   control() { return reinterpret_cast<storage::ShQueueData*>(this->mem + this->metaLen); }
+  uint8_t*                data() { return this->mem + this->metaLen + sizeof(storage::ShQueueData); }
+
+  void readOneValue() {
+    storage::QueueConnection qc = storage::consumeQueue(this->name);
+    storage::reader rd(qc, storage::WaitPolicy::Spin);
+    volatile uint8_t v = 0;
+    if (uint8_t* p = rd.pollNext()) { v = *p; }
+    (void)v;
+  }
+};
+
+TEST(Storage, CorruptQueueSegmentsAreRejected) {
+  // a producer shares this segment with the reader and fills in the header,
+  // the read/write indexes and each page's byte count. hog's group socket
+  // lets any process that can reach it hand over a segment, so one producer
+  // must not be able to take a collector down for every other group.
+
+  // as laid out by a writer, a value reads back
+  { TestQueueSegment s(64, 4, 16); s.readOneValue(); }
+
+  // a meta-data section that does not fit in the segment puts the control
+  // block and the data outside the mapping
+  {
+    TestQueueSegment s(64, 4, 16);
+    s.header()->metasz = size_t(1) << 40;
+    EXPECT_EXCEPTION(s.readOneValue());
+  }
+
+  // a queue of no values divides by zero when the read index advances
+  {
+    TestQueueSegment s(64, 0, 16);
+    EXPECT_EXCEPTION(s.readOneValue());
+  }
+
+  // values that do not fit in what is left of the segment
+  {
+    TestQueueSegment s(size_t(1) << 40, 4, 16);
+    EXPECT_EXCEPTION(s.readOneValue());
+  }
+
+  // a read index past the end of the queue addresses memory outside it
+  {
+    TestQueueSegment s(64, 4, 16);
+    s.control()->ri = 0x10000000;
+    s.control()->wi = 0;
+    EXPECT_EXCEPTION(s.readOneValue());
+  }
+
+  // a page whose end word claims more bytes than the page holds: the count
+  // sized a memcpy straight out of the mapping
+  {
+    TestQueueSegment s(64, 4, 16);
+    *reinterpret_cast<uint32_t*>(s.data() + 64 - sizeof(uint32_t)) = (2u << 24) | 0xFFFFFF;
+
+    storage::QueueConnection qc = storage::consumeQueue(s.name);
+    storage::reader rd(qc, storage::WaitPolicy::Spin);
+    storage::rpipe p(&rd);
+    std::vector<uint8_t> buf(1024);
+    uint8_t st = 0;
+    EXPECT_EXCEPTION(p.read(buf.data(), buf.size(), &st, 0, []{}));
   }
 }
