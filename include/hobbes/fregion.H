@@ -2450,14 +2450,34 @@ template <typename T>
 
       // load the node data
       // each node looks like '()+((carray T n) * x@?)'
-      const auto* d = reinterpret_cast<const uint64_t*>(mapFileData(this->f, n, 3*sizeof(uint64_t)));
+      const auto* d = reinterpret_cast<const uint64_t*>(mapFileDataInFile(this->f, n, 3*sizeof(uint64_t), "series node"));
 
       // if we're in the left '()' case, our state is "null"
       // else our state can be set to load the 'carray T n' batch in this node
       if (d[0] != 0u) {
-        this->headLen     = reinterpret_cast<const uint64_t*>(mapFileData(this->f, d[1], bsz));
+        uint64_t batchRef = d[1];
+        uint64_t nextRef  = d[2];
+        unmapFileData(this->f, d, 3*sizeof(uint64_t));
+
+        this->headLen     = reinterpret_cast<const uint64_t*>(mapFileDataInFile(this->f, batchRef, bsz, "series batch"));
         this->head        = reinterpret_cast<const uint8_t*>(this->headLen) + sizeof(uint64_t);
-        this->nextNodeRef = d[2];
+        this->nextNodeRef = nextRef;
+
+        // the count stored with a batch says how much of it the writer has
+        // filled, and it is only ever compared against the read index, so a
+        // count larger than the batch read past the batch and on out of the
+        // file. A batch holds batchSize values and no more.
+        if (*this->headLen > this->batchSize) {
+          uint64_t claimed = *this->headLen;
+          unmapFileData(this->f, this->headLen, bsz);
+          this->headLen = nullptr;
+          this->head    = nullptr;
+          throw std::runtime_error(
+            "series batch claims " + hobbes::string::from(claimed) +
+            " values out of a batch of " + hobbes::string::from(this->batchSize)
+          );
+        }
+        return;
       } else {
         this->headLen     = nullptr;
         this->head        = nullptr;
@@ -2469,7 +2489,7 @@ template <typename T>
 
     // is a stored node the left '()' case of '()+((carray T n) * x@?)'?
     bool isNullNode(uint64_t n) {
-      const auto* d = reinterpret_cast<const uint64_t*>(mapFileData(this->f, n, 3*sizeof(uint64_t)));
+      const auto* d = reinterpret_cast<const uint64_t*>(mapFileDataInFile(this->f, n, 3*sizeof(uint64_t), "series node"));
       bool r = d[0] == 0;
       unmapFileData(this->f, d, 3*sizeof(uint64_t));
       return r;
@@ -2501,8 +2521,21 @@ template <typename T>
           // we can't advance in the current batch
           // so load the next batch if possible
           // then ensure readability in this successor batch
-          // (followed indefinitely for the unlikely edge case of a succession of empty batches)
+          // (followed for the edge case of a succession of empty batches)
+          //
+          // a node's successor is a stored offset like any other, so a node
+          // that points at itself -- or at any node already visited -- is a
+          // list with no end, and this walked it forever. A node occupies at
+          // least three words, so a file cannot hold more distinct nodes than
+          // that; past this many steps the links cannot all be to distinct
+          // nodes, whatever order they are in.
+          size_t steps = 0;
+          const size_t maxSteps = 1 + (this->f->file_size / (3*sizeof(uint64_t)));
+
           while (this->nextNodeRef && !isNullNode(this->nextNodeRef)) {
+            if (++steps > maxSteps) {
+              throw std::runtime_error("series node links form a cycle");
+            }
             loadReadState(this->nextNodeRef);
             if (canRead()) {
               return true;
