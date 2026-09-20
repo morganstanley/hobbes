@@ -516,14 +516,20 @@ std::string expandVars(const std::string& x) {
 }
 
 std::string expandPath(const std::string& x) {
+  // x reaches here from untrusted type-checker input (LoadFile constraints,
+  // lib/hobbes/db/bindings.C) as well as trusted local paths, so this must
+  // never run a subshell: WRDE_NOCMD makes wordexp() fail (returning x
+  // unexpanded, same as any other wordexp failure) instead of executing a
+  // $(...)/`...` command substitution embedded in x (STRFR-433916). A
+  // zero-word expansion (e.g. an empty x) must also fall back to x rather
+  // than index we_wordv[0], which wordexp does not guarantee is present.
   wordexp_t we;
-  if (wordexp(x.c_str(), &we, 0) == 0) {
-    std::string result(we.we_wordv[0]);
-    wordfree(&we);
-    return result;
-  } else {
+  if (wordexp(x.c_str(), &we, WRDE_NOCMD) != 0) {
     return x;
   }
+  std::string result = we.we_wordc > 0 ? std::string(we.we_wordv[0]) : x;
+  wordfree(&we);
+  return result;
 }
 
 // display a byte count in typical units
