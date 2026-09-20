@@ -558,6 +558,19 @@ private:
   }
 
   static auto instance() -> SafeExpr & {
+    // pexec/writefile/removefile/openfd/readfile/fdReadLine (bin/hi/funcdefs.C)
+    // and linkTarget/slurpFile (bin/hi/www.C) are process/filesystem
+    // primitives meant for "local evaluations" (funcdefs.C's own comment)
+    // but bound into the same compiler context handed to hi's
+    // unauthenticated net REPL and web server; deny-listing them here is
+    // what makes 'option Safe' (on by default, bin/hi/evaluator.H) actually
+    // withhold them from those remote surfaces (STRFR-433924).
+    //
+    // fdReadLine reads a caller-chosen fd number rather than a path, so
+    // denying openfd doesn't make it inert on its own: a guessed low fd in
+    // an event-driven server can already be open for something else (e.g.
+    // another client's in-flight connection socket), letting one request
+    // read bytes that belong to a different connection.
     thread_local SafeExpr ms{Map{{"element", {"element", "elementM"}},
                                  {"newArray", {"newArray", {}}},
                                  {"newPrim", {"newPrim", {}}},
@@ -570,7 +583,15 @@ private:
                                  {"unsafeAppendClientReadFn", {"unsafeAppendClientReadFn", {}}},
                                  {".unsafeClientRead", {".unsafeClientRead", {}}},
                                  {".unsafeAppendClientReadFn", {".unsafeAppendClientReadFn", {}}},
-                                 {".printConnection", {".printConnection", {}}}}};
+                                 {".printConnection", {".printConnection", {}}},
+                                 {"pexec", {"pexec", {}}},
+                                 {"writefile", {"writefile", {}}},
+                                 {"removefile", {"removefile", {}}},
+                                 {"openfd", {"openfd", {}}},
+                                 {"readfile", {"readfile", {}}},
+                                 {"fdReadLine", {"fdReadLine", {}}},
+                                 {"linkTarget", {"linkTarget", {}}},
+                                 {"slurpFile", {"slurpFile", {}}}}};
     return ms;
   }
 

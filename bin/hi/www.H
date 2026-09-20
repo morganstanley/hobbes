@@ -10,10 +10,16 @@ namespace hi {
 
 class WWWServer {
 public:
-  WWWServer(int port, hobbes::cc*);
+  // opts is applied (via translateExprWithOpts) to every query expression
+  // before it is compiled, the same way the net REPL treats client
+  // expressions -- the web server has no other trust boundary against a
+  // remote GET /?<expr> request, so this is what makes Safe mode (on by
+  // default, see evaluator.H) actually apply to it (STRFR-433924).
+  WWWServer(int port, hobbes::cc*, std::vector<std::string> opts = {"Safe"});
   ~WWWServer();
 private:
   hobbes::cc* c;
+  std::vector<std::string> opts;
 
   void printDefaultPage(int);
   void printQueryResult(int, const std::string&);

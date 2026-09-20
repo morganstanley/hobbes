@@ -259,8 +259,14 @@ const cstr* jsEscape(const cstr* x) {
 }
 
 // the basic hi web server
-WWWServer::WWWServer(int port, hobbes::cc* c) : c(c) {
+WWWServer::WWWServer(int port, hobbes::cc* c, std::vector<std::string> opts) : c(c), opts(std::move(opts)) {
   // add a few bindings that are convenient for web servers
+  //
+  // linkTarget/slurpFile read arbitrary caller-chosen paths (readlink/ifstream
+  // with no restriction) -- like the process/file primitives bin/hi/funcdefs.C
+  // binds into the same cc, they're deny-listed under Safe mode
+  // (lib/hobbes/eval/cmodule.C) so that a remote GET /?<expr> request can't
+  // use them to exfiltrate files (STRFR-433924).
   c->bind("linkTarget",   &linkTarget);
   c->bind("csplit",       &csplit);
   c->bind("slurpFile",    &slurpFile);
@@ -371,7 +377,13 @@ void WWWServer::printDefaultPage(int fd) {
 void WWWServer::printQueryResult(int fd, const std::string& expr) {
   try {
     using pprintF = void (*)();
-    pprintF f = this->c->compileFn<void()>("print(" + expr + ")");
+    // unlike hi's net REPL (bin/hi/evaluator.C:83), a query expression here
+    // used to go straight from the raw request string to compileFn with no
+    // Safe-mode translation at all -- 'option Safe' being on by default
+    // (evaluator.H) never actually applied to this surface. Route it through
+    // translateExprWithOpts the same way the REPL does (STRFR-433924).
+    hobbes::ExprPtr pe = hobbes::translateExprWithOpts(this->opts, this->c->readExpr("print(" + expr + ")"));
+    pprintF f = this->c->compileFn<void()>(pe);
 
     // redirect stdout for this evaluation
     int stdoutc = dup(STDOUT_FILENO);
