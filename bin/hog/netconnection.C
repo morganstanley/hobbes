@@ -120,9 +120,15 @@ bool DefaultNetConnection::receive(void* buf, size_t size) {
   size_t offset = 0;
   while (size > 0) {
     const ssize_t received = recv(this->fd, buffer + offset, size, 0);
-    if (received >= 0) {
+    if (received > 0) {
       offset += received;
       size -= received;
+    }
+    // a peer that disconnects mid-message reads 0 forever; counting that as
+    // progress spun this loop on a dead connection, holding its descriptor
+    // and a core
+    else if (received == 0) {
+      return false;
     }
     else if (errno != EINTR) {
       return false;
@@ -140,21 +146,36 @@ int DefaultNetConnection::remotePort() {
   return hobbes::remotePort(this->fd);
 }
 
+// a receive that ends at a clean end-of-stream leaves errno untouched, where
+// strerror would otherwise report whatever it last held ("Undefined error: 0")
+static std::string receiveError() {
+  return errno == 0 ? std::string("connection closed") : std::string(strerror(errno));
+}
+
 void sendString(NetConnection& c, const std::string& str) {
   uint64_t size = str.size();
   const bool ok = c.send(&size, sizeof(size)) && c.send(str.data(), size);
-  if (!ok) { throw std::runtime_error("sendString failed:" + std::string(strerror(errno))); }
+  if (!ok) { throw std::runtime_error("sendString failed: " + receiveError()); }
 }
 
 void receiveIntoBuffer(NetConnection& c, std::vector<uint8_t>* dst)
 {
   uint64_t size = 0;
   const bool hok = c.receive(&size, sizeof(size));
-  if (!hok) { throw std::runtime_error("receiveIntoBuffer failed to get size:" + std::string(strerror(errno))); }
+  if (!hok) { throw std::runtime_error("receiveIntoBuffer failed to get size: " + receiveError()); }
+
+  // the length prefix arrives before any of the data behind it, so a sender
+  // can claim a size it will never send. The sender steps a segment at ~10MB
+  // of log data and compresses it, so a frame past this bound is not a batch
+  // this receiver could have produced; refuse it rather than reserving the
+  // memory on a promise.
+  if (size > maxFrameBytes) {
+    throw std::runtime_error("receiveIntoBuffer rejected a " + std::to_string(size) + " byte frame (max " + std::to_string(maxFrameBytes) + ")");
+  }
 
   dst->resize(size);
   const bool bok = c.receive(dst->data(), size);
-  if (!bok) { throw std::runtime_error("receiveIntoBuffer failed to get body:" + std::string(strerror(errno))); }
+  if (!bok) { throw std::runtime_error("receiveIntoBuffer failed to get body: " + receiveError()); }
 }
 
 std::vector<uint8_t> receiveBuffer(NetConnection& c)

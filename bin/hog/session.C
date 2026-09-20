@@ -229,11 +229,38 @@ private:
   }
 };
 
+// a producer allocates statement IDs as a dense sequence from 0
+// (allocateStorageStatement in storage.H), and every per-statement vector
+// here is indexed by ID. The IDs in an init message are untrusted input -- a
+// network producer is not authenticated -- so hold them to that invariant
+// instead of sizing the vectors to whatever arrives:
+//
+//   * an ID near 2^32 wrapped 'id + 1' to zero, so the resize left the
+//     vectors empty and the assignment that followed wrote far past them,
+//   * an ID merely large reserved memory in proportion to it, and
+//   * a sparse or repeated ID left null entries that a transaction could
+//     then reach by ID, where only the vector's length was checked.
+static void checkStatementIDs(const storage::statements& stmts) {
+  std::vector<bool> seen(stmts.size(), false);
+
+  for (const auto& stmt : stmts) {
+    if (stmt.id >= stmts.size()) {
+      throw std::runtime_error("rejected log session: statement '" + stmt.name + "' has ID #" + str::from(stmt.id) + " out of range for " + str::from(stmts.size()) + " statements");
+    }
+    if (seen[stmt.id]) {
+      throw std::runtime_error("rejected log session: statement ID #" + str::from(stmt.id) + " appears more than once");
+    }
+    seen[stmt.id] = true;
+  }
+}
+
 // initialize a storage session with a caller-defined file allocation method
 template <typename FileAllocMethod>
 ProcessTxnF initStorageSession(Session* s, const std::string& dirPfx, storage::PipeQOS, storage::CommitMethod cm, const storage::statements& stmts, hobbes::StoredSeries::StorageMode sm) {
   static std::mutex initMtx; // make sure that only one thread initializes at a time
   std::lock_guard<std::mutex> lk(initMtx);
+
+  checkStatementIDs(stmts);
 
   cc* c = loggerCompiler();
 
