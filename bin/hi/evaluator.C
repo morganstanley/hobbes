@@ -72,6 +72,16 @@ evaluator::evaluator(const Args& args) : silent(args.silent), wwwd(nullptr), opt
   bindArguments(this->ctx, args.scriptNameVals);
   bindHiDefs(this->ctx);
 
+  // a (Connect ...) or (Invoke ...) constraint reaches the network while an
+  // expression is only being type-checked, so each target has to be named on
+  // the command line before it will resolve at all
+  if (!args.allowConnect.empty()) {
+    this->ctx.enableRemoteConnections(args.allowConnect);
+  }
+  if (!args.allowInvoke.empty()) {
+    this->ctx.enableRemoteInvocation(args.allowInvoke);
+  }
+
   const bool ignoreUM = (std::find(opts.cbegin(), opts.cend(), std::string("IgnoreUnreachableMatches")) != opts.cend());
   this->ctx.ignoreUnreachableMatches(ignoreUM);
   if (ignoreUM) {

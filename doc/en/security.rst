@@ -1,3 +1,5 @@
+.. _hobbes_security:
+
 Security Model
 **************
 
@@ -39,9 +41,16 @@ The constraints that currently do this are:
 
 * ``Connect "host:port" c`` opens a network (or Unix-domain) connection to
   learn the peer's type environment, and ``Invoke`` sends an expression over
-  such a connection;
-* ``LoadFile "path" f`` opens (and, for an output file, creates) a structured
-  data file to learn its type;
+  such a connection to be evaluated there. Both are refused unless the
+  embedding application allows that exact ``host:port`` with
+  ``cc::enableRemoteConnections`` and ``cc::enableRemoteInvocation``
+  respectively. The two are independent: being willing to connect to a peer
+  does not imply trusting it to run code.
+* ``LoadFile "path" f`` opens a structured data file to learn its type. For an
+  *output* file — which creates and truncates ``path`` — this is refused
+  unless the embedding application allows that exact path with
+  ``cc::enableFileWrites``. Opening an input file to read its type is not
+  gated.
 * ``Ls "pattern" x`` expands a filesystem glob into the type;
 * ``Process "cmd" p`` starts a program, and is refused unless the embedding
   application allows that exact command with ``cc::enableProcessSpawning``.
@@ -50,8 +59,10 @@ The constraints that currently do this are:
 assumption as evaluating it. Only the step before it — reading source text,
 below — is held to the "safe on arbitrary bytes" standard. Constraint
 resolution that performs I/O is a design property of these classes, not a
-defect; narrowing it further (for example, making each of them opt-in the way
-``Process`` is) is welcome as a hardening change through the normal issue
+defect; the opt-in gates above narrow the ones that reach outside the process
+to write, connect, or execute, but nothing turns type-checking into a safe way
+to inspect source you do not trust. Narrowing the rest (``Ls``, and reading an
+input file) further is welcome as a hardening change through the normal issue
 tracker.
 
 Reading source text must be safe
@@ -190,7 +201,8 @@ Summary table
    * - Hobbes source, compiled and evaluated
      - Trusted — equivalent to native code
    * - Hobbes source, type-checked only
-     - Trusted — constraint resolution can open files and connections
+     - Trusted — constraint resolution reads files and globs the filesystem;
+       spawning, connecting, remote invocation and file creation are opt-in
    * - Hobbes source, lexed/parsed only
      - Untrusted — the parser must be safe and bounded
    * - Expressions under ``option Safe``
@@ -232,9 +244,12 @@ Guidance for embedding applications
   segments; wrap them in authenticated, encrypted transports if they must
   cross anything else.
 * Don't rely on ``option Safe`` to contain code you don't trust.
-* Only call ``cc::enableProcessSpawning`` on a compiler that never
-  type-checks untrusted input: a command on its allowlist runs as soon as
-  matching text is type-checked.
+* Only call ``cc::enableProcessSpawning``, ``cc::enableRemoteConnections``,
+  ``cc::enableRemoteInvocation`` or ``cc::enableFileWrites`` on a compiler
+  that never type-checks untrusted input: an entry on one of those allowlists
+  is spawned, connected to, invoked on, or truncated as soon as matching text
+  is type-checked. Keep each allowlist to the exact strings the application
+  needs.
 * Restrict write access to structured data files, and access to ``hog``'s
   local sockets, to the processes that are supposed to produce them.
 * Know the memory model before pointing analysis tooling at an embedding

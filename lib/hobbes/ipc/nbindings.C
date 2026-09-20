@@ -116,7 +116,12 @@ public:
 
     if (decodeConstraint(cst, &hostport, &handle)) {
       if (Client* c = decodeConnType(handle)) {
-        return isAllocatedConnection(c);
+        // 'connections' is process-global, so without this an already-open
+        // connection made through some other cc would satisfy the constraint
+        // here even though this cc allows no targets at all. Prune rather
+        // than throw, the way ProcessP does -- only refine() reports the
+        // rejection.
+        return isAllocatedConnection(c) && connectingAllowed(c->remoteHost());
       }
     }
     return false;
@@ -125,10 +130,18 @@ public:
   bool satisfiable(const TEnvPtr&, const ConstraintPtr& cst, Definitions*) const override {
     MonoTypePtr hostport;
     MonoTypePtr handle;
-    
-    return decodeConstraint(cst, &hostport, &handle) &&
-           ((is<TVar>(hostport) != nullptr) || (is<TString>(hostport) != nullptr)) &&
-           ((is<TVar>(handle) != nullptr) || isPartialConnection(handle));
+
+    if (!decodeConstraint(cst, &hostport, &handle)) {
+      return false;
+    }
+    if (const TString* hp = is<TString>(hostport)) {
+      if (!connectingAllowed(hp->value())) {
+        return false;
+      }
+    } else if (is<TVar>(hostport) == nullptr) {
+      return false;
+    }
+    return (is<TVar>(handle) != nullptr) || isPartialConnection(handle);
   }
 
   void explain(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*, annmsgs*) override {
@@ -238,6 +251,12 @@ public:
         if (auto* conn = reinterpret_cast<Client*>(chv->value())) {
           if (const TExpr* exprv = is<TExpr>(expr)) {
             if (isAllocatedConnection(conn) && !hasFreeVariables(inty)) {
+              // like ProcessP, prune rather than throw out of a satisfaction
+              // probe (satisfiable() lands here too) -- only refine() reports
+              // the rejection
+              if (!invokingAllowed(conn->remoteHost())) {
+                return false;
+              }
               return *outty == *remoteOutputType(conn, exprv->expr(), inty) &&
                      hobbes::satisfied(tenv, std::make_shared<Constraint>("BlockCodec", list(inty)), ds) &&
                      hobbes::satisfied(tenv, std::make_shared<Constraint>("BlockCodec", list(outty)), ds);
@@ -326,9 +345,10 @@ public:
 private:
   std::set<std::string> allowedHostPorts;
 
-  // single choke point for the side-effecting remote call shared by
-  // refine() and satisfied()
-  MonoTypePtr remoteOutputType(Client* conn, const ExprPtr& e, const MonoTypePtr& inty) const {
+  // every path that ships an expression to the peer goes through this check
+  // first: refine() and satisfied() via remoteOutputType below, unqualify()
+  // via a direct call before remoteExpr
+  void checkInvokingAllowed(Client* conn) const {
     if (!invokingAllowed(conn->remoteHost())) {
       throw std::runtime_error(
         "Invoke constraint rejected: refusing to invoke code on '" + conn->remoteHost() +
@@ -336,6 +356,10 @@ private:
         "the embedding application must call cc::enableRemoteInvocation with an explicit "
         "host:port allowlist to permit specific targets)");
     }
+  }
+
+  MonoTypePtr remoteOutputType(Client* conn, const ExprPtr& e, const MonoTypePtr& inty) const {
+    checkInvokingAllowed(conn);
     return conn->output(e, inty);
   }
 
@@ -350,7 +374,7 @@ private:
     return false;
   }
 
-  static std::string makeInvokeFn(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions* ds, const LexicalAnnotation& la) {
+  std::string makeInvokeFn(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions* ds, const LexicalAnnotation& la) const {
     MonoTypePtr ch, expr, inty, outty;
     if (decodeConstraint(cst, &ch, &expr, &inty, &outty)) {
       if (const TLong* chv = is<TLong>(ch)) {
@@ -358,6 +382,10 @@ private:
           if (const TExpr* exprv = is<TExpr>(expr)) {
             if (isAllocatedConnection(c) && !hasFreeVariables(inty)) {
               MonoTypePtr retty = tapp(primty("promise"), list(ch, outty));
+              // unqualify only runs after satisfied() returned true, so this
+              // is already gated -- re-check anyway rather than leave a path
+              // to the peer that depends on that ordering holding
+              checkInvokingAllowed(c);
               uint32_t invid = c->remoteExpr(exprv->expr(), inty);
 
               MonoTypePtr unitt=primty("unit"), bytet=primty("byte"), intt=primty("int"), longt=primty("long");
@@ -647,15 +675,21 @@ void initNetworkDefs(cc& c) {
 }
 
 void enableRemoteConnections(cc& c, const std::set<std::string>& allowedHostPorts) {
-  if (auto cp = std::dynamic_pointer_cast<ConnectionP>(c.typeEnv()->lookupUnqualifier(ConnectionP::constraintName()))) {
-    cp->enableConnecting(allowedHostPorts);
+  hlock _;
+  auto cp = std::dynamic_pointer_cast<ConnectionP>(c.typeEnv()->lookupUnqualifier(ConnectionP::constraintName()));
+  if (!cp) {
+    throw std::runtime_error("cannot allow remote connections: '" + ConnectionP::constraintName() + "' is not bound to its built-in unqualifier");
   }
+  cp->enableConnecting(allowedHostPorts);
 }
 
 void enableRemoteInvocation(cc& c, const std::set<std::string>& allowedHostPorts) {
-  if (auto ip = std::dynamic_pointer_cast<InvokeP>(c.typeEnv()->lookupUnqualifier(InvokeP::constraintName()))) {
-    ip->enableInvoking(allowedHostPorts);
+  hlock _;
+  auto ip = std::dynamic_pointer_cast<InvokeP>(c.typeEnv()->lookupUnqualifier(InvokeP::constraintName()));
+  if (!ip) {
+    throw std::runtime_error("cannot allow remote invocation: '" + InvokeP::constraintName() + "' is not bound to its built-in unqualifier");
   }
+  ip->enableInvoking(allowedHostPorts);
 }
 
 }

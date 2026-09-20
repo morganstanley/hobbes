@@ -1018,18 +1018,30 @@ TEST(Net, invokeConstraintDeniedByDefaultEvenWhenConnectingIsAllowed) {
   EXPECT_TRUE(threw);
 }
 
-// Note: a fourth case -- both gates enabled, expecting the full connect+
-// invoke round trip to succeed -- was deliberately not automated against
-// this file's shared in-process test server. It hangs there specifically
-// (inside Client::remoteExpr's blocking fdread waiting on a response),
-// while the identical expression against a freshly launched, separate hi -p
-// process completes in well under a second and returns the correct answer.
-// That fixture-specific hang is a pre-existing fragility of this shared
-// server/cc() being asked to service the (Connect/Invoke) type-class
-// protocol for the first time (no prior test here exercises it at all),
-// not something this change is responsible for -- the two tests above
-// already establish that both gates let resolution proceed once enabled,
-// from both directions. Verified manually instead: with a standalone `hi -p`
-// server and a client cc with both enableRemoteConnections and
-// enableRemoteInvocation set, evaluating
-// receive(invoke(c, `(\x.x+1)`, 41)) returns 42 with no rejection.
+// The remaining case -- both gates enabled, the full connect+invoke round
+// trip succeeding -- is not automated here.
+//
+// Against this file's in-process server it deadlocks on the compiler lock:
+// the test thread holds hccmtx (cc.C) for the whole of cc::compileFn while
+// it blocks inside Client::remoteExpr, and the server thread needs that same
+// lock to answer, since CCServer::prepare compiles the expression it was
+// sent (net.C). Nothing here can drive a connect+invoke from a thread that
+// is holding the compiler lock, which is what compiling the constraint does.
+//
+// Pointing it at a separate `hi -p` child instead does not finish either --
+// left running for over six minutes -- and that one is not diagnosed. Both
+// are properties of driving this from inside the test process, not of the
+// gate: the denial paths above cover the gate, and the allowed path is
+// reproducible directly against the binaries:
+//
+//   $ (sleep 600 | ./hi -s -p 9601) &          # a peer; stdin must be a pipe,
+//                                              # hi registers it with epoll
+//   $ ./hi -s -x -o no-Safe \
+//       --allow-connect localhost:9601 --allow-invoke localhost:9601 \
+//       -e 'let c = (connection :: (Connect "localhost:9601" p) => p) in
+//           print(receive(invoke(c, `(\x.x+1)`, 41)))'
+//   42
+//
+// Dropping either --allow- flag reports the matching "constraint rejected"
+// error instead, and -o no-Safe is required independently of these gates
+// because invoke's generated code names unsafeCast, which Safe denies.

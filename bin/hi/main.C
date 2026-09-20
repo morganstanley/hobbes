@@ -595,6 +595,8 @@ void printUsage() {
             << "    -n          : just check that input scripts parse; compile and evaluate nothing"        << std::endl
             << "    -o opt      : enable language option 'opt'"                                             << std::endl
             << "    -a name=val : add a name/val pair to the set of arguments passed to subsequent scripts" << std::endl
+            << "    --allow-connect host:port : permit (Connect \"host:port\" c) to open a connection"      << std::endl
+            << "    --allow-invoke  host:port : permit (Invoke ...) to run code on that peer"               << std::endl
             << "    files       : hobbes script files to evaluate"                                          << std::endl
             << std::endl;
 }
@@ -620,6 +622,10 @@ Args processCommandLine(int argc, char** argv) {
       m = 4;
     } else if (arg == "-o") {
       m = 5;
+    } else if (arg == "--allow-connect") {
+      m = 6;
+    } else if (arg == "--allow-invoke") {
+      m = 7;
     } else if (arg == "-c" || arg == "--color") {
       r.useDefColors = true;
     } else if (arg == "-s") {
@@ -662,6 +668,14 @@ Args processCommandLine(int argc, char** argv) {
         else {
           r.opts.push_back(arg);
         }
+        m = 0;
+        break;
+      case 6:
+        r.allowConnect.insert(arg);
+        m = 0;
+        break;
+      case 7:
+        r.allowInvoke.insert(arg);
         m = 0;
         break;
       }

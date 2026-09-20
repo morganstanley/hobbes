@@ -327,7 +327,8 @@ public:
   // "host:port" strings in allowedHostPorts to be connected to; only
   // meaningful for embedding applications that both need this
   // remote-connection feature and only ever type-check trusted source
-  // through this cc.
+  // through this cc. Matching is on the literal string written in the
+  // constraint, and each call replaces any previous allowlist.
   void enableRemoteConnections(const std::set<std::string> &allowedHostPorts);
 
   // Resolving an (Invoke ...) type-class constraint ships code to a remote
@@ -335,7 +336,9 @@ public:
   // evaluation -- disabled by default, independent of
   // enableRemoteConnections above (being willing to connect to a host does
   // not imply trusting it to run code). Call this to allow the exact
-  // "host:port" strings in allowedHostPorts to be invoked on.
+  // "host:port" strings in allowedHostPorts (as reported by
+  // Client::remoteHost(), i.e. the literal string the connection was made
+  // with) to be invoked on. Each call replaces any previous allowlist.
   void enableRemoteInvocation(const std::set<std::string> &allowedHostPorts);
 
   // Resolving a (LoadFile "path" t) constraint for an outputFile-shaped t
@@ -343,7 +346,12 @@ public:
   // not evaluation -- disabled by default. Call this to allow the exact
   // paths in allowedPaths to be opened for writing; only meaningful for
   // embedding applications that both need outputFile and only ever
-  // type-check trusted source through this cc.
+  // type-check trusted source through this cc. Matching is on the literal
+  // path written in the constraint, *before* str::expandPath -- allowlist
+  // "$HOME/x.db" to permit source that spells it that way, not the
+  // resolved path. Each call replaces any previous allowlist, but a path
+  // already opened through this cc stays open: removing it from the
+  // allowlist does not close or re-gate the file it already created.
   void enableFileWrites(const std::set<std::string> &allowedPaths);
 
   // compile/optimization options

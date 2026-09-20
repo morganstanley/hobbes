@@ -5,6 +5,8 @@
 #include <hobbes/hobbes.H>
 #include "www.H"
 
+#include <set>
+
 namespace hi {
 
 using ModuleFiles = std::vector<std::string>;
@@ -25,6 +27,13 @@ struct Args {
   NameVals                 scriptNameVals;
   bool                     machineREPL;    // should we structure console I/O for machine-reading?
   strs                     opts;
+
+  // resolving a (Connect "host:port" c) constraint opens a connection, and an
+  // (Invoke ...) constraint runs code on the peer, both while an expression is
+  // only being type-checked -- so both are denied unless a target is named
+  // here (--allow-connect / --allow-invoke)
+  std::set<std::string>    allowConnect;
+  std::set<std::string>    allowInvoke;
 
   Args() : useDefColors(false), silent(false), replPort(-1), httpdPort(-1), exitAfterEval(false), checkOnly(false), machineREPL(false) {
     opts.push_back("Safe");

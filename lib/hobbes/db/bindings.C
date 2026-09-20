@@ -1081,6 +1081,11 @@ public:
       if (const TString* fp = is<TString>(fpath)) {
         UTFileConfig ufcfg;
         if (unpackFileType(ftype, &ufcfg)) {
+          // like ProcessP, prune rather than throw out of a satisfaction
+          // probe -- only refine() reports the rejection
+          if (ufcfg.first && !fileWriteAllowed(fp->value())) {
+            return false;
+          }
           return *ftype == *loadedFile(ufcfg.first, fp->value()).type;
         }
       }
@@ -1094,6 +1099,9 @@ public:
       if (const TString* fp = is<TString>(fpath)) {
         UTFileConfig ufcfg;
         if (unpackFileType(ftype, &ufcfg)) {
+          if (ufcfg.first && !fileWriteAllowed(fp->value())) {
+            return false;
+          }
           return unifiable(tenv, ftype, loadedFile(ufcfg.first, fp->value()).type);
         }
       } else {
@@ -1246,9 +1254,12 @@ void initStorageFileDefs(FieldVerifier* fv, cc& c) {
 }
 
 void enableFileWrites(cc& c, const std::set<std::string>& allowedPaths) {
-  if (auto lf = std::dynamic_pointer_cast<LoadFileP>(c.typeEnv()->lookupUnqualifier("LoadFile"))) {
-    lf->enableFileWrites(allowedPaths);
+  hlock _;
+  auto lf = std::dynamic_pointer_cast<LoadFileP>(c.typeEnv()->lookupUnqualifier("LoadFile"));
+  if (!lf) {
+    throw std::runtime_error("cannot allow file writes: 'LoadFile' is not bound to its built-in unqualifier");
   }
+  lf->enableFileWrites(allowedPaths);
 }
 
 }
