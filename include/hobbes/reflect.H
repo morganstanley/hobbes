@@ -533,6 +533,24 @@ template <size_t i, typename R, template <size_t,class,class> class F, typename 
 template <typename R, template <size_t,class,class> class F, typename U, typename V, typename ... Args>
   struct variantApp {
   };
+// a variant's tag selects the function to call for its payload, out of a
+// table with one entry per constructor. A tag that arrives from outside the
+// process -- a peer's reply, decoded by io<variant<...>>::read -- is not
+// known to name a constructor of the type being read into, and indexing the
+// table with it read a function pointer from beyond the table and called it.
+[[noreturn]] inline void raiseBadVariantTag(uint32_t id, size_t ctors) {
+  throw std::runtime_error(
+    "variant tag " + std::to_string(id) + " names no constructor of a variant with " +
+    std::to_string(ctors) + " of them"
+  );
+}
+
+inline void checkVariantTag(uint32_t id, size_t ctors) {
+  if (id >= ctors) {
+    raiseBadVariantTag(id, ctors);
+  }
+}
+
 template <template <size_t,class,class> class F, typename U, typename ... Ctors, typename ... Args>
   struct variantApp<void, F, U, tuple<Ctors...>, Args...> {
     using PF = void (*)(void *, Args...);
@@ -544,6 +562,7 @@ template <template <size_t,class,class> class F, typename U, typename ... Ctors,
     }
 
     static void apply(uint32_t id, void* payload, Args... args) {
+      checkVariantTag(id, sizeof...(Ctors));
       fns()[id](payload, args...);
     }
   };
@@ -559,6 +578,7 @@ template <typename R, template <size_t,class,class> class F, typename U, typenam
     }
 
     static R apply(uint32_t id, void* payload, Args... args) {
+      checkVariantTag(id, sizeof...(Ctors));
       return fns()[id](payload, args...);
     }
   };

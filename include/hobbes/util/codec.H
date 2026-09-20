@@ -7,6 +7,7 @@
 #include <limits>
 #include <map>
 #include <stdexcept>
+#include <algorithm>
 #include <string>
 #include <unistd.h>
 #include <vector>
@@ -258,19 +259,35 @@ inline void fdread(int fd, size_t* x) {
   fdread(fd, reinterpret_cast<char*>(x), sizeof(size_t));
 }
 
+// the length arrives before the data behind it, so a peer can claim a size it
+// will never send, and sizing the target from that claim alone let a couple
+// of dozen bytes on the wire name any amount of memory (a claimed 1GiB took a
+// net REPL from 65MB to 1.06GB of RSS before a byte of it arrived). Grow as
+// the data actually arrives instead, so a length the peer cannot back fails
+// on the read that runs out -- the same reasoning as hog's batch reads.
+//
+// The number of bytes read is unchanged, and so is the wire format.
+template <typename C>
+  inline void fdreadSized(int fd, C* xs) {
+    size_t n = 0;
+    fdread(fd, &n);
+
+    xs->clear();
+    for (size_t k = 0; k < n; ) {
+      size_t j = std::min<size_t>(n - k, 64 * 1024);
+      xs->resize(k + j);
+      fdread(fd, reinterpret_cast<char*>(&((*xs)[0])) + k, j);
+      k += j;
+    }
+  }
+
 inline void fdread(int fd, std::string* x) {
-  size_t n = 0;
-  fdread(fd, &n);
-  x->resize(n);
-  fdread(fd, &((*x)[0]), n);
+  fdreadSized(fd, x);
 }
 
 template <typename T>
 inline void fdread(int fd, std::vector<T>* xs) {
-  size_t n = 0;
-  fdread(fd, &n);
-  xs->resize(n);
-  fdread(fd, &((*xs)[0]), n);
+  fdreadSized(fd, xs);
 }
 
 inline void fdwrite(int fd, const char* x, size_t len) {

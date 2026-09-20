@@ -860,3 +860,71 @@ TEST(Net, aForgedConnectionHandleIsNotDereferenced) {
   // and the compiler is still usable afterwards
   EXPECT_EQ(c.compileFn<int()>("1+1")(), 2);
 }
+
+TEST(Net, aVariantTagFromTheWireIsChecked) {
+  // a variant's tag selects which function handles its payload, out of a
+  // table with one entry per constructor. The tag in a reply is whatever the
+  // peer sent, and it was used to index that table directly, so a tag past
+  // the end read a function pointer from beyond the table and called it.
+  using V = variant<int, double>;
+
+  int fds[2] = {-1, -1};
+  EXPECT_TRUE(::socketpair(AF_UNIX, SOCK_STREAM, 0, fds) == 0);
+
+  // a tag naming no constructor of this variant, with a payload behind it
+  fdwrite(fds[1], static_cast<uint32_t>(7));
+  fdwrite(fds[1], static_cast<int>(42));
+
+  V got;
+  EXPECT_EXCEPTION(net::io<V>::read(fds[0], &got));
+  ::close(fds[0]);
+  ::close(fds[1]);
+
+  // ... while a tag that does name one still reads (on its own pair: a
+  // rejected tag leaves the payload behind it unread, so that stream is done)
+  EXPECT_TRUE(::socketpair(AF_UNIX, SOCK_STREAM, 0, fds) == 0);
+  fdwrite(fds[1], static_cast<uint32_t>(0));
+  fdwrite(fds[1], static_cast<int>(7));
+  net::io<V>::read(fds[0], &got);
+  EXPECT_EQ(got.unsafeTag(), uint32_t(0));
+  ::close(fds[0]);
+  ::close(fds[1]);
+}
+
+TEST(Net, aClaimedLengthDoesNotSizeTheReadBuffer) {
+  // the length of a string or vector arrives before the data behind it, so a
+  // peer can claim a size it will never send. Sizing the target from the
+  // claim alone let a couple of dozen bytes name any amount of memory; the
+  // buffer now grows as the data arrives, so a claim the peer cannot back
+  // fails on the read that runs out.
+  int fds[2] = {-1, -1};
+  EXPECT_TRUE(::socketpair(AF_UNIX, SOCK_STREAM, 0, fds) == 0);
+
+  // a claim of 1GiB with nothing behind it, and the writer gone
+  fdwrite(fds[1], static_cast<size_t>(1) << 30);
+  ::close(fds[1]);
+
+  std::string s;
+  EXPECT_EXCEPTION(fdread(fds[0], &s));
+  ::close(fds[0]);
+
+  // an ordinary string of each shape still round-trips, including one larger
+  // than a single chunk of the incremental read (the writer runs on its own
+  // thread: more than the socket buffer holds is in flight at once)
+  EXPECT_TRUE(::socketpair(AF_UNIX, SOCK_STREAM, 0, fds) == 0);
+  std::string sent(128 * 1024, 'x');
+  std::thread w([&]() {
+    fdwrite(fds[1], sent);
+    fdwrite(fds[1], std::string());
+  });
+
+  std::string got;
+  fdread(fds[0], &got);
+  EXPECT_TRUE(got == sent);
+  fdread(fds[0], &got);
+  EXPECT_TRUE(got.empty());
+
+  w.join();
+  ::close(fds[0]);
+  ::close(fds[1]);
+}
