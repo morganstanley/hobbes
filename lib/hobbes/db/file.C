@@ -198,29 +198,42 @@ void* reader::unsafeLoad(const MonoTypePtr& ty, uint64_t pos) const {
   }
 }
 
+// the lengths and offsets read below come out of the file, and what they
+// reach is what the JIT then dereferences (dbloadv/dbloadarr/dbloaddarr), so
+// each is checked against the file's size before it is mapped. Only the typed
+// unsafeLoad above checked its offset at all, and none of them checked a
+// length: an array length of 0x10000000, or one whose product with the
+// element size wrapped to zero, mapped an address outside the file that
+// faulted on the first read.
 void* reader::unsafeLoad(uint64_t pos, size_t datasz) const {
-  return mapFileData(this->fdata, pos, datasz);
+  return mapFileDataInFile(this->fdata, pos, datasz, "stored value");
 }
 
 uint64_t reader::unsafeDArrayCapacity(uint64_t pos) const {
-  auto* cap    = reinterpret_cast<uint64_t*>(mapFileData(this->fdata, pos, sizeof(uint64_t)));
+  auto* cap    = reinterpret_cast<uint64_t*>(mapFileDataInFile(this->fdata, pos, sizeof(uint64_t), "stored array capacity"));
   uint64_t  result = *cap;
   unmapFileData(this->fdata, cap, sizeof(uint64_t));
   return result;
 }
 void* reader::unsafeLoadDArray(uint64_t pos) const {
   // if we're loading a darray, we actually have to read the data size first to know how much to map
-  auto* cap    = reinterpret_cast<uint64_t*>(mapFileData(this->fdata, pos, sizeof(uint64_t)));
-  auto*  result = reinterpret_cast<uint8_t*>(mapFileData(this->fdata, pos+sizeof(uint64_t), *cap));
+  auto* cap    = reinterpret_cast<uint64_t*>(mapFileDataInFile(this->fdata, pos, sizeof(uint64_t), "stored array capacity"));
+  uint64_t capacity = *cap;
   unmapFileData(this->fdata, cap, sizeof(uint64_t));
-  return result;
+  return mapFileDataInFile(this->fdata, pos+sizeof(uint64_t), capacity, "stored array data");
 }
 
 void* reader::unsafeLoadArray(uint64_t pos, size_t sz) const {
-  auto* len    = reinterpret_cast<uint64_t*>(mapFileData(this->fdata, pos, sizeof(uint64_t)));
-  auto*  result = reinterpret_cast<uint8_t*>(mapFileData(this->fdata, pos, sizeof(uint64_t) + sz * *len));
-  unmapFileData(this->fdata, len, sizeof(uint64_t));
-  return result;
+  auto* lenp   = reinterpret_cast<uint64_t*>(mapFileDataInFile(this->fdata, pos, sizeof(uint64_t), "stored array length"));
+  uint64_t len = *lenp;
+  unmapFileData(this->fdata, lenp, sizeof(uint64_t));
+
+  // 'sz * len' is what decides how much of the file this array covers, and a
+  // length near 2^64 wraps it to something small (or to zero) that passes any
+  // check made after the multiplication, so bound the length before it is
+  // multiplied by anything
+  ensureCountInFile(this->fdata, pos + sizeof(uint64_t), sz, len, "stored array");
+  return mapFileDataInFile(this->fdata, pos, sizeof(uint64_t) + sz * len, "stored array");
 }
 
 int reader::unsafeGetFD() const {
