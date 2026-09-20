@@ -928,3 +928,39 @@ TEST(Net, aClaimedLengthDoesNotSizeTheReadBuffer) {
   ::close(fds[0]);
   ::close(fds[1]);
 }
+
+TEST(Net, aPartialHandshakeDoesNotStallTheServer) {
+  // the version word used to be read in the accept handler with a blocking
+  // read, on the shared event loop: a peer that connected and sent fewer than
+  // four bytes stopped that loop until it went away, and every other listener
+  // in the process waited with it. Accepting a connection says nothing about
+  // the peer having sent anything yet.
+  int fd = connectSocket("localhost", testServerPort());
+  uint16_t half = 0;
+  EXPECT_EQ(::send(fd, &half, sizeof(half), 0), ssize_t(sizeof(half)));
+
+  // the server keeps serving everyone else while that peer says nothing more
+  {
+    SyncClient c("localhost", testServerPort());
+    EXPECT_EQ(c.add(1, 2), 3);
+  }
+
+  // and the half-spoken peer is still connected, not dropped: a read of its
+  // socket times out rather than seeing the orderly EOF a rejected peer gets
+  struct timeval tv;
+  tv.tv_sec  = 1;
+  tv.tv_usec = 0;
+  ::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+  char b = 0;
+  EXPECT_EQ(::recv(fd, &b, 1, 0), ssize_t(-1));
+
+  // when the rest of its version word arrives, it is served like any other
+  uint16_t rest = 0x0001; // completing 00 00 01 00
+  EXPECT_EQ(::send(fd, &rest, sizeof(rest), 0), ssize_t(sizeof(rest)));
+
+  {
+    SyncClient c("localhost", testServerPort());
+    EXPECT_EQ(c.add(2, 3), 5);
+  }
+  ::close(fd);
+}

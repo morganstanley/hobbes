@@ -5,6 +5,8 @@
 #include <hobbes/util/codec.H>
 #include <hobbes/util/str.H>
 
+#include <map>
+#include <mutex>
 #include <sstream>
 
 #include <cstring>
@@ -336,6 +338,117 @@ void evaluateNetREPLRequest(int c, void *d) {
   }
 }
 
+// the protocol version word, read a piece at a time
+//
+// this used to be read in the accept handler with a blocking fdread, which
+// runs on the shared event loop: a peer that connected and sent fewer than
+// four bytes stopped that loop until it went away, and every other listener
+// in the process (another net REPL, hi's web server) waited with it. Nothing
+// about accepting a connection says the peer has sent anything yet.
+//
+// So accept, remember the connection, and let the event loop say when there
+// is something to read. One handler serves a connection for its whole life
+// and dispatches on whether the handshake is still outstanding, rather than
+// being swapped for another once it completes: registering a descriptor that
+// is already registered is EPOLL_CTL_ADD of an existing entry on Linux, which
+// fails.
+//
+// The read is MSG_DONTWAIT rather than O_NONBLOCK on the descriptor, because
+// once the handshake is done the request handler reads with blocking fdreads
+// and expects to keep doing so. A peer that sends the version word and a
+// command in one packet is not left waiting: the epoll set is level
+// triggered, so the bytes still unread wake this handler again.
+namespace {
+
+struct HandshakeState {
+  uint32_t word = 0;
+  size_t   have = 0;
+};
+
+std::mutex                    handshakeMutex;
+std::map<int, HandshakeState> handshakes;
+
+bool handshakePending(int c, HandshakeState* st) {
+  std::lock_guard<std::mutex> lk(handshakeMutex);
+  auto i = handshakes.find(c);
+  if (i == handshakes.end()) {
+    return false;
+  }
+  *st = i->second;
+  return true;
+}
+
+void rememberHandshake(int c, const HandshakeState& st) {
+  std::lock_guard<std::mutex> lk(handshakeMutex);
+  handshakes[c] = st;
+}
+
+void forgetHandshake(int c) {
+  std::lock_guard<std::mutex> lk(handshakeMutex);
+  handshakes.erase(c);
+}
+
+// the handler must go before the descriptor: the number can be reused the
+// moment it is closed
+void dropConnection(int c) {
+  forgetHandshake(c);
+  unregisterEventHandler(c);
+  close(c);
+}
+
+// read what there is of the version word; true once all four bytes are in
+bool readVersionWord(int c, HandshakeState* st) {
+  ssize_t r = recv(c, reinterpret_cast<char *>(&st->word) + st->have, sizeof(st->word) - st->have, MSG_DONTWAIT);
+  if (r > 0) {
+    st->have += static_cast<size_t>(r);
+  } else if (r == 0) {
+    dropConnection(c); // the peer went away before it said anything
+    return false;
+  } else if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK) {
+    return false; // nothing to read after all; wait to be called again
+  } else {
+    dropConnection(c);
+    return false;
+  }
+
+  if (st->have < sizeof(st->word)) {
+    rememberHandshake(c, *st); // a piece of it; wait for the rest
+    return false;
+  }
+  return true;
+}
+
+void netREPLConnection(int c, void *d) {
+  HandshakeState st;
+  if (!handshakePending(c, &st)) {
+    evaluateNetREPLRequest(c, d);
+    return;
+  }
+
+  if (!readVersionWord(c, &st)) {
+    return;
+  }
+
+  forgetHandshake(c);
+
+  if (st.word != 0x00010000) {
+    // the peer speaks another protocol: drop it here rather than falling
+    // through to serve a connection that cannot be understood
+    unregisterEventHandler(c);
+    close(c);
+    return;
+  }
+
+  try {
+    reinterpret_cast<Server *>(d)->connect(c);
+  } catch (std::exception &) {
+    unregisterEventHandler(c);
+    close(c);
+  }
+}
+
+}
+
 void registerNetREPL(int s, Server *svr) {
   registerEventHandler(
       s,
@@ -343,19 +456,10 @@ void registerNetREPL(int s, Server *svr) {
         int c = accept(s, nullptr, nullptr);
         if (c != -1) {
           try {
-            uint32_t version = 0;
-            fdread(c, &version);
-            if (version != 0x00010000) {
-              // the peer speaks another protocol: drop it here rather than
-              // falling through to register a handler on the closed socket
-              // (which then closed it again from the catch below)
-              close(c);
-              return;
-            }
-
-            reinterpret_cast<Server *>(d)->connect(c);
-            registerEventHandler(c, &evaluateNetREPLRequest, d);
+            rememberHandshake(c, HandshakeState());
+            registerEventHandler(c, &netREPLConnection, d);
           } catch (std::exception &) {
+            forgetHandshake(c);
             close(c);
           }
         }
