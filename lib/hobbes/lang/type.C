@@ -491,7 +491,7 @@ bool Constraint::operator==(const Constraint& rhs) const {
 ////////
 // monotypes
 ////////
-MonoType::MonoType(int cid) : cid(cid), tgenCount(0), memorySize(-1), memoryAlignment(-1) { }
+MonoType::MonoType(int cid) : cid(cid), tgenCount(0), memorySize(-1), memoryAlignment(-1), llvmTypeMemo{nullptr, nullptr} { }
 int MonoType::case_id() const { return this->cid; }
 MonoType::~MonoType() = default;
 

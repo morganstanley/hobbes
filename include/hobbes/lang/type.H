@@ -77,6 +77,19 @@ public:
   // itself finds that out in one case-check anyway, so there is nothing worth
   // storing for it.
   mutable ptr repTypeMemo;
+
+  // improves performance of translating a type to its LLVM form, which record
+  // layout asks for once per member at every level of a nested type: without
+  // the memo a shared subterm is translated once per path that reaches it, so
+  // a type whose structure is a DAG costs what its tree expansion would (a
+  // 22-level balanced tuple took 22s to compile, doubling per level).
+  //
+  // Held as void* so that the language core stays free of LLVM headers. The
+  // two entries are the 'asArg' false/true translations, and both are safe to
+  // hold for as long as the type lives: LLVM types belong to the one
+  // process-wide context (threadSafeContext in util/llvm.H) and are never
+  // freed before it.
+  mutable void* llvmTypeMemo[2];
 };
 
 using MonoTypePtr = MonoType::ptr;
