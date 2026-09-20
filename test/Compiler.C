@@ -8,6 +8,8 @@
 #include "hobbes/eval/funcdefs.H"
 #include "test.H"
 
+#include <sys/stat.h>
+
 using namespace hobbes;
 static cc& c() { static __thread cc* x = nullptr; if (x == nullptr) { x = new cc(); } return *x; }
 
@@ -357,6 +359,27 @@ static std::string processCmdExpr(const std::string& cmd) {
   return "let x = (spawn() :: (Process \"" + cmd + "\" q) => q) in ()";
 }
 
+// a command that exists wherever these tests run and speaks the init protocol
+// a spawned hobbes sub-process must speak
+//
+// this used to be "/usr/bin/true", which is neither: it is absent from a
+// sandboxed build (the Nix builds CI runs have no /usr/bin at all), and it
+// exits without answering. mock-proc is built beside the test binary for
+// exactly this purpose, and Spawn's tests find it the same way.
+static std::string spawnableCmd() {
+  std::string cmd;
+  execPath([&](const std::string& ep) {
+    struct stat sb {};
+    cmd = ep + "/mock-proc";
+    if (stat(cmd.c_str(), &sb) != 0) {
+      cmd = ep + "/mock-proc-g";
+    }
+  });
+  // mock-proc takes the seconds it should live for, and requires it to be
+  // positive; Spawn's tests pass 2 for the same reason
+  return cmd + " 2";
+}
+
 TEST(Compiler, processConstraintSpawningDeniedByDefault) {
   hobbes::cc compiler;
   bool threw = false;
@@ -370,17 +393,18 @@ TEST(Compiler, processConstraintSpawningDeniedByDefault) {
 }
 
 TEST(Compiler, processConstraintSpawningOptInAllowsExactCommand) {
+  const std::string cmd = spawnableCmd();
   hobbes::cc compiler;
-  compiler.enableProcessSpawning({"/usr/bin/true"});
+  compiler.enableProcessSpawning({cmd});
   // must not throw: the exact allowlisted command is permitted to spawn
-  compiler.compileFn<void()>(processCmdExpr("/usr/bin/true"))();
+  compiler.compileFn<void()>(processCmdExpr(cmd))();
 }
 
 TEST(Compiler, processConstraintOptInDoesNotAllowOtherCommands) {
   // negative control: opting in for one command must not open the gate for
   // every command
   hobbes::cc compiler;
-  compiler.enableProcessSpawning({"/usr/bin/true"});
+  compiler.enableProcessSpawning({spawnableCmd()});
   bool threw = false;
   try {
     compiler.compileFn<void()>(processCmdExpr("/usr/bin/false"));
