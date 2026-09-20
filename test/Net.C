@@ -829,3 +829,34 @@ TEST(Net, clientReadBridgesAreDeniedInSafeMode) {
   EXPECT_TRUE(translateExprWithOpts(str::strings("Safe"),
                                     var("remoteHost", la)) != nullptr);
 }
+
+TEST(Net, connectSocketReportsAResolutionFailure) {
+  // a host that does not resolve used to hand a null hostent straight to
+  // '*(in_addr*)host->h_addr_list[0]', which faulted the process. Every
+  // dotted-quad took that same path, because the digit case called
+  // gethostbyaddr with the address as text where it expects four bytes, so
+  // it never matched and returned null too. Resolution failure must be an
+  // error the caller can catch.
+  //
+  // ".invalid" is reserved for exactly this (RFC 2606): it never resolves.
+  EXPECT_EXCEPTION(connectSocket("nosuchhost.invalid", 1));
+
+  // a dotted-quad resolves and connects like any other spelling of the host
+  int fd = connectSocket("127.0.0.1", testServerPort());
+  EXPECT_TRUE(fd >= 0);
+  ::close(fd);
+}
+
+TEST(Net, aForgedConnectionHandleIsNotDereferenced) {
+  // the handle in a 'connection N' type is the number N, and an expression
+  // can write any number there -- nothing about the type says it came from
+  // makeConnection. Uses that dereference it ran while the expression was
+  // compiled, so this faulted the process during a net REPL 'prepare' or a
+  // ':t', before any decision to evaluate it.
+  cc c;
+  EXPECT_EXCEPTION(c.compileFn<int()>("let f = (\\x.remoteHost(x::((connection 1094795585)))) in 1"));
+  EXPECT_EXCEPTION(c.compileFn<int()>("let f = (\\x.printConnection(x::((connection 1094795585)))) in 1"));
+
+  // and the compiler is still usable afterwards
+  EXPECT_EQ(c.compileFn<int()>("1+1")(), 2);
+}
