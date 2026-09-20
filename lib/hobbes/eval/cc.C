@@ -120,7 +120,11 @@ cc::cc() :
   // support connecting to remote processes
   initNetworkDefs(*this);
 
-  // support sub-process I/O
+  // support sub-process I/O -- ProcessP is registered with spawning
+  // disabled by default (STRFR-433927): resolving a (Process "cmd" p)
+  // constraint must not execute untrusted programs as a side effect
+  // of type-checking. Embedding applications that need this must opt in
+  // explicitly via cc::enableProcessSpawning with a command allowlist.
   this->tenv->bind(ProcessP::constraintName(), UnqualifierPtr(new ProcessP(fv)));
 
   // initialize the macro environment (maybe this should be user-controlled, the set of macros is hard-coded for now)
@@ -689,6 +693,13 @@ void* cc::unsafeCompileFn(const MonoTypePtr& fnTy, const str::seq& names, const 
 void cc::releaseMachineCode(void* f) {
   hlock _;
   this->jit->releaseMachineCode(f);
+}
+
+void cc::enableProcessSpawning(const std::set<std::string>& allowedCmds) {
+  hlock _;
+  if (auto pp = std::dynamic_pointer_cast<ProcessP>(this->tenv->lookupUnqualifier(ProcessP::constraintName()))) {
+    pp->enableSpawning(allowedCmds);
+  }
 }
 
 

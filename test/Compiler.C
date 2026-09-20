@@ -340,3 +340,53 @@ TEST(Compiler, eachCPPTypeSiteUsesItsOwnConstraint) {
   EXPECT_TRUE(d.find("typedef int A;") != std::string::npos);
   EXPECT_TRUE(d.find("typedef double B;") != std::string::npos);
 }
+
+// STRFR-433927: resolving a (Process "cmd" p) constraint used to fork+execv
+// "cmd" as a side effect of type unification -- merely type-checking an
+// expression (compileFn here stands in for hi's ':t', a net REPL prepare(),
+// or a web GET /?<expr>) ran the command whether or not the expression was
+// ever going to be evaluated. Spawning is now denied unless the embedding
+// cc explicitly opts in via enableProcessSpawning with an exact-match
+// allowlist.
+// spawn()'s result is an opaque 'process' primitive type (procman.C's
+// mkPidTy), not a C++-liftable long -- discard it with 'let _ = ... in ()'
+// so these tests only need compileFn<void()> to type-check, independent of
+// that representation, and can focus on whether resolving the constraint
+// throws or not.
+static std::string processCmdExpr(const std::string& cmd) {
+  return "let x = (spawn() :: (Process \"" + cmd + "\" q) => q) in ()";
+}
+
+TEST(Compiler, processConstraintSpawningDeniedByDefault) {
+  hobbes::cc compiler;
+  bool threw = false;
+  try {
+    compiler.compileFn<void()>(processCmdExpr("/usr/bin/true"));
+  } catch (std::exception& ex) {
+    threw = true;
+    EXPECT_TRUE(std::string(ex.what()).find("Process constraint rejected") != std::string::npos);
+  }
+  EXPECT_TRUE(threw);
+}
+
+TEST(Compiler, processConstraintSpawningOptInAllowsExactCommand) {
+  hobbes::cc compiler;
+  compiler.enableProcessSpawning({"/usr/bin/true"});
+  // must not throw: the exact allowlisted command is permitted to spawn
+  compiler.compileFn<void()>(processCmdExpr("/usr/bin/true"))();
+}
+
+TEST(Compiler, processConstraintOptInDoesNotAllowOtherCommands) {
+  // negative control: opting in for one command must not open the gate for
+  // every command
+  hobbes::cc compiler;
+  compiler.enableProcessSpawning({"/usr/bin/true"});
+  bool threw = false;
+  try {
+    compiler.compileFn<void()>(processCmdExpr("/usr/bin/false"));
+  } catch (std::exception& ex) {
+    threw = true;
+    EXPECT_TRUE(std::string(ex.what()).find("Process constraint rejected") != std::string::npos);
+  }
+  EXPECT_TRUE(threw);
+}
