@@ -515,6 +515,29 @@ std::string expandVars(const std::string& x) {
     );
 }
 
+bool relativePathInRoot(const std::string& path, std::string* relPath) {
+  if (path.empty()) {
+    return false;
+  }
+
+  seq out;
+  for (const auto& seg : csplit(path, "/")) {
+    if (seg.empty() || seg == ".") {
+      continue;
+    } else if (seg == "..") {
+      if (out.empty()) {
+        return false;
+      }
+      out.pop_back();
+    } else {
+      out.push_back(seg);
+    }
+  }
+
+  *relPath = cdelim(out, "/");
+  return true;
+}
+
 std::string expandPath(const std::string& x) {
   // x reaches here from untrusted type-checker input (LoadFile constraints,
   // lib/hobbes/db/bindings.C) as well as trusted local paths, so this must

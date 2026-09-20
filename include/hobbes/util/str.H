@@ -359,6 +359,19 @@ char readCharDef(const std::string&);
 std::string expandVars(const std::string&);
 std::string expandPath(const std::string&); // same as 'expandVars' but expand '~' to home directory
 
+// reduce a path to what it names beneath a root, for a path that arrives from
+// outside the process (a URL path, say) and is then joined to a directory the
+// process serves: '.' and empty segments drop out, and '..' pops the segment
+// before it. A '..' with nothing left to pop names a file outside the root,
+// so the path is refused (false) rather than clamped -- clamping would
+// quietly resolve to a file other than the one asked for. The result is
+// relative and has no leading '/'.
+//
+// This is lexical only: it says nothing about symbolic links met while
+// resolving the result, which stay the responsibility of whoever populates
+// the directory being served.
+bool relativePathInRoot(const std::string& path, std::string* relPath);
+
 // display a byte count in typical units
 std::string showDataSize(size_t bytes);
 
