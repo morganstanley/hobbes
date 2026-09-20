@@ -41,6 +41,13 @@ private:
   int fd;
 };
 
+// the largest length-prefixed frame this receiver will accept from a sender
+// (see receiveIntoBuffer): a sender cuts a segment at ~10MB of log data and
+// sends it compressed, so this is generous for any batch hog produces, while
+// keeping what an unauthenticated sender can make a receiver allocate to a
+// fixed bound
+constexpr uint64_t maxFrameBytes = 64ull * 1024 * 1024;
+
 void sendString(NetConnection& c, const std::string& str);
 
 void receiveIntoBuffer(NetConnection& c, std::vector<uint8_t>* dst);
