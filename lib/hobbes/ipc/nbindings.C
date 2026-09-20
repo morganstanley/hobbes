@@ -517,6 +517,21 @@ void printConnectionUF(long x) {
   c->show(std::cout);
 }
 
+// the handle in a 'connection N' type is just the number N, which an
+// expression can write for itself -- the type is reachable from source, and
+// nothing about it says the number came from makeConnection. Every use that
+// dereferences the handle must therefore ask the registry whether it names a
+// live connection first: these run while an expression is compiled, so a
+// forged handle faulted the process during a net REPL 'prepare' or a :t,
+// before any decision to evaluate anything.
+Client* decodeLiveConnType(const MonoTypePtr& t) {
+  Client* c = decodeConnType(t);
+  if (c != nullptr && !isAllocatedConnection(c)) {
+    throw std::runtime_error("not a live connection: " + show(t));
+  }
+  return c;
+}
+
 struct printConnectionF : public op {
   std::string showf;
 
@@ -524,7 +539,7 @@ struct printConnectionF : public op {
   }
 
   llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) override {
-    if (Client* conn = decodeConnType(tys[0])) {
+    if (Client* conn = decodeLiveConnType(tys[0])) {
       ExprPtr wfrtfn = var(this->showf, functy(list(primty("long")), primty("unit")), es[0]->la());
       return c->compile(fncall(wfrtfn, list(constant(reinterpret_cast<long>(conn), es[0]->la())), es[0]->la()));
     } else {
@@ -541,7 +556,7 @@ struct remoteHostF : public op {
   remoteHostF() = default;
 
   llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr&, const Exprs& es) override {
-    if (Client* conn = decodeConnType(tys[0])) {
+    if (Client* conn = decodeLiveConnType(tys[0])) {
       return c->compile(ExprPtr(mkarray(conn->remoteHost(), es[0]->la())));
     } else {
       throw std::runtime_error("Internal error, invalid connection type: " + show(tys[0]));

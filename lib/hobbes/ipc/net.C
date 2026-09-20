@@ -128,20 +128,14 @@ int connectSocket(int r, sockaddr *saddr, size_t len) {
 }
 
 // create a connected socket to a remote process
-int connectSocket(hostent *host, int port) {
-  int r = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+int connectSocket(const addrinfo *ai) {
+  int r = socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol);
   if (r == -1) {
     throw std::runtime_error("Unable to allocate socket: " +
                              std::string(strerror(errno)));
   }
 
-  sockaddr_in addr;
-  memset(&addr, 0, sizeof(addr));
-  addr.sin_family = AF_INET;
-  addr.sin_addr = *reinterpret_cast<in_addr *>(host->h_addr_list[0]);
-  addr.sin_port = htons(port);
-
-  return connectSocket(r, reinterpret_cast<sockaddr *>(&addr), sizeof(addr));
+  return connectSocket(r, ai->ai_addr, ai->ai_addrlen);
 }
 
 int connectFileSocket(const std::string &filepath) {
@@ -160,12 +154,42 @@ int connectFileSocket(const std::string &filepath) {
 }
 
 int connectSocket(const std::string &host, int port) {
-  if (!host.empty() && str::isDigit(host[0])) {
-    return connectSocket(gethostbyaddr(host.c_str(), host.size(), AF_INET),
-                         port);
-  } else {
-    return connectSocket(gethostbyname(host.c_str()), port);
+  // resolve with getaddrinfo, which reports failure rather than returning a
+  // null the caller has to remember to check. Both legs of what was here
+  // returned one: gethostbyname for a name that does not resolve, and
+  // gethostbyaddr for every dotted-quad -- it was handed the address as text
+  // where it expects the four bytes, so it never matched anything. The null
+  // was then dereferenced for its address list, which crashed the process.
+  // A resolvable name could crash it too: h_addr_list may be empty, and
+  // h_addr_list[0] was read without checking.
+  addrinfo hints;
+  memset(&hints, 0, sizeof(hints));
+  hints.ai_family   = AF_INET;
+  hints.ai_socktype = SOCK_STREAM;
+  hints.ai_protocol = IPPROTO_TCP;
+
+  addrinfo *res = nullptr;
+  const std::string service = str::from(port);
+  int rc = getaddrinfo(host.c_str(), service.c_str(), &hints, &res);
+  if (rc != 0 || res == nullptr) {
+    throw std::runtime_error("Failed to resolve host '" + host +
+                             "': " + std::string(gai_strerror(rc)));
   }
+
+  std::string lastError;
+  for (const addrinfo *ai = res; ai != nullptr; ai = ai->ai_next) {
+    try {
+      int c = connectSocket(ai);
+      freeaddrinfo(res);
+      return c;
+    } catch (std::exception &ex) {
+      lastError = ex.what();
+    }
+  }
+  freeaddrinfo(res);
+
+  throw std::runtime_error("Failed to connect to '" + host + ":" + service +
+                           "': " + lastError);
 }
 
 int connectSocket(const std::string &hostport) {
