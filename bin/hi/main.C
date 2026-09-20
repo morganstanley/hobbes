@@ -685,6 +685,13 @@ void initHI(evaluator* eval, bool useDefColors) {
 
 int main(int argc, char** argv) {
   try {
+    // a client of the web server (-w) or the net REPL (-p) can close or reset
+    // its connection while a reply is being written, and the default action
+    // for SIGPIPE would end hi -- one request, deliberately reset, takes the
+    // server down for everyone. Writes report EPIPE instead and the reply in
+    // progress is abandoned (hog's main does the same for its senders).
+    signal(SIGPIPE, SIG_IGN);
+
     // read command-line arguments
     Args args = processCommandLine(argc, argv);
 
