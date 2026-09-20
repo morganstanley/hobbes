@@ -1,7 +1,7 @@
 # Fuzzing harnesses
 
-Hobbes consumes untrusted bytes in exactly three places (see the security
-model documentation in `doc/en/security.rst`, added by #514), and each has a
+Hobbes consumes untrusted bytes in a few places (see the security model
+documentation in `doc/en/security.rst`, added by #514), and each has a
 harness here:
 
 | Harness              | Surface                                                          |
@@ -9,8 +9,9 @@ harness here:
 | `fuzz-type-decode`   | binary type descriptions (`hobbes::decode`, used by the RPC layer on peer-supplied bytes) |
 | `fuzz-fregion-reader`| structured data file images (`hobbes::fregion::reader`: header, page table, environment records) |
 | `fuzz-parse-expr`    | source text through the lexer/LALR parser (`cc::readExpr`; parse only, nothing is evaluated) |
+| `fuzz-hog-session`   | `hog`'s live transaction stream (`storage::Transaction`, read by the JIT-compiled `HStoreRead` instances in `bin/hog/boot/read.hob`) |
 
-For all three, throwing an exception on malformed input is the expected
+For all four, throwing an exception on malformed input is the expected
 behavior; the harnesses catch those. What fuzzing hunts for is memory
 unsafety — out-of-bounds access, overflow-driven size math — which is why
 these should run under sanitizers.
@@ -88,6 +89,16 @@ Notes per harness:
   design (see the memory model section in `doc/en/embedding/compiler.rst`).
   What is worth watching is growth *across* iterations, which the harnesses
   bound themselves and the fuzzer's RSS limit catches.
+* **fuzz-hog-session** — seeds in `corpus/hog-session/`, including the
+  reproducer for STRFR-433920 (a negative element count read off the wire,
+  which used to wrap `newArray`'s size computation to an undersized
+  allocation while `hstoreReadArr` kept writing past it). Setup (compiling
+  three `HStoreRead` instances against a fresh `cc`) happens once per process
+  on the first input, not per iteration, so this harness needs the JIT to
+  actually work in the build -- unlike the other three, which never invoke
+  it. Each iteration is a `storage::Transaction` view over the raw input
+  bytes, mirroring `bin/hog/session.C`'s own dispatch loop, with no sockets or
+  files involved.
 
 Replaying a reproducer (works in both build modes):
 

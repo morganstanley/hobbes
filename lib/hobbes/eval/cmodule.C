@@ -562,7 +562,15 @@ private:
                                  {"newArray", {"newArray", {}}},
                                  {"newPrim", {"newPrim", {}}},
                                  {"newPrimZ", {"newPrimZ", {}}},
-                                 {"unsafeCast", {"unsafeCast", {}}}}};
+                                 {"unsafeCast", {"unsafeCast", {}}},
+                                 // raw-pointer Client bridges (generated-code
+                                 // only; both current dot-prefixed and legacy
+                                 // plain names) must never pass Safe mode
+                                 {"unsafeClientRead", {"unsafeClientRead", {}}},
+                                 {"unsafeAppendClientReadFn", {"unsafeAppendClientReadFn", {}}},
+                                 {".unsafeClientRead", {".unsafeClientRead", {}}},
+                                 {".unsafeAppendClientReadFn", {".unsafeAppendClientReadFn", {}}},
+                                 {".printConnection", {".printConnection", {}}}}};
     return ms;
   }
 

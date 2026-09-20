@@ -51,8 +51,8 @@ else()
   message(STATUS "fuzzers: ${CMAKE_CXX_COMPILER_ID} has no libFuzzer; building standalone reproducer runners")
 endif()
 
-function(add_fuzzer name source)
-  add_executable(${name} ${source} ${fuzz_driver})
+function(add_fuzzer name)
+  add_executable(${name} ${ARGN} ${fuzz_driver})
   target_link_libraries(${name} PRIVATE hobbes)
   if(fuzz_flags)
     target_compile_options(${name} PRIVATE ${fuzz_flags})
@@ -68,6 +68,10 @@ endfunction()
 add_fuzzer(fuzz-type-decode fuzz_type_decode.C)
 add_fuzzer(fuzz-fregion-reader fuzz_fregion_reader.C)
 add_fuzzer(fuzz-parse-expr fuzz_parse_expr.C)
+add_fuzzer(fuzz-hog-session
+  fuzz_hog_session.C
+  ${CMAKE_SOURCE_DIR}/bin/hog/hstore_bridge.C
+  ${CMAKE_SOURCE_DIR}/bin/hog/boot/gen/boot.C)
 
 # Replay each harness's checked-in corpus as part of `ctest`.
 #
@@ -105,3 +109,4 @@ endfunction()
 add_corpus_replay_test(fuzz-type-decode type-decode)
 add_corpus_replay_test(fuzz-fregion-reader fregion-reader)
 add_corpus_replay_test(fuzz-parse-expr parse-expr)
+add_corpus_replay_test(fuzz-hog-session hog-session)

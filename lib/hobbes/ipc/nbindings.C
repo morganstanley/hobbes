@@ -324,7 +324,7 @@ private:
                   let(".i2", fncall(var("writeTo", qualtype(list(incst), functy(list(intt, inty), unitt)), la), list(constant(static_cast<int>(c->fd()), la), var(".x", inty, la)), la),
 
                   // enqueue the read function for this expected result
-                  let("r", fncall(var("unsafeAppendClientReadFn", functy(list(longt, urfnty), longt), la), list(
+                  let("r", fncall(var(".unsafeAppendClientReadFn", functy(list(longt, urfnty), longt), la), list(
                               constant(static_cast<long>(chv->value()), la),
                               fncall(var("unsafeCast", functy(list(rfnty), urfnty), la), list(var("readFrom", qualtype(list(outcst), rfnty), la)), la)
                            ), la),
@@ -478,7 +478,7 @@ private:
                     fncall(
                       var("unsafeCast", functy(list(opaqueptr<char>(false)), tuplety(list(ty))), la), list(
                         fncall(
-                          var("unsafeClientRead", functy(list(primty("long"), primty("long")), opaqueptr<char>(false)), la),
+                          var(".unsafeClientRead", functy(list(primty("long"), primty("long")), opaqueptr<char>(false)), la),
                           list(
                             constant(static_cast<long>(chv->value()), la),
                             var("x", primty("long"), la)
@@ -510,7 +510,11 @@ private:
 
 // show a connection state
 void printConnectionUF(long x) {
-  reinterpret_cast<Client*>(x)->show(std::cout);
+  auto* c = reinterpret_cast<Client*>(x);
+  if (!isAllocatedConnection(c)) {
+    throw std::runtime_error(".printConnection: handle is not a live connection");
+  }
+  c->show(std::cout);
 }
 
 struct printConnectionF : public op {
@@ -556,10 +560,15 @@ void initNetworkDefs(cc& c) {
   // remotely invoke functions
   c.typeEnv()->bind(InvokeP::constraintName(), UnqualifierPtr(new InvokeP()));
 
-  // and read results
+  // and read results. These raw-pointer bridges are only for generated code
+  // (include/hobbes/ipc/net.H): bind them under dot-prefixed names that the
+  // parser cannot produce, so user expressions cannot name them directly.
+  // Client::unsafeAppendReadFn/unsafeRead additionally validate the handle
+  // via isAllocatedConnection as defense in depth against serialized-AST Var
+  // references reaching these bindings.
   c.typeEnv()->bind(ReceiveP::constraintName(), UnqualifierPtr(new ReceiveP()));
-  c.bind("unsafeAppendClientReadFn", &Client::unsafeAppendReadFn);
-  c.bind("unsafeClientRead",         &Client::unsafeRead);
+  c.bind(".unsafeAppendClientReadFn", &Client::unsafeAppendReadFn);
+  c.bind(".unsafeClientRead",         &Client::unsafeRead);
 
   // some basic utility functions
   c.bind(".printConnection", &printConnectionUF);

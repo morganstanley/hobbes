@@ -1,5 +1,6 @@
 
 #include "test.H"
+#include <hobbes/eval/cmodule.H>
 #include <hobbes/hobbes.H>
 #include <hobbes/ipc/net.H>
 #include <hobbes/net.H>
@@ -793,4 +794,38 @@ TEST(Net, eventLoopShutdownWithStopF) {
         hobbes::runEventLoop(500'000, stopFn);
       },
       [](auto millisecs) { return millisecs < 1'000; });
+}
+
+TEST(Net, clientReadBridgesAreNotUserNameable) {
+  // the raw-pointer Client bridges are for generated code only, so their
+  // plain names must not resolve in a user expression
+  EXPECT_EXCEPTION_MSG(c().compileFn<void()>("unsafeClientRead(1L, 0L)"),
+                       std::exception, "Undefined variable");
+  EXPECT_EXCEPTION_MSG(
+      c().compileFn<void()>("unsafeAppendClientReadFn(1L, 0L)"), std::exception,
+      "Undefined variable");
+}
+
+TEST(Net, clientReadBridgesRejectForgedHandles) {
+  // a handle that names no live connection must be rejected rather than
+  // reinterpret_cast and dereferenced (the set lookup never loads from it)
+  const auto forged = static_cast<size_t>(0x1234);
+  EXPECT_EXCEPTION(Client::unsafeRead(forged, 0));
+  EXPECT_EXCEPTION(Client::unsafeAppendReadFn(forged, nullptr));
+}
+
+TEST(Net, clientReadBridgesAreDeniedInSafeMode) {
+  // the dot-prefixed names cannot be parsed from source text, but a
+  // serialized AST can still carry a Var naming one of them, so Safe mode
+  // must reject them too
+  auto la = LexicalAnnotation::null();
+  for (const auto &n :
+       {".unsafeClientRead", ".unsafeAppendClientReadFn", ".printConnection"}) {
+    EXPECT_EXCEPTION(
+        translateExprWithOpts(str::strings("Safe"), var(n, la)));
+  }
+
+  // a name that is not a raw-pointer bridge still passes the Safe rewrite
+  EXPECT_TRUE(translateExprWithOpts(str::strings("Safe"),
+                                    var("remoteHost", la)) != nullptr);
 }
