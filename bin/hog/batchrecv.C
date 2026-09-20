@@ -21,16 +21,25 @@ using namespace hobbes;
 
 namespace hog {
 
+// the most a single batch may inflate to (see decompressChunk): a sender cuts
+// a segment at ~10MB of log data, so this leaves room for a very compressible
+// batch while keeping the decoded size a sender can ask for bounded (the
+// decoded batch is also copied into the transaction buffer, so the memory a
+// batch can name is about twice this)
+static const size_t maxInflatedBytes = 64 * 1024 * 1024;
+
 struct gzbuffer {
   z_stream zin;
   std::vector<uint8_t>*  outb;
   size_t   off;
   size_t   avail;
+  size_t   inflated;
 
   gzbuffer(const std::vector<uint8_t>& inb, std::vector<uint8_t>* outb)
     :outb(outb),
      off(0),
-     avail(0)
+     avail(0),
+     inflated(0)
   {
     memset(&this->zin, 0, sizeof(this->zin));
     this->zin.zalloc    = Z_NULL;
@@ -94,6 +103,16 @@ struct gzbuffer {
     }
     this->off   = 0;
     this->avail = this->outb->size() - this->zin.avail_out;
+
+    // a small compressed frame can inflate to an arbitrarily large one, and a
+    // whole batch is decoded before any of it is applied, so without a bound
+    // here a sender within the frame limit can still name any amount of
+    // memory. Count what this batch has produced and stop at a multiple of
+    // what a sender's ~10MB segment could legitimately inflate to.
+    this->inflated += this->avail;
+    if (this->inflated > maxInflatedBytes) {
+      throw std::runtime_error("gzip segment inflated past " + str::from(maxInflatedBytes) + " bytes");
+    }
   }
 
   void read(uint8_t* b, size_t n) {
@@ -125,18 +144,30 @@ void read(gzbuffer* in, size_t*   n) { read(in, reinterpret_cast<uint8_t*>(n), s
 void read(gzbuffer* in, uint32_t* n) { read(in, reinterpret_cast<uint8_t*>(n), sizeof(*n)); }
 void read(gzbuffer* in, uint64_t* n) { read(in, reinterpret_cast<uint8_t*>(n), sizeof(*n)); }
 
-void read(gzbuffer* in, std::string* x) {
-  size_t n;
+// a length read out of the stream is trusted no further than the data behind
+// it: grow a piece at a time as that data is actually read, so a length the
+// stream cannot back fails on the read that runs out rather than sizing the
+// allocation first (the same reasoning as the transaction reads below)
+template <typename C>
+void readSized(gzbuffer* in, C* x) {
+  size_t n = 0;
   read(in, &n);
-  x->resize(n);
-  read(in, reinterpret_cast<uint8_t*>(&(*x)[0]), n);
+
+  x->clear();
+  for (size_t k = 0; k < n; ) {
+    size_t j = std::min<size_t>(n - k, 64 * 1024);
+    x->resize(k + j);
+    read(in, reinterpret_cast<uint8_t*>(&(*x)[0]) + k, j);
+    k += j;
+  }
+}
+
+void read(gzbuffer* in, std::string* x) {
+  readSized(in, x);
 }
 
 void read(gzbuffer* in, std::vector<uint8_t>* x) {
-  size_t n;
-  read(in, &n);
-  x->resize(n);
-  read(in, &(*x)[0], n);
+  readSized(in, x);
 }
 
 void read(gzbuffer* in, storage::statements* stmts) {
