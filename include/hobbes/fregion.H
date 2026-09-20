@@ -717,6 +717,36 @@ inline fregion& mappedFileRegion(imagefile* f, file_pageindex_t page, size_t pag
 }
 
 // allocate a region of this file as mapped memory
+// map data that the file is supposed to contain
+//
+// mapFileData maps whatever it is asked for, in multiples of mmapPageMultiple
+// pages, so an offset past the end of the file usually lands inside a mapping
+// anyway and faults only when it is touched. Every offset and length a reader
+// takes *from the file* has to be checked against the file's size before it
+// is used, or a corrupt or crafted image decides what the reader reads: the
+// arithmetic here is written so that neither the sum nor a product computed
+// by a caller can wrap past the check.
+inline void ensureDataInFile(imagefile* f, size_t fpos, size_t sz, const char* what) {
+  if (fpos <= f->file_size && sz <= f->file_size - fpos) {
+    return;
+  }
+
+  // a reader's idea of the file's size goes stale as soon as a writer extends
+  // the file, and a reader is expected to follow a writer that is still
+  // appending, so what is out of range here may simply be new. Ask the
+  // filesystem before refusing: only data that is outside the file *now* is
+  // data the file does not have.
+  if (loadFileSize(f) && fpos <= f->file_size && sz <= f->file_size - fpos) {
+    return;
+  }
+
+  throw std::runtime_error(
+    std::string(what) + " at offset " + hobbes::string::from(fpos) +
+    " runs past the end of a " + hobbes::string::from(f->file_size) +
+    " byte file (" + hobbes::string::from(sz) + " bytes)"
+  );
+}
+
 inline char* mapFileData(imagefile* f, size_t fpos, size_t sz) {
   file_pageindex_t pagei  = fpos        / f->page_size;
   file_pageindex_t pagef  = (fpos + sz) / f->page_size;
@@ -738,6 +768,36 @@ inline char* mapFileData(imagefile* f, size_t fpos, size_t sz) {
   fa.size = sz;
 
   return result;
+}
+
+inline char* mapFileDataInFile(imagefile* f, size_t fpos, size_t sz, const char* what) {
+  ensureDataInFile(f, fpos, sz, what);
+  return mapFileData(f, fpos, sz);
+}
+
+// bound an element count read out of the file before it is multiplied by an
+// element size: 'n * esz' is what decides how much is mapped and copied, and
+// a count near 2^64 wraps that product to something small that passes any
+// check made after the multiplication
+inline void ensureCountInFile(imagefile* f, size_t dataPos, size_t esz, size_t n, const char* what) {
+  if (esz == 0) {
+    return; // no data behind the count, so no count is too large
+  }
+  if (dataPos <= f->file_size && n <= (f->file_size - dataPos) / esz) {
+    return;
+  }
+  // as in ensureDataInFile: the cached size goes stale under a writer that is
+  // still appending, so confirm against the file before refusing
+  if (loadFileSize(f) && dataPos <= f->file_size && n <= (f->file_size - dataPos) / esz) {
+    return;
+  }
+
+  throw std::runtime_error(
+    std::string(what) + " at offset " + hobbes::string::from(dataPos) +
+    " claims " + hobbes::string::from(n) +
+    " elements of " + hobbes::string::from(esz) +
+    " bytes, past the end of a " + hobbes::string::from(f->file_size) + " byte file"
+  );
 }
 
 // deallocate memory mapped out of this file
@@ -765,6 +825,25 @@ inline void unmapFileData(imagefile* f, const void* p, size_t sz) {
     releaseFileRegionMap(f, fm->second);
     f->mappings.erase(fm);
   }
+}
+
+// map a stored sequence: a count, and 'esz' bytes of element data behind it
+//
+// the count comes out of the file, and 'count * esz' decides how much is
+// mapped and then copied out, so a count near 2^64 wraps that product to
+// something small while the count itself stays huge -- the copy then runs off
+// the end of the mapping -- and 'dloc + sizeof(size_t) + count' can wrap past
+// the file as well. Bound the count by what the file could hold before it is
+// multiplied by anything.
+inline uint8_t* mapStoredSeq(imagefile* f, size_t dloc, size_t esz, size_t* count, const char* what) {
+  auto* c = reinterpret_cast<size_t*>(mapFileDataInFile(f, dloc, sizeof(size_t), what));
+  size_t n = *c;
+  unmapFileData(f, c, sizeof(size_t));
+
+  ensureCountInFile(f, dloc + sizeof(size_t), esz, n, what);
+
+  *count = n;
+  return reinterpret_cast<uint8_t*>(mapFileDataInFile(f, dloc + sizeof(size_t), n * esz, what));
 }
 
 // we shouldn't ever work with files that have invalid page sizes
@@ -1338,13 +1417,12 @@ template <>
     }
     static void read (imagefile* f, const void* p, std::string* x) {
       auto     dloc = *reinterpret_cast<const size_t*>(p);
-      auto*  c    = reinterpret_cast<size_t*>(mapFileData(f, dloc, sizeof(size_t)));
-      char*    s    = reinterpret_cast<char*>(mapFileData(f, dloc+sizeof(size_t), *c));
+      size_t n = 0;
+      char*  s = reinterpret_cast<char*>(mapStoredSeq(f, dloc, sizeof(char), &n, "stored string"));
 
-      x->assign(s, s + *c);
+      x->assign(s, s + n);
 
-      unmapFileData(f, s, *c);
-      unmapFileData(f, c, sizeof(size_t));
+      unmapFileData(f, s, n);
     }
   };
 
@@ -1375,14 +1453,15 @@ template <typename T>
     }
     static void read(imagefile* f, const void* p, std::vector<T>* x) {
       auto     dloc = *reinterpret_cast<const size_t*>(p);
-      auto*  c    = reinterpret_cast<size_t*>(mapFileData(f, dloc, sizeof(size_t)));
-      auto* d    = reinterpret_cast<uint8_t*>(mapFileData(f, dloc+sizeof(size_t), *c * sizeof(T)));
+      size_t n = 0;
+      auto* d = mapStoredSeq(f, dloc, sizeof(T), &n, "stored vector");
 
-      x->resize(*c);
-      memcpy(reinterpret_cast<void*>(&(*x)[0]), d, *c * sizeof(T));
+      x->resize(n);
+      if (n > 0) {
+        memcpy(reinterpret_cast<void*>(&(*x)[0]), d, n * sizeof(T));
+      }
 
-      unmapFileData(f, d, *c);
-      unmapFileData(f, c, sizeof(size_t));
+      unmapFileData(f, d, n * sizeof(T));
     }
   };
 template <typename T>
@@ -1412,18 +1491,17 @@ template <typename T>
     static void read(imagefile* f, const void* p, std::vector<T>* x) {
       size_t   tsz  = store<T>::size();
       auto     dloc = *reinterpret_cast<const size_t*>(p);
-      auto*  c    = reinterpret_cast<size_t*>(mapFileData(f, dloc, sizeof(size_t)));
-      auto* d    = reinterpret_cast<uint8_t*>(mapFileData(f, dloc+sizeof(size_t), *c * tsz));
-      uint8_t* dc   = d;
+      size_t n = 0;
+      auto* d = mapStoredSeq(f, dloc, tsz, &n, "stored vector");
+      uint8_t* dc = d;
 
-      x->resize(*c);
-      for (size_t i = 0; i < *c; ++i) {
+      x->resize(n);
+      for (size_t i = 0; i < n; ++i) {
         store<T>::read(f, dc, &(*x)[i]);
         dc += tsz;
       }
 
-      unmapFileData(f, d, *c);
-      unmapFileData(f, c, sizeof(size_t));
+      unmapFileData(f, d, n * tsz);
     }
   };
 
@@ -1453,20 +1531,19 @@ template <>
     }
     static void read(imagefile* f, const void* p, std::vector<bool>* x) {
       auto     dloc = *reinterpret_cast<const size_t*>(p);
-      auto*  c    = reinterpret_cast<size_t*>(mapFileData(f, dloc, sizeof(size_t)));
-      auto* d    = reinterpret_cast<uint8_t*>(mapFileData(f, dloc+sizeof(size_t), *c));
-      uint8_t* dc   = d;
+      size_t n = 0;
+      auto* d = mapStoredSeq(f, dloc, sizeof(uint8_t), &n, "stored bit vector");
+      uint8_t* dc = d;
 
-      x->resize(*c);
-      for (size_t i = 0; i < *c; ++i) {
+      x->resize(n);
+      for (size_t i = 0; i < n; ++i) {
         bool val=false;
         store<bool>::read(f, dc, &val);
         (*x)[i] = val;
         dc += 1;
       }
 
-      unmapFileData(f, d, *c);
-      unmapFileData(f, c, sizeof(size_t));
+      unmapFileData(f, d, n);
     }
   };
 
@@ -2373,14 +2450,34 @@ template <typename T>
 
       // load the node data
       // each node looks like '()+((carray T n) * x@?)'
-      const auto* d = reinterpret_cast<const uint64_t*>(mapFileData(this->f, n, 3*sizeof(uint64_t)));
+      const auto* d = reinterpret_cast<const uint64_t*>(mapFileDataInFile(this->f, n, 3*sizeof(uint64_t), "series node"));
 
       // if we're in the left '()' case, our state is "null"
       // else our state can be set to load the 'carray T n' batch in this node
       if (d[0] != 0u) {
-        this->headLen     = reinterpret_cast<const uint64_t*>(mapFileData(this->f, d[1], bsz));
+        uint64_t batchRef = d[1];
+        uint64_t nextRef  = d[2];
+        unmapFileData(this->f, d, 3*sizeof(uint64_t));
+
+        this->headLen     = reinterpret_cast<const uint64_t*>(mapFileDataInFile(this->f, batchRef, bsz, "series batch"));
         this->head        = reinterpret_cast<const uint8_t*>(this->headLen) + sizeof(uint64_t);
-        this->nextNodeRef = d[2];
+        this->nextNodeRef = nextRef;
+
+        // the count stored with a batch says how much of it the writer has
+        // filled, and it is only ever compared against the read index, so a
+        // count larger than the batch read past the batch and on out of the
+        // file. A batch holds batchSize values and no more.
+        if (*this->headLen > this->batchSize) {
+          uint64_t claimed = *this->headLen;
+          unmapFileData(this->f, this->headLen, bsz);
+          this->headLen = nullptr;
+          this->head    = nullptr;
+          throw std::runtime_error(
+            "series batch claims " + hobbes::string::from(claimed) +
+            " values out of a batch of " + hobbes::string::from(this->batchSize)
+          );
+        }
+        return;
       } else {
         this->headLen     = nullptr;
         this->head        = nullptr;
@@ -2392,7 +2489,7 @@ template <typename T>
 
     // is a stored node the left '()' case of '()+((carray T n) * x@?)'?
     bool isNullNode(uint64_t n) {
-      const auto* d = reinterpret_cast<const uint64_t*>(mapFileData(this->f, n, 3*sizeof(uint64_t)));
+      const auto* d = reinterpret_cast<const uint64_t*>(mapFileDataInFile(this->f, n, 3*sizeof(uint64_t), "series node"));
       bool r = d[0] == 0;
       unmapFileData(this->f, d, 3*sizeof(uint64_t));
       return r;
@@ -2424,8 +2521,21 @@ template <typename T>
           // we can't advance in the current batch
           // so load the next batch if possible
           // then ensure readability in this successor batch
-          // (followed indefinitely for the unlikely edge case of a succession of empty batches)
+          // (followed for the edge case of a succession of empty batches)
+          //
+          // a node's successor is a stored offset like any other, so a node
+          // that points at itself -- or at any node already visited -- is a
+          // list with no end, and this walked it forever. A node occupies at
+          // least three words, so a file cannot hold more distinct nodes than
+          // that; past this many steps the links cannot all be to distinct
+          // nodes, whatever order they are in.
+          size_t steps = 0;
+          const size_t maxSteps = 1 + (this->f->file_size / (3*sizeof(uint64_t)));
+
           while (this->nextNodeRef && !isNullNode(this->nextNodeRef)) {
+            if (++steps > maxSteps) {
+              throw std::runtime_error("series node links form a cycle");
+            }
             loadReadState(this->nextNodeRef);
             if (canRead()) {
               return true;

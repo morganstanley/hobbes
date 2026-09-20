@@ -7,6 +7,7 @@
 #include <hobbes/cfregion.H>
 #include "test.H"
 
+#include <fstream>
 #include <thread>
 
 using namespace hobbes;
@@ -1399,5 +1400,122 @@ TEST(Storage, FRegionRejectsCyclicPageTable) {
     EXPECT_TRUE(threw);
 
     unlink(path.data());
+  }
+}
+
+static void copyFile(const std::string& from, const std::string& to) {
+  std::ifstream i(from.c_str(), std::ios::binary);
+  std::ofstream o(to.c_str(),   std::ios::binary | std::ios::trunc);
+  o << i.rdbuf();
+}
+
+template <typename T>
+  static size_t readSeriesToEnd(const std::string& fname, const std::string& sname) {
+    fregion::reader r(fname);
+    auto& s = r.series<T>(sname);
+    T x;
+    size_t n = 0;
+    while (s.next(&x)) { ++n; }
+    return n;
+  }
+
+// find the byte offset of the first occurrence of a 64-bit word in a file
+static size_t findWord(const std::string& fname, uint64_t w, size_t from = 0) {
+  std::ifstream f(fname.c_str(), std::ios::binary);
+  std::string d((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+  for (size_t o = from; o + sizeof(uint64_t) <= d.size(); o += sizeof(uint64_t)) {
+    uint64_t v = 0;
+    memcpy(&v, d.data() + o, sizeof(v));
+    if (v == w) { return o; }
+  }
+  throw std::runtime_error("no such word in " + fname);
+}
+
+static uint64_t readWord(const std::string& fname, size_t off) {
+  std::ifstream f(fname.c_str(), std::ios::binary);
+  f.seekg(off);
+  uint64_t w = 0;
+  f.read(reinterpret_cast<char*>(&w), sizeof(w));
+  return w;
+}
+
+static void pokeWord(const std::string& fname, size_t off, uint64_t w) {
+  std::fstream f(fname.c_str(), std::ios::binary | std::ios::in | std::ios::out);
+  f.seekp(off);
+  f.write(reinterpret_cast<const char*>(&w), sizeof(w));
+}
+
+TEST(Storage, CorruptStoredLengthsAreRejected) {
+  // a reader follows lengths and offsets read out of the file to decide what
+  // to read next, and mapFileData maps whatever it is asked for (in multiples
+  // of many pages), so an address past the end of the file usually sits in a
+  // mapping and faults only when touched. A corrupt or crafted image must be
+  // refused instead.
+  std::string fname = mkFName();
+  try {
+    {
+      fregion::writer w(fname);
+      auto& s = w.series<int>("s", 4);
+      for (int i = 0; i < 6; ++i) { s(100 + i); }
+      auto& ss = w.series<std::string>("ss", 2);
+      ss(std::string("hello"));
+    }
+
+    // as written, the series reads back in full
+    {
+      fregion::reader r(fname);
+      auto& s = r.series<int>("s");
+      int x = 0;
+      size_t n = 0;
+      while (s.next(&x)) { ++n; }
+      EXPECT_EQ(n, size_t(6));
+    }
+
+    // a batch whose stored count is larger than the batch itself: the count
+    // was only ever compared against the read index, so the reader ran off
+    // the end of the batch and then out of the file
+    std::string over = mkFName();
+    copyFile(fname, over);
+    pokeWord(over, findWord(over, 4), 5);
+    EXPECT_EXCEPTION(readSeriesToEnd<int>(over, "s"));
+    unlink(over.c_str());
+
+    // the same with a count that no file could hold
+    std::string huge = mkFName();
+    copyFile(fname, huge);
+    pokeWord(huge, findWord(huge, 4), uint64_t(1) << 32);
+    EXPECT_EXCEPTION(readSeriesToEnd<int>(huge, "s"));
+    unlink(huge.c_str());
+
+    // a stored string whose length runs past the end of the file: the length
+    // decided both the mapping and the copy out of it
+    std::string str = mkFName();
+    copyFile(fname, str);
+    pokeWord(str, findWord(str, 5), uint64_t(1) << 30);
+    EXPECT_EXCEPTION(readSeriesToEnd<std::string>(str, "ss"));
+    unlink(str.c_str());
+
+    // a node whose successor is itself: the walk from batch to batch followed
+    // those links with nothing to stop it, so the reader spun forever
+    //
+    // a node is three words -- a tag, the offset of its batch, and the offset
+    // of the next node -- so the nodes can be found from the first batch:
+    // the word holding that batch's offset is the middle word of node 1.
+    std::string cyc = mkFName();
+    copyFile(fname, cyc);
+    size_t batch1   = findWord(cyc, 4);                          // the count of the first full batch
+    size_t node1    = findWord(cyc, batch1) - sizeof(uint64_t);  // ... named by node 1
+    size_t node2    = readWord(cyc, node1 + 2*sizeof(uint64_t)); // ... whose successor is node 2
+    size_t batch2   = readWord(cyc, node2 + sizeof(uint64_t));
+
+    pokeWord(cyc, batch2, 0);      // node 2's batch is empty, so the walk moves on ...
+    pokeWord(cyc, node2 + 2*sizeof(uint64_t), node2); // ... to node 2, forever
+    EXPECT_EXCEPTION(readSeriesToEnd<int>(cyc, "s"));
+    unlink(cyc.c_str());
+
+    unlink(fname.c_str());
+  } catch (...) {
+    unlink(fname.c_str());
+    throw;
   }
 }
