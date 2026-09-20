@@ -4,6 +4,7 @@
 #include <fcntl.h>
 #include <hobbes/hobbes.H>
 #include <hobbes/ipc/prepl.H>
+#include <ctime>
 #include <hobbes/util/codec.H>
 #include <hobbes/util/os.H>
 #include <sstream>
@@ -130,11 +131,26 @@ void spawn(const std::string& cmd, proc* p, const FailToKillCallback& fn) {
       close(c2p[1]);
   
       execProcess(cmd);
+
+      // exec failed, so tell the parent and go away
+      //
+      // everything from here to _exit must be async-signal-safe, for the
+      // same reason a signal handler must be: fork() in a process with more
+      // than one thread gives a child holding every lock that was held by
+      // any other thread at the moment of the fork, and those locks are
+      // never released because their owners do not exist here. exit() runs
+      // static destructors and std::cout takes a lock, so either can block
+      // this child forever -- and while it is blocked it holds the write end
+      // of the pipe the parent is reading, so the parent's wait for EOF
+      // never ends either. A hobbes process with a running event loop (or
+      // any embedding application with a background thread) is enough for
+      // this, and it cost a CI run six hours before it was killed.
       int fail = 0;
-      auto rc = write(STDOUT_FILENO, &fail, sizeof(fail));
-      assert(rc > 0);
-      std::cout << "Terminating process after exec failure." << std::endl;
-      exit(0);
+      ssize_t rc = write(STDOUT_FILENO, &fail, sizeof(fail));
+      static const char msg[] = "Terminating process after exec failure.\n";
+      rc = write(STDERR_FILENO, msg, sizeof(msg) - 1);
+      static_cast<void>(rc); // nothing useful to do if even this fails
+      _exit(1);
     } else {
       // parent process
       close(p2c[0]); p2c[0] = 0;
@@ -157,17 +173,38 @@ void spawn(const std::string& cmd, proc* p, const FailToKillCallback& fn) {
         if (rc > 0 && success != 1) {
           std::ostringstream ss;
           ss << std::string(reinterpret_cast<const char*>(&success), sizeof(success));
-          while (true) {
+
+          // drain whatever the child has to say about its failure, but do not
+          // wait indefinitely for the end of it: EOF arrives only once every
+          // copy of the write end is closed, and a child that is wedged (or a
+          // grandchild that inherited the descriptor) holds one open for as
+          // long as it lives
+          const time_t drainUntil = ::time(nullptr) + 5;
+          while (::time(nullptr) < drainUntil) {
+            fd_set dfds;
+            FD_ZERO(&dfds);
+            FD_SET(c2p[0], &dfds);
+
+            struct timeval dtmout;
+            memset(&dtmout, 0, sizeof(dtmout));
+            dtmout.tv_sec = 1;
+
+            if (select(c2p[0] + 1, &dfds, nullptr, nullptr, &dtmout) <= 0) {
+              continue;
+            }
+
             char buf[4096];
             ssize_t rc = read(c2p[0], buf, sizeof(buf));
             if (rc <= 0) {
               break;
-            } else {
-              ss << std::string(buf, rc);
             }
+            ss << std::string(buf, rc);
           }
+          // reap this child specifically: waiting on -1 blocks on whatever
+          // child happens to be slowest, and can reap one that belongs to
+          // somebody else in the process
           int s = 0;
-          waitpid(-1, &s, 0);
+          waitpid(cpid, &s, 0);
           throw std::runtime_error("Unable to launch process: " + cmd + " (invalid init response), with output:\n" + ss.str());
         }
       } else {
