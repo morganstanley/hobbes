@@ -93,6 +93,9 @@ instance Array [a] a where
   elements xs i e = defElementsWith(xs, length(xs), \x i.x[i], i, e)
 
 fstrlen cs i = if (leq(i,salength(cs))) then i else if (ceq(saelem(cs,i),'\0')) then i else fstrlen(cs,ladd(i,1L))
+// names saelem, which Safe denies, but is itself bounded by salength(cs);
+// same situation as defElementsWith above, which references newArray
+{-# SAFE fstrlen #-}
 instance Array [:char|n:] char where
   size cs = fstrlen(cs,0L)
   element = saelem

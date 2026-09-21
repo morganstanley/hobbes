@@ -576,6 +576,30 @@ private:
                                  {"newPrim", {"newPrim", {}}},
                                  {"newPrimZ", {"newPrimZ", {}}},
                                  {"unsafeCast", {"unsafeCast", {}}},
+                                 // 'element' above is rewritten to elementM,
+                                 // which bounds the index (boot/amapping.hob:
+                                 // elementM x i = getElementByIndex(x, saelem,
+                                 // i, size(x))). saelem and saacopy are the
+                                 // raw accessors that rewrite is built out of:
+                                 // saelem emits a bare GEP+load at a
+                                 // caller-chosen index, and saacopy memCopy's
+                                 // a caller-chosen number of bytes into the
+                                 // fixed array, neither with any bound. Naming
+                                 // them directly walks around the checked
+                                 // wrapper, so they cannot pass Safe either.
+                                 // ('salength' is not here: it returns the
+                                 // static length and touches no memory.)
+                                 {"saelem", {"saelem", {}}},
+                                 {"saacopy", {"saacopy", {}}},
+                                 // and 'unsafeSetLength' writes a
+                                 // caller-chosen long into a variable-length
+                                 // array's length field (func.C, asetlen),
+                                 // which is the very bound elementM checks
+                                 // against for [a] (size = length). Leaving it
+                                 // reachable makes the rewrite of 'element'
+                                 // decoration too: set the length, then index
+                                 // within the length you just claimed.
+                                 {"unsafeSetLength", {"unsafeSetLength", {}}},
                                  // raw-pointer Client bridges (generated-code
                                  // only; both current dot-prefixed and legacy
                                  // plain names) must never pass Safe mode
