@@ -76,6 +76,26 @@ TEST(Prelude, Sort) {
 TEST(Prelude, SScan) {
   EXPTEST("unique([1..10]) == [1..10]");
   EXPTEST("unique([1L..1500000L]) == [1L..1500000L]");
+  EXPTEST("unique([3,1,2,3,1]) == [1,2,3]");
+
+  // a key that sorts before every group found so far pushes all of them down
+  // (ascending input only ever appends) -- this used to recurse once per group
+  EXPTEST("length(unique([1..200000] ++ [0])) == 200001L");
+  EXPTEST("length(countBy(id, [1..200000] ++ [0])) == 200001L");
+  EXPTEST("length(groupBy(id, [1..200000] ++ [0])) == 200001L");
+}
+
+TEST(Prelude, SScanJoins) {
+  EXPTEST("preJoinBy(id, [1,2,2,5], id, [2,3,5,5]) == [(1,[1],[]),(2,[2,2],[2]),(3,[],[3]),(5,[5],[5,5])]");
+  EXPTEST("preJoinBy(id, [7,8,9], id, [1,2]) == [(1,[],[1]),(2,[],[2]),(7,[7],[]),(8,[8],[]),(9,[9],[])]");
+  EXPTEST("preJoinBy(id, [1,2], id, [7,8,9]) == [(1,[1],[]),(2,[2],[]),(7,[],[7]),(8,[],[8]),(9,[],[9])]");
+  EXPTEST("length(preJoinBy(id, []::[int], id, []::[int])) == 0L");
+  EXPTEST("joinBy(.0, [(1,\"a\"),(2,\"b\")], .0, [(2,\"x\"),(3,\"y\")]) == [((2,\"b\"),(2,\"x\"))]");
+  EXPTEST("outerJoinBy(id, [1,2,2,5], -1, id, [2,3,5,5], -2) == [(1,1,-2),(2,2,2),(2,2,2),(3,-1,3),(5,5,5),(5,5,5)]");
+
+  // merging the two sides' groups used to recurse once per group
+  EXPTEST("length(joinBy(id, [1..300000], id, [1..300000])) == 300000L");
+  EXPTEST("length(preJoinBy(id, [1..300000], id, [300001..600000])) == 600000L");
 }
 
 TEST(Prelude, Int128) {

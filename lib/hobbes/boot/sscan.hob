@@ -8,7 +8,7 @@ pushDownFromTo xs i e =
   if (i >= e) then
     ()
   else do {
-    xs[e] <- xs[e-1];
+    xs[e] <- xs[e-1L];
     return pushDownFromTo(xs, i, e-1L)
   }
 {-# UNSAFE pushDownFromTo #-}
@@ -100,26 +100,43 @@ partitionC p xs =
 {-# SAFE partitionC #-}
 
 // join two sequences on some common key
-almapRange :: (a -> b, [a], long, long) -> ^x.(()+(b*x))
-almapRange f xs i e =
-  if (i == e) then nil()
-  else             cons(f(xs[i]), almapRange(f, xs, i+1, e))
-{-# UNSAFE almapRange #-}
-
 productWith :: ((a, b) -> c, [a], [b]) -> [c]
 productWith f xs ys = concat([[f(x,y) | y <- ys] | x <- xs])
 
-mergeGroups :: (Ord k k) => ([k*[a]], long, [k*[b]], long) -> ^x.(()+((k*[a]*[b])*x))
-mergeGroups gxs i gys j =
-  if      (i == length(gxs))    then almapRange(\(k, ys).(k, [], ys), gys, j, length(gys))
-  else if (j == length(gys))    then almapRange(\(k, xs).(k, xs, []), gxs, i, length(gxs))
-  else if (gxs[i].0 < gys[j].0) then cons((gxs[i].0, gxs[i].1, []),       mergeGroups(gxs, i+1, gys, j))
-  else if (gys[j].0 < gxs[i].0) then cons((gys[j].0, [], gys[j].1),       mergeGroups(gxs, i,   gys, j+1))
-  else                               cons((gxs[i].0, gxs[i].1, gys[j].1), mergeGroups(gxs, i+1, gys, j+1))
-{-# UNSAFE mergeGroups #-}
+// merge two sequences of groups ordered by key (the recursive step)
+mergeGroupsStep :: (Ord k k) => ([k*[a]], long, [k*[b]], long, [k*[a]*[b]], long) -> [k*[a]*[b]]
+mergeGroupsStep gxs i gys j r ri =
+  let
+    xend = (i == length(gxs));
+    yend = (j == length(gys))
+  in
+  if (xend and yend) then
+    do { unsafeSetLength(r, ri); return r }
+  else if xend then do {
+    r[ri] <- (gys[j].0, [], gys[j].1);
+    return mergeGroupsStep(gxs, i, gys, j+1L, r, ri+1L)
+  } else if yend then do {
+    r[ri] <- (gxs[i].0, gxs[i].1, []);
+    return mergeGroupsStep(gxs, i+1L, gys, j, r, ri+1L)
+  } else if (gxs[i].0 < gys[j].0) then do {
+    r[ri] <- (gxs[i].0, gxs[i].1, []);
+    return mergeGroupsStep(gxs, i+1L, gys, j, r, ri+1L)
+  } else if (gys[j].0 < gxs[i].0) then do {
+    r[ri] <- (gys[j].0, [], gys[j].1);
+    return mergeGroupsStep(gxs, i, gys, j+1L, r, ri+1L)
+  } else do {
+    r[ri] <- (gxs[i].0, gxs[i].1, gys[j].1);
+    return mergeGroupsStep(gxs, i+1L, gys, j+1L, r, ri+1L)
+  }
+{-# UNSAFE mergeGroupsStep #-}
 
 preJoinBy :: (Ord k k) => (a -> k, [a], b -> k, [b]) -> [k*[a]*[b]]
-preJoinBy xp xs yp ys = toArray(mergeGroups(groupBy(xp, xs), 0L, groupBy(yp, ys), 0L))
+preJoinBy xp xs yp ys =
+  let
+    gxs = groupBy(xp, xs);
+    gys = groupBy(yp, ys)
+  in
+    mergeGroupsStep(gxs, 0L, gys, 0L, newArray(length(gxs)+length(gys)), 0L)
 {-# SAFE preJoinBy #-}
 
 joinBy :: (Ord k k) => (a -> k, [a], b -> k, [b]) -> [a*b]
