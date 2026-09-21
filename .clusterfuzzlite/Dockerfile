@@ -24,8 +24,10 @@ ENV LLVM_SH_SHA256=03878e08f47b66cc95bc4b544b0db3c6d9ce8d60e6cf2492ae357984330a9
 # supported by asking apt.llvm.org for its repository index, and reports a
 # request that did not come back as an unsupported distribution -- so a single
 # dropped request fails the build with a message about the distribution rather
-# than about the network. The subshell leaves with the installer's success, or
-# fails the layer once three attempts have not come back.
+# than about the network. The wait between attempts doubles, because the site
+# has stayed away from a builder for longer than three quick attempts last. The
+# subshell leaves with the installer's success, or fails the layer once six
+# attempts over some minutes have not come back.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         cmake make python3 zip \
@@ -34,13 +36,17 @@ RUN apt-get update && \
     wget -q -O /tmp/llvm.sh \
       "https://raw.githubusercontent.com/opencollab/llvm-jenkins.debian.net/${LLVM_SH_COMMIT}/llvm.sh" && \
     echo "${LLVM_SH_SHA256}  /tmp/llvm.sh" | sha256sum -c - && \
-    ( for i in 1 2 3; do \
+    ( wait=15; \
+      for i in 1 2 3 4 5 6; do \
         bash /tmp/llvm.sh "$HOBBES_LLVM_VERSION" && exit 0; \
-        echo "llvm.sh failed (attempt $i), retrying"; \
-        sleep 15; \
+        [ "$i" = 6 ] && break; \
+        echo "llvm.sh failed (attempt $i), retrying in ${wait}s"; \
+        sleep "$wait"; \
+        wait=$((wait * 2)); \
       done; \
       exit 1 ) && \
-    apt-get install -y --no-install-recommends llvm-$HOBBES_LLVM_VERSION-dev && \
+    apt-get install -y --no-install-recommends -o Acquire::Retries=5 \
+        llvm-$HOBBES_LLVM_VERSION-dev && \
     rm -f /tmp/llvm.sh && \
     rm -rf /var/lib/apt/lists/*
 
