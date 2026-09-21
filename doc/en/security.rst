@@ -42,15 +42,15 @@ The constraints that currently do this are:
 * ``Connect "host:port" c`` opens a network (or Unix-domain) connection to
   learn the peer's type environment, and ``Invoke`` sends an expression over
   such a connection to be evaluated there. Both are refused unless the
-  embedding application allows that exact ``host:port`` with
-  ``cc::enableRemoteConnections`` and ``cc::enableRemoteInvocation``
-  respectively. The two are independent: being willing to connect to a peer
-  does not imply trusting it to run code.
+  embedding application allows them with ``cc::enableRemoteConnections`` and
+  ``cc::enableRemoteInvocation``, either for an exact set of ``host:port``
+  strings or for any target. The two are independent: being willing to
+  connect to a peer does not imply trusting it to run code.
 * ``LoadFile "path" f`` opens a structured data file to learn its type. For an
   *output* file — which creates and truncates ``path`` — this is refused
-  unless the embedding application allows that exact path with
-  ``cc::enableFileWrites``. Opening an input file to read its type is not
-  gated.
+  unless the embedding application allows it with ``cc::enableFileWrites``,
+  again either for an exact set of paths or for any path. Opening an input
+  file to read its type is not gated.
 * ``Ls "pattern" x`` expands a filesystem glob into the type;
 * ``Process "cmd" p`` starts a program, and is refused unless the embedding
   application allows that exact command with ``cc::enableProcessSpawning``.
@@ -246,10 +246,24 @@ Guidance for embedding applications
 * Don't rely on ``option Safe`` to contain code you don't trust.
 * Only call ``cc::enableProcessSpawning``, ``cc::enableRemoteConnections``,
   ``cc::enableRemoteInvocation`` or ``cc::enableFileWrites`` on a compiler
-  that never type-checks untrusted input: an entry on one of those allowlists
-  is spawned, connected to, invoked on, or truncated as soon as matching text
-  is type-checked. Keep each allowlist to the exact strings the application
-  needs.
+  that never type-checks untrusted input: an allowed command is spawned, and
+  an allowed target connected to, invoked on, or truncated, as soon as
+  matching text is type-checked. Prefer the allowlist form over the
+  allow-anything form where the application knows its targets.
+* This is what decides the default in ``hi``: a plain ``hi`` session or
+  script is source the user chose to run, so it enables connections,
+  invocation and file writes, the same way running a ``python`` or ``perl``
+  script is expected to reach the disk and the network. ``hi -p`` and
+  ``hi -w`` do not: that compiler type-checks expressions arriving from
+  whoever can reach the port, so those constraints stay refused there.
+
+  The two are all-or-nothing per process, because the startup scripts and
+  the served expressions share one compiler. A script that opens an output
+  file or a connection therefore cannot be loaded by a ``hi`` that also
+  serves ``-p`` or ``-w``; run the serving instance from a script that does
+  not need them, or embed Hobbes and allowlist the exact targets. (Note that
+  ``invoke`` additionally needs ``-o no-Safe`` in any ``hi``, gates aside:
+  the code it generates names ``unsafeCast``, which ``option Safe`` denies.)
 * Restrict write access to structured data files, and access to ``hog``'s
   local sockets, to the processes that are supposed to produce them.
 * Know the memory model before pointing analysis tooling at an embedding

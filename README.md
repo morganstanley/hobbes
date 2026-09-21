@@ -692,12 +692,10 @@ Just as lightweight storage definitions can be added by specializing `hobbes::st
 This networking/remote-evaluation method can be accessed purely from hobbes as well.  For example, with the previous `hi` server process still running, we can start a new `hi` process to talk to it like this:
 
 ```
-$ hi -s -o no-Safe --allow-connect localhost:8080 --allow-invoke localhost:8080
+$ hi -s
 > c = connection :: (Connect "localhost:8080" p) => p
 >
 ```
-
-Resolving `Connect` opens the connection, and resolving `Invoke` (below) runs code on the peer -- both while an expression is only being *type-checked*.  So each peer has to be named up front: `--allow-connect` permits the connection and `--allow-invoke` permits running code on it (they are separate because being willing to connect to a host is not the same as trusting it to run code).  `-o no-Safe` is needed for an unrelated reason: the code `invoke` generates names `unsafeCast`, which `option Safe` refuses to compile.  Don't combine any of these with `-p` or `-w` on the same process -- see [the security model](doc/en/security.rst).
 
 Now we have a connection made _at compile-time_.  We can determine the (current) static structure of this connection with the `printConnection` function, which currently shows this:
 

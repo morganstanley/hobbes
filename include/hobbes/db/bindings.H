@@ -19,6 +19,8 @@ void initStorageFileDefs(FieldVerifier*, cc&);
 // not evaluation -- disabled by default. Call this to allow the exact
 // paths in allowedPaths to be opened for writing.
 void enableFileWrites(cc&, const std::set<std::string>& allowedPaths);
+// ... or any path at all, for a compiler that only ever sees trusted source
+void enableFileWrites(cc&);
 
 }
 

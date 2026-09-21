@@ -1005,6 +1005,7 @@ public:
   };
   using LoadedFiles = std::map<std::string, LoadedFile>;
   mutable LoadedFiles loadedFiles;
+  bool                  anyWritePath = false;
   std::set<std::string> allowedWritePaths;
 
   // Resolving a (LoadFile "path" t) constraint for an outputFile-shaped t
@@ -1015,25 +1016,34 @@ public:
   // allowlist of paths (checked against the constraint's literal path
   // string, before expandPath() resolves it).
   void enableFileWrites(const std::set<std::string>& allowedPaths) {
+    this->anyWritePath      = false;
     this->allowedWritePaths = allowedPaths;
   }
+  void enableFileWrites() {
+    this->anyWritePath = true;
+    this->allowedWritePaths.clear();
+  }
   bool fileWriteAllowed(const std::string& path) const {
-    return this->allowedWritePaths.count(path) > 0;
+    return this->anyWritePath || this->allowedWritePaths.count(path) > 0;
   }
 
   const LoadedFile& loadedFile(bool writeable, const std::string& path) const {
-    std::string k = (writeable ? "w:" : "r:") + path;
-    auto lf = this->loadedFiles.find(k);
-    if (lf != this->loadedFiles.end()) {
-      return lf->second;
-    }
-
+    // ahead of the cache lookup, so that narrowing the allowlist takes effect
+    // for a path this cc has already opened rather than leaving it writable
+    // for the life of the cc (satisfied()/satisfiable() only consult the
+    // allowlist, so a cached entry would otherwise refine but not satisfy)
     if (writeable && !fileWriteAllowed(path)) {
       throw std::runtime_error(
         "LoadFile constraint rejected: refusing to open '" + path + "' for writing "
         "during type-constraint resolution (file writes are disabled by default; "
-        "the embedding application must call cc::enableFileWrites with an explicit "
-        "path allowlist to permit specific targets)");
+        "the embedding application must call cc::enableFileWrites to permit this "
+        "path -- note that hi does not, for the compiler behind -p or -w)");
+    }
+
+    std::string k = (writeable ? "w:" : "r:") + path;
+    auto lf = this->loadedFiles.find(k);
+    if (lf != this->loadedFiles.end()) {
+      return lf->second;
     }
 
     LoadedFile& r = this->loadedFiles[k];
@@ -1111,7 +1121,16 @@ public:
     return false;
   }
 
-  void explain(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*, annmsgs*) override {
+  void explain(const TEnvPtr&, const ConstraintPtr& cst, const ExprPtr& e, Definitions*, annmsgs* msgs) override {
+    MonoTypePtr fpath, ftype;
+    if (decLF(cst, &fpath, &ftype)) {
+      if (const TString* fp = is<TString>(fpath)) {
+        UTFileConfig ufcfg;
+        if (unpackFileType(ftype, &ufcfg) && ufcfg.first && !fileWriteAllowed(fp->value())) {
+          msgs->push_back(annmsg("opening '" + fp->value() + "' for writing is not allowed here (see cc::enableFileWrites)", e->la()));
+        }
+      }
+    }
   }
 
   struct insertLoadedFileF : public switchExprTyFn {
@@ -1253,13 +1272,22 @@ void initStorageFileDefs(FieldVerifier* fv, cc& c) {
   initCStorageFileDefs(fv, c);
 }
 
-void enableFileWrites(cc& c, const std::set<std::string>& allowedPaths) {
-  hlock _;
+static std::shared_ptr<LoadFileP> loadFileUnqualifier(cc& c) {
   auto lf = std::dynamic_pointer_cast<LoadFileP>(c.typeEnv()->lookupUnqualifier("LoadFile"));
   if (!lf) {
-    throw std::runtime_error("cannot allow file writes: 'LoadFile' is not bound to its built-in unqualifier");
+    throw std::runtime_error("cannot allow file writes: 'LoadFile' is bound to a replacement unqualifier, not the built-in one");
   }
-  lf->enableFileWrites(allowedPaths);
+  return lf;
+}
+
+void enableFileWrites(cc& c, const std::set<std::string>& allowedPaths) {
+  hlock _;
+  loadFileUnqualifier(c)->enableFileWrites(allowedPaths);
+}
+
+void enableFileWrites(cc& c) {
+  hlock _;
+  loadFileUnqualifier(c)->enableFileWrites();
 }
 
 }

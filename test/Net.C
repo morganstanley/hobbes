@@ -974,12 +974,9 @@ TEST(Net, aPartialHandshakeDoesNotStallTheServer) {
 // are independent: allowing a connection does not imply trusting that peer
 // to run code.
 static std::string testServerHostPort() {
-  // deliberately "localhost", not "127.0.0.1": on this branch's base,
-  // connectSocket's numeric-IP path (net.C) misuses gethostbyaddr on the
-  // literal address string and segfaults on the NULL it gets back -- a
-  // pre-existing, unrelated bug that just happened to have no prior test
-  // exercising a numeric-IP Connect target, fixed separately in #597.
-  // "localhost" takes the (correct) name-resolution path either way.
+  // the allowlist matches the literal string in the constraint, so the
+  // spelling here has to be the one the tests write; "localhost" is what
+  // the rest of this file uses
   return "localhost:" + hobbes::str::from(testServerPort());
 }
 
@@ -1032,16 +1029,15 @@ TEST(Net, invokeConstraintDeniedByDefaultEvenWhenConnectingIsAllowed) {
 // left running for over six minutes -- and that one is not diagnosed. Both
 // are properties of driving this from inside the test process, not of the
 // gate: the denial paths above cover the gate, and the allowed path is
-// reproducible directly against the binaries:
+// reproducible directly against the binaries, where hi enables all three
+// gates for a local session:
 //
 //   $ (sleep 600 | ./hi -s -p 9601) &          # a peer; stdin must be a pipe,
 //                                              # hi registers it with epoll
 //   $ ./hi -s -x -o no-Safe \
-//       --allow-connect localhost:9601 --allow-invoke localhost:9601 \
 //       -e 'let c = (connection :: (Connect "localhost:9601" p) => p) in
 //           print(receive(invoke(c, `(\x.x+1)`, 41)))'
 //   42
 //
-// Dropping either --allow- flag reports the matching "constraint rejected"
-// error instead, and -o no-Safe is required independently of these gates
-// because invoke's generated code names unsafeCast, which Safe denies.
+// -o no-Safe is required independently of these gates, because invoke's
+// generated code names unsafeCast, which Safe denies.

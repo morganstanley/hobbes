@@ -330,6 +330,8 @@ public:
   // through this cc. Matching is on the literal string written in the
   // constraint, and each call replaces any previous allowlist.
   void enableRemoteConnections(const std::set<std::string> &allowedHostPorts);
+  // ... or every target, for a cc that only ever sees trusted source
+  void enableRemoteConnections();
 
   // Resolving an (Invoke ...) type-class constraint ships code to a remote
   // peer and executes it there as a side effect of type-checking, not
@@ -340,6 +342,8 @@ public:
   // Client::remoteHost(), i.e. the literal string the connection was made
   // with) to be invoked on. Each call replaces any previous allowlist.
   void enableRemoteInvocation(const std::set<std::string> &allowedHostPorts);
+  // ... or every target, for a cc that only ever sees trusted source
+  void enableRemoteInvocation();
 
   // Resolving a (LoadFile "path" t) constraint for an outputFile-shaped t
   // creates/truncates a file at "path" as a side effect of type-checking,
@@ -349,10 +353,13 @@ public:
   // type-check trusted source through this cc. Matching is on the literal
   // path written in the constraint, *before* str::expandPath -- allowlist
   // "$HOME/x.db" to permit source that spells it that way, not the
-  // resolved path. Each call replaces any previous allowlist, but a path
-  // already opened through this cc stays open: removing it from the
-  // allowlist does not close or re-gate the file it already created.
+  // resolved path. Each call replaces any previous allowlist, and that
+  // applies to paths this cc has already opened: a later call that drops a
+  // path makes further constraint resolution for it fail, though it does
+  // not close the file already created.
   void enableFileWrites(const std::set<std::string> &allowedPaths);
+  // ... or every target, for a cc that only ever sees trusted source
+  void enableFileWrites();
 
   // compile/optimization options
   void buildInterpretedMatches(bool f);

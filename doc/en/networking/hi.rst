@@ -24,20 +24,16 @@ We'll call this the *server*, and next we'll connect to it over the network.
 Opening a connection
 ====================
 
-From another instance of *hi*, create a connection to the *server* using the ``Connect`` unqualifier. Both peers have to be named on the command line, and ``option Safe`` has to be off (see the notes below):
+From another instance of *hi*, create a connection to the *server* using the ``Connect`` unqualifier:
 
 ::
-
-  $ hi -s -o no-Safe --allow-connect myhost:8080 --allow-invoke myhost:8080
+  
+  $ hi -s -o no-Safe
   > c = connection :: (Connect "myhost:8080" p) => p
 
-.. note:: **Why the extra flags**
+.. note:: **Why -o no-Safe**
 
-  Resolving ``Connect`` opens the connection, and resolving ``Invoke`` (below) runs code on the peer — both while an expression is only being *type-checked*, before there is any decision to evaluate it. So neither is allowed until you name the peer: ``--allow-connect`` permits the connection, and ``--allow-invoke`` permits running code on it. They are deliberately separate, because being willing to connect to a host is not the same as trusting it to run code. Without them you get a ``Connect constraint rejected`` / ``Invoke constraint rejected`` error. An application embedding Hobbes does the same thing with ``cc::enableRemoteConnections`` and ``cc::enableRemoteInvocation``; see :ref:`the security model <hobbes_security>`.
-
-  ``-o no-Safe`` is needed for a separate, older reason: the code ``invoke`` generates names ``unsafeCast``, which ``option Safe`` (on by default) refuses to compile.
-
-  Don't combine any of these three flags with ``-p`` or ``-w`` on the same process. The REPL and web servers share this compiler, so anyone who can reach those ports can make *this* process connect to an allowlisted peer — and, with ``--allow-invoke``, run code on it — just by submitting text to be type-checked.
+  The code ``invoke`` generates names ``unsafeCast``, which ``option Safe`` (on by default) refuses to compile, so the remote calls below need it. Don't combine ``-o no-Safe`` with ``-p`` or ``-w`` on the same process.
 
 .. note:: **Unqualifiers**
 

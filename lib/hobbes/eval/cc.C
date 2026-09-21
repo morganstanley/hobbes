@@ -710,14 +710,29 @@ void cc::enableRemoteConnections(const std::set<std::string>& allowedHostPorts) 
   hobbes::enableRemoteConnections(*this, allowedHostPorts);
 }
 
+void cc::enableRemoteConnections() {
+  hlock _;
+  hobbes::enableRemoteConnections(*this);
+}
+
 void cc::enableRemoteInvocation(const std::set<std::string>& allowedHostPorts) {
   hlock _;
   hobbes::enableRemoteInvocation(*this, allowedHostPorts);
 }
 
+void cc::enableRemoteInvocation() {
+  hlock _;
+  hobbes::enableRemoteInvocation(*this);
+}
+
 void cc::enableFileWrites(const std::set<std::string>& allowedPaths) {
   hlock _;
   hobbes::enableFileWrites(*this, allowedPaths);
+}
+
+void cc::enableFileWrites() {
+  hlock _;
+  hobbes::enableFileWrites(*this);
 }
 
 

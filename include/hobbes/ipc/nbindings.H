@@ -15,6 +15,8 @@ void initNetworkDefs(cc&);
 // evaluation -- disabled by default. Call this to allow the exact
 // "host:port" strings in allowedHostPorts to be connected to.
 void enableRemoteConnections(cc&, const std::set<std::string>& allowedHostPorts);
+// ... or any target at all, for a compiler that only ever sees trusted source
+void enableRemoteConnections(cc&);
 
 // Resolving an (Invoke ...) constraint ships code to a remote peer and
 // executes it there as a side effect of type-constraint resolution, not
@@ -23,6 +25,7 @@ void enableRemoteConnections(cc&, const std::set<std::string>& allowedHostPorts)
 // run code). Call this to allow the exact "host:port" strings in
 // allowedHostPorts (matching Client::remoteHost()) to be invoked on.
 void enableRemoteInvocation(cc&, const std::set<std::string>& allowedHostPorts);
+void enableRemoteInvocation(cc&);
 
 }
 
