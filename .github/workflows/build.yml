@@ -196,15 +196,21 @@ jobs:
           # the installer asks apt.llvm.org for its repository index to decide
           # whether this distribution is supported, and reports a request that
           # did not come back as an unsupported distribution, so retry before
-          # believing it
+          # believing it -- and keep retrying for some minutes, with the wait
+          # doubling, because the site has stayed away from a runner for longer
+          # than three quick attempts last
           ok=
-          for i in 1 2 3; do
+          wait=15
+          for i in 1 2 3 4 5 6; do
             if sudo bash /tmp/llvm.sh 22; then ok=1; break; fi
-            echo "llvm.sh failed (attempt $i), retrying"
-            sleep 15
+            [ "$i" = 6 ] && break
+            echo "llvm.sh failed (attempt $i), retrying in ${wait}s"
+            sleep "$wait"
+            wait=$((wait * 2))
           done
           [ -n "$ok" ]
           sudo apt-get install -y --no-install-recommends \
+            -o Acquire::Retries=5 \
             clang-22 llvm-22-dev libclang-22-dev
       - name: Configure
         run: |
