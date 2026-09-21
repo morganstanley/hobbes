@@ -27,4 +27,6 @@ cmake_install.cmake
 /libhobbes.a
 /macos_setup.sh
 /mock-proc
+# and the headers it generates there (see embed_boot_scripts in CMakeLists.txt)
+/generated/
 test_report.json

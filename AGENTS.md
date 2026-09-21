@@ -80,6 +80,8 @@ doc/                  Documentation
 
 **Machine Code (`mc/`)**: `encode.H` is an x86-64 instruction encoder. `regalloc.H` does register allocation (depends on `encode.H`). `liveness.H` is architecture-independent liveness analysis. The entire MC encoding/regalloc path is x86-64 only.
 
+**Boot scripts (`lib/hobbes/boot/*.hob`, `bin/hog/boot/*.hob`)**: The prelude, written in Hobbes and compiled by every `hobbes::cc` when it is constructed. The build embeds the scripts in a generated header (`cmake/EmbedBootScripts.cmake`, run from `CMakeLists.txt`), so editing a `.hob` file and rebuilding is all it takes; there is no checked-in copy to regenerate. Scripts are compiled in file name order.
+
 **Networking (`ipc/`)**: RPC protocol via `prepl.C` and `net.C`. Supports remote expression evaluation.
 
 **Parsing (`parse/`, `read/`)**: LALR(1) parser generator. `hexpr.parse.C` and `hexpr.lex.C` define the Hobbes expression grammar.

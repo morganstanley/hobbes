@@ -72,6 +72,8 @@ add_fuzzer(fuzz-hog-session
   fuzz_hog_session.C
   ${CMAKE_SOURCE_DIR}/bin/hog/hstore_bridge.C
   ${CMAKE_SOURCE_DIR}/bin/hog/boot/gen/boot.C)
+# boot.C includes a header the build generates (see embed_boot_scripts)
+add_dependencies(fuzz-hog-session bootdata)
 
 # Replay each harness's checked-in corpus as part of `ctest`.
 #

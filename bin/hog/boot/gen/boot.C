@@ -4,10 +4,12 @@
 
 namespace hog {
 
-#include "bootdata.H"
+#include <hog/boot/gen/bootdata.H>
 
 void compileBootCode(hobbes::cc& ctx) {
-  hobbes::compile(&ctx, ctx.readModule(std::string(reinterpret_cast<const char*>(_bootdata), _bootdata_len)));
+  for (size_t i = 0; module_defs[i] != nullptr; ++i) {
+    hobbes::compile(&ctx, ctx.readModule(std::string(reinterpret_cast<const char*>(module_defs[i]), module_lens[i])));
+  }
 }
 
 }
