@@ -806,3 +806,27 @@ TEST(TypeInf, WellFoundedRecursiveInstancesStillResolve) {
   }
   EXPECT_EQ(lc.compileFn<int()>("peel(" + nested + ")")(), 7);
 }
+
+// The binary type descriptions a net REPL peer sends are decoded before the
+// peer is trusted (Server::prepare reads them straight off the wire), so a
+// length that cannot describe a value in memory has to be refused where it
+// enters rather than left for whichever consumer computes a size from it
+// first.
+TEST(TypeInf, ADecodedFixedArrayLengthCannotBeNegative) {
+  hobbes::bytes enc;
+  hobbes::encode(hobbes::FixedArray::make(hobbes::primty("byte"), hobbes::tlong(-1)), &enc);
+  EXPECT_EXCEPTION(hobbes::decode(enc));
+
+  // a wildly large one is not refused here -- it may name a type that is
+  // never laid out -- but it cannot be turned into a size
+  hobbes::bytes big;
+  hobbes::encode(hobbes::FixedArray::make(hobbes::primty("long"), hobbes::tlong(1L << 40)), &big);
+  hobbes::MonoTypePtr bigty = hobbes::decode(big);
+  EXPECT_EXCEPTION(hobbes::sizeOf(bigty));
+
+  // and an ordinary one still round-trips
+  hobbes::bytes ok;
+  hobbes::MonoTypePtr t = hobbes::FixedArray::make(hobbes::primty("byte"), hobbes::tlong(4));
+  hobbes::encode(t, &ok);
+  EXPECT_TRUE(*hobbes::decode(ok) == *t);
+}
