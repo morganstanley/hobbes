@@ -5,11 +5,11 @@
 // push values down in an array
 pushDownFromTo :: ([a], long, long) -> ()
 pushDownFromTo xs i e =
-  if (i == e) then
+  if (i >= e) then
     ()
   else do {
-    pushDownFromTo(xs, i+1, e);
-    xs[i+1] <- xs[i];
+    xs[e] <- xs[e-1];
+    return pushDownFromTo(xs, i, e-1L)
   }
 {-# UNSAFE pushDownFromTo #-}
 
