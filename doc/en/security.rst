@@ -51,7 +51,10 @@ The constraints that currently do this are:
   unless the embedding application allows it with ``cc::enableFileWrites``,
   again either for an exact set of paths or for any path. Opening an input
   file to read its type is not gated.
-* ``Ls "pattern" x`` expands a filesystem glob into the type;
+* ``Ls "pattern" x`` expands a filesystem glob into the type, so the names
+  it matches can be read back out of a type-check. This is refused unless
+  the embedding application allows it with ``cc::enableFilesystemGlobs``,
+  for an exact set of patterns or for any pattern.
 * ``Process "cmd" p`` starts a program, and is refused unless the embedding
   application allows that exact command with ``cc::enableProcessSpawning``.
 
@@ -61,8 +64,8 @@ below — is held to the "safe on arbitrary bytes" standard. Constraint
 resolution that performs I/O is a design property of these classes, not a
 defect; the opt-in gates above narrow the ones that reach outside the process
 to write, connect, or execute, but nothing turns type-checking into a safe way
-to inspect source you do not trust. Narrowing the rest (``Ls``, and reading an
-input file) further is welcome as a hardening change through the normal issue
+to inspect source you do not trust. Narrowing the rest (reading an input
+file) further is welcome as a hardening change through the normal issue
 tracker.
 
 Reading source text must be safe
@@ -216,8 +219,8 @@ Summary table
    * - Hobbes source, compiled and evaluated
      - Trusted — equivalent to native code
    * - Hobbes source, type-checked only
-     - Trusted — constraint resolution reads files and globs the filesystem;
-       spawning, connecting, remote invocation and file creation are opt-in
+     - Trusted — constraint resolution reads files; spawning, connecting,
+       remote invocation, file creation and filesystem globbing are opt-in
    * - Hobbes source, lexed/parsed only
      - Untrusted — the parser must be safe and bounded
    * - Expressions under ``option Safe``
@@ -260,15 +263,18 @@ Guidance for embedding applications
   cross anything else.
 * Don't rely on ``option Safe`` to contain code you don't trust.
 * Only call ``cc::enableProcessSpawning``, ``cc::enableRemoteConnections``,
-  ``cc::enableRemoteInvocation`` or ``cc::enableFileWrites`` on a compiler
-  that never type-checks untrusted input: an allowed command is spawned, and
-  an allowed target connected to, invoked on, or truncated, as soon as
-  matching text is type-checked. Prefer the allowlist form over the
+  ``cc::enableRemoteInvocation``, ``cc::enableFileWrites`` or
+  ``cc::enableFilesystemGlobs`` on a compiler
+  that never type-checks untrusted input: an allowed command is spawned, an
+  allowed target connected to, invoked on or truncated, and an allowed glob
+  expanded into a type the source can read back, as soon as matching text is
+  type-checked. Prefer the allowlist form over the
   allow-anything form where the application knows its targets.
 * This is what decides the default in ``hi``: a plain ``hi`` session or
   script is source the user chose to run, so it enables connections,
   invocation and file writes, the same way running a ``python`` or ``perl``
-  script is expected to reach the disk and the network. ``hi -p`` and
+  script is expected to reach the disk and the network (filesystem globs
+  included). ``hi -p`` and
   ``hi -w`` do not: that compiler type-checks expressions arriving from
   whoever can reach the port, so those constraints stay refused there.
 

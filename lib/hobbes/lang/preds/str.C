@@ -1,7 +1,10 @@
 
 #include <hobbes/lang/preds/str.H>
 #include <hobbes/lang/preds/class.H>
+#include <hobbes/eval/cc.H>
 #include <hobbes/util/str.H>
+#include <memory>
+#include <set>
 
 namespace hobbes {
 
@@ -155,9 +158,37 @@ class LsP : public Unqualifier {
 public:
   static std::string constraintName() { return "Ls"; }
 
+  // Resolving an (Ls "pattern" x) constraint globs the filesystem and puts
+  // the matching names *into the type*, as a side effect of type-constraint
+  // resolution rather than evaluation. Type-checking untrusted text is
+  // enough to read them back: `(\x.x) :: (Ls "/etc/pa*" ps) => (ps -> ps)`
+  // reports the matches in the error it fails with, so a net REPL
+  // prepare(), a web GET /?<expr> or a ':t' can enumerate the filesystem of
+  // the host running the compiler without evaluating anything. Disabled
+  // unless the embedding application opts in, either for an exact set of
+  // patterns or for any pattern.
+  void enableGlobbing(const std::set<std::string>& allowedPatterns) {
+    this->anyPattern      = false;
+    this->allowedPatterns = allowedPatterns;
+  }
+  void enableGlobbing() {
+    this->anyPattern = true;
+    this->allowedPatterns.clear();
+  }
+  bool globbingAllowed(const std::string& pattern) const {
+    return this->anyPattern || this->allowedPatterns.count(pattern) > 0;
+  }
+
   bool refine(const TEnvPtr&, const ConstraintPtr& cst, MonoTypeUnifier* u, Definitions*) override {
     if (cst->arguments().size() == 2) {
       if (const TString* dir = is<TString>(cst->arguments()[0])) {
+        if (!globbingAllowed(dir->value())) {
+          throw std::runtime_error(
+            "Ls constraint rejected: refusing to expand the filesystem glob '" + dir->value() +
+            "' during type-constraint resolution (filesystem globbing is disabled by default; "
+            "the embedding application must call cc::enableFilesystemGlobs to permit this "
+            "pattern -- note that hi does not, for the compiler behind -p or -w)");
+        }
         size_t c = u->size();
         mgu(cst->arguments()[1], tstrings(str::paths(dir->value())), u);
         return c != u->size();
@@ -169,6 +200,11 @@ public:
   bool satisfied(const TEnvPtr&, const ConstraintPtr& cst, Definitions*) const override {
     if (cst->arguments().size() == 2) {
       if (const TString* dir = is<TString>(cst->arguments()[0])) {
+        // prune rather than throw out of a satisfaction probe, the way
+        // ProcessP does -- only refine() reports the rejection
+        if (!globbingAllowed(dir->value())) {
+          return false;
+        }
         return *cst->arguments()[1] == *tstrings(str::paths(dir->value()));
       }
     }
@@ -179,7 +215,14 @@ public:
     return c->arguments().size() == 2 && ((is<TVar>(c->arguments()[0]) != nullptr) || (is<TVar>(c->arguments()[1]) != nullptr) || satisfied(tenv, c, ds));
   }
 
-  void explain(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*, annmsgs*) override {
+  void explain(const TEnvPtr&, const ConstraintPtr& cst, const ExprPtr& e, Definitions*, annmsgs* msgs) override {
+    if (cst->arguments().size() == 2) {
+      if (const TString* dir = is<TString>(cst->arguments()[0])) {
+        if (!globbingAllowed(dir->value())) {
+          msgs->push_back(annmsg("expanding the filesystem glob '" + dir->value() + "' is not allowed here (see cc::enableFilesystemGlobs)", e->la()));
+        }
+      }
+    }
   }
 
   struct StripCst : public switchExprTyFn {
@@ -209,6 +252,9 @@ public:
   FunDeps dependencies(const ConstraintPtr&) const override {
     return list(FunDep(list(0), 1));
   }
+private:
+  bool                  anyPattern = false;
+  std::set<std::string> allowedPatterns;
 };
 
 
@@ -216,6 +262,24 @@ public:
 void initStrPredicates(const TEnvPtr& tenv) {
   tenv->bind(SplitP::constraintName(), UnqualifierPtr(new SplitP()));
   tenv->bind(LsP::constraintName(),    UnqualifierPtr(new LsP()));
+}
+
+static std::shared_ptr<LsP> lsUnqualifier(const TEnvPtr& tenv) {
+  auto lp = std::dynamic_pointer_cast<LsP>(tenv->lookupUnqualifier(LsP::constraintName()));
+  if (!lp) {
+    throw std::runtime_error("cannot allow filesystem globs: '" + LsP::constraintName() + "' is bound to a replacement unqualifier, not the built-in one");
+  }
+  return lp;
+}
+
+void enableFilesystemGlobs(const TEnvPtr& tenv, const std::set<std::string>& allowedPatterns) {
+  hlock _;
+  lsUnqualifier(tenv)->enableGlobbing(allowedPatterns);
+}
+
+void enableFilesystemGlobs(const TEnvPtr& tenv) {
+  hlock _;
+  lsUnqualifier(tenv)->enableGlobbing();
 }
 
 }
