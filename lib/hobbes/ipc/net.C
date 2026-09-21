@@ -5,6 +5,8 @@
 #include <hobbes/util/codec.H>
 #include <hobbes/util/str.H>
 
+#include <atomic>
+#include <chrono>
 #include <map>
 #include <mutex>
 #include <sstream>
@@ -573,6 +575,100 @@ Client::~Client() { close(this->c); }
 
 const std::string &Client::remoteHost() const { return this->hostport; }
 
+// Asking a peer for the type of an expression happens while the constraint
+// is being resolved, which is part of compiling it -- so the thread waiting
+// on the answer is holding the process-wide compiler lock (hlock, cc.C) for
+// as long as it waits. Anything that keeps the peer from answering therefore
+// stops every thread in this process from compiling, permanently.
+//
+// The sharpest case is a peer served by this same process: answering means
+// compiling the expression that was sent (CCServer::prepare below), which
+// needs the lock this thread is holding, so the reply can never come. That
+// used to wedge the process with no error and no way out. A peer that is
+// gone, wedged or firewalled does the same thing.
+//
+// So bound the exchange. This covers only the compile-time query: reads made
+// while evaluating a remote call are left alone, since a remote call may
+// legitimately take as long as it likes.
+//
+// The bound is applied to each send and receive, and the total is checked
+// once the exchange ends. It is not a hard deadline on the exchange as a
+// whole: a peer that keeps dribbling bytes inside one message restarts the
+// per-operation timer, and only trips the total on the next operation.
+static std::atomic<long> remoteTypeQueryTimeoutMS{30000};
+
+void setRemoteTypeQueryTimeoutMS(long ms) { remoteTypeQueryTimeoutMS.store(ms); }
+long getRemoteTypeQueryTimeoutMS() { return remoteTypeQueryTimeoutMS.load(); }
+
+namespace {
+
+// bound each send and receive on a socket for as long as this is in scope
+struct ScopedIOTimeout {
+  int     fd;
+  timeval prevRcv{};
+  timeval prevSnd{};
+  bool    applied = false;
+
+  explicit ScopedIOTimeout(int fd) : fd(fd) {
+    long ms = remoteTypeQueryTimeoutMS.load();
+    if (ms <= 0) {
+      return; // disabled: wait forever, as it used to
+    }
+
+    // if the old value cannot be read, assume there was none rather than
+    // leaving the wait unbounded (which is the thing being fixed)
+    socklen_t plen = sizeof(this->prevRcv);
+    if (getsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &this->prevRcv, &plen) != 0) {
+      this->prevRcv = timeval{};
+    }
+    plen = sizeof(this->prevSnd);
+    if (getsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &this->prevSnd, &plen) != 0) {
+      this->prevSnd = timeval{};
+    }
+
+    timeval tv{};
+    tv.tv_sec  = static_cast<time_t>(ms / 1000);
+    tv.tv_usec = static_cast<suseconds_t>((ms % 1000) * 1000);
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+    this->applied = true;
+  }
+
+  ~ScopedIOTimeout() {
+    if (this->applied) {
+      setsockopt(this->fd, SOL_SOCKET, SO_RCVTIMEO, &this->prevRcv, sizeof(this->prevRcv));
+      setsockopt(this->fd, SOL_SOCKET, SO_SNDTIMEO, &this->prevSnd, sizeof(this->prevSnd));
+    }
+  }
+
+  ScopedIOTimeout(const ScopedIOTimeout&) = delete;
+  ScopedIOTimeout& operator=(const ScopedIOTimeout&) = delete;
+};
+
+bool timedOut(int e) { return e == EAGAIN || e == EWOULDBLOCK; }
+
+}
+
+void Client::retire(const std::string& why) {
+  this->usable      = false;
+  this->unusableWhy = why;
+  // Deliberately no shutdown()/close() here. Refusing to use the connection
+  // again is what keeps the abandoned reply from being read as the answer to
+  // the next question, and that is enough. Tearing the socket down would
+  // make the peer's write fail with EPIPE, and the library does not ignore
+  // SIGPIPE (only hi's main does, main.C), so it could take an embedder --
+  // or, when the peer is served by this same process, this one -- down with
+  // it. The descriptor is released when the Client is destroyed.
+}
+
+void Client::requireUsable() const {
+  if (!this->usable) {
+    throw std::runtime_error(
+      "This connection to '" + this->hostport + "' was retired and cannot be used again: " +
+      this->unusableWhy);
+  }
+}
+
 exprid Client::remoteExpr(const ExprPtr &expr, const MonoTypePtr &inty) {
   // have we already exchanged this exprty?
   ExprTy exprty(expr.get(), inty.get());
@@ -580,6 +676,8 @@ exprid Client::remoteExpr(const ExprPtr &expr, const MonoTypePtr &inty) {
   if (etid != this->exprTyToID.end()) {
     return etid->second;
   }
+
+  requireUsable();
 
   // first we send the ID, expression, and the input type
   exprid rid = ++this->eid;
@@ -590,17 +688,56 @@ exprid Client::remoteExpr(const ExprPtr &expr, const MonoTypePtr &inty) {
   RawData intyd;
   encode(inty, &intyd);
 
-  fdwrite(this->c, uint8_t(1));
-  fdwrite(this->c, rid);
-  fdwrite(this->c, exprd);
-  fdwrite(this->c, intyd);
+  ScopedIOTimeout   _io(this->c);
+  const auto        started = std::chrono::steady_clock::now();
+  const long        budgetMS = remoteTypeQueryTimeoutMS.load();
+
+  auto elapsedMS = [&]() -> long {
+    return static_cast<long>(std::chrono::duration_cast<std::chrono::milliseconds>(
+             std::chrono::steady_clock::now() - started).count());
+  };
+
+  // any exchange that does not run to completion leaves this socket with an
+  // unread reply on it, so the connection cannot be used again
+  auto failed = [&](const char* what, const std::exception& ex) -> std::runtime_error {
+    const bool late = timedOut(errno) || (budgetMS > 0 && elapsedMS() >= budgetMS);
+    std::string why =
+      late
+        ? ("'" + this->hostport + "' did not answer a compile-time type query within " +
+           str::from(budgetMS) + "ms. That wait holds the compiler lock, so it is bounded rather "
+           "than left to block every thread in this process. A net REPL served by this same "
+           "process can never answer, because compiling the reply needs the lock the waiting "
+           "thread already holds.")
+        : ("the connection to '" + this->hostport + "' failed during a compile-time type query (" +
+           ex.what() + ")");
+    this->retire(why);
+    return std::runtime_error(std::string(what) + ": " + why);
+  };
+
+  try {
+    fdwrite(this->c, uint8_t(1));
+    fdwrite(this->c, rid);
+    fdwrite(this->c, exprd);
+    fdwrite(this->c, intyd);
+  } catch (std::exception& ex) {
+    throw failed("Could not send a compile-time type query", ex);
+  }
 
   // then we expect to get back a result type
   uint8_t v = 0;
-  fdread(this->c, &v);
+  try {
+    fdread(this->c, &v);
+  } catch (std::exception& ex) {
+    throw failed("No answer to a compile-time type query", ex);
+  }
+
   if (v == 1) {
     RawData outtyd;
-    fdread(this->c, &outtyd);
+    try {
+      fdread(this->c, &outtyd);
+    } catch (std::exception& ex) {
+      throw failed("Truncated answer to a compile-time type query", ex);
+    }
 
     ExprDef &ed = this->exprDefs[rid];
     ed.expr = expr;
@@ -612,9 +749,15 @@ exprid Client::remoteExpr(const ExprPtr &expr, const MonoTypePtr &inty) {
     return rid;
   } else if (v == 0) {
     std::string errmsg;
-    fdread(this->c, &errmsg);
+    try {
+      fdread(this->c, &errmsg);
+    } catch (std::exception& ex) {
+      throw failed("Truncated error from a compile-time type query", ex);
+    }
     throw std::runtime_error("Error from server: " + errmsg);
   } else {
+    // the stream is no longer where we think it is
+    this->retire("'" + this->hostport + "' sent a malformed answer to a compile-time type query");
     throw std::runtime_error("Received malformed message from server");
   }
 }

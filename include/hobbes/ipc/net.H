@@ -56,6 +56,16 @@ int installNetREPL(const std::string& host, int port, cc*, ReWriteExprFn const& 
 // install a net repl on a unix domain socket (using file paths)
 int installNetREPL(const std::string& /*filepath*/, cc*, ReWriteExprFn const& = [](ExprPtr const& e) -> ExprPtr { return e; });
 
+// How long to wait for a peer to answer a compile-time type query (the
+// (Connect ...)/(Invoke ...) exchanges), in milliseconds; 0 or less waits
+// forever, as it used to. This wait happens with the process-wide compiler
+// lock held, so an unbounded one stops every thread in the process from
+// compiling -- always, if the peer is served by this same process, since
+// answering needs that very lock. Reads made while *evaluating* a remote
+// call are not affected. Defaults to 30s.
+void setRemoteTypeQueryTimeoutMS(long ms);
+long getRemoteTypeQueryTimeoutMS();
+
 // connect to a running net REPL somewhere
 class Client {
 public:
@@ -75,6 +85,15 @@ private:
   int         c;
   std::string hostport;
   exprid      eid;
+
+  // A compile-time query that does not complete leaves the peer's reply, or
+  // the tail of it, still to come on this socket. Reusing the connection
+  // after that would read the abandoned reply as the answer to the next
+  // question, so an abandoned exchange retires the connection instead.
+  bool        usable = true;
+  std::string unusableWhy;
+  void retire(const std::string& why);
+  void requireUsable() const;
 
   struct ExprDef {
     ExprPtr     expr;
