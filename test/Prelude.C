@@ -75,6 +75,7 @@ TEST(Prelude, Sort) {
 
 TEST(Prelude, SScan) {
   EXPTEST("unique([1..10]) == [1..10]");
+  EXPTEST("unique([1L..1500000L]) == [1L..1500000L]");
 }
 
 TEST(Prelude, Int128) {
