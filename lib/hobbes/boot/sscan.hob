@@ -4,12 +4,12 @@
 
 // push values down in an array
 pushDownFromTo :: ([a], long, long) -> ()
-pushDownFromTo xs i e =
-  if (i == e) then
+pushDownFromTo xs i k =
+  if (i == k) then
     ()
   else do {
-    pushDownFromTo(xs, i+1, e);
-    xs[i+1] <- xs[i];
+    xs[k] <- xs[k-1];
+    return pushDownFromTo(xs, i, k-1);
   }
 {-# UNSAFE pushDownFromTo #-}
 
