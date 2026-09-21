@@ -1,0 +1,11 @@
+// @test: putStr(concat([verse(n) ++ "\n" | n <- reverse([0..99])]))
+bottles :: int -> [char]
+bottles n = match n with
+  | 0 -> "no more bottles"
+  | 1 -> "1 bottle"
+  | _ -> show(n) ++ " bottles"
+
+verse :: int -> [char]
+verse n = match n with
+  | 0 -> "No more bottles of beer on the wall, no more bottles of beer.\nGo to the store and buy some more, 99 bottles of beer on the wall.\n"
+  | _ -> bottles(n) ++ " of beer on the wall, " ++ bottles(n) ++ " of beer.\nTake one down and pass it around, " ++ bottles(n-1) ++ " of beer on the wall.\n"

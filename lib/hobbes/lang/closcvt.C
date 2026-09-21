@@ -49,7 +49,7 @@ MonoTypePtr concreteClosureEnvType(unsigned int size) {
 }
 
 ExprPtr makeClosureOver(const Fn* f, const VarSet& vs) {
-  if (vs.size() == 0) {
+  if (vs.empty()) {
     return ExprPtr(f->clone());
   } else {
     MonoTypePtr              envty   = concreteClosureEnvType(vs.size());
@@ -61,9 +61,9 @@ ExprPtr makeClosureOver(const Fn* f, const VarSet& vs) {
   }
 }
 
-typedef std::set<TEnvPtr> TEnvs;
+using TEnvs = std::set<TEnvPtr>;
 
-static bool hasRootBinding(const std::string& vn, const TEnvPtr& tenv, const TEnvs roots) {
+static bool hasRootBinding(const std::string& vn, const TEnvPtr& tenv, const TEnvs& roots) {
   if (!tenv) {
     return true;
   } else if (tenv->hasImmediateBinding(vn)) {
@@ -96,20 +96,21 @@ struct ClosureConvertF : public switchExprTyFn {
     return r;
   }
 
-  ExprPtr with(const Fn* v) const {
+  ExprPtr with(const Fn* v) const override {
     ExprPtr nbody = switchOf(v->body(), ClosureConvertF(fnFrame(this->tenv, v->varNames()), this->roots));
-    return makeClosureOver(new Fn(v->varNames(), nbody, v->la()), excludeRootVars(setDifference(freeVars(nbody), toSet(v->varNames()))));
+    const Fn fn(v->varNames(), nbody, v->la());
+    return makeClosureOver(&fn, excludeRootVars(setDifference(freeVars(nbody), toSet(v->varNames()))));
   }
 
-  ExprPtr with(const Let* v) const {
+  ExprPtr with(const Let* v) const override {
     return ExprPtr(new Let(v->var(), switchOf(v->varExpr(), *this), switchOf(v->bodyExpr(), ClosureConvertF(bindFrame(this->tenv, v->var(), tgen(0)), this->roots)), v->la()));
   }
 
-  ExprPtr with(const Unpack* v) const {
+  ExprPtr with(const Unpack* v) const override {
     return ExprPtr(new Unpack(v->varName(), switchOf(v->package(), *this), switchOf(v->expr(), ClosureConvertF(bindFrame(this->tenv, v->varName(), tgen(0)), this->roots)), v->la()));
   }
 
-  ExprPtr with(const Case* v) const {
+  ExprPtr with(const Case* v) const override {
     Case::Bindings cbs;
     for (const auto& b : v->bindings()) {
       cbs.push_back(Case::Binding(b.selector, b.vname, switchOf(b.exp, ClosureConvertF(bindFrame(this->tenv, b.vname, tgen(0)), this->roots))));
@@ -131,7 +132,7 @@ struct ClosureConvertF : public switchExprTyFn {
     return r;
   }
 
-  ExprPtr with(const LetRec* v) const {
+  ExprPtr with(const LetRec* v) const override {
     TEnvPtr lrtenv = letRecFrame(this->tenv, v->bindings());
     TEnvs   recRVS = this->roots;
     recRVS.insert(lrtenv);

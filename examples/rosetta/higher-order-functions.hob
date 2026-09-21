@@ -1,0 +1,4 @@
+// @test: (applyN(double, 5, 1), applyN(addOne, 10, 0))
+double x = x * 2
+addOne x = x + 1
+applyN f n x = if (n == 0) then x else applyN(f, n - 1, f(x))

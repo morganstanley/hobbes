@@ -19,7 +19,7 @@ namespace hog {
 class SessionGroup;
 SessionGroup* makeSessionGroup(bool consolidate = false, hobbes::StoredSeries::StorageMode sm = hobbes::StoredSeries::Raw);
 
-typedef std::function<void(hobbes::storage::Transaction&)> ProcessTxnF;
+using ProcessTxnF = std::function<void (hobbes::storage::Transaction &)>;
 ProcessTxnF appendStorageSession(SessionGroup*, const std::string& dirPfx, hobbes::storage::PipeQOS qos, hobbes::storage::CommitMethod cm, const hobbes::storage::statements& stmts);
 
 // common way to prepare output directories from dir prefix patterns

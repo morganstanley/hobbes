@@ -1,0 +1,49 @@
+name: "Generated parser"
+
+# hexpr.parse.C, hexpr.parse.H and hexpr.lex.C are checked in, generated from
+# hexpr.y and hexpr.l by the bison and flex versions lib/hobbes/read/pgen/pgen.sh
+# pins. This regenerates them with those versions and fails if the result
+# differs from what is checked in: a change to a grammar file has to come with
+# its regenerated output, and the output has to come from the pinned
+# generators, so that the diff reviewers see is the change and not the
+# generator.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'lib/hobbes/read/pgen/**'
+      - 'include/hobbes/read/pgen/**'
+      - '.github/workflows/pgen.yml'
+  pull_request:
+    paths:
+      - 'lib/hobbes/read/pgen/**'
+      - 'include/hobbes/read/pgen/**'
+      - '.github/workflows/pgen.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  regenerate:
+    # the exact package builds pgen.sh pins come from Ubuntu 24.04's archive, so
+    # on that runner the generators run natively; the versions installed here
+    # are the same strings pgen.sh names, so the two cannot drift apart without
+    # a change to both, and pgen.sh checks what it got before it runs
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Install the pinned generators
+        run: |
+          # read the package pins from the script rather than restating them
+          eval "$(grep -E '^PGEN_(FLEX|BISON)_PACKAGE=' lib/hobbes/read/pgen/pgen.sh)"
+          echo "installing $PGEN_BISON_PACKAGE $PGEN_FLEX_PACKAGE"
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends --allow-downgrades "$PGEN_BISON_PACKAGE" "$PGEN_FLEX_PACKAGE"
+          bison --version | head -1
+          flex --version
+      - name: Regenerate
+        run: PGEN_NATIVE=1 lib/hobbes/read/pgen/pgen.sh
+      - name: Compare with the checked-in files
+        run: |
+          git status --short -- lib/hobbes/read/pgen include/hobbes/read/pgen
+          git diff --exit-code -- lib/hobbes/read/pgen include/hobbes/read/pgen

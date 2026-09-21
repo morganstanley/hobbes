@@ -1,0 +1,14 @@
+// @test: [n | n <- [1..200], isSelfNumber(n)]
+digitSum :: int -> int
+digitSum n = if (n < 10) then n else (n % 10) + digitSum(n / 10)
+
+generates :: (int * int) -> bool
+generates x = match x with
+  | (k, d) -> k + digitSum(k) == d
+
+hasGenerator :: (int * int) -> bool
+hasGenerator x = match x with
+  | (d, k) -> if (k < 1 or k < d - 50) then false else if (generates((k, d))) then true else hasGenerator((d, k - 1))
+
+isSelfNumber :: int -> bool
+isSelfNumber d = not(hasGenerator((d, d - 1)))

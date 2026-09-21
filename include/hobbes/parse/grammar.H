@@ -17,18 +17,18 @@ namespace hobbes {
 
 class GrammarValue : public LexicallyAnnotated {
 public:
+  GrammarValue() = delete;
+
   GrammarValue(const LexicallyAnnotated&);
   virtual ~GrammarValue() = default;
   virtual void show(std::ostream&) const = 0;
-private:
-  GrammarValue();
 };
-typedef std::shared_ptr<GrammarValue> GrammarValuePtr;
+using GrammarValuePtr = std::shared_ptr<GrammarValue>;
 
 class GSymRef : public GrammarValue {
 public:
   GSymRef(const std::string&, const LexicalAnnotation&);
-  void show(std::ostream&) const;
+  void show(std::ostream&) const override;
 
   const std::string& value() const;
 private:
@@ -38,7 +38,7 @@ private:
 class GStr : public GrammarValue {
 public:
   GStr(const std::string&, const LexicalAnnotation&);
-  void show(std::ostream&) const;
+  void show(std::ostream&) const override;
 
   const std::string& value() const;
 private:
@@ -53,7 +53,7 @@ template <typename T>
 
 template <typename T>
   T switchOf(const GrammarValuePtr& p, const switchGrammarValue<T>& f) {
-    if (const GSymRef* x = dynamic_cast<const GSymRef*>(p.get())) {
+    if (const auto* x = dynamic_cast<const GSymRef*>(p.get())) {
       return f.with(x);
     } else if (const GStr* x = dynamic_cast<const GStr*>(p.get())) {
       return f.with(x);
@@ -70,7 +70,7 @@ struct BoundGrammarValue {
   std::string     varname;
   GrammarValuePtr element;
 };
-typedef std::vector<BoundGrammarValue> BoundGrammarValues;
+using BoundGrammarValues = std::vector<BoundGrammarValue>;
 
 struct GrammarRule {
   inline GrammarRule(const BoundGrammarValues& vs, const ExprPtr& e) : values(vs), reduction(e) { }
@@ -78,10 +78,10 @@ struct GrammarRule {
   BoundGrammarValues values;
   ExprPtr            reduction;
 };
-typedef std::vector<GrammarRule> GrammarRules;
+using GrammarRules = std::vector<GrammarRule>;
 
-typedef std::pair<std::string, GrammarRules> GrammarSymDef;
-typedef std::vector<GrammarSymDef> Grammar;
+using GrammarSymDef = std::pair<std::string, GrammarRules>;
+using Grammar = std::vector<GrammarSymDef>;
 
 // allow the construction of parsers from grammars
 class cc;

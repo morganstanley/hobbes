@@ -1,0 +1,11 @@
+// @test: ssort([4, 65, 2, -31, 0, 99, 83, 782, 1])
+findMinIdx :: ([int] * int * int) -> int
+findMinIdx x = match x with
+  | (xs, i, minIdx) -> if (i >= length(xs)) then minIdx else if (xs[i] < xs[minIdx]) then findMinIdx((xs, i + 1, i)) else findMinIdx((xs, i + 1, minIdx))
+
+ssortHelper :: ([int] * int) -> [int]
+ssortHelper x = match x with
+  | (xs, start) -> if (start >= length(xs) - 1) then xs else let mi = findMinIdx((xs, start + 1, start)) in ssortHelper(([if (j == start) then xs[mi] else if (j == mi) then xs[start] else xs[j] | j <- [0L..length(xs)-1]], start + 1))
+
+ssort :: [int] -> [int]
+ssort xs = if (length(xs) <= 1) then xs else ssortHelper((xs, 0))

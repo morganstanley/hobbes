@@ -21,17 +21,58 @@ struct eventcbclosure {
 
   int                      fd;
   std::function<void(int)> fn;
+  bool                     vnode   = false; // registered for file changes rather than readability
+  bool                     retired = false; // unregistered or replaced while a batch was being dispatched
 };
-typedef std::map<int, eventcbclosure*> EventClosures;
+using EventClosures = std::map<int, eventcbclosure *>;
 
 void registerEventHandler(int fd, eventhandler fn, void* ud, bool f) {
   registerEventHandler(fd, [fn,ud](int c){fn(c,ud);}, f);
 }
 
+// a closure is not deleted while a batch of events is being dispatched: the
+// batch holds raw closure pointers, and a callback in it can close another
+// descriptor of the same batch (or unregister it) and register a replacement
+// under the same number, which would free a closure the loop is about to
+// call. Closures retired during a batch are kept until it has been dispatched,
+// and the batch skips them: their descriptor is gone, or is someone else's now.
+thread_local std::vector<eventcbclosure*> retiredClosures;
+thread_local std::vector<eventcbclosure*> handlersToRelease; // quarantined mid-batch (epoll); see quarantineClosure
+thread_local size_t                       dispatchDepth = 0;
+
+void retireClosure(eventcbclosure* c) {
+  if (c == nullptr) {
+    return;
+  } else if (dispatchDepth == 0) {
+    delete c;
+  } else {
+    c->retired = true;
+    retiredClosures.push_back(c);
+  }
+}
+
+struct DispatchingBatch {
+  DispatchingBatch() { ++dispatchDepth; }
+  ~DispatchingBatch() {
+    if (--dispatchDepth == 0) {
+      for (auto* c : retiredClosures) {
+        delete c;
+      }
+      retiredClosures.clear();
+      for (auto* c : handlersToRelease) {
+        c->fn = nullptr;
+      }
+      handlersToRelease.clear();
+    }
+  }
+  DispatchingBatch(const DispatchingBatch&) = delete;
+  DispatchingBatch& operator=(const DispatchingBatch&) = delete;
+};
+
 #ifdef BUILD_LINUX
 thread_local bool           epInitialized = false;
 thread_local int            epFD          = 0;
-thread_local EventClosures* epClosures    = 0;
+thread_local EventClosures* epClosures    = nullptr;
 
 struct timer {
   timerfunc func;
@@ -43,7 +84,7 @@ bool operator>(const timer& a, const timer& b) {
   return a.callTime > b.callTime;
 }
 
-thread_local std::priority_queue<timer, std::vector<timer>, std::greater<timer>> timers;
+thread_local std::priority_queue<timer, std::vector<timer>, std::greater<>> timers;
 
 int threadEPollFD() {
   if (!epInitialized) {
@@ -58,20 +99,55 @@ int threadEPollFD() {
   return epFD;
 }
 
+// the closure map owns exactly the closures the kernel can still deliver: an
+// entry is made only once the descriptor is in the epoll set, and is erased
+// when its closure is deleted. A stale entry is left only by closing a
+// descriptor without unregistering it, and is then found when its number is
+// unregistered or registered again. That closure cannot be freed, because
+// its epoll interest may still be live: the interest is attached to the open file
+// description rather than the number, and survives this process's close of
+// the number for as long as any duplicate of it is open (one inherited by a
+// child this process forked, say). A wait can then return that interest with
+// this closure as its data pointer. So it is quarantined instead: marked
+// retired (the dispatch loops skip it), its handler released, and the shell
+// kept for the life of the thread -- a few dozen bytes for each descriptor
+// closed while registered, which unregistering first avoids. The handler is
+// released only once no batch is being dispatched: the closure may be the one
+// whose handler is running (it closed its own descriptor and registered the
+// number again), and its captures live in that handler
+thread_local std::vector<eventcbclosure*> quarantinedClosures;
+
+void quarantineClosure(eventcbclosure* c) {
+  if (c != nullptr) {
+    c->retired = true;
+    quarantinedClosures.push_back(c);
+    if (dispatchDepth == 0) {
+      c->fn = nullptr;
+    } else {
+      handlersToRelease.push_back(c);
+    }
+  }
+}
+
 void unregisterEventHandler(int fd) {
   auto ec = epClosures->find(fd);
   if (ec != epClosures->end()) {
     struct epoll_event evt;
-    epoll_ctl(threadEPollFD(), EPOLL_CTL_DEL, fd, &evt);
-    delete ec->second;
+    if (epoll_ctl(threadEPollFD(), EPOLL_CTL_DEL, fd, &evt) == 0) {
+      retireClosure(ec->second);
+    } else {
+      // the number is closed (EBADF) or someone else's (ENOENT): the interest
+      // registered for it could not be removed and may be live, as above
+      quarantineClosure(ec->second);
+    }
+    epClosures->erase(ec);
   }
 }
 
 void registerEventHandler(int fd, const std::function<void(int)>& fn, bool) {
   int epfd = threadEPollFD();
 
-  eventcbclosure* c = new eventcbclosure(fd, fn);
-  (*epClosures)[fd] = c;
+  auto* c = new eventcbclosure(fd, fn);
 
   struct epoll_event evt;
   memset(&evt, 0, sizeof(evt));
@@ -83,6 +159,10 @@ void registerEventHandler(int fd, const std::function<void(int)>& fn, bool) {
     delete c;
     throw std::runtime_error("Failed to add FD to epoll set: " + std::string(strerror(errno)));
   }
+
+  auto& slot = (*epClosures)[fd];
+  quarantineClosure(slot);
+  slot = c;
 }
 
 void registerInterruptHandler(const std::function<void()>& fn) {
@@ -91,8 +171,8 @@ void registerInterruptHandler(const std::function<void()>& fn) {
   (*epClosures)[-1] = c;
 }
 
-bool stepEventLoop(int timeoutMS) {
-  while (true) {
+bool stepEventLoop(int timeoutMS, const std::function<bool()>& stopFn) {
+  while (!stopFn()) {
     if (!timers.empty()) {
       auto next = timers.top().callTime;
       auto timeUntilNext = next - std::chrono::high_resolution_clock::now();
@@ -100,19 +180,26 @@ bool stepEventLoop(int timeoutMS) {
       timeoutMS = std::max(1, millis);
     }
 
+    // When stopFn is provided with no explicit timeout, poll every 500ms
+    // so the stop condition gets checked instead of blocking indefinitely.
+    int effectiveTimeoutMS = timeoutMS < 0 ? 500 : timeoutMS;
+
     struct epoll_event evts[64];
-    int fds = epoll_wait(threadEPollFD(), evts, sizeof(evts)/sizeof(evts[0]), timeoutMS);
+    int fds = epoll_wait(threadEPollFD(), evts, sizeof(evts)/sizeof(evts[0]), effectiveTimeoutMS);
     bool status = true;
     if (fds > 0) {
+      DispatchingBatch batch;
       for (int fd = 0; fd < fds; ++fd) {
-        eventcbclosure* c = reinterpret_cast<eventcbclosure*>(evts[fd].data.ptr);
-        (c->fn)(c->fd);
-        resetMemoryPool();
+        auto* c = reinterpret_cast<eventcbclosure*>(evts[fd].data.ptr);
+        if (!c->retired) {
+          (c->fn)(c->fd);
+          resetMemoryPool();
+        }
       }
     } else if (fds < 0) {
       if (errno != EINTR) {
         status = false;
-      } else if (epClosures) {
+      } else if (epClosures != nullptr) {
         auto f = epClosures->find(-1);
         if (f != epClosures->end()) {
           f->second->fn(-1);
@@ -125,30 +212,31 @@ bool stepEventLoop(int timeoutMS) {
       while(!timers.empty() && timers.top().callTime <= now) {
         auto t = timers.top();
         timers.pop();
-        
+
         bool repeat = t.func();
         resetMemoryPool();
-        
+
         if(repeat) {
           timer newT;
           newT.callTime = std::chrono::high_resolution_clock::now() + t.interval,
           newT.func = t.func,
           newT.interval = t.interval,
-          
+
           newTimers.push_back(newT);
         }
       }
-      
+
       for (auto& timer : newTimers) {
         timers.push(timer);
       }
     }
     return status;
   }
+  return false;
 }
 
-void runEventLoop() {
-  while (stepEventLoop());
+void runEventLoop(const std::function<bool()>& stopFn) {
+  while (stepEventLoop(-1, stopFn));
 }
 
 void addTimer(timerfunc f, int millisecInterval) {
@@ -160,7 +248,7 @@ void addTimer(timerfunc f, int millisecInterval) {
   timers.push(t);
 }
 
-void runEventLoop(int microsecondDuration) {
+void runEventLoop(int microsecondDuration, const std::function<bool()>& stopFn) {
   long t  = hobbes::time();
   long dt = static_cast<long>(microsecondDuration) * 1000L;
   long tf = t + dt;
@@ -173,14 +261,17 @@ void runEventLoop(int microsecondDuration) {
     struct epoll_event evts[64];
     int fds = epoll_wait(threadEPollFD(), evts, sizeof(evts)/sizeof(evts[0]), timeout);
     if (fds > 0) {
+      DispatchingBatch batch;
       for (int fd = 0; fd < fds; ++fd) {
-        eventcbclosure* c = reinterpret_cast<eventcbclosure*>(evts[fd].data.ptr);
-        (c->fn)(c->fd);
-        resetMemoryPool();
+        auto* c = reinterpret_cast<eventcbclosure*>(evts[fd].data.ptr);
+        if (!c->retired) {
+          (c->fn)(c->fd);
+          resetMemoryPool();
+        }
       }
     }
     t = hobbes::time();
-  } while (t < tf);
+  } while (t < tf && !stopFn());
 }
 
 #elif defined(BUILD_OSX)
@@ -202,13 +293,21 @@ int threadKQFD() {
   return kqFD;
 }
 
+// as on Linux: the closure map holds only closures the kernel can still
+// deliver, entered once the descriptor is in the kqueue and erased with the
+// closure, so a reused descriptor number never finds a stale pointer
 void unregisterEventHandler(int fd) {
   auto ec = kqClosures->find(fd);
   if (ec != kqClosures->end()) {
+    // a kqueue registration is keyed by (fd, filter), so the delete must name
+    // the filter the handler was registered with: deleting EVFILT_READ for a
+    // file-change handler is ENOENT, and its EVFILT_VNODE registration stays
+    // live in the kqueue with udata pointing at the closure freed below
     struct kevent ke;
-    EV_SET(&ke, fd, EVFILT_READ, EV_DELETE, 0, 0, 0);
+    EV_SET(&ke, fd, ec->second->vnode ? EVFILT_VNODE : EVFILT_READ, EV_DELETE, 0, 0, 0);
     kevent(threadKQFD(), &ke, 1, 0, 0, 0);
-    delete ec->second;
+    retireClosure(ec->second);
+    kqClosures->erase(ec);
   }
 }
 
@@ -216,7 +315,7 @@ void registerEventHandler(int fd, const std::function<void(int)>& fn, bool vn) {
   int kqfd = threadKQFD();
 
   eventcbclosure* c = new eventcbclosure(fd, fn);
-  (*kqClosures)[fd] = c;
+  c->vnode = vn;
 
   struct kevent ke;
   if (vn) {
@@ -228,6 +327,19 @@ void registerEventHandler(int fd, const std::function<void(int)>& fn, bool vn) {
     delete c;
     throw std::runtime_error("Failed to add FD to kqueue: " + std::string(strerror(errno)));
   }
+
+  auto& slot = (*kqClosures)[fd];
+  if (slot != nullptr && slot->vnode != vn) {
+    // the previous closure under this key was registered with the other
+    // filter; the EV_ADD above replaced nothing, so if its descriptor is still
+    // open that registration is still live and would deliver to the closure
+    // retired below (a closed descriptor has already left the kqueue, and the
+    // delete is then a harmless ENOENT)
+    EV_SET(&ke, fd, slot->vnode ? EVFILT_VNODE : EVFILT_READ, EV_DELETE, 0, 0, 0);
+    kevent(kqfd, &ke, 1, 0, 0, 0);
+  }
+  retireClosure(slot); // a previous closure left under this key after its fd was closed unregistered
+  slot = c;
 }
 
 void registerInterruptHandler(const std::function<void()>& fn) {
@@ -236,21 +348,35 @@ void registerInterruptHandler(const std::function<void()>& fn) {
   (*kqClosures)[-1] = c;
 }
 
-bool stepEventLoop(int timeoutMS) {
-  while (true) {
+bool stepEventLoop(int timeoutMS, const std::function<bool()>& stopFn) {
+  while (!stopFn()) {
+    // When a stop function is provided and no explicit timeout is set,
+    // use a 500ms poll interval so the stop condition gets checked
+    // periodically instead of blocking indefinitely in kevent().
+    int effectiveTimeoutMS = timeoutMS;
+    if (timeoutMS < 0) {
+      effectiveTimeoutMS = 500;
+    }
+
     struct timespec timeout;
-    timeout.tv_sec  = timeoutMS / 1000;
-    timeout.tv_nsec = (timeoutMS % 1000) * 1000000UL;
+    timeout.tv_sec  = effectiveTimeoutMS / 1000;
+    timeout.tv_nsec = (effectiveTimeoutMS % 1000) * 1000000UL;
 
     struct kevent evts[64];
-    int fds = kevent(threadKQFD(), 0, 0, evts, sizeof(evts)/sizeof(evts[0]), timeoutMS > 0 ? &timeout : 0);
+    int fds = kevent(threadKQFD(), 0, 0, evts, sizeof(evts)/sizeof(evts[0]), &timeout);
     if (fds > 0) {
+      DispatchingBatch batch;
       for (size_t fd = 0; fd < fds; ++fd) {
         eventcbclosure* c = (eventcbclosure*)evts[fd].udata;
-        (c->fn)(c->fd);
-        resetMemoryPool();
+        if (!c->retired) {
+          (c->fn)(c->fd);
+          resetMemoryPool();
+        }
       }
       return true;
+    } else if (fds == 0) {
+      // Timeout - loop back to check stopFn
+      continue;
     } else if (errno != EINTR) {
       return false;
     } else if (kqClosures) {
@@ -260,17 +386,32 @@ bool stepEventLoop(int timeoutMS) {
       }
     }
   }
+  return false;
 }
 
-void runEventLoop() {
-  while (stepEventLoop());
+void runEventLoop(const std::function<bool()>& stopFn) {
+  while (stepEventLoop(-1, stopFn));
 }
+
+thread_local int nextTimerIdent = 1;
 
 void addTimer(timerfunc f, int millisecInterval) {
-  throw std::runtime_error("addTimer nyi for OSX");
+  int kqfd = threadKQFD();
+
+  auto* c = new eventcbclosure(-1, [f](int) {
+    f();
+  });
+
+  int ident = nextTimerIdent++;
+  struct kevent ke;
+  EV_SET(&ke, ident, EVFILT_TIMER, EV_ADD, 0, millisecInterval, (void*)c);
+  if (kevent(kqfd, &ke, 1, 0, 0, 0) == -1) {
+    delete c;
+    throw std::runtime_error("Failed to add timer to kqueue: " + std::string(strerror(errno)));
+  }
 }
 
-void runEventLoop(int microsecondDuration) {
+void runEventLoop(int microsecondDuration, const std::function<bool()>& stopFn) {
   long t  = hobbes::time();
   long dt = ((long)microsecondDuration) * 1000L;
   long tf = t + dt;
@@ -287,14 +428,17 @@ void runEventLoop(int microsecondDuration) {
     struct kevent evts[64];
     int fds = kevent(threadKQFD(), 0, 0, evts, sizeof(evts)/sizeof(evts[0]), &timeout);
     if (fds > 0) {
+      DispatchingBatch batch;
       for (size_t fd = 0; fd < fds; ++fd) {
         eventcbclosure* c = (eventcbclosure*)evts[fd].udata;
-        (c->fn)(c->fd);
-        resetMemoryPool();
+        if (!c->retired) {
+          (c->fn)(c->fd);
+          resetMemoryPool();
+        }
       }
     }
     t = hobbes::time();
-  } while (t < tf);
+  } while (t < tf && !stopFn());
 }
 
 #endif

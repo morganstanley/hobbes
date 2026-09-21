@@ -1,0 +1,7 @@
+// @test: [fromRoman(s) | s <- ["MCMXC", "MMVIII", "MDCLXVI", "XIV", "XLII"]]
+romanVal c = if (c == 'M') then 1000 else if (c == 'D') then 500 else if (c == 'C') then 100 else if (c == 'L') then 50 else if (c == 'X') then 10 else if (c == 'V') then 5 else if (c == 'I') then 1 else 0
+
+fromRomanHelper x = match x with
+  | (s, i, acc) -> if (i >= length(s)) then acc else let v = romanVal(s[i]) in if (i + 1 < length(s) and v < romanVal(s[i+1])) then fromRomanHelper((s, i + 1, acc - v)) else fromRomanHelper((s, i + 1, acc + v))
+
+fromRoman s = fromRomanHelper((s, 0L, 0))

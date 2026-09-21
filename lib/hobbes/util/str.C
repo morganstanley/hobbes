@@ -1,5 +1,6 @@
 
 #include <hobbes/util/str.H>
+#include <iterator>
 #include <memory>
 #include <wordexp.h>
 #include <glob.h>
@@ -8,7 +9,7 @@ namespace hobbes { namespace str {
 
 std::string env(const std::string& varname) {
   char* gv = getenv(varname.c_str());
-  return gv ? std::string(gv) : std::string("");
+  return gv != nullptr ? std::string(gv) : std::string("");
 }
 
 void env(const std::string& varname, const std::string& value) {
@@ -41,8 +42,8 @@ unsigned int maxStrLen(const seq& col) {
 
 lengths maxStrLen(const seqs& tbl) {
   lengths r;
-  for (unsigned int c = 0; c < tbl.size(); ++c) {
-    r.push_back(maxStrLen(tbl[c]));
+  for (const auto &c : tbl) {
+    r.push_back(maxStrLen(c));
   }
   return r;
 }
@@ -71,8 +72,8 @@ seq leftAlign(const seq& col) {
   size_t w = maxStrLen(col);
   seq r;
   r.reserve(col.size());
-  for (seq::const_iterator s = col.begin(); s != col.end(); ++s) {
-    r.push_back(leftAlign(w, *s));
+  for (const auto &s : col) {
+    r.push_back(leftAlign(w, s));
   }
   return r;
 }
@@ -81,8 +82,8 @@ seq rightAlign(const seq& col) {
   size_t w = maxStrLen(col);
   seq r;
   r.reserve(col.size());
-  for (seq::const_iterator s = col.begin(); s != col.end(); ++s) {
-    r.push_back(rightAlign(w, *s));
+  for (const auto &s : col) {
+    r.push_back(rightAlign(w, s));
   }
   return r;
 }
@@ -90,7 +91,7 @@ seq rightAlign(const seq& col) {
 seqs leftAlign(const seqs& tbl) {
   seqs r;
   r.reserve(tbl.size());
-  for (seqs::const_iterator c = tbl.begin(); c != tbl.end(); ++c) {
+  for (auto c = tbl.begin(); c != tbl.end(); ++c) {
     r.push_back(c == tbl.end()-1 ? *c : leftAlign(*c));
   }
   return r;
@@ -99,14 +100,14 @@ seqs leftAlign(const seqs& tbl) {
 seqs rightAlign(const seqs& tbl) {
   seqs r;
   r.reserve(tbl.size());
-  for (seqs::const_iterator c = tbl.begin(); c != tbl.end(); ++c) {
-    r.push_back(rightAlign(*c));
+  for (const auto &c : tbl) {
+    r.push_back(rightAlign(c));
   }
   return r;
 }
 
 bool validTable(const seqs& tbl) {
-  if (tbl.size() == 0) {
+  if (tbl.empty()) {
     return false;
   } else {
     size_t rsz = tbl[0].size();
@@ -122,13 +123,13 @@ bool validTable(const seqs& tbl) {
 void printAlignedTable(std::ostream& out, const seqs& tbl) {
   if (validTable(tbl)) {
     // draw the header
-    for (seqs::const_iterator c = tbl.begin(); c != tbl.end(); ++c) {
-      out << (*c)[0] << " ";
+    for (const auto &c : tbl) {
+      out << c[0] << " ";
     }
     out << "\n";
 
     // draw the divider
-    for (seqs::const_iterator c = tbl.begin(); c != tbl.end(); ++c) {
+    for (auto c = tbl.begin(); c != tbl.end(); ++c) {
       auto N = (c < tbl.end() - 1 ? (*c)[0].size() : maxStrLen(*c));
       out << std::string(N, '-') << " ";
     }
@@ -136,8 +137,8 @@ void printAlignedTable(std::ostream& out, const seqs& tbl) {
 
     // draw the data
     for (size_t r = 1; r < tbl[0].size(); ++r) {
-      for (seqs::const_iterator c = tbl.begin(); c != tbl.end(); ++c) {
-        out << (*c)[r] << " ";
+      for (const auto &c : tbl) {
+        out << c[r] << " ";
       }
       out << "\n";
     }
@@ -156,8 +157,8 @@ void printHeadlessAlignedTable(std::ostream& out, const seqs& tbl) {
   if (validTable(tbl)) {
     for (size_t r = 0; r < tbl[0].size(); ++r) {
       if (r > 0) out << "\n";
-      for (seqs::const_iterator c = tbl.begin(); c != tbl.end(); ++c) {
-        out << (*c)[r] << " ";
+      for (const auto &c : tbl) {
+        out << c[r] << " ";
       }
     }
   }
@@ -184,14 +185,14 @@ std::string showRightAlignedTable(const seqs& tbl) {
 }
 
 std::string demangle(const char* tn) {
-  if (tn == 0) {
+  if (tn == nullptr) {
     return "";
   }
 
   int   s   = 0;
-  char* dmn = abi::__cxa_demangle(tn, 0, 0, &s);
+  char* dmn = abi::__cxa_demangle(tn, nullptr, nullptr, &s);
 
-  if (dmn == 0) {
+  if (dmn == nullptr) {
     return std::string(tn);
   } else {
     std::string r(dmn);
@@ -231,7 +232,7 @@ pair rsplit(const std::string& s, const std::string& ss) {
 }
 
 seq csplit(const std::string& str, const std::string& pivot) {
-  typedef std::string::size_type size_type;
+  using size_type = std::string::size_type;
 
   seq       ret;
   size_type mp = 0;
@@ -304,8 +305,8 @@ std::string hex(unsigned char x) {
 std::string hex(const std::vector<unsigned char>& cs) {
   std::ostringstream ss;
   ss << "0x";
-  for (std::vector<unsigned char>::const_iterator c = cs.begin(); c != cs.end(); ++c) {
-    ss << hex(*c);
+  for (const unsigned char c : cs) {
+    ss << hex(c);
   }
   return ss.str();
 }
@@ -376,9 +377,13 @@ std::string unescape(const std::string& cs) {
         result.put('\0');
         break;
       case 'x': {
+          // only step onto a digit that exists: incrementing an iterator that
+          // is already at the end is undefined, and leaves the following
+          // 'c != cs.end()' guard passing on a past-the-end iterator, so a
+          // string ending in "\x" read one byte beyond the buffer
           char b1 = 0; char b2 = 0;
-          ++c; if (c != cs.end()) b1 = *c;
-          ++c; if (c != cs.end()) b2 = *c;
+          if (std::next(c) != cs.end()) { ++c; b1 = *c; }
+          if (std::next(c) != cs.end()) { ++c; b2 = *c; }
           result.put((denyb(b1) << 4) + denyb(b2));
           break;
         }
@@ -398,12 +403,12 @@ bool endsWith(const std::string& s, const std::string& sfx) {
 }
 
 std::string show(const set& ss) {
-  if (ss.size() == 0) {
+  if (ss.empty()) {
     return "{}";
   } else {
     std::ostringstream r;
     r << "{";
-    set::const_iterator s = ss.begin();
+    auto s = ss.begin();
     r << *s;
     ++s;
     while (s != ss.end()) {
@@ -417,12 +422,12 @@ std::string show(const set& ss) {
 }
 
 std::string show(const named_strings& cfg) {
-  if (cfg.size() == 0) {
+  if (cfg.empty()) {
     return "{}";
   } else {
     std::ostringstream r;
     r << "{";
-    named_strings::const_iterator f = cfg.begin();
+    auto f = cfg.begin();
     r << f->first << "=" << f->second;
     ++f;
     while (f != cfg.end()) {
@@ -436,7 +441,7 @@ std::string show(const named_strings& cfg) {
 }
 
 char readCharDef(const std::string& x) {
-  if (x.size() == 0) {
+  if (x.empty()) {
     return 0;
   } else if (x[0] != '\'') {
     return x[0]; // ?
@@ -484,7 +489,7 @@ unsigned int firstFailIndex(bool (*P)(char), const std::string& s) {
 }
 
 std::string cdelim(const seq& ss, const std::string& d) {
-  if (ss.size() == 0) {
+  if (ss.empty()) {
     return "";
   } else {
     std::ostringstream r;
@@ -510,15 +515,44 @@ std::string expandVars(const std::string& x) {
     );
 }
 
+bool relativePathInRoot(const std::string& path, std::string* relPath) {
+  if (path.empty()) {
+    return false;
+  }
+
+  seq out;
+  for (const auto& seg : csplit(path, "/")) {
+    if (seg.empty() || seg == ".") {
+      continue;
+    } else if (seg == "..") {
+      if (out.empty()) {
+        return false;
+      }
+      out.pop_back();
+    } else {
+      out.push_back(seg);
+    }
+  }
+
+  *relPath = cdelim(out, "/");
+  return true;
+}
+
 std::string expandPath(const std::string& x) {
+  // x reaches here from untrusted type-checker input (LoadFile constraints,
+  // lib/hobbes/db/bindings.C) as well as trusted local paths, so this must
+  // never run a subshell: WRDE_NOCMD makes wordexp() fail (returning x
+  // unexpanded, same as any other wordexp failure) instead of executing a
+  // $(...)/`...` command substitution embedded in x (STRFR-433916). A
+  // zero-word expansion (e.g. an empty x) must also fall back to x rather
+  // than index we_wordv[0], which wordexp does not guarantee is present.
   wordexp_t we;
-  if (wordexp(x.c_str(), &we, 0) == 0) {
-    std::string result(we.we_wordv[0]);
-    wordfree(&we);
-    return result;
-  } else {
+  if (wordexp(x.c_str(), &we, WRDE_NOCMD) != 0) {
     return x;
   }
+  std::string result = we.we_wordc > 0 ? std::string(we.we_wordv[0]) : x;
+  wordfree(&we);
+  return result;
 }
 
 // display a byte count in typical units
@@ -556,7 +590,7 @@ public:
       if (child != n->children.end()) {
         n = child->second.get();
       } else {
-        ptnode* nc = new ptnode();
+        auto* nc = new ptnode();
         n->children[c] = std::unique_ptr<ptnode>(nc);
         n = nc;
       }
@@ -581,7 +615,7 @@ public:
     return r;
   }
 private:
-  typedef std::map<char, std::unique_ptr<ptnode>> Children;
+  using Children = std::map<char, std::unique_ptr<ptnode>>;
   Children children;
 
   // does this node complete a valid word?
@@ -678,7 +712,7 @@ seq prefix_tree::closestMatches(const std::string& x, size_t maxDist) const {
 size_t editDistance(const std::string& x, const std::string& y) {
   std::map<size_t, seq> r = prefix_tree(strings(y)).rankedMatches(x, std::max<size_t>(x.size(), y.size()));
 
-  if (r.size() > 0) {
+  if (!r.empty()) {
     return r.begin()->first;
   } else {
     return std::max<size_t>(x.size(), y.size()); // seems unlikely ...
@@ -707,7 +741,7 @@ std::string mustEndWith(const std::string& x, const std::string& sfx) {
 // get a set of filesystem objects matching a pattern
 str::seq paths(const std::string& p) {
   glob_t g;
-  if (glob(p.c_str(), 0, 0, &g) != 0) {
+  if (glob(p.c_str(), 0, nullptr, &g) != 0) {
     return str::seq();
   } else if (g.gl_pathc == 0) {
     globfree(&g);

@@ -43,7 +43,7 @@ MonoTypePtr darrayty(const MonoTypePtr& t) {
 
 // the representation of file reference types changed after v0
 struct mapFileRefs : public switchTyFn {
-  MonoTypePtr with(const TApp* ap) const {
+  MonoTypePtr with(const TApp* ap) const override {
     if (ap->args().size() == 2) {
       if (const Prim* f = is<Prim>(ap->fn())) {
         if (f->name() == "fileref") {
@@ -57,7 +57,7 @@ struct mapFileRefs : public switchTyFn {
 
 // the representation of stored array types changed after v1
 struct mapStoredArrays : public switchTyFn {
-  MonoTypePtr with(const Array* a) const {
+  MonoTypePtr with(const Array* a) const override {
     return darrayty(switchOf(a->type(), *this));
   }
 };
@@ -81,7 +81,7 @@ static MonoTypePtr decodeBindingByVersion(uint16_t version, const binding& b) {
 
 // for storage, we need to make sure that size is computed slightly differently than for memory
 size_t storageSizeOf(const MonoTypePtr& mty) {
-  if (is<Recursive>(mty)) {
+  if (is<Recursive>(mty) != nullptr) {
     return sizeOf(unroll(mty));
   } else {
     return sizeOf(mty);
@@ -95,7 +95,7 @@ reader::reader(imagefile* f) : fdata(f) {
 
   // and translate bindings
   for (const auto& b : this->fdata->bindings) {
-    if (b.first.size() > 0 && b.first[0] != '.') {
+    if (!b.first.empty() && b.first[0] != '.') {
       SBinding sb;
       sb.type   = decodeBindingByVersion(this->fdata->version, b.second.type);
       sb.offset = this->fdata->version==0 ? b.second.boffset : b.second.offset;
@@ -198,29 +198,42 @@ void* reader::unsafeLoad(const MonoTypePtr& ty, uint64_t pos) const {
   }
 }
 
+// the lengths and offsets read below come out of the file, and what they
+// reach is what the JIT then dereferences (dbloadv/dbloadarr/dbloaddarr), so
+// each is checked against the file's size before it is mapped. Only the typed
+// unsafeLoad above checked its offset at all, and none of them checked a
+// length: an array length of 0x10000000, or one whose product with the
+// element size wrapped to zero, mapped an address outside the file that
+// faulted on the first read.
 void* reader::unsafeLoad(uint64_t pos, size_t datasz) const {
-  return mapFileData(this->fdata, pos, datasz);
+  return mapFileDataInFile(this->fdata, pos, datasz, "stored value");
 }
 
 uint64_t reader::unsafeDArrayCapacity(uint64_t pos) const {
-  uint64_t* cap    = reinterpret_cast<uint64_t*>(mapFileData(this->fdata, pos, sizeof(uint64_t)));
+  auto* cap    = reinterpret_cast<uint64_t*>(mapFileDataInFile(this->fdata, pos, sizeof(uint64_t), "stored array capacity"));
   uint64_t  result = *cap;
   unmapFileData(this->fdata, cap, sizeof(uint64_t));
   return result;
 }
 void* reader::unsafeLoadDArray(uint64_t pos) const {
   // if we're loading a darray, we actually have to read the data size first to know how much to map
-  uint64_t* cap    = reinterpret_cast<uint64_t*>(mapFileData(this->fdata, pos, sizeof(uint64_t)));
-  uint8_t*  result = reinterpret_cast<uint8_t*>(mapFileData(this->fdata, pos+sizeof(uint64_t), *cap));
+  auto* cap    = reinterpret_cast<uint64_t*>(mapFileDataInFile(this->fdata, pos, sizeof(uint64_t), "stored array capacity"));
+  uint64_t capacity = *cap;
   unmapFileData(this->fdata, cap, sizeof(uint64_t));
-  return result;
+  return mapFileDataInFile(this->fdata, pos+sizeof(uint64_t), capacity, "stored array data");
 }
 
 void* reader::unsafeLoadArray(uint64_t pos, size_t sz) const {
-  uint64_t* len    = reinterpret_cast<uint64_t*>(mapFileData(this->fdata, pos, sizeof(uint64_t)));
-  uint8_t*  result = reinterpret_cast<uint8_t*>(mapFileData(this->fdata, pos, sizeof(uint64_t) + sz * *len));
-  unmapFileData(this->fdata, len, sizeof(uint64_t));
-  return result;
+  auto* lenp   = reinterpret_cast<uint64_t*>(mapFileDataInFile(this->fdata, pos, sizeof(uint64_t), "stored array length"));
+  uint64_t len = *lenp;
+  unmapFileData(this->fdata, lenp, sizeof(uint64_t));
+
+  // 'sz * len' is what decides how much of the file this array covers, and a
+  // length near 2^64 wraps it to something small (or to zero) that passes any
+  // check made after the multiplication, so bound the length before it is
+  // multiplied by anything
+  ensureCountInFile(this->fdata, pos + sizeof(uint64_t), sz, len, "stored array");
+  return mapFileDataInFile(this->fdata, pos, sizeof(uint64_t) + sz * len, "stored array");
 }
 
 int reader::unsafeGetFD() const {
@@ -399,7 +412,7 @@ uint64_t writer::unsafeStoreToOffset(size_t sz, size_t align) {
 
 void* writer::unsafeStoreDArray(size_t esize, size_t len) {
   size_t datasz = sizeof(long) + sizeof(long) + (len * esize);
-  unsigned char* result = reinterpret_cast<unsigned char*>(allocAnon(datasz, sizeof(size_t)));
+  auto* result = reinterpret_cast<unsigned char*>(allocAnon(datasz, sizeof(size_t)));
   *reinterpret_cast<long*>(result) = datasz;
   return reinterpret_cast<void*>(result + sizeof(long));
 }
@@ -414,7 +427,7 @@ uint64_t writer::unsafeStoreDArrayToOffset(size_t esize, size_t len) {
 
 void* writer::unsafeStoreArray(size_t esize, size_t len) {
   if (len > 0) {
-    unsigned char* result = reinterpret_cast<unsigned char*>(allocAnon(sizeof(long) + (len * esize), sizeof(size_t)));
+    auto* result = reinterpret_cast<unsigned char*>(allocAnon(sizeof(long) + (len * esize), sizeof(size_t)));
     *reinterpret_cast<long*>(result) = len;
     return result;
   } else {

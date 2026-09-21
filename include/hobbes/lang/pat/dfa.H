@@ -6,6 +6,7 @@
 #define HOBBES_LANG_PAT_DFA_HPP_INCLUDED
 
 #include <hobbes/lang/pat/pattern.H>
+#include <hobbes/lang/pat/regex.H>
 #include <hobbes/util/str.H>
 #include <hobbes/util/lannotation.H>
 #include <unordered_map>
@@ -13,16 +14,16 @@
 
 namespace hobbes {
 
-typedef size_t               stateidx_t;
-typedef std::set<stateidx_t> stateidxset;
+using stateidx_t = size_t;
+using stateidxset = std::set<stateidx_t>;
 
-typedef std::pair<std::string, MonoTypePtr> PrimFArg;
-typedef std::vector<PrimFArg> PrimFArgs;
+using PrimFArg = std::pair<std::string, MonoTypePtr>;
+using PrimFArgs = std::vector<PrimFArg>;
 
 // the various states of pattern matching
 class MState {
 public:
-  virtual ~MState(void) = default;  
+  virtual ~MState() = default;
   virtual std::string stamp() = 0;
 
   // how many times is this state referenced?
@@ -51,14 +52,14 @@ template <typename Case>
 
 class LoadVars : public MStateCase<LoadVars> {
 public:
-  typedef std::pair<std::string, ExprPtr> Def;
-  typedef std::vector<Def> Defs;
+  using Def = std::pair<std::string, ExprPtr>;
+  using Defs = std::vector<Def>;
 
   LoadVars(const Defs&, stateidx_t);
   const Defs& defs() const;
   stateidx_t nextState() const;
 
-  std::string stamp();
+  std::string stamp() override;
 
   static const int type_case_id = 0;
 private:
@@ -68,15 +69,15 @@ private:
 
 class SwitchVal : public MStateCase<SwitchVal> {
 public:
-  typedef std::pair<PrimitivePtr, stateidx_t> Jump;
-  typedef std::vector<Jump> Jumps;
+  using Jump = std::pair<PrimitivePtr, stateidx_t>;
+  using Jumps = std::vector<Jump>;
 
   SwitchVal(const std::string&, const Jumps&, stateidx_t);
   const std::string& switchVar() const;
   const Jumps& jumps() const;
   stateidx_t defaultState() const;
 
-  std::string stamp();
+  std::string stamp() override;
 
   static const int type_case_id = 1;
 private:
@@ -87,15 +88,15 @@ private:
 
 class SwitchVariant : public MStateCase<SwitchVariant> {
 public:
-  typedef std::pair<std::string, stateidx_t> CtorJump;
-  typedef std::vector<CtorJump> CtorJumps;
+  using CtorJump = std::pair<std::string, stateidx_t>;
+  using CtorJumps = std::vector<CtorJump>;
 
   SwitchVariant(const std::string&, const CtorJumps&, stateidx_t);
   const std::string& switchVar() const;
   const CtorJumps& jumps() const;
   stateidx_t defaultState() const;
 
-  std::string stamp();
+  std::string stamp() override;
 
   static const int type_case_id = 2;
 private:
@@ -110,7 +111,7 @@ public:
 
   const ExprPtr& expr() const;
 
-  std::string stamp();
+  std::string stamp() override;
 
   static const int type_case_id = 3;
 private:
@@ -123,13 +124,13 @@ template <typename Case>
   MStateCase<Case>::MStateCase() : MState(Case::type_case_id) {
   }
 
-typedef std::shared_ptr<MState> MStatePtr;
-typedef std::vector<MStatePtr>  MStates;
+using MStatePtr = std::shared_ptr<MState>;
+using MStates = std::vector<MStatePtr>;
 
 // destruction-side for high-level pattern representations
 template <typename T>
 struct switchMState {
-    virtual ~switchMState(void) = default;
+    virtual ~switchMState() = default;
     virtual T with(const LoadVars*)      const = 0;
     virtual T with(const SwitchVal*)     const = 0;
     virtual T with(const SwitchVariant*) const = 0;
@@ -158,22 +159,31 @@ template <typename T>
   }
 
 // DFA construction from annotated/normalized pattern match tables
-typedef std::unordered_map<std::string, stateidx_t> StatesIdx;
+using StatesIdx = std::unordered_map<std::string, stateidx_t>;
 
-typedef std::unordered_map<std::string, ExprPtr>     VarNames;       // memoize usage of variable names
-typedef std::map<size_t, ExprPtr>                    ArrayElem;
-typedef std::unordered_map<std::string, ArrayElem>   VarArrayElem;   // memoize array 'element' access in match variables
-typedef std::unordered_map<std::string, ExprPtr>     VarArrayLen;    // memoize array 'size' access in match variables
-typedef std::unordered_map<std::string, ExprPtr>     StructField;
-typedef std::unordered_map<std::string, StructField> VarStructField; // memoize struct field access in match variables
+using VarNames = std::unordered_map<std::string, ExprPtr>;       // memoize usage of variable names
+using ArrayElem = std::map<size_t, ExprPtr>;
+using VarArrayElem = std::unordered_map<std::string, ArrayElem>;   // memoize array 'element' access in match variables
+using VarArrayLen = std::unordered_map<std::string, ExprPtr>;    // memoize array 'size' access in match variables
+using StructField = std::unordered_map<std::string, ExprPtr>;
+using VarStructField = std::unordered_map<std::string, StructField>; // memoize struct field access in match variables
 
-typedef std::pair<std::string, ExprPtr>         FoldedState;
-typedef std::vector<FoldedState>                FoldedStates;     // local functions for states that should be lifted out
-typedef std::unordered_map<stateidx_t, ExprPtr> FoldedStateCalls; // call expressions into states that have been folded into local functions
+using FoldedState = std::pair<std::string, ExprPtr>;
+using FoldedStates = std::vector<FoldedState>;     // local functions for states that should be lifted out
+using FoldedStateCalls = std::unordered_map<stateidx_t, ExprPtr>; // call expressions into states that have been folded into local functions
 
-typedef std::unordered_map<PatternRows, stateidx_t, hobbes::genHash<PatternRows>> TableCfgStates; // map distinct pattern table configs to their corresponding states (avoid reconstructing the whole state description)
+using TableCfgStates = std::unordered_map<PatternRows, stateidx_t, hobbes::genHash<PatternRows>>; // map distinct pattern table configs to their corresponding states (avoid reconstructing the whole state description)
 
-typedef std::unordered_map<Expr*, size_t> ExprIdxs; // map back from result expressions to row IDs
+using ExprIdxs = std::unordered_map<Expr *, size_t>; // map back from result expressions to row IDs
+
+// the regexes that a column of a match table can test, in the order they
+// first appear down the column, with each regex's position in that order
+// keyed by the encoding that regexKey gives it
+struct ColumnRegexes {
+  Regexes regexes;
+  std::unordered_map<std::string, size_t> index;
+};
+using ColumnRegexTables = std::unordered_map<std::string, ColumnRegexes>;
 
 struct MDFA {
   // the lexical extent of the whole match in the original source program
@@ -186,8 +196,22 @@ struct MDFA {
   ExprIdxs       exprIdxs;
   bool           inPrimSel;
 
-  str::set rootVars;
+  // the state functions lifted out of this match so far. Together with the
+  // compiler's global environment these are the names a folded state must not
+  // take as parameters (see liftDFAExpr)
+  str::set liftedStateFns;
   cc*      c;
+
+  // every regex a column of the match can test, keyed by the column's
+  // variable name (see collectColumnRegexes)
+  ColumnRegexTables columnRegexes;
+
+  // how much of the pattern table this match has cost to compile so far, and
+  // how deep the construction is currently recursing. both are bounded --
+  // see makeDFAState -- and both belong to the match being compiled rather
+  // than to the process, because matches compile concurrently.
+  size_t tableCells   = 0;
+  size_t stateDepth   = 0;
 
   // memo expressions
   VarNames       varExps;
@@ -198,6 +222,9 @@ struct MDFA {
   // fold states with multiple references into local functions
   FoldedStates     foldedStates;
   FoldedStateCalls foldedStateCalls;
+
+  // how many states have been inlined into the function currently being lifted
+  size_t inlinedStates = 0;
 };
 
 stateidx_t makeDFA(MDFA*, const PatternRows&, const LexicalAnnotation&);

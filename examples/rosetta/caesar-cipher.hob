@@ -1,0 +1,17 @@
+// @test: (caesarEncrypt(("The quick brown fox jumps over the lazy dog", 5)), caesarEncrypt(("Ymj vznhp gwtbs ktc ozrux tajw ymj qfed itl", -5)))
+lower = "abcdefghijklmnopqrstuvwxyz"
+upper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+findIdx :: (char * [char] * int) -> int
+findIdx x = match x with
+  | (c, s, i) -> if (i >= length(s)) then -1 else if (s[i] == c) then i else findIdx((c, s, i + 1))
+
+shiftChar :: (char * int) -> char
+shiftChar x = match x with
+  | (c, n) -> if (findIdx((c, lower, 0)) >= 0) then lower[(findIdx((c, lower, 0)) + n + 26) % 26]
+               else if (findIdx((c, upper, 0)) >= 0) then upper[(findIdx((c, upper, 0)) + n + 26) % 26]
+               else c
+
+caesarEncrypt :: ([char] * int) -> [char]
+caesarEncrypt x = match x with
+  | (s, n) -> [shiftChar((c, n)) | c <- s]

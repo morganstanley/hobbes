@@ -1,0 +1,18 @@
+// @test: [n | n <- [2..1000], isEmirp(n)]
+hasDivisor :: (int * int) -> bool
+hasDivisor x = match x with
+  | (n, d) -> if (d * d > n) then false else if (n % d == 0) then true else hasDivisor((n, d + 1))
+
+isPrime :: int -> bool
+isPrime n = if (n < 2) then false else not(hasDivisor((n, 2)))
+
+reverseNumHelper :: (int * int) -> int
+reverseNumHelper x = match x with
+  | (0, acc) -> acc
+  | (n, acc) -> reverseNumHelper((n / 10, acc * 10 + n % 10))
+
+reverseNum :: int -> int
+reverseNum n = reverseNumHelper((n, 0))
+
+isEmirp :: int -> bool
+isEmirp n = isPrime(n) and isPrime(reverseNum(n)) and n != reverseNum(n)

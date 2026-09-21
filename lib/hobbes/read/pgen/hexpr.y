@@ -2,12 +2,12 @@
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wold-style-cast"
 
-typedef struct YYLTYPE {
+using YYLTYPE = struct YYLTYPE {
   int first_line;
   int first_column;
   int last_line;
   int last_column;
-} YYLTYPE;
+};
 #define YYLTYPE_IS_DECLARED 1
 
 #define YYLLOC_DEFAULT(L, R, N) \
@@ -23,32 +23,32 @@ typedef struct YYLTYPE {
 %}
 
 %{
-#include <hobbes/lang/module.H>
+#include <cstdio>
+#include <hobbes/db/bindings.H>
 #include <hobbes/lang/expr.H>
+#include <hobbes/lang/module.H>
 #include <hobbes/lang/pat/pattern.H>
 #include <hobbes/lang/type.H>
 #include <hobbes/lang/typepreds.H>
-#include <hobbes/db/bindings.H>
-#include <hobbes/util/autorelease.H>
-#include <hobbes/util/str.H>
-#include <hobbes/util/array.H>
 #include <hobbes/parse/grammar.H>
 #include <hobbes/parse/lalr.H>
 #include <hobbes/read/pgen/hexpr.parse.H>
-#include <string>
+#include <hobbes/util/array.H>
+#include <hobbes/util/autorelease.H>
+#include <hobbes/util/str.H>
 #include <stdexcept>
+#include <string>
 #include <vector>
-#include <stdio.h>
 
 using namespace hobbes;
 
-typedef std::pair<PatternPtr, ExprPtr> LetBinding;
-typedef std::vector<LetBinding>        LetBindings;
+using LetBinding = std::pair<PatternPtr, ExprPtr>;
+using LetBindings = std::vector<LetBinding>;
 
 cc*         yyParseCC;
-Module*     yyParsedModule = 0;
+Module*     yyParsedModule = nullptr;
 std::string yyParsedVar;
-Expr*       yyParsedExpr   = 0;
+Expr*       yyParsedExpr   = nullptr;
 std::string yyMatchDiagram;
 std::string yyModulePath;
 YYLTYPE     yyErrPos;
@@ -77,7 +77,7 @@ LexicalAnnotation m(const YYLTYPE& p0, const YYLTYPE& p1) {
 #define TAPP3(fn,x0,x1,x2,la) new App(fn, list(ExprPtr(x0),ExprPtr(x1),ExprPtr(x2)), la)
 
 Expr* pickNestedExp(Exprs* exprs, const LexicalAnnotation& la) {
-  if (exprs->size() == 0) {
+  if (exprs->empty()) {
     return new Unit(la);
   } else if (exprs->size() == 1) {
     return (*exprs)[0]->clone();
@@ -91,7 +91,7 @@ Expr* pickNestedExp(Exprs* exprs, const LexicalAnnotation& la) {
 }
 
 Pattern* pickNestedPat(Patterns* pats, const LexicalAnnotation& la) {
-  if (pats->size() == 0) {
+  if (pats->empty()) {
     return new MatchLiteral(PrimitivePtr(new Unit(la)), la);
   } else {
     MatchRecord::Fields fds;
@@ -103,7 +103,7 @@ Pattern* pickNestedPat(Patterns* pats, const LexicalAnnotation& la) {
 }
 
 PatternRows normPatternRules(PatternRows rs, const LexicalAnnotation& la) {
-  if (rs.size() > 0 && !rs.back().result) {
+  if (!rs.empty() && !rs.back().result) {
     throw annotated_error(la, "match table can't end with fall-through row");
   }
 
@@ -117,7 +117,7 @@ PatternRows normPatternRules(PatternRows rs, const LexicalAnnotation& la) {
 
 Expr* compileNestedLetMatch(const LetBindings& bs, const ExprPtr& e, const LexicalAnnotation& la) {
   ExprPtr r = e;
-  for (LetBindings::const_reverse_iterator b = bs.rbegin(); b != bs.rend(); ++b) {
+  for (auto b = bs.rbegin(); b != bs.rend(); ++b) {
     r = compileMatch(yyParseCC, list(b->second), list(PatternRow(list(b->first), r)), la);
   }
   return r->clone();
@@ -170,6 +170,18 @@ Expr* makeProjSeq(Expr* rec, const str::seq& fields, const LexicalAnnotation& la
   return rec;
 }
 
+// a quoted expression becomes part of a type, and making that type prints
+// the expression (TExpr::make interns it by its printed form). That runs in
+// the parser action, before the nesting check readExpr/readModule apply to
+// what the parse returns (see parser.C), so it is applied here first: a
+// quoted expression that nests past the bound would otherwise run the stack
+// out in show() before the parse finished
+MonoTypePtr quotedExprType(Expr* e) {
+  ExprPtr ep(e);
+  checkNestingDepth(ep);
+  return TApp::make(primty("quote"), list(texpr(ep)));
+}
+
 Expr* mkAIndex(const ExprPtr& arr, const ExprPtr& idx, const LexicalAnnotation& la) {
   return new AIndex(arr, fncall(var("arrayIndexFrom", la), list(idx), la), la);
 }
@@ -196,13 +208,25 @@ MonoTypePtr monoTypeByName(const std::string& tn) {
 }
 
 MonoTypePtr accumTApp(const MonoTypes& ts) {
-  if (ts.size() == 0) {
+  if (ts.empty()) {
     throw std::runtime_error("Internal parser error for type applications");
   } else if (ts.size() == 1) {
     return ts[0];
   } else {
     return MonoTypePtr(TApp::make(ts[0], drop(ts, 1)));
   }
+}
+
+// a qualified type that opens with "(" id ... ")" reads as a constraint list to
+// this LALR(1) parser, so a type application written that way -- "(Box0 int)",
+// "(Box0 int) -> int" -- is first reduced as a constraint and only then found
+// not to be followed by "=>".  Recover the type it spells.
+MonoTypePtr tyAppFromConstraints(const Constraints& cs) {
+  if (cs.size() != 1) {
+    throw std::runtime_error("syntax error, expecting => after a list of type constraints");
+  }
+  const auto& c = *cs[0];
+  return yyParseCC->replaceTypeAliases(MonoTypePtr(TApp::make(monoTypeByName(c.name()), c.arguments())));
 }
 
 MonoTypePtr makeTupleType(const MonoTypes& mts) {
@@ -229,6 +253,39 @@ MonoTypePtr makeRecType(const Record::Members& tms) {
   return Record::make(tms);
 }
 
+static MonoTypePtr makePVarTypeImp(const Variant::Members &vms,
+                                   const LexicalAnnotation *la) {
+  const auto sanityCheck = [&] {
+    auto tvms = vms;
+    std::sort(tvms.begin(), tvms.end(),
+              [](const auto &a, const auto &b) { return a.id < b.id; });
+    const auto it = std::adjacent_find(
+        tvms.cbegin(), tvms.cend(),
+        [](const auto &a, const auto &b) { return a.id == b.id; });
+    if (it != tvms.cend()) {
+      const auto es =
+          "penum has duplicated value(" + std::to_string(it->id) + ")";
+      if (la != nullptr) {
+        throw annotated_error(*la, es);
+      } else {
+        throw std::runtime_error(es);
+      }
+    }
+  };
+
+  sanityCheck();
+  return Variant::make(vms);
+}
+
+MonoTypePtr makePVarType(const Variant::Members &vms) {
+  return makePVarTypeImp(vms, nullptr);
+}
+
+MonoTypePtr makePVarType(const Variant::Members &vms,
+                         const LexicalAnnotation &la) {
+  return makePVarTypeImp(vms, &la);
+}
+
 MonoTypePtr makeVarType(const Variant::Members& vms) {
   Variant::Members tvms = vms;
   for (unsigned int i = 0; i < tvms.size(); ++i) {
@@ -247,8 +304,8 @@ str::seq tupSectionFields(const std::string& x) {
 
 // override var and pat-var construction
 namespace hobbes {
-typedef Expr* (*VarCtorFn)(const std::string&, const LexicalAnnotation&);
-typedef Pattern* (*PatVarCtorFn)(const std::string&, const LexicalAnnotation&);
+using VarCtorFn = Expr *(*)(const std::string &, const LexicalAnnotation &);
+using PatVarCtorFn = Pattern *(*)(const std::string &, const LexicalAnnotation &);
 extern VarCtorFn varCtorFn;
 extern PatVarCtorFn patVarCtorFn;
 }
@@ -299,6 +356,7 @@ extern PatVarCtorFn patVarCtorFn;
   hobbes::MonoTypes*           mtypes;
   hobbes::Record::Members*     mreclist;
   hobbes::Variant::Members*    mvarlist;
+  hobbes::Variant::Member*     mpvar;
 
   std::string*                            string;
   bool                                    boolv;
@@ -433,6 +491,8 @@ extern PatVarCtorFn patVarCtorFn;
 %type <mtypes>       types mtuplist msumlist
 %type <mreclist>     mreclist
 %type <mvarlist>     mvarlist
+%type <mvarlist>     mpvarlist
+%type <mpvar>        mpvar
 
 %type <exp>          l0expr lhexpr l1expr l2expr l3expr l4expr l5expr l6expr
 %type <exps>         l6exprs cargs cselconds
@@ -464,7 +524,8 @@ extern PatVarCtorFn patVarCtorFn;
 %type <qualtype>     qtype
 %type <tconstraints> cst tpreds
 %type <tconstraint>  tpred
-%type <mtype>        l0mtype l1mtype tyind
+%type <mtype>        l0mtype l1mtype tyind pal0mtype pal1mtype
+%type <mtypes>       pamtuplist pamsumlist
 %type <mtypes>       ltmtype l1mtargl l0mtargl l0mtarglt
 
 /* associativity to give expected operator precedence */
@@ -518,6 +579,15 @@ def: importdef { $$ = $1; }
    | id id id id id id id id id id "=" l0expr { $$ = new MVarDef(list(*$1, *$2, *$3, *$4, *$5, *$6, *$7, *$8, *$9, *$10), ExprPtr($12), m(@1, @12)); }
    | id id id id id id id id id id id "=" l0expr { $$ = new MVarDef(list(*$1, *$2, *$3, *$4, *$5, *$6, *$7, *$8, *$9, *$10, *$11), ExprPtr($13), m(@1, @13)); }
    | id id id id id id id id id id id id "=" l0expr { $$ = new MVarDef(list(*$1, *$2, *$3, *$4, *$5, *$6, *$7, *$8, *$9, *$10, *$11, *$12), ExprPtr($14), m(@1, @14)); }
+   | id id id id id id id id id id id id id "=" l0expr { $$ = new MVarDef(list(*$1, *$2, *$3, *$4, *$5, *$6, *$7, *$8, *$9, *$10, *$11, *$12, *$13), ExprPtr($15), m(@1, @15)); }
+   | id id id id id id id id id id id id id id "=" l0expr { $$ = new MVarDef(list(*$1, *$2, *$3, *$4, *$5, *$6, *$7, *$8, *$9, *$10, *$11, *$12, *$13, *$14), ExprPtr($16), m(@1, @16)); }
+   | id id id id id id id id id id id id id id id "=" l0expr { $$ = new MVarDef(list(*$1, *$2, *$3, *$4, *$5, *$6, *$7, *$8, *$9, *$10, *$11, *$12, *$13, *$14, *$15), ExprPtr($17), m(@1, @17)); }
+   | id id id id id id id id id id id id id id id id "=" l0expr { $$ = new MVarDef(list(*$1, *$2, *$3, *$4, *$5, *$6, *$7, *$8, *$9, *$10, *$11, *$12, *$13, *$14, *$15, *$16), ExprPtr($18), m(@1, @18)); }
+   | id id id id id id id id id id id id id id id id id "=" l0expr { $$ = new MVarDef(list(*$1, *$2, *$3, *$4, *$5, *$6, *$7, *$8, *$9, *$10, *$11, *$12, *$13, *$14, *$15, *$16, *$17), ExprPtr($19), m(@1, @19)); }
+   | id id id id id id id id id id id id id id id id id id "=" l0expr { $$ = new MVarDef(list(*$1, *$2, *$3, *$4, *$5, *$6, *$7, *$8, *$9, *$10, *$11, *$12, *$13, *$14, *$15, *$16, *$17, *$18), ExprPtr($20), m(@1, @20)); }
+   | id id id id id id id id id id id id id id id id id id id "=" l0expr { $$ = new MVarDef(list(*$1, *$2, *$3, *$4, *$5, *$6, *$7, *$8, *$9, *$10, *$11, *$12, *$13, *$14, *$15, *$16, *$17, *$18, *$19), ExprPtr($21), m(@1, @21)); }
+   | id id id id id id id id id id id id id id id id id id id id "=" l0expr { $$ = new MVarDef(list(*$1, *$2, *$3, *$4, *$5, *$6, *$7, *$8, *$9, *$10, *$11, *$12, *$13, *$14, *$15, *$16, *$17, *$18, *$19, *$20), ExprPtr($22), m(@1, @22)); }
+   | id id id id id id id id id id id id id id id id id id id id id "=" l0expr { $$ = new MVarDef(list(*$1, *$2, *$3, *$4, *$5, *$6, *$7, *$8, *$9, *$10, *$11, *$12, *$13, *$14, *$15, *$16, *$17, *$18, *$19, *$20, *$21), ExprPtr($23), m(@1, @23)); }
 
    // evaluate an expression just for side-effects, then discard it
    | l5expr { $$ = new MVarDef(list(freshName()), let(freshName(), ExprPtr($1), mktunit(m(@1)), m(@1)), m(@1)); }
@@ -648,8 +718,8 @@ l4expr: l4expr "*" l4expr { $$ = TAPP2(var("*", m(@2)), $1, $3, m(@1, @3)); }
 l5expr: l6expr { $$ = $1; }
 
       /* local variable introduction */
-      | "let" letbindings "in" l0expr { $$ = compileNestedLetMatch(*$2, ExprPtr($4), m(@1,@4))->clone(); }
-      | "let" letbindings ";" "in" l0expr { $$ = compileNestedLetMatch(*$2, ExprPtr($5), m(@1,@5))->clone(); }
+      | "let" letbindings "in" l0expr { $$ = compileNestedLetMatch(*$2, ExprPtr($4), m(@1,@4)); }
+      | "let" letbindings ";" "in" l0expr { $$ = compileNestedLetMatch(*$2, ExprPtr($5), m(@1,@5)); }
 
       /* pattern matching */
       | "match" l6exprs "with" patternexps { $$ = compileMatch(yyParseCC, *$2, normPatternRules(*$4, m(@1,@4)), m(@1,@4))->clone(); }
@@ -773,7 +843,7 @@ l6expr: l6expr "(" cargs ")"    { $$ = new App(ExprPtr($1), *$3, m(@1, @4)); }
       | "(" "!" ")"   { $$ = new Var("not",    m(@2)); }
 
       /* quoted expressions */
-      | "`" l0expr "`" { $$ = new Assump(fncall(var("unsafeCast", m(@2)), list(mktunit(m(@2))), m(@2)), qualtype(tapp(primty("quote"), list(texpr(ExprPtr($2))))), m(@2)); }
+      | "`" l0expr "`" { $$ = new Assump(fncall(var("unsafeCast", m(@2)), list(mktunit(m(@2))), m(@2)), qualtype(quotedExprType($2)), m(@2)); }
 
 prules: prules prule { $$ = $1; $$->push_back(*$2); }
       | prule        { $$ = autorelease(new Grammar()); $$->push_back(*$1); }
@@ -897,6 +967,24 @@ cargs: /* nothing */    { $$ = autorelease(new Exprs()); }
 
 qtype : cst "=>" l0mtype { $$ = new QualType(*$1, *$3); }
       | l0mtype          { $$ = new QualType(Constraints(), *$1); }
+      | pal0mtype        { $$ = new QualType(Constraints(), *$1); }
+
+/* a type whose leading atom is a parenthesized type application, e.g. "(Box0 int) -> int":
+   the parser has already reduced "(Box0 int)" to a constraint list before it can see that
+   no "=>" follows, so these mirror l0mtype/l1mtype with that constraint list as the head */
+pal1mtype: cst                 { try { $$ = autorelease(new MonoTypePtr(tyAppFromConstraints(*$1))); } catch (std::exception& ex) { throw annotated_error(m(@1), ex.what()); } }
+         | pal1mtype "@" l1mtype { $$ = autorelease(new MonoTypePtr(fileRefTy(*$1, *$3))); }
+         | pal1mtype "@" "?"     { $$ = autorelease(new MonoTypePtr(fileRefTy(*$1))); }
+
+pamtuplist: pal1mtype              { $$ = autorelease(new MonoTypes()); $$->push_back(*$1); }
+          | pamtuplist "*" l1mtype { $$ = $1; $$->push_back(*$3); }
+
+pamsumlist: pal1mtype "+" l1mtype  { $$ = autorelease(new MonoTypes()); $$->push_back(*$1); $$->push_back(*$3); }
+          | pamsumlist "+" l1mtype { $$ = $1; $$->push_back(*$3); }
+
+pal0mtype: pal1mtype "->" l1mtype { $$ = autorelease(new MonoTypePtr(Func::make(tuplety(list(*$1)), *$3))); }
+         | pamtuplist             { $$ = autorelease(new MonoTypePtr(makeTupleType(*$1))); }
+         | pamsumlist             { $$ = autorelease(new MonoTypePtr(makeSumType(*$1))); }
 
 /* to avoid parsing ambiguity, we require all type constraints to be in parens (this could be solved with a better parser) */
 cst: "(" tpreds ")" { $$ = $2; }
@@ -948,6 +1036,7 @@ l1mtype: id                                { $$ = autorelease(new MonoTypePtr(mo
        | "(" ltmtype ")"                   { try { $$ = autorelease(new MonoTypePtr(clone(yyParseCC->replaceTypeAliases(accumTApp(*$2))))); } catch (std::exception& ex) { throw annotated_error(m(@2), ex.what()); } }
        | "{" mreclist "}"                  { $$ = autorelease(new MonoTypePtr(makeRecType(*$2))); }
        | "|" mvarlist "|"                  { $$ = autorelease(new MonoTypePtr(makeVarType(*$2))); }
+       | "|" mpvarlist "|"                 { $$ = autorelease(new MonoTypePtr(makePVarType(*$2, m(@2)))); }
        | "(" ")"                           { $$ = autorelease(new MonoTypePtr(Prim::make("unit"))); }
        | "intV"                            { $$ = autorelease(new MonoTypePtr(($1 == 0) ? Prim::make("void") : TLong::make($1))); }
        | "boolV"                           { $$ = autorelease(new MonoTypePtr($1 ? TLong::make(1) : TLong::make(0))); }
@@ -956,7 +1045,7 @@ l1mtype: id                                { $$ = autorelease(new MonoTypePtr(mo
        | l1mtype "@" "?"                   { $$ = autorelease(new MonoTypePtr(fileRefTy(*$1))); }
        | "^" id "." l1mtype                { $$ = autorelease(new MonoTypePtr(Recursive::make(*$2, *$4))); }
        | "stringV"                         { $$ = autorelease(new MonoTypePtr(TString::make(str::unescape(str::trimq(*$1))))); }
-       | "`" l0expr "`"                    { $$ = autorelease(new MonoTypePtr(TApp::make(primty("quote"), list(texpr(ExprPtr($2)))))); }
+       | "`" l0expr "`"                    { $$ = autorelease(new MonoTypePtr(quotedExprType($2))); }
 
 tyind: id     { $$ = autorelease(new MonoTypePtr(TVar::make(*$1))); }
      | "intV" { $$ = autorelease(new MonoTypePtr(TLong::make($1))); }
@@ -983,6 +1072,15 @@ mvarlist: mvarlist "," id ":" l0mtype { $$ = $1;                                
         | mvarlist "," id             { $$ = $1;                                  $$->push_back(Variant::Member(*$3, Prim::make("unit"), 0)); }
         | id ":" l0mtype              { $$ = autorelease(new Variant::Members()); $$->push_back(Variant::Member(*$1, *$3,                0)); }
         | id                          { $$ = autorelease(new Variant::Members()); $$->push_back(Variant::Member(*$1, Prim::make("unit"), 0)); }
+
+mpvarlist: mpvarlist "," mpvar { $$ = $1;                                  $$->push_back(*$3); }
+         | mpvar               { $$ = autorelease(new Variant::Members()); $$->push_back(*$1); }
+
+mpvar: id "(" "intV" ")"   { $$ = autorelease(new Variant::Member(*$1, Prim::make("unit"), $3)); }
+     | id "(" "shortV" ")" { $$ = autorelease(new Variant::Member(*$1, Prim::make("unit"), $3)); }
+     | id "(" "boolV" ")"  { $$ = autorelease(new Variant::Member(*$1, Prim::make("unit"), $3)); }
+     | id "(" "byteV" ")"  { $$ = autorelease(new Variant::Member(*$1, Prim::make("unit"), str::dehex(*$3))); }
+     | id "(" "charV" ")"  { $$ = autorelease(new Variant::Member(*$1, Prim::make("unit"), str::readCharDef(*$3))); }
 
 id: TIDENT;
 

@@ -19,9 +19,30 @@ ssize_t sendfile(int toFD, int fromFD, off_t* o, size_t sz) {
 
 namespace hi {
 
-// blocking non-blocking write shorthand
-void write(int fd, const char* s)        { auto rc = ::write(fd, s, strlen(s)); assert(rc > 0); }
-void write(int fd, const std::string& s) { auto rc = ::write(fd, s.c_str(), s.size()); assert(rc > 0); }
+// blocking write shorthand
+//
+// a client can close or reset its connection at any point in a reply, and a
+// reply is written in several pieces, so a failed write here is ordinary and
+// not a reason to bring the server down: it was an assert (which a client
+// could trip deliberately) on top of a single ::write whose short count was
+// never resumed. With SIGPIPE ignored (hi's main) the write reports EPIPE
+// instead of killing the process, and the rest of this reply is abandoned.
+void write(int fd, const char* s, size_t n) {
+  size_t o = 0;
+  while (o < n) {
+    ssize_t rc = ::write(fd, s + o, n - o);
+    if (rc > 0) {
+      o += static_cast<size_t>(rc);
+    } else if (rc < 0 && (errno == EINTR || errno == EAGAIN)) {
+      continue;
+    } else {
+      return; // the client is gone, or will not take the rest of this reply
+    }
+  }
+}
+
+void write(int fd, const char* s)        { write(fd, s, strlen(s)); }
+void write(int fd, const std::string& s) { write(fd, s.data(), s.size()); }
 
 // determine whether a file can be opened and read
 bool fileExists(const std::string& x) {
@@ -53,7 +74,20 @@ std::string exeDir() {
 }
 
 // find a www file by category
-bool catPathToFSPath(const std::string& cat, const std::string& cpath, std::string* fsPath) {
+//
+// the path from the request line is substituted straight into a filesystem
+// path, so without reducing it first a request for "/../../etc/hosts" walked
+// out of every document root searched here -- including out of the working
+// directory that the first of them serves -- and it is also what decides
+// whether a request reaches a .hxp file, which hi compiles and runs. The path
+// is not percent-decoded anywhere on this route, so there is no encoded
+// spelling of a segment to consider.
+bool catPathToFSPath(const std::string& cat, const std::string& urlPath, std::string* fsPath) {
+  std::string cpath;
+  if (!hobbes::str::relativePathInRoot(urlPath, &cpath)) {
+    return false;
+  }
+
   *fsPath = "./" + cpath;
   if (fileExists(*fsPath)) {
     return true;
@@ -70,11 +104,7 @@ bool catPathToFSPath(const std::string& cat, const std::string& cpath, std::stri
   }
   
   *fsPath = exeDir() + "/../../common/www/" + cat + "/" + cpath;
-  if (fileExists(*fsPath)) {
-    return true;
-  }
-
-  return false;
+  return fileExists(*fsPath);
 }
 
 // find a www 'system' file
@@ -219,7 +249,7 @@ void WWWServer::evalHxpFile(const hobbes::HTTPRequest&, int fd, const std::strin
 }
 
 // utility functions for web processes
-typedef hobbes::array<char> cstr;
+using cstr = hobbes::array<char>;
 
 const cstr* linkTarget(const cstr* p) {
   using namespace hobbes;
@@ -232,7 +262,7 @@ const cstr* slurpFile(const cstr* fpath) {
   return makeString(str::slurp(f));
 }
 
-typedef std::pair<const cstr*, const cstr*> cstrpair;
+using cstrpair = std::pair<const cstr *, const cstr *>;
 
 const hobbes::array< const cstr* >* csplit(const cstr* s, const cstr* ss) {
   using namespace hobbes;
@@ -245,7 +275,7 @@ const hobbes::array< const cstr* >* csplit(const cstr* s, const cstr* ss) {
 }
 
 long unixTime() {
-  return time(0) * (1000 * 1000);
+  return time(nullptr) * (1000 * 1000);
 }
 
 const cstr* formatJSTime(long x) {
@@ -263,8 +293,14 @@ const cstr* jsEscape(const cstr* x) {
 }
 
 // the basic hi web server
-WWWServer::WWWServer(int port, hobbes::cc* c) : c(c) {
+WWWServer::WWWServer(int port, hobbes::cc* c, std::vector<std::string> opts) : c(c), opts(std::move(opts)) {
   // add a few bindings that are convenient for web servers
+  //
+  // linkTarget/slurpFile read arbitrary caller-chosen paths (readlink/ifstream
+  // with no restriction) -- like the process/file primitives bin/hi/funcdefs.C
+  // binds into the same cc, they're deny-listed under Safe mode
+  // (lib/hobbes/eval/cmodule.C) so that a remote GET /?<expr> request can't
+  // use them to exfiltrate files (STRFR-433924).
   c->bind("linkTarget",   &linkTarget);
   c->bind("csplit",       &csplit);
   c->bind("slurpFile",    &slurpFile);
@@ -284,8 +320,7 @@ WWWServer::WWWServer(int port, hobbes::cc* c) : c(c) {
   hobbes::installHTTPD(port, &WWWServer::evalHTTPRequest, this);
 }
 
-WWWServer::~WWWServer() {
-}
+WWWServer::~WWWServer() = default;
 
 std::string urlDecode(const std::string& x) {
   using namespace hobbes::str;
@@ -317,9 +352,7 @@ std::string htmlEncode(const std::string& x) {
   using namespace hobbes::str;
 
   std::ostringstream ss;
-  for (size_t i = 0; i < x.size(); ++i) {
-    char c = x[i];
-
+  for (const char c : x) {
     switch (c) {
     case '&':
       ss << "&amp;";
@@ -344,7 +377,7 @@ std::string showType(hobbes::cc& c, const hobbes::QualTypePtr& t) {
   hobbes::QualTypePtr st = hobbes::simplifyVarNames(hobbes::qualtype(cs, t->monoType()));
 
   std::ostringstream ss;
-  if (st->constraints().size() > 0) {
+  if (!st->constraints().empty()) {
     ss << htmlEncode(hobbes::show(st->constraints()[0]));
     for (size_t i = 1; i < st->constraints().size(); ++i) {
       ss << ", " << htmlEncode(hobbes::show(st->constraints()[i]));
@@ -360,8 +393,8 @@ void WWWServer::printDefaultPage(int fd) {
   b << "<html><head><title>hi process</title></head><body><pre>";
 
   b << "<h2>Environment</h2>\n<table>";
-  for (auto vty : this->c->typeEnv()->typeEnvTable()) {
-    if (vty.first.size() > 0 && vty.first[0] != '.') {
+  for (const auto& vty : this->c->typeEnv()->typeEnvTable()) {
+    if (!vty.first.empty() && vty.first[0] != '.') {
       b << "<tr><td><b>" << vty.first << "</b></td><td>" << showType(*this->c, vty.second->instantiate()) << "</td></tr>";
     }
   }
@@ -377,8 +410,14 @@ void WWWServer::printDefaultPage(int fd) {
 
 void WWWServer::printQueryResult(int fd, const std::string& expr) {
   try {
-    typedef void (*pprintF)();
-    pprintF f = this->c->compileFn<void()>("print(" + expr + ")");
+    using pprintF = void (*)();
+    // unlike hi's net REPL (bin/hi/evaluator.C:83), a query expression here
+    // used to go straight from the raw request string to compileFn with no
+    // Safe-mode translation at all -- 'option Safe' being on by default
+    // (evaluator.H) never actually applied to this surface. Route it through
+    // translateExprWithOpts the same way the REPL does (STRFR-433924).
+    hobbes::ExprPtr pe = hobbes::translateExprWithOpts(this->opts, this->c->readExpr("print(" + expr + ")"));
+    pprintF f = this->c->compileFn<void()>(pe);
 
     // redirect stdout for this evaluation
     int stdoutc = dup(STDOUT_FILENO);
@@ -410,10 +449,15 @@ void WWWServer::printFileContents(int fd, const std::string& fpath) {
   int sfd = open(fpath.c_str(), O_RDONLY);
   if (sfd == -1) {
     print404(fd, fpath);
+    return;
   }
 
   struct stat sb;
-  fstat(sfd, &sb);
+  if (fstat(sfd, &sb) != 0) {
+    close(sfd);
+    print404(fd, fpath);
+    return;
+  }
 
   write(fd, "HTTP 200 OK\nContent-Type: " + mimeType(fpath) + "\nContent-Length: " + str::from(sb.st_size) + "\n\n");
 
@@ -492,7 +536,7 @@ std::string WWWServer::mimeTypeForExt(const std::string& ext) {
       std::string line;
       std::getline(mtypes, line);
 
-      if (line.size() > 0 && line[0] != '#') {
+      if (!line.empty() && line[0] != '#') {
         using namespace hobbes;
 
         str::pair lp = str::lsplit(line, "\t");
@@ -516,8 +560,8 @@ WWWServer::VarBindingDescs* WWWServer::getVarBindingDescs() {
   auto*       result    = hobbes::makeArray<VarBindingDesc>(tenvTable.size());
 
   size_t i = 0;
-  for (auto vty : tenvTable) {
-    if (vty.first.size() > 0 && vty.first[0] != '.') {
+  for (const auto& vty : tenvTable) {
+    if (!vty.first.empty() && vty.first[0] != '.') {
       result->data[i].first  = hobbes::makeString(vty.first);
       result->data[i].second = hobbes::makeString(showType(*this->c, vty.second->instantiate()));
       ++i;

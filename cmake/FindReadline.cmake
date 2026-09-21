@@ -1,6 +1,6 @@
 find_path(Readline_ROOT_DIR
 	NAMES include/readline/readline.h
-  HINTS /usr/local/opt/readline/
+  HINTS /opt/homebrew/opt/readline/ /usr/local/opt/readline/
   NO_DEFAULT_PATH
 )
 
@@ -19,7 +19,7 @@ if(Readline_INCLUDE_DIRS AND Readline_LIBRARIES AND Ncurses_LIBRARY)
 else()
   find_library(Readline_LIBRARIES NAMES readline)
   include(FindPackageHandleStandardArgs)
-  find_package_handle_standard_args(readline DEFAULT_MSG Readline_INCLUDE_DIRS Readline_LIBRARIES)
+  find_package_handle_standard_args(Readline DEFAULT_MSG Readline_INCLUDE_DIRS Readline_LIBRARIES)
   mark_as_advanced(Readline_INCLUDE_DIRS Readline_LIBRARIES)
 endif()
 

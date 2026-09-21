@@ -1,0 +1,5 @@
+// @test: [gcd((12, 8)), gcd((100, 75)), gcd((17, 13))]
+gcd :: (int * int) -> int
+gcd x = match x with
+  | (a, 0) -> a
+  | (a, b) -> gcd((b, a % b))

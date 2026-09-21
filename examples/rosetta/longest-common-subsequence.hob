@@ -1,0 +1,8 @@
+// @test: lcs(("thisisatest", "testing123testing"))
+lcsHelper :: ([char] * [char] * int * int) -> [char]
+lcsHelper x = match x with
+  | (a, b, i, j) -> if (i >= length(a) or j >= length(b)) then "" else if (a[i] == b[j]) then [a[i]] ++ lcsHelper((a, b, i + 1, j + 1)) else let r1 = lcsHelper((a, b, i + 1, j)) in let r2 = lcsHelper((a, b, i, j + 1)) in if (length(r1) >= length(r2)) then r1 else r2
+
+lcs :: ([char] * [char]) -> [char]
+lcs x = match x with
+  | (a, b) -> lcsHelper((a, b, 0, 0))

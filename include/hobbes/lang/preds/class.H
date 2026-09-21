@@ -18,20 +18,20 @@ FunDeps inferFundeps(const TEnvPtr& tenv, const Constraints& cs);
 FunDeps mergeFundeps(const FunDeps& lhs, const FunDeps& rhs);
 
 // a 'member mapping' is a set of named overloaded definitions
-typedef std::map<std::string, ExprPtr> MemberMapping;
+using MemberMapping = std::map<std::string, ExprPtr>;
 
 // a 'type class' is a scheme for overloading terms
 class TCInstance;
-typedef std::shared_ptr<TCInstance> TCInstancePtr;
-typedef std::vector<TCInstancePtr>  TCInstances;
+using TCInstancePtr = std::shared_ptr<TCInstance>;
+using TCInstances = std::vector<TCInstancePtr>;
 
 class TCInstanceFn;
-typedef std::shared_ptr<TCInstanceFn> TCInstanceFnPtr;
-typedef std::vector<TCInstanceFnPtr>  TCInstanceFns;
+using TCInstanceFnPtr = std::shared_ptr<TCInstanceFn>;
+using TCInstanceFns = std::vector<TCInstanceFnPtr>;
 
 class TClass : public Unqualifier, public LexicallyAnnotated {
 public:
-  typedef std::map<std::string, MonoTypePtr> Members;
+  using Members = std::map<std::string, MonoTypePtr>;
 
   TClass(const Constraints& reqs, const std::string& tcname, size_t tvs, const Members& tcmembers, const LexicalAnnotation&);
   TClass(const Constraints& reqs, const std::string& tcname, size_t tvs, const Members& tcmembers, const FunDeps& fundeps, const LexicalAnnotation&);
@@ -52,15 +52,18 @@ public:
   TCInstances matches(const TEnvPtr& tenv, const ConstraintPtr& c, MonoTypeUnifier*, Definitions* ds) const;
   TCInstances matches(const TEnvPtr& tenv, const MonoTypes& mts, MonoTypeUnifier*, Definitions* ds) const;
 
+  // the instance that matches a given constraint, iff exactly one does
+  TCInstancePtr uniqueInstance(const TEnvPtr& tenv, const ConstraintPtr& c, Definitions* ds) const;
+
   // unqualifier interface
-  bool        refine     (const TEnvPtr& tenv, const ConstraintPtr& cst, MonoTypeUnifier* s, Definitions* ds);
-  bool        satisfied  (const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions* ds)                   const;
-  bool        satisfiable(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions* ds)                   const;
-  void        explain    (const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPtr& e, Definitions* ds, annmsgs* msgs);
-  ExprPtr     unqualify  (const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPtr& e, Definitions* ds) const;
-  PolyTypePtr lookup     (const std::string& vn)                                                            const;
-  SymSet      bindings   ()                                                                                 const;
-  FunDeps     dependencies(const ConstraintPtr&)                                                            const;
+  bool        refine     (const TEnvPtr& tenv, const ConstraintPtr& cst, MonoTypeUnifier* s, Definitions* ds) override;
+  bool        satisfied  (const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions* ds)                   const override;
+  bool        satisfiable(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions* ds)                   const override;
+  void        explain    (const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPtr& e, Definitions* ds, annmsgs* msgs) override;
+  ExprPtr     unqualify  (const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPtr& e, Definitions* ds) const override;
+  PolyTypePtr lookup     (const std::string& vn)                                                            const override;
+  SymSet      bindings   ()                                                                                 const override;
+  FunDeps     dependencies(const ConstraintPtr&)                                                            const override;
 
   // the member type in the implied context of this class's qua[nt|l]ification
   //   (normally you should use 'lookup' to get fully qualified types)
@@ -75,8 +78,8 @@ public:
 private:
   friend class TCInstanceFn;
 
-  typedef type_map<TCInstancePtr> TCMonoInstDB;
-  typedef type_map<TCInstanceFns> TCInstFnDB;
+  using TCMonoInstDB = type_map<TCInstancePtr>;
+  using TCInstFnDB = type_map<TCInstanceFns>;
 
   std::string   tcname;
   size_t        tvs;
@@ -93,18 +96,23 @@ private:
   bool refine(const TEnvPtr& tenv, const ConstraintPtr& c, const FunDep& fd, MonoTypeUnifier* s, Definitions* ds) const;
 
   // to support recursive types, track recursive invocations and assume they're satisfiable
-  typedef type_map<bool> TestedInstances;
+  using TestedInstances = type_map<bool>;
   mutable TestedInstances testedInstances;
 
   // cache satisfiability tests
   mutable TestedInstances satfInstances;
+
+  // both memos are void once an instance is added to any class
+  mutable uint64_t memoGeneration = 0;
+  void forgetResolutions();
+  void refreshResolutions() const;
 };
-typedef std::shared_ptr<TClass>          TClassPtr;
-typedef std::map<std::string, TClassPtr> TClassEnv;
+using TClassPtr = std::shared_ptr<TClass>;
+using TClassEnv = std::map<std::string, TClassPtr>;
 
 class TCInstance : public LexicallyAnnotated {
 public:
-  typedef std::shared_ptr<Expr> ExprPtr;
+  using ExprPtr = std::shared_ptr<Expr>;
 
   TCInstance(const std::string& tcname, const MonoTypes& itys, const MemberMapping& mmap, const LexicalAnnotation&);
 
@@ -135,10 +143,10 @@ public:
   size_t arity() const;
 
   // can we immediately exclude this instance generator for this type list?
-  bool satisfiable(const TEnvPtr&, const MonoTypes&, Definitions*);
+  bool satisfiable(const TEnvPtr&, const MonoTypes&, Definitions*) const;
 
   // assuming we're not satisfiable, what are the constraints that aren't satisfiable?
-  void explainSatisfiability(const TEnvPtr&, const MonoTypes&, Definitions*, Constraints*, Constraints*);
+  void explainSatisfiability(const TEnvPtr&, const MonoTypes&, Definitions*, Constraints*, Constraints*) const;
 
   // (possibly) produce a type class instance from this generator
   bool apply(const TEnvPtr& tenv, const MonoTypes& tys, const TClass* c, MonoTypeUnifier*, Definitions* rdefs, TCInstancePtr* out) const;
@@ -154,7 +162,7 @@ public:
   void show(std::ostream&) const;
 
   // produce a sequence of type variables and constraints unique to this invocation
-  typedef std::pair<Constraints, MonoTypes> IFnDef;
+  using IFnDef = std::pair<Constraints, MonoTypes>;
   IFnDef freshDef(MonoTypeSubst* s) const;
 private:
   std::string   tcname;
@@ -170,6 +178,11 @@ bool isClassSatisfied(const TEnvPtr&, const std::string&, const MonoTypes&, Defi
 bool isClassSatisfiable(const TEnvPtr&, const std::string&, const MonoTypes&, Definitions*);
 
 ExprPtr unqualifyClass(const TEnvPtr&, const std::string&, const MonoTypes&, const ExprPtr&, Definitions*);
+
+// eliminate a batch of class constraints (each paired with its uniquely-matching instance)
+// in a single traversal of the input expression, rather than one full rewrite per constraint
+using TCInstConstraints = std::vector<std::pair<ConstraintPtr, TCInstancePtr>>;
+ExprPtr unqualifyClassConstraints(const TEnvPtr&, const TCInstConstraints&, const ExprPtr&, Definitions*);
 
 // utility for generating new classes from existing ones
 void definePrivateClass(const TEnvPtr& tenv, const std::string& memberName, const ExprPtr& expr);

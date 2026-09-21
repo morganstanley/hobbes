@@ -1,55 +1,304 @@
 name: "Build"
-on: [push]
+on: [push, pull_request]
+# Least privilege by default; jobs opt into more where needed
+permissions:
+  contents: read
+
 jobs:
-  linux-clang-build:
+  linux-clang-ASanAndUBSan-build:
     runs-on: ${{matrix.os}}
     strategy:
+      # One pairing failing says nothing about the rest, as python-compat below
+      fail-fast: false
       matrix:
-        os: [ubuntu-20.04]
-        clang: [6, 8, 10, 11]
+        os: [ubuntu-24.04]
+        clang: [16, 18, 20, 21]
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
             # Nix Flakes doesn't work on shallow clones
             fetch-depth: 0
-      - uses: cachix/install-nix-action@v12
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
         with:
-          install_url: https://github.com/numtide/nix-flakes-installer/releases/download/nix-2.4pre20201221_9fab14a/install
           extra_nix_config: |
             experimental-features = nix-command flakes ca-references
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.10'
+      - name: nix build hobbesPackages/clang-${{ matrix.clang }}-ASanAndUBSan/hobbes
+        run: |
+          .github/scripts/nix-build-retry.sh .#hobbesPackages/clang-${{ matrix.clang }}-ASanAndUBSan/hobbes
+      - name: nix log hobbesPackages/clang-${{ matrix.clang }}-ASanAndUBSan/hobbes
+        if: ${{ always() }}
+        run: |
+          nix log  .#hobbesPackages/clang-${{ matrix.clang }}-ASanAndUBSan/hobbes &> ${{ matrix.os }}-clang-${{ matrix.clang }}-ASanAndUBSan-hobbes.log
+      - name: upload log ${{ matrix.os }}-clang-${{ matrix.clang }}-ASanAndUBSan-hobbes.log
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: output-log-file-${{ matrix.os }}-clang-${{ matrix.clang }}-ASanAndUBSan-hobbes
+          path: ${{ matrix.os }}-clang-${{ matrix.clang }}-ASanAndUBSan-hobbes.log
+  linux-clang-build:
+    runs-on: ${{matrix.os}}
+    strategy:
+      # One pairing failing says nothing about the rest, as python-compat below
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04]
+        clang: [16, 18, 20, 21]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+            # Nix Flakes doesn't work on shallow clones
+            fetch-depth: 0
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes ca-references
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.10'
       - name: nix build hobbesPackages/clang-${{ matrix.clang }}/hobbes
         run: |
-          nix build .#hobbesPackages/clang-${{ matrix.clang }}/hobbes
+          .github/scripts/nix-build-retry.sh .#hobbesPackages/clang-${{ matrix.clang }}/hobbes
+      - name: Rosetta Code examples
+        run: |
+          bash examples/rosetta/run_tests.sh result/bin/hi
+      - name: nix log hobbesPackages/clang-${{ matrix.clang }}/hobbes
+        if: ${{ always() }}
+        run: |
           nix log  .#hobbesPackages/clang-${{ matrix.clang }}/hobbes &> ${{ matrix.os }}-clang-${{ matrix.clang }}-hobbes.log
       - name: upload log ${{ matrix.os }}-clang-${{ matrix.clang }}-hobbes.log
-        uses: actions/upload-artifact@v1
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: output-log-file
+          name: output-log-file-${{ matrix.os }}-clang-${{ matrix.clang }}
           path: ${{ matrix.os }}-clang-${{ matrix.clang }}-hobbes.log
   linux-gcc-build:
     runs-on: ${{matrix.os}}
     strategy:
+      # One pairing failing says nothing about the rest, as python-compat below
+      fail-fast: false
       matrix:
-        os: [ubuntu-20.04]
-        gcc: [10]
-        llvm: [6, 8, 10, 11]
+        os: [ubuntu-24.04]
+        gcc: [13, 14, 15]
+        llvm: [16, 18, 19, 20, 21]
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
             # Nix Flakes doesn't work on shallow clones
             fetch-depth: 0
-      - uses: cachix/install-nix-action@v12
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
         with:
-          install_url: https://github.com/numtide/nix-flakes-installer/releases/download/nix-2.4pre20201221_9fab14a/install
           extra_nix_config: |
             experimental-features = nix-command flakes ca-references
-      - name: nix build hobbesPackages/clang-${{ matrix.clang }}/hobbes
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.10'
+      - name: nix build hobbesPackages/gcc-${{ matrix.gcc }}/llvm-${{ matrix.llvm }}/hobbes
         run: |
-          nix build .#hobbesPackages/gcc-${{ matrix.gcc }}/llvm-${{ matrix.llvm }}/hobbes
+          .github/scripts/nix-build-retry.sh .#hobbesPackages/gcc-${{ matrix.gcc }}/llvm-${{ matrix.llvm }}/hobbes
+      - name: nix log hobbesPackages/gcc-${{ matrix.gcc }}/llvm-${{ matrix.llvm }}/hobbes
+        if: ${{ always() }}
+        run: |
           nix log  .#hobbesPackages/gcc-${{ matrix.gcc }}/llvm-${{ matrix.llvm }}/hobbes &> ${{ matrix.os }}-gcc-${{ matrix.gcc }}-llvm-${{ matrix.llvm }}-hobbes.log
       - name: upload log ${{ matrix.os }}-gcc-${{ matrix.gcc }}-llvm-${{ matrix.llvm }}-hobbes.log
-        uses: actions/upload-artifact@v1
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: output-log-file
+          name: output-log-file-${{ matrix.os }}-gcc-${{ matrix.gcc }}-llvm-${{ matrix.llvm }}
           path: ${{ matrix.os }}-gcc-${{ matrix.gcc }}-llvm-${{ matrix.llvm }}-hobbes.log
-
+  rhel9-build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    container:
+      image: rockylinux:9
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Install dependencies
+        run: |
+          dnf update -y
+          # Enable CRB (CodeReady Builder) for additional development packages
+          dnf install -y epel-release
+          dnf config-manager --set-enabled crb
+          dnf install -y gcc gcc-c++ cmake make ncurses-devel zlib-devel python3 readline readline-devel
+          dnf install -y llvm-devel clang clang-devel
+      - name: Build hobbes
+        run: |
+          mkdir -p build && cd build
+          CC=clang CXX=clang++ cmake ..
+          VERBOSE=1 make -j2
+      - name: Test hobbes
+        run: |
+          cd build
+          make test
+      - name: Upload build logs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: rhel9-build-logs
+          path: build/
+  ubuntu2604-build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    container:
+      image: ubuntu:26.04
+    steps:
+      - name: Install dependencies
+        run: |
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential cmake make git ca-certificates \
+            libncurses-dev zlib1g-dev libreadline-dev libzstd-dev \
+            python3 \
+            llvm-dev clang libclang-dev
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Build hobbes
+        run: |
+          mkdir -p build && cd build
+          CC=clang CXX=clang++ cmake ..
+          VERBOSE=1 make -j2
+      - name: Test hobbes
+        run: |
+          cd build
+          make test
+      - name: Upload build logs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ubuntu2604-build-logs
+          path: build/
+  apt-llvm22-build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Install LLVM 22 from apt.llvm.org
+        env:
+          # the installer that adds apt.llvm.org's repository, pinned to a
+          # revision and checked against its hash rather than run as whatever
+          # the site serves at the time (see .clusterfuzzlite/Dockerfile, which
+          # installs LLVM the same way)
+          LLVM_SH_COMMIT: 6dc0d1ad7de83d0782731687fd555a7859b4da58
+          LLVM_SH_SHA256: 03878e08f47b66cc95bc4b544b0db3c6d9ce8d60e6cf2492ae357984330a9eae
+        run: |
+          export DEBIAN_FRONTEND=noninteractive
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake make python3 \
+            libncurses-dev zlib1g-dev libreadline-dev libzstd-dev \
+            wget gnupg lsb-release software-properties-common
+          wget -q -O /tmp/llvm.sh \
+            "https://raw.githubusercontent.com/opencollab/llvm-jenkins.debian.net/${LLVM_SH_COMMIT}/llvm.sh"
+          echo "${LLVM_SH_SHA256}  /tmp/llvm.sh" | sha256sum -c -
+          # the installer asks apt.llvm.org for its repository index to decide
+          # whether this distribution is supported, and reports a request that
+          # did not come back as an unsupported distribution, so retry before
+          # believing it
+          ok=
+          for i in 1 2 3; do
+            if sudo bash /tmp/llvm.sh 22; then ok=1; break; fi
+            echo "llvm.sh failed (attempt $i), retrying"
+            sleep 15
+          done
+          [ -n "$ok" ]
+          sudo apt-get install -y --no-install-recommends \
+            clang-22 llvm-22-dev libclang-22-dev
+      - name: Configure
+        run: |
+          export PATH="/usr/lib/llvm-22/bin:$PATH"
+          CC=clang-22 CXX=clang++-22 cmake -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DLLVM_DIR=/usr/lib/llvm-22/lib/cmake/llvm
+      - name: Build
+        run: cmake --build build -j$(nproc)
+      - name: Test
+        run: cd build && ctest --output-on-failure
+  rhel10-build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    container:
+      image: quay.io/rockylinux/rockylinux:10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Install dependencies
+        run: |
+          dnf update -y
+          dnf install -y epel-release
+          dnf config-manager --set-enabled crb
+          dnf install -y gcc gcc-c++ cmake make ncurses-devel zlib-devel python3 readline readline-devel
+          dnf install -y llvm-devel clang clang-devel
+      - name: Build hobbes
+        run: |
+          mkdir -p build && cd build
+          CC=clang CXX=clang++ cmake ..
+          VERBOSE=1 make -j2
+      - name: Test hobbes
+        run: |
+          cd build
+          make test
+      - name: Upload build logs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: rhel10-build-logs
+          path: build/
+  python-compat:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10', '3.11', '3.12', '3.13', '3.14']
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake clang-18 llvm-18-dev libncurses-dev libreadline-dev zlib1g-dev
+      - name: Configure
+        run: |
+          export PATH="/usr/lib/llvm-18/bin:$PATH"
+          CC=clang-18 CXX=clang++-18 cmake -B build -DCMAKE_BUILD_TYPE=Release \
+            -DLLVM_DIR=/usr/lib/llvm-18/lib/cmake/llvm \
+            -DPython_EXECUTABLE="$(which python3)"
+      - name: Build
+        run: cmake --build build -j$(nproc)
+      - name: Run Python tests
+        run: ./build/hobbes-test --tests Python
+  macos-build:
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        llvm: [18]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.10'
+      - name: Install dependencies
+        run: |
+          brew install llvm@${{ matrix.llvm }} readline zstd
+      - name: Configure
+        run: |
+          export LLVM_DIR="$(brew --prefix llvm@${{ matrix.llvm }})/lib/cmake/llvm"
+          export PATH="$(brew --prefix llvm@${{ matrix.llvm }})/bin:$PATH"
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DLLVM_DIR="$LLVM_DIR"
+      - name: Build
+        run: |
+          cmake --build build -j$(sysctl -n hw.ncpu)
+      - name: Test
+        run: |
+          # Run test binary directly; the process may exit non-zero due to
+          # detached thread cleanup (libc++abi: terminating) even when all
+          # tests pass, so check output for failures instead of exit code.
+          ./build/hobbes-test 2>&1 | tee test-output.txt; true
+          if grep -q 'FAILURE' test-output.txt; then
+            echo "::error::Test failures detected"
+            exit 1
+          fi

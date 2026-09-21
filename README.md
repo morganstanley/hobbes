@@ -1,5 +1,9 @@
 # hobbes
 
+![Lifecycle Active](https://img.shields.io/badge/Lifecycle-Active-brightgreen)
+[![OSS-Fuzz](https://oss-fuzz-build-logs.storage.googleapis.com/badges/hobbes.svg)](https://issues.oss-fuzz.com/issues?q=project:hobbes)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/morganstanley/hobbes/badge)](https://scorecard.dev/viewer/?uri=github.com/morganstanley/hobbes)
+
 a language, embedded compiler, and runtime for efficient dynamic expression evaluation, data storage and analysis
 
 |section                             |description                                                   |
@@ -21,7 +25,7 @@ Hobbes is built for high performance integration with C/C++ applications. While 
 
 ## Building <a name="building"></a>
 
-To build hobbes, you will need [LLVM](http://llvm.org/) 3.3 or later, [cmake](http://cmake.org/) 3.4 or later, [GNU gcc](https://gcc.gnu.org/) 4.8 or later, and a version 2.5 or later Linux kernel.
+To build hobbes, you will need [LLVM](http://llvm.org/) 3.3 or later, [cmake](http://cmake.org/) 3.19 or later, [GNU gcc](https://gcc.gnu.org/) 4.8 or later, and a version 2.5 or later Linux kernel.
 
 With LLVM, cmake, and g++ installed, after downloading this code you should be able to build and install hobbes just by running:
 
@@ -77,7 +81,7 @@ When a compiled function decides to allocate memory, that allocation happens out
 Finally, if we put the above program in a file called "test.cpp" then we can build it like this:
 
 ```
-$ g++ -pthread -std=c++11 -I <path-to-hobbes-headers> -I <path-to-llvm-headers> test.cpp -o test -L <path-to-hobbes-libs> -lhobbes -ldl -lrt -ltinfo -lz -L <path-to-llvm-libs> `llvm-config --libs x86asmparser x86codegen x86 mcjit passes`
+$ g++ -pthread -std=c++17 -I <path-to-hobbes-headers> -I <path-to-llvm-headers> test.cpp -o test -L <path-to-hobbes-libs> -lhobbes -ldl -lrt -ltinfo -lz -L <path-to-llvm-libs> `llvm-config --libs x86asmparser x86codegen x86 mcjit passes`
 ```
 
 The explicit path statements may not be necessary depending on where/how LLVM and hobbes have been installed on your system.  The inline invocation of the `llvm-config` program is typical with users of LLVM, to avoid explicitly listing several libraries.
@@ -1316,3 +1320,44 @@ Another example we've seen earlier is the hobbes `Connect` constraint.  This als
 
 These are just some examples of extensions to hobbes through the `Unqualifier` interface, but there are undoubtedly many other ways that this option can be useful to applications using hobbes.
 
+
+## Releases
+
+Releases are source-only: Hobbes is consumed by compiling it, so no build
+artifacts are published. Each release consists of a reproducible source
+archive, a `SHA256SUMS` file, and a Sigstore signature over those checksums.
+
+Signing is keyless — the signature is bound to the release workflow's OIDC
+identity and recorded in the public Rekor transparency log — so there is no
+signing key to manage. Verify against that exact identity: the pattern below
+binds to this repository, this workflow file *and* a tag ref, so a signature
+produced by any other workflow here would not be accepted.
+
+```bash
+cosign verify-blob \
+  --certificate SHA256SUMS.pem \
+  --signature SHA256SUMS.sig \
+  --certificate-identity-regexp \
+    '^https://github\.com/morganstanley/hobbes/\.github/workflows/release\.yml@refs/tags/v' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  SHA256SUMS
+
+sha256sum -c SHA256SUMS
+```
+
+Releases are cut by pushing a tag matching `v*`, which names the release.
+Signing the tag is recommended — it attests who cut it — but the workflow
+does not require it, and the release signature is independent of it:
+
+```bash
+git tag -s v1.0.0 -m "hobbes 1.0.0"
+git push origin v1.0.0
+```
+
+Each major version also carries a codename — two alliterative words from
+philosophy, lettered in order, so `v1.x` is *Analytic Aporia*, `v2.x` is
+*Being Becoming*, and so on through *Zeno's Zenith*. The full list lives in
+[RELEASE_CODENAMES.tsv](RELEASE_CODENAMES.tsv); the release workflow reads it
+to title the release (`v1.0.0 "Analytic Aporia"`). The tag remains the
+authoritative version — the codename is decoration, and a major version with
+no row simply has none.

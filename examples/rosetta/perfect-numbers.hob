@@ -1,0 +1,6 @@
+// @test: [n | n <- [2..10000], isPerfect(n)]
+properDivisorSum :: int -> int
+properDivisorSum n = sum([d | d <- [1..n-1], n % d == 0])
+
+isPerfect :: int -> bool
+isPerfect n = properDivisorSum(n) == n

@@ -1,0 +1,4 @@
+// @test: (compose(double, addThree, 5), compose(addThree, double, 5))
+double x = x * 2
+addThree x = x + 3
+compose f g x = f(g(x))

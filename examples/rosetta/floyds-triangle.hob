@@ -1,0 +1,5 @@
+// @test: floydTriangle(5)
+floydRow x = match x with
+  | (start, count) -> [start + i | i <- [0..count-1]]
+
+floydTriangle n = [floydRow((1 + r * (r - 1) / 2, r)) | r <- [1..n]]

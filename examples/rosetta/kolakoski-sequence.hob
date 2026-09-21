@@ -1,0 +1,11 @@
+// @test: kolakoski(20L)
+appendN x = match x with
+  | (val, 0L, acc) -> acc
+  | (val, n, acc) -> appendN((val, n - 1, acc ++ [val]))
+
+nextVal v = if (v == 1L) then 2L else 1L
+
+kolaHelper x = match x with
+  | (seq, i, curVal, n) -> if (length(seq) >= n) then [seq[j] | j <- [0L..n-1]] else kolaHelper((appendN((curVal, seq[i], seq)), i + 1, nextVal(curVal), n))
+
+kolakoski n = kolaHelper(([1L, 2L, 2L], 2L, 1L, n))

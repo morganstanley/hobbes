@@ -1,0 +1,24 @@
+diff --git a/include/hobbes/reflect.H b/include/hobbes/reflect.H
+index b575156..1b1132d 100644
+--- a/include/hobbes/reflect.H
++++ b/include/hobbes/reflect.H
+@@ -526,6 +526,9 @@ template <template <size_t,class,class> class F, typename U, typename ... Ctors,
+       if (init) return fvec; // <-- pointless, but prevents an unused variable error
+     }
+ 
++#if defined(__clang__)
++    __attribute__((no_sanitize("function")))
++#endif
+     static void apply(uint32_t id, void* payload, Args... args) {
+       fns()[id](payload, args...);
+     }
+@@ -541,6 +544,9 @@ template <typename R, template <size_t,class,class> class F, typename U, typenam
+       if (init) return fvec; // <-- pointless, but prevents an unused variable error
+     }
+ 
++#if defined(__clang__)
++    __attribute__((no_sanitize("function")))
++#endif
+     static R apply(uint32_t id, void* payload, Args... args) {
+       return fns()[id](payload, args...);
+     }

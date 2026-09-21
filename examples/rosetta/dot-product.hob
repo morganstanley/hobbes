@@ -1,0 +1,4 @@
+// @test: dot(([1, 3, -5], [4, -2, -1]))
+dot :: ([int] * [int]) -> int
+dot x = match x with
+  | (a, b) -> sum(zipWith(\x y.x*y, a, b))

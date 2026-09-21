@@ -7,12 +7,12 @@
 namespace hobbes {
 
 struct ATRecordEliminator : public ATEliminator {
-  bool satisfied(const TEnvPtr& tenv, const MonoTypePtr& rty, const MonoTypePtr& fname, const MonoTypePtr& fty) const;
-  bool satisfiable(const TEnvPtr& tenv, const MonoTypePtr& rty, const MonoTypePtr& fname, const MonoTypePtr& fty) const;
-  bool refine(const TEnvPtr& tenv, const MonoTypePtr& rty, const MonoTypePtr& fieldName, const MonoTypePtr& fty, MonoTypeUnifier* s);
-  PolyTypePtr lookup(const std::string& vn) const;
-  SymSet bindings() const;
-  ExprPtr unqualify(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*) const;
+  bool satisfied(const TEnvPtr& tenv, const MonoTypePtr& rty, const MonoTypePtr& fname, const MonoTypePtr& fty) const override;
+  bool satisfiable(const TEnvPtr& tenv, const MonoTypePtr& rty, const MonoTypePtr& fname, const MonoTypePtr& fty) const override;
+  bool refine(const TEnvPtr& tenv, const MonoTypePtr& rty, const MonoTypePtr& fieldName, const MonoTypePtr& fty, MonoTypeUnifier* s) override;
+  PolyTypePtr lookup(const std::string& vn) const override;
+  SymSet bindings() const override;
+  ExprPtr unqualify(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*) const override;
 };
 
 }

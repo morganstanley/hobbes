@@ -1,0 +1,5 @@
+// @test: sternBrocot(15L)
+sternBrocotHelper x = match x with
+  | (sb, i, n) -> if (i >= n) then sb else sternBrocotHelper((sb ++ [sb[i] + sb[i+1]], i + 1, n))
+
+sternBrocot n = let sb = sternBrocotHelper(([1, 1], 0L, n)) in [sb[i] | i <- [0L..n-1]]

@@ -1,0 +1,11 @@
+// @test: removeDups([1, 2, 3, 2, 4, 1, 5, 3])
+containsInt :: (int * [int] * int) -> bool
+containsInt x = match x with
+  | (v, xs, i) -> if (i >= length(xs)) then false else if (xs[i] == v) then true else containsInt((v, xs, i + 1))
+
+removeDupsHelper :: ([int] * int * [int]) -> [int]
+removeDupsHelper x = match x with
+  | (xs, i, acc) -> if (i >= length(xs)) then acc else if (containsInt((xs[i], acc, 0))) then removeDupsHelper((xs, i + 1, acc)) else removeDupsHelper((xs, i + 1, acc ++ [xs[i]]))
+
+removeDups :: [int] -> [int]
+removeDups xs = removeDupsHelper((xs, 0, []))

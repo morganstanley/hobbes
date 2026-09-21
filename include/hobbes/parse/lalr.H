@@ -14,9 +14,9 @@
 namespace hobbes {
 
 // a grammar is a mapping from abstract terminals to the set of rules matching those terminals
-typedef terminals                  rule;
-typedef std::vector<rule>          rules;
-typedef std::map<terminal*, rules> grammar;
+using rule = terminals;
+using rules = std::vector<rule>;
+using grammar = std::map<terminal *, rules>;
 
 // an item represents the state of recognizing a rule
 struct item {
@@ -34,23 +34,23 @@ struct item {
 
 // an itemset is a partial description of the state of a parser
 //  (with no duplicate items)
-typedef std::set<item>       itemset;
-typedef std::vector<itemset> itemsets;
+using itemset = std::set<item>;
+using itemsets = std::vector<itemset>;
 
 // transitions : a set of states to transition to indexed on terminals
-typedef std::map<terminal*, nat> state_transitions;
+using state_transitions = std::map<terminal *, nat>;
 
 // each closed itemset represents a numbered parser state
-typedef std::map<itemset, nat> parser_states;
+using parser_states = std::map<itemset, nat>;
 
 // the reverse parser state map
-typedef std::map<nat, itemset> state_definitions;
+using state_definitions = std::map<nat, itemset>;
 
 // a set of state transitions map values to target parser states (by index)
-typedef std::map<terminal*, nat> state_transitions;
+using state_transitions = std::map<terminal *, nat>;
 
 // each state has its own set of state transitions
-typedef std::map<nat, state_transitions> parser_state_transitions;
+using parser_state_transitions = std::map<nat, state_transitions>;
 
 // a parserdef is an ordered sequence of states, along with the transitions defined for each state
 struct parserdef {
@@ -138,8 +138,8 @@ parserdef lr0parser(const grammar& g, terminal* s);
 nat follow(const parserdef& p, nat q, terminal* t);
 
 // a transition of the LR(0) parser can be described by a state and terminal
-typedef std::pair<nat, terminal*> transition;
-typedef std::set<transition>      transitionset;
+using transition = std::pair<nat, terminal *>;
+using transitionset = std::set<transition>;
 
 transitionset transitions(const parserdef& p);
 
@@ -160,8 +160,8 @@ terminalset directReads(const parserdef& p, const transition& x);
 template <typename X, typename Y, typename Fp, typename A, typename R>
   class digraphF {
   public:
-    typedef std::set<X>    Xs;
-    typedef std::map<X, Y> F;
+    using Xs = std::set<X>;
+    using F = std::map<X, Y>;
 
     static F map(const Xs& xs, const Fp& fp, const A& append, const R& r) {
       return digraphF(xs, fp, append, r).map();
@@ -175,15 +175,15 @@ template <typename X, typename Y, typename Fp, typename A, typename R>
     digraphF(const Xs& xs, const Fp& fp, const A& append, const R& r) : xs(xs), fp(fp), append(append), r(r) {
     }
 
-    typedef std::stack<X>    Xstack;
-    typedef std::map<X, nat> Xidxs;
+    using Xstack = std::stack<X>;
+    using Xidxs = std::map<X, nat>;
 
     F map() const {
       F      f;
       Xstack s;
       Xidxs  n = freshIdxs(this->xs);
 
-      for (typename Xs::const_iterator x = this->xs.begin(); x != this->xs.end(); ++x) {
+      for (auto x = this->xs.begin(); x != this->xs.end(); ++x) {
         if (n[*x] == 0) {
           traverse(*x, &s, &n, &f);
         }
@@ -201,7 +201,7 @@ template <typename X, typename Y, typename Fp, typename A, typename R>
       (*f)[x] = this->fp(x);
 
       // and the values of any nodes in the input relation
-      for (typename Xs::const_iterator y = this->xs.begin(); y != this->xs.end(); ++y) {
+      for (auto y = this->xs.begin(); y != this->xs.end(); ++y) {
         if (this->r(x, *y)) {
           // the node y is in the relation
           // if it hasn't been visited yet, then recurse into it to determine its value
@@ -231,7 +231,7 @@ template <typename X, typename Y, typename Fp, typename A, typename R>
 
     static Xidxs freshIdxs(const Xs& xs) {
       Xidxs r;
-      for (typename Xs::const_iterator x = xs.begin(); x != xs.end(); ++x) {
+      for (auto x = xs.begin(); x != xs.end(); ++x) {
         r[*x] = 0;
       }
       return r;
@@ -241,7 +241,7 @@ template <typename X, typename Y, typename Fp, typename A, typename R>
   };
 
 // the across/up sets of LALR(1) determination
-typedef std::map<transition, terminalset> transition_lookahead;
+using transition_lookahead = std::map<transition, terminalset>;
 
 transition_lookahead Reads(const parserdef& p, const transitionset& ts);
 transition_lookahead Follow(const parserdef& p, const transitionset& ts);
@@ -252,7 +252,7 @@ parserdef lalr1parser(const grammar& g, terminal* s);
 // an ambiguity conflict on a particular terminal
 class ambiguity_conflict : public std::runtime_error {
 public:
-  ambiguity_conflict(const std::string& ex, terminal* t) throw();
+  ambiguity_conflict(const std::string& ex, terminal* t) noexcept;
 
   terminal* failedTerminal() const;
 private:
@@ -262,7 +262,7 @@ private:
 // a failure to compile a grammar to an LALR table, with cause
 class compile_table_failure : public std::runtime_error {
 public:
-  compile_table_failure(const std::string& msg, const grammar& g, const itemset& faileditems, terminal* t) throw();
+  compile_table_failure(const std::string& msg, const grammar& g, const itemset& faileditems, terminal* t) noexcept;
 
   const grammar& failedGrammar() const;
   const itemset& failedItems() const;
@@ -331,10 +331,10 @@ private:
 std::ostream& operator<<(std::ostream& out, const action& act);
 
 // a parser state maps a set of terminals to actions
-typedef std::map<terminal*, action> lrstate;
+using lrstate = std::map<terminal *, action>;
 
 // an ordered sequence of states describes the whole behavior of an LR parser
-typedef std::vector<lrstate> lrtable;
+using lrtable = std::vector<lrstate>;
 
 // determine the LR table, derived from the LALR(1) parser
 lrtable lalrTable(const parserdef& pd, const precedence& p = precedence());

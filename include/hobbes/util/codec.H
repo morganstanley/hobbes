@@ -2,21 +2,24 @@
 #ifndef HOBBES_UTIL_CODEC_HPP_INCLUDED
 #define HOBBES_UTIL_CODEC_HPP_INCLUDED
 
+#include <cstring>
 #include <iostream>
-#include <vector>
+#include <limits>
 #include <map>
+#include <stdexcept>
+#include <algorithm>
+#include <string>
 #include <unistd.h>
-#include <string.h>
+#include <vector>
 
 namespace hobbes {
 
-typedef __int128 int128_t;
+using int128_t = __int128;
 
 #define PRIM_CODEC(T) \
   inline void encode(T x, std::ostream& out) { out.write(reinterpret_cast<const char*>(&x), sizeof(x)); } \
   inline void decode(T* x, std::istream& in) { in.read(reinterpret_cast<char*>(x), sizeof(*x)); }
 
-PRIM_CODEC(bool);
 PRIM_CODEC(unsigned char);
 PRIM_CODEC(char);
 PRIM_CODEC(short);
@@ -27,6 +30,121 @@ PRIM_CODEC(size_t);
 PRIM_CODEC(float);
 PRIM_CODEC(double);
 
+// bool is decoded explicitly rather than through PRIM_CODEC: these decoders
+// run on data that can be malformed or hostile (the RPC layer decodes type
+// and expression descriptions supplied by a peer), and loading any byte other
+// than 0 or 1 into a bool is undefined behavior.
+inline void encode(bool x, std::ostream& out) {
+  const auto b = static_cast<unsigned char>(x ? 1 : 0);
+  out.write(reinterpret_cast<const char*>(&b), sizeof(b));
+}
+
+inline void decode(bool* x, std::istream& in) {
+  unsigned char b = 0;
+  in.read(reinterpret_cast<char*>(&b), sizeof(b));
+  if (in.gcount() != static_cast<std::streamsize>(sizeof(b))) {
+    // a short read must not silently decode as false: this flag decides
+    // whether more fields follow, so it changes how the rest is interpreted
+    throw std::runtime_error("Truncated input decoding a boolean value");
+  }
+  if (b > 1) {
+    throw std::runtime_error(
+      "Invalid boolean value in encoded data: " + std::to_string(static_cast<unsigned int>(b)));
+  }
+  *x = (b != 0);
+}
+
+[[noreturn]] inline void throwTruncated(size_t need, size_t have) {
+  throw std::runtime_error(
+    "Encoded data is truncated (need " + std::to_string(need) + " bytes but only " +
+    std::to_string(have) + " available)");
+}
+
+// A length field read out of untrusted data must be checked against what the
+// input can actually supply; otherwise a corrupt or hostile count drives an
+// unbounded allocation long before the read that would fail.
+//
+// Two ways to learn what the input can supply, because the streams that carry
+// untrusted data do not all support the same one:
+//
+//  - seeking to the end and back, for file and string streams;
+//  - the buffered count, for memory-backed streams that cannot seek.
+//
+// The second case is not a rare fallback: hobbes::stream::raw_istream sets its
+// get area with setg() and does not override seekoff, so tellg() on it always
+// fails. That is the stream the RPC path decodes expressions over
+// (lang/expr.C decode(const bytes&, ExprPtr*)), so a check that gave up when
+// tellg() failed would be inert on exactly the untrusted surface it is meant
+// to guard.
+inline void ensureAvail(std::istream& in, size_t n, size_t esz) {
+  if (n == 0) {
+    return;
+  }
+  if (esz != 0 && n > (std::numeric_limits<size_t>::max() / esz)) {
+    throw std::runtime_error("Encoded data length overflows: " + std::to_string(n));
+  }
+  const size_t need = n * esz;
+
+  const std::streampos cur = in.tellg();
+  if (cur >= 0) {
+    in.seekg(0, std::ios::end);
+    const std::streampos end = in.tellg();
+    in.seekg(cur, std::ios::beg);
+    if (end < cur || static_cast<size_t>(end - cur) < need) {
+      throwTruncated(need, end < cur ? 0 : static_cast<size_t>(end - cur));
+    }
+    return;
+  }
+
+  // Otherwise fall back to what the buffer currently holds. in_avail() is a
+  // lower bound in general -- it reports what can be read without blocking,
+  // which for some streambufs is less than the input still to come -- so this
+  // is deliberately a conservative test rather than a statement about the
+  // stream as a whole. Erring in that direction is the safe one: a streambuf
+  // that under-reports makes this reject a length it could have satisfied,
+  // never accept one it cannot. in_avail() does not over-report, so a hostile
+  // count cannot pass here.
+  //
+  // For raw_istream, the case this exists for, the get area is the entire
+  // input and is fixed at construction, so the bound is exact.
+  std::streambuf* buf = in.rdbuf();
+  if (buf != nullptr) {
+    const std::streamsize avail = buf->in_avail();
+    if (avail >= 0 && static_cast<size_t>(avail) < need) {
+      throwTruncated(need, static_cast<size_t>(avail));
+    }
+  }
+}
+
+// A type or expression description nests as deeply as its bytes say it does,
+// and decoding recurses once per level -- as does everything that walks the
+// result afterwards, including its own destructor. That data is untrusted (see
+// SECURITY.md: it is read from files and handed over by network peers), so
+// nesting is bounded here, in a guard the decoders take at each level, rather
+// than by running the stack out on a description that is merely deep.
+//
+// The bound is above the nesting the compiler itself will build, so anything
+// hobbes can produce still round-trips through the codec.
+static const unsigned int maxDecodeNesting = 2000;
+
+inline thread_local unsigned int decodeNestingDepth = 0;
+
+class decodeNesting {
+public:
+  decodeNesting() {
+    if (decodeNestingDepth >= maxDecodeNesting) {
+      throw std::runtime_error(
+        "Encoded data nests more than " + std::to_string(maxDecodeNesting) + " levels deep"
+      );
+    }
+    ++decodeNestingDepth;
+  }
+  ~decodeNesting() { --decodeNestingDepth; }
+
+  decodeNesting(const decodeNesting&) = delete;
+  decodeNesting& operator=(const decodeNesting&) = delete;
+};
+
 inline void encode(const std::string& x, std::ostream& out) {
   encode(static_cast<size_t>(x.size()), out);
   out.write(x.c_str(), x.size());
@@ -36,6 +154,7 @@ inline void decode(std::string* x, std::istream& in) {
   size_t n = 0;
   decode(&n, in);
 
+  ensureAvail(in, n, sizeof(char));
   x->resize(n);
   in.read(&((*x)[0]), n);
 }
@@ -43,7 +162,7 @@ inline void decode(std::string* x, std::istream& in) {
 template <typename T>
   inline void encode(const std::vector<T>& xs, std::ostream& out) {
     encode(static_cast<size_t>(xs.size()), out);
-    for (auto x : xs) {
+    for (const auto& x : xs) {
       encode(x, out);
     }
   }
@@ -53,6 +172,9 @@ template <typename T>
     size_t sz = 0;
     decode(&sz, in);
 
+    // every element consumes at least a byte, so a count larger than the
+    // remaining input cannot be satisfied however the elements are encoded
+    ensureAvail(in, sz, 1);
     for (size_t i = 0; i < sz; ++i) {
       T x;
       decode(&x, in);
@@ -75,7 +197,7 @@ template <typename U, typename V>
 template <typename K, typename V>
   inline void encode(const std::map<K, V>& m, std::ostream& out) {
     encode(m.size(), out);
-    for (auto p : m) {
+    for (const auto& p : m) {
       encode(p, out);
     }
   }
@@ -137,19 +259,35 @@ inline void fdread(int fd, size_t* x) {
   fdread(fd, reinterpret_cast<char*>(x), sizeof(size_t));
 }
 
+// the length arrives before the data behind it, so a peer can claim a size it
+// will never send, and sizing the target from that claim alone let a couple
+// of dozen bytes on the wire name any amount of memory (a claimed 1GiB took a
+// net REPL from 65MB to 1.06GB of RSS before a byte of it arrived). Grow as
+// the data actually arrives instead, so a length the peer cannot back fails
+// on the read that runs out -- the same reasoning as hog's batch reads.
+//
+// The number of bytes read is unchanged, and so is the wire format.
+template <typename C>
+  inline void fdreadSized(int fd, C* xs) {
+    size_t n = 0;
+    fdread(fd, &n);
+
+    xs->clear();
+    for (size_t k = 0; k < n; ) {
+      size_t j = std::min<size_t>(n - k, 64 * 1024);
+      xs->resize(k + j);
+      fdread(fd, reinterpret_cast<char*>(&((*xs)[0])) + k, j);
+      k += j;
+    }
+  }
+
 inline void fdread(int fd, std::string* x) {
-  size_t n = 0;
-  fdread(fd, &n);
-  x->resize(n);
-  fdread(fd, &((*x)[0]), n);
+  fdreadSized(fd, x);
 }
 
 template <typename T>
 inline void fdread(int fd, std::vector<T>* xs) {
-  size_t n = 0;
-  fdread(fd, &n);
-  xs->resize(n);
-  fdread(fd, &((*xs)[0]), n);
+  fdreadSized(fd, xs);
 }
 
 inline void fdwrite(int fd, const char* x, size_t len) {
@@ -195,7 +333,7 @@ inline void fdwrite(int fd, const std::string& x) {
 template <typename T>
 inline void fdwrite(int fd, const std::vector<T>& xs) {
   fdwrite(fd, xs.size());
-  if (xs.size() > 0) fdwrite(fd, &xs[0], xs.size());
+  if (!xs.empty()) fdwrite(fd, &xs[0], xs.size());
 }
 
 // remove a 'bad' mark for an FD and return true iff it was previously marked bad

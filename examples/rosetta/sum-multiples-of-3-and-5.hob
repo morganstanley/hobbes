@@ -1,0 +1,2 @@
+// @test: sumMul35(1000)
+sumMul35 n = sum([i | i <- [1..n-1], i % 3 == 0 or i % 5 == 0])

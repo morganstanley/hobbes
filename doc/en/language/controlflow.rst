@@ -138,7 +138,7 @@ This matching-and-binding logic can be generalised to arrays, too:
 ::
 
   match [("sam", 2013), ("james", 2012), ("stephen", 2010)] with
-  | [_ (n, 2012), _] -> show(n)
+  | [_, (n, 2012), _] -> show(n)
   | _ -> show("none")
 
 And, because of the way character arrays are matched, even to regular expressions:

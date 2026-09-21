@@ -14,6 +14,8 @@ struct HasCtor {
 
 // a "has-ctor eliminator" knows how to resolve a "HasCtor" constraint at a particular (category of) type
 struct HCEliminator {
+  virtual ~HCEliminator() = default;
+
   // is this HC instance eliminable?
   virtual bool satisfied(const TEnvPtr& tenv, const HasCtor&, Definitions*) const = 0;
 
@@ -37,19 +39,19 @@ public:
   static std::string constraintName();
 
   // extend the set of 'hasctor' eliminators dynamically (dangerous?)
-  void addEliminator(HCEliminator*);
+  void addEliminator(const std::shared_ptr<HCEliminator>&);
 
   // unqualifier interface
-  bool        refine(const TEnvPtr&,const ConstraintPtr&,MonoTypeUnifier*,Definitions*);
-  bool        satisfied(const TEnvPtr&,const ConstraintPtr&,Definitions*)                  const;
-  bool        satisfiable(const TEnvPtr&,const ConstraintPtr&,Definitions*)                const;
-  void        explain(const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPtr& e, Definitions* ds, annmsgs* msgs);
-  ExprPtr     unqualify(const TEnvPtr&,const ConstraintPtr&, const ExprPtr&, Definitions*) const;
-  PolyTypePtr lookup   (const std::string& vn)                                             const;
-  SymSet      bindings ()                                                                  const;
-  FunDeps     dependencies(const ConstraintPtr&)                                           const;
+  bool        refine(const TEnvPtr&,const ConstraintPtr&,MonoTypeUnifier*,Definitions*) override;
+  bool        satisfied(const TEnvPtr&,const ConstraintPtr&,Definitions*)                  const override;
+  bool        satisfiable(const TEnvPtr&,const ConstraintPtr&,Definitions*)                const override;
+  void        explain(const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPtr& e, Definitions* ds, annmsgs* msgs) override;
+  ExprPtr     unqualify(const TEnvPtr&,const ConstraintPtr&, const ExprPtr&, Definitions*) const override;
+  PolyTypePtr lookup   (const std::string& vn)                                             const override;
+  SymSet      bindings ()                                                                  const override;
+  FunDeps     dependencies(const ConstraintPtr&)                                           const override;
 private:
-  typedef std::vector<HCEliminator*> HCEliminators;
+  using HCEliminators = std::vector<std::shared_ptr<HCEliminator>>;
   HCEliminators eliminators;
   HCEliminator* findEliminator(const TEnvPtr&, const HasCtor&, Definitions*) const;
 

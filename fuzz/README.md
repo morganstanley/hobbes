@@ -1,0 +1,244 @@
+# Fuzzing harnesses
+
+Hobbes consumes untrusted bytes in a few places (see the security model
+documentation in `doc/en/security.rst`, added by #514), and each has a
+harness here:
+
+| Harness              | Surface                                                          |
+| -------------------- | ---------------------------------------------------------------- |
+| `fuzz-type-decode`   | binary type descriptions (`hobbes::decode`, used by the RPC layer on peer-supplied bytes) |
+| `fuzz-fregion-reader`| structured data file images (`hobbes::fregion::reader`: header, page table, environment records) |
+| `fuzz-parse-expr`    | source text through the lexer/LALR parser (`cc::readExpr`; parse only, nothing is evaluated) |
+| `fuzz-hog-session`   | `hog`'s live transaction stream (`storage::Transaction`, read by the JIT-compiled `HStoreRead` instances in `bin/hog/boot/read.hob`) |
+
+For all four, throwing an exception on malformed input is the expected
+behavior; the harnesses catch those. What fuzzing hunts for is memory
+unsafety — out-of-bounds access, overflow-driven size math — which is why
+these should run under sanitizers.
+
+## Building
+
+Requires a Clang that ships libFuzzer (upstream or Homebrew Clang; Apple's
+Xcode Clang does not). Whether a Clang has it is decided by trying to link
+against it rather than by assuming, since a distribution can package the
+sanitizer runtimes apart from the compiler. With any other compiler -- or a
+Clang without libFuzzer -- the same targets build as standalone runners that
+replay input files named on the command line, which is also the convenient
+way to check a crash reproducer.
+
+With Clang, `BUILD_FUZZERS=ON` compiles the whole build (including
+`libhobbes`) with `-fsanitize=fuzzer-no-link` so the fuzzers observe coverage
+inside the library, not just in the harness. Use a dedicated build directory
+for fuzzing rather than sharing one with normal development builds.
+
+```bash
+cmake -B build-fuzz -DCMAKE_BUILD_TYPE=Debug -DBUILD_FUZZERS=ON -DUSE_ASAN_AND_UBSAN=ON
+cmake --build build-fuzz -j --target fuzz-type-decode fuzz-fregion-reader fuzz-parse-expr
+```
+
+## Replaying the corpus
+
+`BUILD_FUZZERS=ON` also registers a ctest test per harness that replays every
+input in its `corpus/` directory once:
+
+```bash
+ctest --test-dir build-fuzz -R corpus
+```
+
+This needs no fuzzing engine and says nothing about coverage -- it is a
+regression check. Each of those inputs is a reproducer for something that
+once crashed hobbes, so replaying them under whatever sanitizers the build
+enables is worth the seconds it costs (the parse-expr corpus, the largest, is
+about fifteen). The corpus is read when the test runs rather than when cmake
+configured, so a reproducer committed alongside a fix is picked up by the next
+`ctest` with nothing to reconfigure.
+
+CI runs this in the `clang-*-ASanAndUBSan` builds, which are the ones with
+both sanitizers on. It is distinct from the ClusterFuzzLite job, which hands
+the same corpus to a real fuzzer for a few minutes on pull requests that touch
+covered code.
+
+## Running
+
+```bash
+mkdir -p corpus/type-decode
+./build-fuzz/fuzz/fuzz-type-decode -max_len=512 corpus/type-decode
+```
+
+Notes per harness:
+
+* **fuzz-type-decode** — seeds can be generated from any hobbes type with
+  `hobbes::encode(type, &bytes)`; short random inputs also make progress
+  quickly since the format is compact.
+* **fuzz-fregion-reader** — writes each input to one scratch file under
+  `$TMPDIR` and opens it. Seeds in `corpus/fregion-reader/`, which holds past
+  reproducers; add to them by copying small structured data files produced by
+  `hog` or the `Storage` tests. Malformed page metadata can make the reader
+  attempt large mappings, so keep the default `-rss_limit_mb` in place, and a
+  malformed page table can make it spin, so keep `-timeout` in place too.
+* **fuzz-parse-expr** — seeds in `corpus/parse-expr/`. Reading a regex
+  literal compiles a matcher into the compiler and interns its types in the
+  process-wide type memo, and nothing releases either, so a run that reads
+  regexes grows without bound unless the harness intervenes: it compacts the
+  memo every 64 inputs and replaces the compiler every 1024 (see the harness
+  for the figures). Parsing also allocates from arenas that are not reclaimed
+  per-iteration, so run with `-detect_leaks=0`. That is policy, not a
+  workaround: hobbes reclaims evaluation memory by resetting an arena at the
+  end of a transaction rather than by running destructors, so a
+  per-allocation leak checker reports transaction-scoped data as lost by
+  design (see the memory model section in `doc/en/embedding/compiler.rst`).
+  What is worth watching is growth *across* iterations, which the harnesses
+  bound themselves and the fuzzer's RSS limit catches.
+* **fuzz-hog-session** — seeds in `corpus/hog-session/`, including the
+  reproducer for STRFR-433920 (a negative element count read off the wire,
+  which used to wrap `newArray`'s size computation to an undersized
+  allocation while `hstoreReadArr` kept writing past it). Setup (compiling
+  three `HStoreRead` instances against a fresh `cc`) happens once per process
+  on the first input, not per iteration, so this harness needs the JIT to
+  actually work in the build -- unlike the other three, which never invoke
+  it. Each iteration is a `storage::Transaction` view over the raw input
+  bytes, mirroring `bin/hog/session.C`'s own dispatch loop, with no sockets or
+  files involved.
+
+Replaying a reproducer (works in both build modes):
+
+```bash
+./build-fuzz/fuzz/fuzz-fregion-reader crash-abc123
+```
+
+## Running a campaign
+
+The commands above are fine for a quick look, but fuzzing pays off over hours
+and days. `run-fuzzer.sh` runs one harness for a bounded time and is meant to
+be invoked repeatedly by a scheduler (cron, systemd, launchd), so a campaign
+survives reboots and OOM kills:
+
+```bash
+export FUZZ_HOME=~/hobbes-fuzz   # holds the build, corpus/, artifacts/, logs/
+./fuzz/run-fuzzer.sh parse-expr 3600
+```
+
+The build directory is `$FUZZ_BUILD` if you set it, otherwise whichever of
+`build-fuzz/` or `build/` it finds under `$FUZZ_HOME`. Copy the script into
+your campaign directory if you would rather not run it from a checkout.
+
+It runs libFuzzer in **fork mode**, which matters once anything has been
+found: by default libFuzzer stops at the first crash, so a single known bug
+blocks all further progress. It also writes a one-line summary per run to
+`logs/summary.log`, and calls `$FUZZ_HOME/bin/notify.sh "<message>"` if you
+provide one.
+
+Two environment notes it handles for you:
+
+* Linking against an LLVM that was not itself built with ASan produces
+  spurious `container-overflow` reports, because only one side of a shared
+  `std::vector` updates the annotations. This is normal for distro and
+  Homebrew LLVM packages; set `HOBBES_FUZZ_UNINSTRUMENTED_LLVM=0` if your
+  LLVM *is* instrumented.
+* Leak detection needs disabling for `parse-expr` in two places — libFuzzer's
+  `-detect_leaks=0` and LeakSanitizer's own at-exit check via `ASAN_OPTIONS`.
+  The harness also turns the at-exit check off from inside the binary
+  (`__lsan_is_turned_off`), because not every engine that replays a testcase
+  on OSS-Fuzz reads the `.options` file; see the comment there.
+
+## Triaging findings
+
+A campaign produces far more artifacts than distinct bugs — one defect
+reachable many ways yields many reproducers. `triage.py` replays every
+artifact, groups them by root cause (error class plus the first hobbes source
+location, with value-specific detail normalised away), and writes one
+markdown report per distinct issue:
+
+```bash
+FUZZ_HOME=~/hobbes-fuzz ./fuzz/triage.py
+```
+
+It resolves the build directory the same way as `run-fuzzer.sh`, and the
+reproduce command in each report uses the paths it actually found.
+
+Each `reports/<issue>.md` contains the reproduce command, the sanitizer
+output, the hobbes stack frames, a hexdump of the smallest reproducer, and a
+triage checklist. `reports/README.md` indexes them.
+
+**Before filing anything**, check the finding against the threat model in
+`doc/en/security.rst`. Memory unsafety reachable from malformed data files,
+wire bytes or source text is a security issue and should be reported through
+the process in `SECURITY.md` — *not* a public issue. Behaviour that the
+threat model calls out as intended (Hobbes code having full host-process
+access, an RPC peer executing code) is not a vulnerability.
+
+## OSS-Fuzz
+
+The same harnesses run continuously on Google's
+[OSS-Fuzz](https://github.com/google/oss-fuzz), which accepted the project in
+August 2026 and builds `main` daily; ClusterFuzzLite below is what covers pull
+requests, before a change lands. The submission is the `projects/hobbes/`
+directory there — a `project.yaml`, a `Dockerfile` that installs LLVM and
+clones this repository, and a `build.sh` that is a one-line wrapper around
+`fuzz/oss-fuzz-build.sh` here. Keeping the real build script in this tree
+means harness changes and build changes land in the same commit.
+
+Three places show what it is doing: the build badge at the top of the
+repository `README.md`, the [project
+profile](https://introspector.oss-fuzz.com/project-profile?project=hobbes),
+which links the daily coverage report, and the [issue
+tracker](https://issues.oss-fuzz.com/issues?q=project:hobbes). The badge
+covers the coverage and introspector builds as well as the fuzzing one, so it
+can go yellow over a report that failed to generate while fuzzing itself is
+fine. Findings are restricted until they are fixed or the disclosure deadline
+passes, so the tracker looks empty to anyone who is not a project contact.
+
+`oss-fuzz-build.sh` differs from a local fuzzing build in three ways worth
+knowing about:
+
+* It links `$LIB_FUZZING_ENGINE` through the `FUZZING_ENGINE_LIB` CMake
+  variable instead of `-fsanitize=fuzzer`, so the harnesses also build under
+  AFL++ and honggfuzz. Not centipede: its runner is prebuilt against libc++,
+  which the dropped `-stdlib=libc++` below rules out.
+* It writes a `.options` file per target disabling ASan's
+  `detect_container_overflow`. hobbes links an LLVM that OSS-Fuzz did not
+  build, and the two disagree about `std::vector` container annotations — the
+  same problem `run-fuzzer.sh` works around locally.
+* It drops `-stdlib=libc++` from `CXXFLAGS`. OSS-Fuzz defaults C++ builds to
+  libc++, and the packaged LLVM is built against libstdc++; mixing them breaks
+  the link. MemorySanitizer is not enabled for the same underlying reason —
+  MSan needs every dependency instrumented, LLVM included.
+
+To reproduce an OSS-Fuzz build locally you need Docker and a checkout of the
+OSS-Fuzz repository:
+
+```bash
+python3 infra/helper.py build_image hobbes
+python3 infra/helper.py build_fuzzers --sanitizer address hobbes
+python3 infra/helper.py check_build hobbes
+python3 infra/helper.py run_fuzzer hobbes fuzz-parse-expr
+```
+
+Findings arrive as OSS-Fuzz issues with a reproducer attached; `triage.py`
+above is for local campaigns, but the same rule applies — check a finding
+against the threat model in `doc/en/security.rst` before treating it as a
+vulnerability.
+
+## ClusterFuzzLite
+
+`.clusterfuzzlite/` and `.github/workflows/clusterfuzzlite.yml` run the same
+harnesses on pull requests that touch code they cover, for a few minutes each,
+against the change itself rather than against `main`. That is the half
+OSS-Fuzz cannot do: it builds what has already been merged, so a crash it
+finds is a crash that already shipped to `main`.
+
+The image mirrors the OSS-Fuzz one and the build script is shared; the only
+difference is that the source is copied in from the checkout being tested
+instead of cloned. A finding fails the check and attaches the reproducer to the
+workflow run, which `fuzz-<harness> <reproducer>` replays locally.
+
+Two extensions are deliberately not configured, because both need a separate
+repository to hold state that this project does not have yet:
+
+* **Batch fuzzing** on a schedule, which builds up a corpus over time rather
+  than starting cold on each pull request.
+* **Continuous builds** on pushes to `main`, which is what lets pull request
+  fuzzing tell a newly introduced crash from one that was already there.
+
+See the [ClusterFuzzLite documentation](https://google.github.io/clusterfuzzlite/)
+for both.

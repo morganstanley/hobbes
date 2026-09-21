@@ -1,0 +1,5 @@
+// @test: let _ = writefile("/tmp/hobbes-rosetta-readlines.txt", "First line\nSecond line\nThird line\n") in readLines("/tmp/hobbes-rosetta-readlines.txt")
+readLinesHelper x = match x with
+  | (fd, acc) -> let line = fdReadLine(fd) in if (length(line) == 0) then acc else readLinesHelper((fd, acc ++ [line]))
+
+readLines fname = let fd = openfd(fname, 0) in let lines = readLinesHelper((fd, [])) in let _ = closefd(fd) in lines

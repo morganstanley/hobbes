@@ -5,8 +5,10 @@
 #include <hobbes/db/signals.H>
 #include <hobbes/fregion.H>
 #include <hobbes/cfregion.H>
+#include <hobbes/storage.H>
 #include "test.H"
 
+#include <fstream>
 #include <thread>
 
 using namespace hobbes;
@@ -44,7 +46,7 @@ template <typename T>
 
 static bool fileExists(const char* fileName) {
   FILE* fd = fopen(fileName, "r");
-  if (fd != NULL) {
+  if (fd != nullptr) {
     fclose(fd);
     return true;
   } else {
@@ -98,7 +100,7 @@ TEST(Storage, Create) {
 
     int n = 1020;
     array<int>* vs = f.define<int>("vs", n);
-    EXPECT_TRUE(vs != 0);
+    EXPECT_TRUE(vs != nullptr);
     EXPECT_TRUE(vs->size == 1020);
 
     initSeq(vs, 0, 0, n);
@@ -248,11 +250,11 @@ TEST(Storage, Alignment) {
   std::string fname = mkFName();
   try {
     writer f(fname);
-    short*        s = f.define<short>("s");
+    auto*        s = f.define<short>("s");
     int*          i = f.define<int>("i");
-    double*       d = f.define<double>("d");
+    auto*       d = f.define<double>("d");
     array<int>*   a = f.define<int>("a", 100);
-    fileref<int>* r = f.define<fileref<int>>("r");
+    auto* r = f.define<fileref<int>>("r");
 
     EXPECT_EQ(reinterpret_cast<size_t>(s)%sizeof(short),  size_t(0));
     EXPECT_EQ(reinterpret_cast<size_t>(i)%sizeof(int),    size_t(0));
@@ -562,7 +564,7 @@ DEFINE_VARIANT(
   (just,    std::string)
 );
 
-typedef std::array<std::string,2> FRStrArr;
+using FRStrArr = std::array<std::string, 2>;
 
 DEFINE_STRUCT(
   FRTest,
@@ -583,9 +585,9 @@ TEST(Storage, FRegionCompatibility) {
       FRTest t;
       t.x = static_cast<int>(i);
       t.y = 3.14159*static_cast<double>(i);
-      t.z.push_back("a");
-      t.z.push_back("b");
-      t.z.push_back("c");
+      t.z.emplace_back("a");
+      t.z.emplace_back("b");
+      t.z.emplace_back("c");
       t.u = FRTestFood::HotDog();
       t.v = MStr::just("chicken");
       t.w[0] = "a";
@@ -657,7 +659,7 @@ DEFINE_ENUM(
   (Magenta)
 );
 
-typedef std::vector<std::string> strs;
+using strs = std::vector<std::string>;
 
 DEFINE_STRUCT(
   MyStruct,
@@ -897,8 +899,8 @@ TEST(Storage, FRegionCArrays) {
 
     // verify memcopyable carrays can be accessed by reference
     //   'carray (int*double) 20'
-    typedef std::pair<int,double> IandD;
-    typedef hobbes::carray<IandD, 20> XS;
+    using IandD = std::pair<int, double>;
+    using XS = hobbes::carray<IandD, 20>;
 
     auto& xs = *w.define<XS>("xs");
     for (size_t i = 0; i < 10; ++i) {
@@ -908,10 +910,10 @@ TEST(Storage, FRegionCArrays) {
     
     // verify that non-memcopyable can be written
     //     'carray (int * [char]@? * [int+double]@?) 20'
-    typedef hobbes::variant<int,double> IorD;
-    typedef std::vector<IorD>   IorDs;
-    typedef hobbes::tuple<int, std::string, IorDs> Y;
-    typedef hobbes::carray<Y, 20> YS;
+    using IorD = hobbes::variant<int, double>;
+    using IorDs = std::vector<IorD>;
+    using Y = hobbes::tuple<int, std::string, IorDs>;
+    using YS = hobbes::carray<Y, 20>;
 
     IorDs idi; idi.push_back(IorD(100)); idi.push_back(IorD(3.14159)); idi.push_back(IorD(200));
     IorDs ddi; ddi.push_back(IorD(2.1)); ddi.push_back(IorD(4.2));     ddi.push_back(IorD(29));
@@ -924,7 +926,7 @@ TEST(Storage, FRegionCArrays) {
     // expect to be able to read back the carray data from C++
     hobbes::fregion::reader r(fname);
 
-    auto& rxs = *r.definition<XS>("xs");
+    const auto& rxs = *r.definition<XS>("xs");
     EXPECT_EQ(rxs.size, 10UL);
     for (size_t i = 0; i < rxs.size; ++i) {
       EXPECT_EQ(rxs[i].first, static_cast<int>(i));
@@ -976,8 +978,7 @@ TEST(Storage, KeySeries) {
     writer w(fname);
     keyseries<std::array<char,10>, Quote> ticks(&c(), &w, "ticks", 10000, StoredSeries::Compressed);
 
-    std::array<char,10> bob;
-    strcpy(bob.data(), "bob");
+    std::array<char,10> bob{'b', 'o', 'b', '\0'};
     for (size_t i = 0; i < 20000; ++i) {
       Quote q;
       q.bpx = 3.14159;
@@ -987,8 +988,7 @@ TEST(Storage, KeySeries) {
       ticks.record(bob, q);
     }
 
-    std::array<char,10> jim;
-    strcpy(jim.data(), "jim");
+    std::array<char,10> jim{'j', 'i', 'm', '\0'};
     for (size_t i = 0; i < 20000; ++i) {
       Quote q;
       q.bpx = 4.2;
@@ -1014,12 +1014,21 @@ TEST(Storage, KeySeries) {
 // actually is not and so an attempt to read the whole value causes a crash)
 //
 // this test was verified to reproduce the bug
+
+// gcc12 false positive uninitialized warning when ASAN enabled.
+// upgrade c++ union to std::variant to avoid the warning.
+#pragma GCC diagnostic push
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#endif
 DEFINE_VARIANT(
   Tick,
   (bob,   int),
   (frank, int),
   (steve, std::string)
 );
+#pragma GCC diagnostic pop
+
 DEFINE_STRUCT(
   TTick,
   (Tick, t0),
@@ -1058,7 +1067,7 @@ TEST(Storage, AvoidTornRead) {
     while (rlog.next());
 
     // if we get here, we are good
-    EXPECT_TRUE(ss.str().size() > 0);
+    EXPECT_TRUE(!ss.str().empty());
 
     unlink(fname.c_str());
   } catch (...) {
@@ -1067,3 +1076,553 @@ TEST(Storage, AvoidTornRead) {
   }
 }
 
+
+TEST(Storage, FRegionCArrayRejectsOversizedLength) {
+  // the carray reader must reject a stored length larger than the fixed
+  // capacity N instead of copying it into x->data[N] (a file-image-driven
+  // out-of-bounds write)
+  using CA = hobbes::carray<double, 4>;
+  std::vector<uint8_t> buf(hobbes::fregion::storeCArrayDef<double, 4>::size(), 0);
+  CA dst;
+
+  // stored length 100 >> capacity 4 must throw, not overrun
+  *reinterpret_cast<size_t*>(buf.data()) = 100;
+  bool threw = false;
+  try { hobbes::fregion::store<CA>::read(nullptr, buf.data(), &dst); }
+  catch (const std::exception&) { threw = true; }
+  EXPECT_TRUE(threw);
+
+  // a within-capacity length is still accepted
+  *reinterpret_cast<size_t*>(buf.data()) = 3;
+  threw = false;
+  try { hobbes::fregion::store<CA>::read(nullptr, buf.data(), &dst); }
+  catch (const std::exception&) { threw = true; }
+  EXPECT_TRUE(!threw);
+  EXPECT_EQ(dst.size, size_t(3));
+}
+
+TEST(Storage, FRegionRejectsLengthBeyondFileSize) {
+  // string and byte-vector lengths in a structured data file come straight out
+  // of the image; a corrupt or crafted length larger than the file itself must
+  // be rejected rather than driving an enormous allocation
+  hobbes::fregion::imagefile f;
+  f.path      = "synthetic";
+  f.fd        = -1;
+  f.file_size = 4096;
+
+  // a length that cannot fit in the file is rejected
+  bool threw = false;
+  try { hobbes::fregion::ensureLengthInFile(&f, size_t(1) << 40, sizeof(char)); }
+  catch (const std::exception&) { threw = true; }
+  EXPECT_TRUE(threw);
+
+  // so is one whose byte count overflows
+  threw = false;
+  try { hobbes::fregion::ensureLengthInFile(&f, ~size_t(0), sizeof(double)); }
+  catch (const std::exception&) { threw = true; }
+  EXPECT_TRUE(threw);
+
+  // plausible lengths are still accepted, including zero
+  threw = false;
+  try {
+    hobbes::fregion::ensureLengthInFile(&f, 0, sizeof(char));
+    hobbes::fregion::ensureLengthInFile(&f, 128, sizeof(char));
+    hobbes::fregion::ensureLengthInFile(&f, 4096, sizeof(char));
+  } catch (const std::exception&) { threw = true; }
+  EXPECT_TRUE(!threw);
+
+  // with a real descriptor the bound is what remains from the current offset,
+  // not the whole file: a length smaller than the file but larger than the
+  // bytes left after it must still be rejected
+  std::string tmpl = "/tmp/hobbes-fregion-len-XXXXXX";
+  std::vector<char> path(tmpl.begin(), tmpl.end());
+  path.push_back('\0');
+  int fd = mkstemp(path.data());
+  EXPECT_TRUE(fd >= 0);
+  if (fd >= 0) {
+    std::vector<char> zeros(4096, 0);
+    EXPECT_TRUE(::write(fd, zeros.data(), zeros.size()) == 4096);
+
+    hobbes::fregion::imagefile rf;
+    rf.path      = path.data();
+    rf.fd        = fd;
+    rf.file_size = 4096;
+
+    // seek near the end: only 96 bytes remain
+    EXPECT_TRUE(lseek(fd, 4000, SEEK_SET) == 4000);
+
+    threw = false;
+    try { hobbes::fregion::ensureLengthInFile(&rf, 1024, sizeof(char)); }
+    catch (const std::exception&) { threw = true; }
+    EXPECT_TRUE(threw); // 1024 < file_size, but > the 96 bytes remaining
+
+    threw = false;
+    try { hobbes::fregion::ensureLengthInFile(&rf, 96, sizeof(char)); }
+    catch (const std::exception&) { threw = true; }
+    EXPECT_TRUE(!threw); // exactly what remains is fine
+
+    close(fd);
+    unlink(path.data());
+  }
+}
+
+TEST(Storage, FRegionRejectsPageIndexBeyondPageTable) {
+  // reading environment records walks the cursor forward and then asks the
+  // page table how much of the current page is in use, to decide whether to
+  // keep going. In a crafted image a record can leave the cursor past the end
+  // of the table, so the derived page index has to be checked before it is
+  // used to index it -- otherwise that lookup reads out of bounds, which is
+  // what fuzzing the reader turns up first and by a wide margin.
+  hobbes::fregion::imagefile f;
+  f.path      = "synthetic";
+  f.fd        = -1;
+  f.page_size = 4096;
+  f.file_size = 4096 * 3;
+  f.pages.resize(3);
+
+  // every page the table describes is fine, including the last
+  bool threw = false;
+  try {
+    hobbes::fregion::ensurePageInTable(&f, 0);
+    hobbes::fregion::ensurePageInTable(&f, 2);
+  } catch (const std::exception&) { threw = true; }
+  EXPECT_TRUE(!threw);
+
+  // one past the end is not
+  threw = false;
+  try { hobbes::fregion::ensurePageInTable(&f, 3); }
+  catch (const std::exception&) { threw = true; }
+  EXPECT_TRUE(threw);
+
+  // nor is a wildly out-of-range index
+  threw = false;
+  try { hobbes::fregion::ensurePageInTable(&f, 1u << 30); }
+  catch (const std::exception&) { threw = true; }
+  EXPECT_TRUE(threw);
+
+  // a page index is 64 bits wide, so an index whose low 32 bits land inside
+  // the table must still be rejected -- narrowing it to size_t first would
+  // let this through wherever size_t is 32 bits
+  threw = false;
+  try { hobbes::fregion::ensurePageInTable(&f, hobbes::fregion::file_pageindex_t(1) << 32); }
+  catch (const std::exception&) { threw = true; }
+  EXPECT_TRUE(threw);
+
+  // an empty table accepts nothing
+  hobbes::fregion::imagefile e;
+  e.path      = "synthetic-empty";
+  e.fd        = -1;
+  e.page_size = 4096;
+  e.file_size = 0;
+
+  threw = false;
+  try { hobbes::fregion::ensurePageInTable(&e, 0); }
+  catch (const std::exception&) { threw = true; }
+  EXPECT_TRUE(threw);
+}
+
+TEST(Storage, FRegionRejectsEnvironmentRunningPastPageTable) {
+  // The test above checks the bound in isolation, which leaves the thing that
+  // actually mattered untested: that reading an image consults it. This one
+  // opens a crafted image and drives the real path, so removing the check
+  // from readEnvironmentPage fails here rather than passing quietly.
+  //
+  // The image describes two pages but is four pages long. Page 1 is marked as
+  // an environment page whose free-byte count says it is full, while the
+  // records on it are 24 bytes each and so never land on the offset that ends
+  // the walk. The reader therefore keeps consuming records into page 2, which
+  // the page table does not describe -- and page 2 is present in the file, so
+  // the reads succeed and the only thing standing between that and an
+  // out-of-bounds read of the page table is the bound being checked.
+  // the smallest page the format allows, so the image stays small; the record
+  // size below is what matters, not this particular value
+  const auto   pageSize  = static_cast<uint16_t>(HFREGION_MIN_PAGE_SIZE);
+  const size_t pageCount = 4;
+  std::vector<unsigned char> img(pageSize * pageCount, 0);
+
+  auto put16 = [&](size_t at, uint16_t v) {
+    img[at]     = static_cast<unsigned char>(v & 0xFF);
+    img[at + 1] = static_cast<unsigned char>((v >> 8) & 0xFF);
+  };
+  auto put32 = [&](size_t at, uint32_t v) {
+    for (size_t i = 0; i < 4; ++i) {
+      img[at + i] = static_cast<unsigned char>((v >> (8 * i)) & 0xFF);
+    }
+  };
+
+  // filehead: magic, page size, format version
+  put32(0, HFREGION_FILE_PREFIX_BYTES);
+  put16(4, pageSize);
+  put16(6, HFREGION_CURRENT_FILE_FORMAT_VERSION);
+
+  // the page table: page 0 is the TOC page, page 1 claims to be a full
+  // environment page, and the null entry ends the table at two pages
+  put16(8,  static_cast<uint16_t>(hobbes::fregion::pagedata::encode(hobbes::fregion::pagetype::toc, 0)));
+  put16(10, static_cast<uint16_t>(hobbes::fregion::pagedata::encode(hobbes::fregion::pagetype::environment, 0)));
+  put16(12, static_cast<uint16_t>(hobbes::fregion::pagedata::encode(hobbes::fregion::pagetype::null, 0)));
+
+  // page 1 onward stays zeroed: each environment record then decodes as an
+  // offset of 0, an empty name and an empty type, consuming 24 bytes, which
+  // never divides the page evenly and so never terminates the walk
+
+  std::string tmpl = "/tmp/hobbes-fregion-envwalk-XXXXXX";
+  std::vector<char> path(tmpl.begin(), tmpl.end());
+  path.push_back('\0');
+  int fd = mkstemp(path.data());
+  EXPECT_TRUE(fd >= 0);
+  if (fd >= 0) {
+    EXPECT_TRUE(::write(fd, img.data(), img.size()) == static_cast<ssize_t>(img.size()));
+    close(fd);
+
+    // a malformed image must be reported, not read out of bounds
+    bool threw = false;
+    try {
+      hobbes::fregion::reader r(path.data());
+    } catch (const std::exception&) {
+      threw = true;
+    }
+    EXPECT_TRUE(threw);
+
+    unlink(path.data());
+  }
+}
+
+TEST(Storage, FRegionRejectsUnusablePageTableLinks) {
+  // the page table is a chain of TOC pages, each ending in the index of the
+  // next one; that index comes out of the image, so it has to be checked
+  // before it is followed
+  hobbes::fregion::imagefile f;
+  f.path      = "synthetic";
+  f.fd        = -1;
+  f.page_size = 4096;
+  f.file_size = 4096 * 3;
+
+  // page 0 is where the chain starts, so it has already been read
+  std::set<hobbes::fregion::file_pageindex_t> readPages;
+  readPages.insert(0);
+
+  // any page the file actually holds and has not been read yet is fine
+  bool threw = false;
+  try {
+    hobbes::fregion::ensureTOCPageLink(&f, 1, readPages);
+    hobbes::fregion::ensureTOCPageLink(&f, 2, readPages);
+  } catch (const std::exception&) { threw = true; }
+  EXPECT_TRUE(!threw);
+
+  // a page past the end of the file is not
+  threw = false;
+  try { hobbes::fregion::ensureTOCPageLink(&f, 3, readPages); }
+  catch (const std::exception&) { threw = true; }
+  EXPECT_TRUE(threw);
+
+  // nor is one so large that the byte offset it implies would wrap
+  threw = false;
+  try { hobbes::fregion::ensureTOCPageLink(&f, ~hobbes::fregion::file_pageindex_t(0), readPages); }
+  catch (const std::exception&) { threw = true; }
+  EXPECT_TRUE(threw);
+
+  // and neither is a page the chain has already read: that closes a cycle,
+  // which the read loop has no other way to escape
+  threw = false;
+  try { hobbes::fregion::ensureTOCPageLink(&f, 0, readPages); }
+  catch (const std::exception&) { threw = true; }
+  EXPECT_TRUE(threw);
+}
+
+TEST(Storage, FRegionRejectsCyclicPageTable) {
+  // As above, this drives the real path so that removing the check from
+  // readPageData fails here rather than passing quietly. Reading the page
+  // table stops only when it finds a null page entry, so a link that points
+  // back at a page already read never stops it: the same pages are read
+  // forever while the page table grows without bound. Fuzzing the reader
+  // reports that as a timeout rather than as a crash.
+  //
+  // The image is two pages long and both are packed with non-null page
+  // entries. The link at the end of page 1 names page 1, so following it
+  // returns to the page it was just read from.
+  const auto   pageSize  = static_cast<uint16_t>(HFREGION_MIN_PAGE_SIZE);
+  const size_t pageCount = 2;
+  std::vector<unsigned char> img(pageSize * pageCount, 0);
+
+  auto put16 = [&](size_t at, uint16_t v) {
+    img[at]     = static_cast<unsigned char>(v & 0xFF);
+    img[at + 1] = static_cast<unsigned char>((v >> 8) & 0xFF);
+  };
+  auto put32 = [&](size_t at, uint32_t v) {
+    for (size_t i = 0; i < 4; ++i) {
+      img[at + i] = static_cast<unsigned char>((v >> (8 * i)) & 0xFF);
+    }
+  };
+  auto put64 = [&](size_t at, uint64_t v) {
+    for (size_t i = 0; i < 8; ++i) {
+      img[at + i] = static_cast<unsigned char>((v >> (8 * i)) & 0xFF);
+    }
+  };
+
+  // filehead: magic, page size, format version
+  put32(0, HFREGION_FILE_PREFIX_BYTES);
+  put16(4, pageSize);
+  put16(6, HFREGION_CURRENT_FILE_FORMAT_VERSION);
+
+  // fill both pages with data-page entries, up to the link at the end of each
+  // page -- a null entry anywhere would end the read before the link is
+  // reached, which is exactly what this image is built to avoid
+  const auto full  = static_cast<uint16_t>(hobbes::fregion::pagedata::encode(hobbes::fregion::pagetype::data, 0));
+  const size_t link0 = pageSize - sizeof(hobbes::fregion::file_pageindex_t);
+  const size_t link1 = (2 * pageSize) - sizeof(hobbes::fregion::file_pageindex_t);
+
+  for (size_t at = sizeof(hobbes::fregion::filehead); at < link0; at += sizeof(hobbes::fregion::pagedata)) {
+    put16(at, full);
+  }
+  for (size_t at = pageSize; at < link1; at += sizeof(hobbes::fregion::pagedata)) {
+    put16(at, full);
+  }
+
+  // page 0 continues on page 1, and page 1 continues on itself
+  put64(link0, 1);
+  put64(link1, 1);
+
+  std::string tmpl = "/tmp/hobbes-fregion-toccycle-XXXXXX";
+  std::vector<char> path(tmpl.begin(), tmpl.end());
+  path.push_back('\0');
+  int fd = mkstemp(path.data());
+  EXPECT_TRUE(fd >= 0);
+  if (fd >= 0) {
+    EXPECT_TRUE(::write(fd, img.data(), img.size()) == static_cast<ssize_t>(img.size()));
+    close(fd);
+
+    // a malformed image must be reported, and reported promptly
+    bool threw = false;
+    try {
+      hobbes::fregion::reader r(path.data());
+    } catch (const std::exception&) {
+      threw = true;
+    }
+    EXPECT_TRUE(threw);
+
+    unlink(path.data());
+  }
+}
+
+static void copyFile(const std::string& from, const std::string& to) {
+  std::ifstream i(from.c_str(), std::ios::binary);
+  std::ofstream o(to.c_str(),   std::ios::binary | std::ios::trunc);
+  o << i.rdbuf();
+}
+
+template <typename T>
+  static size_t readSeriesToEnd(const std::string& fname, const std::string& sname) {
+    fregion::reader r(fname);
+    auto& s = r.series<T>(sname);
+    T x;
+    size_t n = 0;
+    while (s.next(&x)) { ++n; }
+    return n;
+  }
+
+// find the byte offset of the first occurrence of a 64-bit word in a file
+static size_t findWord(const std::string& fname, uint64_t w, size_t from = 0) {
+  std::ifstream f(fname.c_str(), std::ios::binary);
+  std::string d((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+  for (size_t o = from; o + sizeof(uint64_t) <= d.size(); o += sizeof(uint64_t)) {
+    uint64_t v = 0;
+    memcpy(&v, d.data() + o, sizeof(v));
+    if (v == w) { return o; }
+  }
+  throw std::runtime_error("no such word in " + fname);
+}
+
+static uint64_t readWord(const std::string& fname, size_t off) {
+  std::ifstream f(fname.c_str(), std::ios::binary);
+  f.seekg(off);
+  uint64_t w = 0;
+  f.read(reinterpret_cast<char*>(&w), sizeof(w));
+  return w;
+}
+
+static void pokeWord(const std::string& fname, size_t off, uint64_t w) {
+  std::fstream f(fname.c_str(), std::ios::binary | std::ios::in | std::ios::out);
+  f.seekp(off);
+  f.write(reinterpret_cast<const char*>(&w), sizeof(w));
+}
+
+TEST(Storage, CorruptStoredLengthsAreRejected) {
+  // a reader follows lengths and offsets read out of the file to decide what
+  // to read next, and mapFileData maps whatever it is asked for (in multiples
+  // of many pages), so an address past the end of the file usually sits in a
+  // mapping and faults only when touched. A corrupt or crafted image must be
+  // refused instead.
+  std::string fname = mkFName();
+  try {
+    {
+      fregion::writer w(fname);
+      auto& s = w.series<int>("s", 4);
+      for (int i = 0; i < 6; ++i) { s(100 + i); }
+      auto& ss = w.series<std::string>("ss", 2);
+      ss(std::string("hello"));
+    }
+
+    // as written, the series reads back in full
+    {
+      fregion::reader r(fname);
+      auto& s = r.series<int>("s");
+      int x = 0;
+      size_t n = 0;
+      while (s.next(&x)) { ++n; }
+      EXPECT_EQ(n, size_t(6));
+    }
+
+    // a batch whose stored count is larger than the batch itself: the count
+    // was only ever compared against the read index, so the reader ran off
+    // the end of the batch and then out of the file
+    std::string over = mkFName();
+    copyFile(fname, over);
+    pokeWord(over, findWord(over, 4), 5);
+    EXPECT_EXCEPTION(readSeriesToEnd<int>(over, "s"));
+    unlink(over.c_str());
+
+    // the same with a count that no file could hold
+    std::string huge = mkFName();
+    copyFile(fname, huge);
+    pokeWord(huge, findWord(huge, 4), uint64_t(1) << 32);
+    EXPECT_EXCEPTION(readSeriesToEnd<int>(huge, "s"));
+    unlink(huge.c_str());
+
+    // a stored string whose length runs past the end of the file: the length
+    // decided both the mapping and the copy out of it
+    std::string str = mkFName();
+    copyFile(fname, str);
+    pokeWord(str, findWord(str, 5), uint64_t(1) << 30);
+    EXPECT_EXCEPTION(readSeriesToEnd<std::string>(str, "ss"));
+    unlink(str.c_str());
+
+    // a node whose successor is itself: the walk from batch to batch followed
+    // those links with nothing to stop it, so the reader spun forever
+    //
+    // a node is three words -- a tag, the offset of its batch, and the offset
+    // of the next node -- so the nodes can be found from the first batch:
+    // the word holding that batch's offset is the middle word of node 1.
+    std::string cyc = mkFName();
+    copyFile(fname, cyc);
+    size_t batch1   = findWord(cyc, 4);                          // the count of the first full batch
+    size_t node1    = findWord(cyc, batch1) - sizeof(uint64_t);  // ... named by node 1
+    size_t node2    = readWord(cyc, node1 + 2*sizeof(uint64_t)); // ... whose successor is node 2
+    size_t batch2   = readWord(cyc, node2 + sizeof(uint64_t));
+
+    pokeWord(cyc, batch2, 0);      // node 2's batch is empty, so the walk moves on ...
+    pokeWord(cyc, node2 + 2*sizeof(uint64_t), node2); // ... to node 2, forever
+    EXPECT_EXCEPTION(readSeriesToEnd<int>(cyc, "s"));
+    unlink(cyc.c_str());
+
+    unlink(fname.c_str());
+  } catch (...) {
+    unlink(fname.c_str());
+    throw;
+  }
+}
+
+// lay out a shared memory segment the way a queue writer would, so that a
+// single field can be corrupted in it the way a buggy or hostile producer
+// sharing the segment could
+struct TestQueueSegment {
+  std::string name;
+  int         fd;
+  uint8_t*    mem;
+  size_t      total;
+  size_t      metaLen;
+
+  TestQueueSegment(size_t valsz, size_t count, size_t metasz) {
+    long pg = sysconf(_SC_PAGESIZE);
+    this->name  = "/hobbes-unittest-q." + str::from(getpid());
+    this->total = 4 * static_cast<size_t>(pg);
+
+    shm_unlink(this->name.c_str());
+    this->fd = shm_open(this->name.c_str(), O_RDWR | O_CREAT, 0600);
+    if (this->fd < 0 || ftruncate(this->fd, this->total) != 0) {
+      throw std::runtime_error("cannot make a test queue segment");
+    }
+    this->mem = reinterpret_cast<uint8_t*>(mmap(nullptr, this->total, PROT_READ|PROT_WRITE, MAP_SHARED, this->fd, 0));
+
+    auto* h = reinterpret_cast<storage::ShQueueHeader*>(this->mem);
+    h->ready  = 1;
+    h->valsz  = valsz;
+    h->count  = count;
+    h->metasz = metasz;
+
+    this->metaLen = align<size_t>(sizeof(storage::ShQueueHeader) + metasz, static_cast<size_t>(pg));
+    auto* q = reinterpret_cast<storage::ShQueueData*>(this->mem + this->metaLen);
+    q->wstate = 0;
+    q->ri     = 0;
+    q->wi     = 1;
+  }
+
+  ~TestQueueSegment() {
+    munmap(this->mem, this->total);
+    close(this->fd);
+    shm_unlink(this->name.c_str());
+  }
+
+  storage::ShQueueHeader* header() { return reinterpret_cast<storage::ShQueueHeader*>(this->mem); }
+  storage::ShQueueData*   control() { return reinterpret_cast<storage::ShQueueData*>(this->mem + this->metaLen); }
+  uint8_t*                data() { return this->mem + this->metaLen + sizeof(storage::ShQueueData); }
+
+  void readOneValue() {
+    storage::QueueConnection qc = storage::consumeQueue(this->name);
+    storage::reader rd(qc, storage::WaitPolicy::Spin);
+    volatile uint8_t v = 0;
+    if (uint8_t* p = rd.pollNext()) { v = *p; }
+    (void)v;
+  }
+};
+
+TEST(Storage, CorruptQueueSegmentsAreRejected) {
+  // a producer shares this segment with the reader and fills in the header,
+  // the read/write indexes and each page's byte count. hog's group socket
+  // lets any process that can reach it hand over a segment, so one producer
+  // must not be able to take a collector down for every other group.
+
+  // as laid out by a writer, a value reads back
+  { TestQueueSegment s(64, 4, 16); s.readOneValue(); }
+
+  // a meta-data section that does not fit in the segment puts the control
+  // block and the data outside the mapping
+  {
+    TestQueueSegment s(64, 4, 16);
+    s.header()->metasz = size_t(1) << 40;
+    EXPECT_EXCEPTION(s.readOneValue());
+  }
+
+  // a queue of no values divides by zero when the read index advances
+  {
+    TestQueueSegment s(64, 0, 16);
+    EXPECT_EXCEPTION(s.readOneValue());
+  }
+
+  // values that do not fit in what is left of the segment
+  {
+    TestQueueSegment s(size_t(1) << 40, 4, 16);
+    EXPECT_EXCEPTION(s.readOneValue());
+  }
+
+  // a read index past the end of the queue addresses memory outside it
+  {
+    TestQueueSegment s(64, 4, 16);
+    s.control()->ri = 0x10000000;
+    s.control()->wi = 0;
+    EXPECT_EXCEPTION(s.readOneValue());
+  }
+
+  // a page whose end word claims more bytes than the page holds: the count
+  // sized a memcpy straight out of the mapping
+  {
+    TestQueueSegment s(64, 4, 16);
+    *reinterpret_cast<uint32_t*>(s.data() + 64 - sizeof(uint32_t)) = (2u << 24) | 0xFFFFFF;
+
+    storage::QueueConnection qc = storage::consumeQueue(s.name);
+    storage::reader rd(qc, storage::WaitPolicy::Spin);
+    storage::rpipe p(&rd);
+    std::vector<uint8_t> buf(1024);
+    uint8_t st = 0;
+    EXPECT_EXCEPTION(p.read(buf.data(), buf.size(), &st, 0, []{}));
+  }
+}

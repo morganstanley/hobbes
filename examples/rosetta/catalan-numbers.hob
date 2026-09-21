@@ -1,0 +1,5 @@
+// @test: [catalan(n) | n <- [0..15]]
+catalan :: int -> int
+catalan n = match n with
+  | 0 -> 1
+  | _ -> catalan(n-1) * 2 * (2*n - 1) / (n + 1)

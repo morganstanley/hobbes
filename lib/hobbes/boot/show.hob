@@ -119,6 +119,8 @@ instance (Ord t t) => Ord (penum t v) (penum t v) where
   x >= y = x.t >= y.t
 instance (UnpackEnum t v, Show v) => Show t where
   show e = show(unpackEnum(e))
+instance Show ((penum a v)) where
+  show = penumShow
 
 // serialization for arrays
 instance (Array cs char) => Show cs where

@@ -1,4 +1,4 @@
-FROM ubuntu:xenial
+FROM ubuntu:noble
 ARG  DEPS
 ENV  ARGS -V
 RUN  apt update

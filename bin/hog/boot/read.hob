@@ -74,7 +74,14 @@ hstoreReadFixedArray txn =
    (let
       n = (unsafeCast(hstoreUnsafeRead(txn, nn))::{x:long}).x
     in
+      // 'n' is the element count; the array occupies n * tn bytes. Bounding n
+      // against the remaining bytes first keeps n * tn (tn is small) from
+      // overflowing, then the second check confirms the whole span is present --
+      // hstoreUnsafeReadFixedArray copies n * tn bytes, so checking only n let a
+      // client over-read up to n * (tn - 1) bytes past the transaction buffer.
       if (not(hstoreCanRead(txn, n))) then
+        nothing
+      else if (not(hstoreCanRead(txn, n * tn))) then
         nothing
       else
         just(unsafeCast(hstoreUnsafeReadFixedArray(txn, n * tn, n))))
@@ -129,7 +136,23 @@ hstoreReadArr txn r i =
     | _     -> false)
 
 instance (HStoreRead t) => HStoreRead [t] where
-  hstoreRead txn = match (hstoreRead(txn)::(()+long)) with | |1=n| -> do { r = newArray(n); return (if hstoreReadArr(txn, r, 0L) then just(r) else nothing) } | _ -> nothing
+  // n is an untrusted element count with no per-element byte width to check
+  // it against (t's own width is unknown/variable here, unlike the
+  // FixedWidth array case above): a negative n wraps newArray's allocation
+  // size arithmetic to a too-small buffer while leaving the logical size
+  // negative, so hstoreReadArr's i==size(r) never terminates and instead
+  // writes untrusted elements past the undersized allocation until the
+  // transaction is exhausted (STRFR-433920). A huge positive n has the same
+  // effect through the same arithmetic: elements of a non-FixedWidth type
+  // are stored as pointers, so newArray(n) computes sizeof(long)+8*n, which
+  // wraps for n around 2^61 while n itself still becomes the array's
+  // logical size. hstoreCanRead(txn, n) closes both: it already rejects
+  // negative n (bin/hog/hstore_bridge.C), and since every type reaching
+  // this instance is, by construction, not FixedWidth, no such type can
+  // encode an element in zero bytes -- so n can never legitimately exceed
+  // the bytes actually remaining in the transaction, which bounds it far
+  // below the point where the allocation math could overflow.
+  hstoreRead txn = match (hstoreRead(txn)::(()+long)) with | |1=n| -> if (not(hstoreCanRead(txn, n))) then nothing else do { r = newArray(n); return (if hstoreReadArr(txn, r, 0L) then just(r) else nothing) } | _ -> nothing
 
 // not the most efficient way to read fixed-length arrays, but a usable last resort
 hstoreReadFixedArr :: (HStoreRead t) => (<hobbes.storage.Transaction>, [:t|n:], long) -> (()+[:t|n:])

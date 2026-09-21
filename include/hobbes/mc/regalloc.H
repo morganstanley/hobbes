@@ -42,11 +42,11 @@
 
 #include "encode.H"
 #include "liveness.H"
+#include <cassert>
+#include <map>
 #include <set>
 #include <stack>
-#include <map>
 #include <stdexcept>
-#include <assert.h>
 
 namespace hobbes { namespace mc {
 
@@ -56,11 +56,11 @@ namespace hobbes { namespace mc {
 static const uint32_t MaxRegisters = 16;
 
 // instructions subject to register allocation have free register names (as strings)
-typedef Instructions<std::string> RInsts;
-typedef Instruction <std::string> RInst;
-typedef Arg         <std::string> RArg;
-typedef Reg         <std::string> RReg;
-typedef RegDeref    <std::string> RRegDeref;
+using RInsts = Instructions<std::string>;
+using RInst = Instruction<std::string>;
+using RArg = Arg<std::string>;
+using RReg = Reg<std::string>;
+using RRegDeref = RegDeref<std::string>;
 
 inline std::string stdRegName(X86Reg r, RegClass rc) {
   return regName(r, 8, rc);
@@ -102,7 +102,7 @@ inline const std::set<Reg<X86Reg>>& callerSaveRegs() {
       i.name   = static_cast<X86Reg>(r);
       i.rsize  = 8;
       i.rclass = RegClass::Int;
-      if (r != 4 && !saved.count(i)) {
+      if (r != 4 && (saved.count(i) == 0u)) {
         regs.insert(i);
       }
 
@@ -110,7 +110,7 @@ inline const std::set<Reg<X86Reg>>& callerSaveRegs() {
       f.name   = static_cast<X86Reg>(r);
       f.rsize  = 8;
       f.rclass = RegClass::Float;
-      if (!saved.count(f)) {
+      if (saved.count(f) == 0u) {
         regs.insert(f);
       }
     }
@@ -160,7 +160,7 @@ inline std::string rmap(const std::map<X86Reg, std::string>& m, X86Reg r, RegCla
     return k->second;
   }
 }
-inline void rmapInto(const std::map<X86Reg, std::string>& m, std::set<std::string>* s, MArg ma) {
+inline void rmapInto(const std::map<X86Reg, std::string>& m, std::set<std::string>* s, const MArg& ma) {
   if (const auto* reg = ma.reg()) {
     s->insert(rmap(m, reg->name, reg->rclass));
   } else if (const auto* rd = ma.regDeref()) {
@@ -205,7 +205,7 @@ inline std::set<std::string> regUses(const RInst& ri) {
     rmapInto(lm, &r, ma);
   }
   for (const auto& ma : defs(mi)) {
-    if (!ma.reg()) {
+    if (ma.reg() == nullptr) {
       rmapInto(lm, &r, ma);
     }
   }
@@ -215,8 +215,8 @@ inline std::set<std::string> regUses(const RInst& ri) {
 // a liveness module for instruction sequences with infinite named registers
 class RInstM {
 public:
-  typedef RInst       Instruction;
-  typedef std::string Var;
+  using Instruction = RInst;
+  using Var = std::string;
 
   RInstM(const RInsts& insts) {
     for (size_t pc = 0; pc < insts.size(); ++pc) {
@@ -427,7 +427,7 @@ public:
     }
   }
 private:
-  typedef std::map<VarID, std::set<VarID>> VarIDSets;
+  using VarIDSets = std::map<VarID, std::set<VarID>>;
 
   size_t    varc;
   VarSet    vtest;
@@ -466,7 +466,7 @@ public:
         // in the case of a reg move, remember that we can coalesce the two vars involved
         // add interference edges for all _other_ vars live out here
         VarID sv = live.id(src->name);
-        for (auto rd : regDefs(inst)) {
+        for (const auto& rd : regDefs(inst)) {
           VarID d = live.id(rd);
 
           addMoveEdge(d, sv);
@@ -479,7 +479,7 @@ public:
       } else {
         // generic instruction,
         // add interference edges for all vars live out here
-        for (auto rd : regDefs(inst)) {
+        for (const auto& rd : regDefs(inst)) {
           VarID d = live.id(rd);
 
           for (auto o : i.liveOut()) {
@@ -556,7 +556,7 @@ private:
         }
       }
     }
-    return 0;
+    return nullptr;
   }
 
   void addInterfereEdge(VarID v0, VarID v1) {
@@ -588,7 +588,7 @@ public:
     return this->assignSeq;
   }
 
-  typedef std::map<VarID, VarID> VarAliasing;
+  using VarAliasing = std::map<VarID, VarID>;
 
   const VarAliasing& aliasedVars() const {
     return this->coalescedVars;
@@ -607,12 +607,12 @@ private:
   uint32_t degree     (VarID v) const { return this->ig->interferences(v).size(); }
 
   // divisions of the interference graph to evaluate
-  typedef std::set<VarID> VarList;
+  using VarList = std::set<VarID>;
   VarList removeVar, freezeVar, spillVar;
   VarSet  assignedVars;
 
-  typedef std::pair<VarID, VarID> Move;
-  typedef std::set<Move> MoveList;
+  using Move = std::pair<VarID, VarID>;
+  using MoveList = std::set<Move>;
   MoveList moves;
   MoveList delayedMoves;
 
@@ -670,7 +670,7 @@ private:
         for (VarID mv : this->ig->moves(v)) {
           Move mvid = moveID(v, mv);
 
-          if (this->delayedMoves.erase(mvid)) {
+          if (this->delayedMoves.erase(mvid) != 0u) {
             this->moves.insert(mvid);
           }
         }
@@ -918,7 +918,7 @@ private:
 // apply : replace var names in instructions, either mapping into the space of fewer var names or into the space
 //         of machine registers
 //
-typedef std::map<std::string, X86Reg> RMSubst;
+using RMSubst = std::map<std::string, X86Reg>;
 
 inline MInst subst(const RMSubst& s, const RInst& i) {
   return
@@ -940,13 +940,13 @@ inline MInst subst(const RMSubst& s, const RInst& i) {
     );
 }
 
-typedef std::map<std::string, std::string> RRSubst;
+using RRSubst = std::map<std::string, std::string>;
 
 inline RInst subst(const RRSubst& s, const RInst& i) {
   return
     i.mapRegs<std::string>(
       [&](const std::string& rname, RegSize, RegClass) -> std::string {
-        if (maybeMReg(rname)) {
+        if (maybeMReg(rname) != nullptr) {
           return rname;
         } else {
           auto k = s.find(rname);
@@ -1045,9 +1045,9 @@ inline RInsts saveCalleeSaveRegs(const RInsts& insts) {
 
   if (csaveInsts.empty()) {
     const auto& csaveRegs = calleeSaveRegs();
-    for (auto r = csaveRegs.begin(); r != csaveRegs.end(); ++r) {
-      std::string n = ".save." + regName(*r);
-      csaveInsts.push_back(RInst::make("mov", RArg::reg(n, r->rsize, r->rclass), RArg::reg(stdRegName(r->name, r->rclass), r->rsize, r->rclass)));
+    for (const auto &csaveReg : csaveRegs) {
+      std::string n = ".save." + regName(csaveReg);
+      csaveInsts.push_back(RInst::make("mov", RArg::reg(n, csaveReg.rsize, csaveReg.rclass), RArg::reg(stdRegName(csaveReg.name, csaveReg.rclass), csaveReg.rsize, csaveReg.rclass)));
     }
     for (auto r = csaveRegs.rbegin(); r != csaveRegs.rend(); ++r) {
       std::string n = ".save." + regName(*r);
@@ -1097,7 +1097,7 @@ size_t firstFit(const ProgramLiveness& live, const Interference& ig, const std::
 
 // spillFrame : calculate the spill frame for a set of variables to spill, packed into as few frame slots as possible
 //              computed offsets will be relative to a given frame size (and the frame size will be updated on exit)
-typedef std::map<VarID, uint32_t> SpillFrame;
+using SpillFrame = std::map<VarID, uint32_t>;
 
 inline SpillFrame spillFrame(const ProgramLiveness& live, const Interference& ig, uint32_t* sframe, const std::set<VarID>& spillVars) {
   // find a slot for each spilled var (creating as few as necessary)
@@ -1166,7 +1166,7 @@ inline RRSubst spillSubst(size_t pc, const std::set<VarID>& spillVars, const Pro
   RRSubst r;
   for (const std::string& v : vs) {
     VarID vid = live.id(v);
-    if (spillVars.count(vid)) {
+    if (spillVars.count(vid) != 0u) {
       std::ostringstream vns;
       vns << ".spill." << vid << "." << pc;
       r[v] = vns.str();

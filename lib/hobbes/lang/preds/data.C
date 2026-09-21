@@ -29,7 +29,7 @@ bool DataP::satisfied(const TEnvPtr&, const ConstraintPtr& c, Definitions*) cons
 bool DataP::satisfiable(const TEnvPtr& tenv, const ConstraintPtr& c, Definitions*) const {
   if (c->name() != DataP::constraintName() || c->arguments().size() != 2) {
     return false;
-  } else if (is<TVar>(c->arguments()[0])) {
+  } else if (is<TVar>(c->arguments()[0]) != nullptr) {
     return true;
   } else {
     return unifiable(tenv, repTypeStep(c->arguments()[0]), c->arguments()[1]);
@@ -44,7 +44,7 @@ struct StripCst : public switchExprTyFn {
   StripCst(const ConstraintPtr& cst) : constraint(cst) {
   }
 
-  ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const {
+  ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const override {
     ExprPtr result(e);
     result->type(removeConstraint(this->constraint, qty));
     return result;

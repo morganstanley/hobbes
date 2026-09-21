@@ -9,6 +9,7 @@
 #include <hobbes/fregion.H>
 
 #include "session.H"
+#include "hstore_bridge.H"
 #include "boot/gen/boot.H"
 
 #define out std::cout << "[" << hobbes::showDateTime(hobbes::time() / 1000) << "]: "
@@ -17,28 +18,9 @@ using namespace hobbes;
 
 namespace hog {
 
-bool hstoreCanRead(storage::Transaction& txn, size_t n) {
-  return txn.canRead(n);
-}
-
-const uint8_t* hstoreUnsafeRead(storage::Transaction& txn, size_t n) {
-  auto p = txn.ptr();
-  txn.skip(n);
-  return p;
-}
-
-const uint8_t* hstoreUnsafeReadFixedArray(storage::Transaction& txn, size_t bytes, size_t asIfLen) {
-  array<uint8_t>* result = makeArray<uint8_t>(bytes);
-  result->size = asIfLen;
-
-  memcpy(result->data, txn.ptr(), bytes);
-  txn.skip(bytes);
-  return reinterpret_cast<const uint8_t*>(result);
-}
-
 cc* loggerCompiler() {
-  static cc* c = 0;
-  if (!c) {
+  static cc* c = nullptr;
+  if (c == nullptr) {
     c = new cc();
     c->bind("hstoreCanRead",              &hstoreCanRead);
     c->bind("hstoreUnsafeRead",           &hstoreUnsafeRead);
@@ -62,7 +44,7 @@ DEFINE_STRUCT(
 std::string ensureDirExists(const std::string& dirPfx) {
   hobbes::str::seq ps = hobbes::str::csplit(dirPfx, "/");
   std::ostringstream pfx;
-  if (ps.size() > 0) {
+  if (!ps.empty()) {
     for (size_t i = 0; i < (ps.size()-1); ++i) {
       pfx << ps[i] << "/";
       if (mkdir(pfx.str().c_str(), S_IRWXU | S_IRWXG | S_IRWXO) == -1 && errno != EEXIST) {
@@ -89,12 +71,12 @@ struct Session {
   hobbes::writer* db;
 
   // sections of the file for structured data
-  typedef std::vector<hobbes::StoredSeries*> StoredSeriess;
+  using StoredSeriess = std::vector<hobbes::StoredSeries *>;
   StoredSeriess streams;
 
   // functions for actually writing stream data
-  typedef void (*WriteFn)(hobbes::storage::Transaction*);
-  typedef std::vector<WriteFn> WriteFns;
+  using WriteFn = void (*)(hobbes::storage::Transaction *);
+  using WriteFns = std::vector<WriteFn>;
 
   WriteFns writeFns;
 
@@ -120,7 +102,7 @@ public:
   std::string ready() {
     std::string fpath = moveToUniqueFilename(this->tmpPath, this->dirPfx, ".log");
     this->tmpPath = "";
-    this->f = 0;
+    this->f = nullptr;
     return fpath;
   }
 
@@ -137,7 +119,7 @@ public:
   AppendFirstMatchingFile(const std::string& dirPfx, storage::CommitMethod cm, const storage::statements& stmts) : dirPfx(dirPfx) {
     this->f = findMatchingFile(dirPfx, cm, stmts);
 
-    if (this->f == 0) {
+    if (this->f == nullptr) {
       this->tmpPath = freshTempFile(dirPfx);
       this->f       = new writer(this->tmpPath);
     }
@@ -159,7 +141,7 @@ public:
       fpath = moveToUniqueFilename(this->tmpPath, this->dirPfx, ".log");
       this->tmpPath = "";
     }
-    this->f = 0;
+    this->f = nullptr;
     return fpath;
   }
 
@@ -171,9 +153,9 @@ private:
 
   static writer* findMatchingFile(const std::string& dirPfx, storage::CommitMethod cm, const storage::statements& stmts) {
     glob_t g;
-    if (glob((dirPfx + "*.log").c_str(), GLOB_NOSORT, 0, &g) == 0) {
+    if (glob((dirPfx + "*.log").c_str(), GLOB_NOSORT, nullptr, &g) == 0) {
       for (size_t i = 0; i < g.gl_pathc; ++i) {
-        writer* f = 0;
+        writer* f = nullptr;
         try {
           f = new writer(g.gl_pathv[i]);
           if (fileMatchesStatements(f, cm, stmts)) {
@@ -188,7 +170,7 @@ private:
       globfree(&g);
     }
 
-    return 0; // couldn't find any matching file
+    return nullptr; // couldn't find any matching file
   }
 
   static bool fileMatchesStatements(writer* f, storage::CommitMethod cm, const storage::statements& stmts) {
@@ -247,11 +229,38 @@ private:
   }
 };
 
+// a producer allocates statement IDs as a dense sequence from 0
+// (allocateStorageStatement in storage.H), and every per-statement vector
+// here is indexed by ID. The IDs in an init message are untrusted input -- a
+// network producer is not authenticated -- so hold them to that invariant
+// instead of sizing the vectors to whatever arrives:
+//
+//   * an ID near 2^32 wrapped 'id + 1' to zero, so the resize left the
+//     vectors empty and the assignment that followed wrote far past them,
+//   * an ID merely large reserved memory in proportion to it, and
+//   * a sparse or repeated ID left null entries that a transaction could
+//     then reach by ID, where only the vector's length was checked.
+static void checkStatementIDs(const storage::statements& stmts) {
+  std::vector<bool> seen(stmts.size(), false);
+
+  for (const auto& stmt : stmts) {
+    if (stmt.id >= stmts.size()) {
+      throw std::runtime_error("rejected log session: statement '" + stmt.name + "' has ID #" + str::from(stmt.id) + " out of range for " + str::from(stmts.size()) + " statements");
+    }
+    if (seen[stmt.id]) {
+      throw std::runtime_error("rejected log session: statement ID #" + str::from(stmt.id) + " appears more than once");
+    }
+    seen[stmt.id] = true;
+  }
+}
+
 // initialize a storage session with a caller-defined file allocation method
 template <typename FileAllocMethod>
 ProcessTxnF initStorageSession(Session* s, const std::string& dirPfx, storage::PipeQOS, storage::CommitMethod cm, const storage::statements& stmts, hobbes::StoredSeries::StorageMode sm) {
   static std::mutex initMtx; // make sure that only one thread initializes at a time
   std::lock_guard<std::mutex> lk(initMtx);
+
+  checkStatementIDs(stmts);
 
   cc* c = loggerCompiler();
 
@@ -261,7 +270,7 @@ ProcessTxnF initStorageSession(Session* s, const std::string& dirPfx, storage::P
   // allocate space for every log statement
   Variant::Members txnEntries;
 
-  for (auto stmt : stmts) {
+  for (const auto& stmt : stmts) {
     MonoTypePtr pty = decode(stmt.type);
     out << " ==> " << stmt.name << " :: " << show(pty) << " (#" << stmt.id << ")" << std::endl;
     if (s->streams.size() <= stmt.id) {
@@ -269,7 +278,7 @@ ProcessTxnF initStorageSession(Session* s, const std::string& dirPfx, storage::P
       s->writeFns.resize(stmt.id + 1);
     }
 
-    auto ss = new StoredSeries(c, s->db, stmt.name, pty, 10000, sm);
+    auto *ss = new StoredSeries(c, s->db, stmt.name, pty, 10000, sm);
     std::string writefn = "write_" + str::from(hobbes::time()) + "_" + stmt.name;
     ss->bindAs(c, writefn);
 
@@ -379,7 +388,7 @@ ProcessTxnF initStorageSession(Session* s, const std::string& dirPfx, storage::P
 // support merging log session data where type structures are identical
 class SessionGroup {
 public:
-  virtual ~SessionGroup() { }
+  virtual ~SessionGroup() = default;
   virtual ProcessTxnF appendStorageSession(const std::string& dirPfx, hobbes::storage::PipeQOS qos, hobbes::storage::CommitMethod cm, const hobbes::storage::statements& stmts) = 0;
 };
 
@@ -388,7 +397,7 @@ public:
   ConsolidateGroup(hobbes::StoredSeries::StorageMode sm) : sm(sm) {
   }
 
-  ProcessTxnF appendStorageSession(const std::string& dirPfx, hobbes::storage::PipeQOS qos, hobbes::storage::CommitMethod cm, const hobbes::storage::statements& stmts) {
+  ProcessTxnF appendStorageSession(const std::string& dirPfx, hobbes::storage::PipeQOS qos, hobbes::storage::CommitMethod cm, const hobbes::storage::statements& stmts) override {
     std::lock_guard<std::mutex> slock(this->m);
     for (auto* cs : this->sessions) {
       if (dirPfx == cs->dirPfx && qos == cs->qos && cm == cs->cm && stmts == cs->stmts) {
@@ -433,8 +442,8 @@ public:
   SimpleGroup(hobbes::StoredSeries::StorageMode sm) : sm(sm) {
   }
 
-  ProcessTxnF appendStorageSession(const std::string& dirPfx, hobbes::storage::PipeQOS qos, hobbes::storage::CommitMethod cm, const hobbes::storage::statements& stmts) {
-    Session* s = new Session;
+  ProcessTxnF appendStorageSession(const std::string& dirPfx, hobbes::storage::PipeQOS qos, hobbes::storage::CommitMethod cm, const hobbes::storage::statements& stmts) override {
+    auto* s = new Session;
     return initStorageSession<AllocFreshFile>(s, dirPfx, qos, cm, stmts, this->sm);
   }
 private:

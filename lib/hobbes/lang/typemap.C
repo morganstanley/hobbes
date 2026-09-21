@@ -15,14 +15,14 @@ struct mtyLT : public switchType<bool> {
       return r;
     }
 
-  bool with(const Prim*    v) const { return v->name() < right<Prim>()->name(); }
-  bool with(const TVar*    v) const { return v->name() < right<TVar>()->name(); }
-  bool with(const TGen*    v) const { return v->id() < right<TGen>()->id(); }
-  bool with(const Array*   v) const { return MonoTypeLT()(v->type(), right<Array>()->type()); }
-  bool with(const TString* v) const { return v->value() < right<TString>()->value(); }
-  bool with(const TLong*   v) const { return v->value() < right<TLong>()->value(); }
+  bool with(const Prim*    v) const override { return v->name() < right<Prim>()->name(); }
+  bool with(const TVar*    v) const override { return v->name() < right<TVar>()->name(); }
+  bool with(const TGen*    v) const override { return v->id() < right<TGen>()->id(); }
+  bool with(const Array*   v) const override { return MonoTypeLT()(v->type(), right<Array>()->type()); }
+  bool with(const TString* v) const override { return v->value() < right<TString>()->value(); }
+  bool with(const TLong*   v) const override { return v->value() < right<TLong>()->value(); }
 
-  bool with(const TAbs* v) const {
+  bool with(const TAbs* v) const override {
     if (v->args() < right<TAbs>()->args()) {
       return true;
     } else if (right<TAbs>()->args() < v->args()) {
@@ -32,7 +32,7 @@ struct mtyLT : public switchType<bool> {
     }
   }
 
-  bool with(const TApp* v) const {
+  bool with(const TApp* v) const override {
     const MonoTypes& largs = v->args();
     const MonoTypes& rargs = right<TApp>()->args();
 
@@ -56,13 +56,13 @@ struct mtyLT : public switchType<bool> {
     }
   }
 
-  bool with(const OpaquePtr* v) const {
-    const OpaquePtr* r = right<OpaquePtr>();
+  bool with(const OpaquePtr* v) const override {
+    const auto* r = right<OpaquePtr>();
 
     if (v->name() != r->name()) {
       return v->name() < r->name();
     } else if (v->storedContiguously() != r->storedContiguously()) {
-      return v->storedContiguously() < r->storedContiguously();
+      return static_cast<int>(v->storedContiguously()) < static_cast<int>(r->storedContiguously());
     } else if (v->storedContiguously()) {
       return v->size() < r->size();
     } else {
@@ -70,8 +70,8 @@ struct mtyLT : public switchType<bool> {
     }
   }
 
-  bool with(const FixedArray* v) const {
-    const FixedArray* r = right<FixedArray>();
+  bool with(const FixedArray* v) const override {
+    const auto* r = right<FixedArray>();
 
     if (MonoTypeLT()(v->type(), r->type())) {
       return true;
@@ -86,7 +86,7 @@ struct mtyLT : public switchType<bool> {
     }
   }
   
-  bool with(const Func* v) const {
+  bool with(const Func* v) const override {
     const Func* r = right<Func>();
 
     if (MonoTypeLT()(v->argument(), r->argument())) {
@@ -102,8 +102,8 @@ struct mtyLT : public switchType<bool> {
     }
   }
 
-  bool with(const Variant* v) const {
-    const Variant* r = right<Variant>();
+  bool with(const Variant* v) const override {
+    const auto* r = right<Variant>();
 
     if (v->members().size() != r->members().size()) {
       return v->members().size() < r->members().size();
@@ -126,8 +126,8 @@ struct mtyLT : public switchType<bool> {
     }
   }
 
-  bool with(const Record* v) const {
-    const Record* r = right<Record>();
+  bool with(const Record* v) const override {
+    const auto* r = right<Record>();
 
     if (v->members().size() != r->members().size()) {
       return v->members().size() < r->members().size();
@@ -150,8 +150,8 @@ struct mtyLT : public switchType<bool> {
     }
   }
 
-  bool with(const Exists* v) const {
-    const Exists* r = right<Exists>();
+  bool with(const Exists* v) const override {
+    const auto* r = right<Exists>();
 
     if (v->absTypeName() != r->absTypeName()) {
       return v->absTypeName() < r->absTypeName();
@@ -160,8 +160,8 @@ struct mtyLT : public switchType<bool> {
     }
   }
 
-  bool with(const Recursive* v) const {
-    const Recursive* r = right<Recursive>();
+  bool with(const Recursive* v) const override {
+    const auto* r = right<Recursive>();
 
     if (v->recTypeName() != r->recTypeName()) {
       return v->recTypeName() < r->recTypeName();
@@ -170,8 +170,8 @@ struct mtyLT : public switchType<bool> {
     }
   }
 
-  bool with(const TExpr* v) const {
-    const TExpr* r = right<TExpr>();
+  bool with(const TExpr* v) const override {
+    const auto* r = right<TExpr>();
 
     // this may not be sound ...
     if (v->expr().get() == r->expr().get()) {

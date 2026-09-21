@@ -43,7 +43,7 @@ template<typename T>
 static std::vector<T> retrieveFromStats(hobbes::fregion::reader& r) {
   std::vector<T> ts;
 
-  auto& data = r.series<T>(T::_hmeta_struct_type_name().c_str());
+  auto& data = r.series<T>(T::_hmeta_struct_type_name());
   T t;
   while (data.next(&t)) {
     ts.emplace_back(std::move(t));
@@ -111,7 +111,7 @@ static std::vector<RecoveredDetails> recoverSessionInformation() {
       for (const std::vector<ReaderRegistration>::const_iterator& rr : readerRegistrations) {
         if (sr->readerId == rr->readerId) {
           // pair together reader and sender regs with matching reader ids
-          details.readerSenderRegs.push_back(std::make_pair(*rr, *sr));
+          details.readerSenderRegs.emplace_back(*rr, *sr);
         }
       }
     }
@@ -146,7 +146,15 @@ static bool hasBeenRecovered(const std::vector<SessionRecovered>& sessionRecover
 
 static bool hasBeenCorrectlyClosed(const std::vector<SenderState>& senderStates) {
   // Sender states should be temporally ordered earliest->latest
-  return senderStates.size() == 0 ? false : senderStates.back().status.value == SenderStatus::Enum::Closed;
+  return senderStates.empty() ? false : senderStates.back().status.value == SenderStatus::Enum::Closed;
+}
+
+static bool hasBeenCorrectlyClosed(const RecoveredDetails::SenderStateMap& senderStates, const hobbes::storage::ProcThread& senderId) {
+  // a sender that registered but never logged a state (it died before its
+  // first status record) has no entry at all, which is no more closed than
+  // an empty history is
+  auto ss = senderStates.find(senderId);
+  return ss != senderStates.end() && hasBeenCorrectlyClosed(ss->second);
 }
 
 struct RecoveryTask {
@@ -209,7 +217,7 @@ std::vector<RecoveryTask> getTasksRequiringRecovery(const RecoveredDetails& reco
     const SenderRegistration& senderReg = readerSenderReg.second;
 
     // is eligible for recovery
-    if (!hasBeenCorrectlyClosed(recoveredDetails.senderStates.find(senderReg.senderId)->second) && !hasBeenRecovered(recoveredDetails.sessionsRecovered, readerSenderReg)) {
+    if (!hasBeenCorrectlyClosed(recoveredDetails.senderStates, senderReg.senderId) && !hasBeenRecovered(recoveredDetails.sessionsRecovered, readerSenderReg)) {
       tasks.emplace_back(RecoveryTask{
         readerReg.writerId,
         senderReg.readerId, 
@@ -301,7 +309,7 @@ void detectFaultAndRecover() {
 
     const std::vector<RecoveryTask> tasks = getTasksRequiringRecovery(recoveredDetails);
     // ignore groups with no associable tasks
-    if (tasks.size() > 0) {
+    if (!tasks.empty()) {
       recoveryTaskGroups.emplace_back(RecoveryTaskGroup{runMode,
         recoveredDetails.processEnvironment.sessionHash,
         recoveredDetails.processEnvironment.argv,

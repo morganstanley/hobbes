@@ -1,0 +1,16 @@
+// @test: (dot3((a, b)), cross((a, b)), scalar_triple((a, b, c)), vector_triple((a, b, c)))
+dot3 x = match x with
+  | (a, b) -> a.0 * b.0 + a.1 * b.1 + a.2 * b.2
+
+cross x = match x with
+  | (a, b) -> (a.1 * b.2 - a.2 * b.1, a.2 * b.0 - a.0 * b.2, a.0 * b.1 - a.1 * b.0)
+
+scalar_triple x = match x with
+  | (a, b, c) -> dot3((a, cross((b, c))))
+
+vector_triple x = match x with
+  | (a, b, c) -> cross((a, cross((b, c))))
+
+a = (3, 4, 5)
+b = (4, 3, 5)
+c = (-5, -12, -13)

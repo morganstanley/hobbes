@@ -2,11 +2,13 @@
 #ifndef HOBBES_UTIL_TIME_HPP_INCLUDED
 #define HOBBES_UTIL_TIME_HPP_INCLUDED
 
-#include <hobbes/util/str.H>
-#include <string>
-#include <string.h>
-#include <sstream>
+#include <cstdint>
+#include <cstring>
 #include <ctime>
+#include <hobbes/util/str.H>
+#include <limits>
+#include <sstream>
+#include <string>
 
 namespace hobbes {
 
@@ -16,10 +18,32 @@ namespace hobbes {
  *  e.g.: 5s, 20m, 4day2h3m30s200ms456us, ...
  *
  * *****/
+// timespans are accumulated out of non-negative terms, so rather than let an
+// absurdly large literal (e.g. "9223372036854775807day") wrap around, we
+// saturate at the largest representable timespan
+inline long saturatingTimespanScale(uint64_t n, long m) {
+  static const uint64_t maxts = static_cast<uint64_t>(std::numeric_limits<long>::max());
+
+  const uint64_t um = static_cast<uint64_t>(m);
+  if (um == 0 || n > (maxts / um)) {
+    return (um == 0) ? 0 : std::numeric_limits<long>::max();
+  }
+  return static_cast<long>(n * um);
+}
+
+inline long saturatingTimespanAdd(long x, long y) {
+  static const long maxts = std::numeric_limits<long>::max();
+
+  if (x > (maxts - y)) {
+    return maxts;
+  }
+  return x + y;
+}
+
 inline long readTimespan(std::string s) {
   long r = 0;
 
-  while (s.size() > 0) {
+  while (!s.empty()) {
     str::pair p = str::readWhile(&str::isDigit,    s);
     str::pair u = str::readWhile(&str::isNotDigit, p.second);
 
@@ -38,7 +62,8 @@ inline long readTimespan(std::string s) {
       m = 1000000L*60*60*24;
     }
 
-    r += str::to<uint64_t>(p.first) * m;
+    // an out-of-range digit sequence reads as UINT64_MAX, which saturates below
+    r = saturatingTimespanAdd(r, saturatingTimespanScale(str::to<uint64_t>(p.first), m));
     s = u.second;
   }
 
@@ -47,8 +72,8 @@ inline long readTimespan(std::string s) {
 
 inline long readTimespan(const str::seq& ss) {
   long r = 0;
-  for (auto s : ss) {
-    r += readTimespan(s);
+  for (const auto& s : ss) {
+    r = saturatingTimespanAdd(r, readTimespan(s));
   }
   return r;
 }
@@ -164,7 +189,7 @@ inline long timeFromDateTime(long x) {
   int64_t us = x % (1000L * 1000L);
   tm*     t  = localtime(reinterpret_cast<time_t*>(&s));
 
-  if (t) {
+  if (t != nullptr) {
     return mkTime(t->tm_hour, t->tm_min, t->tm_sec, us);
   } else {
     return mkTime(0, 0, 0, 0);

@@ -1,0 +1,7 @@
+// @test: [quibble(w) | w <- [[], ["ABC"], ["ABC", "DEF"], ["ABC", "DEF", "G", "H"]]]
+quibbleHelper :: ([[char]] * int) -> [char]
+quibbleHelper x = match x with
+  | (ws, i) -> if (i >= length(ws)) then "" else if (i == length(ws) - 1) then ws[i] else if (i == length(ws) - 2) then ws[i] ++ " and " ++ ws[i+1] else ws[i] ++ ", " ++ quibbleHelper((ws, i + 1))
+
+quibble :: [[char]] -> [char]
+quibble ws = "{" ++ quibbleHelper((ws, 0)) ++ "}"

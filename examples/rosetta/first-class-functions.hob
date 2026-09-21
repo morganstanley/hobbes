@@ -1,0 +1,3 @@
+// @test: (applyTo(square, [1,2,3,4,5]), applyTo(\x.x+10, [1,2,3,4,5]))
+square x = x * x
+applyTo f xs = [f(x) | x <- xs]

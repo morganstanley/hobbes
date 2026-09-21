@@ -1,5 +1,15 @@
 # Hog - Hobbes-based logging facilities
 
+## Custom transports (authentication / encryption)
+
+hog talks to the network only through the `NetServer` / `NetConnection` interfaces
+(`netserver.H`, `netconnection.H`), obtained from injectable factories in
+`network.H` (`setNetServerFactory` / `setNetConnectionFactory`). A consumer can
+install its own transport -- e.g. Kerberos/GSSAPI or TLS -- without hog depending
+on any auth library, and with no change to the default (plaintext) build. See
+[doc/en/hog-custom-transport.md](../../doc/en/hog-custom-transport.md) for a worked
+Kerberos example.
+
 ## Automatic Fault Detection & Recovery
 
 Automatic fault detection and recovery features are available in Hog by default.

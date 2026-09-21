@@ -1,0 +1,7 @@
+// @test: [(s, allSame(s)) | s <- ["", "aaa", "abc", "   ", "2222222"]]
+allSameHelper :: ([char] * int) -> bool
+allSameHelper x = match x with
+  | (s, i) -> if (i >= length(s)) then true else if (s[i] != s[0]) then false else allSameHelper((s, i + 1))
+
+allSame :: [char] -> bool
+allSame s = if (length(s) == 0) then true else allSameHelper((s, 1))

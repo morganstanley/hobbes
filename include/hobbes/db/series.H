@@ -15,7 +15,7 @@
 
 namespace hobbes {
 
-typedef uint64_t ufileref;
+using ufileref = uint64_t;
 
 // A -> (A)
 MonoTypePtr entuple(const MonoTypePtr&);
@@ -75,7 +75,7 @@ private:
   uint64_t  batchNode;
   uint64_t* headNodeRef;
 
-  typedef void (*StoreFn)(writer*, const void*, void*);
+  using StoreFn = void (*)(writer *, const void *, void *);
   StoreFn storeFn;
 
   void consBatchNode(uint64_t nextPtr);
@@ -91,10 +91,10 @@ public:
   CompressedStoredSeries(cc*, writer*, const std::string&, const MonoTypePtr&, size_t);
   ~CompressedStoredSeries();
 
-  typedef void (*CWriteFn)(UCWriter*, void*, const void*);
-  typedef uint8_t* (*CAllocM)(writer*);
-  typedef void (*CPrepM)(UCWriter*,uint8_t*);
-  typedef void (*CDeallocM)(uint8_t*);
+  using CWriteFn = void (*)(UCWriter *, void *, const void *);
+  using CAllocM = uint8_t *(*)(writer *);
+  using CPrepM = void (*)(UCWriter *, uint8_t *);
+  using CDeallocM = void (*)(uint8_t *);
 
   // where has this series been placed?
   ufileref rootRef() const;
@@ -113,7 +113,7 @@ public:
   // (assumes that this series will live at least as long as the bound function is usable)
   void bindAs(cc*, const std::string&);
 private:
-  typedef std::pair<MonoTypePtr, MonoTypePtr> ModelTypes;
+  using ModelTypes = std::pair<MonoTypePtr, MonoTypePtr>;
 
   writer*     outputFile;
   MonoTypePtr recordType;
@@ -170,8 +170,8 @@ public:
 private:
   StorageMode sm;
   union {
-    char rss[sizeof(RawStoredSeries)];
-    char css[sizeof(CompressedStoredSeries)];
+    alignas(RawStoredSeries) char rss[sizeof(RawStoredSeries)];
+    alignas(CompressedStoredSeries) char css[sizeof(CompressedStoredSeries)];
   } storage;
 };
 

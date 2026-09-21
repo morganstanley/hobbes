@@ -17,16 +17,55 @@ int yycolumn = 1;
 #include <hobbes/util/stream.H>
 #include <hobbes/parse/grammar.H>
 #include <hobbes/read/pgen/hexpr.parse.H>
+#include <limits>
 #include <string>
 #include <iostream>
+
+namespace {
+std::out_of_range make_err(const std::string& s) {
+  return std::out_of_range(std::string("literal ") + s + " is not supported");
+}
+
+int str2int(const std::string& s) {
+  try {
+    return std::stoi(s);
+  } catch (const std::out_of_range&) {
+    throw make_err(s);
+  }
+}
+
+long str2long(const std::string& s) {
+  try {
+    return std::stol(s);
+  } catch (const std::out_of_range&) {
+    throw make_err(s);
+  }
+}
+
+short str2short(const std::string& s) {
+  const auto i = str2int(s);
+  if (i > std::numeric_limits<short>::max()) {
+    throw make_err(s);
+  }
+  return static_cast<short>(i);
+}
+
+__int128 str2int128(const std::string& s) {
+  __int128 i = 0;
+  if (!readInt128(s, &i)) {
+    throw make_err(s);
+  }
+  return i;
+}
+}
 
 #define SAVE_STR    yylval.string = hobbes::autorelease(new std::string(yytext, yytext + yyleng))
 #define SAVE_IDENT  yylval.string = identifier(yytext, yytext + yyleng)
 #define SAVE_BOOL   std::istringstream(std::string(yytext, yytext + yyleng)) >> std::boolalpha >> yylval.boolv
-#define SAVE_SHORT  yylval.shortv = (short)std::stoi(std::string(yytext, yytext + yyleng))
-#define SAVE_INT    yylval.intv = std::stoi(std::string(yytext, yytext + yyleng))
-#define SAVE_LONG   yylval.longv = std::stol(std::string(yytext, yytext + yyleng - 1))
-#define SAVE_INT128 readInt128(std::string(yytext, yytext + yyleng - 1), &yylval.int128v)
+#define SAVE_SHORT  yylval.shortv = str2short(std::string(yytext, yytext + yyleng - 1))
+#define SAVE_INT    yylval.intv = str2int(std::string(yytext, yytext + yyleng))
+#define SAVE_LONG   yylval.longv = str2long(std::string(yytext, yytext + yyleng - 1))
+#define SAVE_INT128 yylval.int128v = str2int128(std::string(yytext, yytext + yyleng - 1))
 #define SAVE_FLOAT  yylval.floatv = std::stof(std::string(yytext, yytext + yyleng))
 #define SAVE_DOUBLE yylval.doublev = std::stod(std::string(yytext, yytext + yyleng))
 
@@ -55,6 +94,70 @@ void popIndent() {
   }
 }
 
+// The scanner keeps state from one token to the next: the start condition it
+// is in (INITIAL, or inside a block comment), whether an indent is currently
+// significant, and the stack of that for each bracket opened. A parse that
+// ends early -- a syntax error, an exception out of a grammar action -- leaves
+// all of it wherever the failure found it, and nothing used to reset it, so
+// the next parse in the process inherited it: an unterminated block comment
+// left every later input read as comment, and a class body cut short left
+// later inputs with an indent token where none belongs.
+//
+// So the parser brackets every parse with these. pushLexerParseState saves
+// the state and resets it to what a fresh process has; popLexerParseState
+// puts the saved state back. Saving rather than just resetting is for the
+// parse of an imported script, which runs nested inside its importer's parse
+// and must hand the importer's state back when it is done.
+struct LexerParseState {
+  int              start;
+  int              wantIndent;
+  std::vector<int> indentStack;
+};
+std::vector<LexerParseState> yySavedLexerParseStates;
+
+void pushLexerParseState() {
+  LexerParseState s;
+  s.start       = YY_START;
+  s.wantIndent  = yyWantIndent;
+  s.indentStack = yyIndentStack;
+  yySavedLexerParseStates.push_back(s);
+
+  BEGIN(0); // INITIAL -- which flex defines only after this prologue, as 0
+  yyWantIndent = 0;
+  yyIndentStack.clear();
+}
+
+void popLexerParseState() {
+  if (yySavedLexerParseStates.empty()) {
+    return;
+  }
+  const LexerParseState& s = yySavedLexerParseStates.back();
+  BEGIN(s.start);
+  yyWantIndent  = s.wantIndent;
+  yyIndentStack = s.indentStack;
+  yySavedLexerParseStates.pop_back();
+}
+
+// Give back the last n characters of the current match.
+//
+// The indentation rules below need one or two characters of lookahead to tell
+// an indented line from a comment, and they used to ask flex for it as
+// trailing context. Variable trailing context makes flex carry a backtracking
+// state stack -- one entry per character scanned while matching a token -- in
+// a buffer it allocates once at (YY_BUF_SIZE + 2) states and never grows, so
+// scanning a token longer than that wrote past the end of it. Matching the
+// lookahead and handing it back leaves no rule with trailing context, and flex
+// emits no such buffer at all, so the length of a token is bounded only by the
+// input. yyless rewinds yyleng and, for any newline among the characters it
+// gives back, yylineno -- both of which YY_USER_ACTION has already used, so
+// the token's line and end column are restated here once they are right.
+#define pushBackLookahead(n)                                   \
+  do {                                                         \
+    yyless(yyleng - (n));                                      \
+    yylloc.first_line = yylloc.last_line = yylineno;           \
+    yylloc.last_column = yylloc.first_column + yyleng - 1;     \
+  } while (false)
+
 std::string* identifier(const char* b, const char* e) {
   if ((b+1) == e && *b == '_') {
     return hobbes::autorelease(new std::string(hobbes::freshName()));
@@ -81,7 +184,8 @@ std::string* identifier(const char* b, const char* e) {
 
 \n                              { yycolumn = 1; }
 [ \t\r\f]                       { }
-"\n"[ \t]+/([^ \t\n/]|"/"[^*/]) { yycolumn = 2; if (wantIndent()) { return TINDENT; } }
+"\n"[ \t]+[^ \t\n/]             { pushBackLookahead(1); yycolumn = 2; if (wantIndent()) { return TINDENT; } }
+"\n"[ \t]+"/"[^*/]              { pushBackLookahead(2); yycolumn = 2; if (wantIndent()) { return TINDENT; } }
 "\n "                           { yycolumn = 2; if (wantIndent()) { return TINDENT; } }
 "\r "                           {               if (wantIndent()) { return TINDENT; } }
 "\n\t"                          { yycolumn = 2; if (wantIndent()) { return TINDENT; } }

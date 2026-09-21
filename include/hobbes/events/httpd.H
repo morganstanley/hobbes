@@ -12,8 +12,8 @@
 namespace hobbes {
 
 struct HTTPRequest {
-  typedef std::map<std::string, std::string> Headers;
-  typedef std::vector<char> Data;
+  using Headers = std::map<std::string, std::string>;
+  using Data = std::vector<char>;
 
   std::string method;
   std::string document;
@@ -21,9 +21,9 @@ struct HTTPRequest {
   Data        data;
 };
 
-typedef void (*HTTPRequestHandler)(const HTTPRequest&, int fd, void* ud);
+using HTTPRequestHandler = void (*)(const HTTPRequest &, int, void *);
 
-int installHTTPD(int port, HTTPRequestHandler, void* ud = 0);
+int installHTTPD(int port, HTTPRequestHandler, void* ud = nullptr);
 
 }
 

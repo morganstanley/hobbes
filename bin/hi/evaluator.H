@@ -7,11 +7,11 @@
 
 namespace hi {
 
-typedef std::vector<std::string> ModuleFiles;
+using ModuleFiles = std::vector<std::string>;
 
 struct Args {
-  typedef std::map<std::string, std::string> NameVals;
-  typedef std::vector<std::string> strs;
+  using NameVals = std::map<std::string, std::string>;
+  using strs = std::vector<std::string>;
 
   ModuleFiles              mfiles;
   std::vector<std::string> evalExprs;
@@ -21,11 +21,12 @@ struct Args {
   int                      replPort;
   int                      httpdPort;
   bool                     exitAfterEval;
+  bool                     checkOnly;      // just verify that script files parse; compile and evaluate nothing
   NameVals                 scriptNameVals;
   bool                     machineREPL;    // should we structure console I/O for machine-reading?
   strs                     opts;
 
-  Args() : useDefColors(false), silent(false), replPort(-1), httpdPort(-1), exitAfterEval(false), machineREPL(false) {
+  Args() : useDefColors(false), silent(false), replPort(-1), httpdPort(-1), exitAfterEval(false), checkOnly(false), machineREPL(false) {
     opts.push_back("Safe");
   }
 };

@@ -1,0 +1,5 @@
+// @test: [ethMul((17, 34)), ethMul((99, 1)), ethMul((1, 99))]
+ethMul :: (int * int) -> int
+ethMul x = match x with
+  | (0, _) -> 0
+  | (a, b) -> (if (a % 2 == 1) then b else 0) + ethMul((a / 2, b * 2))

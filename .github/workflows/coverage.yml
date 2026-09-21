@@ -1,0 +1,86 @@
+name: "Code Coverage"
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Least privilege by default; jobs opt into more where needed
+permissions:
+  contents: read
+
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+    container:
+      image: rockylinux:9
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Install dependencies
+        run: |
+          dnf update -y
+          dnf install -y epel-release
+          dnf config-manager --set-enabled crb
+          dnf install -y gcc gcc-c++ cmake make ncurses-devel zlib-devel \
+            readline readline-devel llvm-devel clang clang-devel lcov
+      - name: Configure with coverage
+        run: |
+          CC=clang CXX=clang++ cmake -B build \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_CXX_FLAGS="--coverage" \
+            -DCMAKE_C_FLAGS="--coverage" \
+            -DCMAKE_EXE_LINKER_FLAGS="--coverage"
+      - name: Build
+        run: cmake --build build -j$(nproc)
+      - name: Test
+        run: |
+          cd build
+          ./hobbes-test 2>&1 | tee test-output.txt; true
+          if grep -q 'FAILURE' test-output.txt; then
+            echo "::error::Test failures detected"
+            exit 1
+          fi
+      - name: Collect coverage
+        run: |
+          # lcov needs a gcov-compatible wrapper for clang coverage data
+          printf '#!/bin/sh\nexec llvm-cov gcov "$@"\n' > /usr/local/bin/llvm-gcov.sh
+          chmod +x /usr/local/bin/llvm-gcov.sh
+          lcov --capture --directory build --output-file coverage.info \
+            --gcov-tool /usr/local/bin/llvm-gcov.sh
+          # Remove system headers and test files from coverage
+          lcov --remove coverage.info \
+            '/usr/*' \
+            '*/test/*' \
+            '*/build/*' \
+            --output-file coverage.info
+          lcov --list coverage.info
+      - name: Generate HTML report
+        run: |
+          genhtml coverage.info --output-directory coverage-html \
+            --title "Hobbes Code Coverage" \
+            --legend
+      - name: Post coverage summary
+        run: |
+          lcov --summary coverage.info 2>&1 | tee coverage-summary.txt
+          echo '### Code Coverage' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cat coverage-summary.txt >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
+        with:
+          path: coverage-html
+  deploy:
+    needs: coverage
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5

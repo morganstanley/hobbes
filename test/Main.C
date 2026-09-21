@@ -75,7 +75,7 @@ int TestCoord::runTestGroups(const Args& args) {
   std::cout << "---------------------------------------------------------------------" << std::endl
             << hobbes::describeNanoTime(hobbes::tick()-tt0) << std::endl;
 
-  if (failures.size() > 0) {
+  if (!failures.empty()) {
     std::cout << "\n\nFAILURE" << (failures.size() == 1 ? "" : "S") << ":" << std::endl
               << "---------------------------------------------------------------------" << std::endl;
     for (const auto& failure : failures) {
@@ -83,7 +83,7 @@ int TestCoord::runTestGroups(const Args& args) {
     }
   }
 
-  if (auto path = args.report) {
+  if (const auto* path = args.report) {
     std::ofstream outfile(path, std::ios::out | std::ios::trunc);
     if (outfile) {
       outfile << toJSON();
@@ -103,7 +103,7 @@ std::string TestCoord::toJSON() {
 }
 
 void listTest() {
-  for (auto & test : TestCoord::instance().testGroupNames()) {
+  for (const auto & test : TestCoord::instance().testGroupNames()) {
     std::cout << test << std::endl;
   }
 }
@@ -118,7 +118,7 @@ Args parseArgs(int argc, char** argv) {
     {"list_tests", no_argument,       nullptr, 'l'},
     {"tests",      required_argument, nullptr, 't'},
     {"json",       required_argument, nullptr, 'r'},
-    {0,            no_argument,       nullptr, ' '}
+    {nullptr,            no_argument,       nullptr, ' '}
   };
 
   Args args;

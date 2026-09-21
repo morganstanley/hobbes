@@ -2,6 +2,7 @@
 #include <hobbes/ipc/procman.H>
 #include <hobbes/lang/preds/class.H>
 #include <hobbes/util/str.H>
+#include <memory>
 
 namespace hobbes {
 
@@ -65,11 +66,11 @@ bool ProcManager::satisfiable(const TEnvPtr& tenv, const HasField& hf, Definitio
 
   if (dir == HasField::Write) { return false; }
 
-  if (is<TVar>(rty)) {
+  if (is<TVar>(rty) != nullptr) {
     return true;
-  } else if (!pidTy(rty)) {
+  } else if (pidTy(rty) == nullptr) {
     return false;
-  } else if (is<TVar>(fname) || !isMonoSingular(hasty)) {
+  } else if ((is<TVar>(fname) != nullptr) || !isMonoSingular(hasty)) {
     return true;
   } else {
     return satisfied(tenv, hf, ds);
@@ -85,7 +86,7 @@ struct ProcManUnqualify : public switchExprTyFn {
   ProcManUnqualify(const ProcManager* pthis, const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions* defs) : pthis(pthis), tenv(tenv), constraint(cst), defs(defs) {
   }
 
-  ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const {
+  ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const override {
     ExprPtr result(e);
     result->type(removeConstraint(this->constraint, qty));
     ExprPtr aresult(new Assump(result, result->type(), result->la()));
@@ -96,16 +97,16 @@ struct ProcManUnqualify : public switchExprTyFn {
   ExprPtr annotateTypes(const ExprPtr& e) const {
     ExprPtr sexp = validateType(this->tenv, e, this->defs);
 
-    if (sexp->type()->constraints().size() == 0) {
+    if (sexp->type()->constraints().empty()) {
       return sexp;
     } else {
       return unqualifyTypes(this->tenv, sexp, this->defs);
     }
   }
 
-  ExprPtr with(const Fn* v) const {
+  ExprPtr with(const Fn* v) const override {
     const Func* fty = is<Func>(v->type()->monoType());
-    if (!fty) {
+    if (fty == nullptr) {
       throw std::runtime_error("Internal error, expected annotated function type");
     }
     return wrapWithTy(v->type(),
@@ -117,7 +118,7 @@ struct ProcManUnqualify : public switchExprTyFn {
     );
   }
 
-  ExprPtr with(const Let* v) const {
+  ExprPtr with(const Let* v) const override {
     return wrapWithTy(v->type(),
       new Let(
         v->var(),
@@ -134,11 +135,11 @@ struct ProcManUnqualify : public switchExprTyFn {
         return &(pthis->lp(pid->value()));
       }
     }
-    return 0;
+    return nullptr;
   }
 
   static ConstraintPtr blockCodecCst(const MonoTypePtr& ty) {
-    return ConstraintPtr(new Constraint("BlockCodec", list(ty)));
+    return std::make_shared<Constraint>("BlockCodec", list(ty));
   }
 
   ExprPtr blockWrite(const proc* p, const ExprPtr& e) const {
@@ -160,7 +161,7 @@ struct ProcManUnqualify : public switchExprTyFn {
   //   readFrom(FD) :: rty
   ExprPtr makeInvocation(const proc* p, const ExprPtr& pe, const std::string& fname, const MonoTypePtr& ftyv, const Exprs& args) const {
     const Func* fty = is<Func>(ftyv);
-    if (!fty) { throw std::runtime_error("Internal error, process RPC call expected function type, not: " + show(ftyv)); }
+    if (fty == nullptr) { throw std::runtime_error("Internal error, process RPC call expected function type, not: " + show(ftyv)); }
 
     MkRecord::FieldDefs argtupv;
     for (size_t i = 0; i < args.size(); ++i) {
@@ -179,7 +180,7 @@ struct ProcManUnqualify : public switchExprTyFn {
       blockRead(p, fty->result()), la), la), la);
   }
 
-  ExprPtr with(const App* v) const {
+  ExprPtr with(const App* v) const override {
     if (const Proj* f = is<Proj>(stripAssumpHead(v->fn()))) {
       if (const proc* p = isProcRef(f)) {
         return makeInvocation(p, switchOf(f->record(), *this), f->field(), f->type()->monoType(), switchOf(v->args(), *this));
@@ -188,7 +189,7 @@ struct ProcManUnqualify : public switchExprTyFn {
     return wrapWithTy(v->type(), new App(switchOf(v->fn(), *this), switchOf(v->args(), *this), v->la()));
   }
 
-  ExprPtr with(const Proj* v) const {
+  ExprPtr with(const Proj* v) const override {
     // generate a function for this reference to an external function
     if (const proc* p = isProcRef(v)) {
       const Func* fty = is<Func>(v->type()->monoType());
@@ -197,11 +198,11 @@ struct ProcManUnqualify : public switchExprTyFn {
       str::seq  vns;
       Exprs     args;
 
-      for (size_t i = 0; i < argtys.size(); ++i) {
+      for (const auto &argty : argtys) {
         std::string vname = freshName();
 
         vns.push_back(vname);
-        args.push_back(var(vname, qualtype(argtys[i]), v->la()));
+        args.push_back(var(vname, qualtype(argty), v->la()));
       }
 
       return wrapWithTy(v->type(), new Fn(vns, makeInvocation(p, switchOf(v->record(), *this), v->field(), v->type()->monoType(), args), v->la()));
@@ -227,7 +228,7 @@ const TLong* pidTy(const MonoTypePtr& mty) {
       }
     }
   }
-  return 0;
+  return nullptr;
 }
 
 MonoTypePtr mkPidTy(long pid) {

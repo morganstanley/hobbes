@@ -1,6 +1,7 @@
 
-#include <hobbes/db/series.H>
 #include <atomic>
+#include <hobbes/db/series.H>
+#include <memory>
 
 namespace hobbes {
 
@@ -230,7 +231,7 @@ MonoTypePtr storeAs(cc* c, const MonoTypePtr& ty) {
 //  (currently we have to account for the fact that we might be storing primitive values
 //   in that case, we'll just entuple them and write them as records)
 static void* storageFunction(cc*c, const MonoTypePtr& ty, const MonoTypePtr& storageType, const LexicalAnnotation& la) {
-  if (is<Record>(storageType)) {
+  if (is<Record>(storageType) != nullptr) {
     return c->unsafeCompileFn(
       primty("unit"),
       str::strings("f", "v", "d"),
@@ -298,8 +299,7 @@ RawStoredSeries::RawStoredSeries(cc* c, writer* outputFile, ufileref root, const
   }
 }
 
-RawStoredSeries::~RawStoredSeries() {
-}
+RawStoredSeries::~RawStoredSeries() = default;
 
 ufileref RawStoredSeries::rootRef() const {
   return this->rootLoc;
@@ -352,7 +352,7 @@ static void unsafeWriteToSeries(long ss, char* rec) {
 }
 
 static void unsafeWriteUnitToSeries(long ss) {
-  reinterpret_cast<RawStoredSeries*>(ss)->record(0, false);
+  reinterpret_cast<RawStoredSeries*>(ss)->record(nullptr, false);
 }
 
 void RawStoredSeries::bindAs(cc* c, const std::string& vname) {
@@ -375,7 +375,7 @@ void RawStoredSeries::bindAs(cc* c, const std::string& vname) {
         nla
       )
     );
-  } else if(is<Record>(this->recordType)) {
+  } else if(is<Record>(this->recordType) != nullptr) {
     // vname = \x.unsafeWriteToSeries(this, unsafeCast(x :: ty))
     c->define(
       vname,
@@ -419,17 +419,17 @@ void RawStoredSeries::consBatchNode(uint64_t nextPtr) {
   *this->headNodeRef = this->batchNode;
 }
 
-typedef array<int>           PBatch;
-typedef fileref<PBatch*>     PBatchRef;
-typedef dbseq<PBatchRef>     PBatchList;
-typedef fileref<PBatchList*> PBatchListRef;
+using PBatch = array<int>;
+using PBatchRef = fileref<PBatch *>;
+using PBatchList = dbseq<PBatchRef>;
+using PBatchListRef = fileref<PBatchList *>;
 
 void RawStoredSeries::restartFromBatchNode() {
-  PBatchList* n = reinterpret_cast<PBatchList*>(this->outputFile->unsafeLoad(*this->headNodeRef, sizeof(PBatchList)));
+  auto* n = reinterpret_cast<PBatchList*>(this->outputFile->unsafeLoad(*this->headNodeRef, sizeof(PBatchList)));
   
   // if we somehow get a root node representing the empty list, we're free to start a fresh list
   const PBatchList::cons_t* p = n->head();
-  if (!p) {
+  if (p == nullptr) {
     consBatchNode(allocBatchNode(this->outputFile));
     return;
   }
@@ -441,14 +441,14 @@ void RawStoredSeries::restartFromBatchNode() {
 }
 
 uint64_t RawStoredSeries::allocBatchNode(writer* file) {
-  PBatchList* b = new (file->store<PBatchList*>()) PBatchList();
+  auto* b = new (file->store<PBatchList*>()) PBatchList();
   uint64_t    r = file->offsetOf(b).index;
   file->unmap(b);
   return r;
 }
 
 uint64_t RawStoredSeries::allocBatchNode(writer* file, uint64_t batchOffset, uint64_t nextNodeOffset) {
-  PBatchList* b = new (file->store<PBatchList*>()) PBatchList(PBatchRef(batchOffset), PBatchListRef(nextNodeOffset));
+  auto* b = new (file->store<PBatchList*>()) PBatchList(PBatchRef(batchOffset), PBatchListRef(nextNodeOffset));
   uint64_t    r = file->offsetOf(b).index;
 
   file->unmap(b);
@@ -517,7 +517,7 @@ size_t makeCRootRef(writer* file, const MonoTypePtr&) {
 size_t makeCRootRef(writer* file, const std::string& fn, const MonoTypePtr& cseqType) {
   using namespace hobbes::fregion;
 
-  auto fd = file->fileData();
+  auto *fd = file->fileData();
   auto b  = fd->bindings.find(fn);
 
   if (b == fd->bindings.end()) {
@@ -525,7 +525,7 @@ size_t makeCRootRef(writer* file, const std::string& fn, const MonoTypePtr& cseq
     encode(cseqType, &cseqTypeEnc);
 
     size_t  headNodeRef = findSpace(fd, pagetype::data, sizeof(size_t), sizeof(size_t));
-    size_t* headNode    = reinterpret_cast<size_t*>(mapFileData(fd, headNodeRef, sizeof(size_t)));
+    auto* headNode    = reinterpret_cast<size_t*>(mapFileData(fd, headNodeRef, sizeof(size_t)));
     *headNode = findSpace(fd, pagetype::data, 3*sizeof(size_t), sizeof(size_t));
     size_t hn = *headNode;
 
@@ -534,7 +534,7 @@ size_t makeCRootRef(writer* file, const std::string& fn, const MonoTypePtr& cseq
 
     return hn;
   } else {
-    size_t* hnr = reinterpret_cast<size_t*>(mapFileData(fd, b->second.offset, sizeof(size_t)));
+    auto* hnr = reinterpret_cast<size_t*>(mapFileData(fd, b->second.offset, sizeof(size_t)));
     size_t  hn  = *hnr;
 
     unmapFileData(fd, hnr, sizeof(size_t));
@@ -552,7 +552,7 @@ static CompressedStoredSeries::CWriteFn compressedWriteFunction(cc* c, const Mon
   auto la = LexicalAnnotation::null();
   auto mt = decideModelType(c, t);
 
-  if (is<Record>(t)) {
+  if (is<Record>(t) != nullptr) {
     return reinterpret_cast<CompressedStoredSeries::CWriteFn>(
       c->unsafeCompileFn(
         primty("unit"),
@@ -571,13 +571,13 @@ static CompressedStoredSeries::CAllocM compressedMAllocFn(cc* c, const MonoTypeP
   auto la = LexicalAnnotation::null();
   auto mt = decideModelType(c, t);
 
-  if (is<Record>(t)) {
+  if (is<Record>(t) != nullptr) {
     return reinterpret_cast<CompressedStoredSeries::CAllocM>(
       c->unsafeCompileFn(
         mt.second,
         str::strings("f"),
         list(tapp(primty("file"), list(primty("unit"), primty("unit")))),
-        fncall(assume(var("ucAllocModel", la), qualtype(list(ConstraintPtr(new Constraint("UCModel", list(t, freshTypeVar(), freshTypeVar())))), freshTypeVar()), la), list(var("f", la), constant(false, la)), la)
+        fncall(assume(var("ucAllocModel", la), qualtype(list(std::make_shared<Constraint>("UCModel", list(t, freshTypeVar(), freshTypeVar()))), freshTypeVar()), la), list(var("f", la), constant(false, la)), la)
       )
     );
   } else {
@@ -590,14 +590,14 @@ static CompressedStoredSeries::CPrepM compressedMPrepFn(cc* c, const MonoTypePtr
   auto la = LexicalAnnotation::null();
   auto mt = decideModelType(c, t);
 
-  if (is<Record>(t)) {
+  if (is<Record>(t) != nullptr) {
     // (ucPrepModel::(UCModel t sm dm)=>_)(unsafeCast(ucWriterModelData(w))::sm, dm);
     return reinterpret_cast<CompressedStoredSeries::CPrepM>(
       c->unsafeCompileFn(
         primty("unit"),
         str::strings("w", "dm"),
         list(lift<UCWriter*>::type(*c), mt.second),
-        fncall(assume(var("ucPrepModel", la), qualtype(list(ConstraintPtr(new Constraint("UCModel", list(t, mt.first, mt.second)))), freshTypeVar()), la), list(
+        fncall(assume(var("ucPrepModel", la), qualtype(list(std::make_shared<Constraint>("UCModel", list(t, mt.first, mt.second))), freshTypeVar()), la), list(
           fncall(var("unsafeCast", la), list(fncall(var("ucWriterModelData", la), var("w", la), la)), la),
           var("dm", la)
         ), la)
@@ -613,13 +613,13 @@ static CompressedStoredSeries::CDeallocM compressedMDeallocFn(cc* c, const MonoT
   auto la = LexicalAnnotation::null();
   auto mt = decideModelType(c, t);
 
-  if (is<Record>(t)) {
+  if (is<Record>(t) != nullptr) {
     return reinterpret_cast<CompressedStoredSeries::CDeallocM>(
       c->unsafeCompileFn(
         primty("unit"),
         str::strings("m"),
         list(mt.second),
-        fncall(assume(var("ucDeallocModel", la), qualtype(list(ConstraintPtr(new Constraint("UCModel", list(t, freshTypeVar(), freshTypeVar())))), freshTypeVar()), la), list(var("m", la)), la)
+        fncall(assume(var("ucDeallocModel", la), qualtype(list(std::make_shared<Constraint>("UCModel", list(t, freshTypeVar(), freshTypeVar()))), freshTypeVar()), la), list(var("m", la)), la)
       )
     );
   } else {
@@ -709,7 +709,7 @@ static void unsafeWriteToCSeries(long css, char* rec) {
 }
 
 static void unsafeWriteUnitToCSeries(long css) {
-  reinterpret_cast<CompressedStoredSeries*>(css)->record(0, false);
+  reinterpret_cast<CompressedStoredSeries*>(css)->record(nullptr, false);
 }
 
 void CompressedStoredSeries::bindAs(cc* c, const std::string& vname) {
@@ -732,7 +732,7 @@ void CompressedStoredSeries::bindAs(cc* c, const std::string& vname) {
         nla
       )
     );
-  } else if(is<Record>(this->recordType)) {
+  } else if(is<Record>(this->recordType) != nullptr) {
     // vname = \x.unsafeWriteToSeries(this, unsafeCast(x :: ty))
     c->define(
       vname,

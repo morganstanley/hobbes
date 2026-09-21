@@ -5,7 +5,12 @@
 #include <hobbes/util/str.H>
 #include <hobbes/util/rmap.H>
 
-#include <queue>
+#include <algorithm>
+#include <limits>
+#include <memory>
+#include <tuple>
+#include <unordered_map>
+#include <unordered_set>
 
 namespace hobbes {
 
@@ -13,11 +18,11 @@ namespace hobbes {
  * parse regular expressions into an AST
  ******************/
 
-typedef uint8_t rchar_t;
+using rchar_t = uint8_t;
 
 // epsilon / the empty string
 struct REps : public Regex {
-  void show(std::ostream& out) const { out << "`"; }
+  void show(std::ostream& out) const override { out << "`"; }
 };
 
 // a range of chars [b,e] (inclusive)
@@ -25,7 +30,7 @@ struct RCharRange : public Regex {
   rchar_t b, e;
   RCharRange(rchar_t b, rchar_t e) : b(b), e(e) { }
 
-  void show(std::ostream& out) const {
+  void show(std::ostream& out) const override {
     if (this->b == this->e) {
       out << this->b;
     } else if (this->b == rchar_t(0) && this->e == rchar_t(255)) {
@@ -41,7 +46,7 @@ struct RStar : public Regex {
   RegexPtr v;
   RStar(const RegexPtr& v) : v(v) { }
 
-  void show(std::ostream& out) const { this->v->show(out); out << "*"; }
+  void show(std::ostream& out) const override { this->v->show(out); out << "*"; }
 };
 
 // A|B (either match A, or match B)
@@ -50,7 +55,7 @@ struct REither : public Regex {
   RegexPtr rhs;
   REither(const RegexPtr& lhs, const RegexPtr& rhs) : lhs(lhs), rhs(rhs) { }
 
-  void show(std::ostream& out) const { this->lhs->show(out); out << "|"; this->rhs->show(out); }
+  void show(std::ostream& out) const override { this->lhs->show(out); out << "|"; this->rhs->show(out); }
 };
 
 // AB (match A, then match B)
@@ -59,7 +64,7 @@ struct RSeq : public Regex {
   RegexPtr rhs;
   RSeq(const RegexPtr& lhs, const RegexPtr& rhs) : lhs(lhs), rhs(rhs) { }
 
-  void show(std::ostream& out) const { this->lhs->show(out); this->rhs->show(out); }
+  void show(std::ostream& out) const override { this->lhs->show(out); this->rhs->show(out); }
 };
 
 // (?<x>E) (match E, bind the substring to a variable "x")
@@ -68,7 +73,7 @@ struct RBind : public Regex {
   RegexPtr    def;
   RBind(const std::string& var, const RegexPtr& def) : var(var), def(def) { }
 
-  void show(std::ostream& out) const {
+  void show(std::ostream& out) const override {
     out << "(?<" << this->var << ">";
     this->def->show(out);
     out << ")";
@@ -145,7 +150,7 @@ RegexPtr sequence(const RegexPtr& p0, const RegexPtr& p1) {
 }
 
 RegexPtr anyOf(const Regexes& rs) {
-  if (rs.size() == 0) {
+  if (rs.empty()) {
     return epsilon();
   } else {
     RegexPtr a = rs[0];
@@ -156,11 +161,11 @@ RegexPtr anyOf(const Regexes& rs) {
   }
 }
 
-typedef std::pair<rchar_t, rchar_t> CharRange;
-typedef std::vector<CharRange> CharRanges;
+using CharRange = std::pair<rchar_t, rchar_t>;
+using CharRanges = std::vector<CharRange>;
 
 CharRanges toRanges(const std::set<rchar_t>& cs) {
-  if (cs.size() == 0) {
+  if (cs.empty()) {
     return CharRanges();
   } else {
     auto ci = cs.begin();
@@ -207,17 +212,17 @@ RegexPtr unescapePatChar(rchar_t x) {
 }
 
 // read char sets
-typedef std::pair<size_t, std::set<rchar_t>> DCharset;
+using DCharset = std::pair<size_t, std::set<rchar_t>>;
 
 void charRange(rchar_t i, rchar_t e, std::set<rchar_t>* out) {
-  for (size_t x = static_cast<size_t>(i); x <= static_cast<size_t>(e); ++x) {
+  for (auto x = static_cast<size_t>(i); x <= static_cast<size_t>(e); ++x) {
     out->insert(static_cast<rchar_t>(x));
   }
 }
 
 const std::set<rchar_t>& anyChars() {
   static std::set<rchar_t> r;
-  if (r.size() == 0) {
+  if (r.empty()) {
     charRange(0x00, 0xff, &r);
   }
   return r;
@@ -236,6 +241,14 @@ DCharset readCharset(const std::string& x, size_t i) {
     if (c0 == ']') {
       return r;
     } else if (c0 == '\\') {
+      // c1 is the escaped character, and the increment below steps over it --
+      // but when the backslash is the last character there is no c1 (the read
+      // above substituted a nul for it), and stepping over it lands one past
+      // the end. diffRegex rejects a trailing escape outside a charset; do the
+      // same within one rather than returning a position that cannot be read.
+      if (r.first == x.size()) {
+        throw std::runtime_error("Unexpected end in regex (expecting escape code)");
+      }
       unescapeInto(c1, &r.second);
       ++r.first;
     } else if (c1 == '-' && (r.first+1) < x.size()) {
@@ -250,8 +263,44 @@ DCharset readCharset(const std::string& x, size_t i) {
 }
 
 // parse a complete regex
-typedef std::pair<size_t, RegexPtr> DRegex;
-DRegex diffRegex(const RegexPtr& lhs, const std::string& x, size_t i);
+using DRegex = std::pair<size_t, RegexPtr>;
+
+// every term in a regex is a level of nesting in the tree it parses to, and
+// that tree is built and consumed by recursive functions -- the parser here,
+// the NFA translation in linkStateF, bindingNames, and the tree's own
+// destructor. so the term count of a regex literal is stack depth several
+// times over, and a regex only as exotic as a few thousand characters can run
+// the stack out where it is read. bound it once, here, where every regex has
+// to pass, rather than in each of those walks.
+const size_t maxRegexTerms = 1000;
+
+// the term budget above counts the distinct nodes a regex parses to, but a
+// quantified group shares its sub-tree rather than copying it: 'E+' desugars
+// to 'E E*', and the two E's are one node pointed at twice (see returnR). So a
+// literal with quantifiers nested k deep has a term count linear in k while the
+// tree those terms stand for, walked as a tree, has 2^k nodes -- and every walk
+// here (bindingNames, the cache key in regexFnKey, the NFA translation in
+// linkStateF) does walk it as a tree. The term budget is the wrong quantity to
+// stop that: it is comfortably under 1000 while the walks take exponential time.
+// Bound the size of the tree once it is unshared instead -- the count of nodes
+// counting each shared node once per path to it, which is what those walks cost
+// and what the NFA state count comes to. A regex a person writes is a small
+// multiple of its term count here (a group is expanded at most once per '+'
+// applied to it); nothing legitimate approaches this bound, and a regex that
+// does could not compile in reasonable time even if it were allowed to.
+const size_t maxRegexExpandedSize = 100000;
+
+struct TermBudget {
+  size_t taken = 0;
+
+  void take() {
+    if (++this->taken > maxRegexTerms) {
+      throw std::runtime_error("regex is too complex to compile (more than " + str::from(maxRegexTerms) + " terms)");
+    }
+  }
+};
+
+DRegex diffRegex(const RegexPtr& lhs, const std::string& x, size_t i, TermBudget* tb);
 
 DRegex returnR(const std::string& x, size_t k, const RegexPtr& r) {
   switch (k==x.size() ? '\0' : x[k]) {
@@ -262,19 +311,39 @@ DRegex returnR(const std::string& x, size_t k, const RegexPtr& r) {
   }
 }
 
-DRegex seqR(const RegexPtr& lhs, const RegexPtr& c, const std::string& x, size_t k) {
+DRegex seqR(const RegexPtr& lhs, const RegexPtr& c, const std::string& x, size_t k, TermBudget* tb) {
   DRegex cm = returnR(x, k, c);
-  return diffRegex(sequence(lhs, cm.second), x, cm.first);
+  return diffRegex(sequence(lhs, cm.second), x, cm.first, tb);
 }
 
-DRegex diffRegex(const RegexPtr& lhs, const std::string& x, size_t i) {
+DRegex diffRegex(const RegexPtr& lhs, const std::string& x, size_t i, TermBudget* tb) {
+  // a position past the end is a step this function's own cases got wrong, not
+  // something an input can ask for -- each of them advances at most one past
+  // the character it consumed. Nothing downstream rechecks, though: reading
+  // from out there does not stop, it walks further off the end for as many
+  // terms as the budget allows (OSS-Fuzz testcase 4831270021693440 read ~1,000
+  // bytes past a 3-byte buffer that way). Two steps did get it wrong -- an
+  // unterminated capturing group name below, and a trailing escape in
+  // readCharset -- and both now reject instead. This is what keeps a third
+  // from being an out-of-bounds read rather than an error.
+  if (i > x.size()) {
+    throw std::runtime_error("Internal error: regex read position is past the end of the regex");
+  }
+
   if (i == x.size()) {
     return DRegex(i, lhs);
   } else {
+    // one term of the regex is read below, whichever case it takes
+    tb->take();
+
     rchar_t n = (i+1==x.size()) ? '\0' : x[i+1];
 
     switch (x[i]) {
-    case ')': return returnR(x, i+1, lhs);
+    // a group ends here; a quantifier after it belongs to the whole group, and
+    // the '(' case applies it once the body has been read (reading it here
+    // would attach it to the alternative being read at the time, so that
+    // '(a|b)*' meant 'a|b*')
+    case ')': return DRegex(i+1, lhs);
     case '(': {
       // maybe read a binding name for this group
       // (according to typical accepted regex syntax)
@@ -295,21 +364,31 @@ DRegex diffRegex(const RegexPtr& lhs, const std::string& x, size_t i) {
         size_t j = k;
         while (j < x.size() && x[j] != ed) { ++j; }
 
+        // the scan above stops either on the closing delimiter or on the end of
+        // the regex. Only the first is a group name: the second means there is
+        // no delimiter to resume after, and reading on from it steps past the
+        // end (`i` becomes x.size(), and the recursion below starts at i+1).
+        if (j == x.size()) {
+          throw std::runtime_error(std::string("Unexpected end in regex (expecting '") + static_cast<char>(ed) + "' to close a capturing group name)");
+        }
+
         b = x.substr(k, j-k);
         i = j;
       }
 
-      // now the group body just matches as if inline
+      // now the group body just matches as if inline, with any quantifier
+      // after the group applied to the body as a whole
       // (but we may bind to the group match result)
-      DRegex g = diffRegex(epsilon(), x, i+1);
-      return diffRegex(sequence(lhs, bindTo(b, g.second)), x, g.first);
+      DRegex g = diffRegex(epsilon(), x, i+1, tb);
+      DRegex q = returnR(x, g.first, g.second);
+      return diffRegex(sequence(lhs, bindTo(b, q.second)), x, q.first, tb);
     }
     case '|': {
-      DRegex n = diffRegex(epsilon(), x, i+1);
+      DRegex n = diffRegex(epsilon(), x, i+1, tb);
       return DRegex(n.first, either(lhs, n.second));
     }
     case '.': {
-      return seqR(lhs, anyOf(anyChars()), x, i+1);
+      return seqR(lhs, anyOf(anyChars()), x, i+1, tb);
     }
     case '[': {
       if (i+1 < x.size()) {
@@ -317,70 +396,136 @@ DRegex diffRegex(const RegexPtr& lhs, const std::string& x, size_t i) {
         auto p      = readCharset(x, invert ? (i+2) : (i+1));
         auto cs     = invert ? setDifference(anyChars(), p.second) : p.second;
 
-        return seqR(lhs, anyOf(cs), x, p.first);
+        return seqR(lhs, anyOf(cs), x, p.first, tb);
       } else {
         throw std::runtime_error("Unexpected end in regex (expecting ']')");
       }
     }
     case '\\': {
       if (i+1 < x.size()) {
-        return seqR(lhs, unescapePatChar(x[i+1]), x, i+2);
+        return seqR(lhs, unescapePatChar(x[i+1]), x, i+2, tb);
       } else {
         throw std::runtime_error("Unexpected end in regex (expecting escape code)");
       }
     }
     default: {
-      return seqR(lhs, charLit(x[i]), x, i+1);
+      return seqR(lhs, charLit(x[i]), x, i+1, tb);
     }}
   }
 }
 
 RegexPtr parseRegex(const std::string& x) {
-  DRegex dr = diffRegex(epsilon(), x, 0);
+  TermBudget tb;
+  DRegex dr = diffRegex(epsilon(), x, 0, &tb);
   while (dr.first < x.size()) {
-    dr = diffRegex(dr.second, x, dr.first);
+    // only an unmatched ')' stops the read early; it closes an implicit group
+    // around everything read so far, so a quantifier after it applies to all
+    // of that (as it did when the ')' case read the quantifier itself)
+    dr = returnR(x, dr.first, dr.second);
+    dr = diffRegex(dr.second, x, dr.first, &tb);
   }
   return dr.second;
 }
 
+// the set of names a regex binds. A quantified group shares its sub-tree
+// between two parents (see the note on maxRegexExpandedSize), so a plain
+// recursion over it visits shared nodes once per path -- exponentially often
+// when groups nest. The names are a set, and a node contributes the same names
+// however many paths reach it, so each distinct node is visited once here: the
+// walk skips a node it has already seen. This is what keeps bindingNames linear
+// in the distinct nodes rather than in the unshared tree.
 struct bnamesF : public switchRegex<UnitV> {
   str::set* bnames;
+  std::unordered_set<const Regex*>* seen;
 
-  bnamesF(str::set* bnames) : bnames(bnames) { }
+  bnamesF(str::set* bnames, std::unordered_set<const Regex*>* seen) : bnames(bnames), seen(seen) { }
 
-  UnitV with(const REps*) const { return unitv; }
-  UnitV with(const RCharRange*) const { return unitv; }
-  UnitV with(const RStar* x) const { return switchOf(x->v, *this); }
-
-  UnitV with(const REither* x) const {
-    switchOf(x->lhs, *this);
-    return switchOf(x->rhs, *this);
+  UnitV visit(const RegexPtr& p) const {
+    if (this->seen->insert(p.get()).second) {
+      switchOf(p, *this);
+    }
+    return unitv;
   }
 
-  UnitV with(const RSeq* x) const {
-    switchOf(x->lhs, *this);
-    return switchOf(x->rhs, *this);
+  UnitV with(const REps*) const override { return unitv; }
+  UnitV with(const RCharRange*) const override { return unitv; }
+  UnitV with(const RStar* x) const override { return visit(x->v); }
+
+  UnitV with(const REither* x) const override {
+    visit(x->lhs);
+    return visit(x->rhs);
   }
 
-  UnitV with(const RBind* x) const {
+  UnitV with(const RSeq* x) const override {
+    visit(x->lhs);
+    return visit(x->rhs);
+  }
+
+  UnitV with(const RBind* x) const override {
     this->bnames->insert(x->var);
-    return switchOf(x->def, *this);
+    return visit(x->def);
   }
 };
 
 str::seq bindingNames(const RegexPtr& rgx) {
   str::set ns;
-  switchOf(rgx, bnamesF(&ns));
+  std::unordered_set<const Regex*> seen;
+  bnamesF(&ns, &seen).visit(rgx);
   return str::seq(ns.begin(), ns.end());
+}
+
+// the number of nodes in a regex's tree once its shared sub-trees are unshared
+// -- the size the tree-walking passes over it (bindingNames, regexFnKey, the
+// NFA translation) actually see. A quantified group shares one sub-tree between
+// its two uses, so this can be exponentially larger than the term count; it is
+// computed here in one pass over the distinct nodes by remembering each node's
+// size the first time it is reached, and saturated at size_t's max so the sum
+// cannot itself overflow on the way to being rejected.
+struct expandedSizeF : public switchRegex<size_t> {
+  std::unordered_map<const Regex*, size_t>* memo;
+  explicit expandedSizeF(std::unordered_map<const Regex*, size_t>* memo) : memo(memo) { }
+
+  static size_t satAdd(size_t a, size_t b) {
+    size_t s = a + b;
+    return s < a ? std::numeric_limits<size_t>::max() : s;
+  }
+
+  size_t sizeOf(const RegexPtr& p) const {
+    auto i = this->memo->find(p.get());
+    if (i != this->memo->end()) {
+      return i->second;
+    }
+    size_t r = switchOf(p, *this);
+    (*this->memo)[p.get()] = r;
+    return r;
+  }
+
+  size_t with(const REps*)            const override { return 1; }
+  size_t with(const RCharRange*)      const override { return 1; }
+  size_t with(const RStar* x)         const override { return satAdd(1, sizeOf(x->v)); }
+  size_t with(const REither* x)       const override { return satAdd(1, satAdd(sizeOf(x->lhs), sizeOf(x->rhs))); }
+  size_t with(const RSeq* x)          const override { return satAdd(1, satAdd(sizeOf(x->lhs), sizeOf(x->rhs))); }
+  size_t with(const RBind* x)         const override { return satAdd(1, sizeOf(x->def)); }
+};
+
+size_t expandedRegexSize(const RegexPtr& rgx) {
+  std::unordered_map<const Regex*, size_t> memo;
+  return expandedSizeF(&memo).sizeOf(rgx);
+}
+
+void rejectOversizedRegex(const RegexPtr& rgx) {
+  if (expandedRegexSize(rgx) > maxRegexExpandedSize) {
+    throw std::runtime_error("regex is too complex to compile (expands to more than " + str::from(maxRegexExpandedSize) + " terms)");
+  }
 }
 
 /******************************
  * translate the regex AST to an NFA
  ******************************/
-typedef uint32_t state;
-typedef std::set<state> stateset;
+using state = uint32_t;
+using stateset = std::set<state>;
 
-typedef uint32_t result;
+using result = uint32_t;
 static const result nullResult = static_cast<result>(-1);
 
 struct char_range_ord {
@@ -407,9 +552,9 @@ struct char_range_ord {
   }
 };
 
-typedef range_map<rchar_t, stateset, char_range_ord> ntransitions;
+using ntransitions = range_map<rchar_t, stateset, char_range_ord>;
 
-typedef std::map<result, str::set> srcmarkers;
+using srcmarkers = std::map<result, str::set>;
 
 struct NFAState {
   // transitions to successor states
@@ -424,7 +569,7 @@ struct NFAState {
   void beginMark(result r, const std::string& m) { this->begins[r].insert(m); }
   void endMark  (result r, const std::string& m) {   this->ends[r].insert(m); }
 };
-typedef std::vector<NFAState> NFA;
+using NFA = std::vector<NFAState>;
 
 // for a given set of NFA states, find the set of non-overlapping char ranges
 CharRanges usedCharRanges(const NFA& nfa, const stateset& ss) {
@@ -452,23 +597,23 @@ struct linkStateF : public switchRegex<UnitV> {
 
   state ins(const RegexPtr& p) const { return regexBefore(p, this->succ, this->id, this->nfa); }
 
-  UnitV with(const REps*) const {
+  UnitV with(const REps*) const override {
     s().eps.insert(this->succ);
     return unitv;
   }
 
-  UnitV with(const RCharRange* x) const {
+  UnitV with(const RCharRange* x) const override {
     s().chars.mergeRange(x->b, x->e, [&](stateset& ss){ ss.insert(this->succ); });
     return unitv;
   }
 
-  UnitV with(const RStar* x) const {
+  UnitV with(const RStar* x) const override {
     switchOf(x->v, linkStateF(this->nfa, this->self, this->self, this->id));
     s().eps.insert(this->succ);
     return unitv;
   }
 
-  UnitV with(const REither* x) const {
+  UnitV with(const REither* x) const override {
     state lstate = ins(x->lhs);
     state rstate = ins(x->rhs);
     s().eps.insert(lstate);
@@ -476,13 +621,13 @@ struct linkStateF : public switchRegex<UnitV> {
     return unitv;
   }
 
-  UnitV with(const RSeq* x) const {
+  UnitV with(const RSeq* x) const override {
     state rstate = ins(x->rhs);
     switchOf(x->lhs, linkStateF(this->nfa, this->self, rstate, this->id));
     return unitv;
   }
 
-  UnitV with(const RBind* x) const {
+  UnitV with(const RBind* x) const override {
     s().beginMark(this->id, x->var);
     switchOf(x->def, *this);
     s(this->succ).endMark(this->id, x->var);
@@ -518,7 +663,7 @@ std::set<rchar_t> usedChars(const NFA& nfa) {
  *****************************/
 std::string descStates(const stateset& ss) {
   std::ostringstream out;
-  if (ss.size() > 0) {
+  if (!ss.empty()) {
     auto s = ss.begin();
     out << *s;
     ++s;
@@ -606,37 +751,102 @@ void print(std::ostream& out, const NFA& nfa) {
 /**********************
  * find eps* for an NFA
  **********************/
-typedef std::map<state, stateset> EpsClosure;
+using EpsClosure = std::map<state, stateset>;
 
-typedef std::vector<bool> statemarks;
+using statemarks = std::vector<bool>;
 
-void findEpsClosure(const NFA& nfa, state s, statemarks* sms, EpsClosure* ec) {
-  if (!(*sms)[s]) {
-    (*sms)[s] = true;
-    for (auto et : nfa[s].eps) {
-      if (!(*sms)[et]) {
-        findEpsClosure(nfa, et, sms, ec);
+// eps* is kept as a set per NFA state, so what it costs is the sum of those
+// sets' sizes -- and that is the square of the NFA's size for a regex whose
+// eps edges make a chain, because then every state's closure is the whole
+// chain below it. `(a?a?...a?)+` is exactly that regex: 300 of the `a?` under
+// five nested '+' expand to 28,867 NFA states, every one of them closing over
+// all the others, for 83M states held at once and ~4.9GB (OSS-Fuzz 557561539
+// reported it as an out-of-memory against a 2560MB limit; the same shape one
+// '+' shallower reaches 2.7GB).
+//
+// None of the bounds around this one reaches it. maxRegexTerms bounds the
+// regex as parsed and maxRegexExpandedSize the tree it expands to, but a tree
+// of 100,000 terms is a hundredth of what its closures can cost; the DFA
+// state cap and maxDisambiguationSteps bound the subset construction, which
+// runs after eps* is already built. So the states carried into closures are
+// counted here and the regex rejected past a budget, the same way an
+// oversized DFA or an overlong determinization is. The margin is measured,
+// not guessed: across the whole test suite the costliest regex holds 6,105
+// states this way (the deliberately-huge Matching/
+// hugeRegexDFACompilesWithoutQuadraticBlowup one, whose 4,911-state NFA
+// closes over 1.24 states per state on average), and ordinary regexes hold
+// tens, so a budget of two million leaves legitimate regexes -- including
+// wide alternations, whose closures really are large -- a factor of a few
+// hundred of room while holding this phase to a couple of hundred MB.
+static const size_t maxEpsClosureStates = 2000000;
+
+// the walk is iterative rather than one frame per eps edge: the descent below
+// reaches the end of a chain of eps edges before it closes over anything, so
+// a budget on what the closures hold cannot speak until the deepest frame is
+// already on the stack, and each frame carries a set of its own. The NFA can
+// have as many states as maxRegexExpandedSize allows, which is far more chain
+// than a stack holds. (The DFA walk in disambiguate() was made iterative for
+// the same reason.)
+//
+// Order is preserved exactly, and that matters because eps edges can form
+// cycles: a state on a cycle is combined while a state that reaches it is
+// still in progress, so neither this walk nor the recursion it replaces
+// computes a complete closure over a cycle -- what a closure ends up holding
+// depends on which of its descendants happen to be finished by the time it is
+// combined. The recursion descended into successors in the ascending order
+// std::set gave them and combined a state after returning from all of them,
+// so this pushes successors in reverse to pop them in that same order, and
+// combines a state only after the ones it descended into. The two therefore
+// arrive at the same incomplete closure rather than at two different ones.
+void findEpsClosure(const NFA& nfa, state s0, statemarks* sms, EpsClosure* ec, size_t* held) {
+  // false: visit this state and schedule its successors; true: combine it
+  std::vector<std::pair<state, bool>> walk(1, std::make_pair(s0, false));
+
+  while (!walk.empty()) {
+    const state s = walk.back().first;
+
+    if (!walk.back().second) {
+      if ((*sms)[s]) {
+        walk.pop_back();
+        continue;
       }
-    }
+      (*sms)[s] = true;
+      walk.back().second = true;
 
-    stateset stes = (*ec)[s];
-    stes.insert(s);
-    for (auto et : nfa[s].eps) {
-      stes.insert(et);
+      const stateset& ets = nfa[s].eps;
+      for (auto et = ets.rbegin(); et != ets.rend(); ++et) {
+        if (!(*sms)[*et]) {
+          walk.push_back(std::make_pair(*et, false));
+        }
+      }
+    } else {
+      walk.pop_back();
 
-      const stateset& rstes = (*ec)[et];
-      stes.insert(rstes.begin(), rstes.end());
+      stateset stes = (*ec)[s];
+      stes.insert(s);
+      for (auto et : nfa[s].eps) {
+        stes.insert(et);
+
+        const stateset& rstes = (*ec)[et];
+        stes.insert(rstes.begin(), rstes.end());
+      }
+
+      *held += stes.size();
+      if (*held > maxEpsClosureStates) {
+        throw std::runtime_error("regex is too complex to compile (needs more than " + str::from(maxEpsClosureStates) + " epsilon-closure states)");
+      }
+      (*ec)[s] = std::move(stes);
     }
-    (*ec)[s] = stes;
   }
 }
 
 void findEpsClosure(const NFA& nfa, EpsClosure* ec) {
   statemarks ms(nfa.size(), false);
+  size_t     held = 0;
 
   for (state s = 0; s < nfa.size(); ++s) {
     if (!ms[s]) {
-      findEpsClosure(nfa, s, &ms, ec);
+      findEpsClosure(nfa, s, &ms, ec, &held);
     }
   }
 }
@@ -683,7 +893,7 @@ void print(std::ostream& out, const EpsClosure& ec) {
 /**********************
  * convert an NFA to a DFA
  **********************/
-typedef range_map<rchar_t, state, char_range_ord> dtransitions;
+using dtransitions = range_map<rchar_t, state, char_range_ord>;
 struct DFAState {
   dtransitions chars;
 
@@ -693,29 +903,36 @@ struct DFAState {
   // markers to begin and end recording subranges
   srcmarkers begins, ends;
 };
-typedef std::vector<DFAState> DFA;
+using DFA = std::vector<DFAState>;
 
 void insert(stateset* o, const stateset& i) {
   o->insert(i.begin(), i.end());
 }
 
-// find the set of NFA states we'd transition to from a char from within a set of states
-stateset nfaTransition(const NFA& nfa, const EpsClosure& ec, const stateset& ss, const CharRange& cr) {
+// find the set of NFA states we'd transition to from a char from within a set of states.
+// *steps counts every state carried into the union; disambiguate() bounds the
+// whole walk by that count.
+stateset nfaTransition(const NFA& nfa, const EpsClosure& ec, const stateset& ss, const CharRange& cr, size_t* steps) {
   stateset result;
   for (state s : ss) {
     if (const auto* tss = nfa[s].chars.lookupRangeSubset(cr)) {
-      insert(&result, epsState(ec, *tss));
+      for (state t : *tss) {
+        const stateset& cts = epsState(ec, t);
+        *steps += cts.size();
+        insert(&result, cts);
+      }
     }
   }
   return result;
 }
 
 // sets of NFA states are mapped to distinct DFA states
-typedef std::map<stateset, state> Nss2Ds;
+using Nss2Ds = std::map<stateset, state>;
 
-// create a DFA state from a set of NFA states
-// (or if it's already been made, just return the existing state)
-state dfaState(const cc* c, const NFA& nfa, const EpsClosure& ec, Nss2Ds* nss2ds, DFA* dfa, const stateset& ss, RStates* rstates) {
+// the DFA state for a set of NFA states: the one already made for it, or a
+// new one, allocated here and left on the worklist for its transitions to be
+// filled in
+state dfaState(const cc* c, const NFA& nfa, Nss2Ds* nss2ds, DFA* dfa, std::vector<std::pair<state, stateset>>* pending, const stateset& ss) {
   // did we already make this state?  if so, just return it
   auto didIt = nss2ds->find(ss);
   if (didIt != nss2ds->end()) {
@@ -726,54 +943,102 @@ state dfaState(const cc* c, const NFA& nfa, const EpsClosure& ec, Nss2Ds* nss2ds
   state result = dfa->size();
   dfa->resize(dfa->size() + 1);
 
+  // determinizing is exponential in the worst case, and it doesn't take an
+  // exotic regex to hit it: ' *...........,...............' is 29 characters
+  // that determinize to over 50k states. cap the construction so that a regex
+  // literal can't hang the compiler (or the parser -- regex literals are
+  // compiled where they're read).
+  if (dfa->size() > c->regexMaxDFAStates()) {
+    throw std::runtime_error("regex is too complex to compile (needs more than " + str::from(c->regexMaxDFAStates()) + " DFA states)");
+  }
+
   if (c->throwOnHugeRegexDFA() and c->regexDFAOverNFAMaxRatio() > 0 and (dfa->size() / nfa.size() > size_t(c->regexDFAOverNFAMaxRatio()))) {
     throw std::runtime_error("regexes DFA over NFA Max ratio was breached");
   }
 
   (*nss2ds)[ss] = result;
-
-  // ok, how can we transition out of here?
-  // for each case, we'll go to a set of NFA states (recursively)
-  for (auto cr : usedCharRanges(nfa, ss)) {
-    auto ns = dfaState(c, nfa, ec, nss2ds, dfa, nfaTransition(nfa, ec, ss, cr), rstates);
-    (*dfa)[result].chars.insert(cr, ns);
-  }
-
-  // our DFA state accepts if any of its NFA states accept
-  // we may have multiple potential matches here, so we should
-  // keep track of every such set so that outer match compilation
-  // can choose the right one
-  for (state s : ss) {
-    auto nr = nfa[s].acc;
-    if (nr != nullResult) {
-      (*dfa)[result].acc = result;
-      (*rstates)[result].insert(nr);
-    }
-  }
-
-  // our DFA state begins/ends subrange recording for each collapsed NFA state
-  for (state s : ss) {
-    for (const auto& b : nfa[s].begins) {
-      (*dfa)[result].begins[b.first].insert(b.second.begin(), b.second.end());
-    }
-    for (const auto& e : nfa[s].ends) {
-      (*dfa)[result].ends[e.first].insert(e.second.begin(), e.second.end());
-    }
-  }
-
-  // that's it, we're done
+  pending->push_back(std::make_pair(result, ss));
   return result;
 }
+
+// the walk over the DFA costs a product per state made -- the NFA states in
+// its set, the char ranges they use, and the eps-closed successors unioned
+// per range -- and the state cap in dfaState() bounds only how many states
+// there are. 143 bytes of regex (OSS-Fuzz 554287846) held every other factor
+// high at once: ~35M of the steps counted below and minutes of instrumented
+// time before the state cap finally spoke, a minute and a half in. So the
+// steps are counted where they are taken and the regex is rejected past a
+// budget, the same way an oversized DFA is, while the answer still costs
+// seconds rather than a fuzzer's whole time budget. The margin is measured, not guessed: the largest
+// deliberately-huge regex in the test suite (Matching/
+// hugeRegexDFACompilesWithoutQuadraticBlowup) costs 1.32M steps and ordinary
+// regexes cost thousands, so triple the former still rejects the reported
+// input at an eighth of its budgeted run.
+static const size_t maxDisambiguationSteps = 4000000;
 
 void disambiguate(const cc* c, const NFA& nfa, DFA* dfa, RStates* rstates) {
   // determine eps* for this NFA
   EpsClosure ec;
   findEpsClosure(nfa, &ec);
 
-  // starting from the eps* start state,
-  // follow non-eps transitions to eps* successor states
+  // starting from the eps* start state, follow non-eps transitions to eps*
+  // successor states, making a DFA state for each set of NFA states reached.
+  //
+  // this is a walk over the DFA as it is built, and it is done with an
+  // explicit worklist rather than by recursing into each successor as it is
+  // found: the walk can be as deep as the DFA has states -- a chain of
+  // transitions with no repeats is one frame per state -- and the cap on
+  // state count above bounds how many there are, not how deep a chain of them
+  // goes. A regex well inside that cap ran the stack out this way once its
+  // frames were made large by instrumentation (each carried the sets of NFA
+  // states it was visiting). The order states are made in is not significant
+  // to anything downstream, only that each set of NFA states gets one.
   Nss2Ds nss2ds;
-  dfaState(c, nfa, ec, &nss2ds, dfa, epsState(ec, 0), rstates);
+  std::vector<std::pair<state, stateset>> pending;
+  dfaState(c, nfa, &nss2ds, dfa, &pending, epsState(ec, 0));
+
+  size_t steps = 0;
+
+  while (!pending.empty()) {
+    const state    result = pending.back().first;
+    const stateset ss     = pending.back().second;
+    pending.pop_back();
+
+    // ok, how can we transition out of here?
+    // for each case, we'll go to a set of NFA states
+    const CharRanges crs = usedCharRanges(nfa, ss);
+    steps += ss.size() * (crs.size() + 1);
+    if (steps > maxDisambiguationSteps) {
+      throw std::runtime_error("regex is too complex to compile (needs more than " + str::from(maxDisambiguationSteps) + " determinization steps)");
+    }
+    for (const auto& cr : crs) {
+      stateset nss = nfaTransition(nfa, ec, ss, cr, &steps);
+      auto ns = dfaState(c, nfa, &nss2ds, dfa, &pending, nss);
+      (*dfa)[result].chars.insert(cr, ns);
+    }
+
+    // our DFA state accepts if any of its NFA states accept
+    // we may have multiple potential matches here, so we should
+    // keep track of every such set so that outer match compilation
+    // can choose the right one
+    for (state s : ss) {
+      auto nr = nfa[s].acc;
+      if (nr != nullResult) {
+        (*dfa)[result].acc = result;
+        (*rstates)[result].insert(nr);
+      }
+    }
+
+    // our DFA state begins/ends subrange recording for each collapsed NFA state
+    for (state s : ss) {
+      for (const auto& b : nfa[s].begins) {
+        (*dfa)[result].begins[b.first].insert(b.second.begin(), b.second.end());
+      }
+      for (const auto& e : nfa[s].ends) {
+        (*dfa)[result].ends[e.first].insert(e.second.begin(), e.second.end());
+      }
+    }
+  }
 }
 
 /*****************************
@@ -932,7 +1197,7 @@ static ExprPtr transitionMapping(const std::string& fname, const DFAState& s, co
   //   else use a sequence of range tests
   auto rtns = s.chars.mapping();
 
-  if (rtns.size() == 0) {
+  if (rtns.empty()) {
     // shouldn't happen, but it's the right thing to do
     return defaultResult;
   } else if (rtns.size() == 1 && rtns[0].first.first == 0 && rtns[0].first.second == 255) {
@@ -974,8 +1239,8 @@ void makeExprDFAFunc(cc* c, const std::string& fname, const MonoTypePtr& capture
   //   ...
   Switch::Bindings bs;
   MonoTypePtr arrT = freshTypeVar();
-  QualTypePtr qarrElemTy = qualtype(list(ConstraintPtr(new Constraint("Array", list(arrT, primty("char"))))), functy(list(arrT, primty("long")), primty("char")));
-  QualTypePtr qarrT = qualtype(list(ConstraintPtr(new Constraint("Array", list(arrT, primty("char"))))), arrT);
+  QualTypePtr qarrElemTy = qualtype(list(std::make_shared<Constraint>("Array", list(arrT, primty("char")))), functy(list(arrT, primty("long")), primty("char")));
+  QualTypePtr qarrT = qualtype(list(std::make_shared<Constraint>("Array", list(arrT, primty("char")))), arrT);
 
   for (size_t s = 0; s < dfa.size(); ++s) {
     // all transitions out of this state
@@ -1046,9 +1311,9 @@ void makeExprDFAFunc(cc* c, const std::string& fname, const MonoTypePtr& capture
   c->define(fname, assume(fndef, qualtype(qarrT->constraints(), functy(list(captureTy, arrT, primty("long"), primty("long"), primty("int")), primty("int"))), rootLA));
 }
 
-typedef std::pair<char,char>  CRange;
-typedef std::pair<CRange,int> CTransition;
-typedef array<CTransition>    CTransitions;
+using CRange = std::pair<char, char>;
+using CTransition = std::pair<CRange, int>;
+using CTransitions = array<CTransition>;
 
 DEFINE_STRUCT(
   DFAStateRep,
@@ -1057,7 +1322,7 @@ DEFINE_STRUCT(
 );
 
 array<DFAStateRep>* makeDFARep(cc* c, const DFA& dfa) {
-  auto result = c->makeArray<DFAStateRep>(dfa.size());
+  auto *result = c->makeArray<DFAStateRep>(dfa.size());
   for (size_t i = 0; i < dfa.size(); ++i) {
     DFAStateRep& s = result->data[i];
     auto ctnm = dfa[i].chars.mapping();
@@ -1074,8 +1339,8 @@ array<DFAStateRep>* makeDFARep(cc* c, const DFA& dfa) {
 
 void makeInterpDFAFunc(cc* c, const std::string& fname, const MonoTypePtr& captureTy, const DFA& dfa, const LexicalAnnotation& rootLA) {
   MonoTypePtr arrT = freshTypeVar();
-  QualTypePtr qarrElemTy = qualtype(list(ConstraintPtr(new Constraint("Array", list(arrT, primty("char"))))), functy(list(arrT, primty("long")), primty("char")));
-  QualTypePtr qarrT = qualtype(list(ConstraintPtr(new Constraint("Array", list(arrT, primty("char"))))), arrT);
+  QualTypePtr qarrElemTy = qualtype(list(std::make_shared<Constraint>("Array", list(arrT, primty("char")))), functy(list(arrT, primty("long")), primty("char")));
+  QualTypePtr qarrT = qualtype(list(std::make_shared<Constraint>("Array", list(arrT, primty("char")))), arrT);
 
   std::string regexDFADef = ".regexDFA." + freshName();
   c->bind(regexDFADef, makeDFARep(c, dfa));
@@ -1089,11 +1354,57 @@ void makeInterpDFAFunc(cc* c, const std::string& fname, const MonoTypePtr& captu
   c->define(fname, assume(fndef, qualtype(qarrT->constraints(), functy(list(captureTy, arrT, primty("long"), primty("long"), primty("int")), primty("int"))), rootLA));
 }
 
+// how many range tests the expression form of a DFA would spell out
+static size_t dfaTransitions(const DFA& dfa) {
+  size_t n = 0;
+  for (const auto& s : dfa) {
+    n += s.chars.size();
+  }
+  return n;
+}
+
+// The expression form of a DFA (makeExprDFAFunc) is a switch with a case per
+// state and a range test per transition, and the compiler types and compiles
+// it like any other expression: measured in an optimized build, that costs
+// about 270us per state and 50-100us per transition, so a DFA of a few
+// thousand states and a few tens of thousands of transitions is seconds of
+// compile time for one regex literal. The interpreter (makeInterpDFAFunc) is
+// free of that, since its table is built directly, but it knows nothing of
+// the markers that record where a capture begins and ends -- so a regex with
+// capture groups used to take the expression form at any size, and was
+// bounded only by the DFA state cap. OSS-Fuzz 557846266 is a 709 byte
+// captured regex that determinizes to 4,906 states and 38,354 transitions:
+// 4-6s of type inference in an optimized build, and past the fuzzer's
+// minute under ASan.
+//
+// Both figures are budgeted, because the DFA state cap alone does not bound
+// the expression: a state can carry up to 256 disjoint byte ranges, and a
+// 257-state DFA with 63 per state (16,191 transitions) took longer to type
+// than one with 2,049 states and three each. Past either budget a regex
+// without captures is interpreted, as it was past the state cap before, and
+// one with captures is rejected. The bounds are cc settings, so a caller that
+// wants a larger captured regex compiled, and will wait for it, can raise
+// them.
 void makeDFAFunc(cc* c, const std::string& fname, const MonoTypePtr& captureTy, const DFA& dfa, const LexicalAnnotation& rootLA) {
-  if (dfa.size() < c->regexMaxExprDFASize() || !isUnit(captureTy)) {
+  const size_t maxStates      = c->regexMaxExprDFASize();
+  const size_t maxTransitions = c->regexMaxExprDFATransitions();
+
+  // the transitions are counted once, and only where the count decides
+  // something (a DFA under the state cap) or is reported (one with captures)
+  const bool   underStates = dfa.size() < maxStates;
+  const size_t transitions = (underStates || !isUnit(captureTy)) ? dfaTransitions(dfa) : 0;
+
+  if (underStates && transitions < maxTransitions) {
     makeExprDFAFunc(c, fname, captureTy, dfa, rootLA);
-  } else {
+  } else if (isUnit(captureTy)) {
     makeInterpDFAFunc(c, fname, captureTy, dfa, rootLA);
+  } else {
+    throw std::runtime_error(
+      "regex is too complex to compile (its capture groups require it to be compiled as an expression, "
+      "but its DFA has " + str::from(dfa.size()) + " states and " + str::from(transitions) + " transitions, "
+      "past the " + str::from(maxStates) + " states or " + str::from(maxTransitions) + " transitions "
+      "an expression may hold)"
+    );
   }
 }
 
@@ -1125,83 +1436,110 @@ void mergeCharRangesAndEqResults(DFA* dfa, const RStates& fstates, RStates* rsta
 /**************************
  * compress a DFA by merging equivalent states
  **************************/
-typedef std::map<state, state> EqStates;
+using EqStates = std::map<state, state>;
 
-void visitGraph(const std::vector<std::vector<state>>& g, state m, std::vector<bool>& visited, std::function<void(state)> visitFn) {
-  std::queue<state> q;
-
-  q.push(m);
-  while (!q.empty()) {
-    auto s = q.front();
-    q.pop();
-
-    visited[s] = true;
-    visitFn(s);
-
-    for (auto t : g[s]) {
-      if (!visited[t]) {
-        q.push(t);
-      }
+// a union-find over DFA states where a class is always named by its least
+// member (removeEquivStates relies on a representative never being merged away
+// itself, and on state 0 staying the start state)
+class StatePartition {
+public:
+  explicit StatePartition(size_t states) : reps(states) {
+    for (size_t s = 0; s < states; ++s) {
+      this->reps[s] = static_cast<state>(s);
     }
+  }
+
+  state find(state s) {
+    while (this->reps[s] != s) {
+      this->reps[s] = this->reps[this->reps[s]];
+      s = this->reps[s];
+    }
+    return s;
+  }
+
+  bool merge(state s0, state s1) {
+    state r0 = find(s0);
+    state r1 = find(s1);
+    if (r0 == r1) {
+      return false;
+    }
+    this->reps[std::max(r0, r1)] = std::min(r0, r1);
+    return true;
+  }
+private:
+  std::vector<state> reps;
+};
+
+// everything about a state that merging can never change
+using Observation = std::tuple<result, srcmarkers, srcmarkers>;
+
+void appendKey(std::string* k, uint64_t x) {
+  for (size_t b = 0; b < sizeof(x); ++b) {
+    k->push_back(static_cast<char>((x >> (8 * b)) & 0xff));
   }
 }
 
-EqStates findEquivStates(const DFA& dfa) {
-  bit_table eqStates(dfa.size(), dfa.size(), false); // a sparse simple matrix
-  std::vector<std::vector<state>> graph(dfa.size()); // an adjacency list of `eqStates`
-  std::vector<dtransitions::Mapping> mappings(dfa.size());
+// how a state behaves: what it observes, plus the class each of its char ranges
+// leads to (which shifts as states are merged, so this must be recomputed)
+std::string stateKey(size_t obs, const dtransitions::Mapping& ts, StatePartition* p) {
+  std::string k;
+  k.reserve(sizeof(uint64_t) * (1 + (3 * ts.size())));
+  appendKey(&k, obs);
+  for (const auto& t : ts) {
+    appendKey(&k, t.first.first);
+    appendKey(&k, t.first.second);
+    appendKey(&k, p->find(t.second));
+  }
+  return k;
+}
 
-  for (size_t i = 0; i < dfa.size(); ++i) {
-    eqStates.set(i, i, true);
-    mappings[i] = dfa[i].chars.mapping();
+EqStates findEquivStates(const DFA& dfa) {
+  StatePartition p(dfa.size());
+
+  // acceptance and capture marking are fixed for the life of a state, so reduce
+  // them to a single comparable number once rather than per pass
+  std::map<Observation, size_t> obsIdx;
+  std::vector<size_t> obs(dfa.size());
+  std::vector<dtransitions::Mapping> mappings(dfa.size());
+  for (size_t s = 0; s < dfa.size(); ++s) {
+    size_t nid = obsIdx.size();
+    obs[s]      = obsIdx.insert(std::make_pair(Observation(dfa[s].acc, dfa[s].begins, dfa[s].ends), nid)).first->second;
+    mappings[s] = dfa[s].chars.mapping();
   }
 
-  for (size_t s0 = 0; s0 < dfa.size(); ++s0) {
-    for (size_t s1 = 0; s1 < s0; ++s1) {
-      // if we already know that two states are equivalent, they're still equivalent
-      if (eqStates(s0, s1)) continue;
+  // two states are equivalent when they observe the same thing and their
+  // transitions agree on the classes established so far. merging states can
+  // bring more states into agreement, so keep refining until a pass finds
+  // nothing new -- a pass that stops short only leaves the DFA larger, never
+  // wrong, so the states left unmerged in a cycle are safe to keep.
+  bool merging = true;
+  while (merging) {
+    merging = false;
 
-      // if two states have different accepting bits, they can't be equivalent
-      if (dfa[s0].acc != dfa[s1].acc) continue;
+    std::unordered_map<std::string, state> keys;
+    std::vector<std::pair<state, state>> merges;
+    for (state s = 0; s < dfa.size(); ++s) {
+      if (p.find(s) != s) continue; // one key per class, not per state
 
-      // if two states have different capture sets, they can't be equivalent
-      if (dfa[s0].begins != dfa[s1].begins) continue;
-      if (dfa[s0].ends   != dfa[s1].ends)   continue;
-
-      const auto & m0 = mappings[s0];
-      const auto & m1 = mappings[s1];
-
-      // if the shape of mapping sets differs between states, they can't be equivalent
-      if (m0.size() != m1.size()) continue;
-
-      // if there is a transition (c,q) in s0 and (c,q') in s1 and q != q', then s0 != s1 (in this cycle)
-      bool tsEq = true;
-      for (size_t i = 0; i < m0.size() && tsEq; ++i) {
-        tsEq = m0[i].first == m1[i].first && eqStates(m0[i].second, m1[i].second);
+      auto k = keys.insert(std::make_pair(stateKey(obs[s], mappings[s], &p), s));
+      if (!k.second) {
+        merges.push_back(std::make_pair(k.first->second, s));
       }
-      if (tsEq) {
-        eqStates.set(s0, s1, true);
-        eqStates.set(s1, s0, true);
-        graph[s0].push_back(s1);
-        graph[s1].push_back(s0);
-      }
+    }
+
+    // deferred so that every key in a pass is read against the same classes
+    for (const auto& m : merges) {
+      merging = p.merge(m.first, m.second) || merging;
     }
   }
 
   EqStates result;
-  std::vector<bool> visited(dfa.size(), false);
-  for (state i = 0; i < graph.size(); ++i) {
-    // the first non-visited node is considered as the representative of the
-    // current equivalence classes (connected component)
-    if (!visited[i]) {
-      visitGraph(graph, i, visited, [&result, i](state s) {
-        if (s != i) {
-          result[s] = i;
-        }
-      });
+  for (state s = 0; s < dfa.size(); ++s) {
+    state r = p.find(s);
+    if (r != s) {
+      result[s] = r;
     }
   }
-
   return result;
 }
 
@@ -1263,7 +1601,7 @@ MonoTypePtr regexCaptureBufferType(const Regexes& regexes) {
       ms.push_back(Record::Member(str::from(r) + "_end_"   + b, primty("long")));
     }
   }
-  return ms.size() == 0 ? primty("unit") : MonoTypePtr(Record::make(ms));
+  return ms.empty() ? primty("unit") : MonoTypePtr(Record::make(ms));
 }
 
 ExprPtr makeRegexCaptureBuffer(const Regexes& regexes, const LexicalAnnotation& rootLA) {
@@ -1282,13 +1620,93 @@ ExprPtr makeRegexCaptureBuffer(const Regexes& regexes, const LexicalAnnotation& 
 /**************************
  * make a function to determine which among the input regexes here a later string matches
  **************************/
+// an encoding of a regex that two regexes share only if they are the same
+// regex: every node is tagged, and every name is length-prefixed, so the
+// encodings of different trees cannot run together. (show() is not that: it
+// prints characters raw, so 'a|b' and the three literals a, |, b look alike.)
+struct regexKeyF : public switchRegex<UnitV> {
+  std::string* out;
+  explicit regexKeyF(std::string* out) : out(out) { }
+
+  UnitV with(const REps*) const override { *this->out += "e;"; return unitv; }
+  UnitV with(const RCharRange* x) const override {
+    *this->out += "r" + str::from(static_cast<int>(x->b)) + "," + str::from(static_cast<int>(x->e)) + ";";
+    return unitv;
+  }
+  UnitV with(const RStar* x) const override {
+    *this->out += "*(";
+    switchOf(x->v, *this);
+    *this->out += ")";
+    return unitv;
+  }
+  UnitV with(const REither* x) const override {
+    *this->out += "|(";
+    switchOf(x->lhs, *this);
+    *this->out += ",";
+    switchOf(x->rhs, *this);
+    *this->out += ")";
+    return unitv;
+  }
+  UnitV with(const RSeq* x) const override {
+    *this->out += ".(";
+    switchOf(x->lhs, *this);
+    *this->out += ",";
+    switchOf(x->rhs, *this);
+    *this->out += ")";
+    return unitv;
+  }
+  UnitV with(const RBind* x) const override {
+    *this->out += "b" + str::from(x->var.size()) + ":" + x->var + "(";
+    switchOf(x->def, *this);
+    *this->out += ")";
+    return unitv;
+  }
+};
+
+std::string regexKey(const RegexPtr& r) {
+  std::string k;
+  switchOf(r, regexKeyF(&k));
+  return k;
+}
+
+std::string regexFnKey(const Regexes& regexes) {
+  std::string k;
+  for (const auto& r : regexes) {
+    k += regexKey(r);
+    k += "\n";
+  }
+  return k;
+}
+
 CRegexes makeRegexFn(cc* c, const Regexes& regexes, const LexicalAnnotation& rootLA) {
   CRegexes result;
+
+  // reject a regex whose tree is too large before anything walks it: every pass
+  // below (the capture buffer's bindingNames, the cache key, the NFA build) is
+  // linear in the unshared tree size, which a quantified group can blow up far
+  // past the term count. Checked here, once, ahead of the first of those walks.
+  for (const auto& r : regexes) {
+    rejectOversizedRegex(r);
+  }
 
   // save capturing-group settings
   result.captureBuffer = makeRegexCaptureBuffer(regexes, rootLA);
   for (size_t i = 0; i < regexes.size(); ++i) {
     result.captureVarsAt[i] = bindingNames(regexes[i]);
+  }
+
+  // if these regexes have been compiled into this compiler before, the
+  // function and the result mapping made then serve now: the function is
+  // pure in its input and the mapping is a property of the regexes, so
+  // neither depends on where the match that uses them is. (The capture
+  // buffer expression above is remade with this match's annotation, and the
+  // binding names recomputed, because they are cheap and carry a location.)
+  const std::string key = regexFnKey(regexes);
+  auto cached = c->regexFnCache.find(key);
+  if (cached != c->regexFnCache.end()) {
+    result.fname   = cached->second.fname;
+    result.rstates = cached->second.rstates;
+    return result;
   }
 
   // our NFA will non-deterministically jump to every possible start state
@@ -1316,34 +1734,36 @@ CRegexes makeRegexFn(cc* c, const Regexes& regexes, const LexicalAnnotation& roo
 
   // and that's the function that the outer match logic should use
   result.fname = fname;
+
+  // remember the function and the result mapping for the next match on these
+  // regexes; not the capture buffer expression, which carries this match's
+  // source location and would pin it for the life of the compiler
+  CRegexes& kept = c->regexFnCache[key];
+  kept.fname   = result.fname;
+  kept.rstates = result.rstates;
   return result;
 }
 
 /**************************
- * produce code to load capture vars out of a buffer for a given DFA accept state (which may map back to multiple source regexes)
+ * produce code to load capture vars out of a buffer for a given source regex
  **************************/
-CVarDefs unpackCaptureVars(const std::string& strVar, const std::string& bufferVar, const CRegexes& crgxs, size_t state, const LexicalAnnotation& rootLA) {
-  auto rss = crgxs.rstates.find(state);
-  if (rss == crgxs.rstates.end()) return CVarDefs();
-
+CVarDefs unpackCaptureVars(const std::string& strVar, const std::string& bufferVar, const CRegexes& crgxs, size_t regex, const LexicalAnnotation& rootLA) {
   CVarDefs result;
-  for (auto rs : rss->second) {
-    auto cvars = crgxs.captureVarsAt.find(rs);
-    if (cvars == crgxs.captureVarsAt.end()) continue;
+  auto cvars = crgxs.captureVarsAt.find(regex);
+  if (cvars == crgxs.captureVarsAt.end()) return result;
 
-    for (const auto& vn : cvars->second) {
-      result.push_back(CVarDef(vn,
-        fncall(
-          var("slice", rootLA),
-          list(
-            var(strVar, rootLA),
-            proj(var(bufferVar, rootLA), str::from(rs) + "_begin_" + vn, rootLA),
-            proj(var(bufferVar, rootLA), str::from(rs) + "_end_"   + vn, rootLA)
-          ),
-          rootLA
-        )
-      ));
-    }
+  for (const auto& vn : cvars->second) {
+    result.push_back(CVarDef(vn,
+      fncall(
+        var("slice", rootLA),
+        list(
+          var(strVar, rootLA),
+          proj(var(bufferVar, rootLA), str::from(regex) + "_begin_" + vn, rootLA),
+          proj(var(bufferVar, rootLA), str::from(regex) + "_end_"   + vn, rootLA)
+        ),
+        rootLA
+      )
+    ));
   }
   return result;
 }

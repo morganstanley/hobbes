@@ -16,11 +16,11 @@ inline bool hasPointerRep(const MonoTypePtr& t) {
   if (const OpaquePtr* op = is<OpaquePtr>(rt)) {
     return !op->storedContiguously();
   }
-  return is<Record>(rt) || is<FixedArray>(rt) || is<Array>(rt) || is<Variant>(rt) || is<Recursive>(rt);
+  return (is<Record>(rt) != nullptr) || (is<FixedArray>(rt) != nullptr) || (is<Array>(rt) != nullptr) || (is<Variant>(rt) != nullptr) || (is<Recursive>(rt) != nullptr);
 }
 
 inline bool hasPointerRep(const PolyTypePtr& t) {
-  if (t->typeVariables() > 0 || t->instantiate()->constraints().size() > 0) {
+  if (t->typeVariables() > 0 || !t->instantiate()->constraints().empty()) {
     return false;
   } else {
     return hasPointerRep(requireMonotype(t));
@@ -33,7 +33,7 @@ inline bool isLargeType(const MonoTypePtr& t) {
   if (const OpaquePtr* p = is<OpaquePtr>(rt)) {
     return p->storedContiguously();
   } else {
-    return is<Record>(rt) || is<FixedArray>(rt) || is<Variant>(rt);
+    return (is<Record>(rt) != nullptr) || (is<FixedArray>(rt) != nullptr) || (is<Variant>(rt) != nullptr);
   }
 }
 

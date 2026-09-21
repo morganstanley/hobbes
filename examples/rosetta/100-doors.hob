@@ -1,0 +1,4 @@
+// @test: [n | n <- [1..100], isPerfectSquare(n)]
+isqrt n = floor(sqrt(n + 0.0))
+
+isPerfectSquare n = isqrt(n) * isqrt(n) == n

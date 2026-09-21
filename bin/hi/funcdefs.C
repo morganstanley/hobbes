@@ -7,13 +7,13 @@
 #include <hobbes/util/str.H>
 #include <hobbes/util/time.H>
 
-#include <time.h>
-#include <unistd.h>
-#include <fstream>
 #include <cstdlib>
-#include <sys/types.h>
-#include <sys/stat.h>
+#include <ctime>
 #include <fcntl.h>
+#include <fstream>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 namespace hi {
 
@@ -48,7 +48,7 @@ const hobbes::array<char>* showTick(long x) {
 void enableConsoleCmds(bool f);
 
 // spawn sub-processes and support basic I/O
-typedef std::pair<int, int> PIO;
+using PIO = std::pair<int, int>;
 
 const PIO* pexec(const hobbes::array<char>* cmd) {
   PIO* p = hobbes::make<PIO>(0, 0);
@@ -75,13 +75,13 @@ const PIO* pexec(const hobbes::array<char>* cmd) {
     close(c2p[1]);
 
     hobbes::str::seq args = hobbes::str::csplit(hobbes::makeStdString(cmd), " ");
-    if (args.size() == 0) return p;
+    if (args.empty()) return p;
   
     std::vector<const char*> argv;
-    for (size_t i = 0; i < args.size(); ++i) {
-      argv.push_back(args[i].c_str());
+    for (const auto &arg : args) {
+      argv.push_back(arg.c_str());
     }
-    argv.push_back(0);
+    argv.push_back(nullptr);
   
     execv(args[0].c_str(), const_cast<char* const*>(&argv[0]));
     exit(0);
@@ -93,6 +93,19 @@ const PIO* pexec(const hobbes::array<char>* cmd) {
     p->second = c2p[0];
   }
   return p;
+}
+
+const hobbes::array<char>* readfile(const hobbes::array<char>* fname) {
+  std::string fn = hobbes::makeStdString(fname);
+  std::ifstream f(fn.c_str());
+
+  if (f.is_open()) {
+    std::ostringstream ss;
+    ss << f.rdbuf();
+    f.close();
+    return hobbes::makeString(ss.str());
+  }
+  return hobbes::makeString(std::string());
 }
 
 const hobbes::array<char>* fdReadLine(int fd) {
@@ -131,6 +144,7 @@ void bindHiDefs(hobbes::cc& c) {
   c.bind("enableColors", &enableConsoleCmds);
   c.bind("colors",       &colors);
 
+  c.bind("readfile",   &readfile);
   c.bind("writefile",  &writefile);
   c.bind("removefile", &removefile);
   c.bind("pexec",      &pexec);

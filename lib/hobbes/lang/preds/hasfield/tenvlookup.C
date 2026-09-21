@@ -26,7 +26,7 @@ MonoTypes trCons(const MonoTypePtr& hty, const MonoTypes& ttys) {
 }
 
 Exprs trCons(const ExprPtr& hexp, const Exprs& texps) {
-  if (texps.size() == 1 && is<Unit>(texps[0])) {
+  if (texps.size() == 1 && (is<Unit>(texps[0]) != nullptr)) {
     return list(hexp);
   } else {
     return cons(hexp, texps);
@@ -35,7 +35,7 @@ Exprs trCons(const ExprPtr& hexp, const Exprs& texps) {
 
 QualTypePtr underlyingFnType(const TEnvPtr& tenv, const MonoTypePtr& rty, const std::string& fieldName, const MonoTypePtr& fty, MonoTypeUnifier* s) {
   const Func* ffty = is<Func>(fty);
-  if (!ffty) return QualTypePtr();
+  if (ffty == nullptr) return QualTypePtr();
 
   try {
     QualTypePtr vfty = tenv->lookup(fieldName)->instantiate();
@@ -65,9 +65,9 @@ bool HFTEnvLookupEliminator::satisfied(const TEnvPtr& tenv, const HasField& hf, 
   const auto& fty    = hf.fieldType;
 
   const Func* ffnty = is<Func>(fty);
-  if (!ffnty) { return false; }
+  if (ffnty == nullptr) { return false; }
   const TString* fname = is<TString>(fnamet);
-  if (!fname) { return false; }
+  if (fname == nullptr) { return false; }
   if (!isMonoSingular(rty) || !isMonoSingular(fty)) { return false; }
   if (!tenv->hasBinding(fname->value())) { return false; }
 
@@ -81,15 +81,15 @@ bool HFTEnvLookupEliminator::satisfiable(const TEnvPtr& tenv, const HasField& hf
 
   if (const TString* fname = is<TString>(fnamet)) {
     const Func* ffnty = is<Func>(fty);
-    if (!ffnty) {
-      return is<TVar>(fty);
+    if (ffnty == nullptr) {
+      return is<TVar>(fty) != nullptr;
     }
     if (!tenv->hasBinding(fname->value())) {
       return false;
     }
     return unifiable(tenv, objViewToFlatView(rty, ffnty), tenv->lookup(fname->value())->instantiate()->monoType());
   } else {
-    return is<TVar>(fnamet);
+    return is<TVar>(fnamet) != nullptr;
   }
 }
 
@@ -99,7 +99,7 @@ bool HFTEnvLookupEliminator::refine(const TEnvPtr& tenv, const HasField& hf, Mon
   auto fty    = hf.fieldType;
 
   // short-circuit refinement -- no need to do anything if there's no information to add
-  if (!is<Func>(fty)) { return false; }
+  if (is<Func>(fty) == nullptr) { return false; }
 
   auto invars = tvarNames(rty).size() + tvarNames(fty).size();
   if (invars == 0) { return false; }
@@ -107,7 +107,7 @@ bool HFTEnvLookupEliminator::refine(const TEnvPtr& tenv, const HasField& hf, Mon
   if (const TString* fname = is<TString>(fnamet)) {
     if (tenv->hasBinding(fname->value())) {
       const Func* ufty = is<Func>(tenv->lookup(fname->value())->instantiate()->monoType());
-      if (!ufty || ufty->parameters().size() == 0) return false;
+      if ((ufty == nullptr) || ufty->parameters().empty()) return false;
 
       MonoTypePtr uobj     = ufty->parameters()[0];
       MonoTypePtr ufieldty = functy(drop(ufty->parameters(), 1), ufty->result());
@@ -131,15 +131,15 @@ struct HFTEnvLookupUnqualify : public switchExprTyFn {
   HFTEnvLookupUnqualify(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions* defs) : tenv(tenv), constraint(cst), defs(defs) {
   }
 
-  ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const {
+  ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const override {
     ExprPtr result(e);
     result->type(removeConstraint(this->constraint, qty));
     return result;
   }
 
-  ExprPtr with(const Fn* v) const {
+  ExprPtr with(const Fn* v) const override {
     const Func* fty = is<Func>(v->type()->monoType());
-    if (!fty) {
+    if (fty == nullptr) {
       throw annotated_error(*v, "Internal error, expected annotated function type");
     }
     return wrapWithTy(v->type(),
@@ -151,12 +151,12 @@ struct HFTEnvLookupUnqualify : public switchExprTyFn {
     );
   }
 
-  ExprPtr with(const App* v) const {
+  ExprPtr with(const App* v) const override {
     // fixup in application position (the preferred position)
     if (const Proj* p = is<Proj>(stripAssumpHead(v->fn()))) {
       if (hasConstraint(this->constraint, p->type())) {
         const Func* fty = is<Func>(p->type()->monoType());
-        if (!fty) {
+        if (fty == nullptr) {
           throw annotated_error(*p, "Internal error, expected annotated function type");
         }
 
@@ -167,7 +167,7 @@ struct HFTEnvLookupUnqualify : public switchExprTyFn {
         ExprPtr napp(new App(f, switchOf(trCons(p->record(), v->args()), *this), v->la()));
         napp->type(qualtype(append(removeConstraint(this->constraint, v->type())->constraints(), nfty->constraints()), v->type()->monoType()));
 
-        if (napp->type()->constraints().size() > 0) {
+        if (!napp->type()->constraints().empty()) {
           return unqualifyTypes(this->tenv, napp, this->defs);
         } else {
           return napp;
@@ -178,7 +178,7 @@ struct HFTEnvLookupUnqualify : public switchExprTyFn {
     return wrapWithTy(v->type(), new App(switchOf(v->fn(), *this), switchOf(v->args(), *this), v->la()));
   }
 
-  ExprPtr with(const Proj* v) const {
+  ExprPtr with(const Proj* v) const override {
     // this should create a closure
     if (hasConstraint(this->constraint, v->type())) {
       throw annotated_error(*v, "Closure creation from tenv-lookup as record lookup, NYI.");

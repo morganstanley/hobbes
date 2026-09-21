@@ -1,0 +1,2 @@
+// @test: pythagorean(20)
+pythagorean n = concat(concat([[ [(a, b, c) | c <- [b..n], a*a + b*b == c*c] | b <- [a..n]] | a <- [1..n]]))

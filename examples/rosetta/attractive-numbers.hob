@@ -1,0 +1,18 @@
+// @test: [n | n <- [2..120], isPrime(primeFactorCount(n))]
+hasDivisor :: (int * int) -> bool
+hasDivisor x = match x with
+  | (n, d) -> if (d * d > n) then false else if (n % d == 0) then true else hasDivisor((n, d + 1))
+
+isPrime :: int -> bool
+isPrime n = if (n < 2) then false else not(hasDivisor((n, 2)))
+
+countFactor :: (int * int) -> (int * int)
+countFactor x = match x with
+  | (n, p) -> if (n % p == 0) then countFactor((n / p, p)) else (n, p)
+
+pfcHelper :: (int * int * int) -> int
+pfcHelper x = match x with
+  | (n, p, count) -> if (p * p > n) then (if (n > 1) then count + 1 else count) else if (n % p == 0) then pfcHelper((n / p, p, count + 1)) else pfcHelper((n, p + 1, count))
+
+primeFactorCount :: int -> int
+primeFactorCount n = pfcHelper((n, 2, 0))

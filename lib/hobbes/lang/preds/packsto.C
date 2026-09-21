@@ -51,7 +51,7 @@ static bool dec(const ConstraintPtr& c, PacksTo* pt) {
   return false;
 }
 static void upd(const ConstraintPtr& c, const PacksTo& pt) {
-  MonoTypes& args = const_cast<MonoTypes&>(c->arguments());
+  auto& args = const_cast<MonoTypes&>(c->arguments());
   if (args.size() == 2) {
     args[0] = pt.underlyingType;
     args[1] = pt.abstractType;
@@ -79,7 +79,7 @@ bool Existentials::refine(const TEnvPtr& tenv, const ConstraintPtr& cst, MonoTyp
       }
       pt.abstractType = substitute(lus, pt.abstractType);
       upd(cst, pt);
-      return lus.size() > 0;
+      return !lus.empty();
     }
   }
   return false;
@@ -100,7 +100,7 @@ bool Existentials::satisfied(const TEnvPtr& tenv, const ConstraintPtr& cst, Defi
       NameSet utns = tvarNames(pt.underlyingType);
       NameSet atns = tvarNames(e->absType());
 
-      return utns.size() == 0 && atns.size() == 1 && (e->absTypeName() == *atns.begin());
+      return utns.empty() && atns.size() == 1 && (e->absTypeName() == *atns.begin());
     } else {
       return *pt.underlyingType == *pt.abstractType;
     }
@@ -112,7 +112,7 @@ bool Existentials::satisfied(const TEnvPtr& tenv, const ConstraintPtr& cst, Defi
 bool Existentials::satisfiable(const TEnvPtr&, const ConstraintPtr& cst, Definitions*) const {
   PacksTo pt;
   if (dec(cst, &pt)) {
-    if (is<TVar>(pt.abstractType)) {
+    if (is<TVar>(pt.abstractType) != nullptr) {
       return true;
     } else if (const Exists* e = is<Exists>(pt.abstractType)) {
       if (!isSafeExistentialType(e)) {
@@ -136,7 +136,7 @@ struct UnqualifySafePackF : public switchExprTyFn {
   UnqualifySafePackF(const ConstraintPtr& cst) : constraint(cst) {
   }
 
-  ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const {
+  ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const override {
     ExprPtr result(e);
     result->type(removeConstraint(this->constraint, qty));
     return result;
@@ -148,13 +148,13 @@ struct StripTransparentPackF : public switchExprTyFn {
   StripTransparentPackF(const ConstraintPtr& cst) : constraint(cst) {
   }
 
-  ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const {
+  ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const override {
     ExprPtr result(e);
     result->type(removeConstraint(this->constraint, qty));
     return result;
   }
 
-  ExprPtr with(const Pack* p) const {
+  ExprPtr with(const Pack* p) const override {
     if (hasConstraint(this->constraint, p->type())) {
       return switchOf(p->expr(), *this);
     } else {
@@ -168,7 +168,7 @@ ExprPtr Existentials::unqualify(const TEnvPtr&, const ConstraintPtr& cst, const 
   // else, just remove the constraint from terms and let final compilation determine how to do the packing
   PacksTo pt;
   if (dec(cst, &pt)) {
-    if (is<Exists>(pt.abstractType)) {
+    if (is<Exists>(pt.abstractType) != nullptr) {
       return switchOf(e, UnqualifySafePackF(cst));
     } else {
       return switchOf(e, StripTransparentPackF(cst));

@@ -1,0 +1,12 @@
+// @test: [n | n <- [1..500], isHappy(n)]
+digitSquareSum :: int -> int
+digitSquareSum n = if (n < 10) then n * n else (n % 10) * (n % 10) + digitSquareSum(n / 10)
+
+iterateHappy :: (int * int) -> bool
+iterateHappy x = match x with
+  | (n, 0) -> false
+  | (1, _) -> true
+  | (n, steps) -> iterateHappy((digitSquareSum(n), steps - 1))
+
+isHappy :: int -> bool
+isHappy n = iterateHappy((n, 50))

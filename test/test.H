@@ -77,7 +77,7 @@ struct Result final {
 
 class TestCoord {
 public:
-  typedef void (*PTEST)();
+  using PTEST = void (*)();
   static TestCoord& instance();
   bool installTest(const std::string& group, const std::string& test, PTEST pf);
   std::set<std::string> testGroupNames() const;
@@ -85,10 +85,10 @@ public:
 
 private:
   std::string toJSON();
-  typedef std::vector<std::pair<std::string, PTEST>> Tests;
-  typedef std::map<std::string, Tests> GroupedTests;
-  typedef std::vector<Result> Results;
-  typedef std::map<std::string, Results> GroupedResults;
+  using Tests = std::vector<std::pair<std::string, PTEST>>;
+  using GroupedTests = std::map<std::string, Tests>;
+  using Results = std::vector<Result>;
+  using GroupedResults = std::map<std::string, Results>;
   GroupedTests tests;
   GroupedResults results;
 };
@@ -157,6 +157,33 @@ private:
       std::ostringstream __errmsg; \
       __errmsg << "Expression '" #p "' ran successfully but an exception was expected" << " " << FILEINFO(__FILE__, __LINE__); \
       throw std::runtime_error(__errmsg.str()); \
+    } \
+  }
+
+#define EXPECT_EXCEPTION_MSG(p, E, S) \
+  { \
+    bool exp = false; \
+    const std::string s = S; \
+    std::string es; \
+    try { \
+      (p); \
+    } catch (const E& e) { \
+      es = e.what(); \
+      if (es.find(s) != std::string::npos) { \
+        exp = true; \
+      } \
+    } \
+    if (!exp) { \
+      std::ostringstream errmsg; \
+      errmsg << "Expression '" #p "' expects a '" #E; \
+      if (!s.empty()) { \
+        errmsg << "' which contains string '" #S; \
+      } \
+      errmsg << "' at " << " " << FILEINFO(__FILE__, __LINE__); \
+      if (!es.empty()) { \
+        errmsg << ", got '" << es << "' instead"; \
+      } \
+      throw std::runtime_error(errmsg.str()); \
     } \
   }
 

@@ -15,7 +15,7 @@ struct SearchEntry {
   std::string       sym; // a symbol matching a user query
   MonoTypePtr       ty;  // the exact result type given by this symbol
 };
-typedef std::vector<SearchEntry> SearchEntries;
+using SearchEntries = std::vector<SearchEntry>;
 
 struct SearchCache {
   std::map<MonoTypePtr, SearchEntries> univByType;

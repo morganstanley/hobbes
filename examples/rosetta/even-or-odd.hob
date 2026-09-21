@@ -1,0 +1,6 @@
+// @test: [(n, isEven(n), isOdd(n)) | n <- [1..5]]
+isEven :: int -> bool
+isEven n = n % 2 == 0
+
+isOdd :: int -> bool
+isOdd n = n % 2 != 0

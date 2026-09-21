@@ -1,8 +1,11 @@
-
+#include <hobbes/hobbes.H>
+#include <hobbes/util/llvm.H>
 #include <hobbes/lang/pat/dfa.H>
 #include <hobbes/lang/pat/regex.H>
 #include <hobbes/lang/pat/print.H>
 #include <hobbes/util/perf.H>
+#include <cstddef>
+#include <limits>
 #include <sstream>
 #include <fstream>
 
@@ -24,7 +27,7 @@ stateidx_t LoadVars::nextState() const { return this->next; }
 std::string LoadVars::stamp() {
   std::ostringstream ss;
   ss << "l";
-  for (auto d : this->ds) {
+  for (const auto& d : this->ds) {
     ss << "." << d.first << "=" << reinterpret_cast<void*>(d.second.get()); // assumes that we deliberately share equivalent expressions
   }
   ss << "." << this->next;
@@ -39,7 +42,7 @@ stateidx_t SwitchVal::defaultState() const { return this->def; }
 std::string SwitchVal::stamp() {
   std::ostringstream ss;
   ss << "s." << this->var;
-  for (auto j : this->jmps) {
+  for (const auto& j : this->jmps) {
     ss << ".";
     j.first->show(ss);
     ss << ":" << j.second;
@@ -56,7 +59,7 @@ stateidx_t SwitchVariant::defaultState() const { return this->def; }
 std::string SwitchVariant::stamp() {
   std::ostringstream ss;
   ss << "c." << this->var;
-  for (auto j : this->jmps) {
+  for (const auto& j : this->jmps) {
     ss << "." << j.first << "=" << j.second;
   }
   ss << "." << this->def;
@@ -85,15 +88,18 @@ MStatePtr makeSwitch(const MDFA* dfa, const std::string& switchVar, const Switch
     // if we've only got a default switch and no cases, just use the default case
     // otherwise if this would be a 'switch' on unit, don't bother (just pass the type equality through)
     //  -- only the first option can match for unit (or default if there's only a default)
-    if (jmps.size() == 0) {
+    if (jmps.empty()) {
       return dfa->states[defState];
     } else if (isUnit(jmps[0].first->primType())) {
+      if (dfa->inPrimSel) {
+        return dfa->states[jmps[0].second];
+      }
       return actAndThen(assume(var(switchVar, dfa->rootLA), primty("unit"), dfa->rootLA), jmps[0].second);
     } else {
       return MStatePtr(new SwitchVal(switchVar, jmps, defState));
     }
   } else {
-    if (jmps.size() > 0) {
+    if (!jmps.empty()) {
       MonoTypePtr sty = jmps[0].first->primType();
 
       if (const Prim* pty = is<Prim>(sty)) {
@@ -147,7 +153,7 @@ ExprPtr varName(MDFA* dfa, const std::string& vn) {
 ExprPtr arrayElement(MDFA* dfa, const std::string& vn, size_t i) {
   VarArrayElem::const_iterator ae = dfa->elementExps.find(vn);
   if (ae != dfa->elementExps.end()) {
-    ArrayElem::const_iterator ie = ae->second.find(i);
+    auto ie = ae->second.find(i);
     if (ie != ae->second.end()) {
       return ie->second;
     }
@@ -161,7 +167,7 @@ ExprPtr arrayElement(MDFA* dfa, const std::string& vn, size_t i) {
 ExprPtr charArrElement(MDFA* dfa, const std::string& packFn, const std::string& vn, size_t i) {
   VarArrayElem::const_iterator ae = dfa->elementExps.find(vn);
   if (ae != dfa->elementExps.end()) {
-    ArrayElem::const_iterator ie = ae->second.find(i);
+    auto ie = ae->second.find(i);
     if (ie != ae->second.end()) {
       return ie->second;
     }
@@ -190,7 +196,7 @@ ExprPtr arraySize(MDFA* dfa, const std::string& vn) {
 ExprPtr field(MDFA* dfa, const std::string& vn, const std::string& fn) {
   VarStructField::const_iterator vsf = dfa->fieldExps.find(vn);
   if (vsf != dfa->fieldExps.end()) {
-    StructField::const_iterator sf = vsf->second.find(fn);
+    auto sf = vsf->second.find(fn);
     if (sf != vsf->second.end()) {
       return sf->second;
     }
@@ -211,15 +217,15 @@ void tableTail(PatternRows* out, const PatternRows& in) {
 
 // eliminate unused columns from a table
 void dropUnusedColumns(PatternRows* out, const PatternRows& in) {
-  if (in.size() == 0) {
+  if (in.empty()) {
     return;
   }
 
   std::set<size_t> usedColumns;
   for (size_t c = 0; c < in[0].patterns.size(); ++c) {
     bool hasUse = false;
-    for (size_t r = 0; r < in.size(); ++r) {
-      if (!is<MatchAny>(in[r].patterns[c])) {
+    for (const auto &r : in) {
+      if (is<MatchAny>(r.patterns[c]) == nullptr) {
         hasUse = true;
         break;
       }
@@ -232,12 +238,12 @@ void dropUnusedColumns(PatternRows* out, const PatternRows& in) {
   if (usedColumns.size() == in[0].patterns.size()) {
     *out = in;
   } else {
-    for (size_t r = 0; r < in.size(); ++r) {
+    for (const auto &r : in) {
       Patterns ps;
-      for (auto c : usedColumns) {
-        ps.push_back(in[r].patterns[c]);
+      for (const auto c : usedColumns) {
+        ps.push_back(r.patterns[c]);
       }
-      out->push_back(PatternRow(ps, in[r].guard, in[r].result));
+      out->push_back(PatternRow(ps, r.guard, r.result));
     }
   }
 }
@@ -316,8 +322,8 @@ template <
   typename SVLT = std::less<SValue>
 >
 MStatePtr makeSplitState(MDFA* dfa, const PatternRows& ps, size_t c) {
-  typedef std::map<SValue, PatternRows, SVLT> Branches;
-  typedef std::map<SValue, size_t>            BranchOrder;
+  using Branches = std::map<SValue, PatternRows, SVLT>;
+  using BranchOrder = std::map<SValue, size_t>;
 
   Branches    bs;
   BranchOrder bos;
@@ -334,7 +340,7 @@ MStatePtr makeSplitState(MDFA* dfa, const PatternRows& ps, size_t c) {
       PatternRows& outrs = bs[sv];
 
       // the first time through this branch, we need to make sure that prior match-any rows are prepended
-      if (outrs.size() == 0) {
+      if (outrs.empty()) {
         for (auto i : anys) {
           makeMatchAnyRow(sv, &outrs, ps[i], c);
         }
@@ -346,7 +352,7 @@ MStatePtr makeSplitState(MDFA* dfa, const PatternRows& ps, size_t c) {
       // record where this match-any came from, then append it to all states recorded so far
       anys.push_back(r);
 
-      for (typename Branches::iterator b = bs.begin(); b != bs.end(); ++b) {
+      for (auto b = bs.begin(); b != bs.end(); ++b) {
         makeMatchAnyRow(b->first, &b->second, ps[r], c);
       }
     } else {
@@ -360,8 +366,8 @@ MStatePtr makeSplitState(MDFA* dfa, const PatternRows& ps, size_t c) {
   }
 
   // finally, pull the branch and default jumps together (in introduction order) and make the new state
-  typedef std::pair<SValue, stateidx_t> Jump;
-  typedef std::vector<Jump>             Jumps;
+  using Jump = std::pair<SValue, stateidx_t>;
+  using Jumps = std::vector<Jump>;
   Jumps jmps;
 
   jmps.resize(bs.size());
@@ -369,7 +375,7 @@ MStatePtr makeSplitState(MDFA* dfa, const PatternRows& ps, size_t c) {
     jmps[bos[b.first]] = Jump(b.first, makeNextState(ps[0].patterns[c]->name(), b.first, dfa, b.second));
   }
 
-  stateidx_t defState = def.size() > 0 ? makeDFAState(dfa, def) : nullState;
+  stateidx_t defState = !def.empty() ? makeDFAState(dfa, def) : nullState;
 
   return makeSwitchState(ps[0].patterns[c]->name(), dfa, jmps, defState);
 }
@@ -488,8 +494,8 @@ MStatePtr makeArrayState(MDFA* dfa, const PatternRows& ps, size_t c) {
 // split on string matching
 size_t maxStringLen(const PatternRows& ps, size_t c) {
   size_t mlen = 0;
-  for (size_t r = 0; r < ps.size(); ++r) {
-    if (const MatchArray* ma = is<MatchArray>(ps[r].patterns[c])) {
+  for (const auto &p : ps) {
+    if (const MatchArray* ma = is<MatchArray>(p.patterns[c])) {
       mlen = std::max<size_t>(ma->size(), mlen);
     }
   }
@@ -553,7 +559,7 @@ MStatePtr makeCharArrayState(MDFA* dfa, const PatternRows& ps, size_t c) {
   static MonoTypePtr longTy(Prim::make("long"));
 
   std::string arrayVar = ps[0].patterns[c]->name();
-  size_t      mlen     = align<size_t>(maxStringLen(ps, c) + 1, 8);
+  auto      mlen     = align<size_t>(maxStringLen(ps, c) + 1, 8);
   size_t      cs       = mlen;
   
   LoadVars::Defs ds;
@@ -573,8 +579,8 @@ MStatePtr makeCharArrayState(MDFA* dfa, const PatternRows& ps, size_t c) {
 
   // generate the successor table
   PatternRows nps;
-  for (size_t r = 0; r < ps.size(); ++r) {
-    addSATableRow(mlen, ps[r], c, &nps);
+  for (const auto &p : ps) {
+    addSATableRow(mlen, p, c, &nps);
   }
 
   // and that's it!
@@ -583,18 +589,18 @@ MStatePtr makeCharArrayState(MDFA* dfa, const PatternRows& ps, size_t c) {
 
 bool canMakeCharArrayState(const PatternRows& ps, size_t c) {
   bool seemsLegit = false;
-  for (size_t r = 0; r < ps.size(); ++r) {
-    if (const MatchArray* ma = is<MatchArray>(ps[r].patterns[c])) {
+  for (const auto &p : ps) {
+    if (const MatchArray* ma = is<MatchArray>(p.patterns[c])) {
       for (size_t i = 0; i < ma->size(); ++i) {
         if (const MatchLiteral* ml = is<MatchLiteral>(ma->pattern(i))) {
-          if (is<Char>(ml->equivConstant())) {
+          if (is<Char>(ml->equivConstant()) != nullptr) {
             seemsLegit = true;
           }
         } else {
           return false;
         }
       }
-    } else if (!is<MatchAny>(ps[r].patterns[c])) {
+    } else if (is<MatchAny>(p.patterns[c]) == nullptr) {
       return false;
     }
   }
@@ -631,15 +637,15 @@ MStatePtr makeRecordState(MDFA* dfa, const PatternRows& ps, size_t c) {
   // eliminate this column and add new columns for field patterns
   PatternRows cdef;
 
-  for (size_t r = 0; r < ps.size(); ++r) {
-    if (const MatchRecord* mr = is<MatchRecord>(ps[r].patterns[c])) {
-      copyRowWithoutColumn(&cdef, ps[r], c);
+  for (const auto &p : ps) {
+    if (const MatchRecord* mr = is<MatchRecord>(p.patterns[c])) {
+      copyRowWithoutColumn(&cdef, p, c);
       prependPatterns(&cdef.back(), recordFieldPatterns(*mr));
-    } else if (is<MatchAny>(ps[r].patterns[c])) {
-      copyRowWithoutColumn(&cdef, ps[r], c);
+    } else if (is<MatchAny>(p.patterns[c]) != nullptr) {
+      copyRowWithoutColumn(&cdef, p, c);
       prependPatterns(&cdef.back(), arrayAnyMatches(defs.size()));
     } else {
-      throw annotated_error(*ps[r].patterns[c], "Internal error, invalid pattern table received");
+      throw annotated_error(*p.patterns[c], "Internal error, invalid pattern table received");
     }
   }
 
@@ -683,29 +689,120 @@ MStatePtr makeVariantState(MDFA* dfa, const PatternRows& ps, size_t c) {
 }
 
 // split on regex switch/matches
-MStatePtr makeRegexState(MDFA* dfa, const PatternRows& ps, size_t c) {
-  // remember the match-any rows
-  std::set<size_t> matchAnyRows;
+// Regex columns are matched by one function per column rather than one per
+// DFA state. A split on any other column hands each branch a subset of the
+// rows, so as the table is deconstructed the same column is tested at many
+// states, each with its own subset of the column's regexes -- and a function
+// compiled for each subset would repeat the NFA/DFA construction, definition,
+// type inference and machine code generation once per state. Since a state
+// needs to know only which of *its* rows a string matches, the function
+// compiled for every regex the column can test answers at every state: the
+// result it returns is a set of matched column regexes, and the rows to
+// follow are those of the state whose regex lies in that set.
+//
+// Measured on the test suite's 70x12 table (Matching/largeMatchTableCompileTime)
+// this replaces 888 regex functions with six.
 
-  // select this column as a sequence of regular expressions
-  Regexes regexes;
+// gather every regex a column can test, walking nested patterns in the same
+// order that deconstruction later assigns them names. Arrays of chars are
+// counted too, since regexNormalize turns them into regexes wherever a column
+// mixes them with real ones; those that cannot be so translated are left out
+// here (the column will fail the same way it does now if it comes to one).
+struct collectColumnRegexesF : public switchPattern<UnitV> {
+  ColumnRegexTables* out;
+  explicit collectColumnRegexesF(ColumnRegexTables* out) : out(out) { }
+
+  static void add(ColumnRegexTables* out, const std::string& name, const RegexPtr& r) {
+    ColumnRegexes& crs = (*out)[name];
+    rejectOversizedRegex(r);
+    const std::string k = regexKey(r);
+    if (crs.index.find(k) == crs.index.end()) {
+      crs.index[k] = crs.regexes.size();
+      crs.regexes.push_back(r);
+    }
+  }
+
+  UnitV with(const MatchAny*)     const override { return unitv; }
+  UnitV with(const MatchLiteral*) const override { return unitv; }
+  UnitV with(const MatchRegex* x) const override { add(this->out, x->name(), x->value()); return unitv; }
+  UnitV with(const MatchArray* x) const override {
+    try {
+      PatternPtr rp = MatchRegex::toRegex(*x);
+      add(this->out, x->name(), is<MatchRegex>(rp)->value());
+    } catch (std::exception&) {
+    }
+    for (size_t i = 0; i < x->size(); ++i) {
+      switchOf(x->pattern(i), *this);
+    }
+    return unitv;
+  }
+  UnitV with(const MatchRecord* x) const override {
+    for (size_t i = 0; i < x->size(); ++i) {
+      switchOf(x->pattern(i).second, *this);
+    }
+    return unitv;
+  }
+  UnitV with(const MatchVariant* x) const override {
+    switchOf(x->value(), *this);
+    return unitv;
+  }
+};
+
+void collectColumnRegexes(ColumnRegexTables* out, const PatternRows& ps) {
+  collectColumnRegexesF f(out);
+  for (const auto& r : ps) {
+    for (const auto& p : r.patterns) {
+      switchOf(p, f);
+    }
+  }
+}
+
+// the regexes tested at a column, extended (it should not need to be, after
+// collectColumnRegexes, but correctness only asks that every regex the state
+// tests be among them) with any not already there
+const ColumnRegexes& columnRegexesFor(MDFA* dfa, const std::string& colVar, const Regexes& rs) {
+  ColumnRegexes& crs = dfa->columnRegexes[colVar];
+  for (const auto& r : rs) {
+    collectColumnRegexesF::add(&dfa->columnRegexes, colVar, r);
+  }
+  return crs;
+}
+
+MStatePtr makeRegexState(MDFA* dfa, const PatternRows& ps, size_t c) {
+  // remember the match-any rows, and which column regex each other row tests
+  std::set<size_t> matchAnyRows;
+  Regexes          rowRegexes;
   for (size_t r = 0; r < ps.size(); ++r) {
     if (const MatchRegex* mr = is<MatchRegex>(ps[r].patterns[c])) {
-      regexes.push_back(mr->value());
-    } else if (is<MatchAny>(ps[r].patterns[c])) {
+      rowRegexes.push_back(mr->value());
+    } else if (is<MatchAny>(ps[r].patterns[c]) != nullptr) {
       matchAnyRows.insert(r);
-      regexes.push_back(parseRegex(""));
+      rowRegexes.push_back(RegexPtr());
     } else {
       throw annotated_error(*ps[r].patterns[c], "Internal error, invalid pattern table received");
     }
   }
 
-  // make a function to do the regex matching
-  CRegexes regexFn = makeRegexFn(dfa->c, regexes, dfa->rootLA);
+  std::string switchVar = ps[0].patterns[c]->name();
+
+  Regexes testedRegexes;
+  for (const auto& r : rowRegexes) {
+    if (r) { testedRegexes.push_back(r); }
+  }
+  const ColumnRegexes& colRegexes = columnRegexesFor(dfa, switchVar, testedRegexes);
+
+  std::vector<size_t> rowRegexIdx(ps.size(), 0);
+  for (size_t r = 0; r < ps.size(); ++r) {
+    if (rowRegexes[r]) {
+      rowRegexIdx[r] = colRegexes.index.find(regexKey(rowRegexes[r]))->second;
+    }
+  }
+
+  // make (or reuse) the function that matches every regex in this column
+  CRegexes regexFn = makeRegexFn(dfa->c, colRegexes.regexes, dfa->rootLA);
 
   // open a char array on the match value (usually this will be a no-op)
   // then call the regex function to get the set of continuation rows to follow and a buffer for captured data
-  std::string switchVar   = ps[0].patterns[c]->name();
   std::string oarrayVar   = switchVar + ".a";
   std::string rcaptureVar = switchVar + ".rgxcapture";
   std::string rcheckVar   = switchVar + ".rgxcheck";
@@ -725,13 +822,34 @@ MStatePtr makeRegexState(MDFA* dfa, const PatternRows& ps, size_t c) {
     )
   ));
 
+  // each result of the column function selects the rows here whose regex it
+  // matched; results that select the same rows lead to the same state, and a
+  // result that selects none of them is the same as no match at all
+  using MatchedRows = std::vector<size_t>;
+  std::map<MatchedRows, std::vector<size_t>> resultsByRows;
+  for (const auto& rstate : regexFn.rstates) {
+    MatchedRows rows;
+    for (size_t r = 0; r < ps.size(); ++r) {
+      if (rowRegexes[r] && rstate.second.count(rowRegexIdx[r]) > 0) {
+        rows.push_back(r);
+      }
+    }
+    if (!rows.empty()) {
+      resultsByRows[rows].push_back(rstate.first);
+    }
+  }
+
   // based on the match result, branch to a reduced table
   SwitchVal::Jumps sjmps;
-  for (const auto& rstate : regexFn.rstates) {
+  for (const auto& rr : resultsByRows) {
     PatternRows ktbl;
     auto anyr = matchAnyRows.begin();
 
-    for (const auto& r : rstate.second) {
+    // the captured data to load: that of every regex matched here, in row order
+    CVarDefs cvds;
+    std::set<size_t> unpacked;
+
+    for (const auto& r : rr.first) {
       // all match-any values prior to this row must take priority
       for (; anyr != matchAnyRows.end() && *anyr < r; ++anyr) {
         copyRowWithoutColumn(&ktbl, ps[*anyr], c);
@@ -740,9 +858,9 @@ MStatePtr makeRegexState(MDFA* dfa, const PatternRows& ps, size_t c) {
       // then we've matched this row at this column
       copyRowWithoutColumn(&ktbl, ps[r], c);
 
-      // and in case this is already a match-any row, consider it consumed to avoid redundant references
-      if (anyr != matchAnyRows.end() && *anyr == r) {
-        ++anyr;
+      if (unpacked.insert(rowRegexIdx[r]).second) {
+        CVarDefs rcvds = unpackCaptureVars(switchVar, rcaptureVar, regexFn, rowRegexIdx[r], dfa->rootLA);
+        cvds.insert(cvds.end(), rcvds.begin(), rcvds.end());
       }
     }
 
@@ -752,18 +870,18 @@ MStatePtr makeRegexState(MDFA* dfa, const PatternRows& ps, size_t c) {
     }
 
     // in this case, follow this continuation and load variables for it
-    sjmps.push_back(
-      SwitchVal::Jump(PrimitivePtr(new Int(static_cast<int>(rstate.first), dfa->rootLA)),
-        addState(dfa,
-          MStatePtr(
-            new LoadVars(
-              unpackCaptureVars(switchVar, rcaptureVar, regexFn, rstate.first, dfa->rootLA),
-              makeDFAState(dfa, ktbl)
-            )
-          )
-        )
-      )
-    );
+    stateidx_t nextState = makeDFAState(dfa, ktbl);
+    if (!cvds.empty()) {
+      nextState = addState(dfa, MStatePtr(new LoadVars(cvds, nextState)));
+    }
+    // (the state was made with one reference; each further result that
+    // jumps to it is another)
+    for (size_t i = 0; i < rr.second.size(); ++i) {
+      sjmps.push_back(SwitchVal::Jump(PrimitivePtr(new Int(static_cast<int>(rr.second[i]), dfa->rootLA)), nextState));
+      if (i > 0) {
+        addRef(dfa, nextState);
+      }
+    }
   }
 
   // otherwise if we didn't match anything, branch to a default table containing just the match-any states (if applicable)
@@ -771,7 +889,7 @@ MStatePtr makeRegexState(MDFA* dfa, const PatternRows& ps, size_t c) {
   for (auto r : matchAnyRows) {
     copyRowWithoutColumn(&def, ps[r], c);
   }
-  stateidx_t defState = def.size() > 0 ? makeDFAState(dfa, def) : nullState;
+  stateidx_t defState = !def.empty() ? makeDFAState(dfa, def) : nullState;
 
   // and that's our state ... a load for the regex call and a branch on its result
   return MStatePtr(new LoadVars(ds, addState(dfa, makeLSSwitch(rcheckVar, dfa, sjmps, defState))));
@@ -790,20 +908,20 @@ struct makeSuccStateF : public switchPattern<MStatePtr> {
   size_t c;
   makeSuccStateF(MDFA* dfa, const PatternRows& ps, size_t c) : dfa(dfa), ps(ps), c(c) { }
 
-  MStatePtr with(const MatchAny* ma) const {
+  [[noreturn]] MStatePtr with(const MatchAny* ma) const override {
     throw annotated_error(*ma, "Internal error, can't deconstruct wildcard columns in match expression");
   }
 
-  MStatePtr with(const MatchLiteral*) const { return makeLiteralState(dfa, ps, c); }
-  MStatePtr with(const MatchRegex*)   const { return makeRegexState(dfa, regexNormalize(ps, c), c); }
-  MStatePtr with(const MatchRecord*)  const { return makeRecordState(dfa, ps, c); }
-  MStatePtr with(const MatchVariant*) const { return makeVariantState(dfa, ps, c); }
+  MStatePtr with(const MatchLiteral*) const override { return makeLiteralState(dfa, ps, c); }
+  MStatePtr with(const MatchRegex*)   const override { return makeRegexState(dfa, regexNormalize(ps, c), c); }
+  MStatePtr with(const MatchRecord*)  const override { return makeRecordState(dfa, ps, c); }
+  MStatePtr with(const MatchVariant*) const override { return makeVariantState(dfa, ps, c); }
 
   // if we have a 'match array' column but it's got a regex somewhere, then we actually
   // need to apply regex match logic (otherwise we can match as an array)
-  MStatePtr with(const MatchArray*) const {
-    for (size_t r = 0; r < ps.size(); ++r) {
-      if (is<MatchRegex>(ps[r].patterns[c])) {
+  MStatePtr with(const MatchArray*) const override {
+    for (const auto &p : ps) {
+      if (is<MatchRegex>(p.patterns[c]) != nullptr) {
         return makeRegexState(dfa, regexNormalize(ps, c), c);
       }
     }
@@ -814,9 +932,9 @@ struct makeSuccStateF : public switchPattern<MStatePtr> {
   // (this allows mixing of literal matches and regex matches in a single column)
   static PatternRows regexNormalize(const PatternRows& ps, size_t c) {
     PatternRows nps = ps;
-    for (size_t r = 0; r < nps.size(); ++r) {
-      if (const MatchArray* ma = is<MatchArray>(nps[r].patterns[c])) {
-        nps[r].patterns[c] = MatchRegex::toRegex(*ma);
+    for (auto &np : nps) {
+      if (const MatchArray* ma = is<MatchArray>(np.patterns[c])) {
+        np.patterns[c] = MatchRegex::toRegex(*ma);
       }
     }
     return nps;
@@ -833,15 +951,15 @@ struct scorePatternF : public switchPattern<size_t> {
   // don't count the same primitive twice
   mutable PrimitiveSet recprims;
 
-  size_t with(const MatchAny*) const {
+  size_t with(const MatchAny*) const override {
     return 0;
   }
 
-  size_t with(const MatchLiteral* ml) const {
+  size_t with(const MatchLiteral* ml) const override {
     return this->recprims.insert(ml->equivConstant()).second ? 1 : 0;
   }
 
-  size_t with(const MatchArray* ma) const {
+  size_t with(const MatchArray* ma) const override {
     size_t s = 1;
     for (size_t i = 0; i < ma->size(); ++i) {
       s += switchOf(ma->pattern(i), *this);
@@ -849,11 +967,11 @@ struct scorePatternF : public switchPattern<size_t> {
     return s;
   }
 
-  size_t with(const MatchRegex*) const {
+  size_t with(const MatchRegex*) const override {
     return 1;
   }
 
-  size_t with(const MatchRecord* mr) const {
+  size_t with(const MatchRecord* mr) const override {
     size_t s = 0;
     for (size_t i = 0; i < mr->size(); ++i) {
       s += switchOf(mr->pattern(i).second, *this);
@@ -861,7 +979,7 @@ struct scorePatternF : public switchPattern<size_t> {
     return s;
   }
 
-  size_t with(const MatchVariant* mv) const {
+  size_t with(const MatchVariant* mv) const override {
     return 1 + switchOf(mv->value(), *this);
   }
 };
@@ -883,14 +1001,14 @@ size_t choosePivotColumn(const PatternRows& ps) {
   size_t bestArrayScore  = std::numeric_limits<size_t>::max();
 
   for (size_t c = 0; c < ps[0].patterns.size(); ++c) {
-    if (!is<MatchAny>(ps[0].patterns[c])) {
+    if (is<MatchAny>(ps[0].patterns[c]) == nullptr) {
       size_t csc = 1 + columnScore(ps, c);
       if (csc < currentScore) {
         chosenColumn = c;
         currentScore = csc;
       }
 
-      if (is<MatchArray>(ps[0].patterns[c]) && csc < bestArrayScore) {
+      if ((is<MatchArray>(ps[0].patterns[c]) != nullptr) && csc < bestArrayScore) {
         bestArrayColumn = c;
         bestArrayScore  = csc;
       }
@@ -913,8 +1031,8 @@ bool isPrimSelection(bool alwaysLowerPrimMatchTables, const PatternRows& ps) {
   }
 
   // there can't be any guards in a primitive selection
-  for (size_t r = 0; r < ps.size(); ++r) {
-    if (ps[r].guard) {
+  for (const auto &p : ps) {
+    if (p.guard) {
       return false;
     }
   }
@@ -924,8 +1042,8 @@ bool isPrimSelection(bool alwaysLowerPrimMatchTables, const PatternRows& ps) {
   bool seemsLegit = false;
 
   for (size_t c = 0; c < ps[0].patterns.size(); ++c) {
-    for (size_t r = 0; r < ps.size(); ++r) {
-      if (const MatchLiteral* ml = is<MatchLiteral>(ps[r].patterns[c])) {
+    for (const auto &p : ps) {
+      if (const MatchLiteral* ml = is<MatchLiteral>(p.patterns[c])) {
         if (ml->expression()) {
           return false;
         } else {
@@ -933,7 +1051,7 @@ bool isPrimSelection(bool alwaysLowerPrimMatchTables, const PatternRows& ps) {
           seemsLegit = true;
           break;
         }
-      } else if (!is<MatchAny>(ps[r].patterns[c])) {
+      } else if (is<MatchAny>(p.patterns[c]) == nullptr) {
         return false;
       }
     }
@@ -946,8 +1064,8 @@ bool isPrimSelection(bool alwaysLowerPrimMatchTables, const PatternRows& ps) {
 PrimFArgs makePrimFArgs(const PatternRows& ps) {
   PrimFArgs args;
   for (size_t c = 0; c < ps[0].patterns.size(); ++c) {
-    for (size_t r = 0; r < ps.size(); ++r) {
-      if (const MatchLiteral* ml = is<MatchLiteral>(ps[r].patterns[c])) {
+    for (const auto & p : ps) {
+      if (const MatchLiteral* ml = is<MatchLiteral>(p.patterns[c])) {
         args.push_back(PrimFArg(ml->name(), ml->equivConstant()->primType()));
         break;
       }
@@ -959,7 +1077,7 @@ PrimFArgs makePrimFArgs(const PatternRows& ps) {
 // does it make sense and is it worthwhile to decompose this table column-wise?
 bool shouldDecomposeColumnwise(MDFA* dfa, const PatternRows& ps) {
   // it only makes sense to decompose columnwise if the table has at least one row, at least two columns
-  if (ps.size() == 0 || ps[0].patterns.size() <= 1) {
+  if (ps.empty() || ps[0].patterns.size() <= 1) {
     return false;
   }
 
@@ -1065,7 +1183,7 @@ stateidx_t makeColPivotDFAState(MDFA* dfa, const PatternRows& ps) {
 
     PatternRows tail;
     tableTail(&tail, ps);
-    if (tail.size() == 0) {
+    if (tail.empty()) {
       throw annotated_error(*ps[0].guard, "Inexhaustive patterns in match expression after guard");
     }
 
@@ -1085,10 +1203,90 @@ stateidx_t makeColPivotDFAState(MDFA* dfa, const PatternRows& ps) {
   return result;
 }
 
+// Compiling a pattern-match table is worst-case exponential in general, and
+// this construction pays for it in two currencies at once. Splitting a column
+// hands every match-any row to every branch it did not name, so a table can
+// come out of a split barely smaller than it went in -- and each such state
+// holds a copy of its table, keyed by the whole table again in
+// tableCfgStates. Where the rows leave nothing to share, the recursion is a
+// straight chain, one state and one full table copy per row: 7,483 rows of
+// wildcard cost 4,000 states and 75M table cells before the process ran out
+// of memory at 2560MB (OSS-Fuzz 557561539, whose 90KB of input is ~7,500
+// repetitions of one row shape).
+//
+// So both currencies are budgeted. The margins are measured, not guessed.
+// Over 11,495 match tables compiled by the test suite the costliest holds
+// 236,011 cells and none recurses deeper than 22, while the report above is
+// past both by orders of magnitude -- a chain thousands of states deep and
+// tens of millions of cells.
+//
+// The cell budget is set by what a cell costs rather than by that ratio
+// alone. Measured on a match of N rows over three columns with wildcards
+// scattered through them -- the shape that keeps tables from shrinking as
+// they split -- the resident cost past a bare compiler's ~780MB runs 72MB at
+// 46,609 cells, 316MB at 333,190, 657MB at 1,081,804 and 1,415MB at
+// 2,515,309, converging on ~600 bytes a cell. A million cells is therefore
+// about 600MB on that shape, which leaves the whole read inside half of the
+// 2560MB the report was filed against.
+//
+// What is counted is every table this walk builds, not only the ones a new
+// state keeps: the count is taken above the memoisation check, so a table
+// that turns out to have been seen before is charged for too. That is
+// deliberate. By the time the check can say so, dropUnusedColumns has already
+// copied the whole table and the probe has hashed and compared it, so a
+// repeat costs the same transient memory and very nearly the same time as a
+// first sight -- and it is peak and time, not what survives, that took the
+// process out. It does make the budget conservative wherever a table shares
+// sub-tables, and measurably so: over the 13,391 matches the test suite
+// compiles, 9.7% of counted cells are repeats, and in the largest single
+// table (Matching/largeMatchTableCompileTime) it is 51%. Charged at that
+// worst rate a legitimate table still reaches only 236,011 of the million.
+//
+// Depth is held much looser, and deliberately, because the tables that cost
+// the most cells are not the ones that recurse deepest. A production match
+// big enough to be worth compiling columnwise (buildColumnwiseMatches -- the
+// only way a table of a few hundred rows compiles at all, the row-pivot path
+// below does not finish on one) recurses about 0.78 states per row while
+// holding almost no table at once: a 400-row, 13-column limit table measures
+// 312 deep and 5,213 cells, and a 200-row one 171 deep and 2,613. Rows are
+// in turn capped near 600 by the parser's nesting limit, so ~470 is about as
+// deep as a match that parses can legitimately go, and a bound that merely
+// looked generous against the row-pivot suite maximum of 22 would sit right
+// on top of real code. So depth is a backstop against runaway recursion
+// eating the C stack, not a second opinion on size: to reach a chain deep
+// enough to trip it the cells above are long since spent, since a chain of D
+// states starts from a table of D rows and sums ~D^2/2 cells.
+static const size_t maxMatchTableCells = 1000000;
+static const size_t maxMatchDFADepth   = 10000;
+
+// count a state's recursion into the match being compiled, and back out again
+// however the state is left -- the budgets below are reported by throwing.
+struct MatchDepth {
+  MDFA* dfa;
+  explicit MatchDepth(MDFA* dfa) : dfa(dfa) { ++this->dfa->stateDepth; }
+  ~MatchDepth() { --this->dfa->stateDepth; }
+  MatchDepth(const MatchDepth&) = delete;
+  MatchDepth& operator=(const MatchDepth&) = delete;
+};
+
 // make a state out of the input pattern table (recursively constructing sub-states as necessary)
 stateidx_t makeDFAState(MDFA* dfa, const PatternRows& xps) {
+  MatchDepth depth(dfa);
+  if (dfa->stateDepth > maxMatchDFADepth) {
+    throw annotated_error(dfa->rootLA, "match expression is too complex to compile (nests more than " + str::from(maxMatchDFADepth) + " states deep)");
+  }
+
   PatternRows ps;
   dropUnusedColumns(&ps, xps);
+
+  if (!ps.empty()) {
+    // charged against what is left of the budget, so the sum cannot wrap
+    const size_t cells = ps.size() * ps[0].patterns.size();
+    if (cells > maxMatchTableCells - dfa->tableCells) {
+      throw annotated_error(dfa->rootLA, "match expression is too complex to compile (needs more than " + str::from(maxMatchTableCells) + " pattern table cells)");
+    }
+    dfa->tableCells += cells;
+  }
 
   // if we can deconstruct strings here, do it before anything else
   // (it has a potential runtime performance impact and should only be done to reduce compilation time for large schemas)
@@ -1117,9 +1315,12 @@ stateidx_t makeDFAState(MDFA* dfa, const PatternRows& xps) {
 stateidx_t makeDFA(MDFA* dfa, const PatternRows& ps, const LexicalAnnotation& la) {
   dfa->rootLA = la;
 
+  // every regex column is matched by one function, over all of its regexes
+  collectColumnRegexes(&dfa->columnRegexes, ps);
+
   // start by adding 0-ref states and placeholder parameters for each final expression
   std::vector<stateidx_t> finalStates;
-  for (auto pr : ps) {
+  for (const auto& pr : ps) {
     stateidx_t fst = addState(dfa, MStatePtr(new FinishExpr(pr.result)), false);
     finalStates.push_back(fst);
     dfa->exprIdxs[pr.result.get()] = fst;
@@ -1133,29 +1334,33 @@ stateidx_t makeDFA(MDFA* dfa, const PatternRows& ps, const LexicalAnnotation& la
     std::vector<size_t> unreachableRows;
     for (size_t r = 0; r < ps.size(); ++r) {
       size_t fs = finalStates[r];
- 
+
       if (dfa->states[fs]->refs == 0) {
         unreachableRows.push_back(r);
       }
     }
-  
-    if (unreachableRows.size() > 0) {
+
+    if (!unreachableRows.empty()) {
       std::ostringstream fss;
       fss << "Unreachable row" << (unreachableRows.size() > 1 ? "s" : "") << " in match expression:\n";
       for (size_t ur : unreachableRows) {
         fss << "  " << show(ps[ur]) << std::endl;
       }
-      throw annotated_error(la, fss.str());
+      if (dfa->c->ignoreUnreachableMatches()) {
+        dfa->c->gatherUnreachableMatches({.la = la, .lines = fss.str()});
+      } else {
+        throw annotated_error(la, fss.str());
+      }
     }
   }
 
-  // save unreachable rows for the caller instead of raising an error
   if (dfa->c->unreachableMatchRowsPtr) {
+    dfa->c->unreachableMatchRowsPtr->reserve(ps.size());
     for (size_t r = 0; r < ps.size(); ++r) {
       size_t fs = finalStates[r];
 
       if (dfa->states[fs]->refs == 0) {
-        dfa->c->unreachableMatchRowsPtr->push_back(std::make_pair(r, ps[r]));
+        dfa->c->unreachableMatchRowsPtr->emplace_back(r, ps[r]);
       }
     }
   }
@@ -1171,7 +1376,7 @@ struct liftDFAExprF : public switchMState<ExprPtr> {
   MDFA* dfa;
   liftDFAExprF(MDFA* dfa) : dfa(dfa) { }
 
-  ExprPtr with(const LoadVars* x) const {
+  ExprPtr with(const LoadVars* x) const override {
     const LoadVars::Defs& ds = x->defs();
     ExprPtr b = liftDFAExpr(this->dfa, x->nextState());
 
@@ -1182,7 +1387,7 @@ struct liftDFAExprF : public switchMState<ExprPtr> {
     return b;
   }
 
-  ExprPtr with(const SwitchVal* x) const {
+  ExprPtr with(const SwitchVal* x) const override {
     ExprPtr def = x->defaultState() == nullState ? ExprPtr() : liftDFAExpr(this->dfa, x->defaultState());
 
     const SwitchVal::Jumps& jmps = x->jumps();
@@ -1194,7 +1399,7 @@ struct liftDFAExprF : public switchMState<ExprPtr> {
     return ExprPtr(new Switch(varName(this->dfa, x->switchVar()), bs, def, dfa->rootLA));
   }
 
-  ExprPtr with(const SwitchVariant* x) const {
+  ExprPtr with(const SwitchVariant* x) const override {
     ExprPtr def = x->defaultState() == nullState ? ExprPtr() : liftDFAExpr(this->dfa, x->defaultState());
 
     const SwitchVariant::CtorJumps& jmps = x->jumps();
@@ -1206,16 +1411,16 @@ struct liftDFAExprF : public switchMState<ExprPtr> {
     return ExprPtr(new Case(varName(this->dfa, x->switchVar()), bs, def, dfa->rootLA));
   }
 
-  ExprPtr with(const FinishExpr* x) const {
+  ExprPtr with(const FinishExpr* x) const override {
     return x->expr();
   }
 };
 
-typedef std::pair<ExprPtr, PrimitivePtr> ExprCheck;
-typedef std::vector<ExprCheck> ExprChecks;
+using ExprCheck = std::pair<ExprPtr, PrimitivePtr>;
+using ExprChecks = std::vector<ExprCheck>;
 
 ExprPtr checkExpr(const ExprChecks& cs, const LexicalAnnotation& la) {
-  if (cs.size() == 0) {
+  if (cs.empty()) {
     throw annotated_error(la, "Internal error, can't produce empty check expression");
   } else {
     ExprPtr v = fncall(var("===", la), list(cs[0].first, std::dynamic_pointer_cast<Expr>(cs[0].second)), la);
@@ -1270,15 +1475,45 @@ ExprPtr liftDFAExprWithSwitchCompression(MDFA* dfa, stateidx_t state) {
   return switchOf(s, liftDFAExprF(dfa));
 }
 
+// A state referenced once is written into the function that references it,
+// up to a bound on how many states one function may accumulate, past which
+// further states are folded into functions of their own. The bound keeps any
+// one function small enough for LLVM to compile in reasonable time (its
+// codegen has passes superlinear in function size). It is a bound per
+// function, not on how many states a match may inline in total: folding every
+// state past the first N into a function of its own -- which is what a total
+// bound amounts to -- leaves a large match as thousands of two-instruction
+// functions, and the JIT pays per function (symbol resolution, inlining them
+// back) far more than it pays per instruction.
+//
+// The default is from the test suite's 70x12 table (Matching/
+// largeMatchTableCompileTime, ~6,800 states) on a release build: a bound of
+// 2,000 compiles it in 34s, 500 in 19s, 200 in 18.4s, 100 in 17s, 50 in
+// 18.5s, and no bound at all in 51s. The curve is flat from 75 to 200, so a
+// smaller table is not hurt by picking the low end of it.
+//
+// HOBBES_DFA_INLINE_THRESHOLD sets the bound; 0 removes it.
+size_t dfaInlineThreshold() {
+  static const size_t inlineThreshold = [] {
+    const char* v = std::getenv("HOBBES_DFA_INLINE_THRESHOLD");
+    if (v == nullptr) {
+      return static_cast<size_t>(100);
+    }
+    const auto i = strtoul(v, nullptr, 10);
+    return i == 0 ? std::numeric_limits<size_t>::max() : static_cast<size_t>(i);
+  }();
+  return inlineThreshold;
+}
+
 bool shouldInlineState(const MDFA* dfa, stateidx_t state) {
   const MStatePtr& s = dfa->states[state];
 
   if (dfa->states[state]->isPrimMatchRoot) {
     return false;
-  } else if (s->refs <= 1) {
+  } else if (s->refs <= 1 && dfa->inlinedStates < dfaInlineThreshold()) {
     return true;
   } else if (const FinishExpr* fe = is<FinishExpr>(s)) {
-    return isConst(fe->expr()) || is<Var>(fe->expr());
+    return isConst(fe->expr()) || (is<Var>(fe->expr()) != nullptr);
   } else {
     return false;
   }
@@ -1288,6 +1523,7 @@ ExprPtr liftPrimMatchExpr(MDFA* dfa, stateidx_t state);
 
 ExprPtr liftDFAExpr(MDFA* dfa, stateidx_t state) {
   if (shouldInlineState(dfa, state)) {
+    ++dfa->inlinedStates;
     return liftDFAExprWithSwitchCompression(dfa, state);
   } else {
     FoldedStateCalls::const_iterator fsc = dfa->foldedStateCalls.find(state);
@@ -1297,16 +1533,29 @@ ExprPtr liftDFAExpr(MDFA* dfa, stateidx_t state) {
     } else if (dfa->states[state]->isPrimMatchRoot) {
       return liftPrimMatchExpr(dfa, state);
     } else {
+      // a folded state starts a function of its own, with its own room to inline into
+      size_t   outerInlined = dfa->inlinedStates;
+      dfa->inlinedStates = 0;
       ExprPtr  def   = liftDFAExprWithSwitchCompression(dfa, state);
-      str::set fvnst = setDifference(freeVars(def), dfa->rootVars);
-      str::seq fvns  = str::seq(fvnst.begin(), fvnst.end());
+      dfa->inlinedStates = outerInlined;
+      // the state function takes the variables it uses as arguments, except
+      // those it can reach anyway: globals, and the state functions lifted
+      // before it. Asking the environment about each free variable is much
+      // cheaper than enumerating every global for every fold (boot alone
+      // folds over six hundred states against thousands of globals)
+      str::seq fvns;
+      for (const auto& fvn : freeVars(def)) {
+        if (dfa->liftedStateFns.count(fvn) == 0 && !dfa->c->typeEnv()->hasBinding(fvn)) {
+          fvns.push_back(fvn);
+        }
+      }
 
       std::string stateFn = ".patfs." + str::from(state);
       ExprPtr callexp = fncall(varName(dfa, stateFn), vars(fvns, dfa->rootLA), dfa->rootLA);
 
       dfa->foldedStates.push_back(FoldedState(stateFn, ExprPtr(new Fn(fvns, def, dfa->rootLA))));
       dfa->foldedStateCalls[state] = callexp;
-      dfa->rootVars.insert(stateFn);
+      dfa->liftedStateFns.insert(stateFn);
 
       return callexp;
     }
@@ -1315,14 +1564,13 @@ ExprPtr liftDFAExpr(MDFA* dfa, stateidx_t state) {
 
 ExprPtr liftDFAExpr(cc* c, const PatternRows& ps, const LexicalAnnotation& rootLA) {
   MDFA pdfa;
-  pdfa.rootVars  = c->typeEnv()->boundVariables();
   pdfa.c         = c;
   pdfa.inPrimSel = false;
 
   stateidx_t initState = makeDFA(&pdfa, ps, rootLA);
   ExprPtr    me        = liftDFAExpr(&pdfa, initState);
 
-  if (pdfa.foldedStates.size() == 0) {
+  if (pdfa.foldedStates.empty()) {
     return me;
   } else {
     LetRec::Bindings bs;
@@ -1334,7 +1582,7 @@ ExprPtr liftDFAExpr(cc* c, const PatternRows& ps, const LexicalAnnotation& rootL
 }
 
 // determine the row/expr set reachable from a DFA state
-typedef std::map<size_t, ExprPtr> RowResults;
+using RowResults = std::map<size_t, ExprPtr>;
 
 struct reachableRowExprsF : public switchMState<UnitV> {
   const MDFA* dfa;
@@ -1342,7 +1590,7 @@ struct reachableRowExprsF : public switchMState<UnitV> {
 
   reachableRowExprsF(const MDFA* dfa, RowResults* results) : dfa(dfa), results(results) { }
 
-  UnitV with(const SwitchVal* x) const {
+  UnitV with(const SwitchVal* x) const override {
     if (x->defaultState() != nullState) {
       switchOf(this->dfa->states[x->defaultState()], *this);
     }
@@ -1352,7 +1600,7 @@ struct reachableRowExprsF : public switchMState<UnitV> {
     return unitv;
   }
 
-  UnitV with(const FinishExpr* x) const {
+  UnitV with(const FinishExpr* x) const override {
     auto ei = this->dfa->exprIdxs.find(x->expr().get());
     if (ei == this->dfa->exprIdxs.end()) {
       throw std::runtime_error("Internal error, match DFA returns non-indexed expression");
@@ -1362,12 +1610,12 @@ struct reachableRowExprsF : public switchMState<UnitV> {
     return unitv;
   }
   
-  UnitV with(const LoadVars* x) const {
+  UnitV with(const LoadVars* x) const override {
     switchOf(this->dfa->states[x->nextState()], *this);
     return unitv;
   }
 
-  UnitV with(const SwitchVariant* x) const {
+  UnitV with(const SwitchVariant* x) const override {
     if (x->defaultState() != nullState) {
       switchOf(this->dfa->states[x->defaultState()], *this);
     }
@@ -1388,8 +1636,8 @@ long asLongRep(long*  x) { return *x; }
 long asLongRep(double x) { return asLongRep(reinterpret_cast<long*>(&x)); }
 
 // derive a primitive search function from a DFA (or sub-DFA) that contains _only_ primitive tests
-typedef std::map<std::string, llvm::Value*>      Args;
-typedef std::map<stateidx_t,  llvm::BasicBlock*> StateBranches;
+using Args = std::map<std::string, llvm::Value *>;
+using StateBranches = std::map<stateidx_t, llvm::BasicBlock *>;
 
 struct makePrimDFASF : public switchMState<UnitV> {
   const Args&    args;
@@ -1408,24 +1656,28 @@ struct makePrimDFASF : public switchMState<UnitV> {
     }
   }
 
-  UnitV with(const SwitchVal* x) const {
+  UnitV with(const SwitchVal* x) const override {
     if (x->defaultState() == nullState) {
-      if (x->jumps().size() == 0) {
+      if (x->jumps().empty()) {
         throw std::runtime_error("Internal error, empty switch statement in primitive match compilation");
       } else {
         throw std::runtime_error("Internal error, switches without default states not supported for primitive match compilation (on switch for " + x->switchVar() + " :: " + show(x->jumps()[0].first->primType()) + " with " + str::from(x->jumps().size()) + " cases)");
       }
     }
 
-    if (x->jumps().size() > 0 && is<Double>(x->jumps().begin()->first)) {
-      llvm::SwitchInst* s = this->dfa->c->builder()->CreateSwitch(this->dfa->c->builder()->CreateBitCast(arg(x->switchVar()), longType()), blockForState(x->defaultState()), x->jumps().size());
+    if (!x->jumps().empty() && (is<Double>(x->jumps().begin()->first) != nullptr)) {
+      llvm::SwitchInst* s = withContext([&](auto&) {
+        return this->dfa->c->builder()->CreateSwitch(this->dfa->c->builder()->CreateBitCast(arg(x->switchVar()), longType()), blockForState(x->defaultState()), x->jumps().size());
+      });
       for (const auto& jmp : x->jumps()) {
         if (const Double* d = is<Double>(jmp.first)) {
           s->addCase(civalue(asLongRep(d->value())), blockForState(jmp.second));
         }
       }
     } else {
-      llvm::SwitchInst* s = this->dfa->c->builder()->CreateSwitch(arg(x->switchVar()), blockForState(x->defaultState()), x->jumps().size());
+      llvm::SwitchInst* s = withContext([&](auto&) {
+        return this->dfa->c->builder()->CreateSwitch(arg(x->switchVar()), blockForState(x->defaultState()), x->jumps().size());
+      });
       for (const auto& jmp : x->jumps()) {
         s->addCase(toLLVMConstantInt(jmp.first), blockForState(jmp.second));
       }
@@ -1433,21 +1685,21 @@ struct makePrimDFASF : public switchMState<UnitV> {
     return unitv;
   }
 
-  UnitV with(const FinishExpr* x) const {
+  UnitV with(const FinishExpr* x) const override {
     auto ei = this->dfa->exprIdxs.find(x->expr().get());
     if (ei == this->dfa->exprIdxs.end()) {
       throw std::runtime_error("Internal error, primitive match DFA returns non-indexed expression");
     } else {
-      this->dfa->c->builder()->CreateRet(cvalue(static_cast<int>(ei->second)));
+      withContext([&](auto&) { this->dfa->c->builder()->CreateRet(cvalue(static_cast<int>(ei->second))); });
     }
     return unitv;
   }
-  
-  UnitV with(const LoadVars*) const {
+
+  [[noreturn]] UnitV with(const LoadVars*) const override {
     throw std::runtime_error("Internal error, not a primitive match table (load vars)");
   }
 
-  UnitV with(const SwitchVariant*) const {
+  [[noreturn]] UnitV with(const SwitchVariant*) const override {
     throw std::runtime_error("Internal error, not a primitive match table (switch variant)");
   }
 
@@ -1456,13 +1708,15 @@ struct makePrimDFASF : public switchMState<UnitV> {
     if (b != this->branches->end()) {
       return b->second;
     } else {
-      llvm::BasicBlock* obb = this->dfa->c->builder()->GetInsertBlock();
-      llvm::BasicBlock* bb  = llvm::BasicBlock::Create(context(), ".pmst" + freshName(), obb->getParent());
-      this->dfa->c->builder()->SetInsertPoint(bb);
-      switchOf(this->dfa->states[s], *this);
-      (*this->branches)[s] = bb;
-      this->dfa->c->builder()->SetInsertPoint(obb);
-      return bb;
+      return withContext([&](llvm::LLVMContext& ctx) {
+        llvm::BasicBlock* obb = this->dfa->c->builder()->GetInsertBlock();
+        llvm::BasicBlock* bb = llvm::BasicBlock::Create(ctx, ".pmst" + freshName(), obb->getParent());
+        this->dfa->c->builder()->SetInsertPoint(bb);
+        switchOf(this->dfa->states[s], *this);
+        (*this->branches)[s] = bb;
+        this->dfa->c->builder()->SetInsertPoint(obb);
+        return bb;
+      });
     }
   }
 };
@@ -1475,19 +1729,22 @@ llvm::Function* makePrimMatchDFAFunc(const std::string& fname, MDFA* dfa, statei
     }
   }
 
-  llvm::Function*   result = llvm::Function::Create(llvm::FunctionType::get(intType(), atys, false), llvm::Function::ExternalLinkage, fname, dfa->c->module());
-  llvm::BasicBlock* bb     = llvm::BasicBlock::Create(context(), "entry", result);
+  llvm::Function* result   = withContext([&](auto&) {
+    return llvm::Function::Create(llvm::FunctionType::get(intType(), atys, false),
+                                  llvm::Function::ExternalLinkage, fname, dfa->c->module());
+  });
+  llvm::BasicBlock* bb     = withContext([result](llvm::LLVMContext& ctx) { return llvm::BasicBlock::Create(ctx, "entry", result); });
 
-  dfa->c->builder()->SetInsertPoint(bb);
+  withContext([dfa, bb](auto&) { dfa->c->builder()->SetInsertPoint(bb); });
 
   Args fargs;
   llvm::Function::arg_iterator a = result->arg_begin();
-  for (unsigned int i = 0; i < args.size(); ++i) {
-    if (isUnit(args[i].second)) {
-      fargs[args[i].first] = cvalue(true);
+  for (const auto &arg : args) {
+    if (isUnit(arg.second)) {
+      fargs[arg.first] = cvalue(true);
     } else {
-      a->setName(args[i].first);
-      fargs[args[i].first] = &*a;
+      a->setName(arg.first);
+      fargs[arg.first] = &*a;
       ++a;
     }
   }
@@ -1502,7 +1759,7 @@ class primdfafunc : public op {
 public:
   primdfafunc(llvm::Function* vfn, const PrimFArgs& args) : vfn(vfn) {
     MonoTypes atys;
-    if (args.size() == 0) {
+    if (args.empty()) {
       atys.push_back(MonoTypePtr(Prim::make("unit")));
     } else {
       for (const auto& arg : args) {
@@ -1512,11 +1769,11 @@ public:
     this->ftype = polytype(functy(atys, primty("int")));
   }
 
-  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) {
-    return fncall(c->builder(), this->vfn, this->vfn->getFunctionType(), compileArgs(c, es));
+  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr&, const Exprs& es) override {
+    return withContext([&](auto&) { return fncall(c->builder(), this->vfn, this->vfn->getFunctionType(), compileArgs(c, es)); });
   }
 
-  PolyTypePtr type(typedb&) const {
+  PolyTypePtr type(typedb&) const override {
     return this->ftype;
   }
 private:
@@ -1530,8 +1787,8 @@ void makeCompiledPrimMatchFunction(const std::string& fname, MDFA* dfa, stateidx
 }
 
 // derive a primitive match DFA to run in an interpreted mode, to minimize compilation overhead
-typedef variant<int, long> IDFATransition;
-typedef array< std::pair<long, IDFATransition> > IDFATransitions;
+using IDFATransition = variant<int, long>;
+using IDFATransitions = array<std::pair<long, IDFATransition>>;
 
 struct IDFAState {
   long             reads;
@@ -1557,8 +1814,8 @@ MonoTypePtr dfaStateType() {
   return arrayty(MonoTypePtr(Record::make(dfafns)));
 }
 
-typedef std::unordered_map<std::string, size_t> ArgPos;
-typedef std::unordered_map<size_t, size_t>      GlobalToLocalState;
+using ArgPos = std::unordered_map<std::string, size_t>;
+using GlobalToLocalState = std::unordered_map<size_t, size_t>;
 
 void mapStatesFrom(MDFA* dfa, stateidx_t state, GlobalToLocalState* localstate) {
   if (localstate->find(state) == localstate->end()) {
@@ -1575,7 +1832,7 @@ void mapStatesFrom(MDFA* dfa, stateidx_t state, GlobalToLocalState* localstate) 
         throw std::runtime_error("Internal error, primitive DFAs without default states not supported for interpretation");
       }
       mapStatesFrom(dfa, sv->defaultState(), localstate);
-    } else if (!is<FinishExpr>(dfa->states[state])) {
+    } else if (is<FinishExpr>(dfa->states[state]) == nullptr) {
       throw std::runtime_error("Internal error, invalid primitive DFA for interpretation");
     }
   }
@@ -1613,7 +1870,7 @@ void copyStateDef(const ArgPos& argpos, MDFA* dfa, stateidx_t state, const Globa
   const SwitchVal* sv     = is<SwitchVal>(dfa->states[state]);
   size_t           statei = localState(localstate, state);
 
-  if (!sv) {
+  if (sv == nullptr) {
     throw std::runtime_error("Internal error, expected primitive switch for interpreted DFA");
   }
 
@@ -1626,7 +1883,7 @@ void copyStateDef(const ArgPos& argpos, MDFA* dfa, stateidx_t state, const Globa
 }
 
 IDFATransitions* transitions(const ArgPos& argpos, MDFA* dfa, const SwitchVal::Jumps& jmps, const GlobalToLocalState& localstate, std::set<stateidx_t>* dones, array<IDFAState>* dfaStates) {
-  typedef std::map<long, IDFATransition> SortedSVJumps;
+  using SortedSVJumps = std::map<long, IDFATransition>;
 
   SortedSVJumps ssvj;
   for (const auto& jmp : jmps) {
@@ -1637,8 +1894,8 @@ IDFATransitions* transitions(const ArgPos& argpos, MDFA* dfa, const SwitchVal::J
     }
   }
 
-  size_t msz = sizeof(long) + (ssvj.size() * sizeof(std::pair<long, IDFATransition>));
-  IDFATransitions* result = reinterpret_cast<IDFATransitions*>(malloc(msz));
+  size_t msz = offsetof(IDFATransitions, data) + (ssvj.size() * sizeof(std::pair<long, IDFATransition>));
+  auto* result = reinterpret_cast<IDFATransitions*>(malloc(msz));
   memset(reinterpret_cast<void*>(result), 0, msz);
   result->size = ssvj.size();
   size_t i = 0;
@@ -1683,8 +1940,8 @@ void makeInterpretedPrimMatchFunction(const std::string& fname, MDFA* dfa, state
   mapStatesFrom(dfa, state, &localstate);
 
   // construct the DFA description in a consumable format
-  size_t msz = sizeof(long) + (localstate.size() + sizeof(IDFAState));
-  array<IDFAState>* dfaStates = reinterpret_cast<array<IDFAState>*>(malloc(msz));
+  size_t msz = offsetof(array<IDFAState>, data) + (localstate.size() * sizeof(IDFAState));
+  auto* dfaStates = reinterpret_cast<array<IDFAState>*>(malloc(msz));
   memset(reinterpret_cast<void*>(dfaStates), 0, msz);
   dfaStates->size = localstate.size();
 

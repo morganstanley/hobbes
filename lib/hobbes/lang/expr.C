@@ -5,14 +5,19 @@
 #include <hobbes/util/time.H>
 #include <hobbes/util/codec.H>
 #include <hobbes/util/stream.H>
+#include <algorithm>
+#include <memory>
+#include <new>
 #include <sstream>
+#include <unordered_map>
+#include <unordered_set>
 
 namespace hobbes {
 
 Exprs clones(const Exprs& es) {
   Exprs r;
-  for (Exprs::const_iterator e = es.begin(); e != es.end(); ++e) {
-    r.push_back(ExprPtr((*e)->clone()));
+  for (const auto &e : es) {
+    r.push_back(ExprPtr(e->clone()));
   }
   return r;
 }
@@ -36,7 +41,117 @@ inline void showTy(std::ostream& out, const QualTypePtr& qty) {
 }
 
 Expr::Expr(int cid, const LexicalAnnotation& la) : LexicallyAnnotated(la), cid(cid) { }
-Expr::~Expr() { }
+Expr::~Expr() = default;
+
+// Destroying an expression used to recurse through its nesting: each node's
+// destructor released its children, whose destructors released theirs, one
+// stack frame per level. The parser builds a tree as deep as its input
+// describes -- a chain of left-associative operators gains a level per term
+// -- and while the nesting bound in parser.C rejects what the parser
+// *returns*, a deep tree can be torn down from places the bound cannot
+// reach: the parser's autorelease set holds argument-list vectors whose
+// elements reference deep subtrees, and after a syntax error discards the
+// enclosing nodes, deleting such a vector released a chain tens of
+// thousands of levels deep (OSS-Fuzz 554085275: stack overflow in
+// App::~App under fuzz-parse-expr, from 116KB of `N<N<N<...`).
+//
+// So teardown is iterative at the source, for every owner: a destructor
+// moves its children onto a thread-local list instead of releasing them in
+// place, and the outermost destructor drains the list one expression at a
+// time. Each drained expression's destructor defers its own children the
+// same way, so the recursion never runs more than one level deep no matter
+// how the tree nests or who lets go of it.
+namespace {
+  // expression teardown can run at any point in a thread's life -- including
+  // during static destruction, after thread_local destructors have already
+  // run: the fuzz harnesses hold their compiler in a static slot, and
+  // destroying that compiler at exit releases every expression it still
+  // holds. So the list lives in trivially-destructible thread-local storage
+  // and is never destructed (a list with a destructor was freed first, and
+  // deferring into it then was a use-after-free). Its heap buffer is handed
+  // back at the end of every drain, so between teardowns it retains nothing
+  // and a thread's exit leaks nothing.
+  Exprs& deferredReleases() {
+    alignas(Exprs) thread_local unsigned char storage[sizeof(Exprs)];
+    thread_local Exprs* es = new (storage) Exprs();
+    return *es;
+  }
+  thread_local bool drainingReleases = false;
+
+  void deferRelease(ExprPtr& e) {
+    if (e) {
+      deferredReleases().push_back(std::move(e));
+    }
+  }
+  void deferRelease(Exprs& es) {
+    for (auto& e : es) {
+      deferRelease(e);
+    }
+  }
+
+  // called at the end of every child-deferring destructor; only the
+  // outermost one on this thread does the work, so a destructor reached
+  // from inside the drain just leaves its children on the list
+  void drainDeferredReleases() {
+    if (drainingReleases) {
+      return;
+    }
+    drainingReleases = true;
+    Exprs& es = deferredReleases();
+    while (!es.empty()) {
+      ExprPtr e = std::move(es.back());
+      es.pop_back();
+      e.reset();
+    }
+    Exprs().swap(es); // hand the buffer back: the list must hold no heap between teardowns
+    drainingReleases = false;
+  }
+}
+
+Let::~Let()       { deferRelease(this->e); deferRelease(this->b); drainDeferredReleases(); }
+Fn::~Fn()         { deferRelease(this->e); drainDeferredReleases(); }
+App::~App()       { deferRelease(this->fne); deferRelease(this->argl); drainDeferredReleases(); }
+Assign::~Assign() { deferRelease(this->lhs); deferRelease(this->rhs); drainDeferredReleases(); }
+MkArray::~MkArray()     { deferRelease(this->es); drainDeferredReleases(); }
+MkVariant::~MkVariant() { deferRelease(this->e); drainDeferredReleases(); }
+AIndex::~AIndex() { deferRelease(this->arr); deferRelease(this->i); drainDeferredReleases(); }
+Proj::~Proj()     { deferRelease(this->r); drainDeferredReleases(); }
+Assump::~Assump() { deferRelease(this->e); drainDeferredReleases(); }
+Pack::~Pack()     { deferRelease(this->e); drainDeferredReleases(); }
+Unpack::~Unpack() { deferRelease(this->pkg); deferRelease(this->body); drainDeferredReleases(); }
+
+LetRec::~LetRec() {
+  for (auto& b : this->bs) {
+    deferRelease(b.second);
+  }
+  deferRelease(this->e);
+  drainDeferredReleases();
+}
+
+MkRecord::~MkRecord() {
+  for (auto& f : this->fs) {
+    deferRelease(f.second);
+  }
+  drainDeferredReleases();
+}
+
+Case::~Case() {
+  deferRelease(this->v);
+  for (auto& b : this->bs) {
+    deferRelease(b.exp);
+  }
+  deferRelease(this->def);
+  drainDeferredReleases();
+}
+
+Switch::~Switch() {
+  deferRelease(this->v);
+  for (auto& b : this->bs) {
+    deferRelease(b.exp);
+  }
+  deferRelease(this->def);
+  drainDeferredReleases();
+}
 const QualTypePtr& Expr::type() const { return this->annotatedType; }
 void Expr::type(const QualTypePtr& ty) { this->annotatedType = ty; }
 int Expr::case_id() const { return this->cid; }
@@ -59,7 +174,7 @@ Expr* Bool::clone() const { return new Bool(this->x,la()); }
 void Bool::show(std::ostream& out)          const { out << (this->x ? "true" : "false"); }
 void Bool::showAnnotated(std::ostream& out) const { show(out); showTy(out, type()); }
 bool Bool::equiv(const Bool& rhs)           const { return this->x == rhs.x; }
-bool Bool::lt(const Bool& rhs)              const { return this->x < rhs.x; }
+bool Bool::lt(const Bool& rhs)              const { return static_cast<int>(this->x) < static_cast<int>(rhs.x); }
 MonoTypePtr Bool::primType() const { return MonoTypePtr(Prim::make("bool")); }
 
 Char::Char(char x, const LexicalAnnotation& la) : Base(la), x(x) { }
@@ -214,7 +329,7 @@ Expr* LetRec::clone() const {
 }
 
 void LetRec::show(std::ostream& out) const {
-  if (this->bs.size() == 0) {
+  if (this->bs.empty()) {
     out << "letrec {} in ";
     this->e->show(out);
   } else {
@@ -231,7 +346,7 @@ void LetRec::show(std::ostream& out) const {
 }
 
 void LetRec::showAnnotated(std::ostream& out) const {
-  if (this->bs.size() == 0) {
+  if (this->bs.empty()) {
     out << "letrec {} in ";
     this->e->showAnnotated(out);
   } else {
@@ -250,7 +365,7 @@ void LetRec::showAnnotated(std::ostream& out) const {
 Fn::Fn(const VarNames& vs, const ExprPtr& e, const LexicalAnnotation& la) : Base(la), vs(vs), e(e) {
   // to make type-checking homogeneous, we equate the empty parameter list with a parameter list containing just unit
   //   (unit is compiled away to nothing, so it's equivalent)
-  if (this->vs.size() == 0) {
+  if (this->vs.empty()) {
     this->vs.push_back("_");
   }
 }
@@ -291,7 +406,7 @@ void Fn::showAnnotated(std::ostream& out) const {
 App::App(const ExprPtr& fne, const Exprs& argl, const LexicalAnnotation& la) : Base(la), fne(fne), argl(argl) {
   // to make type-checking homogeneous, we equate the empty parameter list with a parameter list containing just unit
   //   (unit is compiled away to nothing, so it's equivalent)
-  if (this->argl.size() == 0) {
+  if (this->argl.empty()) {
     this->argl.push_back(ExprPtr(new Unit(la)));
   }
 }
@@ -326,8 +441,8 @@ void App::show(std::ostream& out) const {
 
   // show the argl part
   out << "(";
-  if (this->argl.size() > 0) {
-    Exprs::const_iterator e = this->argl.begin();
+  if (!this->argl.empty()) {
+    auto e = this->argl.begin();
     (*e)->show(out);
     while (++e != this->argl.end()) {
       out << ", ";
@@ -344,8 +459,8 @@ void App::showAnnotated(std::ostream& out) const {
 
   // show the argl part
   out << "(";
-  if (this->argl.size() > 0) {
-    Exprs::const_iterator e = this->argl.begin();
+  if (!this->argl.empty()) {
+    auto e = this->argl.begin();
     (*e)->showAnnotated(out);
     while (++e != this->argl.end()) {
       out << ", ";
@@ -398,7 +513,7 @@ Exprs& MkArray::values() { return this->es; }
 Expr* MkArray::clone() const { return new MkArray(clones(this->es),la()); }
 void MkArray::show(std::ostream& out) const {
   out << "[";
-  if (this->es.size() > 0) {
+  if (!this->es.empty()) {
     this->es[0]->show(out);
     for (size_t i = 1; i < this->es.size(); ++i) {
       out << ", ";
@@ -409,7 +524,7 @@ void MkArray::show(std::ostream& out) const {
 }
 void MkArray::showAnnotated(std::ostream& out) const {
   out << "[";
-  if (this->es.size() > 0) {
+  if (!this->es.empty()) {
     this->es[0]->showAnnotated(out);
     for (size_t i = 1; i < this->es.size(); ++i) {
       out << ", ";
@@ -454,11 +569,11 @@ bool MkRecord::operator==(const MkRecord& rhs) const {
 }
 const MkRecord::FieldDefs& MkRecord::fields() const { return this->fs; }
 MkRecord::FieldDefs& MkRecord::fields() { return this->fs; }
-bool MkRecord::isTuple() const { return this->fs.size() > 0 && this->fs[0].first.size() > 0 && this->fs[0].first[0] == '.'; }
+bool MkRecord::isTuple() const { return !this->fs.empty() && !this->fs[0].first.empty() && this->fs[0].first[0] == '.'; }
 Expr* MkRecord::clone() const {
   FieldDefs cfs;
-  for (FieldDefs::const_iterator f = this->fs.begin(); f != this->fs.end(); ++f) {
-    cfs.push_back(FieldDef(f->first, ExprPtr(f->second->clone())));
+  for (const auto &f : this->fs) {
+    cfs.push_back(FieldDef(f.first, ExprPtr(f.second->clone())));
   }
   return new MkRecord(cfs,la());
 }
@@ -478,7 +593,7 @@ void MkRecord::showAnnotated(std::ostream& out) const {
 }
 void MkRecord::showRecord(std::ostream& out) const {
   out << "{";
-  if (this->fs.size() > 0) {
+  if (!this->fs.empty()) {
     out << this->fs[0].first << " = "; this->fs[0].second->show(out);
     for (size_t i = 1; i < this->fs.size(); ++i) {
       out << ", " << this->fs[i].first << " = "; this->fs[i].second->show(out);
@@ -488,7 +603,7 @@ void MkRecord::showRecord(std::ostream& out) const {
 }
 void MkRecord::showRecordAnnotated(std::ostream& out) const {
   out << "{";
-  if (this->fs.size() > 0) {
+  if (!this->fs.empty()) {
     out << this->fs[0].first << " = "; this->fs[0].second->showAnnotated(out);
     for (size_t i = 1; i < this->fs.size(); ++i) {
       out << ", " << this->fs[i].first << " = "; this->fs[i].second->showAnnotated(out);
@@ -550,11 +665,11 @@ bool Case::operator==(const Case& rhs) const {
   if ((this->bs.size() != rhs.bs.size()) || !(*this->v == *rhs.v)) {
     return false;
   } else {
-    if (this->def.get()) {
-      if (!rhs.def.get() || !(*this->def == *rhs.def)) {
+    if (this->def.get() != nullptr) {
+      if ((rhs.def.get() == nullptr) || !(*this->def == *rhs.def)) {
         return false;
       }
-    } else if (rhs.def.get()) {
+    } else if (rhs.def.get() != nullptr) {
       return false;
     }
 
@@ -580,8 +695,8 @@ Case::Bindings& Case::bindings()                       { return this->bs; }
 void            Case::defaultExpr(const ExprPtr& ndef) { this->def = ndef; }
 
 bool Case::hasBinding(const std::string& bn) const {
-  for (Bindings::const_iterator b = this->bs.begin(); b != this->bs.end(); ++b) {
-    if (b->selector == bn) {
+  for (const auto &b : this->bs) {
+    if (b.selector == bn) {
       return true;
     }
   }
@@ -592,16 +707,16 @@ void Case::addBinding(const std::string& selector, const std::string& vname, con
 }
 Expr* Case::clone() const {
   Bindings cbs;
-  for (Bindings::const_iterator b = this->bs.begin(); b != this->bs.end(); ++b) {
-    cbs.push_back(Binding(b->selector, b->vname, ExprPtr(b->exp->clone())));
+  for (const auto &b : this->bs) {
+    cbs.push_back(Binding(b.selector, b.vname, ExprPtr(b.exp->clone())));
   }
-  return new Case(ExprPtr(this->v->clone()), cbs, this->def.get() ? ExprPtr(this->def->clone()) : ExprPtr(),la());
+  return new Case(ExprPtr(this->v->clone()), cbs, this->def.get() != nullptr ? ExprPtr(this->def->clone()) : ExprPtr(),la());
 }
 void Case::show(std::ostream& out) const {
   out << "case (";
   this->v->show(out);
   out << ") {";
-  for (Bindings::const_iterator b = this->bs.begin(); b != this->bs.end(); ++b) {
+  for (auto b = this->bs.begin(); b != this->bs.end(); ++b) {
     if (b != this->bs.begin()) out << ", ";
 
     if (b->selector != b->vname) {
@@ -612,7 +727,7 @@ void Case::show(std::ostream& out) const {
     out << ".";
     b->exp->show(out);
   }
-  if (this->def.get() != 0) {
+  if (this->def.get() != nullptr) {
     out << ",default.";
     this->def->show(out);
   }
@@ -622,7 +737,7 @@ void Case::showAnnotated(std::ostream& out) const {
   out << "case (";
   this->v->showAnnotated(out);
   out << ") {";
-  for (Bindings::const_iterator b = this->bs.begin(); b != this->bs.end(); ++b) {
+  for (auto b = this->bs.begin(); b != this->bs.end(); ++b) {
     if (b != this->bs.begin()) out << ", ";
 
     if (b->selector != b->vname) {
@@ -642,7 +757,7 @@ Switch::Switch(const ExprPtr& v, const Bindings& bs, const ExprPtr& def, const L
   // (only a few primitive types work with no default case)
   bool exhaustive = def != ExprPtr();
 
-  if (bs.size() > 0) {
+  if (!bs.empty()) {
     switch (bs[0].value->case_id()) {
     case Unit::type_case_id:
       exhaustive = true;
@@ -669,14 +784,14 @@ Switch::Switch(const ExprPtr& v, const Bindings& bs, const ExprPtr& def, const L
   // ensure unambiguous selection
   PrimitiveSet selectors;
 
-  for (size_t i = 0; i < bs.size(); ++i) {
-    if (selectors.find(bs[i].value) != selectors.end()) {
+  for (const auto &b : bs) {
+    if (selectors.find(b.value) != selectors.end()) {
       std::ostringstream ss;
       ss << "Duplicate selector in switch expression:\n";
       show(ss);
       throw annotated_error(la, ss.str());
     } else {
-      selectors.insert(bs[i].value);
+      selectors.insert(b.value);
     }
   }
 }
@@ -688,11 +803,11 @@ bool Switch::operator==(const Switch& rhs) const {
   if (this->bs.size() != rhs.bs.size() || !(*this->v == *rhs.v)) {
     return false;
   } else {
-    if (this->def.get()) {
-      if (!rhs.def.get() || !(*this->def == *rhs.def)) {
+    if (this->def.get() != nullptr) {
+      if ((rhs.def.get() == nullptr) || !(*this->def == *rhs.def)) {
         return false;
       }
-    } else if (rhs.def.get()) {
+    } else if (rhs.def.get() != nullptr) {
       return false;
     }
 
@@ -719,8 +834,10 @@ void Switch::defaultExpr(const ExprPtr& x) { this->def = x; }
 Expr* Switch::clone() const {
   ExprPtr cdef = this->def ? ExprPtr(this->def->clone()) : ExprPtr();
   Bindings cbs;
-  for (auto b : this->bs) {
-    cbs.push_back(Binding(PrimitivePtr(reinterpret_cast<Primitive*>(b.value->clone())), ExprPtr(b.exp->clone())));
+  for (const auto& b : this->bs) {
+    // a downcast, not a reinterpretation: clone() is declared on Expr but the
+    // object really is a Primitive, so let the compiler adjust the pointer
+    cbs.push_back(Binding(PrimitivePtr(static_cast<Primitive*>(b.value->clone())), ExprPtr(b.exp->clone())));
   }
   return new Switch(ExprPtr(this->v->clone()), cbs, cdef, la());
 }
@@ -729,7 +846,7 @@ void Switch::show(std::ostream& out) const {
   out << "switch (";
   this->v->show(out);
   out << ") {";
-  for (auto b : this->bs) {
+  for (const auto& b : this->bs) {
     b.value->show(out);
     out << " => ";
     b.exp->show(out);
@@ -747,7 +864,7 @@ void Switch::showAnnotated(std::ostream& out) const {
   out << "switch (";
   this->v->showAnnotated(out);
   out << ") {";
-  for (auto b : this->bs) {
+  for (const auto& b : this->bs) {
     b.value->show(out);
     out << " => ";
     b.exp->showAnnotated(out);
@@ -880,24 +997,24 @@ struct substVarF : public switchExprC<ExprPtr> {
   ExprPtr withoutNames(const str::seq&    ns, const ExprPtr& e) const { return withoutNames(toSet(ns), e); }
   ExprPtr withoutNames(const std::string& n,  const ExprPtr& e) const { return withoutNames(toSet(list(n)), e); }
 
-  ExprPtr withConst(const Expr* v) const { return ExprPtr(v->clone()); }
+  ExprPtr withConst(const Expr* v) const override { return ExprPtr(v->clone()); }
 
-  ExprPtr with(const Var* v) const {
-    VarMapping::const_iterator ve = this->vm.find(v->value());
+  ExprPtr with(const Var* v) const override {
+    auto ve = this->vm.find(v->value());
     if (ve == this->vm.end()) {
       return ExprPtr(v->clone());
     } else {
-      if (mapped) *mapped = true;
+      if (mapped != nullptr) *mapped = true;
 
       return ve->second;
     }
   }
 
-  ExprPtr with(const Let* v) const {
+  ExprPtr with(const Let* v) const override {
     return ExprPtr(new Let(v->var(), switchOf(v->varExpr(), *this), withoutNames(v->var(), v->bodyExpr()), v->la()));
   }
 
-  ExprPtr with(const LetRec* v) const {
+  ExprPtr with(const LetRec* v) const override {
     str::set vns = toSet(v->varNames());
     LetRec::Bindings bs;
     for (const auto& b : v->bindings()) {
@@ -906,50 +1023,50 @@ struct substVarF : public switchExprC<ExprPtr> {
     return ExprPtr(new LetRec(bs, withoutNames(vns, v->bodyExpr()), v->la()));
   }
 
-  ExprPtr with(const Fn* v) const {
+  ExprPtr with(const Fn* v) const override {
     return ExprPtr(new Fn(v->varNames(), withoutNames(v->varNames(), v->body()), v->la()));
   }
 
-  ExprPtr with(const App* v) const {
+  ExprPtr with(const App* v) const override {
     return ExprPtr(new App(switchOf(v->fn(), *this), switchOf(v->args(), *this), v->la()));
   }
 
-  ExprPtr with(const Assign* v) const {
+  ExprPtr with(const Assign* v) const override {
     return ExprPtr(new Assign(switchOf(v->left(), *this), switchOf(v->right(), *this), v->la()));
   }
 
-  ExprPtr with(const MkArray* v) const {
+  ExprPtr with(const MkArray* v) const override {
     return ExprPtr(new MkArray(switchOf(v->values(), *this), v->la()));
   }
 
-  ExprPtr with(const MkVariant* v) const {
+  ExprPtr with(const MkVariant* v) const override {
     return ExprPtr(new MkVariant(v->label(), switchOf(v->value(), *this), v->la()));
   }
   
-  ExprPtr with(const MkRecord* v) const {
+  ExprPtr with(const MkRecord* v) const override {
     return ExprPtr(new MkRecord(switchOf(v->fields(), *this), v->la()));
   }
 
-  ExprPtr with(const AIndex* v) const {
+  ExprPtr with(const AIndex* v) const override {
     return ExprPtr(new AIndex(switchOf(v->array(), *this), switchOf(v->index(), *this), v->la()));
   }
 
-  ExprPtr with(const Case* v) const {
+  ExprPtr with(const Case* v) const override {
     const Case::Bindings& cbs = v->bindings();
     Case::Bindings rcbs;
-    for (Case::Bindings::const_iterator cb = cbs.begin(); cb != cbs.end(); ++cb) {
-      rcbs.push_back(Case::Binding(cb->selector, cb->vname, withoutNames(cb->vname, cb->exp)));
+    for (const auto &cb : cbs) {
+      rcbs.push_back(Case::Binding(cb.selector, cb.vname, withoutNames(cb.vname, cb.exp)));
     }
     ExprPtr de = v->defaultExpr();
-    if (de.get()) {
+    if (de.get() != nullptr) {
       de = switchOf(de, *this);
     }
     return ExprPtr(new Case(switchOf(v->variant(), *this), rcbs, de, v->la()));
   }
 
-  ExprPtr with(const Switch* v) const {
+  ExprPtr with(const Switch* v) const override {
     Switch::Bindings rsbs;
-    for (auto sb : v->bindings()) {
+    for (const auto& sb : v->bindings()) {
       rsbs.push_back(Switch::Binding(sb.value, switchOf(sb.exp, *this)));
     }
     ExprPtr de = v->defaultExpr();
@@ -959,19 +1076,19 @@ struct substVarF : public switchExprC<ExprPtr> {
     return ExprPtr(new Switch(switchOf(v->expr(), *this), rsbs, de, v->la()));
   }
 
-  ExprPtr with(const Proj* v) const {
+  ExprPtr with(const Proj* v) const override {
     return ExprPtr(new Proj(switchOf(v->record(), *this), v->field(), v->la()));
   }
 
-  ExprPtr with(const Assump* v) const {
+  ExprPtr with(const Assump* v) const override {
     return ExprPtr(new Assump(switchOf(v->expr(), *this), v->ty(), v->la()));
   }
 
-  ExprPtr with(const Pack* v) const {
+  ExprPtr with(const Pack* v) const override {
     return ExprPtr(new Pack(switchOf(v->expr(), *this), v->la()));
   }
 
-  ExprPtr with(const Unpack* v) const {
+  ExprPtr with(const Unpack* v) const override {
     return ExprPtr(new Unpack(v->varName(), switchOf(v->package(), *this), withoutNames(v->varName(), v->expr()), v->la()));
   }
 };
@@ -984,7 +1101,7 @@ struct substTyF : public switchExprTyFn {
   const MonoTypeSubst& s;
   substTyF(const MonoTypeSubst& s) : s(s) { }
 
-  QualTypePtr withTy(const QualTypePtr& qt) const {
+  QualTypePtr withTy(const QualTypePtr& qt) const override {
     if (qt) {
       return substitute(this->s, qt);
     } else {
@@ -998,27 +1115,188 @@ ExprPtr substitute(const MonoTypeSubst& s, const ExprPtr& e) {
 }
 
 struct isConstP : switchExprC<bool> {
-  bool withConst(const Expr*)      const { return true; }
-  bool with     (const Var*)       const { return false; }
-  bool with     (const Let*)       const { return false; }
-  bool with     (const LetRec*)    const { return false; }
-  bool with     (const Fn*)        const { return false; }
-  bool with     (const App*)       const { return false; }
-  bool with     (const Assign*)    const { return false; }
-  bool with     (const MkArray*)   const { return false; }
-  bool with     (const MkVariant*) const { return false; }
-  bool with     (const MkRecord*)  const { return false; }
-  bool with     (const AIndex*)    const { return false; }
-  bool with     (const Case*)      const { return false; }
-  bool with     (const Switch*)    const { return false; }
-  bool with     (const Proj*)      const { return false; }
-  bool with     (const Assump*)    const { return false; }
-  bool with     (const Pack*)      const { return false; }
-  bool with     (const Unpack*)    const { return false; }
+  bool withConst(const Expr*)      const override { return true; }
+  bool with     (const Var*)       const override { return false; }
+  bool with     (const Let*)       const override { return false; }
+  bool with     (const LetRec*)    const override { return false; }
+  bool with     (const Fn*)        const override { return false; }
+  bool with     (const App*)       const override { return false; }
+  bool with     (const Assign*)    const override { return false; }
+  bool with     (const MkArray*)   const override { return false; }
+  bool with     (const MkVariant*) const override { return false; }
+  bool with     (const MkRecord*)  const override { return false; }
+  bool with     (const AIndex*)    const override { return false; }
+  bool with     (const Case*)      const override { return false; }
+  bool with     (const Switch*)    const override { return false; }
+  bool with     (const Proj*)      const override { return false; }
+  bool with     (const Assump*)    const override { return false; }
+  bool with     (const Pack*)      const override { return false; }
+  bool with     (const Unpack*)    const override { return false; }
 };
 
 bool isConst(const ExprPtr& e) {
   return switchOf(e, isConstP());
+}
+
+// the sub-expressions immediately under an expression
+struct subExprsF : public switchExprC<Exprs> {
+  Exprs withConst(const Expr*) const override { return Exprs(); }
+  Exprs with(const Var*)       const override { return Exprs(); }
+
+  Exprs with(const Let* v) const override { return list(v->varExpr(), v->bodyExpr()); }
+
+  Exprs with(const LetRec* v) const override {
+    Exprs r;
+    for (const auto& b : v->bindings()) {
+      r.push_back(b.second);
+    }
+    r.push_back(v->bodyExpr());
+    return r;
+  }
+
+  Exprs with(const Fn* v) const override { return list(v->body()); }
+
+  Exprs with(const App* v) const override {
+    Exprs r = list(v->fn());
+    r.insert(r.end(), v->args().begin(), v->args().end());
+    return r;
+  }
+
+  Exprs with(const Assign* v)    const override { return list(v->left(), v->right()); }
+  Exprs with(const MkArray* v)   const override { return v->values(); }
+  Exprs with(const MkVariant* v) const override { return list(v->value()); }
+
+  Exprs with(const MkRecord* v) const override {
+    Exprs r;
+    for (const auto& f : v->fields()) {
+      r.push_back(f.second);
+    }
+    return r;
+  }
+
+  Exprs with(const AIndex* v) const override { return list(v->array(), v->index()); }
+
+  Exprs with(const Case* v) const override {
+    Exprs r = list(v->variant());
+    for (const auto& b : v->bindings()) {
+      r.push_back(b.exp);
+    }
+    if (v->defaultExpr()) {
+      r.push_back(v->defaultExpr());
+    }
+    return r;
+  }
+
+  // a switch selects on constants, so only its branches are sub-expressions
+  Exprs with(const Switch* v) const override {
+    Exprs r = list(v->expr());
+    for (const auto& b : v->bindings()) {
+      r.push_back(b.exp);
+    }
+    if (v->defaultExpr()) {
+      r.push_back(v->defaultExpr());
+    }
+    return r;
+  }
+
+  Exprs with(const Proj* v)   const override { return list(v->record()); }
+  Exprs with(const Assump* v) const override { return list(v->expr()); }
+  Exprs with(const Pack* v)   const override { return list(v->expr()); }
+  Exprs with(const Unpack* v) const override { return list(v->package(), v->expr()); }
+};
+
+Exprs subExprs(const ExprPtr& e) {
+  return e ? switchOf(e, subExprsF()) : Exprs();
+}
+
+// the two functions below walk expressions with an explicit stack rather than
+// by recursion: they are what a caller reaches for when a tree may be nested
+// more deeply than the call stack can follow, so they cannot recur themselves
+
+size_t nestingDepth(const ExprPtr& root) {
+  if (!root) {
+    return 0;
+  }
+
+  // an expression can reach the same sub-expression by more than one path, so
+  // depths are memoized -- without that, a tree of shared sub-expressions takes
+  // exponential time to measure
+  std::unordered_map<const Expr*, size_t> depths;
+  std::unordered_set<const Expr*>         pushed;
+
+  using Frame = std::pair<ExprPtr, bool>; // the expression, and whether its children are on the stack
+  std::vector<Frame> stack;
+  stack.push_back(Frame(root, false));
+  pushed.insert(root.get());
+
+  while (!stack.empty()) {
+    if (!stack.back().second) {
+      stack.back().second = true;
+
+      const Exprs cs = subExprs(stack.back().first);
+      for (const auto& c : cs) {
+        if (c && pushed.insert(c.get()).second) {
+          stack.push_back(Frame(c, false));
+        }
+      }
+    } else {
+      const ExprPtr e = stack.back().first;
+      stack.pop_back();
+
+      size_t d = 1;
+      for (const auto& c : subExprs(e)) {
+        if (c) {
+          d = std::max(d, depths[c.get()] + 1);
+        }
+      }
+      depths[e.get()] = d;
+    }
+  }
+
+  return depths[root.get()];
+}
+
+void releaseNesting(ExprPtr& root) {
+  if (!root) {
+    return;
+  }
+
+  // hold a reference to every sub-expression before letting go of the root:
+  // with that second reference in hand, releasing a level only decrements its
+  // children rather than destroying them in turn, so the destructor chain never
+  // runs deeper than one level
+  Exprs nodes;
+  Exprs pending = list(root);
+  root.reset();
+
+  while (!pending.empty()) {
+    const ExprPtr e = pending.back();
+    pending.pop_back();
+
+    for (const auto& c : subExprs(e)) {
+      if (c) {
+        pending.push_back(c);
+      }
+    }
+    nodes.push_back(e);
+  }
+
+  // released from the root down, so that each level is already unreferenced by
+  // its parent by the time it is dropped here
+  for (auto& n : nodes) {
+    n.reset();
+  }
+}
+
+const size_t maxExprNestingDepth = 1000;
+
+void checkNestingDepth(const ExprPtr& e) {
+  const size_t d = nestingDepth(e);
+  if (d > maxExprNestingDepth) {
+    throw std::runtime_error(
+      "Expression nests " + str::from(d) + " levels deep, past the limit of " + str::from(maxExprNestingDepth)
+    );
+  }
 }
 
 // a convenient encapsulation of type-directed term transformation (e.g.: for unqualification)
@@ -1033,15 +1311,15 @@ ExprPtr switchExprTyFn::wrapWithTy(const QualTypePtr& qty, Expr* e) const {
 
 Case::Bindings switchOf(const Case::Bindings& bs, const switchExpr<ExprPtr>& f) {
   Case::Bindings r;
-  for (Case::Bindings::const_iterator b = bs.begin(); b != bs.end(); ++b) {
-    r.push_back(Case::Binding(b->selector, b->vname, switchOf(b->exp, f)));
+  for (const auto &b : bs) {
+    r.push_back(Case::Binding(b.selector, b.vname, switchOf(b.exp, f)));
   }
   return r;
 }
 
 Switch::Bindings switchOf(const Switch::Bindings& bs, const switchExpr<ExprPtr>& f) {
   Switch::Bindings r;
-  for (auto b : bs) {
+  for (const auto& b : bs) {
     r.push_back(Switch::Binding(b.value, switchOf(b.exp, f)));
   }
   return r;
@@ -1072,7 +1350,7 @@ ExprPtr switchExprTyFn::with(const LetRec* v) const {
 
 ExprPtr switchExprTyFn::with(const Case* v) const {
   ExprPtr de = v->defaultExpr();
-  if (de.get() != 0) { de = switchOf(de, *this); }
+  if (de.get() != nullptr) { de = switchOf(de, *this); }
 
   return wrapWithTy(v->type(), new Case(switchOf(v->variant(), *this), switchOf(v->bindings(), *this), de, v->la()));
 }
@@ -1086,14 +1364,14 @@ ExprPtr switchExprTyFn::with(const Switch* v) const {
 
 // mutable type-translation in terms
 UnitV switchOf(const Case::Bindings& bs, const switchExprTyFnM& f) {
-  for (Case::Bindings::const_iterator b = bs.begin(); b != bs.end(); ++b) {
-    switchOf(b->exp, const_cast<switchExprTyFnM&>(f));
+  for (const auto &b : bs) {
+    switchOf(b.exp, const_cast<switchExprTyFnM&>(f));
   }
   return unitv;
 }
 
 UnitV switchOf(const Switch::Bindings& bs, const switchExprTyFnM& f) {
-  for (auto b : bs) {
+  for (const auto& b : bs) {
     switchOf(b.exp, const_cast<switchExprTyFnM&>(f));
   }
   return unitv;
@@ -1103,7 +1381,7 @@ QualTypePtr switchExprTyFnM::withTy(const QualTypePtr& qt) const {
   return qt;
 }
 
-UnitV switchExprTyFnM::updateTy(Expr* e) {
+UnitV switchExprTyFnM::updateTy(Expr* e) const {
   if (e->type() != QualTypePtr()) {
     e->type(withTy(e->type()));
   }
@@ -1176,7 +1454,7 @@ UnitV switchExprTyFnM::with(AIndex* v) {
 
 UnitV switchExprTyFnM::with(Case* v) {
   ExprPtr de = v->defaultExpr();
-  if (de.get() != 0) { switchOf(de, *this); }
+  if (de.get() != nullptr) { switchOf(de, *this); }
 
   switchOf(v->variant(), *this);
   switchOf(v->bindings(), *this);
@@ -1221,7 +1499,7 @@ struct liftTypeAsAssumpF : public switchExprTyFn {
     return e;
   }
 
-  ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const {
+  ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const override {
     if (qty != QualTypePtr()) {
       return setTy(ExprPtr(new Assump(setTy(ExprPtr(e), qty), qty, e->la())), qty);
     } else {
@@ -1240,7 +1518,7 @@ const MonoTypePtr& requireMonotype(const TEnvPtr& tenv, const ExprPtr& e) {
     throw annotated_error(*e, "Expression '" + show(e) + "' not explicitly annotated.  Internal compiler error.");
   }
 
-  if (e->type()->constraints().size() > 0) {
+  if (!e->type()->constraints().empty()) {
     Constraints cs = expandHiddenTCs(tenv, simplifyVarNames(e->type())->constraints());
     std::ostringstream ss;
     ss << "Failed to compile expression due to unresolved type constraint" << (cs.size() > 1 ? "s" : "");
@@ -1252,7 +1530,7 @@ const MonoTypePtr& requireMonotype(const TEnvPtr& tenv, const ExprPtr& e) {
 
 MonoTypes requireMonotype(const TEnvPtr& tenv, const Exprs& es) {
   MonoTypes r;
-  for (auto e : es) {
+  for (const auto& e : es) {
     r.push_back(requireMonotype(tenv, e));
   }
   return r;
@@ -1263,7 +1541,7 @@ ExprPtr liftTypesAsAssumptions(const ExprPtr& e) {
 }
 
 struct stripAssumpF : public switchExprTyFn {
-  ExprPtr with(const Assump* v) const {
+  ExprPtr with(const Assump* v) const override {
     return switchOf(v->expr(), *this);
   }
 };
@@ -1282,22 +1560,22 @@ const ExprPtr& stripAssumpHead(const ExprPtr& e) {
 
 // find the set of free variables in an expression
 struct freeVarF : public switchExprC<VarSet> {
-  VarSet withConst(const Expr*)        const { return VarSet(); }
-  VarSet with     (const Var* v)       const { return toSet(list(v->value())); }
-  VarSet with     (const Let* v)       const { return setUnion(list(freeVars(v->varExpr()), setDifference(freeVars(v->bodyExpr()), toSet(list(v->var()))))); }
-  VarSet with     (const Fn* v)        const { return setDifference(freeVars(v->body()), toSet(v->varNames())); }
-  VarSet with     (const App* v)       const { return setUnion(cons(freeVars(v->fn()), switchOf(v->args(), *this))); }
-  VarSet with     (const Assign* v)    const { return setUnion(list(freeVars(v->left()), freeVars(v->right()))); }
-  VarSet with     (const MkArray* v)   const { return setUnion(switchOf(v->values(), *this)); }
-  VarSet with     (const MkVariant* v) const { return freeVars(v->value()); }
-  VarSet with     (const MkRecord* v)  const { return setUnion(switchOf(exprs(v->fields()), *this)); }
-  VarSet with     (const AIndex* v)    const { return setUnion(list(freeVars(v->array()), freeVars(v->index()))); }
-  VarSet with     (const Proj* v)      const { return freeVars(v->record()); }
-  VarSet with     (const Assump* v)    const { return freeVars(v->expr()); }
-  VarSet with     (const Pack* v)      const { return freeVars(v->expr()); }
-  VarSet with     (const Unpack* v)    const { return setUnion(list(freeVars(v->package()), setDifference(freeVars(v->expr()), toSet(list(v->varName()))))); }
+  VarSet withConst(const Expr*)        const override { return VarSet(); }
+  VarSet with     (const Var* v)       const override { return toSet(list(v->value())); }
+  VarSet with     (const Let* v)       const override { return setUnion(list(freeVars(v->varExpr()), setDifference(freeVars(v->bodyExpr()), toSet(list(v->var()))))); }
+  VarSet with     (const Fn* v)        const override { return setDifference(freeVars(v->body()), toSet(v->varNames())); }
+  VarSet with     (const App* v)       const override { return setUnion(cons(freeVars(v->fn()), switchOf(v->args(), *this))); }
+  VarSet with     (const Assign* v)    const override { return setUnion(list(freeVars(v->left()), freeVars(v->right()))); }
+  VarSet with     (const MkArray* v)   const override { return setUnion(switchOf(v->values(), *this)); }
+  VarSet with     (const MkVariant* v) const override { return freeVars(v->value()); }
+  VarSet with     (const MkRecord* v)  const override { return setUnion(switchOf(exprs(v->fields()), *this)); }
+  VarSet with     (const AIndex* v)    const override { return setUnion(list(freeVars(v->array()), freeVars(v->index()))); }
+  VarSet with     (const Proj* v)      const override { return freeVars(v->record()); }
+  VarSet with     (const Assump* v)    const override { return freeVars(v->expr()); }
+  VarSet with     (const Pack* v)      const override { return freeVars(v->expr()); }
+  VarSet with     (const Unpack* v)    const override { return setUnion(list(freeVars(v->package()), setDifference(freeVars(v->expr()), toSet(list(v->varName()))))); }
   
-  VarSet with(const LetRec* v) const {
+  VarSet with(const LetRec* v) const override {
     std::vector<VarSet> fvs;
     str::set            vns = toSet(v->varNames());
 
@@ -1309,22 +1587,22 @@ struct freeVarF : public switchExprC<VarSet> {
     return setUnion(fvs);
   }
 
-  VarSet with(const Case* v) const {
+  VarSet with(const Case* v) const override {
     std::vector<VarSet> fvs;
     fvs.push_back(freeVars(v->variant()));
-    for (Case::Bindings::const_iterator b = v->bindings().begin(); b != v->bindings().end(); ++b) {
-      fvs.push_back(setDifference(freeVars(b->exp), toSet(list(b->vname))));
+    for (const auto &b : v->bindings()) {
+      fvs.push_back(setDifference(freeVars(b.exp), toSet(list(b.vname))));
     }
-    if (v->defaultExpr().get()) {
+    if (v->defaultExpr().get() != nullptr) {
       fvs.push_back(freeVars(v->defaultExpr()));
     }
     return setUnion(fvs);
   }
 
-  VarSet with(const Switch* v) const {
+  VarSet with(const Switch* v) const override {
     std::vector<VarSet> fvs;
     fvs.push_back(freeVars(v->expr()));
-    for (auto sb : v->bindings()) {
+    for (const auto& sb : v->bindings()) {
       fvs.push_back(freeVars(sb.exp));
     }
     if (v->defaultExpr()) {
@@ -1348,22 +1626,22 @@ struct etvarNamesF : public switchExprC<UnitV> {
   etvarNamesF(NameSet* out) : out(out) { }
   UnitV an(const Expr* v) const { if (v->type()) { tvarNames(v->type(), this->out); } return unitv; }
 
-  UnitV withConst(const Expr*)        const { return unitv; }
-  UnitV with     (const Var* v)       const { return an(v); }
-  UnitV with     (const Let* v)       const { switchOf(v->varExpr(), *this); switchOf(v->bodyExpr(), *this); return an(v); }
-  UnitV with     (const Fn* v)        const { switchOf(v->body(), *this); return an(v); }
-  UnitV with     (const App* v)       const { switchOf(v->fn(), *this); switchOf(v->args(), *this); return an(v); }
-  UnitV with     (const Assign* v)    const { switchOf(v->left(), *this); switchOf(v->right(), *this); return an(v); }
-  UnitV with     (const MkArray* v)   const { switchOf(v->values(), *this); return an(v); }
-  UnitV with     (const MkVariant* v) const { switchOf(v->value(), *this); return an(v); }
-  UnitV with     (const MkRecord* v)  const { switchOf(exprs(v->fields()), *this); return an(v); }
-  UnitV with     (const AIndex* v)    const { switchOf(v->array(), *this); switchOf(v->index(), *this); return an(v); }
-  UnitV with     (const Proj* v)      const { switchOf(v->record(), *this); return an(v); }
-  UnitV with     (const Assump* v)    const { switchOf(v->expr(), *this); tvarNames(v->ty(), this->out); return an(v); }
-  UnitV with     (const Pack* v)      const { switchOf(v->expr(), *this); return an(v); }
-  UnitV with     (const Unpack* v)    const { switchOf(v->package(), *this); switchOf(v->expr(), *this); return an(v); }
+  UnitV withConst(const Expr*)        const override { return unitv; }
+  UnitV with     (const Var* v)       const override { return an(v); }
+  UnitV with     (const Let* v)       const override { switchOf(v->varExpr(), *this); switchOf(v->bodyExpr(), *this); return an(v); }
+  UnitV with     (const Fn* v)        const override { switchOf(v->body(), *this); return an(v); }
+  UnitV with     (const App* v)       const override { switchOf(v->fn(), *this); switchOf(v->args(), *this); return an(v); }
+  UnitV with     (const Assign* v)    const override { switchOf(v->left(), *this); switchOf(v->right(), *this); return an(v); }
+  UnitV with     (const MkArray* v)   const override { switchOf(v->values(), *this); return an(v); }
+  UnitV with     (const MkVariant* v) const override { switchOf(v->value(), *this); return an(v); }
+  UnitV with     (const MkRecord* v)  const override { switchOf(exprs(v->fields()), *this); return an(v); }
+  UnitV with     (const AIndex* v)    const override { switchOf(v->array(), *this); switchOf(v->index(), *this); return an(v); }
+  UnitV with     (const Proj* v)      const override { switchOf(v->record(), *this); return an(v); }
+  UnitV with     (const Assump* v)    const override { switchOf(v->expr(), *this); tvarNames(v->ty(), this->out); return an(v); }
+  UnitV with     (const Pack* v)      const override { switchOf(v->expr(), *this); return an(v); }
+  UnitV with     (const Unpack* v)    const override { switchOf(v->package(), *this); switchOf(v->expr(), *this); return an(v); }
   
-  UnitV with(const LetRec* v) const {
+  UnitV with(const LetRec* v) const override {
     for (const auto& b : v->bindings()) {
       switchOf(b.second, *this);
     }
@@ -1371,20 +1649,20 @@ struct etvarNamesF : public switchExprC<UnitV> {
     return an(v);
   }
 
-  UnitV with(const Case* v) const {
+  UnitV with(const Case* v) const override {
     switchOf(v->variant(), *this);
-    for (Case::Bindings::const_iterator b = v->bindings().begin(); b != v->bindings().end(); ++b) {
-      switchOf(b->exp, *this);
+    for (const auto &b : v->bindings()) {
+      switchOf(b.exp, *this);
     }
-    if (v->defaultExpr().get()) {
+    if (v->defaultExpr().get() != nullptr) {
       switchOf(v->defaultExpr(), *this);
     }
     return an(v);
   }
 
-  UnitV with(const Switch* v) const {
+  UnitV with(const Switch* v) const override {
     switchOf(v->expr(), *this);
-    for (auto sb : v->bindings()) {
+    for (const auto& sb : v->bindings()) {
       switchOf(sb.exp, *this);
     }
     if (v->defaultExpr()) {
@@ -1410,7 +1688,7 @@ ExprPtr fmtFoldExpr(const ExprPtr& e, const std::string& expr) {
 }
 
 ExprPtr mkFormatExpr(const std::string& fmt, const LexicalAnnotation& la) {
-  if (fmt.size() == 0) {
+  if (fmt.empty()) {
     return ExprPtr(mkarray("", la));
   } else {
     return str::foldWithFormat(str::trimq(fmt, '`'), ExprPtr(mkarray("", la)), &fmtFoldConst, &fmtFoldExpr);
@@ -1465,72 +1743,72 @@ struct encodeExprF : public switchExpr<UnitV> {
   std::ostream& out;
   encodeExprF(std::ostream& out) : out(out) { }
 
-  UnitV with(const Unit*) const {
+  UnitV with(const Unit*) const override {
     encode(Unit::type_case_id, this->out);
     return unitv;
   }
 
-  UnitV with(const Bool* v) const {
+  UnitV with(const Bool* v) const override {
     encode(Bool::type_case_id, this->out);
     encode(v->value(), this->out);
     return unitv;
   }
 
-  UnitV with(const Char* v) const {
+  UnitV with(const Char* v) const override {
     encode(Char::type_case_id, this->out);
     encode(v->value(), this->out);
     return unitv;
   }
 
-  UnitV with(const Byte* v) const {
+  UnitV with(const Byte* v) const override {
     encode(Byte::type_case_id, this->out);
     encode(v->value(), this->out);
     return unitv;
   }
 
-  UnitV with(const Short* v) const {
+  UnitV with(const Short* v) const override {
     encode(Short::type_case_id, this->out);
     encode(v->value(), this->out);
     return unitv;
   }
 
-  UnitV with(const Int* v) const {
+  UnitV with(const Int* v) const override {
     encode(Int::type_case_id, this->out);
     encode(v->value(), this->out);
     return unitv;
   }
 
-  UnitV with(const Long* v) const {
+  UnitV with(const Long* v) const override {
     encode(Long::type_case_id, this->out);
     encode(v->value(), this->out);
     return unitv;
   }
 
-  UnitV with(const Int128* v) const {
+  UnitV with(const Int128* v) const override {
     encode(Int128::type_case_id, this->out);
     encode(v->value(), this->out);
     return unitv;
   }
 
-  UnitV with(const Float* v) const {
+  UnitV with(const Float* v) const override {
     encode(Float::type_case_id, this->out);
     encode(v->value(), this->out);
     return unitv;
   }
 
-  UnitV with(const Double* v) const {
+  UnitV with(const Double* v) const override {
     encode(Double::type_case_id, this->out);
     encode(v->value(), this->out);
     return unitv;
   }
 
-  UnitV with(const Var* v) const {
+  UnitV with(const Var* v) const override {
     encode(Var::type_case_id, this->out);
     encode(v->value(), this->out);
     return unitv;
   }
   
-  UnitV with(const Let* v) const {
+  UnitV with(const Let* v) const override {
     encode(Let::type_case_id, this->out);
     encode(v->var(),      this->out);
     encode(v->varExpr(),  this->out);
@@ -1538,61 +1816,61 @@ struct encodeExprF : public switchExpr<UnitV> {
     return unitv;
   }
 
-  UnitV with(const LetRec* v) const {
+  UnitV with(const LetRec* v) const override {
     encode(LetRec::type_case_id, this->out);
     encode(v->bindings(), this->out);
     encode(v->bodyExpr(), this->out);
     return unitv;
   }
   
-  UnitV with(const Fn* v) const {
+  UnitV with(const Fn* v) const override {
     encode(Fn::type_case_id, this->out);
     encode(v->varNames(), this->out);
     encode(v->body(),     this->out);
     return unitv;
   }
   
-  UnitV with(const App* v) const {
+  UnitV with(const App* v) const override {
     encode(App::type_case_id, this->out);
     encode(v->fn(),   this->out);
     encode(v->args(), this->out);
     return unitv;
   }
   
-  UnitV with(const Assign* v) const {
+  UnitV with(const Assign* v) const override {
     encode(Assign::type_case_id, this->out);
     encode(v->left(),  this->out);
     encode(v->right(), this->out);
     return unitv;
   }
 
-  UnitV with(const MkArray* v) const {
+  UnitV with(const MkArray* v) const override {
     encode(MkArray::type_case_id, this->out);
     encode(v->values(), this->out);
     return unitv;
   }
 
-  UnitV with(const MkVariant* v) const {
+  UnitV with(const MkVariant* v) const override {
     encode(MkVariant::type_case_id, this->out);
     encode(v->label(), this->out);
     encode(v->value(), this->out);
     return unitv;
   }
 
-  UnitV with(const MkRecord* v) const {
+  UnitV with(const MkRecord* v) const override {
     encode(MkRecord::type_case_id, this->out);
     encode(v->fields(), this->out);
     return unitv;
   }
 
-  UnitV with(const AIndex* v) const {
+  UnitV with(const AIndex* v) const override {
     encode(AIndex::type_case_id, this->out);
     encode(v->array(), this->out);
     encode(v->index(), this->out);
     return unitv;
   }
 
-  UnitV with(const Case* v) const {
+  UnitV with(const Case* v) const override {
     encode(Case::type_case_id, this->out);
     encode(v->variant(), this->out);
     encode(v->bindings(), this->out);
@@ -1605,7 +1883,7 @@ struct encodeExprF : public switchExpr<UnitV> {
     return unitv;
   }
   
-  UnitV with(const Switch* v) const {
+  UnitV with(const Switch* v) const override {
     encode(Switch::type_case_id, this->out);
     encode(v->expr(), this->out);
     encode(v->bindings(), this->out);
@@ -1618,27 +1896,27 @@ struct encodeExprF : public switchExpr<UnitV> {
     return unitv;
   }
  
-  UnitV with(const Proj* v) const {
+  UnitV with(const Proj* v) const override {
     encode(Proj::type_case_id, this->out);
     encode(v->record(), this->out);
     encode(v->field(),  this->out);
     return unitv;
   }
   
-  UnitV with(const Assump* v) const {
+  UnitV with(const Assump* v) const override {
     encode(Assump::type_case_id, this->out);
     encode(v->expr(), this->out);
     encode(v->ty(),   this->out);
     return unitv;
   }
 
-  UnitV with(const Pack* v) const {
+  UnitV with(const Pack* v) const override {
     encode(Pack::type_case_id, this->out);
     encode(v->expr(), this->out);
     return unitv;
   }
   
-  UnitV with(const Unpack* v) const {
+  UnitV with(const Unpack* v) const override {
     encode(Unpack::type_case_id, this->out);
     encode(v->varName(), this->out);
     encode(v->package(), this->out);
@@ -1648,11 +1926,26 @@ struct encodeExprF : public switchExpr<UnitV> {
 };
 
 void encode(const PrimitivePtr& p, std::ostream& out) {
-  encode(reinterpret_cast<const ExprPtr&>(p), out);
+  encode(std::static_pointer_cast<Expr>(p), out);
 }
 
+// A primitive is encoded as a plain expression, so what comes back is whatever
+// expression the input names -- it is not necessarily a Primitive. Decoding a
+// case id into a PrimitivePtr must therefore be a checked conversion: these
+// bytes can come from a file or an untrusted peer, and a Switch binding holds
+// its selector as a Primitive and calls Primitive's virtuals on it. Casting the
+// pointer unchecked would dispatch those calls through the vtable of an
+// unrelated Expr subclass and read past the end of the object.
 void decode(PrimitivePtr* p, std::istream& in) {
-  decode(reinterpret_cast<ExprPtr*>(p), in);
+  ExprPtr e;
+  decode(&e, in);
+
+  PrimitivePtr r = std::dynamic_pointer_cast<Primitive>(e);
+  if (!r) {
+    throw std::runtime_error(
+      "Expected a primitive constant in encoded expression, but found: " + show(e));
+  }
+  *p = r;
 }
 
 void encode(const ExprPtr& e, std::ostream& out) {
@@ -1672,6 +1965,11 @@ void encode(const ExprPtr& e, std::ostream& out) {
 }
 
 void decode(ExprPtr* out, std::istream& in) {
+  // as with types, every nested expression is decoded through here: an
+  // expression description nests as deeply as its bytes say, and the decoder
+  // recurs once per level
+  decodeNesting nesting;
+
   int cid = 0;
   decode(&cid, in);
 
@@ -1924,22 +2222,22 @@ void decode(const std::vector<uint8_t>& d, ExprPtr* e) {
 
 // determine whether or not an expression is fully annotated everywhere with a singular type
 struct hasSingularTypeF : public switchExprC<bool> {
-  bool withConst(const Expr* v) const {
+  bool withConst(const Expr* v) const override {
     return d(v);
   }
 
-  bool with(const Var* v) const {
+  bool with(const Var* v) const override {
     return d(v);
   }
 
-  bool with(const Let* v) const {
+  bool with(const Let* v) const override {
     return d(v) && r(v->varExpr()) && r(v->bodyExpr());
   }
 
-  bool with(const LetRec* v) const {
+  bool with(const LetRec* v) const override {
     if (!d(v) || !r(v->bodyExpr())) return false;
 
-    for (auto b : v->bindings()) {
+    for (const auto& b : v->bindings()) {
       if (!r(b.second)) {
         return false;
       }
@@ -1947,14 +2245,14 @@ struct hasSingularTypeF : public switchExprC<bool> {
     return true;
   }
 
-  bool with(const Fn* v) const {
+  bool with(const Fn* v) const override {
     return d(v) && r(v->body());
   }
 
-  bool with(const App* v) const {
+  bool with(const App* v) const override {
     if (!d(v) || !r(v->fn())) return false;
 
-    for (auto a : v->args()) {
+    for (const auto& a : v->args()) {
       if (!r(a)) {
         return false;
       }
@@ -1962,67 +2260,67 @@ struct hasSingularTypeF : public switchExprC<bool> {
     return true;
   }
 
-  bool with(const Assign* v) const {
+  bool with(const Assign* v) const override {
     return d(v) && r(v->left()) && r(v->right());
   }
 
-  bool with(const MkArray* v) const {
+  bool with(const MkArray* v) const override {
     if (!d(v)) return false;
-    for (auto val : v->values()) {
+    for (const auto& val : v->values()) {
       if (!r(val)) return false;
     }
     return true;
   }
 
-  bool with(const MkVariant* v) const {
+  bool with(const MkVariant* v) const override {
     return d(v) && r(v->value());
   }
 
-  bool with(const MkRecord* v) const {
+  bool with(const MkRecord* v) const override {
     if (!d(v)) return false;
-    for (auto f : v->fields()) {
+    for (const auto& f : v->fields()) {
       if (!r(f.second)) return false;
     }
     return true;
   }
 
-  bool with(const AIndex* v) const {
+  bool with(const AIndex* v) const override {
     return d(v) && r(v->array()) && r(v->index());
   }
 
-  bool with(const Case* v) const {
+  bool with(const Case* v) const override {
     if (!d(v) || !r(v->variant()) || (v->defaultExpr() && !r(v->defaultExpr()))) return false;
-    for (auto b : v->bindings()) {
+    for (const auto& b : v->bindings()) {
       if (!r(b.exp)) return false;
     }
     return true;
   }
 
-  bool with(const Switch* v) const {
+  bool with(const Switch* v) const override {
     if (!d(v) || !r(v->expr()) || (v->defaultExpr() && !r(v->defaultExpr()))) return false;
-    for (auto b : v->bindings()) {
+    for (const auto& b : v->bindings()) {
       if (!r(b.exp)) return false;
     }
     return true;
   }
 
-  bool with(const Proj* v) const {
+  bool with(const Proj* v) const override {
     return d(v) && r(v->record());
   }
 
-  bool with(const Assump* v) const {
+  bool with(const Assump* v) const override {
     return d(v) && r(v->expr()) && isMonoSingular(v->ty());
   }
 
-  bool with(const Pack* v) const {
+  bool with(const Pack* v) const override {
     return d(v) && r(v->expr());
   }
 
-  bool with(const Unpack* v) const {
+  bool with(const Unpack* v) const override {
     return d(v) && r(v->package()) && r(v->expr());
   }
 private:
-  bool d(const Expr*    v) const { return v->type().get() && isMonoSingular(v->type()); }
+  bool d(const Expr*    v) const { return (v->type().get() != nullptr) && isMonoSingular(v->type()); }
   bool r(const ExprPtr& v) const { return switchOf(v, *this); }
 };
 
@@ -2032,101 +2330,101 @@ bool hasSingularType(const ExprPtr& e) {
 
 // determine the tgen size of types across an expression
 struct tgenSizeExprF : public switchExprC<int> {
-  int withConst(const Expr* v) const {
+  int withConst(const Expr* v) const override {
     return d(v);
   }
 
-  int with(const Var* v) const {
+  int with(const Var* v) const override {
     return d(v);
   }
 
-  int with(const Let* v) const {
+  int with(const Let* v) const override {
     return c(c(d(v), r(v->varExpr())), r(v->bodyExpr()));
   }
 
-  int with(const LetRec* v) const {
+  int with(const LetRec* v) const override {
     int x = c(d(v), r(v->bodyExpr()));
-    for (auto b : v->bindings()) {
+    for (const auto& b : v->bindings()) {
       x = c(x, r(b.second));
     }
     return x;
   }
 
-  int with(const Fn* v) const {
+  int with(const Fn* v) const override {
     return c(d(v), r(v->body()));
   }
 
-  int with(const App* v) const {
+  int with(const App* v) const override {
     int x = c(d(v), r(v->fn()));
-    for (auto a : v->args()) {
+    for (const auto& a : v->args()) {
       x = c(x, r(a));
     }
     return x;
   }
 
-  int with(const Assign* v) const {
+  int with(const Assign* v) const override {
     return c(c(d(v), r(v->left())), r(v->right()));
   }
 
-  int with(const MkArray* v) const {
+  int with(const MkArray* v) const override {
     int x = d(v);
-    for (auto val : v->values()) {
+    for (const auto& val : v->values()) {
       x = c(x, r(val));
     }
     return x;
   }
 
-  int with(const MkVariant* v) const {
+  int with(const MkVariant* v) const override {
     return c(d(v), r(v->value()));
   }
 
-  int with(const MkRecord* v) const {
+  int with(const MkRecord* v) const override {
     int x = d(v);
-    for (auto f : v->fields()) {
+    for (const auto& f : v->fields()) {
       x = c(x, r(f.second));
     }
     return x;
   }
 
-  int with(const AIndex* v) const {
+  int with(const AIndex* v) const override {
     return c(c(d(v), r(v->array())), r(v->index()));
   }
 
-  int with(const Case* v) const {
+  int with(const Case* v) const override {
     int x = c(d(v), r(v->variant()));
     if (v->defaultExpr()) x = c(x, r(v->defaultExpr()));
-    for (auto b : v->bindings()) {
+    for (const auto& b : v->bindings()) {
       x = c(x, r(b.exp));
     }
     return x;
   }
 
-  int with(const Switch* v) const {
+  int with(const Switch* v) const override {
     int x = c(d(v), r(v->expr()));
     if (v->defaultExpr()) x = c(x, r(v->defaultExpr()));
-    for (auto b : v->bindings()) {
+    for (const auto& b : v->bindings()) {
       x = c(x, r(b.exp));
     }
     return x;
   }
 
-  int with(const Proj* v) const {
+  int with(const Proj* v) const override {
     return c(d(v), r(v->record()));
   }
 
-  int with(const Assump* v) const {
+  int with(const Assump* v) const override {
     return c(c(d(v), r(v->expr())), tgenSize(v->ty()));
   }
 
-  int with(const Pack* v) const {
+  int with(const Pack* v) const override {
     return c(d(v), r(v->expr()));
   }
 
-  int with(const Unpack* v) const {
+  int with(const Unpack* v) const override {
     return c(c(d(v), r(v->package())), r(v->expr()));
   }
 private:
-  int d(const Expr*    v) const { return v->type().get() ? tgenSize(v->type()) : 0; }
+  int d(const Expr*    v) const { return v->type().get() != nullptr ? tgenSize(v->type()) : 0; }
   int r(const ExprPtr& v) const { return switchOf(v, *this); }
   int c(int x, int y)     const { return std::max<int>(x, y); }
 };

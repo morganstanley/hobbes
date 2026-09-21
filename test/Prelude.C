@@ -1,9 +1,11 @@
 
+#include <exception>
 #include <hobbes/hobbes.H>
+#include <stdexcept>
 #include "test.H"
 
 using namespace hobbes;
-static cc& c() { static __thread cc* x = 0; if (!x) { x = new cc(); } return *x; }
+static cc& c() { static __thread cc* x = nullptr; if (x == nullptr) { x = new cc(); } return *x; }
 
 #define EXPTEST(s) EXPECT_TRUE(c().compileFn<bool()>(s)())
 
@@ -77,7 +79,74 @@ TEST(Prelude, SScan) {
 
 TEST(Prelude, Int128) {
   EXPECT_EQ(c().compileFn<int128_t()>("40H + 2S")(), 42);
+  EXPECT_EQ(c().compileFn<int128_t()>("40H - 42S")(), -2);
   EXPECT_TRUE((c().compileFn<bool(int128_t)>("x", "x==42")(42)));
   EXPECT_EQ(hobbes::makeStdString(c().compileFn<const hobbes::array<char>*()>("show(42H)")()), "42");
+
+  // INT128_MAX w/  'H'
+  EXPECT_EQ((makeStdString(c().compileFn<const array<char>*()>("show(readInt128(\"170141183460469231731687303715884105727H\"))")())), "|1=170141183460469231731687303715884105727|");
+  // INT128_MAX w/o 'H'
+  EXPECT_EQ((makeStdString(c().compileFn<const array<char>*()>("show(readInt128(\"170141183460469231731687303715884105727\"))")())), "|1=170141183460469231731687303715884105727|");
+  // INT128_MIN w/  'H'
+  EXPECT_EQ((makeStdString(c().compileFn<const array<char>*()>("show(readInt128(\"-170141183460469231731687303715884105728H\"))")())), "|1=-170141183460469231731687303715884105728|");
+  // INT128_MIN w/o 'H'
+  EXPECT_EQ((makeStdString(c().compileFn<const array<char>*()>("show(readInt128(\"-170141183460469231731687303715884105728\"))")())), "|1=-170141183460469231731687303715884105728|");
+  // underflow
+  EXPECT_EQ((makeStdString(c().compileFn<const array<char>*()>("show(readInt128(\"-170141183460469231731687303715884105729\"))")())), "|0|");
+  // overflow
+  EXPECT_EQ((makeStdString(c().compileFn<const array<char>*()>("show(readInt128(\"170141183460469231731687303715884105728\"))")())), "|0|");
+
+  // INT128_MAX
+  EXPECT_EQ((makeStdString(c().compileFn<const array<char>*()>("show(170141183460469231731687303715884105727H)")())), "170141183460469231731687303715884105727");
+  // INT128_MIN + 1
+  EXPECT_EQ((makeStdString(c().compileFn<const array<char>*()>("show(-170141183460469231731687303715884105727H)")())), "-170141183460469231731687303715884105727");
+
+  // INT128_MIN
+  EXPECT_EXCEPTION_MSG((makeStdString(c().compileFn<const array<char>*()>("show(-170141183460469231731687303715884105728H)")())), std::exception, "literal 170141183460469231731687303715884105728 is not supported");
+  // INT128_MIN - 1
+  EXPECT_EXCEPTION_MSG((makeStdString(c().compileFn<const array<char>*()>("show(-170141183460469231731687303715884105729H)")())), std::exception, "literal 170141183460469231731687303715884105729 is not supported");
 }
 
+TEST(Prelude, Short) {
+  // SHORT_MAX
+  EXPECT_EQ(c().compileFn<short()>("32767S")(), 32767);
+  // SHORT_MIN + 1
+  EXPECT_EQ(c().compileFn<short()>("-32767S")(), -32767);
+
+  // SHORT_MIN
+  EXPECT_EXCEPTION_MSG(c().compileFn<short()>("-32768S")(), std::exception, "literal 32768 is not supported");
+  // SHORT_MIN - 1
+  EXPECT_EXCEPTION_MSG(c().compileFn<short()>("-32769S")(), std::exception, "literal 32769 is not supported");
+  // INT32_MAX
+  EXPECT_EXCEPTION_MSG(c().compileFn<short()>("2147483647S")(), std::exception, "literal 2147483647 is not supported");
+  // INT32_MIN
+  EXPECT_EXCEPTION_MSG(c().compileFn<short()>("-2147483648S")(), std::exception, "literal 2147483648 is not supported");
+}
+
+TEST(Prelude, Int) {
+  // INT32_MAX
+  EXPECT_EQ(c().compileFn<int()>("2147483647")(), 2147483647);
+  // INT32_MIN + 1
+  EXPECT_EQ(c().compileFn<int()>("-2147483647")(), -2147483647);
+
+  // INT32_MAX + 1
+  EXPECT_EXCEPTION_MSG(c().compileFn<int()>("2147483648")(), std::exception, "literal 2147483648 is not supported");
+  // INT32_MIN
+  EXPECT_EXCEPTION_MSG(c().compileFn<int()>("-2147483648")(), std::exception, "literal 2147483648 is not supported");
+  // INT32_MIN - 1
+  EXPECT_EXCEPTION_MSG(c().compileFn<int()>("-2147483649")(), std::exception, "literal 2147483649 is not supported");
+}
+
+TEST(Prelude, Long) {
+  // LONG_MAX
+  EXPECT_EQ(c().compileFn<long()>("9223372036854775807L")(), 9223372036854775807L);
+  // LONG_MIN + 1
+  EXPECT_EQ(c().compileFn<long()>("-9223372036854775807L")(), -9223372036854775807L);
+
+  // LONG_MAX + 1
+  EXPECT_EXCEPTION_MSG(c().compileFn<long()>("9223372036854775808L")(), std::exception, "literal 9223372036854775808 is not supported");
+  // LONG_MIN
+  EXPECT_EXCEPTION_MSG(c().compileFn<long()>("-9223372036854775808L")(), std::exception, "literal 9223372036854775808 is not supported");
+  // LONG_MIN - 1
+  EXPECT_EXCEPTION_MSG(c().compileFn<long()>("-9223372036854775809L")(), std::exception, "literal 9223372036854775809 is not supported");
+}

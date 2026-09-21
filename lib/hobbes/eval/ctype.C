@@ -40,19 +40,30 @@ llvm::Type* llvmVarArrType(llvm::Type* elemty, int size) {
   return recordType(longType(), arrayType(elemty, size));
 }
 
+class translateTypeF;
+
+// the translation of a type is a function of that type alone, and record
+// layout asks for it once per member at every level: without a memo a shared
+// subterm is translated once per path that reaches it, so a type whose
+// structure is a DAG costs what its tree expansion would. The memo lives on
+// the type itself (as the size, alignment and representation-type memos do),
+// so it cannot outlive its key, and an LLVM type stays valid as long as the
+// one process-wide context it belongs to.
+static llvm::Type* translateType(const MonoTypePtr& ty, bool asArg);
+
 class translateTypeF : public switchType<llvm::Type*> {
 public:
   translateTypeF(bool asArg) : asArg(asArg) { }
 
-  llvm::Type* with(const Prim* v) const {
-    if (v->representation().get()) {
+  llvm::Type* with(const Prim* v) const override {
+    if (v->representation().get() != nullptr) {
       return switchOf(v->representation(), *this);
     } else {
       return llvmPrim(v->name());
     }
   }
 
-  llvm::Type* with(const OpaquePtr* v) const {
+  llvm::Type* with(const OpaquePtr* v) const override {
     if (!asArg && v->storedContiguously()) {
       return arrayType(byteType(), v->size());
     } else {
@@ -60,19 +71,19 @@ public:
     }
   }
 
-  llvm::Type* with(const TVar* v) const {
+  [[noreturn]] llvm::Type* with(const TVar* v) const override {
     throw std::runtime_error("Internal compiler error: Cannot translate type variable '" + v->name() + "' to LLVM type");
   }
 
-  llvm::Type* with(const TGen*) const {
+  [[noreturn]] llvm::Type* with(const TGen*) const override {
     throw std::runtime_error("Internal compiler error: Cannot translate polytype instantiation point to LLVM type.");
   }
 
-  llvm::Type* with(const TAbs* v) const {
+  [[noreturn]] llvm::Type* with(const TAbs* v) const override {
     throw std::runtime_error("Can't translate to LLVM monotype: " + show(v));
   }
 
-  llvm::Type* with(const TApp* v) const {
+  llvm::Type* with(const TApp* v) const override {
     // TODO: fold these special cases into TApp/TFn applications
     if (const Prim* f = is<Prim>(v->fn())) {
       if (f->name() == "->" && v->args().size() == 2) {
@@ -100,59 +111,59 @@ public:
     throw std::runtime_error("Can't translate to LLVM monotype: " + show(v));
   }
 
-  llvm::Type* with(const FixedArray* v) const {
-    bool innerPtrs = is<Func>(v->type());
-    return asPtrIf(arrayType(switchOf(v->type(), translateTypeF(innerPtrs)), v->requireLength()), asArg);
+  llvm::Type* with(const FixedArray* v) const override {
+    bool innerPtrs = is<Func>(v->type()) != nullptr;
+    return asPtrIf(arrayType(translateType(v->type(), innerPtrs), v->requireLength()), asArg);
   }
 
-  llvm::Type* with(const Array* v) const {
-    bool innerPtrs = is<OpaquePtr>(v->type()) || is<Func>(v->type());
-    return asPtrIf(llvmVarArrType(switchOf(v->type(), translateTypeF(innerPtrs))), true);
+  llvm::Type* with(const Array* v) const override {
+    bool innerPtrs = (is<OpaquePtr>(v->type()) != nullptr) || (is<Func>(v->type()) != nullptr);
+    return asPtrIf(llvmVarArrType(translateType(v->type(), innerPtrs)), true);
   }
 
-  llvm::Type* with(const Variant* v) const {
+  llvm::Type* with(const Variant* v) const override {
     return asPtrIf(arrayType(byteType(), v->size()), asArg);
   }
 
-  llvm::Type* with(const Record* v) const {
+  llvm::Type* with(const Record* v) const override {
     const Record::Members& ams = v->alignedMembers();
 
     Types cms;
-    for (Record::Members::const_iterator m = ams.begin(); m != ams.end(); ++m) {
+    for (const auto &am : ams) {
       // some types go into records as pointers
-      if (!isUnit(m->type)) {
-        cms.push_back(switchOf(m->type, translateTypeF(is<Func>(m->type) || is<Array>(m->type))));
+      if (!isUnit(am.type)) {
+        cms.push_back(translateType(am.type, (is<Func>(am.type) != nullptr) || (is<Array>(am.type) != nullptr)));
       }
     }
 
-    if (cms.size() == 0) {
+    if (cms.empty()) {
       return llvmPrim("unit");
     } else {
       return asPtrIf(packedRecordType(cms), asArg);
     }
   }
 
-  llvm::Type* with(const Func* v) const {
+  llvm::Type* with(const Func* v) const override {
     return asPtrIf(functionType(toLLVM(v->parameters(), true), toLLVM(v->result(), true)), asArg);
   }
 
-  llvm::Type* with(const Exists* v) const {
+  llvm::Type* with(const Exists* v) const override {
     return toLLVM(unpackedType(v), true);
   }
 
-  llvm::Type* with(const Recursive*) const {
+  llvm::Type* with(const Recursive*) const override {
     return ptrType(byteType());
   }
 
-  llvm::Type* with(const TString* v) const {
+  [[noreturn]] llvm::Type* with(const TString* v) const override {
     throw std::runtime_error("Internal compiler error: Cannot translate value to LLVM type: '" + v->value() + "'");
   }
 
-  llvm::Type* with(const TLong* v) const {
+  [[noreturn]] llvm::Type* with(const TLong* v) const override {
     throw std::runtime_error("Internal compiler error: Cannot translate value to LLVM type: " + str::from(v->value()));
   }
 
-  llvm::Type* with(const TExpr* v) const {
+  [[noreturn]] llvm::Type* with(const TExpr* v) const override {
     throw std::runtime_error("Internal compiler error: Cannot translate expression to LLVM type: " + show(v->expr()));
   }
 private:
@@ -163,19 +174,30 @@ private:
   }
 };
 
+static llvm::Type* translateType(const MonoTypePtr& ty, bool asArg) {
+  const size_t i = asArg ? 1 : 0;
+  if (ty->llvmTypeMemo[i] != nullptr) {
+    return static_cast<llvm::Type*>(ty->llvmTypeMemo[i]);
+  }
+
+  llvm::Type* r = switchOf(ty, translateTypeF(asArg));
+  ty->llvmTypeMemo[i] = r;
+  return r;
+}
+
 llvm::Type* toLLVM(const MonoTypePtr& ty, bool asArg) {
   if (isUnit(ty)) {
     return voidType();
   } else {
-    return switchOf(ty, translateTypeF(asArg));
+    return translateType(ty, asArg);
   }
 }
 
 Types toLLVM(const MonoTypes& tys, bool asArg) {
   Types r;
-  for (MonoTypes::const_iterator ty = tys.begin(); ty != tys.end(); ++ty) {
-    if (!asArg || !isUnit(*ty)) {
-      r.push_back(toLLVM(*ty, asArg));
+  for (const auto &ty : tys) {
+    if (!asArg || !isUnit(ty)) {
+      r.push_back(toLLVM(ty, asArg));
     }
   }
   return r;

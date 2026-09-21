@@ -1,0 +1,4 @@
+// @test: (applyTo(square, [1,2,3,4,5]), applyTo(cube, [1,2,3,4,5]))
+square x = x * x
+cube x = x * x * x
+applyTo f xs = [f(x) | x <- xs]

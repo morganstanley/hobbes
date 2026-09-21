@@ -1,0 +1,8 @@
+// @test: powerset([1,2,3,4])
+tail xs = [xs[i] | i <- [1L..length(xs)-1]]
+
+prepend x = match x with
+  | (elem, lists) -> [([elem] ++ r) | r <- lists]
+
+powerset :: [int] -> [[int]]
+powerset xs = if (length(xs) == 0) then [[]] else let rest = powerset(tail(xs)) in rest ++ prepend((xs[0], rest))

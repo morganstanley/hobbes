@@ -35,19 +35,19 @@ class cc;
  *     rstates : a mapping of F return codes to input regex indexes
  */
 struct Regex {
-  virtual ~Regex(void) = default;
+  virtual ~Regex() = default;
   virtual void show(std::ostream&) const = 0;
 };
-typedef std::shared_ptr<Regex> RegexPtr;
-typedef std::vector<RegexPtr> Regexes;
+using RegexPtr = std::shared_ptr<Regex>;
+using Regexes = std::vector<RegexPtr>;
 RegexPtr parseRegex(const std::string&);
 str::seq bindingNames(const RegexPtr&);
 
-typedef size_t RegexIdx;
-typedef std::set<RegexIdx> RegexIdxs;
-typedef std::map<size_t, RegexIdxs> RStates;
+using RegexIdx = size_t;
+using RegexIdxs = std::set<RegexIdx>;
+using RStates = std::map<size_t, RegexIdxs>;
 
-typedef std::map<size_t, str::seq> CaptureVarsAt;
+using CaptureVarsAt = std::map<size_t, str::seq>;
 
 struct CRegexes {
   std::string   fname;         // the low-level function that evaluates a set of regular expressions against an input
@@ -58,10 +58,16 @@ struct CRegexes {
 
 CRegexes makeRegexFn(cc*, const Regexes&, const LexicalAnnotation&);
 
-typedef std::pair<std::string, ExprPtr> CVarDef;
-typedef std::vector<CVarDef> CVarDefs;
+// an encoding of a regex that two regexes share only if they are the same regex
+// (a walk of the regex as a tree, so only for one that rejectOversizedRegex
+// has passed)
+std::string regexKey(const RegexPtr&);
+void rejectOversizedRegex(const RegexPtr&);
 
-CVarDefs unpackCaptureVars(const std::string& strVar, const std::string& bufferVar, const CRegexes&, size_t state, const LexicalAnnotation&);
+using CVarDef = std::pair<std::string, ExprPtr>;
+using CVarDefs = std::vector<CVarDef>;
+
+CVarDefs unpackCaptureVars(const std::string& strVar, const std::string& bufferVar, const CRegexes&, size_t regex, const LexicalAnnotation&);
 
 }
 

@@ -1,0 +1,8 @@
+// @test: [toRoman(n) | n <- [1, 4, 9, 14, 42, 99, 2014, 1990, 2421, 3999]]
+toRomanHelper :: (int * int * [[char]] * [int]) -> [char]
+toRomanHelper x = match x with
+  | (0, _, _, _) -> ""
+  | (n, i, syms, vals) -> if (i >= length(vals)) then "" else if (n >= vals[i]) then syms[i] ++ toRomanHelper((n - vals[i], i, syms, vals)) else toRomanHelper((n, i + 1, syms, vals))
+
+toRoman :: int -> [char]
+toRoman n = toRomanHelper((n, 0, ["M", "CM", "D", "CD", "C", "XC", "L", "XL", "X", "IX", "V", "IV", "I"], [1000, 900, 500, 400, 100, 90, 50, 40, 10, 9, 5, 4, 1]))

@@ -16,6 +16,8 @@
 #include <chrono>
 #include <stdexcept>
 
+extern hobbes::MonoTypePtr makePVarType(const hobbes::Variant::Members &vms);
+
 namespace hobbes {
 
 /*********
@@ -41,18 +43,18 @@ struct typedb {
 };
 
 struct nulltypedb : public typedb {
-  MonoTypePtr defineNamedType(const std::string& name, const str::seq& argNames, const MonoTypePtr& ty);
-  bool isTypeName(const std::string&) const;
-  [[noreturn]] MonoTypePtr namedTypeRepresentation(const std::string&) const;
+  MonoTypePtr defineNamedType(const std::string& name, const str::seq& argNames, const MonoTypePtr& ty) override;
+  bool isTypeName(const std::string&) const override;
+  [[noreturn]] MonoTypePtr namedTypeRepresentation(const std::string&) const override;
 
-  [[noreturn]] void defineTypeAlias(const std::string& name, const str::seq& argNames, const MonoTypePtr& ty);
-  bool isTypeAliasName(const std::string& name) const;
-  MonoTypePtr replaceTypeAliases(const MonoTypePtr& ty) const;
+  [[noreturn]] void defineTypeAlias(const std::string& name, const str::seq& argNames, const MonoTypePtr& ty) override;
+  bool isTypeAliasName(const std::string& name) const override;
+  MonoTypePtr replaceTypeAliases(const MonoTypePtr& ty) const override;
   
-  [[noreturn]] PolyTypePtr opaquePtrPolyType(const std::type_info&, unsigned int sz, bool inStruct);
-  [[noreturn]] MonoTypePtr opaquePtrMonoType(const std::type_info&, unsigned int sz, bool inStruct);
+  [[noreturn]] PolyTypePtr opaquePtrPolyType(const std::type_info&, unsigned int sz, bool inStruct) override;
+  [[noreturn]] MonoTypePtr opaquePtrMonoType(const std::type_info&, unsigned int sz, bool inStruct) override;
  
-  PolyTypePtr generalize(const MonoTypePtr& mt) const;
+  PolyTypePtr generalize(const MonoTypePtr& mt) const override;
 };
 extern nulltypedb nulltdb;
 
@@ -73,8 +75,8 @@ struct recursion {
 // a linked list is a recursive sum of nested tuples starting at unit
 template <typename T>
   struct seq {
-    typedef std::pair<T, seq<T>*> pair_t;
-    typedef variant<unit, pair_t> rep_t;
+    using pair_t = std::pair<T, seq<T> *>;
+    using rep_t = variant<unit, pair_t>;
     rep_t data;
 
     seq() : data(unit()) { }
@@ -167,7 +169,7 @@ template <bool InStruct>
 template <typename F, typename S>
   struct liftPair {
     static MonoTypePtr type(typedb& tenv) {
-      typedef std::pair<F,S> FS;
+      using FS = std::pair<F, S>;
       Record::Members fs;
       fs.push_back(Record::Member(".f0", lift<F, true>::type(tenv), offsetof(FS, first)));
       fs.push_back(Record::Member(".f1", lift<S, true>::type(tenv), offsetof(FS, second)));
@@ -310,7 +312,7 @@ template <typename F>
   struct closure { };
 template <typename R, typename ... Args>
   struct closure<R(Args...)> {
-    typedef R (*F)(const void*,Args...);
+    using F = R (*)(const void *, Args...);
     F    f;
     char data[1];
 
@@ -340,7 +342,7 @@ template <bool InStruct, typename R, typename ... Args>
 // -- then as with the hobbes::variant layout
 template <const char* TN, typename T>
   struct label {
-    typedef T type;
+    using type = T;
     T value;
     label() : value() { }
     label(const T& x) : value(x) { }
@@ -348,12 +350,12 @@ template <const char* TN, typename T>
   };
 template <typename T, typename P = void>
   struct liftVarCtor {
-    typedef T type;
+    using type = T;
     static std::string labelText(int idx) { return ".f" + str::from(idx); }
   };
 template <const char* TN, typename T>
   struct liftVarCtor< label<TN, T> > {
-    typedef typename label<TN, T>::type type;
+    using type = typename label<TN, T>::type;
     static std::string labelText(int) { return label<TN, T>::name(); }
   };
 template <typename ... CTys>
@@ -410,7 +412,8 @@ template <typename T, typename R = uint32_t>
       if (sizeof(R) == sizeof(uint32_t)) {
         return Variant::make(vms);
       } else {
-        return tapp(primty("penum", tabs(str::strings("r", "v"), tvar("r"))), list(lift<R>::type(tenv), Variant::make(vms)));
+        return tapp(primty("penum", tabs(str::strings("r", "v"), tvar("r"))),
+                    list(lift<R>::type(tenv), makePVarType(vms)));
       }
     }
   };

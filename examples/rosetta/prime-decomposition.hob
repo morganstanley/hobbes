@@ -1,0 +1,8 @@
+// @test: [primeFactors(n) | n <- [2..20]]
+pfHelper :: (int * int) -> [int]
+pfHelper x = match x with
+  | (1, _) -> []
+  | (n, p) -> if (p * p > n) then [n] else if (n % p == 0) then [p] ++ pfHelper((n / p, p)) else pfHelper((n, p + 1))
+
+primeFactors :: int -> [int]
+primeFactors n = pfHelper((n, 2))

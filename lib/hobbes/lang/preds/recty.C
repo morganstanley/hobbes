@@ -1,7 +1,8 @@
 
-#include <hobbes/lang/preds/recty.H>
 #include <hobbes/lang/preds/class.H>
+#include <hobbes/lang/preds/recty.H>
 #include <hobbes/lang/typeinf.H>
+#include <memory>
 
 namespace hobbes {
 
@@ -31,7 +32,7 @@ bool FixIsoRecur::refine(const TEnvPtr&, const ConstraintPtr& cst, MonoTypeUnifi
   size_t uc = u->size();
   IsoRecur ir;
   if (dec(cst, &ir)) {
-    if (is<Recursive>(ir.rolled)) {
+    if (is<Recursive>(ir.rolled) != nullptr) {
       mgu(unroll(ir.rolled), ir.unrolled, u);
     }
   }
@@ -41,7 +42,7 @@ bool FixIsoRecur::refine(const TEnvPtr&, const ConstraintPtr& cst, MonoTypeUnifi
 bool FixIsoRecur::satisfied(const TEnvPtr&, const ConstraintPtr& cst, Definitions*) const {
   IsoRecur ir;
   if (dec(cst, &ir)) {
-    if (is<Recursive>(ir.rolled)) {
+    if (is<Recursive>(ir.rolled) != nullptr) {
       // make sure that the recursive type unrolls to the unrolled type
       return (*unroll(ir.rolled) == *ir.unrolled);
     }
@@ -52,10 +53,10 @@ bool FixIsoRecur::satisfied(const TEnvPtr&, const ConstraintPtr& cst, Definition
 bool FixIsoRecur::satisfiable(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions*) const {
   IsoRecur ir;
   if (dec(cst, &ir)) {
-    if (is<TVar>(ir.rolled)) {
+    if (is<TVar>(ir.rolled) != nullptr) {
       return true;
-    } else if (is<Recursive>(ir.rolled)) {
-      if (is<TVar>(ir.unrolled)) {
+    } else if (is<Recursive>(ir.rolled) != nullptr) {
+      if (is<TVar>(ir.unrolled) != nullptr) {
         return true;
       } else {
         return unifiable(tenv, unroll(ir.rolled), ir.unrolled);
@@ -77,11 +78,11 @@ struct IsoRecUnqualify : public switchExprTyFn {
   IsoRecUnqualify(const ConstraintPtr& constraint) : constraint(constraint) {
   }
 
-  QualTypePtr withTy(const QualTypePtr& qt) const {
+  QualTypePtr withTy(const QualTypePtr& qt) const override {
     return removeConstraint(this->constraint, qt);
   }
 
-  ExprPtr with(const Var* v) const {
+  ExprPtr with(const Var* v) const override {
     if (hasConstraint(this->constraint, v->type())) {
       // replace safe functions with 'unsafe' ones
       if (v->value() == RECTY_ROLL) {
@@ -100,9 +101,9 @@ ExprPtr FixIsoRecur::unqualify(const TEnvPtr&, const ConstraintPtr& cst, const E
 
 PolyTypePtr FixIsoRecur::lookup(const std::string& vn) const {
   if (vn == RECTY_ROLL) {
-    return polytype(2, qualtype(list(ConstraintPtr(new Constraint(FixIsoRecur::constraintName(), list(tgen(0), tgen(1))))), functy(list(tgen(1)), tgen(0))));
+    return polytype(2, qualtype(list(std::make_shared<Constraint>(FixIsoRecur::constraintName(), list(tgen(0), tgen(1)))), functy(list(tgen(1)), tgen(0))));
   } else if (vn == RECTY_UNROLL) {
-    return polytype(2, qualtype(list(ConstraintPtr(new Constraint(FixIsoRecur::constraintName(), list(tgen(0), tgen(1))))), functy(list(tgen(0)), tgen(1))));
+    return polytype(2, qualtype(list(std::make_shared<Constraint>(FixIsoRecur::constraintName(), list(tgen(0), tgen(1)))), functy(list(tgen(0)), tgen(1))));
   } else {
     return PolyTypePtr();
   }

@@ -1,17 +1,179 @@
 
-#include <hobbes/lang/preds/class.H>
 #include <hobbes/lang/expr.H>
-#include <hobbes/lang/tyunqualify.H>
+#include <hobbes/lang/preds/class.H>
 #include <hobbes/lang/typeinf.H>
 #include <hobbes/lang/typepreds.H>
+#include <hobbes/lang/tyunqualify.H>
 #include <hobbes/util/array.H>
 #include <hobbes/util/codec.H>
 #include <hobbes/util/perf.H>
+#include <atomic>
+#include <exception>
+#include <memory>
+#include <unordered_map>
 
 namespace hobbes {
 
+// Instance resolution recurses through instance generators: applying one
+// resolves the constraints in its context, and each of those may apply
+// another. The memos in TClass (testedInstances, satfInstances) stop the
+// recursion when a constraint comes back to a type it has already been asked
+// about, which is what a well-founded recursive instance does. An instance
+// whose context asks about a type strictly larger than its head -- say
+// (Grow [a]) => Grow a -- never comes back to one: every step asks about a
+// new, bigger type, and nothing bounds the descent but the stack (the
+// compiler ran for minutes and then crashed on that instance).
+//
+// Depth alone doesn't tell the two apart. The Prelude's record and tuple
+// instances recurse once per field (ShowR, PrintR, Eq, ...), so a 300-field
+// record legitimately nests 300 generators deep, and a group of mutually
+// recursive instances nests once per member while their dictionaries are
+// bound. What marks divergence is growth: each step asks about a type larger
+// than the last, without bound. So each generator step measures the type it
+// is asked about, and a resolution is rejected, with a message that says
+// why, when either
+//
+//   * more than this many steps on the stack each ask about a larger type
+//     than the step that asked for them (a well-founded descent asks about
+//     smaller types -- a field of the record, a member of the group -- and
+//     the few legitimate steps that grow, like a compression model asking
+//     about the model type for its data type, are followed by shrinking
+//     ones; loading the Prelude and running the test suite never stack more
+//     than two such steps), or
+//
+//   * a step asks about a type this many times larger than the outermost
+//     request, plus a fixed allowance so that a small request is not held to
+//     a small bound (the count above stops slow growth in a few hundred
+//     steps; an instance whose context doubles its head would reach an
+//     unrepresentable type long before that many, and this stops it in a
+//     dozen; the largest growth the Prelude or the test suite asks for is
+//     11x, that compression model).
+const size_t maxInstanceResolutionGrowthSteps = 256;
+const size_t maxInstanceResolutionGrowth      = 32;
+const size_t instanceResolutionAllowance      = 4096;
+
+namespace {
+  struct instance_resolution_depth_error : public std::runtime_error {
+    using std::runtime_error::runtime_error;
+  };
+
+  // the size of a type is its node count, the measure in which an instance
+  // context "larger than its head" is larger
+  struct typeSizeF : public walkTy {
+    mutable size_t n = 0;
+    UnitV with(const Prim*       v) const override { ++n; return walkTy::with(v); }
+    UnitV with(const OpaquePtr*  v) const override { ++n; return walkTy::with(v); }
+    UnitV with(const TVar*       v) const override { ++n; return walkTy::with(v); }
+    UnitV with(const TGen*       v) const override { ++n; return walkTy::with(v); }
+    UnitV with(const TAbs*       v) const override { ++n; return walkTy::with(v); }
+    UnitV with(const TApp*       v) const override { ++n; return walkTy::with(v); }
+    UnitV with(const FixedArray* v) const override { ++n; return walkTy::with(v); }
+    UnitV with(const Array*      v) const override { ++n; return walkTy::with(v); }
+    UnitV with(const Variant*    v) const override { ++n; return walkTy::with(v); }
+    UnitV with(const Record*     v) const override { ++n; return walkTy::with(v); }
+    UnitV with(const Func*       v) const override { ++n; return walkTy::with(v); }
+    UnitV with(const Exists*     v) const override { ++n; return walkTy::with(v); }
+    UnitV with(const Recursive*  v) const override { ++n; return walkTy::with(v); }
+    UnitV with(const TString*    v) const override { ++n; return walkTy::with(v); }
+    UnitV with(const TLong*      v) const override { ++n; return walkTy::with(v); }
+    UnitV with(const TExpr*      v) const override { ++n; return walkTy::with(v); }
+  };
+
+  size_t typeSize(const MonoTypes& tys) {
+    typeSizeF f;
+    for (const auto& ty : tys) {
+      switchOf(ty, f);
+    }
+    return f.n;
+  }
+
+  // the size of the request at each generator step on this thread's stack
+  // (the front is the outermost request), and how many of those steps grew
+  thread_local std::vector<size_t> instanceResolutionSizes;
+  thread_local size_t              instanceResolutionGrowthSteps = 0;
+
+  // how many resolutions are in progress on this thread: a generator step
+  // or a class holding a provisional memo entry (below) each count as one
+  thread_local size_t resolutionsInProgress = 0;
+
+  // one instance generator step, entered at TCInstanceFn::apply and
+  // TCInstanceFn::satisfiable (the only places resolution recurses without a
+  // memo to stop it)
+  struct InstanceResolutionStep {
+    InstanceResolutionStep(const std::string& tcname, const MonoTypes& tys) : grew(false) {
+      size_t n = typeSize(tys);
+      if (!instanceResolutionSizes.empty()) {
+        size_t root = instanceResolutionSizes.front();
+        if (n > maxInstanceResolutionGrowth * root + instanceResolutionAllowance) {
+          throw instance_resolution_depth_error(
+            "instance resolution for " + show(Constraint(tcname, tys)) + " asks about a type of " + str::from(n) +
+            " nodes, more than " + str::from(maxInstanceResolutionGrowth) + "x the " + str::from(root) +
+            "-node request it is resolving (an instance whose context is larger than its head would do this)"
+          );
+        }
+        this->grew = n > instanceResolutionSizes.back();
+        if (this->grew && instanceResolutionGrowthSteps >= maxInstanceResolutionGrowthSteps) {
+          throw instance_resolution_depth_error(
+            "instance resolution for " + show(Constraint(tcname, tys)) + " asks about a larger type than the step before it, for the " +
+            str::from(maxInstanceResolutionGrowthSteps + 1) + "th time (an instance whose context is larger than its head would do this)"
+          );
+        }
+      }
+      instanceResolutionSizes.push_back(n);
+      if (this->grew) {
+        ++instanceResolutionGrowthSteps;
+      }
+      ++resolutionsInProgress;
+    }
+    ~InstanceResolutionStep() {
+      --resolutionsInProgress;
+      instanceResolutionSizes.pop_back();
+      if (this->grew) {
+        --instanceResolutionGrowthSteps;
+      }
+    }
+    InstanceResolutionStep(const InstanceResolutionStep&) = delete;
+    InstanceResolutionStep& operator=(const InstanceResolutionStep&) = delete;
+  private:
+    bool grew;
+  };
+
+  // TClass::matches, satisfiable and explain memoize a type as "assumed
+  // satisfiable" before recursing on it and settle the entry when they
+  // return. If the depth error above unwinds through them instead, the
+  // provisional entry must not be left behind: a later request for the same
+  // type would take it as an answer, skip resolution, and (having been told
+  // its context holds) generate an instance whose own context is the next
+  // type up, and so on without bound -- the third request for the same
+  // constraint hung where the first two had been rejected in milliseconds.
+  struct ProvisionalMemo {
+    ProvisionalMemo(type_map<bool>& memo, const MonoTypes& mts) : memo(memo), mts(mts), unwinding(std::uncaught_exceptions()) {
+      memo.insert(mts, true);
+      ++resolutionsInProgress;
+    }
+    ~ProvisionalMemo() {
+      --resolutionsInProgress;
+      if (std::uncaught_exceptions() > this->unwinding) {
+        try {
+          this->memo.insert(this->mts, false);
+        } catch (...) {
+          // out of memory while an exception is in flight; the entry stays
+          // provisional, which is what the refusal being unwound already
+          // reports, and the next instance definition clears it anyway
+        }
+      }
+    }
+    ProvisionalMemo(const ProvisionalMemo&) = delete;
+    ProvisionalMemo& operator=(const ProvisionalMemo&) = delete;
+  private:
+    type_map<bool>& memo;
+    MonoTypes       mts;
+    int             unwinding;
+  };
+}
+
 inline bool isHiddenTCName(const std::string& n) {
-  return n.size() == 0 || n[0] == '.';
+  return n.empty() || n[0] == '.';
 }
 
 FunDeps mergeFundeps(const FunDeps& lhs, const FunDeps& rhs) {
@@ -46,7 +208,7 @@ FunDeps inferFundeps(const TEnvPtr& tenv, const Constraints& cs) {
     UnqualifierPtr uq = tenv->lookupUnqualifier(c);
 
     FunDeps cdeps = uq->dependencies(c);
-    for (auto cdep : cdeps) {
+    for (const auto& cdep : cdeps) {
       includeFundep(*c, cdep, &result);
     }
   }
@@ -96,6 +258,7 @@ void TClass::insert(const TEnvPtr& tenv, const TCInstancePtr& ip, Definitions* d
   } else {
     this->tcinstances.push_back(ip);
     this->tcinstdb.insert(ip->types(), ip);
+    forgetResolutions();
     ip->bind(tenv, this, ds);
   }
 }
@@ -112,18 +275,18 @@ void TClass::insert(const TCInstanceFnPtr& ifp) {
     std::ostringstream ss;
     size_t errors = 0;
     for (const auto& tcm : this->tcmembers) {
-      if (!mm.count(tcm.first)) {
-        ss << (errors?", ":"") << "expected definition of '" << tcm.first << "'";
+      if (mm.count(tcm.first) == 0u) {
+        ss << (errors != 0u?", ":"") << "expected definition of '" << tcm.first << "'";
         ++errors;
       }
     }
     for (const auto& m : mm) {
-      if (!this->tcmembers.count(m.first)) {
-        ss << (errors?", ":"") << "unexpected definition of '" << m.first << "'";
+      if (this->tcmembers.count(m.first) == 0u) {
+        ss << (errors != 0u?", ":"") << "unexpected definition of '" << m.first << "'";
         ++errors;
       }
     }
-    if (errors) {
+    if (errors != 0u) {
       std::ostringstream ess;
       ess << "Can't introduce instance generator for '" << this->tcname << "': " << ss.str();
       throw annotated_error(*ifp, ess.str());
@@ -140,6 +303,49 @@ void TClass::insert(const TCInstanceFnPtr& ifp) {
       x.push_back(ifp);
       this->tcinstfndb.insert(ifp->itys, x);
     }
+    forgetResolutions();
+  }
+}
+
+// the memos record what resolution found, and adding an instance can change
+// it: a constraint refused as unsatisfiable is satisfiable once the instance
+// for it is defined (the REPL pattern -- ask, define the instance, ask again),
+// and one resolved to a single instance could resolve to two. The instance
+// need not belong to the class asked, either: (B a) => A a refuses A int until
+// B int exists. So an addition to any class voids every class's memos, through
+// a generation count that each class compares with its own before it reads
+// them; what is still true is rederived on the next request.
+//
+// Not in the middle of a request, though: the memos are also the recursion
+// guard, holding "assumed satisfiable" entries for the constraints being
+// resolved, and a resolution in progress adds instances of its own (the ones
+// it generates). Clearing then would drop the guard from under it. So the
+// count is read once, when a request starts with no resolution in progress,
+// and every class touched by that request is brought up to the count read
+// then; an addition made during the request takes effect at the next one,
+// which is the first that could ask about it anyway.
+//
+// The count is process-wide rather than per type environment: an instance
+// added in one compiler clears the memos of another's classes, which costs a
+// rederivation of what was memoized and nothing else, and is not a change
+// from before for the common case of one compiler per process.
+namespace {
+  std::atomic<uint64_t> instanceGeneration{1};
+  thread_local uint64_t requestGeneration = 0;
+}
+
+void TClass::forgetResolutions() {
+  ++instanceGeneration;
+}
+
+void TClass::refreshResolutions() const {
+  if (resolutionsInProgress == 0) {
+    requestGeneration = instanceGeneration.load();
+  }
+  if (this->memoGeneration != requestGeneration) {
+    this->testedInstances.clear();
+    this->satfInstances.clear();
+    this->memoGeneration = requestGeneration;
   }
 }
 
@@ -160,26 +366,35 @@ void TClass::candidateTCInstFns(const TEnvPtr& tenv, const MonoTypes& mts, TCIns
 }
 
 TCInstances TClass::matches(const TEnvPtr& tenv, const MonoTypes& mts, MonoTypeUnifier* u, Definitions* ds) const {
+  refreshResolutions();
+
   // do any ground instances match?
   TCInstances r;
   this->tcinstdb.matches(tenv, mts, &r);
 
   // if no ground instances match, can we generate a ground instance to match?
   //  (this can only work when we can feed back derived type information)
-  if (r.size() == 0) {
-    this->testedInstances.insert(mts, true);
+  if (r.empty()) {
+    ProvisionalMemo assumed(this->testedInstances, mts);
 
     TCInstanceFns ifns;
     candidateTCInstFns(tenv, mts, &ifns);
     for (const auto& f : ifns) {
       // for recursive instance definitions, initially assume that this instantiation is satisfiable
       // (this will prevent nested instance requests from recursing infinitely)
+      //
+      // a generator refused for growth (InstanceResolutionStep) unwinds through
+      // here without trying the generators after it, and the provisional memo
+      // settles this type as unsatisfiable, though a later generator might
+      // have resolved it. That is the refusal's cost: it is an error in the
+      // instance that diverged, reported as such, and defining another
+      // instance clears the memo
       TCInstancePtr ninst;
       if (f->apply(tenv, mts, this, u, ds, &ninst)) {
         const_cast<TClass*>(this)->insert(tenv, ninst, ds);
         r.push_back(ninst);
         break;
-      } else if (ninst.get()) {
+      } else if (ninst.get() != nullptr) {
         r.push_back(ninst);
         break;
       }
@@ -206,8 +421,8 @@ bool TClass::refine(const TEnvPtr& tenv, const ConstraintPtr& cst, MonoTypeUnifi
   }
 
   // apply refinement across all fundeps
-  for (FunDeps::const_iterator fd = this->fundeps.begin(); fd != this->fundeps.end(); ++fd) {
-    r |= refine(tenv, cst, *fd, s, ds);
+  for (const auto &fundep : this->fundeps) {
+    r |= refine(tenv, cst, fundep, s, ds);
   }
   return r;
 }
@@ -230,10 +445,11 @@ bool TClass::refine(const TEnvPtr& tenv, const ConstraintPtr& c, const FunDep& f
 }
 
 bool isLiteralFnTerm(const ExprPtr& e) {
-  return is<Fn>(stripAssumpHead(e));
+  return is<Fn>(stripAssumpHead(e)) != nullptr;
 }
 
 bool TClass::satisfied(const TEnvPtr& tenv, const ConstraintPtr& c, Definitions* ds) const {
+  refreshResolutions();
   if (c->arguments().size() != this->tvs) {
     return false;
   } else if (c->hasFreeVariables()) {
@@ -250,7 +466,7 @@ bool TClass::satisfied(const TEnvPtr& tenv, const ConstraintPtr& c, Definitions*
   }
 
   // finally see if we can get an instance
-  return matches(tenv, c->arguments(), 0, ds).size() == 1;
+  return matches(tenv, c->arguments(), nullptr, ds).size() == 1;
 }
 
 bool TClass::satisfiable(const TEnvPtr& tenv, const ConstraintPtr& c, Definitions* ds) const {
@@ -265,19 +481,20 @@ bool TClass::satisfiable(const TEnvPtr& tenv, const ConstraintPtr& c, Definition
   }
 
   // for empty class definitions, assume allow constraint usage before definitions
-  if (this->tcinstdb.values().size() == 0 && this->tcinstancefns.size() == 0) {
+  if (this->tcinstdb.values().empty() && this->tcinstancefns.empty()) {
     return true;
   }
 
   MonoTypes mts = c->arguments();
 
   // did we already assume that this constraint was satisfiable?
+  refreshResolutions();
   if (bool* f = this->satfInstances.lookup(mts)) {
     return *f;
   }
   
   // assume we're satisfiable until we can prove we're not
-  this->satfInstances.insert(mts, true);
+  ProvisionalMemo assumed(this->satfInstances, mts);
 
   // we're satisfiable if there's at least one satisfiable instance for this constraint
   if (this->tcinstdb.hasMatch(tenv, mts)) return true;
@@ -317,6 +534,7 @@ void TClass::explain(const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPt
     const MonoTypes& mts = cst->arguments();
 
     // avoid infinitely-recursive explanations
+    refreshResolutions();
     if (bool* f = this->testedInstances.lookup(mts)) {
       if (*f) {
         return;
@@ -328,14 +546,14 @@ void TClass::explain(const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPt
     TCInstanceFnPtr likelyTarget;
     Constraints     fcs;
 
-    this->testedInstances.insert(mts, true);
+    ProvisionalMemo assumed(this->testedInstances, mts);
     TCInstanceFns ifns;
     candidateTCInstFns(tenv, mts, &ifns);
     for (const auto& f : ifns) {
       Constraints scs;
       fcs.clear();
       f->explainSatisfiability(tenv, mts, ds, &scs, &fcs);
-      if (scs.size() > maxSuccCount && fcs.size() > 0) {
+      if (scs.size() > maxSuccCount && !fcs.empty()) {
         maxSuccCount = scs.size();
         likelyTarget = f;
       }
@@ -359,7 +577,7 @@ void TClass::explain(const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPt
 
 ExprPtr TClass::unqualify(const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPtr& e, Definitions* ds) const {
   // we can unqualify iff there's one (ONE!) matching instance for this constraint
-  TCInstances tis = matches(tenv, cst, 0, ds);
+  TCInstances tis = matches(tenv, cst, nullptr, ds);
   if (tis.size() != 1) {
     throw annotated_error(*e, "Cannot unqualify ambiguous or unsatisfiable predicate: " + hobbes::show(cst));
   } else {
@@ -367,17 +585,25 @@ ExprPtr TClass::unqualify(const TEnvPtr& tenv, const ConstraintPtr& cst, const E
   }
 }
 
+TCInstancePtr TClass::uniqueInstance(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions* ds) const {
+  TCInstances tis = matches(tenv, cst, nullptr, ds);
+  if (tis.size() == 1) {
+    return tis[0];
+  }
+  return TCInstancePtr();
+}
+
 PolyTypePtr TClass::lookup(const std::string& vn) const {
-  Members::const_iterator m = this->tcmembers.find(vn);
+  auto m = this->tcmembers.find(vn);
   if (m != this->tcmembers.end()) {
-    return PolyTypePtr(new PolyType(this->typeVars(), qualtype(list(ConstraintPtr(new Constraint(this->name(), tgens(this->typeVars())))), m->second)));
+    return std::make_shared<PolyType>(this->typeVars(), qualtype(list(std::make_shared<Constraint>(this->name(), tgens(this->typeVars()))), m->second));
   } else {
     return PolyTypePtr();
   }
 }
 
 MonoTypePtr TClass::memberType(const std::string& vn) const {
-  Members::const_iterator m = this->tcmembers.find(vn);
+  auto m = this->tcmembers.find(vn);
   if (m != this->tcmembers.end()) {
     return m->second;
   } else {
@@ -387,8 +613,8 @@ MonoTypePtr TClass::memberType(const std::string& vn) const {
 
 SymSet TClass::bindings() const {
   SymSet r;
-  for (Members::const_iterator m = this->tcmembers.begin(); m != this->tcmembers.end(); ++m) {
-    r.insert(m->first);
+  for (const auto &tcmember : this->tcmembers) {
+    r.insert(tcmember.first);
   }
   return r;
 }
@@ -406,7 +632,7 @@ void showFundep(const FunDep& fd, std::ostream& out) {
 
 void TClass::show(std::ostream& out) const {
   out << "class ";
-  if (this->reqs.size() > 0) {
+  if (!this->reqs.empty()) {
     out << "(";
     this->reqs[0]->show(out);
     for (size_t i = 1; i < this->reqs.size(); ++i) {
@@ -416,7 +642,7 @@ void TClass::show(std::ostream& out) const {
     out << ") => ";
   }
   out << this->tcname;
-  if (this->fundeps.size() > 0) {
+  if (!this->fundeps.empty()) {
     out << " | ";
     showFundep(this->fundeps[0], out);
     for (size_t i = 1; i < this->fundeps.size(); ++i) {
@@ -425,8 +651,8 @@ void TClass::show(std::ostream& out) const {
     }
   }
   out << " where\n";
-  for (Members::const_iterator m = this->tcmembers.begin(); m != this->tcmembers.end(); ++m) {
-    out << "  " << m->first << " :: " << hobbes::show(m->second) << "\n";
+  for (const auto &tcmember : this->tcmembers) {
+    out << "  " << tcmember.first << " :: " << hobbes::show(tcmember.second) << "\n";
   }
 }
 
@@ -435,7 +661,7 @@ const TCInstances& TClass::instances() const {
 }
 
 bool TClass::hasGroundInstanceAt(const MonoTypes& mts) const {
-  return this->tcinstdb.lookup(mts) != 0;
+  return this->tcinstdb.lookup(mts) != nullptr;
 }
 
 const TCInstanceFns& TClass::instanceFns() const {
@@ -466,7 +692,7 @@ bool TCInstance::hasMapping(const std::string& oname) const {
 }
 
 const TCInstance::ExprPtr& TCInstance::memberMapping(const std::string& oname) const {
-  MemberMapping::const_iterator mm = this->mmap.find(oname);
+  auto mm = this->mmap.find(oname);
   if (mm != this->mmap.end()) {
     return mm->second;
   } else {
@@ -485,13 +711,13 @@ struct TCUnqualify : public switchExprTyFn {
   const ConstraintPtr& constraint;
   TCUnqualify(const TCInstance* inst, Definitions* ds, const TEnvPtr& tenv, const ConstraintPtr& constraint) : inst(inst), ds(ds), tenv(tenv), constraint(constraint) { }
 
-  QualTypePtr withTy(const QualTypePtr& qt) const {
+  QualTypePtr withTy(const QualTypePtr& qt) const override {
     return removeConstraint(this->constraint, qt);
   }
 
-  ExprPtr with(const Var* v) const {
+  ExprPtr with(const Var* v) const override {
     // if we can resolve this symbol as an overload, replace it
-    MemberMapping::const_iterator mm = inst->memberMapping().find(v->value());
+    auto mm = inst->memberMapping().find(v->value());
 
     if (mm != inst->memberMapping().end() && hasConstraint(this->constraint, v->type())) {
       return mm->second;
@@ -503,8 +729,8 @@ struct TCUnqualify : public switchExprTyFn {
 
 // resolve member definitions ahead of time, so that we can just substitute into use-sites
 void TCInstance::bind(const TEnvPtr& tenv, const TClass* c, Definitions* ds) {
-  for (MemberMapping::iterator mm = this->mmap.begin(); mm != this->mmap.end(); ++mm) {
-    mm->second = unqualifyTypes(tenv, validateType(tenv, assume(mm->second, instantiate(this->itys, c->memberType(mm->first)), mm->second->la()), ds), ds);
+  for (auto &mm : this->mmap) {
+    mm.second = unqualifyTypes(tenv, validateType(tenv, assume(mm.second, instantiate(this->itys, c->memberType(mm.first)), mm.second->la()), ds), ds);
   }
 }
 
@@ -512,10 +738,59 @@ ExprPtr TCInstance::unqualify(Definitions* ds, const TEnvPtr& tenv, const Constr
   return switchOf(e, TCUnqualify(this, ds, tenv, cst));
 }
 
+// eliminate a batch of class constraints in a single traversal
+// (equivalent to sequentially applying TCUnqualify for each constraint, but
+//  avoids one full expression rewrite and teardown per eliminated constraint)
+struct TCUnqualifyBatch : public switchExprTyFn {
+  // member-name -> [(constraint, resolved member expr)] in batch order
+  using MemberSubs = std::unordered_map<std::string, std::vector<std::pair<ConstraintPtr, ExprPtr>>>;
+  Constraints cs;
+  MemberSubs  subs;
+
+  explicit TCUnqualifyBatch(const TCInstConstraints& cis) {
+    for (const auto& ci : cis) {
+      this->cs.push_back(ci.first);
+      for (const auto& mm : ci.second->memberMapping()) {
+        this->subs[mm.first].push_back(std::make_pair(ci.first, mm.second));
+      }
+    }
+  }
+
+  QualTypePtr withTy(const QualTypePtr& qt) const override {
+    Constraints r;
+    for (const auto& c : qt->constraints()) {
+      if (!hasConstraint(c, this->cs)) {
+        r.push_back(c);
+      }
+    }
+    if (r.size() == qt->constraints().size()) {
+      return qt;
+    }
+    return qualtype(r, qt->monoType());
+  }
+
+  ExprPtr with(const Var* v) const override {
+    // if we can resolve this symbol as an overload of any batched constraint, replace it
+    auto s = this->subs.find(v->value());
+    if (s != this->subs.end()) {
+      for (const auto& ce : s->second) {
+        if (hasConstraint(ce.first, v->type())) {
+          return ce.second;
+        }
+      }
+    }
+    return wrapWithTy(v->type(), v->clone());
+  }
+};
+
+ExprPtr unqualifyClassConstraints(const TEnvPtr&, const TCInstConstraints& cis, const ExprPtr& e, Definitions*) {
+  return switchOf(e, TCUnqualifyBatch(cis));
+}
+
 void TCInstance::show(std::ostream& out) const {
   out << "instance " << this->tcname << " " << str::cdelim(hobbes::show(this->itys), " ") << " where\n";
-  for (MemberMapping::const_iterator mm = this->mmap.begin(); mm != this->mmap.end(); ++mm) {
-    out << "  " << mm->first << " = " << hobbes::show(mm->second) << "\n";
+  for (const auto &mm : this->mmap) {
+    out << "  " << mm.first << " = " << hobbes::show(mm.second) << "\n";
   }
 }
 
@@ -531,11 +806,13 @@ size_t TCInstanceFn::arity() const {
   return this->itys.size();
 }
 
-bool TCInstanceFn::satisfiable(const TEnvPtr& tenv, const MonoTypes& tys, Definitions* rdefs) {
+bool TCInstanceFn::satisfiable(const TEnvPtr& tenv, const MonoTypes& tys, Definitions* rdefs) const {
   // immediately reject arity mismatch (though this should never happen)
   if (this->itys.size() != tys.size()) {
     return false;
   }
+
+  InstanceResolutionStep step(this->tcname, tys);
 
   // can the input unify with this generator's head?  can it satisfy its constraints?
   MonoTypeSubst s;
@@ -562,6 +839,8 @@ bool TCInstanceFn::satisfiable(const TEnvPtr& tenv, const MonoTypes& tys, Defini
         return false;
       }
     }
+  } catch (instance_resolution_depth_error&) {
+    throw;
   } catch (std::exception& ex) {
     return false;
   }
@@ -570,7 +849,7 @@ bool TCInstanceFn::satisfiable(const TEnvPtr& tenv, const MonoTypes& tys, Defini
   return true;
 }
 
-void TCInstanceFn::explainSatisfiability(const TEnvPtr& tenv, const MonoTypes& tys, Definitions* rdefs, Constraints* scs, Constraints* fcs) {
+void TCInstanceFn::explainSatisfiability(const TEnvPtr& tenv, const MonoTypes& tys, Definitions* rdefs, Constraints* scs, Constraints* fcs) const {
   if (this->itys.size() != tys.size()) {
     return;
   }
@@ -603,6 +882,8 @@ void TCInstanceFn::explainSatisfiability(const TEnvPtr& tenv, const MonoTypes& t
         fcs->push_back(c);
       }
     }
+  } catch (instance_resolution_depth_error&) {
+    throw;
   } catch (std::exception& ex) {
   }
 }
@@ -619,6 +900,8 @@ bool TCInstanceFn::apply(const TEnvPtr& tenv, const MonoTypes& tys, const TClass
   if (this->itys.size() != tys.size()) {
     return false;
   }
+
+  InstanceResolutionStep step(this->tcname, tys);
 
   // generate a fresh copy of this generator's type variables consistent between constraints and definition
   MonoTypeSubst s;
@@ -645,6 +928,8 @@ bool TCInstanceFn::apply(const TEnvPtr& tenv, const MonoTypes& tys, const TClass
         return false;
       }
     }
+  } catch (instance_resolution_depth_error&) {
+    throw;
   } catch (std::exception& ex) {
     return false;
   }
@@ -658,7 +943,7 @@ bool TCInstanceFn::apply(const TEnvPtr& tenv, const MonoTypes& tys, const TClass
   // we've definitely found a complete match
   // merge local bindings to the nested unifier scope
   MonoTypeSubst ms = u.substitution();
-  if (ms.size() > 0 && callsubst) {
+  if (!ms.empty() && (callsubst != nullptr)) {
     for (const auto& m : ms) {
       callsubst->bind(m.first, m.second);
     }
@@ -694,7 +979,7 @@ bool TCInstanceFn::apply(const TEnvPtr& tenv, const MonoTypes& tys, const TClass
   }
 
   // that's it, we've got a new ground type class instance
-  *out = TCInstancePtr(new TCInstance(this->tcname, nitys, mm, la()));
+  *out = std::make_shared<TCInstance>(this->tcname, nitys, mm, la());
   return true;
 }
 
@@ -729,8 +1014,8 @@ MonoTypes TCInstanceFn::instantiatedArgs(MonoTypeUnifier* s, const MonoTypes& ty
 
 MemberMapping TCInstanceFn::members(const MonoTypeSubst& s) const {
   MemberMapping result;
-  for (MemberMapping::const_iterator mm = this->mmap.begin(); mm != this->mmap.end(); ++mm) {
-    result[mm->first] = substitute(s, mm->second);
+  for (const auto &mm : this->mmap) {
+    result[mm.first] = substitute(s, mm.second);
   }
   return result;
 }
@@ -782,7 +1067,7 @@ void definePrivateClass(const TEnvPtr& tenv, const std::string& memberName, cons
   MemberMapping mm;
   mm[memberName] = expr;
 
-  nclass->insert(TCInstanceFnPtr(new TCInstanceFn(tcname, Constraints(), gtvars, mm, expr->la())));
+  nclass->insert(std::make_shared<TCInstanceFn>(tcname, Constraints(), gtvars, mm, expr->la()));
 
   tenv->bind(tcname, nclass);
 }
@@ -790,12 +1075,12 @@ void definePrivateClass(const TEnvPtr& tenv, const std::string& memberName, cons
 // reverse "hidden" type classes to get the original set of constraints
 Constraints expandHiddenTCs(const TEnvPtr& tenv, const Constraints& cs) {
   Constraints r;
-  for (auto c : cs) {
+  for (const auto& c : cs) {
     if (!isHiddenTCName(c->name())) {
       r.push_back(c);
     } else {
       auto uq = tenv->lookupUnqualifier(c->name());
-      if (const TClass* cc = dynamic_cast<const TClass*>(uq.get())) {
+      if (const auto* cc = dynamic_cast<const TClass*>(uq.get())) {
         Constraints ncs = expandHiddenTCs(tenv, instantiate(c->arguments(), cc->constraints()));
         r.insert(r.end(), ncs.begin(), ncs.end());
       } else {
@@ -809,22 +1094,22 @@ Constraints expandHiddenTCs(const TEnvPtr& tenv, const Constraints& cs) {
 
 const TClass* findClass(const TEnvPtr& tenv, const std::string& cname) {
   UnqualifierPtr uq = tenv->lookupUnqualifier(cname);
-  if (uq.get() == 0) {
+  if (uq.get() == nullptr) {
     throw std::runtime_error("No such type class: " + cname);
   }
-  const TClass* c = dynamic_cast<const TClass*>(uq.get());
-  if (!c) {
+  const auto* c = dynamic_cast<const TClass*>(uq.get());
+  if (c == nullptr) {
     throw std::runtime_error("Not a type class: " + cname);
   }
   return c;
 }
 
 bool isClassSatisfied(const TEnvPtr& tenv, const std::string& cname, const MonoTypes& tys, Definitions* ds) {
-  return findClass(tenv, cname)->satisfied(tenv, ConstraintPtr(new Constraint(cname, tys)), ds);
+  return findClass(tenv, cname)->satisfied(tenv, std::make_shared<Constraint>(cname, tys), ds);
 }
 
 bool isClassSatisfiable(const TEnvPtr& tenv, const std::string& cname, const MonoTypes& tys, Definitions* ds) {
-  return findClass(tenv, cname)->satisfiable(tenv, ConstraintPtr(new Constraint(cname, tys)), ds);
+  return findClass(tenv, cname)->satisfiable(tenv, std::make_shared<Constraint>(cname, tys), ds);
 }
 
 ExprPtr unqualifyClass(const TEnvPtr& tenv, const std::string& cname, const MonoTypes& tys, const ExprPtr& e, Definitions* ds) {
@@ -839,6 +1124,12 @@ ExprPtr unqualifyClass(const TEnvPtr& tenv, const std::string& cname, const Mono
 }
 
 bool isClassMember(const TEnvPtr& tenv, const std::string& memberName) {
+  // a name that isn't bound at all can't be a class member, and asking for its
+  // type would build a "did you mean" suggestion list from every binding in
+  // the environment before throwing
+  if (!tenv->hasBinding(memberName)) {
+    return false;
+  }
   try {
     Constraints cs = tenv->lookup(memberName)->qualtype()->constraints();
     return (cs.size() == 1) && (tenv->lookupUnqualifier(cs[0])->lookup(memberName) != PolyTypePtr());
@@ -874,18 +1165,18 @@ void serializeGroundInstance(const TEnvPtr&, const TClass*, const TCInstancePtr&
 
 void serializeGroundInstances(const TEnvPtr& tenv, const TClass* c, const TCInstances& insts, std::ostream& out) {
   encode(insts.size(), out);
-  for (TCInstances::const_iterator inst = insts.begin(); inst != insts.end(); ++inst) {
-    serializeGroundInstance(tenv, c, *inst, out);
+  for (const auto &inst : insts) {
+    serializeGroundInstance(tenv, c, inst, out);
   }
 }
 
-typedef std::vector<const TClass*> Classes;
+using Classes = std::vector<const TClass *>;
 
 void serializeGroundClasses(const TEnvPtr& tenv, const Classes& cs, std::ostream& out) {
   encode(cs.size(), out);
-  for (Classes::const_iterator c = cs.begin(); c != cs.end(); ++c) {
-    encode((*c)->name(), out);
-    serializeGroundInstances(tenv, *c, (*c)->instances(), out);
+  for (const auto *c : cs) {
+    encode(c->name(), out);
+    serializeGroundInstances(tenv, c, c->instances(), out);
   }
 }
 
@@ -893,9 +1184,9 @@ void serializeGroundClasses(const TEnvPtr& tenv, std::ostream& out) {
   const TEnv::Unqualifiers& uqs = tenv->unqualifiers();
   Classes cs;
 
-  for (TEnv::Unqualifiers::const_iterator uq = uqs.begin(); uq != uqs.end(); ++uq) {
-    if (const TClass* c = dynamic_cast<const TClass*>(uq->second.get())) {
-      if (c->instances().size() > 0) {
+  for (const auto &uq : uqs) {
+    if (const auto* c = dynamic_cast<const TClass*>(uq.second.get())) {
+      if (!c->instances().empty()) {
         cs.push_back(c);
       }
     }
@@ -914,11 +1205,11 @@ void deserializeGroundClasses(const TEnvPtr& tenv, std::istream& in, Definitions
     std::string cname;
     decode(&cname, in);
 
-    TClass* c = 0;
+    TClass* c = nullptr;
     try {
       c = dynamic_cast<TClass*>(tenv->lookupUnqualifier(cname).get());
     } catch (std::exception&) {
-      c = 0;
+      c = nullptr;
     }
 
     size_t ic = 0;
@@ -931,9 +1222,9 @@ void deserializeGroundClasses(const TEnvPtr& tenv, std::istream& in, Definitions
       MemberMapping mm;
       decode(&mm, in);
 
-      if (c) {
+      if (c != nullptr) {
         if (!c->hasGroundInstanceAt(mts)) {
-          c->insert(tenv, TCInstancePtr(new TCInstance(cname, mts, mm, c->la())), ds);
+          c->insert(tenv, std::make_shared<TCInstance>(cname, mts, mm, c->la()), ds);
         }
       }
     }

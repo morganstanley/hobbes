@@ -40,21 +40,23 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <set>
 #include <unordered_map>
 #include <functional>
 #include <stack>
+#include <limits>
 #include <stdexcept>
 #include <sstream>
 #include <array>
 #include <type_traits>
 
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/mman.h>
+#include <cassert>
+#include <cstring>
 #include <fcntl.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <unistd.h>
-#include <string.h>
-#include <assert.h>
 
 // filesystem waits depend on platform details
 #include <sys/time.h>
@@ -79,7 +81,7 @@ struct filehead {
 };
 #define HFREGION_CURRENT_FILE_FORMAT_VERSION static_cast<uint16_t>(2)
 #define HFREGION_FILE_PREFIX_BYTES           static_cast<uint32_t>(0x10a1db0d)
-#define HFREGION_MAX_PAGE_SIZE               static_cast<size_t>((1<<14)-1)
+#define HFREGION_MAX_PAGE_SIZE               static_cast<size_t>(1<<14)
 #define HFREGION_MIN_PAGE_SIZE               static_cast<size_t>(256)
 
 // a single system page record
@@ -106,10 +108,10 @@ struct pagedata {
   void type(pagetype::code x) { this->ptfd = encode(x, availBytes()); }
   void availBytes(uint16_t x) { this->ptfd = encode(type(), x); }
 };
-typedef std::vector<pagedata> pagetable;
+using pagetable = std::vector<pagedata>;
 
 // the index of a page of data in the underlying file
-typedef uint64_t file_pageindex_t;
+using file_pageindex_t = uint64_t;
 
 // convenience for raising errors out of errno
 inline void raiseSysError [[noreturn]] (const std::string& msg, const std::string& fname) {
@@ -118,7 +120,7 @@ inline void raiseSysError [[noreturn]] (const std::string& msg, const std::strin
   throw std::runtime_error(ss.str());
 }
 
-typedef std::vector<uint8_t> bytes;
+using bytes = std::vector<uint8_t>;
 
 // a stored name/value binding
 struct binding {
@@ -129,7 +131,7 @@ struct binding {
   size_t boffset; // where is this binding data stored in the file?
 };
 
-typedef std::map<std::string, binding> bindingset;
+using bindingset = std::map<std::string, binding>;
 
 // a mem-mapped file region
 struct fregion {
@@ -140,7 +142,7 @@ struct fregion {
 };
 
 // account for mappings by absolute page
-typedef std::map<file_pageindex_t, fregion> fmappings;
+using fmappings = std::map<file_pageindex_t, fregion>;
 
 // remember which mapped sections correspond to which pages
 struct falloc {
@@ -148,11 +150,11 @@ struct falloc {
   size_t           size; // the number of bytes allocated to this thing
 };
 
-typedef std::map<char*, falloc> fallocs;
+using fallocs = std::map<char *, falloc>;
 
 // fast page searches (to avoid linear searches of the entire page table)
-typedef std::vector<file_pageindex_t>     pageseq;
-typedef std::map<pagetype::code, pageseq> ptyorder;
+using pageseq = std::vector<file_pageindex_t>;
+using ptyorder = std::map<pagetype::code, pageseq>;
 
 // an image file, opened either for reading or writing
 struct imagefile {
@@ -262,6 +264,9 @@ template <typename T>
   }
 template <typename TIter>
   inline void writes(imagefile* f, TIter begin, TIter end) {
+    if (begin == end) {
+      return;
+    }
     fdwrite(f, reinterpret_cast<const char*>(&(*begin)), (end - begin) * sizeof(*begin));
   }
 inline void write(imagefile* f, const std::string& x) {
@@ -297,10 +302,43 @@ template <typename T>
   inline void reads(const imagefile* f, size_t sz, T* x) {
     fdread(f, reinterpret_cast<char*>(x), sz * sizeof(T));
   }
+// A length read out of the file image cannot describe more data than the file
+// itself holds. Without this check a corrupt or crafted image drives an
+// enormous allocation before the read that would fail, so validate the count
+// against the file size the same way other malformed-image cases are handled.
+inline void ensureLengthInFile(const imagefile* f, size_t n, size_t esz) {
+  if (n == 0) {
+    return;
+  }
+  if (esz != 0 && n > (std::numeric_limits<size_t>::max() / esz)) {
+    throw std::runtime_error(
+      "Not a valid structured data file: length (" + hobbes::string::from(n) + ") overflows: " + f->path);
+  }
+  const size_t need = n * esz;
+
+  // Bound by the bytes actually left from the current offset rather than the
+  // whole file: a length near the end can be smaller than the file and still
+  // describe far more data than remains.
+  size_t avail = f->file_size;
+  if (f->fd >= 0) {
+    const off_t cur = lseek(f->fd, 0, SEEK_CUR);
+    if (cur >= 0 && static_cast<size_t>(cur) <= f->file_size) {
+      avail = f->file_size - static_cast<size_t>(cur);
+    }
+  }
+
+  if (need > avail) {
+    throw std::runtime_error(
+      "Not a valid structured data file: length (" + hobbes::string::from(need) +
+      " bytes) exceeds the " + hobbes::string::from(avail) + " bytes remaining: " + f->path);
+  }
+}
+
 inline void read(imagefile* f, std::string* x) {
   size_t sz = 0;
   read(f, &sz);
 
+  ensureLengthInFile(f, sz, sizeof(char));
   x->resize(sz);
   if (sz > 0) {
     reads(f, sz, &((*x)[0]));
@@ -310,6 +348,7 @@ inline void read(imagefile* f, std::vector<unsigned char>* xs) {
   size_t sz = 0;
   read(f, &sz);
 
+  ensureLengthInFile(f, sz, sizeof(unsigned char));
   xs->resize(sz);
   if (sz > 0) {
     reads(f, sz, &((*xs)[0]));
@@ -321,6 +360,22 @@ inline size_t pageOffset(const imagefile* f, file_pageindex_t page) { return f->
 
 // the page index implied by an absolute position
 inline file_pageindex_t pageIndex(const imagefile* f, uint64_t fpos) { return fpos / f->page_size; }
+
+// A page index derived from a file position is only meaningful if the page
+// table actually describes that page. Reading a record can leave the cursor
+// anywhere when the image is malformed, so the index has to be checked before
+// it is used to look up page metadata.
+inline void ensurePageInTable(const imagefile* f, file_pageindex_t page) {
+  // widen the table size to the index type rather than narrowing the index:
+  // file_pageindex_t is 64 bits, so where size_t is narrower the cast would
+  // truncate and a large index could wrap into range and pass this check
+  if (page >= static_cast<file_pageindex_t>(f->pages.size())) {
+    throw std::runtime_error(
+      "Not a valid structured data file: page index (" + hobbes::string::from(page) +
+      ") is outside the page table of " + hobbes::string::from(f->pages.size()) +
+      " page(s): " + f->path);
+  }
+}
 
 // an absolute file position from a page and relative position
 inline size_t position(const imagefile* f, file_pageindex_t page, uint16_t offset) { return pageOffset(f, page) + static_cast<uint64_t>(offset); }
@@ -420,7 +475,7 @@ template <typename T>
 // try to find a page with as much free space as requested
 inline bool findPageWithSpace(imagefile* f, pagetype::code pt, size_t datalen, size_t alignment, file_pageindex_t* idx) {
   const pageseq& pord = f->freespace[pt];
-  if (pord.size() == 0) {
+  if (pord.empty()) {
     return false;
   }
 
@@ -511,7 +566,7 @@ inline void appendTOCData(imagefile* f, const pagetable& newpages) {
   }
 
   // if we added TOC pages while writing the input TOC entries, then TOC entries for those TOC pages need to be added too
-  if (newtocpages.size() > 0) {
+  if (!newtocpages.empty()) {
     appendTOCData(f, newtocpages);
   }
 }
@@ -526,7 +581,7 @@ inline size_t findSpace(imagefile* f, pagetype::code pt, size_t datalen, size_t 
   if (findPageWithSpace(f, pt, datalen, alignment, &fpage)) {
     pagedata& pd = f->pages[fpage];
 
-    uint64_t offset = align<size_t>(f->page_size - pd.availBytes(), alignment);
+    auto offset = align<size_t>(f->page_size - pd.availBytes(), alignment);
 
     updateTOCData(f, fpage, pagedata(pt, f->page_size - (offset+datalen)));
     return position(f, fpage, offset);
@@ -584,7 +639,7 @@ inline void addBinding(imagefile* f, const std::string& vname, const bytes& type
 // mmap a region out of this file
 inline fregion& createFileRegionMap(imagefile* f, file_pageindex_t page, size_t pages) {
   // leave no gaps in page mappings
-  if (f->mappings.size() > 0) {
+  if (!f->mappings.empty()) {
     fregion& mr = f->mappings.rbegin()->second;
 
     size_t pend = mr.base_page + mr.pages;
@@ -598,7 +653,7 @@ inline fregion& createFileRegionMap(imagefile* f, file_pageindex_t page, size_t 
   pages = align<size_t>(pages, f->mmapPageMultiple);
 
   // map the specified file region into memory
-  char* d = reinterpret_cast<char*>(mmap(0, pages * f->page_size, PROT_READ | (f->readonly ? 0 : PROT_WRITE), MAP_SHARED, f->fd, page * f->page_size));
+  char* d = reinterpret_cast<char*>(mmap(nullptr, pages * f->page_size, PROT_READ | (f->readonly ? 0 : PROT_WRITE), MAP_SHARED, f->fd, page * f->page_size));
   if (d == MAP_FAILED) {
     raiseSysError
     (
@@ -644,7 +699,7 @@ template <typename K, typename V>
 // find the mapping data for a region, or create it if necessary
 inline fregion& mappedFileRegion(imagefile* f, file_pageindex_t page, size_t pages) {
   // try to find the nearest possible mapping for this page
-  fmappings::iterator fm = gleb(f->mappings, page);
+  auto fm = gleb(f->mappings, page);
 
   // if we couldn't find a mapping, then we have to make one
   if (fm == f->mappings.end()) {
@@ -662,6 +717,36 @@ inline fregion& mappedFileRegion(imagefile* f, file_pageindex_t page, size_t pag
 }
 
 // allocate a region of this file as mapped memory
+// map data that the file is supposed to contain
+//
+// mapFileData maps whatever it is asked for, in multiples of mmapPageMultiple
+// pages, so an offset past the end of the file usually lands inside a mapping
+// anyway and faults only when it is touched. Every offset and length a reader
+// takes *from the file* has to be checked against the file's size before it
+// is used, or a corrupt or crafted image decides what the reader reads: the
+// arithmetic here is written so that neither the sum nor a product computed
+// by a caller can wrap past the check.
+inline void ensureDataInFile(imagefile* f, size_t fpos, size_t sz, const char* what) {
+  if (fpos <= f->file_size && sz <= f->file_size - fpos) {
+    return;
+  }
+
+  // a reader's idea of the file's size goes stale as soon as a writer extends
+  // the file, and a reader is expected to follow a writer that is still
+  // appending, so what is out of range here may simply be new. Ask the
+  // filesystem before refusing: only data that is outside the file *now* is
+  // data the file does not have.
+  if (loadFileSize(f) && fpos <= f->file_size && sz <= f->file_size - fpos) {
+    return;
+  }
+
+  throw std::runtime_error(
+    std::string(what) + " at offset " + hobbes::string::from(fpos) +
+    " runs past the end of a " + hobbes::string::from(f->file_size) +
+    " byte file (" + hobbes::string::from(sz) + " bytes)"
+  );
+}
+
 inline char* mapFileData(imagefile* f, size_t fpos, size_t sz) {
   file_pageindex_t pagei  = fpos        / f->page_size;
   file_pageindex_t pagef  = (fpos + sz) / f->page_size;
@@ -685,10 +770,40 @@ inline char* mapFileData(imagefile* f, size_t fpos, size_t sz) {
   return result;
 }
 
+inline char* mapFileDataInFile(imagefile* f, size_t fpos, size_t sz, const char* what) {
+  ensureDataInFile(f, fpos, sz, what);
+  return mapFileData(f, fpos, sz);
+}
+
+// bound an element count read out of the file before it is multiplied by an
+// element size: 'n * esz' is what decides how much is mapped and copied, and
+// a count near 2^64 wraps that product to something small that passes any
+// check made after the multiplication
+inline void ensureCountInFile(imagefile* f, size_t dataPos, size_t esz, size_t n, const char* what) {
+  if (esz == 0) {
+    return; // no data behind the count, so no count is too large
+  }
+  if (dataPos <= f->file_size && n <= (f->file_size - dataPos) / esz) {
+    return;
+  }
+  // as in ensureDataInFile: the cached size goes stale under a writer that is
+  // still appending, so confirm against the file before refusing
+  if (loadFileSize(f) && dataPos <= f->file_size && n <= (f->file_size - dataPos) / esz) {
+    return;
+  }
+
+  throw std::runtime_error(
+    std::string(what) + " at offset " + hobbes::string::from(dataPos) +
+    " claims " + hobbes::string::from(n) +
+    " elements of " + hobbes::string::from(esz) +
+    " bytes, past the end of a " + hobbes::string::from(f->file_size) + " byte file"
+  );
+}
+
 // deallocate memory mapped out of this file
 // (if this means that there are no outstanding references to the mapping, then the mapping itself is released)
 inline void unmapFileData(imagefile* f, const void* p, size_t sz) {
-  fallocs::iterator fa = f->allocs.find(const_cast<char*>(reinterpret_cast<const char*>(p)));
+  auto fa = f->allocs.find(const_cast<char*>(reinterpret_cast<const char*>(p)));
   if (fa == f->allocs.end()) {
     return;
   }
@@ -699,7 +814,7 @@ inline void unmapFileData(imagefile* f, const void* p, size_t sz) {
 
   // dereference these bytes from the page mapping
   // if the page mapping has no references, we can remove the page mapping too
-  fmappings::iterator fm = f->mappings.find(dpage);
+  auto fm = f->mappings.find(dpage);
   if (fm == f->mappings.end()) {
     throw std::runtime_error("Internal error, inconsistent file mapping state");
   }
@@ -710,6 +825,25 @@ inline void unmapFileData(imagefile* f, const void* p, size_t sz) {
     releaseFileRegionMap(f, fm->second);
     f->mappings.erase(fm);
   }
+}
+
+// map a stored sequence: a count, and 'esz' bytes of element data behind it
+//
+// the count comes out of the file, and 'count * esz' decides how much is
+// mapped and then copied out, so a count near 2^64 wraps that product to
+// something small while the count itself stays huge -- the copy then runs off
+// the end of the mapping -- and 'dloc + sizeof(size_t) + count' can wrap past
+// the file as well. Bound the count by what the file could hold before it is
+// multiplied by anything.
+inline uint8_t* mapStoredSeq(imagefile* f, size_t dloc, size_t esz, size_t* count, const char* what) {
+  auto* c = reinterpret_cast<size_t*>(mapFileDataInFile(f, dloc, sizeof(size_t), what));
+  size_t n = *c;
+  unmapFileData(f, c, sizeof(size_t));
+
+  ensureCountInFile(f, dloc + sizeof(size_t), esz, n, what);
+
+  *count = n;
+  return reinterpret_cast<uint8_t*>(mapFileDataInFile(f, dloc + sizeof(size_t), n * esz, what));
 }
 
 // we shouldn't ever work with files that have invalid page sizes
@@ -756,8 +890,34 @@ inline void createFile(imagefile* f) {
   f->head_toc_pos = sizeof(filehead) + sizeof(pagedata);
 }
 
+// The page table is a chain of TOC pages, each ending with the index of the
+// next one. That link is read out of the image, so a corrupt or crafted file
+// can point it at a page the file does not have, or back at a page the chain
+// has already read. The read loop below only ends when it finds a null page
+// entry, so a link that closes a cycle never ends it: the same pages are read
+// forever while the page table grows without bound, which surfaces as a hang
+// rather than as the malformed image it is. Requiring each link to name a page
+// that lies wholly within the file and that this chain has not read yet bounds
+// the chain by the number of pages in the file.
+inline void ensureTOCPageLink(const imagefile* f, file_pageindex_t page, const std::set<file_pageindex_t>& readPages) {
+  const uint64_t pagesInFile = f->file_size / f->page_size;
+
+  if (page >= pagesInFile) {
+    throw std::runtime_error(
+      "Not a valid structured data file: page table continues on page (" + hobbes::string::from(page) +
+      ") beyond the " + hobbes::string::from(pagesInFile) + " page(s) in the file: " + f->path);
+  } else if (readPages.find(page) != readPages.end()) {
+    throw std::runtime_error(
+      "Not a valid structured data file: page table returns to page (" + hobbes::string::from(page) +
+      "), which it has already read: " + f->path);
+  }
+}
+
 // read all of the page data entries possible from the current file position
 inline void readPageData(imagefile* f) {
+  // the TOC pages read so far, seeded with the page the caller started on
+  std::set<file_pageindex_t> readpages(f->tocpages.begin(), f->tocpages.end());
+
   // we stop reading page data when we hit the 0 page
   // and if we get to the end of a page, there's a link to the next page
   while (true) {
@@ -772,6 +932,8 @@ inline void readPageData(imagefile* f) {
     if (restInPage(f, f->head_toc_pos) == sizeof(file_pageindex_t)) {
       file_pageindex_t nextpage = -1;
       read(f, &nextpage);
+      ensureTOCPageLink(f, nextpage, readpages);
+      readpages.insert(nextpage);
       f->head_toc_pos = pageOffset(f, nextpage);
       f->tocpages.push_back(nextpage);
       seekAbs(f, f->head_toc_pos);
@@ -812,8 +974,12 @@ inline size_t readEnvironmentPage(imagefile* f, file_pageindex_t p) {
     //        page is filled up to and including the last byte (otherwise we'd mistakenly
     //        assume that we have to continue reading from the next page)
     size_t           pos   = filePosition(f) - 1;
-    file_pageindex_t tpage = file_pageindex_t(pos / f->page_size);
+    auto tpage = file_pageindex_t(pos / f->page_size);
     uint16_t         rpos  = (pos % f->page_size) + 1;
+
+    // a crafted image can make the record above run past the end of the page
+    // table, and this loop only terminates by consulting that page's metadata
+    ensurePageInTable(f, tpage);
 
     if (rpos == (f->page_size - f->pages[tpage].availBytes())) {
       break;
@@ -868,7 +1034,7 @@ inline void readFile(imagefile* f, uint16_t minVersion, uint16_t maxVersion) {
 
 // open a file, or create it if necessary
 inline imagefile* openFile(const std::string& fname, bool readonly, uint16_t minVersion = HFREGION_CURRENT_FILE_FORMAT_VERSION, uint16_t maxVersion = HFREGION_CURRENT_FILE_FORMAT_VERSION, size_t mmapPageMultiple = 262144 /* 1GB */) {
-  imagefile* f        = new imagefile();
+  auto* f        = new imagefile();
   f->path             = fname;
   f->readonly         = readonly;
   f->mmapPageMultiple = mmapPageMultiple;
@@ -915,7 +1081,7 @@ inline imagefile* openFile(const std::string& fname, bool readonly, uint16_t min
 // does this file even represent a structured data file?
 // we'll say yes if it can be opened, it has the magic number, and its size is a multiple of its page size
 inline bool isFRegion(const std::string& fname) {
-  imagefile* f = new imagefile();
+  auto* f = new imagefile();
   f->path      = fname;
   f->readonly  = true;
 
@@ -1188,7 +1354,15 @@ template <typename T, size_t N>
   struct store<carray<T,N>, typename tbool<store<T>::can_memcpy>::type> : public storeCArrayDef<T,N> {
     static const bool can_memcpy = true;
     static void write(imagefile*, void*       p, const carray<T,N>& x) { memcpy(p, &x, storeCArrayDef<T,N>::alignment()+sizeof(T)*x.size); }
-    static void read(imagefile*,  const void* p, carray<T,N>*       x) { memcpy(reinterpret_cast<void*>(x),  p, storeCArrayDef<T,N>::alignment()+sizeof(T)*(*reinterpret_cast<const size_t*>(p))); }
+    static void read(imagefile*,  const void* p, carray<T,N>*       x) {
+      // the stored length comes from the file image and must not exceed the
+      // fixed capacity N, or the copy overruns x->data[N]
+      const size_t n = *reinterpret_cast<const size_t*>(p);
+      if (n > N) {
+        throw std::runtime_error("Not a valid structured data file: carray length (" + hobbes::string::from(n) + ") exceeds capacity (" + hobbes::string::from(N) + ")");
+      }
+      memcpy(reinterpret_cast<void*>(x), p, storeCArrayDef<T,N>::alignment()+sizeof(T)*n);
+    }
   };
 
 template <typename T, size_t N>
@@ -1203,9 +1377,15 @@ template <typename T, size_t N>
       }
     }
     static void read(imagefile* f, const void* p, carray<T,N>* x) {
-      x->size = *reinterpret_cast<const size_t*>(p);
+      // the stored length comes from the file image and must not exceed the
+      // fixed capacity N, or the loop writes past x->data[N]
+      const size_t n = *reinterpret_cast<const size_t*>(p);
+      if (n > N) {
+        throw std::runtime_error("Not a valid structured data file: carray length (" + hobbes::string::from(n) + ") exceeds capacity (" + hobbes::string::from(N) + ")");
+      }
+      x->size = n;
       p = reinterpret_cast<const uint8_t*>(p) + storeCArrayDef<T,N>::alignment();
-      for (size_t i = 0; i < x->size; ++i) {
+      for (size_t i = 0; i < n; ++i) {
         store<T>::read(f, p, &x->data[i]);
         p = reinterpret_cast<const uint8_t*>(p) + store<T>::size();
       }
@@ -1221,11 +1401,11 @@ template <>
     static size_t alignment() { return sizeof(size_t); }
 
     static void write(imagefile* f, void* p, const std::string& x) {
-      if (x.size() > 0) {
+      if (!x.empty()) {
         auto bc = sizeof(size_t) + x.size();
 
         size_t dloc = findSpace(f, pagetype::data, bc, sizeof(size_t));
-        uint8_t* d = reinterpret_cast<uint8_t*>(mapFileData(f, dloc, bc));
+        auto* d = reinterpret_cast<uint8_t*>(mapFileData(f, dloc, bc));
         *reinterpret_cast<size_t*>(d) = x.size();
         memcpy(d+sizeof(size_t), x.data(), x.size());
         unmapFileData(f, d, bc);
@@ -1237,13 +1417,12 @@ template <>
     }
     static void read (imagefile* f, const void* p, std::string* x) {
       auto     dloc = *reinterpret_cast<const size_t*>(p);
-      size_t*  c    = reinterpret_cast<size_t*>(mapFileData(f, dloc, sizeof(size_t)));
-      char*    s    = reinterpret_cast<char*>(mapFileData(f, dloc+sizeof(size_t), *c));
+      size_t n = 0;
+      char*  s = reinterpret_cast<char*>(mapStoredSeq(f, dloc, sizeof(char), &n, "stored string"));
 
-      x->assign(s, s + *c);
+      x->assign(s, s + n);
 
-      unmapFileData(f, s, *c);
-      unmapFileData(f, c, sizeof(size_t));
+      unmapFileData(f, s, n);
     }
   };
 
@@ -1258,11 +1437,11 @@ template <typename T>
   struct store<std::vector<T>, typename tbool<store<T>::can_memcpy>::type> : public storeVectorDef<T> {
     static const bool can_memcpy = false;
     static void write(imagefile* f, void* p, const std::vector<T>& x) {
-      if (x.size() > 0) {
+      if (!x.empty()) {
         auto bc = sizeof(size_t) + sizeof(T)*x.size();
 
         size_t dloc = findSpace(f, pagetype::data, bc, sizeof(size_t));
-        uint8_t* d = reinterpret_cast<uint8_t*>(mapFileData(f, dloc, bc));
+        auto* d = reinterpret_cast<uint8_t*>(mapFileData(f, dloc, bc));
         *reinterpret_cast<size_t*>(d) = x.size();
         memcpy(d+sizeof(size_t), &x[0], sizeof(T)*x.size());
         unmapFileData(f, d, bc);
@@ -1274,29 +1453,30 @@ template <typename T>
     }
     static void read(imagefile* f, const void* p, std::vector<T>* x) {
       auto     dloc = *reinterpret_cast<const size_t*>(p);
-      size_t*  c    = reinterpret_cast<size_t*>(mapFileData(f, dloc, sizeof(size_t)));
-      uint8_t* d    = reinterpret_cast<uint8_t*>(mapFileData(f, dloc+sizeof(size_t), *c * sizeof(T)));
+      size_t n = 0;
+      auto* d = mapStoredSeq(f, dloc, sizeof(T), &n, "stored vector");
 
-      x->resize(*c);
-      memcpy(reinterpret_cast<void*>(&(*x)[0]), d, *c * sizeof(T));
+      x->resize(n);
+      if (n > 0) {
+        memcpy(reinterpret_cast<void*>(&(*x)[0]), d, n * sizeof(T));
+      }
 
-      unmapFileData(f, d, *c);
-      unmapFileData(f, c, sizeof(size_t));
+      unmapFileData(f, d, n * sizeof(T));
     }
   };
 template <typename T>
   struct store<std::vector<T>, typename tbool<!store<T>::can_memcpy>::type> : public storeVectorDef<T> {
     static const bool can_memcpy = false;
     static void write(imagefile* f, void* p, const std::vector<T>& x) {
-      if (x.size() > 0) {
+      if (!x.empty()) {
         size_t tsz = store<T>::size();
         auto   bc  = sizeof(size_t) + tsz*x.size();
 
         size_t dloc = findSpace(f, pagetype::data, bc, sizeof(size_t));
-        uint8_t* d = reinterpret_cast<uint8_t*>(mapFileData(f, dloc, bc));
+        auto* d = reinterpret_cast<uint8_t*>(mapFileData(f, dloc, bc));
         *reinterpret_cast<size_t*>(d) = x.size();
 
-        auto dc = d + sizeof(size_t);
+        auto *dc = d + sizeof(size_t);
         for (const auto& xv : x) {
           store<T>::write(f, dc, xv);
           dc += tsz;
@@ -1311,18 +1491,17 @@ template <typename T>
     static void read(imagefile* f, const void* p, std::vector<T>* x) {
       size_t   tsz  = store<T>::size();
       auto     dloc = *reinterpret_cast<const size_t*>(p);
-      size_t*  c    = reinterpret_cast<size_t*>(mapFileData(f, dloc, sizeof(size_t)));
-      uint8_t* d    = reinterpret_cast<uint8_t*>(mapFileData(f, dloc+sizeof(size_t), *c * tsz));
-      uint8_t* dc   = d;
+      size_t n = 0;
+      auto* d = mapStoredSeq(f, dloc, tsz, &n, "stored vector");
+      uint8_t* dc = d;
 
-      x->resize(*c);
-      for (size_t i = 0; i < *c; ++i) {
+      x->resize(n);
+      for (size_t i = 0; i < n; ++i) {
         store<T>::read(f, dc, &(*x)[i]);
         dc += tsz;
       }
 
-      unmapFileData(f, d, *c);
-      unmapFileData(f, c, sizeof(size_t));
+      unmapFileData(f, d, n * tsz);
     }
   };
 
@@ -1331,14 +1510,14 @@ template <>
   struct store<std::vector<bool>> : public storeVectorDef<bool> {
     static const bool can_memcpy = false;
     static void write(imagefile* f, void* p, const std::vector<bool>& x) {
-      if (x.size() > 0) {
+      if (!x.empty()) {
         auto   bc  = sizeof(size_t) + x.size();
 
         size_t dloc = findSpace(f, pagetype::data, bc, sizeof(size_t));
-        uint8_t* d = reinterpret_cast<uint8_t*>(mapFileData(f, dloc, bc));
+        auto* d = reinterpret_cast<uint8_t*>(mapFileData(f, dloc, bc));
         *reinterpret_cast<size_t*>(d) = x.size();
 
-        auto dc = d + sizeof(size_t);
+        auto *dc = d + sizeof(size_t);
         for (const auto& xv : x) {
           store<bool>::write(f, dc, xv);
           dc += 1;
@@ -1352,20 +1531,19 @@ template <>
     }
     static void read(imagefile* f, const void* p, std::vector<bool>* x) {
       auto     dloc = *reinterpret_cast<const size_t*>(p);
-      size_t*  c    = reinterpret_cast<size_t*>(mapFileData(f, dloc, sizeof(size_t)));
-      uint8_t* d    = reinterpret_cast<uint8_t*>(mapFileData(f, dloc+sizeof(size_t), *c));
-      uint8_t* dc   = d;
+      size_t n = 0;
+      auto* d = mapStoredSeq(f, dloc, sizeof(uint8_t), &n, "stored bit vector");
+      uint8_t* dc = d;
 
-      x->resize(*c);
-      for (size_t i = 0; i < *c; ++i) {
+      x->resize(n);
+      for (size_t i = 0; i < n; ++i) {
         bool val=false;
         store<bool>::read(f, dc, &val);
         (*x)[i] = val;
         dc += 1;
       }
 
-      unmapFileData(f, d, *c);
-      unmapFileData(f, c, sizeof(size_t));
+      unmapFileData(f, d, n);
     }
   };
 
@@ -1401,10 +1579,10 @@ template <typename U, typename V>
 // store tuples
 template <size_t i, size_t n, typename ... Ts>
   struct storeTupleDef {
-    typedef typename nth<i, Ts...>::type H;
-    typedef tuple<Ts...>                 TT;
-    typedef typename TT::offs            offs;
-    typedef storeTupleDef<i+1, n, Ts...> Recurse;
+    using H = typename nth<i, Ts...>::type;
+    using TT = tuple<Ts...>;
+    using offs = typename TT::offs;
+    using Recurse = storeTupleDef<i + 1, n, Ts...>;
 
     static void fieldDefs(size_t offset, ty::Struct::Fields* fs) {
       offset = align(offset, store<H>::alignment());
@@ -1449,7 +1627,7 @@ template <typename ... Ts>
 template <typename ... Ts>
   struct store<tuple<Ts...>, typename tbool<!all_memcpyable<Ts...>::value>::type> : public storeTupleDef<0, sizeof...(Ts), Ts...> {
     static const bool can_memcpy = false;
-    typedef storeTupleDef<0, sizeof...(Ts), Ts...> Reflect;
+    using Reflect = storeTupleDef<0, sizeof...(Ts), Ts...>;
 
     static void write(imagefile* f, void* p, const tuple<Ts...>& x) {
       Reflect::incrWrite(f, p, x);
@@ -1526,8 +1704,8 @@ struct writeFieldF {
 
   template <typename T>
     void visit(const char*) {
-      size_t ooff = align<size_t>(this->ooffset, store<T>::alignment());
-      size_t ioff = align<size_t>(this->ioffset, alignof(T));
+      auto ooff = align<size_t>(this->ooffset, store<T>::alignment());
+      auto ioff = align<size_t>(this->ioffset, alignof(T));
 
       store<T>::write(this->f, this->o + ooff, *reinterpret_cast<const T*>(this->i + ioff));
 
@@ -1545,8 +1723,8 @@ struct readFieldF {
 
   template <typename T>
     void visit(const char*) {
-      size_t ioff = align<size_t>(this->ioffset, store<T>::alignment());
-      size_t ooff = align<size_t>(this->ooffset, alignof(T));
+      auto ioff = align<size_t>(this->ioffset, store<T>::alignment());
+      auto ooff = align<size_t>(this->ooffset, alignof(T));
 
       store<T>::read(this->f, this->i + ioff, reinterpret_cast<T*>(this->o + ooff));
 
@@ -1587,9 +1765,9 @@ template <typename T>
 // store variants
 template <size_t i, size_t n, typename ... Ts>
   struct storeVariantDef {
-    typedef typename nth<i, Ts...>::type   H;
-    typedef variant<Ts...>                 VT;
-    typedef storeVariantDef<i+1, n, Ts...> Recurse;
+    using H = typename nth<i, Ts...>::type;
+    using VT = variant<Ts...>;
+    using Recurse = storeVariantDef<i + 1, n, Ts...>;
 
     static void ctorDefs(ty::Variant::Ctors* cs) {
       cs->push_back(ty::Variant::Ctor(".f" + hobbes::string::from(i), static_cast<int>(i), store<H>::storeType()));
@@ -1636,7 +1814,7 @@ template <size_t tag, typename T, typename M>
 template <typename ... Ts>
   struct store<variant<Ts...>, typename tbool<!all_memcpyable<Ts...>::value>::type> : public storeVariantDef<0, sizeof...(Ts), Ts...> {
     static const bool can_memcpy = false;
-    typedef storeVariantDef<0, sizeof...(Ts), Ts...> Reflect;
+    using Reflect = storeVariantDef<0, sizeof...(Ts), Ts...>;
 
     static void write(imagefile* f, void* p, const variant<Ts...>& x) {
       x.template apply<void, variantGenWrite, void, imagefile*, void*, size_t>(f, p, Reflect::tagOffset());
@@ -1690,7 +1868,7 @@ struct calcVSizeF {
 
 template <typename T>
   struct store<T, typename tbool<T::is_hmeta_variant>::type> {
-    typedef typename T::as_variant_type VT;
+    using VT = typename T::as_variant_type;
     static const bool can_memcpy = store<VT>::can_memcpy;
 
     static ty::desc storeType() {
@@ -1710,7 +1888,7 @@ template <typename T>
 // store opaque type aliases
 template <typename T>
   struct store<T, typename tbool<T::is_hmeta_alias>::type> {
-    typedef typename T::type RT;
+    using RT = typename T::type;
 
     static ty::desc storeType() { return ty::prim(T::name(), store<RT>::storeType()); ; }
 
@@ -1728,7 +1906,7 @@ template <typename T>
  ***********************/
 
 struct seriesi {
-  virtual ~seriesi() { }
+  virtual ~seriesi() = default;
   virtual const ty::desc& typeDef() const = 0;
 };
 
@@ -1774,10 +1952,9 @@ template <typename T>
         }
       }
     }
-    ~wseries() {
-    }
+    ~wseries() = default;
 
-    const ty::desc&    typeDef()  const { return this->tdef; }
+    const ty::desc&    typeDef()  const override { return this->tdef; }
     const std::string& name()     const { return this->seqname; }
     imagefile*         file()     const { return this->f; }
 
@@ -1930,9 +2107,8 @@ template <typename ... Wss>
     wsseq(imagefile* f, const std::string& n, Wss& ... wss) : log(f, n, 10000, seqVar<Wss...>::storeType(f, wss...)) {
       seqVar<Wss...>::setWriteCBs(0, [this](uint32_t id, uint64_t p){this->log(std::pair<uint32_t,uint64_t>(id,p));}, wss...);
     }
-    ~wsseq() {
-    }
-    const ty::desc& typeDef()  const { return this->log.typeDef(); }
+    ~wsseq() = default;
+    const ty::desc& typeDef()  const override { return this->log.typeDef(); }
   private:
     wseries<std::pair<uint32_t,size_t>> log;
   };
@@ -2038,7 +2214,7 @@ public:
         size_t dloc = findSpace(this->f, pagetype::data, sizeof(size_t)+len*sizeof(T), std::max<size_t>(sizeof(size_t), alignof(T)));
         addBinding(this->f, n, ty::encoding(ty::array(store<T>::storeType())), dloc);
         
-        array<T>* result = reinterpret_cast<array<T>*>(mapFileData(this->f, dloc, sizeof(size_t)+len*sizeof(T)));
+        auto* result = reinterpret_cast<array<T>*>(mapFileData(this->f, dloc, sizeof(size_t)+len*sizeof(T)));
         result->size = len;
         return result;
       } else {
@@ -2053,7 +2229,7 @@ public:
 
         // optimistically map as much as needed for the requested array length
         // but make sure that the array is stored with the expected length
-        array<T>* result = reinterpret_cast<array<T>*>(mapFileData(this->f, b->second.offset, sizeof(size_t)+len*sizeof(T)));
+        auto* result = reinterpret_cast<array<T>*>(mapFileData(this->f, b->second.offset, sizeof(size_t)+len*sizeof(T)));
 
         if (result->size != len) {
           unmapFileData(this->f, result, sizeof(size_t)+len*sizeof(T));
@@ -2077,7 +2253,7 @@ public:
   imagefile* fileData() { return this->f; }
   const imagefile* fileData() const { return this->f; }
 private:
-  typedef std::map<std::string, seriesi*> wseriess;
+  using wseriess = std::map<std::string, seriesi *>;
   imagefile* f;
   wseriess   ss;
 };
@@ -2085,7 +2261,7 @@ private:
 // utility to wait for updates to a file (per platform)
 inline long fsWaitTickMS() {
   struct timeval t;
-  if (gettimeofday(&t, 0) == 0) {
+  if (gettimeofday(&t, nullptr) == 0) {
     return (t.tv_sec*1000)+(t.tv_usec/1000);
   } else {
     return 0;
@@ -2163,7 +2339,7 @@ public:
     memset(&evt, 0, sizeof(evt));
     evt.events   = EPOLLIN | EPOLLPRI | EPOLLERR;
     evt.data.fd  = this->ifd;
-    evt.data.ptr = 0;
+    evt.data.ptr = nullptr;
 
     if (epoll_ctl(this->ep, EPOLL_CTL_ADD, this->ifd, &evt) != 0) {
       throw std::runtime_error("Failed to add inotify FD to epoll set: " + std::string(strerror(errno)));
@@ -2174,7 +2350,7 @@ public:
     close(this->ifd);
   }
 
-  int wait(int maxWaitMS) {
+  int wait(int maxWaitMS) const {
     if (maxWaitMS == 0) {
       return 0;
     } else if (maxWaitMS < 0) {
@@ -2223,10 +2399,9 @@ template <typename T>
     }
     rseries(imagefile* f, const std::string& seqname) : rseries(f, seqname, store<T>::storeType(), loadBinding(f, seqname)) {
     }
-    ~rseries() {
-    }
+    ~rseries() = default;
 
-    const ty::desc& typeDef() const { return this->tdef; }
+    const ty::desc& typeDef() const override { return this->tdef; }
     imagefile*      file()    const { return this->f; }
 
     bool next(T* x, int maxWaitMS = 0 /* <0 : infinite wait, 0 : no wait, >0 : wait up to milliseconds */) {
@@ -2247,7 +2422,7 @@ template <typename T>
     file_watch fwatch;
     size_t     batchSize;
 
-    const uint64_t* headLen;   // the mapped array count
+    const uint64_t* headLen = nullptr;   // the mapped array count
     const uint8_t*  head;      // pointer into mapped array data (advanced as we read)
     size_t          headIndex; // read index into mapped array
 
@@ -2275,14 +2450,34 @@ template <typename T>
 
       // load the node data
       // each node looks like '()+((carray T n) * x@?)'
-      const auto* d = reinterpret_cast<const uint64_t*>(mapFileData(this->f, n, 3*sizeof(uint64_t)));
+      const auto* d = reinterpret_cast<const uint64_t*>(mapFileDataInFile(this->f, n, 3*sizeof(uint64_t), "series node"));
 
       // if we're in the left '()' case, our state is "null"
       // else our state can be set to load the 'carray T n' batch in this node
-      if (d[0]) {
-        this->headLen     = reinterpret_cast<const uint64_t*>(mapFileData(this->f, d[1], bsz));
+      if (d[0] != 0u) {
+        uint64_t batchRef = d[1];
+        uint64_t nextRef  = d[2];
+        unmapFileData(this->f, d, 3*sizeof(uint64_t));
+
+        this->headLen     = reinterpret_cast<const uint64_t*>(mapFileDataInFile(this->f, batchRef, bsz, "series batch"));
         this->head        = reinterpret_cast<const uint8_t*>(this->headLen) + sizeof(uint64_t);
-        this->nextNodeRef = d[2];
+        this->nextNodeRef = nextRef;
+
+        // the count stored with a batch says how much of it the writer has
+        // filled, and it is only ever compared against the read index, so a
+        // count larger than the batch read past the batch and on out of the
+        // file. A batch holds batchSize values and no more.
+        if (*this->headLen > this->batchSize) {
+          uint64_t claimed = *this->headLen;
+          unmapFileData(this->f, this->headLen, bsz);
+          this->headLen = nullptr;
+          this->head    = nullptr;
+          throw std::runtime_error(
+            "series batch claims " + hobbes::string::from(claimed) +
+            " values out of a batch of " + hobbes::string::from(this->batchSize)
+          );
+        }
+        return;
       } else {
         this->headLen     = nullptr;
         this->head        = nullptr;
@@ -2294,7 +2489,7 @@ template <typename T>
 
     // is a stored node the left '()' case of '()+((carray T n) * x@?)'?
     bool isNullNode(uint64_t n) {
-      const auto* d = reinterpret_cast<const uint64_t*>(mapFileData(this->f, n, 3*sizeof(uint64_t)));
+      const auto* d = reinterpret_cast<const uint64_t*>(mapFileDataInFile(this->f, n, 3*sizeof(uint64_t), "series node"));
       bool r = d[0] == 0;
       unmapFileData(this->f, d, 3*sizeof(uint64_t));
       return r;
@@ -2326,8 +2521,21 @@ template <typename T>
           // we can't advance in the current batch
           // so load the next batch if possible
           // then ensure readability in this successor batch
-          // (followed indefinitely for the unlikely edge case of a succession of empty batches)
+          // (followed for the edge case of a succession of empty batches)
+          //
+          // a node's successor is a stored offset like any other, so a node
+          // that points at itself -- or at any node already visited -- is a
+          // list with no end, and this walked it forever. A node occupies at
+          // least three words, so a file cannot hold more distinct nodes than
+          // that; past this many steps the links cannot all be to distinct
+          // nodes, whatever order they are in.
+          size_t steps = 0;
+          const size_t maxSteps = 1 + (this->f->file_size / (3*sizeof(uint64_t)));
+
           while (this->nextNodeRef && !isNullNode(this->nextNodeRef)) {
+            if (++steps > maxSteps) {
+              throw std::runtime_error("series node links form a cycle");
+            }
             loadReadState(this->nextNodeRef);
             if (canRead()) {
               return true;
@@ -2335,7 +2543,7 @@ template <typename T>
           }
         }
       }
-      while ((maxWaitMS = fwatch.wait(maxWaitMS)));
+      while ((maxWaitMS = fwatch.wait(maxWaitMS)) != 0);
 
       // we just couldn't get there
       return false;
@@ -2382,8 +2590,8 @@ public:
     return false;
   }
 private:
-  typedef std::map<std::string, std::pair<uint32_t, ty::desc>> VarDef;
-  typedef std::unordered_map<uint32_t, std::function<void(imagefile*,uint64_t)>> VarCtorBindings;
+  using VarDef = std::map<std::string, std::pair<uint32_t, ty::desc>>;
+  using VarCtorBindings = std::unordered_map<uint32_t, std::function<void (imagefile *, uint64_t)>>;
   struct LogDef {
     // the encoded ordering variant type and seq binding
     ty::desc       tdesc;
@@ -2515,24 +2723,24 @@ public:
         );
       } else if (b->second.type == ty::encoding(ty::array(store<T>::storeType()))) {
         // map the array length to determine how much to map for the array
-        const size_t* lenp = reinterpret_cast<const size_t*>(mapFileData(this->f, b->second.offset, sizeof(size_t)));
+        const auto* lenp = reinterpret_cast<const size_t*>(mapFileData(this->f, b->second.offset, sizeof(size_t)));
         size_t        len  = *lenp;
 
         // now that we know the stored length, we can map the array contents
-        const array<T>* result = reinterpret_cast<const array<T>*>(mapFileData(this->f, b->second.offset, sizeof(size_t)+len*sizeof(T)));
+        const auto* result = reinterpret_cast<const array<T>*>(mapFileData(this->f, b->second.offset, sizeof(size_t)+len*sizeof(T)));
 
         // and we can get rid of the map segment for the len
         unmapFileData(this->f, lenp, sizeof(size_t));
 
         return result;
       } else if (b->second.type == ty::encoding(ty::fileRef(ty::array(store<T>::storeType())))) {
-        const size_t* offp = reinterpret_cast<const size_t*>(mapFileData(this->f, b->second.offset, sizeof(size_t)));
+        const auto* offp = reinterpret_cast<const size_t*>(mapFileData(this->f, b->second.offset, sizeof(size_t)));
         size_t off = *offp;
         unmapFileData(this->f, offp, sizeof(size_t));
 
-        const size_t*   lenp   = reinterpret_cast<const size_t*>(mapFileData(this->f, off, sizeof(size_t)));
+        const auto*   lenp   = reinterpret_cast<const size_t*>(mapFileData(this->f, off, sizeof(size_t)));
         size_t          len    = *lenp;
-        const array<T>* result = reinterpret_cast<const array<T>*>(mapFileData(this->f, off, sizeof(size_t)+len*sizeof(T)));
+        const auto* result = reinterpret_cast<const array<T>*>(mapFileData(this->f, off, sizeof(size_t)+len*sizeof(T)));
         unmapFileData(this->f, lenp, sizeof(size_t));
         return result;
       } else {
@@ -2548,7 +2756,7 @@ public:
   imagefile* fileData() { return this->f; }
   const imagefile* fileData() const { return this->f; }
 private:
-  typedef std::map<std::string, seriesi*> rseriess;
+  using rseriess = std::map<std::string, seriesi *>;
   imagefile* f;
   rseriess   ss;
 };

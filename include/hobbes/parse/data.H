@@ -17,8 +17,8 @@
 
 namespace hobbes {
 
-typedef unsigned int nat;
-typedef std::vector<nat> nats;
+using nat = unsigned int;
+using nats = std::vector<nat>;
 
 template <typename T>
   std::string show(const T* t) {
@@ -31,7 +31,7 @@ template <typename T>
   std::string show(const std::vector<T*>& ts) {
     std::ostringstream ss;
     ss << "[";
-    if (ts.size() > 0) {
+    if (!ts.empty()) {
       ts[0]->show(ss);
       for (unsigned int i = 1; i < ts.size(); ++i) {
         ss << ", ";
@@ -46,8 +46,8 @@ template <typename T>
 // we just watch characters and record newlines
 class linedb {
 public:
-  typedef std::shared_ptr<linedb>  ptr;
-  typedef std::pair<nat, nat> LineCol;
+  using ptr = std::shared_ptr<linedb>;
+  using LineCol = std::pair<nat, nat>;
 
   linedb(nat stype, const std::string& sdesc);
 
@@ -66,15 +66,14 @@ private:
 };
 
 // load a set of lines around an implicated set from the specified line database
-typedef std::vector<std::string> strings;
-typedef std::pair<nats, strings> ldblines;
+using strings = std::vector<std::string>;
+using ldblines = std::pair<nats, strings>;
 
 ldblines load(const linedb::ptr& ldb, const linedb::LineCol& i, const linedb::LineCol& f);
 
 template <typename K, typename V>
   V mapLookup(const std::map<K, V>& m, const K& k) {
-    typedef typename std::map<K, V>::const_iterator CI;
-    CI i = m.find(k);
+    auto i = m.find(k);
     if (i == m.end()) {
       throw std::runtime_error("Unexpected map index undefined");
     } else {

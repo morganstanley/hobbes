@@ -38,7 +38,7 @@ struct PtrAdjustment {
     }
   }
 };
-typedef std::vector<PtrAdjustment> PtrAdjustmentPath; // for A <: ... <: Z, all adjustments
+using PtrAdjustmentPath = std::vector<PtrAdjustment>; // for A <: ... <: Z, all adjustments
 
 std::string show(const PtrAdjustmentPath& p);
 
@@ -46,7 +46,7 @@ std::string show(const PtrAdjustmentPath& p);
 //  (this implementation only works with GCC)
 class Objs : public SubtypeEliminator {
 public:
-  virtual ~Objs(void) = default;
+  virtual ~Objs() = default;
 #ifndef __clang__
   typedef __cxxabiv1::__class_type_info     class_type;
   typedef __cxxabiv1::__si_class_type_info  si_class_type;
@@ -55,7 +55,7 @@ public:
   // record class definitions
   void add(const class_type* ct);
 #else
-  typedef int class_type;
+  using class_type = int;
 #endif
   bool add(const std::type_info& ti);
   bool add(const std::type_info* ti);
@@ -77,21 +77,21 @@ public:
   PolyTypePtr generalize(const MonoTypePtr& mt) const;
 
   // subtype eliminator interface
-  bool refine     (const TEnvPtr& tenv, const MonoTypePtr& lhs, const MonoTypePtr& rhs, MonoTypeUnifier* s);
-  bool satisfied  (const TEnvPtr& tenv, const MonoTypePtr& lhs, const MonoTypePtr& rhs) const;
-  bool satisfiable(const TEnvPtr& tenv, const MonoTypePtr& lhs, const MonoTypePtr& rhs) const;
+  bool refine     (const TEnvPtr& tenv, const MonoTypePtr& lhs, const MonoTypePtr& rhs, MonoTypeUnifier* s) override;
+  bool satisfied  (const TEnvPtr& tenv, const MonoTypePtr& lhs, const MonoTypePtr& rhs) const override;
+  bool satisfiable(const TEnvPtr& tenv, const MonoTypePtr& lhs, const MonoTypePtr& rhs) const override;
 
-  ExprPtr unqualify(const TEnvPtr&,const ConstraintPtr&,const ExprPtr&,Definitions*) const;
-  PolyTypePtr     lookup   (const std::string& vn)                              const;
-  SymSet          bindings ()                                                   const;
+  ExprPtr unqualify(const TEnvPtr&,const ConstraintPtr&,const ExprPtr&,Definitions*) const override;
+  PolyTypePtr     lookup   (const std::string& vn)                              const override;
+  SymSet          bindings ()                                                   const override;
 private:
-  typedef std::map<std::string, const class_type*> ClassDefs;
+  using ClassDefs = std::map<std::string, const class_type *>;
   ClassDefs classDefs;
 
   bool mayBeKnown(const MonoTypePtr& mt) const;
   bool pathExists(const std::string& from, const std::string& to) const;
 };
-typedef std::shared_ptr<Objs> ObjsPtr;
+using ObjsPtr = std::shared_ptr<Objs>;
 
 }
 

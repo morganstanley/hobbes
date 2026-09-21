@@ -1,0 +1,21 @@
+// @test: [n | n <- [2..200], isSmith(n)]
+hasDivisor :: (int * int) -> bool
+hasDivisor x = match x with
+  | (n, d) -> if (d * d > n) then false else if (n % d == 0) then true else hasDivisor((n, d + 1))
+
+isPrime :: int -> bool
+isPrime n = if (n < 2) then false else not(hasDivisor((n, 2)))
+
+digitSum :: int -> int
+digitSum n = if (n < 10) then n else (n % 10) + digitSum(n / 10)
+
+pfDigitSumHelper :: (int * int) -> int
+pfDigitSumHelper x = match x with
+  | (1, _) -> 0
+  | (n, p) -> if (p * p > n) then digitSum(n) else if (n % p == 0) then digitSum(p) + pfDigitSumHelper((n / p, p)) else pfDigitSumHelper((n, p + 1))
+
+primeFactorDigitSum :: int -> int
+primeFactorDigitSum n = pfDigitSumHelper((n, 2))
+
+isSmith :: int -> bool
+isSmith n = not(isPrime(n)) and (n > 1) and digitSum(n) == primeFactorDigitSum(n)

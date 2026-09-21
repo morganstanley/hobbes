@@ -9,34 +9,34 @@ std::string DeconstructP::constraintName() {
 }
 
 struct destructType : public switchType<bool> {
-  MonoTypePtr* r = 0;
+  MonoTypePtr* r = nullptr;
   destructType(MonoTypePtr* r) : r(r) { }
 
-  bool with(const Prim*) const {
+  bool with(const Prim*) const override {
     return false;
   }
 
-  bool with(const OpaquePtr*) const {
+  bool with(const OpaquePtr*) const override {
     return false;
   }
 
-  bool with(const TVar*) const {
+  bool with(const TVar*) const override {
     return false;
   }
 
-  bool with(const TGen*) const {
+  bool with(const TGen*) const override {
     return false;
   }
 
-  bool with(const TAbs*) const {
+  bool with(const TAbs*) const override {
     return false;
   }
 
-  bool with(const TApp*) const {
+  bool with(const TApp*) const override {
     return false;
   }
 
-  bool with(const FixedArray* v) const {
+  bool with(const FixedArray* v) const override {
     *this->r = tuplety(list(
       tstring("fixedarray"),
       v->type(),
@@ -45,7 +45,7 @@ struct destructType : public switchType<bool> {
     return false;
   }
 
-  bool with(const Array* v) const {
+  bool with(const Array* v) const override {
     *this->r = tuplety(list(
       tstring("array"),
       v->type()
@@ -53,15 +53,15 @@ struct destructType : public switchType<bool> {
     return true;
   }
 
-  bool with(const Variant*) const {
+  bool with(const Variant*) const override {
     return false;
   }
 
-  bool with(const Record*) const {
+  bool with(const Record*) const override {
     return false;
   }
 
-  bool with(const Func* v) const {
+  bool with(const Func* v) const override {
     auto ps = v->parameters();
 
     *this->r = tuplety(list(
@@ -72,7 +72,7 @@ struct destructType : public switchType<bool> {
     return true;
   }
 
-  bool with(const Exists* v) const {
+  bool with(const Exists* v) const override {
     // again a bit of a hack
     //   exists E.((E,a)->b)*E = (closure a b)
     if (const Record* crec = is<Record>(v->absType())) {
@@ -93,7 +93,7 @@ struct destructType : public switchType<bool> {
     return false;
   }
 
-  bool with(const Recursive* v) const {
+  bool with(const Recursive* v) const override {
     *this->r = tuplety(list(
       tstring("recursive"),
       MonoTypePtr(Recursive::make(v->recTypeName(), v->recType()))
@@ -101,15 +101,15 @@ struct destructType : public switchType<bool> {
     return true;
   }
   
-  bool with(const TString*) const {
+  bool with(const TString*) const override {
     return false;
   }
 
-  bool with(const TLong*) const {
+  bool with(const TLong*) const override {
     return false;
   }
  
-  bool with(const TExpr*) const {
+  bool with(const TExpr*) const override {
     return false;
   }
 };
@@ -120,13 +120,13 @@ static bool asDestruct(const MonoTypePtr& t, MonoTypePtr* dty) {
 
 static bool asRestruct(const MonoTypePtr& t, MonoTypePtr* rty) {
   const Record* r = is<Record>(t);
-  if (!r || !r->isTuple()) return false;
+  if ((r == nullptr) || !r->isTuple()) return false;
 
   const Record::Members& ms = r->members();
-  if (ms.size() == 0) return false;
+  if (ms.empty()) return false;
 
   const TString* ctor = is<TString>(ms[0].type);
-  if (!ctor) return false;
+  if (ctor == nullptr) return false;
 
   if (ctor->value() == "->" && ms.size() == 3) {
     *rty = MonoTypePtr(Func::make(tuplety(list(ms[1].type)), ms[2].type));
@@ -175,7 +175,7 @@ bool DeconstructP::satisfied(const TEnvPtr&, const ConstraintPtr& c, Definitions
     return false;
   }
 
-  if (is<TVar>(c->arguments()[0])) {
+  if (is<TVar>(c->arguments()[0]) != nullptr) {
     return false;
   } else {
     MonoTypePtr dty, rty;
@@ -192,7 +192,7 @@ bool DeconstructP::satisfiable(const TEnvPtr& tenv, const ConstraintPtr& c, Defi
     return false;
   }
 
-  if (is<TVar>(c->arguments()[0]) || is<TVar>(c->arguments()[1])) {
+  if ((is<TVar>(c->arguments()[0]) != nullptr) || (is<TVar>(c->arguments()[1]) != nullptr)) {
     return true;
   } else {
     return satisfied(tenv, c, ds);
@@ -207,7 +207,7 @@ struct StripCst : public switchExprTyFn {
   StripCst(const ConstraintPtr& cst) : constraint(cst) {
   }
 
-  ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const {
+  ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const override {
     ExprPtr result(e);
     result->type(removeConstraint(this->constraint, qty));
     return result;

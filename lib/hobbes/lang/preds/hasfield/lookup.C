@@ -1,9 +1,10 @@
 
-#include <hobbes/lang/preds/hasfield/lookup.H>
 #include <hobbes/lang/preds/class.H>
-#include <hobbes/lang/tyunqualify.H>
+#include <hobbes/lang/preds/hasfield/lookup.H>
 #include <hobbes/lang/typeinf.H>
+#include <hobbes/lang/tyunqualify.H>
 #include <hobbes/util/array.H>
+#include <memory>
 
 namespace hobbes {
 
@@ -70,7 +71,7 @@ static ExprPtr rewriteLookup(const TEnvPtr& tenv, const ExprPtr& r, const std::s
     unqualifyTypes(
       tenv,
       fncall(
-        var("lookup", qualtype(list(ConstraintPtr(new Constraint("Lookup", list(xty, rty, fty)))), functy(list(xty, rty), fty)), la),
+        var("lookup", qualtype(list(std::make_shared<Constraint>("Lookup", list(xty, rty, fty))), functy(list(xty, rty), fty)), la),
         list(impliedValue(fieldName, la), r),
         la
       ),
@@ -99,7 +100,7 @@ bool HFLookupEliminator::satisfiable(const TEnvPtr& tenv, const HasField& hf, De
   if (decFieldName(hf.fieldName, &fname)) {
     return mightRewriteToLookup(tenv, rty, fname, fty, ds);
   } else {
-    return is<TVar>(hf.fieldName);
+    return is<TVar>(hf.fieldName) != nullptr;
   }
 }
 
@@ -129,13 +130,13 @@ struct HFLookupUnqualify : public switchExprTyFn {
   HFLookupUnqualify(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions* defs) : tenv(tenv), constraint(cst), defs(defs) {
   }
 
-  ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const {
+  ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const override {
     ExprPtr result(e);
     result->type(removeConstraint(this->constraint, qty));
     return result;
   }
 
-  ExprPtr with(const Proj* v) const {
+  ExprPtr with(const Proj* v) const override {
     ExprPtr prec = switchOf(v->record(), *this);
 
     if (hasConstraint(this->constraint, v->type()) && rewritesToLookup(this->tenv, prec->type()->monoType(), v->field(), v->type()->monoType(), this->defs)) {

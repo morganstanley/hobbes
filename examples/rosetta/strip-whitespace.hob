@@ -1,0 +1,9 @@
+// @test: (stripLeft("   hello   "), stripRight("   hello   "), strip("   hello   "))
+stripLeft :: [char] -> [char]
+stripLeft s = if (length(s) == 0) then "" else if (s[0] == ' ' or s[0] == '\t' or s[0] == '\n') then stripLeft([s[i] | i <- [1L..length(s)-1]]) else s
+
+stripRight :: [char] -> [char]
+stripRight s = reverse(stripLeft(reverse(s)))
+
+strip :: [char] -> [char]
+strip s = stripRight(stripLeft(s))

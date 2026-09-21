@@ -2,11 +2,11 @@
 #ifndef HOBBES_UTIL_PERF_HPP_INCLUDED
 #define HOBBES_UTIL_PERF_HPP_INCLUDED
 
+#include <ctime>
 #include <hobbes/util/os.H>
-#include <string>
-#include <sstream>
 #include <iostream>
-#include <time.h>
+#include <sstream>
+#include <string>
 #include <sys/time.h>
 
 namespace hobbes {
@@ -53,7 +53,7 @@ inline std::string describeNanoTime(long x) {
   static const double seconds = 1000*millis;
   static const double minutes = 60*seconds;
 
-  double t = static_cast<double>(x);
+  auto t = static_cast<double>(x);
   std::ostringstream ss;
 
   if ((t / minutes) >= 1) {
@@ -131,7 +131,7 @@ inline unsigned long long rdtsc(void) {
   return x;
 }
 #elif defined(__x86_64__)
-inline unsigned long long rdtsc(void) {
+inline unsigned long long rdtsc() {
   unsigned hi, lo;
   __asm__ __volatile__ ("rdtsc" : "=a"(lo), "=d"(hi));
   return static_cast<unsigned long long>(lo)|(static_cast<unsigned long long>(hi)<<32);

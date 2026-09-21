@@ -1,0 +1,10 @@
+// @test: [n | n <- [2..500], isPrime(n) and isPrime(digitSum(n))]
+hasDivisor :: (int * int) -> bool
+hasDivisor x = match x with
+  | (n, d) -> if (d * d > n) then false else if (n % d == 0) then true else hasDivisor((n, d + 1))
+
+isPrime :: int -> bool
+isPrime n = if (n < 2) then false else not(hasDivisor((n, 2)))
+
+digitSum :: int -> int
+digitSum n = if (n < 10) then n else (n % 10) + digitSum(n / 10)

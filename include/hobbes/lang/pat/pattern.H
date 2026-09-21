@@ -14,15 +14,15 @@
 
 namespace hobbes {
 
-typedef std::vector<size_t> Idxs;
+using Idxs = std::vector<size_t>;
 
 // the main signature for this module -- convert a pattern match expression to a primitive compilable expression
 class Pattern;
-typedef std::shared_ptr<Pattern> PatternPtr;
-typedef std::vector<PatternPtr>  Patterns;
+using PatternPtr = std::shared_ptr<Pattern>;
+using Patterns = std::vector<PatternPtr>;
 
 struct PatternRow {
-  inline PatternRow() { }
+  inline PatternRow() = default;
   inline PatternRow(const Patterns& ps, const ExprPtr& r) : patterns(ps), result(r) { }
   inline PatternRow(const Patterns& ps, const ExprPtr& g, const ExprPtr& r) : patterns(ps), guard(g), result(r) { }
 
@@ -30,8 +30,8 @@ struct PatternRow {
   ExprPtr  guard;    // a required condition for a match (may be null if there is no guard)
   ExprPtr  result;   // the expression to be evaluated when the given pattern conditions are met
 };
-typedef std::vector<PatternRow> PatternRows;
-typedef std::shared_ptr<std::vector<std::pair<size_t, PatternRow>>> UnreachableMatchRowsPtr;
+using PatternRows = std::vector<PatternRow>;
+using UnreachableMatchRowsPtr = std::shared_ptr<std::vector<std::pair<size_t, PatternRow>>>;
 
 // support quick hashing of pattern tables
 bool operator==(const PatternRow&, const PatternRow&);
@@ -76,7 +76,7 @@ private:
 template <typename Case>
   class PatternCase : public Pattern {
   public:
-    typedef PatternCase<Case> Base;
+    using Base = PatternCase<Case>;
     PatternCase(const LexicalAnnotation&);
   };
 
@@ -96,15 +96,15 @@ public:
   const ExprPtr&      expression()    const;
   const PrimitivePtr& equivConstant() const;
 
-  void show(std::ostream&) const;
-  bool operator==(const Pattern&) const;
+  void show(std::ostream&) const override;
+  bool operator==(const Pattern&) const override;
 
   static const int type_case_id = 0;
 private:
   PrimitivePtr p;
   ExprPtr      e;
 
-  void assignSubNames(const std::string&);
+  void assignSubNames(const std::string&) override;
 };
 
 // match any value, maybe bind it to a variable name
@@ -114,14 +114,14 @@ public:
 
   const std::string& value() const;
 
-  void show(std::ostream&) const;
-  bool operator==(const Pattern&) const;
+  void show(std::ostream&) const override;
+  bool operator==(const Pattern&) const override;
 
   static const int type_case_id = 1;
 private:
   std::string vn;
 
-  void assignSubNames(const std::string&);
+  void assignSubNames(const std::string&) override;
 };
 
 // match an array of patterns
@@ -136,15 +136,15 @@ public:
   // allow external permutation of array match sequence
   void indexes(const Idxs&);
 
-  void show(std::ostream&) const;
-  bool operator==(const Pattern&) const;
+  void show(std::ostream&) const override;
+  bool operator==(const Pattern&) const override;
 
   static const int type_case_id = 2;
 private:
   Patterns ps;
   Idxs     idxs;
 
-  void assignSubNames(const std::string&);
+  void assignSubNames(const std::string&) override;
 };
 
 // match a regular expression
@@ -158,20 +158,20 @@ public:
 
   static PatternPtr toRegex(const MatchArray&);
 
-  void show(std::ostream&) const;
-  bool operator==(const Pattern&) const;
+  void show(std::ostream&) const override;
+  bool operator==(const Pattern&) const override;
   static const int type_case_id = 3;
 private:
   RegexPtr regex;
 
-  void assignSubNames(const std::string&);
+  void assignSubNames(const std::string&) override;
 };
 
 // match a record of patterns
 class MatchRecord : public PatternCase<MatchRecord> {
 public:
-  typedef std::pair<std::string, PatternPtr> Field;
-  typedef std::vector<Field>                 Fields;
+  using Field = std::pair<std::string, PatternPtr>;
+  using Fields = std::vector<Field>;
 
   MatchRecord(const Fields& fs, const LexicalAnnotation&); // default indexes = [0,fs.size())
 
@@ -182,15 +182,15 @@ public:
   const Fields& fields() const;
   void fields(const Fields&);
 
-  void show(std::ostream&) const;
-  bool operator==(const Pattern&) const;
+  void show(std::ostream&) const override;
+  bool operator==(const Pattern&) const override;
 
   static const int type_case_id = 4;
 private:
   Fields fs;
   Idxs   is;
   
-  void assignSubNames(const std::string&);
+  void assignSubNames(const std::string&) override;
 
   static void show(std::ostream&, const Field& f);
 };
@@ -203,15 +203,15 @@ public:
   const std::string& label() const;
   const PatternPtr&  value() const;
 
-  void show(std::ostream&) const;
-  bool operator==(const Pattern&) const;
+  void show(std::ostream&) const override;
+  bool operator==(const Pattern&) const override;
 
   static const int type_case_id = 5;
 private:
   std::string lbl;
   PatternPtr  p;
   
-  void assignSubNames(const std::string&);
+  void assignSubNames(const std::string&) override;
 };
 
 template <typename Case>
@@ -290,8 +290,8 @@ struct CSelection {
   ExprPtr    seq;
   Exprs      conds;
 };
-typedef std::shared_ptr<CSelection> CSelectionPtr;
-typedef std::vector<CSelectionPtr> CSelections;
+using CSelectionPtr = std::shared_ptr<CSelection>;
+using CSelections = std::vector<CSelectionPtr>;
 
 Expr* desugarComprehension(cc* c, const ExprPtr& ex, const CSelections& cs, const LexicalAnnotation& la);
 

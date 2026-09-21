@@ -1,0 +1,18 @@
+// @test: [isPangram(s) | s <- ["The quick brown fox jumps over the lazy dog", "The quick brown fox jumped over the lazy dog"]]
+lower = "abcdefghijklmnopqrstuvwxyz"
+upper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+containsChar :: (char * [char] * int) -> bool
+containsChar x = match x with
+  | (c, s, i) -> if (i >= length(s)) then false else if (s[i] == c) then true else containsChar((c, s, i + 1))
+
+hasLetter :: (char * char * [char]) -> bool
+hasLetter x = match x with
+  | (lo, up, s) -> containsChar((lo, s, 0)) or containsChar((up, s, 0))
+
+checkAll :: ([char] * int) -> bool
+checkAll x = match x with
+  | (s, i) -> if (i >= 26) then true else if (hasLetter((lower[i], upper[i], s))) then checkAll((s, i + 1)) else false
+
+isPangram :: [char] -> bool
+isPangram s = checkAll((s, 0))

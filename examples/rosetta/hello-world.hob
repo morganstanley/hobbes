@@ -1,0 +1,2 @@
+// @test: greeting
+greeting = "Hello, World!"

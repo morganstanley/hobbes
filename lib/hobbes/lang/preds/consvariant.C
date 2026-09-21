@@ -1,10 +1,11 @@
 
-#include <hobbes/lang/preds/consvariant.H>
-#include <hobbes/lang/preds/class.H>
 #include <hobbes/lang/expr.H>
+#include <hobbes/lang/preds/class.H>
+#include <hobbes/lang/preds/consvariant.H>
 #include <hobbes/lang/tylift.H>
 #include <hobbes/lang/typeinf.H>
 #include <hobbes/util/array.H>
+#include <memory>
 
 namespace hobbes {
 
@@ -62,7 +63,7 @@ bool VariantDeconstructor::refine(const TEnvPtr&, const ConstraintPtr& cst, Mono
   ConsVariant cv;
   if (dec(cst, &cv)) {
     if (const Variant* vty = is<Variant>(cv.variantType)) {
-      if (vty->members().size() > 0) {
+      if (!vty->members().empty()) {
         size_t uc = u->size();
         mgu(tstring(vty->headMember().selector), cv.headCtorName, u);
         mgu(vty->headMember().type,              cv.headType, u);
@@ -91,7 +92,7 @@ bool VariantDeconstructor::satisfied(const TEnvPtr&, const ConstraintPtr& cst, D
   ConsVariant cv;
   if (dec(cst, &cv)) {
     if (const Variant* vty = is<Variant>(cv.variantType)) {
-      return (vty->members().size() > 0)                                &&
+      return (!vty->members().empty())                                &&
              (*cv.headCtorName == *tstring(vty->headMember().selector)) &&
              (*cv.headType == *vty->headMember().type)                  &&
              (*normalizeCtorIDs(cv.tailType) == *normalizeCtorIDs(vty->tailType()));
@@ -107,8 +108,8 @@ bool VariantDeconstructor::satisfiable(const TEnvPtr& tenv, const ConstraintPtr&
   ConsVariant cv;
   if (dec(cst, &cv)) {
     return satisfied(tenv, cst, ds) ||
-           is<TVar>(cv.variantType) ||
-           (is<Variant>(cv.variantType) && (is<TVar>(cv.headCtorName) || is<TVar>(cv.headType) || is<TVar>(cv.tailType)));
+           (is<TVar>(cv.variantType) != nullptr) ||
+           ((is<Variant>(cv.variantType) != nullptr) && ((is<TVar>(cv.headCtorName) != nullptr) || (is<TVar>(cv.headType) != nullptr) || (is<TVar>(cv.tailType) != nullptr)));
   } else {
     return false;
   }
@@ -120,13 +121,13 @@ void VariantDeconstructor::explain(const TEnvPtr&, const ConstraintPtr&, const E
 PolyTypePtr VariantDeconstructor::lookup(const std::string& vn) const {
   if (vn == REF_VAR_LABEL) {
     // variantHeadLabel :: (v=|a+vt|) => v -> [char]
-    return polytype(4, qualtype(list(ConstraintPtr(new Constraint(VariantDeconstructor::constraintName(), list(tlong(1), tgen(0), tgen(1), tgen(2), tgen(3))))), functy(list(tgen(0)), arrayty(prim<char>()))));
+    return polytype(4, qualtype(list(std::make_shared<Constraint>(VariantDeconstructor::constraintName(), list(tlong(1), tgen(0), tgen(1), tgen(2), tgen(3)))), functy(list(tgen(0)), arrayty(prim<char>()))));
   } else if (vn == REF_VAR_SPLIT) {
     // variantSplit :: (v=|a+vt|) => (v, closure a c, closure vt c) -> c
     return
       polytype(5,
         qualtype(
-          list(ConstraintPtr(new Constraint(VariantDeconstructor::constraintName(), list(tlong(1), tgen(0), tgen(1), tgen(2), tgen(3))))),
+          list(std::make_shared<Constraint>(VariantDeconstructor::constraintName(), list(tlong(1), tgen(0), tgen(1), tgen(2), tgen(3)))),
           functy(list(tgen(0), closty(list(tgen(2)), tgen(4)), closty(list(tgen(3)), tgen(4))), tgen(4))
         )
       );
@@ -135,7 +136,7 @@ PolyTypePtr VariantDeconstructor::lookup(const std::string& vn) const {
     return
       polytype(4,
         qualtype(
-          list(ConstraintPtr(new Constraint(VariantDeconstructor::constraintName(), list(tlong(1), tgen(0), tgen(1), tgen(2), tgen(3))))),
+          list(std::make_shared<Constraint>(VariantDeconstructor::constraintName(), list(tlong(1), tgen(0), tgen(1), tgen(2), tgen(3)))),
           functy(list(tgen(2)), tgen(0))
         )
       );
@@ -144,7 +145,7 @@ PolyTypePtr VariantDeconstructor::lookup(const std::string& vn) const {
     return
       polytype(4,
         qualtype(
-          list(ConstraintPtr(new Constraint(VariantDeconstructor::constraintName(), list(tlong(1), tgen(0), tgen(1), tgen(2), tgen(3))))),
+          list(std::make_shared<Constraint>(VariantDeconstructor::constraintName(), list(tlong(1), tgen(0), tgen(1), tgen(2), tgen(3)))),
           functy(list(tgen(3)), tgen(0))
         )
       );
@@ -181,11 +182,11 @@ struct VDUnqualify : public switchExprTyFn {
   const ConstraintPtr& constraint;
   VDUnqualify(const ConstraintPtr& constraint) : constraint(constraint) { }
 
-  QualTypePtr withTy(const QualTypePtr& qt) const {
+  QualTypePtr withTy(const QualTypePtr& qt) const override {
     return removeConstraint(this->constraint, qt);
   }
 
-  ExprPtr with(const Var* v) const {
+  ExprPtr with(const Var* v) const override {
     if (hasConstraint(this->constraint, v->type())) {
       // replace safe functions with 'unsafe' ones
       if (v->value() == REF_VAR_LABEL) {

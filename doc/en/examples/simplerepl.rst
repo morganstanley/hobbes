@@ -25,7 +25,7 @@ Here's the full code listing. Afterwards we'll dig into all the parts one by one
   typedef std::pair<int, const hobbes::array<char>*> Writer;
 
   Writer* getWriter(){
-    return hobbes::make<Writer1>(34, hobbes::makeString("Sam"));
+    return hobbes::make<Writer>(34, hobbes::makeString("Sam"));
   }
 
   hobbes::array<Writer>* getWriters(){
@@ -123,7 +123,7 @@ Binding custom datatypes
     (const hobbes::array<char>*, name)
   );
 
-  typedef std::pair<int, const hobbes::array<char>*> Writer1;
+  typedef std::pair<int, const hobbes::array<char>*> Writer;
 
   Writer* getWriter(){
     return hobbes::make<Writer>(34, hobbes::makeString("Sam"));
@@ -186,7 +186,7 @@ Function pointers
     return pf(x, x);
   }
 
-The basic mechanism by which work is abstracted, and how we can externalise behaviour from Hobbes - allowing us to interact with Hobbes functionality from outside the environment. In this case we expect ``binaryIntFn`` to be called with two items - firstly, a function which takes two ``int``s and returns an ``int``, and secondly an ``int``.
+The basic mechanism by which work is abstracted, and how we can externalise behaviour from Hobbes - allowing us to interact with Hobbes functionality from outside the environment. In this case we expect ``binaryIntFn`` to be called with two items - firstly, a function which takes two ``int``\s and returns an ``int``, and secondly an ``int``.
 
 The result of the application of the function with the second argument twice is then returned to Hobbes as an ``int``.
 

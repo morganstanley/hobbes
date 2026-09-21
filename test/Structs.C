@@ -2,6 +2,9 @@
 #include <hobbes/hobbes.H>
 #include "test.H"
 
+#include <cstddef>
+#include <type_traits>
+
 using namespace hobbes;
 
 DEFINE_STRUCT(
@@ -78,8 +81,8 @@ TEST(Structs, Consts) {
   EXPECT_TRUE(c().compileFn<bool()>("(1,\"jimmy\",13L).1 == \"jimmy\"")());
   EXPECT_TRUE(c().compileFn<bool()>("(if (0 == 0) then (1,2) else (3,4)).0 == 1")());
 
-  typedef std::pair<unsigned char, double> FWeight;
-  typedef array<FWeight>                   FWeights;
+  using FWeight = std::pair<unsigned char, double>;
+  using FWeights = array<FWeight>;
   EXPECT_EQ(c().compileFn<FWeights*()>("[(0XAE, 1.2),(0XBD, 2.4),(0XFF, 5.9)]")()->data[1].second, 2.4);
 }
 
@@ -98,7 +101,67 @@ TEST(Structs, Bindings) {
   EXPECT_TRUE(c().compileFn<bool()>("bob.z == \"Hello!\"")());
   EXPECT_TRUE(c().compileFn<bool()>("bob.w == 'c'")());
 
-  EXPECT_TRUE(c().compileFn<array<char>*()>("show(genstruct)") != 0);
+  EXPECT_TRUE(c().compileFn<array<char>*()>("show(genstruct)") != nullptr);
+}
+
+// a record with opaque C++ types (stored inline) in non-final field positions
+// (issue #506: 'Show' could not be derived when an inline opaque field had any
+// fields after it, because record deconstruction failed on such records)
+DEFINE_STRUCT(
+  InteriorOpaque,
+  (std::string, a),
+  (double,      b),
+  (std::string, c),
+  (int,         d)
+);
+
+TEST(Structs, ShowInteriorOpaqueFields) {
+  static InteriorOpaque io;
+  io.a = "x";
+  io.b = 3.25;
+  io.c = "y";
+  io.d = 7;
+  c().bind("interiorOpaque", &io);
+
+  EXPECT_EQ(makeStdString(c().compileFn<const array<char>*()>("show(interiorOpaque)")()), "{a=\"x\", b=3.25, c=\"y\", d=7}");
+  EXPECT_EQ(makeStdString(c().compileFn<const array<char>*()>("show(recordTail(interiorOpaque))")()), "{b=3.25, c=\"y\", d=7}");
+}
+
+// the same decomposition through the tuple branch: an inline opaque type in
+// non-final tuple position
+TEST(Structs, ShowInteriorOpaqueTuple) {
+  hobbes::tuple<std::string, int, double> p("abc", 42, 1.5);
+  EXPECT_EQ(makeStdString(c().compileFn<const array<char>*(const hobbes::tuple<std::string, int, double>&)>("p", "show(p)")(p)), "(\"abc\", 42, 1.5)");
+  EXPECT_EQ(makeStdString(c().compileFn<const array<char>*(const hobbes::tuple<std::string, int, double>&)>("p", "show(tupleTail(p))")(p)), "(42, 1.5)");
+}
+
+// and one level deeper: a nested struct member (with its own padding and its
+// own interior opaque field) between other fields
+DEFINE_STRUCT(
+  InnerOpaque,
+  (std::string, s),
+  (int,         y),
+  (long,        z)
+);
+
+DEFINE_STRUCT(
+  OuterOpaque,
+  (std::string, a),
+  (InnerOpaque, in),
+  (double,      d)
+);
+
+TEST(Structs, ShowNestedInteriorOpaqueFields) {
+  static OuterOpaque oo;
+  oo.a = "x";
+  oo.in.s = "y";
+  oo.in.y = 2;
+  oo.in.z = 3;
+  oo.d = 1.5;
+  c().bind("outerOpaque", &oo);
+
+  EXPECT_EQ(makeStdString(c().compileFn<const array<char>*()>("show(outerOpaque)")()), "{a=\"x\", in={s=\"y\", y=2, z=3}, d=1.5}");
+  EXPECT_EQ(makeStdString(c().compileFn<const array<char>*()>("show(recordTail(outerOpaque))")()), "{in={s=\"y\", y=2, z=3}, d=1.5}");
 }
 
 TEST(Structs, NoDuplicateFieldNames) {
@@ -190,8 +253,8 @@ TEST(Structs, LiftTuple) {
   EXPECT_TRUE(c().compileFn<bool(const hobbes::tuple<short,int,std::string>&)>("p", "p==(42,314159,\"jimmy\")")(p));
 }
 
-typedef variant<unit, AlignA> MaybeAlignA;
-typedef variant<unit, AlignB> MaybeAlignB;
+using MaybeAlignA = variant<unit, AlignA>;
+using MaybeAlignB = variant<unit, AlignB>;
 
 DEFINE_STRUCT(AlignTest,
   (MaybeAlignA, ma),
@@ -208,9 +271,11 @@ TEST(Structs, Alignment) {
   c().bind("makeAT", &makeAT);
   EXPECT_TRUE(true);
 
+  static_assert(std::is_standard_layout<PadTest>::value, "must be standard layout to use offsetof");
+
   Record::Members ms;
-  ms.push_back(Record::Member("x", lift<int>::type(c()), 0));
-  ms.push_back(Record::Member("y", lift<long>::type(c()), static_cast<int>(reinterpret_cast<size_t>(&reinterpret_cast<PadTest*>(0)->y))));
+  ms.push_back(Record::Member("x", lift<int>::type(c()), offsetof(PadTest, x)));
+  ms.push_back(Record::Member("y", lift<long>::type(c()), offsetof(PadTest, y)));
   MonoTypePtr pty(Record::make(Record::withExplicitPadding(ms)));
 
   PadTest p;
@@ -219,3 +284,14 @@ TEST(Structs, Alignment) {
   EXPECT_EQ(makeStdString(c().compileFn<const array<char>*()>("show(padTest)")()), "{x=1, y=42}");
 }
 
+
+// Each recordSuffix site is rewritten by the AppendsTo constraint it carries.
+// The unqualifier used to rewrite every recordSuffix it saw with whichever
+// constraint it was resolving, so two sites in one expression both read with
+// the first site's layout.
+TEST(Structs, eachRecordSuffixSiteUsesItsOwnConstraint) {
+  EXPECT_EQ(makeStdString(c().compileFn<const array<char>*()>(
+    "show(((recordSuffix::(AppendsTo {z:int} {a:int,b:int,c:int,d:int} {z:int,a:int,b:int,c:int,d:int})=>_)({z=0,a=1,b=2,c=3,d=4}), "
+          "(recordSuffix::(AppendsTo {p:int} {q:int} {p:int,q:int})=>_)({p=1,q=2})))")()),
+    "({a=1, b=2, c=3, d=4}, {q=2})");
+}

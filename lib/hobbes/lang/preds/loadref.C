@@ -1,7 +1,8 @@
 
-#include <hobbes/lang/preds/loadref.H>
 #include <hobbes/lang/preds/class.H>
+#include <hobbes/lang/preds/loadref.H>
 #include <hobbes/lang/typeinf.H>
+#include <memory>
 
 namespace hobbes {
 
@@ -66,18 +67,18 @@ bool DBFileRefLoader::satisfiable(const TEnvPtr&, const ConstraintPtr& cst, Defi
       if (const Prim* f = is<Prim>(ap->fn())) {
         if (f->name() == "fileref" && ap->args().size() == 2) {
           if (const TLong* idf = is<TLong>(ap->args()[0])) {
-            return idf->value() != 0 && (*ap->args()[1] == *fref.ty || is<TVar>(ap->args()[1]) || is<TVar>(fref.ty));
+            return idf->value() != 0 && (*ap->args()[1] == *fref.ty || (is<TVar>(ap->args()[1]) != nullptr) || (is<TVar>(fref.ty) != nullptr));
           } else {
-            return is<TVar>(ap->args()[0]);
+            return is<TVar>(ap->args()[0]) != nullptr;
           }
         } else {
           return false;
         }
       } else {
-        return is<TVar>(ap->fn());
+        return is<TVar>(ap->fn()) != nullptr;
       }
     } else {
-      return is<TVar>(fref.ref);
+      return is<TVar>(fref.ref) != nullptr;
     }
   } else {
     return false;
@@ -97,7 +98,7 @@ struct DBFLUnqualify : public switchExprTyFn {
       if (const TApp* ap = is<TApp>(fref.ref)) {
         if (const Prim* f = is<Prim>(ap->fn())) {
           if (f->name() == "fileref" && ap->args().size() == 2) {
-            if (is<TLong>(ap->args()[0])) {
+            if (is<TLong>(ap->args()[0]) != nullptr) {
               valid = true;
             }
           }
@@ -110,11 +111,11 @@ struct DBFLUnqualify : public switchExprTyFn {
     }
   }
 
-  QualTypePtr withTy(const QualTypePtr& qt) const {
+  QualTypePtr withTy(const QualTypePtr& qt) const override {
     return removeConstraint(this->constraint, qt);
   }
 
-  ExprPtr with(const Var* vn) const {
+  ExprPtr with(const Var* vn) const override {
     if (vn->value() == REF_LOAD) {
       throw annotated_error(*vn, "load to local function NYI");
     } else {
@@ -122,7 +123,7 @@ struct DBFLUnqualify : public switchExprTyFn {
     }
   }
 
-  ExprPtr with(const App* ap) const {
+  ExprPtr with(const App* ap) const override {
     if (const Var* fn = is<Var>(stripAssumpHead(ap->fn()))) {
       if (fn->value() == REF_LOAD) {
         return wrapWithTy(ap->type(), new App(wrapWithTy(fn->type(), new Var(".dbload", ap->la())), list(switchOf(ap->args()[0], *this)), ap->la()));
@@ -139,7 +140,7 @@ ExprPtr DBFileRefLoader::unqualify(const TEnvPtr&, const ConstraintPtr& cst, con
 
 PolyTypePtr DBFileRefLoader::lookup(const std::string& vn) const {
   if (vn == REF_LOAD) {
-    return polytype(2, qualtype(list(ConstraintPtr(new Constraint(DBFileRefLoader::constraintName(), list(tgen(0), tgen(1))))), functy(list(tgen(0)), tgen(1))));
+    return polytype(2, qualtype(list(std::make_shared<Constraint>(DBFileRefLoader::constraintName(), list(tgen(0), tgen(1)))), functy(list(tgen(0)), tgen(1))));
   } else {
     return PolyTypePtr();
   }
