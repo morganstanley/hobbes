@@ -1034,9 +1034,9 @@ TEST(Net, invokeConstraintDeniedByDefaultEvenWhenConnectingIsAllowed) {
 //
 //   $ (sleep 600 | ./hi -s -p 9601) &          # a peer; stdin must be a pipe,
 //                                              # hi registers it with epoll
-//   $ ./hi -s -x -o no-Safe \
-//       -e 'let c = (connection :: (Connect "localhost:9601" p) => p) in
-//           print(receive(invoke(c, `(\x.x+1)`, 41)))'
+//   $ ./hi -s -x -o no-Safe -e 'let c = (connection ::
+//       (Connect "localhost:9601" p) => p) in
+//       print(receive(invoke(c, `(\x.x+1)`, 41)))'
 //   42
 //
 // -o no-Safe is required independently of these gates, because invoke's
