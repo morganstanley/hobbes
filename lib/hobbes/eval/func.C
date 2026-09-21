@@ -642,8 +642,19 @@ public:
     }
 
     llvm::Value* aclen  = c->compile(es[0]);
-    llvm::Value* mlen   = withContext([&](auto&) {
-      return c->builder()->CreateAdd(cvalue(static_cast<long>(sizeof(long))), c->builder()->CreateMul(aclen, cvalue(static_cast<long>(sizeOf(aty->type())))));
+
+    // the length is an ordinary runtime long, so it can be negative or large
+    // enough that the product wraps; either gives a small allocation with the
+    // full claimed length written into the header, and every later index then
+    // runs off the buffer. Hand the arithmetic to a checker that can refuse it
+    // instead of doing it inline, where a wrapped product looks like a small
+    // one (STRFR-433921).
+    llvm::Function* szf = c->lookupFunction(".checkedArrayByteSize");
+    if (szf == nullptr) { throw std::runtime_error("Internal compiler error -- no array size checker defined."); }
+
+    llvm::Value* mlen   = withContext([&](auto&) -> llvm::Value* {
+      return fncall(c->builder(), szf, szf->getFunctionType(),
+                    list<llvm::Value*>(aclen, cvalue(static_cast<long>(sizeOf(aty->type())))));
     });
     llvm::Value* cmdata = c->compileAllocStmt(mlen, cvalue(std::max<long>(sizeof(long), alignment(aty->type()))), toLLVM(rty));
 #if LLVM_VERSION_MAJOR >= 18

@@ -452,3 +452,19 @@ TEST(Compiler, safeModeStillAllowsOrdinaryExpressions) {
   auto e = hobbes::translateExprWithOpts(std::vector<std::string>{"Safe"}, c().readExpr("1 + 2"));
   EXPECT_EQ(c().compileFn<int()>(e)(), 3);
 }
+
+// newArray's length is a runtime long. A negative one, or one large enough
+// that multiplying by the element size wraps, used to produce a small
+// allocation carrying the full claimed length in its header -- so every
+// later index ran off the buffer (STRFR-433921).
+TEST(Compiler, newArrayRefusesALengthItCannotAllocate) {
+  // negative
+  EXPECT_EXCEPTION(c().compileFn<long()>("let a = newArray(-1L) :: [int] in size(a)")());
+
+  // a length whose product with the element size is not representable
+  EXPECT_EXCEPTION(c().compileFn<long()>(
+    "let a = newArray(" + std::to_string((1L << 62) + 1) + "L) :: [long] in size(a)")());
+
+  // an ordinary one still allocates and reports its length
+  EXPECT_EQ(c().compileFn<long()>("let a = newArray(4L) :: [int] in size(a)")(), 4L);
+}
