@@ -1,4 +1,5 @@
 #include <hobbes/eval/funcdefs.H>
+#include <limits>
 #include <hobbes/util/region.H>
 #include <hobbes/hobbes.H>
 
@@ -549,6 +550,26 @@ double dsqrt(double x) { return sqrt(x); }
 double dlog(double x) { return log(x); }
 double dfabs(double x) { return fabs(x); }
 
+// newArray's length is an ordinary runtime long -- it can be negative, or
+// large enough that multiplying it by the element size wraps. Either way the
+// allocation comes out small while the array header records the full claimed
+// length, so every later index reads or writes past the buffer. Compute the
+// byte size here, where it can be refused, rather than in generated code
+// where a wrapped product is indistinguishable from a small one.
+long checkedArrayByteSize(long len, long esz) {
+  const long hdr = static_cast<long>(sizeof(long));
+
+  if (len < 0) {
+    throw std::runtime_error("Cannot allocate an array of negative length: " + str::from(len));
+  }
+  if (esz != 0 && len > (std::numeric_limits<long>::max() - hdr) / esz) {
+    throw std::runtime_error(
+      "Array allocation size is not representable: " + str::from(len) +
+      " elements of " + str::from(esz) + " bytes");
+  }
+  return hdr + len * esz;
+}
+
 void dbglog(const std::string&);
 [[noreturn]] void failvarmatch(const array<char>* file, size_t line, const array<char>* txt, char* addr) {
   std::ostringstream ss;
@@ -775,6 +796,9 @@ void initStdFuncDefs(cc& ctx) {
 
   // this should never be called, it's only here to do something in the event of variant tag match failure
   ctx.bind(".failvarmatch", &failvarmatch);
+
+  // bounds the length newArray was handed before it becomes an allocation
+  ctx.bind(".checkedArrayByteSize", &checkedArrayByteSize);
 
   // string comparisons
   ctx.bind("cstrlen", &cstrlen);
