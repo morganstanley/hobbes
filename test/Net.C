@@ -1104,12 +1104,19 @@ TEST(Net, aRetiredConnectionIsNotReusedForTheNextQuery) {
   // next question -- compiling the next invoke against the previous
   // expression's result type. The connection is retired instead.
   //
-  // A budget of 1ms is what makes this deterministic: called directly like
-  // this the test thread is not holding the compiler lock, so the server
-  // can and does answer (in ~180ms), and nothing would be abandoned at the
-  // default budget.
+  // Called directly like this the test thread is not holding the compiler
+  // lock, so the server can answer, and nothing would be abandoned at the
+  // default budget. This used to rely on a 1ms budget being shorter than
+  // the server's answer; usually it was, but not always -- `x` is unbound,
+  // the server has nothing to compile to say so, and on a quiet machine the
+  // reply beat the deadline, the query failed with the server's error
+  // instead of a timeout, and the connection was never retired. So hold
+  // the compiler lock across the query instead: answering means compiling
+  // (CCServer::prepare), which needs that lock, so the peer cannot reply
+  // until the query has already given up. That is also the situation the
+  // retirement exists for.
   long prev = getRemoteTypeQueryTimeoutMS();
-  setRemoteTypeQueryTimeoutMS(1);
+  setRemoteTypeQueryTimeoutMS(50);
   struct Restore {
     long v;
     ~Restore() { setRemoteTypeQueryTimeoutMS(this->v); }
@@ -1121,7 +1128,10 @@ TEST(Net, aRetiredConnectionIsNotReusedForTheNextQuery) {
   auto* c = new Client("localhost:" + str::from(testServerPort()));
 
   auto la = LexicalAnnotation::null();
-  EXPECT_EXCEPTION(c->remoteExpr(var("x", la), primty("int")));
+  {
+    hlock _;
+    EXPECT_EXCEPTION(c->remoteExpr(var("x", la), primty("int")));
+  }
 
   // the second query must be refused outright rather than read the first
   // query's reply off the socket
