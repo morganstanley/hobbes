@@ -1,5 +1,7 @@
-# libFuzzer harnesses for the surfaces that consume untrusted bytes:
-# the binary type decoder, the fregion file reader, and the parser.
+# libFuzzer harnesses for the surfaces that consume untrusted bytes -- the
+# binary type decoder, the fregion file reader, the parser and hog's
+# transaction stream -- and for the type checker behind the parser, which is
+# a robustness target rather than a trust boundary (see fuzz_typecheck_expr.C).
 #
 # With a Clang that ships libFuzzer (upstream/Homebrew Clang; AppleClang does
 # not), each harness builds as a real fuzzer. Otherwise it builds as a
@@ -68,6 +70,7 @@ endfunction()
 add_fuzzer(fuzz-type-decode fuzz_type_decode.C)
 add_fuzzer(fuzz-fregion-reader fuzz_fregion_reader.C)
 add_fuzzer(fuzz-parse-expr fuzz_parse_expr.C)
+add_fuzzer(fuzz-typecheck-expr fuzz_typecheck_expr.C)
 add_fuzzer(fuzz-hog-session
   fuzz_hog_session.C
   ${CMAKE_SOURCE_DIR}/bin/hog/hstore_bridge.C
@@ -111,4 +114,5 @@ endfunction()
 add_corpus_replay_test(fuzz-type-decode type-decode)
 add_corpus_replay_test(fuzz-fregion-reader fregion-reader)
 add_corpus_replay_test(fuzz-parse-expr parse-expr)
+add_corpus_replay_test(fuzz-typecheck-expr typecheck-expr)
 add_corpus_replay_test(fuzz-hog-session hog-session)

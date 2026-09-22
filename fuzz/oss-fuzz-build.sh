@@ -62,7 +62,7 @@ cmake -S "$SRCDIR" -B "$BUILD" \
 # the test binary, none of which the fuzzers need. fuzz-hog-session pulls in
 # two extra hog sources directly (its CMakeLists.txt add_fuzzer call), not the
 # rest of bin/hog, so it needs nothing else added here.
-HARNESSES=(fuzz-type-decode fuzz-fregion-reader fuzz-parse-expr fuzz-hog-session)
+HARNESSES=(fuzz-type-decode fuzz-fregion-reader fuzz-parse-expr fuzz-typecheck-expr fuzz-hog-session)
 cmake --build "$BUILD" -j"$(nproc)" --target "${HARNESSES[@]}"
 
 for h in "${HARNESSES[@]}"; do
@@ -103,12 +103,41 @@ detect_leaks=0
 detect_leaks=0
 OPTS
 
+# fuzz-typecheck-expr: the same leak policy as the parser harness, and the
+# timing policy the harness itself explains: it returns -1 for an input that
+# finishes but takes over five seconds, so that libFuzzer drops it from the
+# corpus rather than spending the campaign mutating slow inputs; the hard
+# timeout then only has to catch inputs that do not finish, and is set well
+# above the soft limit so the two are never confused. report_slow_units at
+# the soft limit keeps the dropped inputs visible in the log.
+cat >> "$OUT/fuzz-typecheck-expr.options" <<'OPTS'
+detect_leaks=0
+
+[libfuzzer]
+detect_leaks=0
+timeout=60
+report_slow_units=5
+OPTS
+
 # Named after the target, so libFuzzer picks it up without an options entry.
+# The type checker sees the same tokens the parser does.
 cp "$SRCDIR/fuzz/parse-expr.dict" "$OUT/fuzz-parse-expr.dict"
+cp "$SRCDIR/fuzz/parse-expr.dict" "$OUT/fuzz-typecheck-expr.dict"
 
 if [ -d "$SRCDIR/fuzz/corpus/parse-expr" ]; then
   zip -jq "$OUT/fuzz-parse-expr_seed_corpus.zip" "$SRCDIR/fuzz/corpus/parse-expr/"*
 fi
+
+# The type checker only gets past the parser on input that parses, so its
+# seeds are the expressions the test suite compiles (see extract-seeds.py),
+# generated here rather than checked in, plus whatever reproducers the corpus
+# directory holds.
+SEEDS="$BUILD/typecheck-expr-seeds"
+python3 "$SRCDIR/fuzz/extract-seeds.py" "$SEEDS" "$SRCDIR"/test/*.C
+if [ -d "$SRCDIR/fuzz/corpus/typecheck-expr" ]; then
+  cp "$SRCDIR/fuzz/corpus/typecheck-expr/"* "$SEEDS/"
+fi
+zip -jq "$OUT/fuzz-typecheck-expr_seed_corpus.zip" "$SEEDS/"*
 
 if [ -d "$SRCDIR/fuzz/corpus/fregion-reader" ]; then
   zip -jq "$OUT/fuzz-fregion-reader_seed_corpus.zip" "$SRCDIR/fuzz/corpus/fregion-reader/"*

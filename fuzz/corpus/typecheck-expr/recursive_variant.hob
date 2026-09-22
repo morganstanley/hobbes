@@ -1,0 +1,1 @@
+(\xs.case unroll(xs) of |0:_=0L, 1:p=1+llen(p.1)|) :: (^x.(()+(a*x))) -> long
