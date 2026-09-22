@@ -446,6 +446,43 @@ TEST(Compiler, safeModeDeniesHiProcessAndFileSystemPrimitives) {
   expectSafeRejects("slurpFile",  "slurpFile(\"/tmp/x\")");
 }
 
+// 'element' is not denied outright -- Safe rewrites it to elementM, which
+// bounds the index. saelem and saacopy are the raw accessors that rewrite is
+// built out of, and naming either one directly walks around the check:
+// saelem indexes a fixed array with no bound, and saacopy copies a
+// caller-chosen number of bytes *into* one. Both must be refused, or the
+// rewrite of 'element' is decoration.
+TEST(Compiler, safeModeDeniesRawStaticArrayAccessors) {
+  // as above, the rewrite is name-based over the parsed AST, so the operands
+  // need not be bound -- and deliberately are not, since the obvious way to
+  // make a fixed array (newPrim) is itself denied and would be what the
+  // rejection named
+  expectSafeRejects("saelem",  "saelem(xs, 100000L)");
+  expectSafeRejects("saacopy", "saacopy(xs, ys, 100000L)");
+
+  // and the one that makes the checked route lie: elementM bounds an index
+  // against size(x), which for [a] is the length field this writes
+  expectSafeRejects("unsafeSetLength", "unsafeSetLength(xs, 1000000L)");
+}
+
+TEST(Compiler, safeModeStillAllowsCheckedArrayAccess) {
+  // the bounds-checked route stays open: 'element' is rewritten to elementM
+  // rather than refused, and 'salength' only reports a static length and
+  // touches no memory
+  // assert the rewrite actually happened rather than merely that nothing
+  // threw -- "did not throw" would still hold if the element -> elementM
+  // substitution were dropped, which is the regression worth catching
+  auto e = hobbes::translateExprWithOpts(std::vector<std::string>{"Safe"},
+                                         c().readExpr("element(xs, 1L)"));
+  EXPECT_TRUE(hobbes::show(e).find("elementM") != std::string::npos);
+
+  // salength only reports a static length and touches no memory, so it is
+  // left alone entirely -- neither refused nor rewritten
+  auto l = hobbes::translateExprWithOpts(std::vector<std::string>{"Safe"},
+                                         c().readExpr("salength(xs)"));
+  EXPECT_TRUE(hobbes::show(l).find("salength") != std::string::npos);
+}
+
 TEST(Compiler, safeModeStillAllowsOrdinaryExpressions) {
   // negative control: Safe mode's deny-list is name-specific, not a general
   // lockdown -- an unrelated expression must still translate and compile
