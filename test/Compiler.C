@@ -483,6 +483,30 @@ TEST(Compiler, safeModeStillAllowsCheckedArrayAccess) {
   EXPECT_TRUE(hobbes::show(l).find("salength") != std::string::npos);
 }
 
+// The structured-storage entry points open a caller-named path just as
+// writefile does -- writeFileRT is 'new writer(fname)' on whatever string it
+// is given (db/bindings.C) -- and were the pair STRFR-433924's remediation
+// review found still reachable after the other eight were denied. Verified
+// before the fix: under default Safe,
+//   let f = (writeFile("/tmp/x.db") :: (file _ {x:int})) in print(1)
+// created the file.
+TEST(Compiler, safeModeDeniesStructuredFileOpen) {
+  expectSafeRejects("writeFile", "writeFile(\"/tmp/x.db\")");
+  expectSafeRejects("readFile",  "readFile(\"/tmp/x.db\")");
+
+  // openfd's twin: denying one direction and not the other leaves the same
+  // fd-guessing problem, and closefd(5) can shut a descriptor belonging to
+  // someone else entirely
+  expectSafeRejects("closefd", "closefd(5)");
+
+  // and the dot-prefixed bridges those compile down to, which cannot be
+  // parsed from source but can arrive in a serialized AST
+  auto la = hobbes::LexicalAnnotation::null();
+  for (const auto& n : {".writeFileRT", ".readFileRT"}) {
+    EXPECT_EXCEPTION(hobbes::translateExprWithOpts(hobbes::str::strings("Safe"), hobbes::var(n, la)));
+  }
+}
+
 TEST(Compiler, safeModeStillAllowsOrdinaryExpressions) {
   // negative control: Safe mode's deny-list is name-specific, not a general
   // lockdown -- an unrelated expression must still translate and compile

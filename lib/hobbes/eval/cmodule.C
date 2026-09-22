@@ -615,7 +615,42 @@ private:
                                  {"readfile", {"readfile", {}}},
                                  {"fdReadLine", {"fdReadLine", {}}},
                                  {"linkTarget", {"linkTarget", {}}},
-                                 {"slurpFile", {"slurpFile", {}}}}};
+                                 {"slurpFile", {"slurpFile", {}}},
+                                 // closefd is openfd's twin and closes a
+                                 // caller-chosen descriptor number. Denying
+                                 // openfd but not this one leaves the same
+                                 // fd-guessing problem fdReadLine is denied
+                                 // for, in the other direction: closefd(5)
+                                 // can shut another in-flight client's
+                                 // socket, the listener itself, or a storage
+                                 // descriptor whose number the next open then
+                                 // reuses.
+                                 {"closefd", {"closefd", {}}},
+                                 // the structured-storage entry points open a
+                                 // caller-named path too: writeFileRT does
+                                 // 'new writer(fname)' on whatever string it
+                                 // is handed (db/bindings.C), and both are
+                                 // bound as ordinary user-nameable functions.
+                                 // The content an untrusted caller controls
+                                 // is weaker than writefile's -- the bytes
+                                 // are hobbes storage format, not arbitrary
+                                 // text -- but creating or clobbering a file
+                                 // at a chosen path is the same capability
+                                 // the names above are denied for. Both the
+                                 // plain names and the dot-prefixed bridges
+                                 // they compile down to have to be listed.
+                                 //
+                                 // Note this does not close off learning
+                                 // whether a path exists: a (LoadFile "path"
+                                 // t) annotation still opens an input file
+                                 // during constraint resolution, and only the
+                                 // write side of that is gated
+                                 // (cc::enableFileWrites). What it closes is
+                                 // creating and clobbering by name.
+                                 {"writeFile", {"writeFile", {}}},
+                                 {"readFile", {"readFile", {}}},
+                                 {".writeFileRT", {".writeFileRT", {}}},
+                                 {".readFileRT", {".readFileRT", {}}}}};
     return ms;
   }
 

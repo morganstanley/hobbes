@@ -143,11 +143,26 @@ Defects in any of these are in scope for security reports.
 
 ``option Safe`` (on by default in ``hi``, see ``bin/hi/evaluator.H``) refuses
 to compile expressions that name certain primitives — unchecked casts, raw
-array construction, and ``hi``'s process and filesystem helpers such as
-``pexec`` and ``readfile`` — and definitions built from them. It is a
-deny-list over names, applied before type-checking. It exists to keep
-well-meaning code away from the sharpest tools, and it narrows what an
-expression reaching ``hi -p`` or ``hi -w`` can do by accident.
+array construction, the raw static-array accessors, and ``hi``'s process and
+filesystem helpers such as ``pexec`` and ``readfile`` — and definitions built
+from them. It is a deny-list over names, applied before type-checking. It
+exists to keep well-meaning code away from the sharpest tools, and it narrows
+what an expression reaching ``hi -p`` or ``hi -w`` can do by accident.
+
+The structured-storage entry points ``writeFile`` and ``readFile`` are on
+that list too, because they open a path the caller names. That is worth
+knowing for interactive use: ``option Safe`` is on for *every* ``hi``
+invocation, not only the ones serving a port, so a plain session that wants
+to open a storage file by name needs ``hi -o no-Safe`` — the same opt-out the
+file-I/O examples use. An application that embeds Hobbes and wants those
+bindings on a compiler of its own is unaffected; this is ``hi``'s default,
+not a change to the library.
+
+Because the check matches names rather than bindings, it also refuses an
+expression that merely reuses one as a local identifier — ``let readFile = 3
+in readFile + 1`` is rejected under ``Safe``. It fails closed, so this is a
+nuisance rather than a hole, but it is the reason to prefer distinctive names
+in code that has to compile with ``Safe`` on.
 
 It is **not** a security boundary. The language gives many routes to raw
 memory, files and the network that are not on the list, and modules can
