@@ -6,6 +6,7 @@
 #include <hobbes/lang/tyunqualify.H>
 #include <map>
 #include <memory>
+#include <set>
 
 namespace hobbes {
 
@@ -67,6 +68,26 @@ public:
   static std::string constraintName() { return "Connect"; }
   static std::string connectVar() { return "connection"; }
 
+  // Resolving a (Connect "host:port" c) constraint opens a live outbound
+  // TCP connection as a side effect of type-constraint resolution, not
+  // evaluation -- merely type-checking untrusted text (a net REPL
+  // prepare(), a web GET /?<expr>, ':t' on pasted code) can make the host
+  // running the compiler connect out to an arbitrary network target,
+  // before any decision to evaluate anything. Disabled unless the
+  // embedding application opts in with an exact-match allowlist of
+  // "host:port" strings.
+  void enableConnecting(const std::set<std::string>& allowedHostPorts) {
+    this->anyHostPort     = false;
+    this->allowedHostPorts = allowedHostPorts;
+  }
+  void enableConnecting() {
+    this->anyHostPort = true;
+    this->allowedHostPorts.clear();
+  }
+  bool connectingAllowed(const std::string& hostport) const {
+    return this->anyHostPort || this->allowedHostPorts.count(hostport) > 0;
+  }
+
   bool refine(const TEnvPtr&, const ConstraintPtr& cst, MonoTypeUnifier* u, Definitions*) override {
     MonoTypePtr hostport;
     MonoTypePtr handle;
@@ -79,6 +100,13 @@ public:
           return uc != u->size();
         }
       } else if (const TString* hp = is<TString>(hostport)) {
+        if (!connectingAllowed(hp->value())) {
+          throw std::runtime_error(
+            "Connect constraint rejected: refusing to open a connection to '" + hp->value() +
+            "' during type-constraint resolution (remote connections are disabled by default; "
+            "the embedding application must call cc::enableRemoteConnections to permit this "
+            "target -- note that hi does not, for the compiler behind -p or -w)");
+        }
         size_t uc = u->size();
         mgu(handle, makeConnType(makeConnection(hp->value())), u);
         return uc != u->size();
@@ -93,7 +121,12 @@ public:
 
     if (decodeConstraint(cst, &hostport, &handle)) {
       if (Client* c = decodeConnType(handle)) {
-        return isAllocatedConnection(c);
+        // 'connections' is process-global, so without this an already-open
+        // connection made through some other cc would satisfy the constraint
+        // here even though this cc allows no targets at all. Prune rather
+        // than throw, the way ProcessP does -- only refine() reports the
+        // rejection.
+        return isAllocatedConnection(c) && connectingAllowed(c->remoteHost());
       }
     }
     return false;
@@ -102,13 +135,37 @@ public:
   bool satisfiable(const TEnvPtr&, const ConstraintPtr& cst, Definitions*) const override {
     MonoTypePtr hostport;
     MonoTypePtr handle;
-    
-    return decodeConstraint(cst, &hostport, &handle) &&
-           ((is<TVar>(hostport) != nullptr) || (is<TString>(hostport) != nullptr)) &&
-           ((is<TVar>(handle) != nullptr) || isPartialConnection(handle));
+
+    if (!decodeConstraint(cst, &hostport, &handle)) {
+      return false;
+    }
+    if (const TString* hp = is<TString>(hostport)) {
+      if (!connectingAllowed(hp->value())) {
+        return false;
+      }
+    } else if (is<TVar>(hostport) == nullptr) {
+      return false;
+    }
+    return (is<TVar>(handle) != nullptr) || isPartialConnection(handle);
   }
 
-  void explain(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*, annmsgs*) override {
+  // satisfied() prunes silently when the target is not allowed (so a
+  // satisfiability probe does not abort the compile), which would otherwise
+  // leave a bare "unsatisfied constraint Connect ..." with no hint that the
+  // allowlist is the reason -- say so here
+  void explain(const TEnvPtr&, const ConstraintPtr& cst, const ExprPtr& e, Definitions*, annmsgs* msgs) override {
+    MonoTypePtr hostport, handle;
+    if (decodeConstraint(cst, &hostport, &handle)) {
+      std::string hp;
+      if (Client* c = decodeConnType(handle)) {
+        if (isAllocatedConnection(c)) { hp = c->remoteHost(); }
+      } else if (const TString* s = is<TString>(hostport)) {
+        hp = s->value();
+      }
+      if (!hp.empty() && !connectingAllowed(hp)) {
+        msgs->push_back(annmsg("connecting to '" + hp + "' is not allowed here (see cc::enableRemoteConnections)", e->la()));
+      }
+    }
   }
 
   struct StripConnQual : public switchExprTyFn {
@@ -154,6 +211,9 @@ public:
     return list(FunDep(list(0), 1), FunDep(list(1), 0));
   }
 private:
+  bool                  anyHostPort = false;
+  std::set<std::string> allowedHostPorts;
+
   static bool decodeConstraint(const ConstraintPtr& c, MonoTypePtr* hostport, MonoTypePtr* handle) {
     if (c->name() == constraintName() && c->arguments().size() == 2) {
       *hostport = c->arguments()[0];
@@ -173,6 +233,26 @@ public:
   static std::string constraintName() { return "Invoke"; }
   static std::string netInvoke() { return "invoke"; }
 
+  // Resolving an (Invoke ch expr inty outty) constraint ships "expr" to
+  // the remote peer at the other end of "ch" and has it evaluate/type it
+  // to learn outty -- remote code execution triggered by local
+  // type-constraint resolution, not evaluation, reachable from both
+  // refine() and satisfied() (see remoteOutputType below). Disabled
+  // unless the embedding application opts in with an exact-match
+  // allowlist of the "host:port" strings (matching Client::remoteHost())
+  // it trusts to invoke code on.
+  void enableInvoking(const std::set<std::string>& allowedHostPorts) {
+    this->anyHostPort      = false;
+    this->allowedHostPorts = allowedHostPorts;
+  }
+  void enableInvoking() {
+    this->anyHostPort = true;
+    this->allowedHostPorts.clear();
+  }
+  bool invokingAllowed(const std::string& hostport) const {
+    return this->anyHostPort || this->allowedHostPorts.count(hostport) > 0;
+  }
+
   bool refine(const TEnvPtr&, const ConstraintPtr& cst, MonoTypeUnifier* u, Definitions*) override {
     MonoTypePtr ch, expr, inty, outty;
     if (decodeConstraint(cst, &ch, &expr, &inty, &outty)) {
@@ -181,7 +261,7 @@ public:
           if (const TExpr* exprv = is<TExpr>(expr)) {
             if (isAllocatedConnection(conn) && !hasFreeVariables(inty)) {
               size_t uc = u->size();
-              mgu(outty, conn->output(exprv->expr(), inty), u);
+              mgu(outty, remoteOutputType(conn, exprv->expr(), inty), u);
               return uc != u->size();
             }
           }
@@ -198,7 +278,13 @@ public:
         if (auto* conn = reinterpret_cast<Client*>(chv->value())) {
           if (const TExpr* exprv = is<TExpr>(expr)) {
             if (isAllocatedConnection(conn) && !hasFreeVariables(inty)) {
-              return *outty == *conn->output(exprv->expr(), inty);
+              // like ProcessP, prune rather than throw out of a satisfaction
+              // probe (satisfiable() lands here too) -- only refine() reports
+              // the rejection
+              if (!invokingAllowed(conn->remoteHost())) {
+                return false;
+              }
+              return *outty == *remoteOutputType(conn, exprv->expr(), inty) &&
                      hobbes::satisfied(tenv, std::make_shared<Constraint>("BlockCodec", list(inty)), ds) &&
                      hobbes::satisfied(tenv, std::make_shared<Constraint>("BlockCodec", list(outty)), ds);
             }
@@ -224,7 +310,17 @@ public:
     return hasFreeVariables(inty) || satisfied(tenv, cst, ds);
   }
 
-  void explain(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*, annmsgs*) override {
+  void explain(const TEnvPtr&, const ConstraintPtr& cst, const ExprPtr& e, Definitions*, annmsgs* msgs) override {
+    MonoTypePtr ch, expr, inty, outty;
+    if (decodeConstraint(cst, &ch, &expr, &inty, &outty)) {
+      if (const TLong* chv = is<TLong>(ch)) {
+        if (auto* conn = reinterpret_cast<Client*>(chv->value())) {
+          if (isAllocatedConnection(conn) && !invokingAllowed(conn->remoteHost())) {
+            msgs->push_back(annmsg("invoking code on '" + conn->remoteHost() + "' is not allowed here (see cc::enableRemoteInvocation)", e->la()));
+          }
+        }
+      }
+    }
   }
 
   struct RewriteInvokes : public switchExprTyFn {
@@ -284,6 +380,27 @@ public:
     return list(FunDep(list(0, 1, 2), 3));
   }
 private:
+  bool                  anyHostPort = false;
+  std::set<std::string> allowedHostPorts;
+
+  // every path that ships an expression to the peer goes through this check
+  // first: refine() and satisfied() via remoteOutputType below, unqualify()
+  // via a direct call before remoteExpr
+  void checkInvokingAllowed(Client* conn) const {
+    if (!invokingAllowed(conn->remoteHost())) {
+      throw std::runtime_error(
+        "Invoke constraint rejected: refusing to invoke code on '" + conn->remoteHost() +
+        "' during type-constraint resolution (remote invocation is disabled by default; "
+        "the embedding application must call cc::enableRemoteInvocation to permit this "
+        "target -- note that hi does not, for the compiler behind -p or -w)");
+    }
+  }
+
+  MonoTypePtr remoteOutputType(Client* conn, const ExprPtr& e, const MonoTypePtr& inty) const {
+    checkInvokingAllowed(conn);
+    return conn->output(e, inty);
+  }
+
   static bool decodeConstraint(const ConstraintPtr& c, MonoTypePtr* ch, MonoTypePtr* expr, MonoTypePtr* inty, MonoTypePtr* outty) {
     if (c->name() == constraintName() && c->arguments().size() == 4) {
       *ch    = c->arguments()[0];
@@ -295,7 +412,7 @@ private:
     return false;
   }
 
-  static std::string makeInvokeFn(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions* ds, const LexicalAnnotation& la) {
+  std::string makeInvokeFn(const TEnvPtr& tenv, const ConstraintPtr& cst, Definitions* ds, const LexicalAnnotation& la) const {
     MonoTypePtr ch, expr, inty, outty;
     if (decodeConstraint(cst, &ch, &expr, &inty, &outty)) {
       if (const TLong* chv = is<TLong>(ch)) {
@@ -303,6 +420,10 @@ private:
           if (const TExpr* exprv = is<TExpr>(expr)) {
             if (isAllocatedConnection(c) && !hasFreeVariables(inty)) {
               MonoTypePtr retty = tapp(primty("promise"), list(ch, outty));
+              // unqualify only runs after satisfied() returned true, so this
+              // is already gated -- re-check anyway rather than leave a path
+              // to the peer that depends on that ordering holding
+              checkInvokingAllowed(c);
               uint32_t invid = c->remoteExpr(exprv->expr(), inty);
 
               MonoTypePtr unitt=primty("unit"), bytet=primty("byte"), intt=primty("int"), longt=primty("long");
@@ -589,6 +710,42 @@ void initNetworkDefs(cc& c) {
   c.bind(".printConnection", &printConnectionUF);
   c.bindLLFunc("printConnection", new printConnectionF(".printConnection"));
   c.bindLLFunc("remoteHost", new remoteHostF());
+}
+
+static std::shared_ptr<ConnectionP> connectionUnqualifier(cc& c) {
+  auto cp = std::dynamic_pointer_cast<ConnectionP>(c.typeEnv()->lookupUnqualifier(ConnectionP::constraintName()));
+  if (!cp) {
+    throw std::runtime_error("cannot allow remote connections: '" + ConnectionP::constraintName() + "' is bound to a replacement unqualifier, not the built-in one");
+  }
+  return cp;
+}
+
+static std::shared_ptr<InvokeP> invokeUnqualifier(cc& c) {
+  auto ip = std::dynamic_pointer_cast<InvokeP>(c.typeEnv()->lookupUnqualifier(InvokeP::constraintName()));
+  if (!ip) {
+    throw std::runtime_error("cannot allow remote invocation: '" + InvokeP::constraintName() + "' is bound to a replacement unqualifier, not the built-in one");
+  }
+  return ip;
+}
+
+void enableRemoteConnections(cc& c, const std::set<std::string>& allowedHostPorts) {
+  hlock _;
+  connectionUnqualifier(c)->enableConnecting(allowedHostPorts);
+}
+
+void enableRemoteConnections(cc& c) {
+  hlock _;
+  connectionUnqualifier(c)->enableConnecting();
+}
+
+void enableRemoteInvocation(cc& c, const std::set<std::string>& allowedHostPorts) {
+  hlock _;
+  invokeUnqualifier(c)->enableInvoking(allowedHostPorts);
+}
+
+void enableRemoteInvocation(cc& c) {
+  hlock _;
+  invokeUnqualifier(c)->enableInvoking();
 }
 
 }

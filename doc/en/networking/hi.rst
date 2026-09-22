@@ -28,8 +28,12 @@ From another instance of *hi*, create a connection to the *server* using the ``C
 
 ::
   
-  $ hi -s
+  $ hi -s -o no-Safe
   > c = connection :: (Connect "myhost:8080" p) => p
+
+.. note:: **Why -o no-Safe**
+
+  The code ``invoke`` generates names ``unsafeCast``, which ``option Safe`` (on by default) refuses to compile, so the remote calls below need it. Don't combine ``-o no-Safe`` with ``-p`` or ``-w`` on the same process.
 
 .. note:: **Unqualifiers**
 

@@ -702,6 +702,39 @@ void cc::enableProcessSpawning(const std::set<std::string>& allowedCmds) {
   }
 }
 
+// ConnectionP/InvokeP/LoadFileP are private to their own translation units, so
+// these go through a free function there rather than looking the unqualifier up
+// here the way enableProcessSpawning does.
+void cc::enableRemoteConnections(const std::set<std::string>& allowedHostPorts) {
+  hlock _;
+  hobbes::enableRemoteConnections(*this, allowedHostPorts);
+}
+
+void cc::enableRemoteConnections() {
+  hlock _;
+  hobbes::enableRemoteConnections(*this);
+}
+
+void cc::enableRemoteInvocation(const std::set<std::string>& allowedHostPorts) {
+  hlock _;
+  hobbes::enableRemoteInvocation(*this, allowedHostPorts);
+}
+
+void cc::enableRemoteInvocation() {
+  hlock _;
+  hobbes::enableRemoteInvocation(*this);
+}
+
+void cc::enableFileWrites(const std::set<std::string>& allowedPaths) {
+  hlock _;
+  hobbes::enableFileWrites(*this, allowedPaths);
+}
+
+void cc::enableFileWrites() {
+  hlock _;
+  hobbes::enableFileWrites(*this);
+}
+
 
 void cc::buildInterpretedMatches(bool f) { this->genInterpretedMatch = f; }
 bool cc::buildInterpretedMatches() const { return this->genInterpretedMatch; }

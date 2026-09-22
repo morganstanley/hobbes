@@ -964,3 +964,80 @@ TEST(Net, aPartialHandshakeDoesNotStallTheServer) {
   }
   ::close(fd);
 }
+// Resolving a (Connect "host:port" c) constraint opens a live outbound
+// connection, and an (Invoke ...) constraint ships code to the peer and
+// executes it there, both as a side effect of type-constraint resolution --
+// not evaluation. Merely type-checking untrusted text carrying such
+// annotations used to reach out over the network and run code on a remote
+// peer before any decision to evaluate anything. Both are denied unless the
+// embedding cc opts in with an exact-match host:port allowlist, and the two
+// are independent: allowing a connection does not imply trusting that peer
+// to run code.
+static std::string testServerHostPort() {
+  // the allowlist matches the literal string in the constraint, so the
+  // spelling here has to be the one the tests write; "localhost" is what
+  // the rest of this file uses
+  return "localhost:" + hobbes::str::from(testServerPort());
+}
+
+TEST(Net, connectConstraintDeniedByDefault) {
+  hobbes::cc client;
+  bool threw = false;
+  try {
+    client.compileFn<void()>("let x = (connection :: (Connect \"" + testServerHostPort() + "\" p) => p) in ()");
+  } catch (std::exception& ex) {
+    threw = true;
+    EXPECT_TRUE(std::string(ex.what()).find("Connect constraint rejected") != std::string::npos);
+  }
+  EXPECT_TRUE(threw);
+}
+
+TEST(Net, connectConstraintAllowedWithExactAllowlist) {
+  hobbes::cc client;
+  client.enableRemoteConnections({testServerHostPort()});
+  // must not throw: the exact allowlisted target is permitted to connect
+  client.compileFn<void()>("let x = (connection :: (Connect \"" + testServerHostPort() + "\" p) => p) in ()")();
+}
+
+TEST(Net, invokeConstraintDeniedByDefaultEvenWhenConnectingIsAllowed) {
+  hobbes::cc client;
+  client.enableRemoteConnections({testServerHostPort()});
+  bool threw = false;
+  try {
+    client.compileFn<void()>(
+      "let c = (connection :: (Connect \"" + testServerHostPort() + "\" p) => p) in "
+      "let x = invoke(c, `1+1`, ()) in ()"
+    );
+  } catch (std::exception& ex) {
+    threw = true;
+    EXPECT_TRUE(std::string(ex.what()).find("Invoke constraint rejected") != std::string::npos);
+  }
+  EXPECT_TRUE(threw);
+}
+
+// The remaining case -- both gates enabled, the full connect+invoke round
+// trip succeeding -- is not automated here.
+//
+// Against this file's in-process server it deadlocks on the compiler lock:
+// the test thread holds hccmtx (cc.C) for the whole of cc::compileFn while
+// it blocks inside Client::remoteExpr, and the server thread needs that same
+// lock to answer, since CCServer::prepare compiles the expression it was
+// sent (net.C). Nothing here can drive a connect+invoke from a thread that
+// is holding the compiler lock, which is what compiling the constraint does.
+//
+// Pointing it at a separate `hi -p` child instead does not finish either --
+// left running for over six minutes -- and that one is not diagnosed. Both
+// are properties of driving this from inside the test process, not of the
+// gate: the denial paths above cover the gate, and the allowed path is
+// reproducible directly against the binaries, where hi enables all three
+// gates for a local session:
+//
+//   $ (sleep 600 | ./hi -s -p 9601) &          # a peer; stdin must be a pipe,
+//                                              # hi registers it with epoll
+//   $ ./hi -s -x -o no-Safe -e 'let c = (connection ::
+//       (Connect "localhost:9601" p) => p) in
+//       print(receive(invoke(c, `(\x.x+1)`, 41)))'
+//   42
+//
+// -o no-Safe is required independently of these gates, because invoke's
+// generated code names unsafeCast, which Safe denies.

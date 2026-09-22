@@ -72,6 +72,23 @@ evaluator::evaluator(const Args& args) : silent(args.silent), wwwd(nullptr), opt
   bindArguments(this->ctx, args.scriptNameVals);
   bindHiDefs(this->ctx);
 
+  // Resolving a (Connect ...), (Invoke ...) or writing (LoadFile ...)
+  // constraint reaches the network or the filesystem while an expression is
+  // only being type-checked. In a local session that is unremarkable -- the
+  // user chose to run this source, exactly as they would run a python or perl
+  // script, and it may open files and sockets. The library denies these by
+  // default for embedders, so switch them back on here.
+  //
+  // Not with -p or -w though: those hand this same compiler expressions that
+  // arrive over the network from anyone who can reach the port, and it
+  // type-checks them (prepare(), GET /?<expr>) whether or not it goes on to
+  // evaluate anything.
+  if (args.replPort <= 0 && args.httpdPort <= 0) {
+    this->ctx.enableRemoteConnections();
+    this->ctx.enableRemoteInvocation();
+    this->ctx.enableFileWrites();
+  }
+
   const bool ignoreUM = (std::find(opts.cbegin(), opts.cend(), std::string("IgnoreUnreachableMatches")) != opts.cend());
   this->ctx.ignoreUnreachableMatches(ignoreUM);
   if (ignoreUM) {
