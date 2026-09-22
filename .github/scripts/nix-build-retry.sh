@@ -29,6 +29,23 @@ delay=${NIX_BUILD_RETRY_DELAY:-90}
 log=$(mktemp)
 trap 'rm -f "$log"' EXIT
 
+# Nix reports a failed derivation with the last 25 lines of its build log and
+# a note saying where the rest is: "For full logs, run: nix log /nix/store/...".
+# Twenty-five lines is the shadow-byte legend of a sanitizer report, with the
+# report itself -- the error, the stack -- cut off above it, and by the time
+# anyone reads the job the runner and its store are gone. So run that command
+# here, while the store is still there, and keep enough of the tail to hold a
+# sanitizer report and the ctest summary after it.
+print_failed_build_log() {
+  local cmd
+  cmd=$(grep -oE 'nix log /nix/store/[^ ]+\.drv' "$1" | tail -1) || true
+  if [ -n "$cmd" ]; then
+    echo "::group::full build log of the failed derivation (last 600 lines)"
+    $cmd 2>/dev/null | tail -n 600 || echo "(could not read the build log)"
+    echo "::endgroup::"
+  fi
+}
+
 for attempt in $(seq 1 "$attempts"); do
   if nix build "$attr" 2>&1 | tee "$log"; then
     exit 0
@@ -40,6 +57,7 @@ for attempt in $(seq 1 "$attempts"); do
   # nix prints the status line, then quotes GitHub's body.
   if ! grep -qE 'HTTP error 429|429: Too Many Requests' "$log"; then
     echo "nix build $attr failed, and not on a GitHub rate limit -- not retrying" >&2
+    print_failed_build_log "$log"
     exit 1
   fi
 
