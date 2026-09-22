@@ -1046,15 +1046,16 @@ public:
       return lf->second;
     }
 
-    LoadedFile& r = this->loadedFiles[k];
+    // opened and typed before it is cached: an entry made first and filled
+    // in afterwards is left behind, empty, when the open throws (a path that
+    // does not exist, most often), and the next constraint naming the same
+    // path then finds it in the cache and unifies against a null type
+    LoadedFile r;
     r.path = str::expandPath(path);
-    if (writeable) {
-      r.file = new writer(r.path);
-    } else {
-      r.file = new reader(r.path);
-    }
-    r.type = fileType(writeable, inferFileType(r.file));
-    return r;
+    std::unique_ptr<reader> file(writeable ? new writer(r.path) : new reader(r.path));
+    r.type = fileType(writeable, inferFileType(file.get()));
+    r.file = file.release();
+    return this->loadedFiles[k] = r;
   }
 
   const LoadedFile& loadedFile(const ConstraintPtr& cst) const {

@@ -1649,6 +1649,24 @@ TEST(Storage, LoadFileWriteConstraintDeniedByDefault) {
   EXPECT_TRUE(access(fname.c_str(), F_OK) != 0); // the file must not have been created
 }
 
+// A (LoadFile "path" t) constraint whose file cannot be opened must fail the
+// same way every time it is asked. The loaded-file cache used to make the
+// entry before opening the file, so a failed open left an empty entry that
+// the next constraint naming the same path found and unified against, and
+// the second attempt crashed instead of reporting the missing file again.
+// (Found by fuzz-typecheck-expr on the seed corpus.)
+TEST(Storage, LoadFileMissingFileFailsRepeatably) {
+  std::string fname = mkFName();
+  unlink(fname.c_str());
+
+  hobbes::cc client;
+  for (int i = 0; i < 2; ++i) {
+    EXPECT_EXCEPTION_MSG(client.unsweetenExpression(client.readExpr("inputFile :: (LoadFile \"" + fname + "\" w) => w")), std::exception, "Unable to open");
+  }
+  // a differently-named type variable resolves to the same cache entry
+  EXPECT_EXCEPTION_MSG(client.unsweetenExpression(client.readExpr("inputFile :: (LoadFile \"" + fname + "\" x) => x")), std::exception, "Unable to open");
+}
+
 TEST(Storage, LoadFileWriteConstraintAllowedWithExactAllowlist) {
   std::string fname = mkFName();
   unlink(fname.c_str());
