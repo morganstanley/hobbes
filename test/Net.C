@@ -7,6 +7,7 @@
 #include <hobbes/util/codec.H>
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <cstdlib>
 #include <mutex>
@@ -1025,6 +1026,9 @@ TEST(Net, invokeConstraintDeniedByDefaultEvenWhenConnectingIsAllowed) {
 // sent (net.C). Nothing here can drive a connect+invoke from a thread that
 // is holding the compiler lock, which is what compiling the constraint does.
 //
+// (With the query now bounded, that deadlock is what
+// invokingAPeerInThisProcessFailsInsteadOfHanging below asserts on.)
+//
 // Pointing it at a separate `hi -p` child instead does not finish either --
 // left running for over six minutes -- and that one is not diagnosed. Both
 // are properties of driving this from inside the test process, not of the
@@ -1041,3 +1045,92 @@ TEST(Net, invokeConstraintDeniedByDefaultEvenWhenConnectingIsAllowed) {
 //
 // -o no-Safe is required independently of these gates, because invoke's
 // generated code names unsafeCast, which Safe denies.
+
+// Resolving an (Invoke ...) constraint asks the peer for the type of the
+// expression, and that happens while the constraint is being resolved --
+// i.e. while this thread holds the process-wide compiler lock. A peer
+// served by this same process can never answer, because building its reply
+// means compiling the expression it was sent, which needs that same lock.
+//
+// This used to hang the process with no error: the test below could not be
+// written at all, and a suite that reached it never finished. The wait is
+// now bounded, so the compile fails and says why.
+TEST(Net, invokingAPeerInThisProcessFailsInsteadOfHanging) {
+  const long budget = 2000; // don't make the suite wait the full default
+  long prev = getRemoteTypeQueryTimeoutMS();
+  setRemoteTypeQueryTimeoutMS(budget);
+  struct Restore {
+    long v;
+    ~Restore() { setRemoteTypeQueryTimeoutMS(this->v); }
+  } restore{prev};
+
+  const std::string hp = testServerHostPort();
+
+  hobbes::cc client;
+  // both gates open: the point here is what happens once the invoke is
+  // permitted and the query goes out, not the denial paths above
+  client.enableRemoteConnections({hp});
+  client.enableRemoteInvocation({hp});
+  bool threw = false;
+  auto t0 = std::chrono::steady_clock::now();
+  try {
+    // Connect on its own is fine -- the handshake needs no compiling, which
+    // is why this gets as far as the invoke before there is any trouble
+    client.compileFn<void()>(
+      "let c = (connection :: (Connect \"" + hp + "\" p) => p) in "
+      "let x = invoke(c, `(\\x.x+1)`, 41) in ()"
+    );
+  } catch (std::exception& ex) {
+    threw = true;
+    EXPECT_TRUE(std::string(ex.what()).find(hp) != std::string::npos);
+    EXPECT_TRUE(std::string(ex.what()).find("did not answer") != std::string::npos);
+  }
+  EXPECT_TRUE(threw);
+
+  // it really waited for the peer rather than failing for some other reason
+  // (a rejected handshake, a connection reset) that would produce an error
+  // just as quickly
+  auto waitedMS = std::chrono::duration_cast<std::chrono::milliseconds>(
+    std::chrono::steady_clock::now() - t0).count();
+  EXPECT_TRUE(waitedMS >= budget);
+
+  // and the compiler still works afterwards -- the lock was given back
+  EXPECT_EQ(client.compileFn<int()>("1+1")(), 2);
+}
+
+TEST(Net, aRetiredConnectionIsNotReusedForTheNextQuery) {
+  // A query that gives up leaves the peer's reply still to come on that
+  // socket, so reusing the connection would read it as the answer to the
+  // next question -- compiling the next invoke against the previous
+  // expression's result type. The connection is retired instead.
+  //
+  // A budget of 1ms is what makes this deterministic: called directly like
+  // this the test thread is not holding the compiler lock, so the server
+  // can and does answer (in ~180ms), and nothing would be abandoned at the
+  // default budget.
+  long prev = getRemoteTypeQueryTimeoutMS();
+  setRemoteTypeQueryTimeoutMS(1);
+  struct Restore {
+    long v;
+    ~Restore() { setRemoteTypeQueryTimeoutMS(this->v); }
+  } restore{prev};
+
+  // deliberately not destroyed, the way makeConnection's Clients aren't:
+  // the peer still owes this socket a reply, and closing it here would make
+  // that write fail with EPIPE inside this very process
+  auto* c = new Client("localhost:" + str::from(testServerPort()));
+
+  auto la = LexicalAnnotation::null();
+  EXPECT_EXCEPTION(c->remoteExpr(var("x", la), primty("int")));
+
+  // the second query must be refused outright rather than read the first
+  // query's reply off the socket
+  bool threw = false;
+  try {
+    c->remoteExpr(var("y", la), primty("int"));
+  } catch (std::exception& ex) {
+    threw = true;
+    EXPECT_TRUE(std::string(ex.what()).find("retired") != std::string::npos);
+  }
+  EXPECT_TRUE(threw);
+}
