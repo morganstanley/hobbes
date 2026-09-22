@@ -49,17 +49,17 @@
 // that makes findings reproducible: a crash that depends on what an earlier
 // input defined cannot be replayed from the one file the fuzzer saves.
 //
-// What the rotation does not reclaim is the parser's own residue. Grammar
-// actions build expression and pattern nodes with bare `new` on the bison
-// value stack, and a syntax error discards whatever is on the stack without
-// deleting it (lib/hobbes/read/parser.C says so, at defVarCtor). Inputs that
-// parse leave nothing behind this way -- the test-suite seeds replay flat --
-// but a fuzzer's corpus is mostly near-misses, and measured on one such
-// corpus the process grew by some 380KB per input, through rotations, with
-// the parser-only harness growing identically on the same inputs. That is
-// the parser's to fix (a %destructor per stack type); until then the
-// engine's RSS limit is the backstop, and an out-of-memory report from a
-// long run is more likely this than any one input.
+// How much a window holds was measured on a corpus the fuzzer had grown
+// from the seeds (3.7k inputs, mostly near-misses): reading them alone,
+// with no type checking, left about 270KB per input in the compiler --
+// readExpr compiles matches, regexes and `parse {}` grammars as it reads
+// them -- and interned about 400KB per input into the type memo, and
+// destroying the compiler and compacting the memo gave all of it back. So
+// the two schedules above are the whole story for growth, and a run's peak
+// (about 1-1.5GB was seen on that corpus, unsanitized) is a window's worth
+// of residue plus the memo between compactions plus whatever one input
+// needs while it runs; the engine's RSS limit is the backstop for the last
+// of those.
 //
 // One class of side effect is left in: resolving a (LoadFile "path" t)
 // constraint for a readable file opens the file named in the source during
