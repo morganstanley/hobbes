@@ -528,6 +528,23 @@ extern PatVarCtorFn patVarCtorFn;
 %type <mtypes>       pamtuplist pamsumlist
 %type <mtypes>       ltmtype l1mtargl l0mtargl l0mtarglt
 
+/* Semantic values come in two kinds. Collections and the values the lexer
+   hands up (strings, types, list nodes, bindings) are autoreleased where they
+   are made, and AutoreleaseSet::reset frees them all when the parse is over
+   (see parser.C). Tree nodes -- expressions, patterns, definitions, and the
+   handful of other things a parent wraps in a shared_ptr -- are not: they are
+   made with a bare `new`, and the action that consumes one takes ownership
+   by wrapping it. That works when every value on the stack is consumed, and
+   it is what a syntax error breaks: bison pops the stack without running any
+   action, and the tree nodes on it are never freed. On a corpus of near-miss
+   inputs that was some 380KB leaked per input (measured with the fuzz
+   harnesses, which is where it matters: a long run grew into the engine's
+   memory limit through it). So the tree-node types get a destructor, which
+   bison runs on exactly the values it discards without consuming: the stack
+   on a syntax error, and nothing that a reduction has already taken.
+   Autoreleased types must not have one, or reset would free them again. */
+%destructor { delete $$; } <exp> <module> <mdef> <mvtydef> <mvdef> <pattern> <cselection> <qualtype> <tconstraint> <pvalue>
+
 /* associativity to give expected operator precedence */
 %right "else"
 %right "in"
@@ -915,15 +932,15 @@ irrefutablep: id                       { $$ = new MatchAny(*$1, m(@1)); }
 pattern: refutablep { $$ = $1; }
 
 patternseq: patternseqn   { $$ = $1; }
-          | /* nothing */ { $$ = new Patterns(); }
+          | /* nothing */ { $$ = autorelease(new Patterns()); }
 
 patternseqn: patternseqn "," pattern { $$ = $1; $$->push_back(PatternPtr($3)); }
-           | pattern                 { $$ = new Patterns(); $$->push_back(PatternPtr($1)); }
+           | pattern                 { $$ = autorelease(new Patterns()); $$->push_back(PatternPtr($1)); }
 
 recpatfields: recpatfields "," recpatfield { $$ = $1; $$->push_back(*$3); }
-            | recpatfield                  { $$ = new MatchRecord::Fields(); $$->push_back(*$1); }
+            | recpatfield                  { $$ = autorelease(new MatchRecord::Fields()); $$->push_back(*$1); }
 
-recpatfield: id "=" pattern { $$ = new MatchRecord::Field(*$1, PatternPtr($3)); }
+recpatfield: id "=" pattern { $$ = autorelease(new MatchRecord::Field(*$1, PatternPtr($3))); }
 
 recfields: /* nothing */                         { $$ = autorelease(new MkRecord::FieldDefs()); }
          | recfieldname "=" l0expr               { $$ = autorelease(new MkRecord::FieldDefs()); $$->push_back(MkRecord::FieldDef(*$1, ExprPtr($3))); }
