@@ -2810,6 +2810,26 @@ MonoTypePtr decodeFixedArr(const bytes& in, unsigned int* n) {
   MonoTypePtr ty  = decodeFrom(in, n);
   MonoTypePtr len = decodeFrom(in, n);
 
+  // These bytes arrive before the peer is trusted -- a net REPL prepare()
+  // sends a binary type description, and this is where it is read. A length
+  // that cannot describe a value in memory is refused here, where it enters,
+  // rather than left for whichever consumer happens to compute a size from
+  // it first. sizeOf() rejects the same thing (type.C, "Can't determine size
+  // of array of negative length"), but only once something asks for a
+  // layout; a type that is merely decoded, shown or unified travels further
+  // than that.
+  //
+  // Only the sign is checked. The magnitude is bounded where it has to be --
+  // sizeOf refuses a length whose product with the element size is not
+  // representable -- and any cap chosen here would be an arbitrary limit on
+  // a type that may never be laid out at all.
+  if (const TLong* l = is<TLong>(len)) {
+    if (l->value() < 0) {
+      throw std::runtime_error(
+        "Fixed array length is negative in a decoded type description: " + str::from(l->value()));
+    }
+  }
+
   return FixedArray::make(ty, len);
 }
 
