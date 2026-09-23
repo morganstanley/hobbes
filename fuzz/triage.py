@@ -49,10 +49,15 @@ HOBBES_LOC_RE = re.compile(r"(?:/[\w./-]*)?((?:lib|include|bin)/hobbes/[\w./-]+\
 FRAME_RE = re.compile(r"^\s*#\d+ .*", re.M)
 
 
+# harnesses that compile hobbes source, whose arenas are not reclaimed per
+# input; replayed with leak detection off, as run-fuzzer.sh runs them
+COMPILES_SOURCE = {"parse-expr", "typecheck-expr", "hog-session"}
+
+
 def replay(harness, artifact):
     binary = BUILD / "fuzz" / f"fuzz-{harness}"
     cmd = [str(binary), str(artifact)]
-    if harness == "parse-expr":
+    if harness in COMPILES_SOURCE:
         cmd.insert(1, "-detect_leaks=0")
     try:
         r = subprocess.run(cmd, env=ENV, capture_output=True, text=True, timeout=180)
@@ -138,7 +143,7 @@ def main():
 ```bash
 cd {FUZZ}
 ASAN_OPTIONS=detect_container_overflow=0 \\
-  {BUILD}/fuzz/fuzz-{h}{' -detect_leaks=0' if h == 'parse-expr' else ''} {smallest}
+  {BUILD}/fuzz/fuzz-{h}{' -detect_leaks=0' if h in COMPILES_SOURCE else ''} {smallest}
 ```
 
 ## Sanitizer report

@@ -9,12 +9,21 @@ harness here:
 | `fuzz-type-decode`   | binary type descriptions (`hobbes::decode`, used by the RPC layer on peer-supplied bytes) |
 | `fuzz-fregion-reader`| structured data file images (`hobbes::fregion::reader`: header, page table, environment records) |
 | `fuzz-parse-expr`    | source text through the lexer/LALR parser (`cc::readExpr`; parse only, nothing is evaluated) |
+| `fuzz-typecheck-expr`| source text on through type inference, constraint resolution and match compilation (`cc::unsweetenExpression`; still nothing is evaluated) |
 | `fuzz-hog-session`   | `hog`'s live transaction stream (`storage::Transaction`, read by the JIT-compiled `HStoreRead` instances in `bin/hog/boot/read.hob`) |
 
-For all four, throwing an exception on malformed input is the expected
+For all of them, throwing an exception on malformed input is the expected
 behavior; the harnesses catch those. What fuzzing hunts for is memory
 unsafety — out-of-bounds access, overflow-driven size math — which is why
 these should run under sanitizers.
+
+The type checker is a different kind of target from the other four. The
+security model treats type-checking source as carrying the same trust as
+running it, because some type-class constraints have side effects; so a
+crash there is a robustness bug in the compiler rather than a vulnerability,
+and belongs in an ordinary issue. Evaluating an expression is not fuzzed at
+all: compiled Hobbes code is native code with the host's privileges, and a
+crash in it is the expression's doing, not the compiler's.
 
 ## Building
 
@@ -33,7 +42,7 @@ for fuzzing rather than sharing one with normal development builds.
 
 ```bash
 cmake -B build-fuzz -DCMAKE_BUILD_TYPE=Debug -DBUILD_FUZZERS=ON -DUSE_ASAN_AND_UBSAN=ON
-cmake --build build-fuzz -j --target fuzz-type-decode fuzz-fregion-reader fuzz-parse-expr
+cmake --build build-fuzz -j --target fuzz-type-decode fuzz-fregion-reader fuzz-parse-expr fuzz-typecheck-expr
 ```
 
 ## Replaying the corpus
@@ -89,6 +98,33 @@ Notes per harness:
   design (see the memory model section in `doc/en/embedding/compiler.rst`).
   What is worth watching is growth *across* iterations, which the harnesses
   bound themselves and the fuzzer's RSS limit catches.
+* **fuzz-typecheck-expr** — only gets past the parser on input that parses,
+  which random bytes almost never do, so seed it with real expressions:
+  `extract-seeds.py` pulls every expression the test suite compiles out of
+  `test/*.C` (about five hundred), and `oss-fuzz-build.sh` does that to build
+  the seed corpus it ships. Locally:
+
+  ```bash
+  ./fuzz/extract-seeds.py corpus/typecheck-expr test/*.C
+  ./build-fuzz/fuzz/fuzz-typecheck-expr -dict=fuzz/parse-expr.dict -timeout=60 -report_slow_units=5 corpus/typecheck-expr
+  ```
+
+  Type checking is not linear in the input the way parsing is, and a fuzzer
+  chasing coverage finds the expensive corners (large matches, regexes that
+  determinize badly) quickly, then spends the rest of the campaign mutating
+  inputs that each take seconds. So the harness times every input and
+  returns -1 to libFuzzer for anything that finishes but takes over five
+  seconds, which keeps it out of the corpus regardless of the coverage it
+  found. `-timeout` is then only for inputs that never finish, and is kept
+  well above the soft limit so the two are never confused; the
+  `-report_slow_units` flag, set at the soft limit, keeps the dropped
+  inputs visible in the log. Five seconds is measured under whatever the
+  build is instrumented with, so an ASan build admits several times less
+  work per input than an unsanitized one; `HOBBES_FUZZ_SLOW_SECONDS` in the
+  environment overrides the figure. Every input that parses also
+  leaves something behind in the compiler, so the harness replaces it every
+  1024 inputs and compacts the type memo every 64; the same `-detect_leaks=0`
+  policy as the parser harness applies.
 * **fuzz-hog-session** — seeds in `corpus/hog-session/`, including the
   reproducer for STRFR-433920 (a negative element count read off the wire,
   which used to wrap `newArray`'s size computation to an undersized
@@ -135,7 +171,8 @@ Two environment notes it handles for you:
   `std::vector` updates the annotations. This is normal for distro and
   Homebrew LLVM packages; set `HOBBES_FUZZ_UNINSTRUMENTED_LLVM=0` if your
   LLVM *is* instrumented.
-* Leak detection needs disabling for `parse-expr` in two places — libFuzzer's
+* Leak detection needs disabling for the harnesses that compile source
+  (`parse-expr`, `typecheck-expr`, `hog-session`) in two places — libFuzzer's
   `-detect_leaks=0` and LeakSanitizer's own at-exit check via `ASAN_OPTIONS`.
   The harness also turns the at-exit check off from inside the binary
   (`__lsan_is_turned_off`), because not every engine that replays a testcase

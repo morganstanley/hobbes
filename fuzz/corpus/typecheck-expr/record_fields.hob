@@ -1,0 +1,1 @@
+let r = {a=1, b="x", c=[1L,2L]} in (r.a, r.b, sum(r.c))
