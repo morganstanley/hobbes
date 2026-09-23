@@ -361,8 +361,28 @@ public:
       llvm::Value* d1 = structOffset(c->builder(), a1, 1);
 #endif
 
+      // the number of bytes one element occupies in the result -- the same
+      // value the memcopies below use, including the opaque-pointer special
+      // case, so the size the allocation is checked against is the size the
+      // copy actually writes
+      const long elemSize = isUnit(aty->type())
+        ? 0
+        : (is<OpaquePtr>(aty->type()) ? static_cast<long>(sizeof(void*))
+                                      : static_cast<long>(sizeOf(aty->type())));
+
+      // c0 and c1 are the operands' own length headers, which an array loaded
+      // from a crafted db file (or set with unsafeSetLength) controls, so the
+      // sum and the byte product can each wrap -- an undersized allocation
+      // whose header still claims the huge length, then an OOB memcopy
+      // (STRFR-433969). Compute the byte size in a helper that refuses to
+      // wrap; the aclen add below is safe once it has, since the helper has
+      // already rejected a sum that would overflow.
+      llvm::Function* szf = c->lookupFunction(".checkedArrayConcatByteSize");
+      if (szf == nullptr) { throw std::runtime_error("Internal compiler error -- no array size checker defined."); }
+      llvm::Value* mlen = fncall(c->builder(), szf, szf->getFunctionType(),
+        list<llvm::Value*>(c0, c1, cvalue(elemSize)));
+
       llvm::Value* aclen = c->builder()->CreateAdd(c0, c1);
-      llvm::Value* mlen  = c->builder()->CreateAdd(cvalue(static_cast<long>(sizeof(long))), c->builder()->CreateMul(aclen, cvalue(static_cast<long>(sizeOf(aty->type())))));
 
       llvm::Value* cmdata = c->compileAllocStmt(mlen, cvalue(std::max<long>(sizeof(long), alignment(aty->type()))), toLLVM(tys[0]));
 #if LLVM_VERSION_MAJOR >= 18
@@ -372,9 +392,8 @@ public:
 #endif
 
       if (!isUnit(aty->type())) {
-        // hack to acknowledge the fact that opaque pointers are stored as pointers within arrays
-        long elemSize = is<OpaquePtr>(aty->type()) ? sizeof(void*) : static_cast<long>(sizeOf(aty->type()));
-
+        // elemSize computed above -- opaque pointers are stored as pointers
+        // within arrays, and the allocation was sized with this same value
 #if LLVM_VERSION_MAJOR >= 18
         llvm::Value* od = structOffset(c->builder(), varrTy, cmdata, 1);
         memCopy(c->builder(), offset(c->builder(), elemArrTy, od, 0), 8, d0, 8, c->builder()->CreateMul(c0, cvalue(elemSize)));

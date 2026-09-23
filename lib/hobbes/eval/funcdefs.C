@@ -570,6 +570,23 @@ long checkedArrayByteSize(long len, long esz) {
   return hdr + len * esz;
 }
 
+// the byte size of concatenating two arrays. The element counts c0/c1 come
+// from the operands' own length headers, which an array loaded from a crafted
+// db file -- or set with unsafeSetLength -- controls, so their sum can wrap
+// before it is ever multiplied by the element size (STRFR-433969). Add under a
+// check of its own, then defer to checkedArrayByteSize for the product.
+long checkedArrayConcatByteSize(long c0, long c1, long esz) {
+  if (c0 < 0 || c1 < 0) {
+    throw std::runtime_error(
+      "Cannot concatenate arrays of negative length: " + str::from(c0) + " + " + str::from(c1));
+  }
+  if (c0 > std::numeric_limits<long>::max() - c1) {
+    throw std::runtime_error(
+      "Concatenated array length is not representable: " + str::from(c0) + " + " + str::from(c1));
+  }
+  return checkedArrayByteSize(c0 + c1, esz);
+}
+
 void dbglog(const std::string&);
 [[noreturn]] void failvarmatch(const array<char>* file, size_t line, const array<char>* txt, char* addr) {
   std::ostringstream ss;
@@ -799,6 +816,8 @@ void initStdFuncDefs(cc& ctx) {
 
   // bounds the length newArray was handed before it becomes an allocation
   ctx.bind(".checkedArrayByteSize", &checkedArrayByteSize);
+  // ... and the summed length two arrays being concatenated would have
+  ctx.bind(".checkedArrayConcatByteSize", &checkedArrayConcatByteSize);
 
   // string comparisons
   ctx.bind("cstrlen", &cstrlen);

@@ -645,3 +645,40 @@ TEST(Compiler, moduleOptionsDefaultToNoneSoEmbeddersAreUnaffected) {
   }
   EXPECT_TRUE(threw);
 }
+
+// append concatenates two arrays, taking each length from its operand's own
+// header. Those headers come from arrays that may have been loaded from a
+// crafted db file (or forged with unsafeSetLength), so the sum c0 + c1 can
+// wrap before it is ever multiplied by the element size -- an undersized
+// allocation whose header still claims the huge length, then an out-of-bounds
+// memcopy (STRFR-433969). checkedArrayConcatByteSize refuses to wrap.
+//
+// This is tested at the helper rather than through generated code: making the
+// arithmetic wrap needs a length header far larger than any array that is
+// actually backed in memory, which only a crafted file or unsafeSetLength can
+// produce, and either leaves the operand's data buffer too small to read --
+// so a live append would fault on the source read regardless of this check.
+// The generated-code path is covered by the ordinary-append case below.
+namespace hobbes { long checkedArrayConcatByteSize(long c0, long c1, long esz); }
+
+TEST(Compiler, appendRefusesALengthItCannotAllocate) {
+  // negative either side
+  EXPECT_EXCEPTION(checkedArrayConcatByteSize(-1, 1, sizeof(int)));
+  EXPECT_EXCEPTION(checkedArrayConcatByteSize(1, -1, sizeof(int)));
+
+  // the sum wraps
+  EXPECT_EXCEPTION(checkedArrayConcatByteSize(std::numeric_limits<long>::max(), 1, sizeof(int)));
+
+  // the sum fits but the byte product does not
+  EXPECT_EXCEPTION(checkedArrayConcatByteSize((1L << 62), (1L << 62), sizeof(long)));
+
+  // ordinary counts give the same byte size the raw arithmetic would
+  EXPECT_EQ(checkedArrayConcatByteSize(3, 4, sizeof(int)),
+            long(sizeof(long) + 7 * sizeof(int)));
+  EXPECT_EQ(checkedArrayConcatByteSize(0, 0, 0), long(sizeof(long)));
+
+  // and append itself still works through generated code
+  EXPECT_EQ(makeStdString(c().compileFn<const array<char>*()>(
+    "show(append([1,2,3], [4,5,6]))")()),
+    "[1, 2, 3, 4, 5, 6]");
+}
