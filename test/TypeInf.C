@@ -555,6 +555,41 @@ TEST(TypeInf, RecordLayoutCostsTheTypesSharedSize) {
   EXPECT_EQ(sizeOf(ty), 4U << levels);
 }
 
+// The type decoder accepts TExpr, a whole serialized expression tree carried
+// inside a type. A consumer that hands decoded types to the compiler and has
+// no use for quoted expressions (hog's log-session init message, off an
+// unauthenticated socket) needs to be able to tell, wherever in the type the
+// expression sits, including after a round trip through the encoder that an
+// untrusted peer would have used.
+TEST(TypeInf, EmbedsExpressionFindsATExprAnywhereInAType) {
+  auto la = LexicalAnnotation::null();
+  MonoTypePtr quoted = texpr(ExprPtr(new Int(42, la)));
+
+  // nothing a producer legitimately stores has one
+  EXPECT_FALSE(embedsExpression(primty("int")));
+  EXPECT_FALSE(embedsExpression(arrayty(primty("char"))));
+  EXPECT_FALSE(embedsExpression(tuplety(list(primty("int"), arrayty(primty("char")), tvar("x")))));
+  EXPECT_FALSE(embedsExpression(Record::make(Record::Members{Record::Member("a", primty("long")), Record::Member("b", arrayty(primty("byte")))})));
+
+  // at the top, and buried at every kind of child position
+  EXPECT_TRUE(embedsExpression(quoted));
+  EXPECT_TRUE(embedsExpression(arrayty(quoted)));
+  EXPECT_TRUE(embedsExpression(tuplety(list(primty("int"), quoted))));
+  EXPECT_TRUE(embedsExpression(Record::make(Record::Members{Record::Member("a", primty("long")), Record::Member("q", quoted)})));
+  EXPECT_TRUE(embedsExpression(Variant::make(Variant::Members{Variant::Member("l", primty("int"), 0), Variant::Member("r", arrayty(quoted), 1)})));
+  EXPECT_TRUE(embedsExpression(functy(list(primty("int")), quoted)));
+  EXPECT_TRUE(embedsExpression(TApp::make(primty("fileref"), list(quoted))));
+
+  // and after the round trip an untrusted peer's bytes take
+  std::vector<unsigned char> enc;
+  encode(Record::make(Record::Members{Record::Member("a", primty("long")), Record::Member("q", arrayty(quoted))}), &enc);
+  EXPECT_TRUE(embedsExpression(decode(enc)));
+
+  enc.clear();
+  encode(Record::make(Record::Members{Record::Member("a", primty("long")), Record::Member("b", arrayty(primty("byte")))}), &enc);
+  EXPECT_FALSE(embedsExpression(decode(enc)));
+}
+
 TEST(TypeInf, DecodeRejectsDeeplyNestedDescriptions) {
   // A type description nests as deeply as its bytes say, and the decoder recurs
   // once per level. The bytes are untrusted (a file, or a peer on the RPC path),

@@ -1966,6 +1966,24 @@ bool hasFreeVariables(const MonoTypePtr& mt) {
   return !isMonoSingular(mt);
 }
 
+namespace {
+// records whether the walk saw a TExpr; walkTy is the side-effect visitor
+// (it descends every child position without rebuilding the type)
+struct findEmbeddedExpr : public walkTy {
+  mutable bool found = false;
+  UnitV with(const TExpr* v) const override {
+    this->found = true;
+    return walkTy::with(v);
+  }
+};
+}
+
+bool embedsExpression(const MonoTypePtr& t) {
+  findEmbeddedExpr f;
+  switchOf(t, f);
+  return f.found;
+}
+
 bool hasFreeVariables(const MonoTypes& mts) {
   for (const auto &mt : mts) {
     if (hasFreeVariables(mt)) {

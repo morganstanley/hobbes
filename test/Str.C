@@ -212,3 +212,34 @@ TEST(Str, LsConstraintGlobbingAllowedForAnyPattern) {
   std::string t = lsInferredType(client, d.glob());
   EXPECT_TRUE(t.find("a.txt") != std::string::npos);
 }
+
+// Where a string taken from an untrusted source is about to be treated as
+// code, it has to be held to what a legitimate producer emits rather than to
+// whatever happens to parse. hog's log statement names are the case this
+// exists for (STRFR-434035): a name off an unauthenticated batchrecv
+// connection is bound as a symbol and spliced into hobbes source text that
+// the daemon then compiles, so a name carrying hobbes syntax rewrote the
+// compiled expression.
+TEST(Str, isIdentifier) {
+  // what producers actually emit -- HSTORE(group, name, ...) names a C++ token
+  EXPECT_TRUE(str::isIdentifier("coordinate"));
+  EXPECT_TRUE(str::isIdentifier("seq"));
+  EXPECT_TRUE(str::isIdentifier("_private"));
+  EXPECT_TRUE(str::isIdentifier("write_2_x"));
+  EXPECT_TRUE(str::isIdentifier("A1"));
+
+  // the injection shape from the finding: a name that closes the template and
+  // continues with an expression of its own
+  EXPECT_FALSE(str::isIdentifier("z, (), \\_.let _ = (unsafeCast(0x414141414141L)::{x:long}).x <- 1L in ()"));
+
+  // and the pieces that make it work
+  EXPECT_FALSE(str::isIdentifier(""));
+  EXPECT_FALSE(str::isIdentifier("1leading"));
+  EXPECT_FALSE(str::isIdentifier("has space"));
+  EXPECT_FALSE(str::isIdentifier("has,comma"));
+  EXPECT_FALSE(str::isIdentifier("paren()"));
+  EXPECT_FALSE(str::isIdentifier("back\\slash"));
+  EXPECT_FALSE(str::isIdentifier("dot.dot"));
+  EXPECT_FALSE(str::isIdentifier(std::string("nul\0byte", 8)));
+  EXPECT_FALSE(str::isIdentifier("\xff\xfe"));
+}

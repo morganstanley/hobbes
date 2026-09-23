@@ -229,7 +229,10 @@ private:
   }
 };
 
-// a producer allocates statement IDs as a dense sequence from 0
+// Validate every untrusted field of an init message up front, before any
+// storage file is created, so a rejected session leaves nothing behind.
+//
+// IDs: a producer allocates statement IDs as a dense sequence from 0
 // (allocateStorageStatement in storage.H), and every per-statement vector
 // here is indexed by ID. The IDs in an init message are untrusted input -- a
 // network producer is not authenticated -- so hold them to that invariant
@@ -240,7 +243,9 @@ private:
 //   * an ID merely large reserved memory in proportion to it, and
 //   * a sparse or repeated ID left null entries that a transaction could
 //     then reach by ID, where only the vector's length was checked.
-static void checkStatementIDs(const storage::statements& stmts) {
+//
+// Names and types: see the per-statement checks below.
+static void checkStatements(const storage::statements& stmts) {
   std::vector<bool> seen(stmts.size(), false);
 
   for (const auto& stmt : stmts) {
@@ -251,8 +256,28 @@ static void checkStatementIDs(const storage::statements& stmts) {
       throw std::runtime_error("rejected log session: statement ID #" + str::from(stmt.id) + " appears more than once");
     }
     seen[stmt.id] = true;
+
+    // The name is treated as code downstream -- bound as a symbol, spliced
+    // into hobbes source that gets compiled, and used as a variant
+    // constructor name -- so a name carrying hobbes syntax would rewrite the
+    // expression this compiles. batchrecv refuses one at ingestion; check
+    // here too, because local sessions reach initStorageSession by another
+    // path. Checked in this pre-allocation pass rather than in the loop below
+    // so a rejected session leaves no partial storage file behind.
+    if (!isValidStatementName(stmt.name)) {
+      throw std::runtime_error("rejected log session: statement name is not an identifier");
+    }
+
+    // The type is decoded with the general decoder, which accepts a whole
+    // serialized expression tree inside a type; nothing a producer
+    // legitimately stores needs one, and accepting it hands the compiler an
+    // expression that came off the wire.
+    if (hobbes::embedsExpression(decode(stmt.type))) {
+      throw std::runtime_error("rejected log session: statement '" + stmt.name + "' has a type carrying an embedded expression");
+    }
   }
 }
+
 
 // initialize a storage session with a caller-defined file allocation method
 template <typename FileAllocMethod>
@@ -260,7 +285,7 @@ ProcessTxnF initStorageSession(Session* s, const std::string& dirPfx, storage::P
   static std::mutex initMtx; // make sure that only one thread initializes at a time
   std::lock_guard<std::mutex> lk(initMtx);
 
-  checkStatementIDs(stmts);
+  checkStatements(stmts);
 
   cc* c = loggerCompiler();
 
@@ -271,6 +296,8 @@ ProcessTxnF initStorageSession(Session* s, const std::string& dirPfx, storage::P
   Variant::Members txnEntries;
 
   for (const auto& stmt : stmts) {
+    // names and types were validated up front by checkStatements, before
+    // any storage file was created
     MonoTypePtr pty = decode(stmt.type);
     out << " ==> " << stmt.name << " :: " << show(pty) << " (#" << stmt.id << ")" << std::endl;
     if (s->streams.size() <= stmt.id) {

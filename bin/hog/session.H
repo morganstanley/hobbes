@@ -8,10 +8,32 @@
 #include <hobbes/hobbes.H>
 #include <hobbes/storage.H>
 #include <hobbes/db/series.H>
+#include <hobbes/util/str.H>
 
 #include <stdexcept>
 
 namespace hog {
+
+// Is 'n' usable as a log statement name?
+//
+// A statement name arriving from an untrusted source (a batchrecv network
+// client) is used three ways that all treat it as code rather than data: it is
+// bound as a hobbes symbol (StoredSeries::bindAs), spliced into hobbes source
+// text that is then compiled, and used as a variant constructor name. A name
+// carrying hobbes syntax therefore rewrites the expression the daemon
+// compiles, so names are restricted to what the producers actually emit --
+// HSTORE(group, name, ...) names a C++ token -- rather than to whatever
+// parses.
+inline bool isValidStatementName(const std::string& n) {
+  return hobbes::str::isIdentifier(n);
+}
+
+// A statement's type description is decoded with the general type decoder,
+// which accepts TExpr -- a whole serialized expression tree carried inside a
+// type. Nothing a log producer legitimately stores needs one, and accepting it
+// hands the compiler an expression that came off the wire, so a type for
+// which hobbes::embedsExpression (lang/type.H) holds is rejected at the same
+// two points a bad name is.
 
 // make a storage file (via appendStorageSession) and produce a function to write transactions into it
 // support optionally merging log session data where type structures are identical

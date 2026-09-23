@@ -426,6 +426,13 @@ std::string mustEndWith(const std::string&, const std::string&);
 // get a set of filesystem objects matching a pattern
 str::seq paths(const std::string& p);
 
+// Is 'x' a plain identifier -- a letter or '_' followed by letters, digits or
+// '_'? Used where a string taken from an untrusted source is about to be
+// treated as code (bound as a symbol, or placed into source text that will be
+// compiled), and so has to be restricted to what a legitimate producer emits
+// rather than to whatever happens to parse.
+bool isIdentifier(const std::string& x);
+
 }}
 
 #endif

@@ -184,6 +184,20 @@ void read(gzbuffer* in, storage::statements* stmts) {
     read(in, &s.id);
     read(in, &s.type);
 
+    // the name is untrusted here and is treated as code downstream -- bound
+    // as a symbol and spliced into hobbes source that gets compiled -- so it
+    // has to be an identifier, which is all a producer emits. The type is
+    // decoded with a decoder that accepts an embedded expression tree, which
+    // nothing legitimate needs. Both are re-checked in initStorageSession
+    // (local sessions reach it another way); rejecting them here too keeps
+    // the wire gate and the compile-sink gate enforcing the same invariant.
+    if (!isValidStatementName(s.name)) {
+      throw std::runtime_error("rejected log session: statement name is not an identifier");
+    }
+    if (hobbes::embedsExpression(hobbes::decode(s.type))) {
+      throw std::runtime_error("rejected log session: statement '" + s.name + "' has a type carrying an embedded expression");
+    }
+
     stmts->push_back(s);
   }
 }
