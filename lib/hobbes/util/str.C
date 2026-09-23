@@ -738,6 +738,26 @@ std::string mustEndWith(const std::string& x, const std::string& sfx) {
   }
 }
 
+// is x a plain identifier? (declaration in str.H documents why)
+bool isIdentifier(const std::string& x) {
+  if (x.empty()) {
+    return false;
+  }
+  const auto alpha = [](unsigned char c) {
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
+  };
+  const auto alnum = [&](unsigned char c) { return alpha(c) || (c >= '0' && c <= '9'); };
+  if (!alpha(static_cast<unsigned char>(x[0]))) {
+    return false;
+  }
+  for (const char c : x) {
+    if (!alnum(static_cast<unsigned char>(c))) {
+      return false;
+    }
+  }
+  return true;
+}
+
 // get a set of filesystem objects matching a pattern
 str::seq paths(const std::string& p) {
   glob_t g;
