@@ -28,13 +28,12 @@ inline bool isValidStatementName(const std::string& n) {
   return hobbes::str::isIdentifier(n);
 }
 
-// Does 't' embed an expression node?
-//
 // A statement's type description is decoded with the general type decoder,
 // which accepts TExpr -- a whole serialized expression tree carried inside a
 // type. Nothing a log producer legitimately stores needs one, and accepting it
-// hands the compiler an expression that came off the wire, so reject it.
-bool embedsExpression(const hobbes::MonoTypePtr&);
+// hands the compiler an expression that came off the wire, so a type for
+// which hobbes::embedsExpression (lang/type.H) holds is rejected at the same
+// two points a bad name is.
 
 // make a storage file (via appendStorageSession) and produce a function to write transactions into it
 // support optionally merging log session data where type structures are identical

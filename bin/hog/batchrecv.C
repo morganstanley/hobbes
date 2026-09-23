@@ -194,7 +194,7 @@ void read(gzbuffer* in, storage::statements* stmts) {
     if (!isValidStatementName(s.name)) {
       throw std::runtime_error("rejected log session: statement name is not an identifier");
     }
-    if (embedsExpression(hobbes::decode(s.type))) {
+    if (hobbes::embedsExpression(hobbes::decode(s.type))) {
       throw std::runtime_error("rejected log session: statement '" + s.name + "' has a type carrying an embedded expression");
     }
 

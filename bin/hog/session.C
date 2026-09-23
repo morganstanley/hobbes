@@ -229,24 +229,6 @@ private:
   }
 };
 
-namespace {
-// records whether the walk saw a TExpr; walkTy is the side-effect visitor
-// (it descends every child position without rebuilding the type)
-struct findEmbeddedExpr : public hobbes::walkTy {
-  mutable bool found = false;
-  hobbes::UnitV with(const hobbes::TExpr* v) const override {
-    this->found = true;
-    return hobbes::walkTy::with(v);
-  }
-};
-}
-
-bool embedsExpression(const hobbes::MonoTypePtr& t) {
-  findEmbeddedExpr f;
-  hobbes::switchOf(t, f);
-  return f.found;
-}
-
 // Validate every untrusted field of an init message up front, before any
 // storage file is created, so a rejected session leaves nothing behind.
 //
@@ -290,7 +272,7 @@ static void checkStatements(const storage::statements& stmts) {
     // serialized expression tree inside a type; nothing a producer
     // legitimately stores needs one, and accepting it hands the compiler an
     // expression that came off the wire.
-    if (embedsExpression(decode(stmt.type))) {
+    if (hobbes::embedsExpression(decode(stmt.type))) {
       throw std::runtime_error("rejected log session: statement '" + stmt.name + "' has a type carrying an embedded expression");
     }
   }

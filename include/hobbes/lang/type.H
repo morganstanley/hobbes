@@ -1012,6 +1012,13 @@ bool hasFreeVariables(const ConstraintPtr&);
 bool hasFreeVariables(const MonoTypePtr&);
 bool hasFreeVariables(const MonoTypes&);
 
+// does this type carry an expression (a TExpr node) anywhere inside it?
+// A type description decoded from an untrusted source can: the decoder
+// accepts a whole serialized expression tree inside a type. A consumer that
+// will hand the type to the compiler, and has no use for quoted expressions,
+// checks this and refuses (hog's log-session init message is one).
+bool embedsExpression(const MonoTypePtr&);
+
 void show(const MonoTypeSubst& s, std::ostream& out);
 std::string show(const MonoTypeSubst& s);
 
