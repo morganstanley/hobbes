@@ -36,6 +36,10 @@ const std::vector<std::string>& Module::options() const {
   return this->opts;
 }
 
+void Module::setOptions(const std::vector<std::string>& os) {
+  this->opts = os;
+}
+
 /* module defs */
 ModuleDef::ModuleDef(int cid, const LexicalAnnotation& la) : LexicallyAnnotated(la), cid(cid) { }
 int ModuleDef::case_id() const { return this->cid; }

@@ -746,6 +746,15 @@ void cc::enableFilesystemGlobs() {
   hobbes::enableFilesystemGlobs(this->tenv);
 }
 
+void cc::setModuleOptions(const std::vector<std::string>& opts) {
+  hlock _;
+  this->modOpts = opts;
+}
+
+std::vector<std::string> cc::moduleOptions() const {
+  hlock _;
+  return this->modOpts;
+}
 
 void cc::buildInterpretedMatches(bool f) { this->genInterpretedMatch = f; }
 bool cc::buildInterpretedMatches() const { return this->genInterpretedMatch; }

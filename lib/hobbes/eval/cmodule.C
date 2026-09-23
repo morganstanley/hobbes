@@ -1,4 +1,5 @@
 
+#include <algorithm>
 #include <deque>
 #include <dlfcn.h>
 #include <glob.h>
@@ -893,7 +894,21 @@ void compile(const ModulePtr &, cc *, const MUnsafePragmaDef *mpd) {
   });
 }
 
-void compile(const ModulePtr &, cc *, const MSafePragmaDef *mpd) {
+static bool safeInEffect(const ModulePtr&);
+
+void compile(const ModulePtr &m, cc *, const MSafePragmaDef *mpd) {
+  // SafeSet::setSafeFn marks the name Safe in process-wide state, and the
+  // deny check treats a Safe entry as not deny-listed at all -- so a module
+  // consisting of nothing but {-# SAFE pexec #-} used to lift the denial for
+  // the rest of the process, at the prompt and in every module loaded after
+  // it. Pragmas are applied after the definition loop, so the module itself
+  // never had to name the primitive to do it. A module cannot be allowed to
+  // do that while it is itself being compiled under Safe (STRFR-434028).
+  if (safeInEffect(m)) {
+    throw annotated_error(mpd->la(),
+      "{-# SAFE " + mpd->symbolValue() + " #-} is not allowed while 'option Safe' is in effect: "
+      "a module cannot lift a Safe-mode denial for the process that loaded it");
+  }
   SafeSet::setSafeFn(mpd->symbolValue());
   SafeExpr::with([&](SafeExpr::Map &m) {
     auto &v = m[mpd->symbolValue()];
@@ -904,7 +919,50 @@ void compile(const ModulePtr &, cc *, const MSafePragmaDef *mpd) {
 // for now, just treat each definition independently and stick it in the input
 // environment
 //   (this disallows things like mutual recursion)
+// A module's definitions are translated with that module's own options, and a
+// module almost never declares 'option Safe' of its own -- so an application
+// compiling expressions under Safe used to get no filtering at all on the
+// modules it loaded (STRFR-434027), nor on the modules those imported
+// (STRFR-434017, STRFR-434009). A Safe session could be walked out of simply
+// by putting the work in a file and loading it.
+//
+// Seeding here rather than at the call site is deliberate: import() reaches
+// compile() again for each imported script, so the options follow scripts
+// through the whole chain without every caller threading them. It does not
+// follow an object import: import() tries <name>.so first and dlopen's it,
+// which runs native code no option can filter (STRFR-434018, still open).
+//
+// The module is put back as it was found. A ModulePtr is a shared handle the
+// caller keeps, and may be compiled again into a different cc.
+namespace {
+struct ScopedModuleOptions {
+  ModulePtr m;
+  std::vector<std::string> saved;
+
+  ScopedModuleOptions(cc *e, ModulePtr m) : m(std::move(m)), saved(this->m->options()) {
+    std::vector<std::string> merged = this->saved;
+    for (const auto& o : e->moduleOptions()) {
+      if (std::find(merged.begin(), merged.end(), o) == merged.end()) {
+        merged.push_back(o);
+      }
+    }
+    this->m->setOptions(merged);
+  }
+  ~ScopedModuleOptions() { this->m->setOptions(this->saved); }
+
+  ScopedModuleOptions(const ScopedModuleOptions&) = delete;
+  ScopedModuleOptions& operator=(const ScopedModuleOptions&) = delete;
+};
+}
+
+static bool safeInEffect(const ModulePtr& m) {
+  const auto& os = m->options();
+  return std::find(os.begin(), os.end(), std::string("Safe")) != os.end();
+}
+
 void compile(cc *e, const ModulePtr &m, std::function<bool()> stopFn) {
+  ScopedModuleOptions _opts(e, m);
+
   for (const auto& tmd : m->definitions()) {
     if (stopFn()) {
       return;

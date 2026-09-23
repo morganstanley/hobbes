@@ -106,6 +106,17 @@ evaluator::evaluator(const Args& args) : silent(args.silent), wwwd(nullptr), opt
     // run a local web server (for diagnostics and alternate queries) if requested
     this->wwwd = new WWWServer(args.httpdPort, &this->ctx, this->opts);
   }
+
+  // The option set the user asked for governs modules too, not only what is
+  // typed at the prompt: a module load used to be an unfiltered way around
+  // it, and so did an import from inside one.
+  //
+  // Set last, deliberately. The web server compiles its own install-provided
+  // init.hob while being constructed above, and that script is part of the
+  // server's machinery -- it is expected to use the file helpers bound for
+  // web serving, which Safe denies. Startup content that ships with hi is
+  // trusted; what is loaded afterwards is what this is here to filter.
+  this->ctx.setModuleOptions(args.opts);
 }
 
 evaluator::~evaluator() {
@@ -346,6 +357,9 @@ void evaluator::searchDefs(const std::string& expr_to_type) {
 
 void evaluator::setOption(const std::string& o) {
   this->opts.push_back(o);
+  // ... and to modules loaded from here on, or ':o Safe' would filter the
+  // prompt while leaving ':l file' and its imports unfiltered
+  this->ctx.setModuleOptions(this->opts);
   if (o == "IgnoreUnreachableMatches") {
     this->ctx.ignoreUnreachableMatches(true);
     this->ctx.setGatherUnreachableMatchesFn(defPrintUnreachableMatches);
