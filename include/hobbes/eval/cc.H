@@ -361,6 +361,15 @@ public:
   // ... or every target, for a cc that only ever sees trusted source
   void enableFileWrites();
 
+  // Resolving an (Ls "pattern" x) constraint globs the filesystem and puts
+  // the matching names into the type as a side effect of type-checking, not
+  // evaluation -- disabled by default, so that type-checking untrusted text
+  // cannot enumerate the host's filesystem. Call this to allow the exact
+  // patterns in allowedPatterns (matched as written in the constraint) ...
+  void enableFilesystemGlobs(const std::set<std::string> &allowedPatterns);
+  // ... or every pattern, for a cc that only ever sees trusted source
+  void enableFilesystemGlobs();
+
   // compile/optimization options
   void buildInterpretedMatches(bool f);
   bool buildInterpretedMatches() const;

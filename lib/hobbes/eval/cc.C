@@ -6,6 +6,7 @@
 #include <hobbes/boot/gen/boot.H>
 #include <hobbes/lang/closcvt.H>
 #include <hobbes/lang/typepreds.H>
+#include <hobbes/lang/preds/str.H>
 #include <hobbes/lang/macroexpand.H>
 #include <hobbes/util/llvm.H>
 #include <hobbes/util/array.H>
@@ -733,6 +734,16 @@ void cc::enableFileWrites(const std::set<std::string>& allowedPaths) {
 void cc::enableFileWrites() {
   hlock _;
   hobbes::enableFileWrites(*this);
+}
+
+void cc::enableFilesystemGlobs(const std::set<std::string>& allowedPatterns) {
+  hlock _;
+  hobbes::enableFilesystemGlobs(this->tenv, allowedPatterns);
+}
+
+void cc::enableFilesystemGlobs() {
+  hlock _;
+  hobbes::enableFilesystemGlobs(this->tenv);
 }
 
 

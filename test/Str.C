@@ -1,6 +1,10 @@
 #include "test.H"
+#include <hobbes/hobbes.H>
 #include <hobbes/util/str.H>
+#include <cerrno>
+#include <fstream>
 #include <string>
+#include <sys/stat.h>
 #include <unistd.h>
 
 using namespace hobbes;
@@ -105,4 +109,106 @@ TEST(Str, relativePathInRoot) {
   // a segment that merely starts with dots is an ordinary name
   EXPECT_TRUE(str::relativePathInRoot("/..a/b", &p) && p == "..a/b");
   EXPECT_TRUE(str::relativePathInRoot("/.hidden", &p) && p == ".hidden");
+}
+
+// Resolving an (Ls "pattern" x) constraint globs the filesystem and puts the
+// matching names *into the type*, as a side effect of type-constraint
+// resolution rather than evaluation. The names come back out of a plain
+// type-check -- the error below reports them -- so a net REPL prepare(), a
+// web GET /?<expr> or a ':t' on pasted text can enumerate the filesystem of
+// the host running the compiler without evaluating anything.
+static std::string lsExpr(const std::string& pattern) {
+  return "let f = ((\\x.x) :: (Ls \"" + pattern + "\" ps) => (ps -> ps)) in ()";
+}
+
+// a directory of our own, so the test does not depend on what is in /tmp
+struct LsDir {
+  std::string dir;
+  LsDir() {
+    this->dir = "/tmp/hobbes-ls-unittest." + str::from(getpid());
+    if (::mkdir(this->dir.c_str(), 0700) != 0 && errno != EEXIST) {
+      throw std::runtime_error("cannot make a test directory to list: " + this->dir);
+    }
+    for (const char* n : {"a.txt", "b.txt"}) {
+      std::string f = this->dir + "/" + n;
+      std::ofstream o(f.c_str());
+      o << "x";
+      o.close();
+      if (!o) {
+        throw std::runtime_error("cannot make a file to list: " + f);
+      }
+    }
+    // the tests below are only meaningful if there is something to match
+    if (str::paths(this->glob()).size() != 2) {
+      throw std::runtime_error("test directory did not glob to its two files: " + this->glob());
+    }
+  }
+  ~LsDir() {
+    for (const char* n : {"a.txt", "b.txt"}) {
+      ::unlink((this->dir + "/" + n).c_str());
+    }
+    ::rmdir(this->dir.c_str());
+  }
+  std::string glob() const { return this->dir + "/*.txt"; }
+};
+
+TEST(Str, LsConstraintGlobbingDeniedByDefault) {
+  LsDir d;
+  hobbes::cc client;
+  bool threw = false;
+  try {
+    client.compileFn<void()>(lsExpr(d.glob()));
+  } catch (std::exception& ex) {
+    threw = true;
+    EXPECT_TRUE(std::string(ex.what()).find("Ls constraint rejected") != std::string::npos);
+    // and the names it refused to expand are not in the message
+    EXPECT_TRUE(std::string(ex.what()).find("a.txt") == std::string::npos);
+  }
+  EXPECT_TRUE(threw);
+}
+
+// the type the glob expanded into, as the compiler shows it
+static std::string lsInferredType(hobbes::cc& c, const std::string& pattern) {
+  return show(c.unsweetenExpression(c.readExpr(
+    "((\\x.x) :: (Ls \"" + pattern + "\" ps) => (ps -> ps))"))->type());
+}
+
+TEST(Str, LsConstraintGlobbingAllowedWithExactAllowlist) {
+  LsDir d;
+  hobbes::cc client;
+  client.enableFilesystemGlobs({d.glob()});
+  // must not throw: the exact allowlisted pattern is permitted to expand
+  client.compileFn<void()>(lsExpr(d.glob()))();
+
+  // ... and the names it matched really did reach the type, so the denial
+  // tests above are withholding something rather than nothing
+  std::string t = lsInferredType(client, d.glob());
+  EXPECT_TRUE(t.find("a.txt") != std::string::npos);
+  EXPECT_TRUE(t.find("b.txt") != std::string::npos);
+}
+
+TEST(Str, LsConstraintAllowlistIsPatternSpecific) {
+  // negative control: opting in for one pattern must not open the gate for
+  // every pattern
+  LsDir d;
+  hobbes::cc client;
+  client.enableFilesystemGlobs({d.dir + "/*.other"});
+  bool threw = false;
+  try {
+    client.compileFn<void()>(lsExpr(d.glob()));
+  } catch (std::exception& ex) {
+    threw = true;
+    EXPECT_TRUE(std::string(ex.what()).find("Ls constraint rejected") != std::string::npos);
+  }
+  EXPECT_TRUE(threw);
+}
+
+TEST(Str, LsConstraintGlobbingAllowedForAnyPattern) {
+  LsDir d;
+  hobbes::cc client;
+  client.enableFilesystemGlobs();
+  client.compileFn<void()>(lsExpr(d.glob()))();
+
+  std::string t = lsInferredType(client, d.glob());
+  EXPECT_TRUE(t.find("a.txt") != std::string::npos);
 }
