@@ -5,28 +5,35 @@
 // be safe on arbitrary bytes. Nothing here is evaluated.
 //
 // Reading is not entirely free of compilation, though, and the difference
-// shows up over a campaign rather than on any one input. A regex literal is
-// turned into a matching function where it is read: makeRegexFn determinizes
-// it and defines the result in the compiler under a fresh name, and the types
-// that takes are interned in the process-wide type memo (tctorMaps in
-// lang/type.C), which holds a reference of its own to each of them. Nothing
-// removes the definition, and only compactMTypeMemory() lets go of the types.
-// So a `cc` reused across inputs, with the memo left alone, grows by every
-// regex it has ever read: measured at about 168KB per read of the twenty
-// character regex in OSS-Fuzz testcase 4850385077207040 -- roughly half of
-// it in the memo and half in the compiler -- against no growth that can be
-// measured at all for an input with no regex in it. Left alone, a campaign
-// feeding regexes runs the process out of memory. That is what the testcase
-// reports: an out-of-memory that ClusterFuzz could not minimize, because no
-// single input causes it.
+// shows up over a campaign rather than on any one input. Several things are
+// compiled where they are read: a regex literal becomes a matching function
+// (makeRegexFn determinizes it and defines the result in the compiler under
+// a fresh name), a match expression is compiled to a decision tree, and a
+// `parse {}` block becomes an LALR parser. Each definition stays in the
+// compiler, and the types it took are interned in the process-wide type
+// memo (tctorMaps in lang/type.C), which holds a reference of its own to
+// each of them; nothing removes the definition, and only
+// compactMTypeMemory() lets go of the types. So a `cc` reused across
+// inputs, with the memo left alone, grows by everything it has ever read:
+// about 168KB per read of the twenty character regex in OSS-Fuzz testcase
+// 4850385077207040, and, on a corpus the fuzzer had grown from the seeds
+// (3.7k inputs, mostly near-misses), about 270KB per input in the compiler
+// and 400KB per input in the memo -- measured by reading them all and then
+// destroying the compiler and compacting the memo, which gave every byte
+// back. Left alone, such a campaign runs the process out of memory. That is
+// what the testcase reports: an out-of-memory that ClusterFuzz could not
+// minimize, because no single input causes it.
 //
 // So two things are done periodically, one for each half. The type memo is
 // compacted every few dozen inputs, as the decoder harnesses do; that gives
 // back the memo's half and costs about as much as a parse. The compiler is
-// replaced every couple of thousand inputs that could have compiled a regex;
-// that gives back its half, and costs what it takes to build one. Neither
-// alone is enough: each leaves the other half growing without bound. Counts
-// of inputs are a coarse stand-in for how much has accumulated, but a
+// replaced every thousand inputs; that gives back its half, and costs what
+// it takes to build one. Neither alone is enough: each leaves the other half
+// growing without bound. An earlier version replaced the compiler only after
+// a couple of thousand inputs containing a quote character, on the reasoning
+// that only a regex literal could have grown it; matches and grammars grow it
+// just as well, and on the corpus above that policy let it reach a gigabyte.
+// Counts of inputs are a coarse stand-in for how much has accumulated, but a
 // portable and predictable one -- resident size is not, because freeing
 // memory does not hand it back to the operating system, so a harness that
 // watched RSS rebuilt the compiler on every input once it first went over.
@@ -40,7 +47,7 @@
 // before fuzzing starts. So the first compiler is built in
 // LLVMFuzzerInitialize, which every driver runs before the fork server and
 // before any input is timed. Replacements still land inside a timed input;
-// counting only the inputs that can have grown the compiler keeps them rare.
+// a thousand inputs between them keeps them rare.
 
 #include <hobbes/hobbes.H>
 
@@ -81,8 +88,8 @@ extern "C" int __lsan_is_turned_off() {
 
 namespace {
 
-const unsigned long inputsPerCompaction  = 64;
-const unsigned long regexInputsPerCompiler = 2048;
+const unsigned long inputsPerCompaction = 64;
+const unsigned long inputsPerCompiler   = 1024;
 
 // The first compiler is built in the slot's initializer rather than on first
 // use. Constructing a cc also constructs the LLVM statics it depends on, and
@@ -103,21 +110,10 @@ hobbes::cc& compiler() {
   return *c;
 }
 
-// A regex literal is quoted with single quotes, and nothing else the reader
-// does leaves anything behind in the compiler, so an input without a quote
-// cannot have grown it. (A quote is also how a character literal and a
-// quote inside a string look, and a match can be defined before the parse
-// that holds it fails, so this is a superset: inputs that could have compiled
-// a regex, not inputs that did.)
-bool mayHaveCompiledRegex(const std::string& src) {
-  return src.find('\'') != std::string::npos;
-}
-
-void reclaimPeriodically(bool grewCompiler) {
+void reclaimPeriodically() {
   static unsigned long read = 0;
-  static unsigned long regexReads = 0;
   ++read;
-  if (grewCompiler && ++regexReads % regexInputsPerCompiler == 0) {
+  if (read % inputsPerCompiler == 0) {
     compilerSlot().reset();
   }
   if (read % inputsPerCompaction == 0) {
@@ -141,6 +137,6 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   } catch (const std::exception&) {
     // rejecting malformed source is the expected behavior
   }
-  reclaimPeriodically(mayHaveCompiledRegex(src));
+  reclaimPeriodically();
   return 0;
 }

@@ -299,8 +299,11 @@ ExprPtr defReadExpr(cc* c, const std::string& expr) {
 }
 
 // allow variable and pattern variable overloading
-// (these bare `new`s are not autoreleased, so a syntax error that discards them
-// mid-parse leaks -- see runParserOnBuffer above)
+// (these bare `new`s are not autoreleased: the consuming grammar action wraps
+// them, and a syntax error that discards them mid-parse runs the %destructor
+// hexpr.y declares for their types. What still leaks them is an action that
+// throws, since the exception unwinds past bison's cleanup -- see
+// runParserOnBuffer above for what that path does and does not put back)
 Expr* defVarCtor(const std::string& vn, const LexicalAnnotation& la) { return new Var(vn, la); }
 VarCtorFn varCtorFn = &defVarCtor;
 void overrideVarCtor(VarCtorFn f) { varCtorFn = f; }

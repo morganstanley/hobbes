@@ -77,11 +77,11 @@ Notes per harness:
   attempt large mappings, so keep the default `-rss_limit_mb` in place, and a
   malformed page table can make it spin, so keep `-timeout` in place too.
 * **fuzz-parse-expr** — seeds in `corpus/parse-expr/`. Reading a regex
-  literal compiles a matcher into the compiler and interns its types in the
-  process-wide type memo, and nothing releases either, so a run that reads
-  regexes grows without bound unless the harness intervenes: it compacts the
-  memo every 64 inputs and replaces the compiler every 1024 (see the harness
-  for the figures). Parsing also allocates from arenas that are not reclaimed
+  literal, a match expression or a `parse {}` grammar compiles it into the
+  compiler and interns its types in the process-wide type memo, and nothing
+  releases either, so a run grows without bound unless the harness
+  intervenes: it compacts the memo every 64 inputs and replaces the compiler
+  every 1024 (see the harness for the figures). Parsing also allocates from arenas that are not reclaimed
   per-iteration, so run with `-detect_leaks=0`. That is policy, not a
   workaround: hobbes reclaims evaluation memory by resetting an arena at the
   end of a transaction rather than by running destructors, so a
