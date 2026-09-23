@@ -493,15 +493,31 @@ TEST(Compiler, safeModeStillAllowsOrdinaryExpressions) {
 // newArray's length is a runtime long. A negative one, or one large enough
 // that multiplying by the element size wraps, used to produce a small
 // allocation carrying the full claimed length in its header -- so every
-// later index ran off the buffer (STRFR-433921).
-TEST(Compiler, newArrayRefusesALengthItCannotAllocate) {
-  // negative
-  EXPECT_EXCEPTION(c().compileFn<long()>("let a = newArray(-1L) :: [int] in size(a)")());
+// later index ran off the buffer (STRFR-433921). The check lives in
+// checkedArrayByteSize (funcdefs.C), which generated code calls before it
+// allocates; it is not in a header, so it is declared here to be tested
+// on its own.
+namespace hobbes { long checkedArrayByteSize(long len, long esz); }
 
-  // a length whose product with the element size is not representable
+TEST(Compiler, newArrayRefusesALengthItCannotAllocate) {
+  // the check itself
+  EXPECT_EXCEPTION(checkedArrayByteSize(-1, sizeof(int)));
+  EXPECT_EXCEPTION(checkedArrayByteSize((1L << 62) + 1, sizeof(long)));
+  EXPECT_EQ(checkedArrayByteSize(4, sizeof(int)), long(sizeof(long) + 4 * sizeof(int)));
+  EXPECT_EQ(checkedArrayByteSize(0, 0), long(sizeof(long)));
+
+  // an ordinary length still allocates and reports its length through
+  // generated code
+  EXPECT_EQ(c().compileFn<long()>("let a = newArray(4L) :: [int] in size(a)")(), 4L);
+
+#if !defined(__APPLE__)
+  // and a refused one reaches the caller as an exception. Not on macOS: the
+  // exception is thrown from a runtime function called by JIT-compiled code,
+  // and the JIT's frames carry no unwind information the system unwinder can
+  // use, so the throw terminates the process there rather than unwinding to
+  // the catch -- which used to take the rest of the suite with it.
+  EXPECT_EXCEPTION(c().compileFn<long()>("let a = newArray(-1L) :: [int] in size(a)")());
   EXPECT_EXCEPTION(c().compileFn<long()>(
     "let a = newArray(" + std::to_string((1L << 62) + 1) + "L) :: [long] in size(a)")());
-
-  // an ordinary one still allocates and reports its length
-  EXPECT_EQ(c().compileFn<long()>("let a = newArray(4L) :: [int] in size(a)")(), 4L);
+#endif
 }
