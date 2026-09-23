@@ -1964,239 +1964,221 @@ void encode(const ExprPtr& e, std::ostream& out) {
   }
 }
 
+// Every nested expression is decoded through decode(ExprPtr*) below, which
+// recurs once per level of nesting, and decodeNesting bounds how deep that
+// goes so that a description from an untrusted source cannot run the stack
+// out. The bound only means something if each level costs a bounded, and
+// small, amount of stack -- which one function holding the locals of every
+// node kind at once does not: unoptimized, each of those locals has its own
+// slot in the frame whether its case runs or not, and under AddressSanitizer
+// each carries redzones besides, so a frame of that shape came to over 4KB
+// and two thousand of them overran an 8MB stack before the bound was
+// reached (TypeInf.DecodeRejectsDeeplyNestedDescriptions, under the
+// sanitizer builds). So each kind is decoded by a function of its own, and
+// the frame that recurs holds only that kind's locals.
+namespace {
+
+ExprPtr decodeUnit(std::istream&) {
+  return ExprPtr(new Unit(LexicalAnnotation::null()));
+}
+
+template <typename Node, typename T>
+  ExprPtr decodePrim(std::istream& in) {
+    T x = T();
+    decode(&x, in);
+    return ExprPtr(new Node(x, LexicalAnnotation::null()));
+  }
+
+ExprPtr decodeVar(std::istream& in) {
+  std::string x;
+  decode(&x, in);
+  return ExprPtr(new Var(x, LexicalAnnotation::null()));
+}
+
+ExprPtr decodeLet(std::istream& in) {
+  std::string vn;
+  ExprPtr     ve;
+  ExprPtr     be;
+
+  decode(&vn, in);
+  decode(&ve, in);
+  decode(&be, in);
+
+  return ExprPtr(new Let(vn, ve, be, LexicalAnnotation::null()));
+}
+
+ExprPtr decodeLetRec(std::istream& in) {
+  LetRec::Bindings bs;
+  ExprPtr          e;
+
+  decode(&bs, in);
+  decode(&e,  in);
+
+  return ExprPtr(new LetRec(bs, e, LexicalAnnotation::null()));
+}
+
+ExprPtr decodeFn(std::istream& in) {
+  Fn::VarNames args;
+  ExprPtr      b;
+
+  decode(&args, in);
+  decode(&b,    in);
+
+  return ExprPtr(new Fn(args, b, LexicalAnnotation::null()));
+}
+
+ExprPtr decodeApp(std::istream& in) {
+  ExprPtr f;
+  Exprs   args;
+
+  decode(&f,    in);
+  decode(&args, in);
+
+  return ExprPtr(new App(f, args, LexicalAnnotation::null()));
+}
+
+ExprPtr decodeAssign(std::istream& in) {
+  ExprPtr le;
+  ExprPtr re;
+
+  decode(&le, in);
+  decode(&re, in);
+
+  return ExprPtr(new Assign(le, re, LexicalAnnotation::null()));
+}
+
+ExprPtr decodeMkArray(std::istream& in) {
+  Exprs es;
+  decode(&es, in);
+  return ExprPtr(new MkArray(es, LexicalAnnotation::null()));
+}
+
+ExprPtr decodeMkVariant(std::istream& in) {
+  std::string lbl;
+  ExprPtr     v;
+
+  decode(&lbl, in);
+  decode(&v,   in);
+
+  return ExprPtr(new MkVariant(lbl, v, LexicalAnnotation::null()));
+}
+
+ExprPtr decodeMkRecord(std::istream& in) {
+  MkRecord::FieldDefs fs;
+  decode(&fs, in);
+  return ExprPtr(new MkRecord(fs, LexicalAnnotation::null()));
+}
+
+ExprPtr decodeAIndex(std::istream& in) {
+  ExprPtr a;
+  ExprPtr i;
+
+  decode(&a, in);
+  decode(&i, in);
+
+  return ExprPtr(new AIndex(a, i, LexicalAnnotation::null()));
+}
+
+// Case and Switch are encoded alike: the scrutinee, the bindings, then a
+// flag saying whether a default expression follows
+template <typename Node>
+  ExprPtr decodeCaseLike(std::istream& in) {
+    ExprPtr v;
+    typename Node::Bindings bs;
+
+    decode(&v,  in);
+    decode(&bs, in);
+
+    bool hasDef = false;
+    decode(&hasDef, in);
+    if (hasDef) {
+      ExprPtr d;
+      decode(&d, in);
+      return ExprPtr(new Node(v, bs, d, LexicalAnnotation::null()));
+    } else {
+      return ExprPtr(new Node(v, bs, LexicalAnnotation::null()));
+    }
+  }
+
+ExprPtr decodeProj(std::istream& in) {
+  ExprPtr     r;
+  std::string f;
+
+  decode(&r, in);
+  decode(&f, in);
+
+  return ExprPtr(new Proj(r, f, LexicalAnnotation::null()));
+}
+
+ExprPtr decodeAssump(std::istream& in) {
+  ExprPtr     e;
+  QualTypePtr t;
+
+  decode(&e, in);
+  decode(&t, in);
+
+  return ExprPtr(new Assump(e, t, LexicalAnnotation::null()));
+}
+
+ExprPtr decodePack(std::istream& in) {
+  ExprPtr e;
+  decode(&e, in);
+  return ExprPtr(new Pack(e, LexicalAnnotation::null()));
+}
+
+ExprPtr decodeUnpack(std::istream& in) {
+  std::string vn;
+  ExprPtr     p;
+  ExprPtr     e;
+
+  decode(&vn, in);
+  decode(&p,  in);
+  decode(&e,  in);
+
+  return ExprPtr(new Unpack(vn, p, e, LexicalAnnotation::null()));
+}
+
+ExprPtr decodeExprNode(int cid, std::istream& in) {
+  switch (cid) {
+  case Unit::type_case_id:      return decodeUnit(in);
+  case Bool::type_case_id:      return decodePrim<Bool,   bool>(in);
+  case Char::type_case_id:      return decodePrim<Char,   char>(in);
+  case Byte::type_case_id:      return decodePrim<Byte,   unsigned char>(in);
+  case Short::type_case_id:     return decodePrim<Short,  short>(in);
+  case Int::type_case_id:       return decodePrim<Int,    int>(in);
+  case Long::type_case_id:      return decodePrim<Long,   long>(in);
+  case Int128::type_case_id:    return decodePrim<Int128, int128_t>(in);
+  case Double::type_case_id:    return decodePrim<Double, double>(in);
+  case Var::type_case_id:       return decodeVar(in);
+  case Let::type_case_id:       return decodeLet(in);
+  case LetRec::type_case_id:    return decodeLetRec(in);
+  case Fn::type_case_id:        return decodeFn(in);
+  case App::type_case_id:       return decodeApp(in);
+  case Assign::type_case_id:    return decodeAssign(in);
+  case MkArray::type_case_id:   return decodeMkArray(in);
+  case MkVariant::type_case_id: return decodeMkVariant(in);
+  case MkRecord::type_case_id:  return decodeMkRecord(in);
+  case AIndex::type_case_id:    return decodeAIndex(in);
+  case Case::type_case_id:      return decodeCaseLike<Case>(in);
+  case Switch::type_case_id:    return decodeCaseLike<Switch>(in);
+  case Proj::type_case_id:      return decodeProj(in);
+  case Assump::type_case_id:    return decodeAssump(in);
+  case Pack::type_case_id:      return decodePack(in);
+  case Unpack::type_case_id:    return decodeUnpack(in);
+  default:
+    throw std::runtime_error("Internal error, cannot switch on unknown expression type: " + str::from(cid));
+  }
+}
+
+}
+
 void decode(ExprPtr* out, std::istream& in) {
-  // as with types, every nested expression is decoded through here: an
-  // expression description nests as deeply as its bytes say, and the decoder
-  // recurs once per level
   decodeNesting nesting;
 
   int cid = 0;
   decode(&cid, in);
 
-  ExprPtr& result = *out;
-
-  switch (cid) {
-  case Unit::type_case_id:
-    result = ExprPtr(new Unit(LexicalAnnotation::null()));
-    break;
-  case Bool::type_case_id: {
-    bool x = false;
-    decode(&x, in);
-    result = ExprPtr(new Bool(x, LexicalAnnotation::null()));
-    break;
-  }
-  case Char::type_case_id: {
-    char x = '\0';
-    decode(&x, in);
-    result = ExprPtr(new Char(x, LexicalAnnotation::null()));
-    break;
-  }
-  case Byte::type_case_id: {
-    unsigned char x = 0;
-    decode(&x, in);
-    result = ExprPtr(new Byte(x, LexicalAnnotation::null()));
-    break;
-  }
-  case Short::type_case_id: {
-    short x = 0;
-    decode(&x, in);
-    result = ExprPtr(new Short(x, LexicalAnnotation::null()));
-    break;
-  }
-  case Int::type_case_id: {
-    int x = 0;
-    decode(&x, in);
-    result = ExprPtr(new Int(x, LexicalAnnotation::null()));
-    break;
-  }
-  case Long::type_case_id: {
-    long x = 0;
-    decode(&x, in);
-    result = ExprPtr(new Long(x, LexicalAnnotation::null()));
-    break;
-  }
-  case Int128::type_case_id: {
-    int128_t x = 0;
-    decode(&x, in);
-    result = ExprPtr(new Int128(x, LexicalAnnotation::null()));
-    break;
-  }
-  case Double::type_case_id: {
-    double x = 0;
-    decode(&x, in);
-    result = ExprPtr(new Double(x, LexicalAnnotation::null()));
-    break;
-  }
-  case Var::type_case_id: {
-    std::string x;
-    decode(&x, in);
-    result = ExprPtr(new Var(x, LexicalAnnotation::null()));
-    break;
-  }
-  case Let::type_case_id: {
-    std::string vn;
-    ExprPtr     e;
-    ExprPtr     b;
-
-    decode(&vn, in);
-    decode(&e,  in);
-    decode(&b,  in);
-
-    result = ExprPtr(new Let(vn, e, b, LexicalAnnotation::null()));
-    break;
-  }
-  case LetRec::type_case_id: {
-    LetRec::Bindings bs;
-    ExprPtr body;
-
-    decode(&bs,   in);
-    decode(&body, in);
-
-    result = ExprPtr(new LetRec(bs, body, LexicalAnnotation::null()));
-    break;
-  }
-  case Fn::type_case_id: {
-    Fn::VarNames args;
-    ExprPtr      b;
-
-    decode(&args, in);
-    decode(&b,    in);
-
-    result = ExprPtr(new Fn(args, b, LexicalAnnotation::null()));
-    break;
-  }
-  case App::type_case_id: {
-    ExprPtr f;
-    Exprs   args;
-
-    decode(&f,    in);
-    decode(&args, in);
-
-    result = ExprPtr(new App(f, args, LexicalAnnotation::null()));
-    break;
-  }
-  case Assign::type_case_id: {
-    ExprPtr le;
-    ExprPtr re;
-
-    decode(&le, in);
-    decode(&re, in);
-
-    result = ExprPtr(new Assign(le, re, LexicalAnnotation::null()));
-    break;
-  }
-  case MkArray::type_case_id: {
-    Exprs es;
-    decode(&es, in);
-    result = ExprPtr(new MkArray(es, LexicalAnnotation::null()));
-    break;
-  }
-  case MkVariant::type_case_id: {
-    std::string lbl;
-    ExprPtr     v;
-
-    decode(&lbl, in);
-    decode(&v,   in);
-
-    result = ExprPtr(new MkVariant(lbl, v, LexicalAnnotation::null()));
-    break;
-  }
-  case MkRecord::type_case_id: {
-    MkRecord::FieldDefs fs;
-    decode(&fs, in);
-    result = ExprPtr(new MkRecord(fs, LexicalAnnotation::null()));
-    break;
-  }
-  case AIndex::type_case_id: {
-    ExprPtr a;
-    ExprPtr i;
-
-    decode(&a, in);
-    decode(&i, in);
-
-    result = ExprPtr(new AIndex(a, i, LexicalAnnotation::null()));
-    break;
-  }
-  case Case::type_case_id: {
-    ExprPtr v;
-    Case::Bindings bs;
-
-    decode(&v,  in);
-    decode(&bs, in);
-    
-    bool hasDef = false;
-    decode(&hasDef, in);
-    if (hasDef) {
-      ExprPtr d;
-      decode(&d, in);
-
-      result = ExprPtr(new Case(v, bs, d, LexicalAnnotation::null()));
-    } else {
-      result = ExprPtr(new Case(v, bs, LexicalAnnotation::null()));
-    }
-    break;
-  }
-  case Switch::type_case_id: {
-    ExprPtr v;
-    Switch::Bindings bs;
-
-    decode(&v, in);
-    decode(&bs, in);
-
-    bool hasDef = false;
-    decode(&hasDef, in);
-    if (hasDef) {
-      ExprPtr d;
-      decode(&d, in);
-
-      result = ExprPtr(new Switch(v, bs, d, LexicalAnnotation::null()));
-    } else {
-      result = ExprPtr(new Switch(v, bs, LexicalAnnotation::null()));
-    }
-    break;
-  }
- 
-  case Proj::type_case_id: {
-    ExprPtr     r;
-    std::string f;
-
-    decode(&r, in);
-    decode(&f, in);
-
-    result = ExprPtr(new Proj(r, f, LexicalAnnotation::null()));
-    break;
-  }
-  case Assump::type_case_id: {
-    ExprPtr e;
-    QualTypePtr t;
-
-    decode(&e, in);
-    decode(&t, in);
-
-    result = ExprPtr(new Assump(e, t, LexicalAnnotation::null()));
-    break;
-  }
-  case Pack::type_case_id: {
-    ExprPtr e;
-    decode(&e, in);
-    result = ExprPtr(new Pack(e, LexicalAnnotation::null()));
-    break;
-  }
-  case Unpack::type_case_id: {
-    std::string vn;
-    ExprPtr     p;
-    ExprPtr     e;
-
-    decode(&vn, in);
-    decode(&p,  in);
-    decode(&e,  in);
-
-    result = ExprPtr(new Unpack(vn, p, e, LexicalAnnotation::null()));
-    break;
-  }
-  default:
-    throw std::runtime_error("Internal error, cannot switch on unknown expression type: " + str::from(cid));
-  }
+  *out = decodeExprNode(cid, in);
 
   // pull out the annotated type if it's there
   bool hasType = false;
@@ -2205,7 +2187,7 @@ void decode(ExprPtr* out, std::istream& in) {
   if (hasType) {
     QualTypePtr qty;
     decode(&qty, in);
-    result->type(qty);
+    (*out)->type(qty);
   }
 }
 
