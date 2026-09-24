@@ -370,6 +370,20 @@ public:
   // ... or every pattern, for a cc that only ever sees trusted source
   void enableFilesystemGlobs();
 
+  // Language options that apply to every module compiled through this cc, in
+  // addition to whatever 'option' lines a module carries itself.
+  //
+  // A module's definitions are translated with the module's own options
+  // (cmodule.C), and a module almost never declares 'option Safe' -- so
+  // without this, an application that compiles expressions under Safe gets no
+  // filtering at all on the modules it loads, nor on the modules those
+  // import. Set this to the option set the application means to hold
+  // everything it compiles to.
+  void setModuleOptions(const std::vector<std::string> &opts);
+  // by value: the caller may hold this across a compile, and another thread
+  // may set it meanwhile
+  std::vector<std::string> moduleOptions() const;
+
   // compile/optimization options
   void buildInterpretedMatches(bool f);
   bool buildInterpretedMatches() const;
@@ -421,6 +435,7 @@ private:
 
   // optimization options
   bool genInterpretedMatch;
+  std::vector<std::string> modOpts; // see setModuleOptions
   bool checkMatchReachability;
   bool ignoreUnreachablePatternMatchRows = false;
   bool lowerPrimMatchTables;

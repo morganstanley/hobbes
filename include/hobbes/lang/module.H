@@ -247,6 +247,10 @@ public:
   // allow language options set within modules
   void setOption(const std::string&, const LexicalAnnotation&);
   const std::vector<std::string>& options() const;
+  // replace the whole option list; used to apply a compiler's options for the
+  // duration of one compile and then put the module back as it was found,
+  // since a ModulePtr is a shared handle the caller keeps
+  void setOptions(const std::vector<std::string>&);
 private:
   std::string mname;
   ModuleDefs  defs;
