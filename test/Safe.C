@@ -56,6 +56,8 @@ TEST(Safe, safeModeDeniesRawStaticArrayAccessors) {
   // rejection named
   expectSafeRejects("saelem",  "saelem(xs, 100000L)");
   expectSafeRejects("saacopy", "saacopy(xs, ys, 100000L)");
+  // the same raw accessor for the <std.string> Array instance (STRFR-434029)
+  expectSafeRejects("stdstrelem", "stdstrelem(xs, 100000L)");
 
   // and the one that makes the checked route lie: elementM bounds an index
   // against size(x), which for [a] is the length field this writes

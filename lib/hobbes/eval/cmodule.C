@@ -592,6 +592,18 @@ private:
                                  // static length and touches no memory.)
                                  {"saelem", {"saelem", {}}},
                                  {"saacopy", {"saacopy", {}}},
+                                 // stdstrelem is the same shape for the
+                                 // <std.string> Array instance: a bare GEP+load
+                                 // at a caller-chosen index (func.C,
+                                 // stdstrelemF), wrapped by that instance's
+                                 // bounds-checking elementM (amapping.hob:
+                                 // elementM x i = getElementByIndex(x,
+                                 // stdstrelem, i, stdstrsize(x))). Naming it
+                                 // directly walks around the check, the same
+                                 // way saelem does for [:a|n:] (STRFR-434029).
+                                 // stdstrsize, like salength, only reads the
+                                 // size and is left alone.
+                                 {"stdstrelem", {"stdstrelem", {}}},
                                  // and 'unsafeSetLength' writes a
                                  // caller-chosen long into a variable-length
                                  // array's length field (func.C, asetlen),
