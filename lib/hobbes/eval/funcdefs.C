@@ -227,7 +227,10 @@ scoped_pool_reset::~scoped_pool_reset() {
 }
 
 const array<char>* makeString(region& m, const char* s, size_t len) {
-  auto* r = reinterpret_cast<array<char>*>(m.malloc(sizeof(long) + len));
+  // sizeof(long) + len wraps for a len near SIZE_MAX, giving a small block the
+  // memcpy then overruns; the shared checker refuses a length that cannot be
+  // represented (same family as makeArray, STRFR-434031)
+  auto* r = reinterpret_cast<array<char>*>(m.malloc(checkedArrayAllocSize(len, sizeof(char))));
   r->size = len;
   memcpy(r->data, s, len);
   return r;
