@@ -1,5 +1,6 @@
 
 #include <algorithm>
+#include <stdexcept>
 #include <cstdlib>
 #include <hobbes/util/ptr.H>
 #include <hobbes/util/region.H>
@@ -26,15 +27,30 @@ region::~region() {
 }
 
 void* region::malloc(size_t sz, size_t asz) {
-  size_t nu = this->usedp->read + sz;
-  if (nu + asz <= this->usedp->size) {
+  // read + sz + asz is the high-water mark this request needs to fit. Computed
+  // in size_t with no check, a huge sz wraps that sum to a small value, so the
+  // "does it fit" test below passes and a block with almost no usable space is
+  // handed back -- which the caller then writes past, rewinding the bump
+  // cursor over live objects (STRFR-433992). Reject a size that cannot even be
+  // represented before the wrapping arithmetic can run. asz (alignment) is
+  // small and read <= size always holds, so this only fires for a genuinely
+  // out-of-range sz.
+  size_t need = 0;
+  if (__builtin_add_overflow(sz, asz, &need) ||
+      __builtin_add_overflow(need, this->usedp->read, &need)) {
+    throw std::runtime_error("region allocation of " + str::from(sz) + " bytes is too large to represent");
+  }
+
+  if (need <= this->usedp->size) {
+    // fits in the current page; need <= size and afixup < asz, so no wrap
     uint8_t* uresult = reinterpret_cast<uint8_t*>(this->usedp->base) + this->usedp->read;
     size_t   afixup  = align(reinterpret_cast<size_t>(uresult), asz) - reinterpret_cast<size_t>(uresult);
     uint8_t* result  = uresult + afixup;
 
-    this->usedp->read = nu + afixup;
+    this->usedp->read = (this->usedp->read + sz) + afixup;
     return result;
   } else {
+    // sz + asz was checked above (it is the first sum in 'need')
     allocpage(sz + asz);
 
     auto* uresult = reinterpret_cast<uint8_t*>(this->usedp->base);
