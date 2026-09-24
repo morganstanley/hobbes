@@ -62,7 +62,7 @@ template <typename T> array<T> *defInitArray(array<T> *xs) {
 
 template <typename T> array<T> *makeArray(region &m, long n) {
   array<T> *r = reinterpret_cast<array<T> *>(
-      m.malloc(sizeof(long) + (sizeof(T) * n),
+      m.malloc(checkedArrayAllocSize(n, sizeof(T)),
                std::max<size_t>(sizeof(long), alignof(T))));
   r->size = n;
   return defInitArray<T>(r);
@@ -70,7 +70,7 @@ template <typename T> array<T> *makeArray(region &m, long n) {
 
 template <typename T> array<T> *makeArray(long n) {
   array<T> *r = reinterpret_cast<array<T> *>(
-      memalloc(sizeof(long) + (sizeof(T) * n),
+      memalloc(checkedArrayAllocSize(n, sizeof(T)),
                std::max<size_t>(sizeof(long), alignof(T))));
   r->size = n;
   return defInitArray<T>(r);

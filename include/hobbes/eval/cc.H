@@ -15,6 +15,7 @@
 #include <hobbes/read/parser.H>
 
 #include <hobbes/util/func.H>
+#include <hobbes/util/region.H>
 #include <hobbes/util/llvm.H>
 #include <hobbes/util/str.H>
 
@@ -420,7 +421,7 @@ public:
 
   template <typename T> array<T> *makeArray(size_t n) {
     auto *r = reinterpret_cast<array<T> *>(
-        this->memalloc(sizeof(long) + (sizeof(T) * n),
+        this->memalloc(checkedArrayAllocSize(n, sizeof(T)),
                        std::max<size_t>(sizeof(long), alignof(T))));
     r->size = n;
     if (r->size > 0) {

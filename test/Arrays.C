@@ -1,3 +1,4 @@
+#include <limits>
 
 #include <hobbes/hobbes.H>
 #include "test.H"
@@ -83,3 +84,37 @@ TEST(Arrays, Elements) {
   EXPECT_TRUE((c().compileFn<bool(std::string*)>("x", "elements(x, 2L, 1L) == \"\"")(&x)));
 }
 
+
+// makeArray<T> and makeString compute sizeof(long) + sizeof(T) * n directly.
+// For a negative or huge n that product wraps to a small size before the
+// allocator sees it, so a tiny buffer is allocated while the array's size
+// field records the full n, and the n-element construction (or memcpy) runs
+// far past the end (STRFR-434031). checkedArrayAllocSize refuses a size that
+// cannot be represented, before the wrap.
+TEST(Arrays, makeArrayRefusesAnUnrepresentableLength) {
+  // the helper directly
+  EXPECT_EQ(checkedArrayAllocSize(4, sizeof(int)), sizeof(long) + 4 * sizeof(int));
+  EXPECT_EQ(checkedArrayAllocSize(0, 0), sizeof(long));
+  EXPECT_EXCEPTION(checkedArrayAllocSize(-1, sizeof(int)));           // negative
+  EXPECT_EXCEPTION(checkedArrayAllocSize((1L << 62), sizeof(long)));  // product wraps
+  EXPECT_EXCEPTION(checkedArrayAllocSize(std::numeric_limits<long>::max(), 2));
+
+  // an ordinary makeArray still works and is usable
+  array<int>* ok = makeArray<int>(8);
+  EXPECT_TRUE(ok != nullptr && ok->size == 8);
+
+  // a negative length -- what a script passing -1 sign-extends to -- is refused
+  EXPECT_EXCEPTION(makeArray<int>(-1));
+  EXPECT_EXCEPTION(makeArray<long>(1L << 62));
+
+  // makeString: a length whose header sum wraps is refused; ordinary works
+  EXPECT_TRUE(makeString("hello") != nullptr);
+  EXPECT_EXCEPTION(makeString(threadRegion(), "x", std::numeric_limits<size_t>::max()));
+
+  // cc::makeArray -- the function the finding names -- takes size_t, so a
+  // script passing a negative count arrives here already huge
+  array<int>* ccok = c().makeArray<int>(8);
+  EXPECT_TRUE(ccok != nullptr && ccok->size == 8);
+  EXPECT_EXCEPTION(c().makeArray<long>(std::numeric_limits<size_t>::max()));
+  EXPECT_EXCEPTION(c().makeArray<long>(static_cast<size_t>(-1)));
+}
