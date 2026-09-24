@@ -56,6 +56,9 @@ TEST(Safe, safeModeDeniesRawStaticArrayAccessors) {
   // rejection named
   expectSafeRejects("saelem",  "saelem(xs, 100000L)");
   expectSafeRejects("saacopy", "saacopy(xs, ys, 100000L)");
+  // the same raw accessor for the <std.string> Array instance (STRFR-434029)
+  expectSafeRejects("stdstrelem", "stdstrelem(xs, 100000L)");
+  expectSafeRejects("cstrelem", "cstrelem(xs, 100000L)");
 
   // and the one that makes the checked route lie: elementM bounds an index
   // against size(x), which for [a] is the length field this writes
@@ -78,6 +81,14 @@ TEST(Safe, safeModeStillAllowsCheckedArrayAccess) {
   auto l = hobbes::translateExprWithOpts(std::vector<std::string>{"Safe"},
                                          c().readExpr("salength(xs)"));
   EXPECT_TRUE(hobbes::show(l).find("salength") != std::string::npos);
+
+  // denying the raw accessors must not close the checked route for the
+  // instances they back: indexing a <char> C string still rewrites to the
+  // bounds-checked elementM (built on cstrelem), it is not refused along with
+  // the raw accessor
+  auto s = hobbes::translateExprWithOpts(std::vector<std::string>{"Safe"},
+                                         c().readExpr("element(\"hello\", 1L)"));
+  EXPECT_TRUE(hobbes::show(s).find("elementM") != std::string::npos);
 }
 
 // The structured-storage entry points open a caller-named path just as
