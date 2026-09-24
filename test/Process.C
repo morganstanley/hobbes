@@ -7,7 +7,6 @@
 #include <sys/stat.h>
 
 using namespace hobbes;
-static cc& c() { static __thread cc* x = nullptr; if (x == nullptr) { x = new cc(); } return *x; }
 
 // STRFR-433927: resolving a (Process "cmd" p) constraint used to fork+execv
 // "cmd" as a side effect of type unification -- merely type-checking an
