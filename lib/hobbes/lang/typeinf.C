@@ -207,8 +207,63 @@ void typeCtorForm(const MonoTypePtr& ty, std::string* cname, MonoTypes* targs, s
   *cname = switchOf(ty, encodeCtorForm(ty, targs, ignvs));
 }
 
+namespace {
+
+// unify recurses once per type constituent and substitute once per type node,
+// over type structure an untrusted peer can shape: a deeply nested type reaches
+// these before anything is evaluated -- as a type written in an annotation
+// (which the parse-time expression-depth check does not walk), as a decoded
+// wire type, or as the type a flat let-binding chain infers. The recursion is
+// native C++, so running the stack out is an uncatchable SIGSEGV, not an error
+// the compile path's try/catch can turn into a reply (STRFR-433979). Bound the
+// depth and raise a recoverable error first.
+//
+// One shared counter covers both, because unify's error path substitutes the
+// mismatched types to render them (unify -> substitute), so the two recursions
+// stack on the same native call chain; counting them together bounds the real
+// frame count rather than letting each reach the limit independently. The limit
+// sits well above any legitimate type's nesting (and matches the wire-decode
+// nesting cap, so a decoded type that was accepted still substitutes) and well
+// below the tens of thousands of these frames the finding measured exhausting
+// the stack.
+const unsigned int maxInferenceRecursionDepth = 2000;
+thread_local unsigned int inferenceDepth = 0;
+
+struct inferenceDepthGuard {
+  inferenceDepthGuard(const char* what) {
+    if (inferenceDepth >= maxInferenceRecursionDepth) {
+      throw std::runtime_error(
+        std::string("Type ") + what + " recurses past the limit of " +
+        std::to_string(maxInferenceRecursionDepth) + " levels");
+    }
+    ++inferenceDepth;
+  }
+  ~inferenceDepthGuard() { --inferenceDepth; }
+  inferenceDepthGuard(const inferenceDepthGuard&) = delete;
+  inferenceDepthGuard& operator=(const inferenceDepthGuard&) = delete;
+};
+
+// substituteInto marks a node visited while it descends into it, to catch a
+// genuinely infinite (cyclic) type, and clears the mark on the way back up.
+// That clear has to happen even when the descent throws -- the depth guard
+// above now makes a throw mid-descent reachable for any deep type, and the
+// pre-existing "Cannot infer infinite type" throw already did -- or the mark
+// is left set and a later substitution on the same unifier mistakes a finite
+// type for an infinite one. Tie the mark to the scope so it is always cleared.
+struct markVisited {
+  UTypeRec& uty;
+  markVisited(UTypeRec& uty) : uty(uty) { this->uty.visited = true; }
+  ~markVisited() { this->uty.visited = false; }
+  markVisited(const markVisited&) = delete;
+  markVisited& operator=(const markVisited&) = delete;
+};
+
+}
+
 // specify that two types should be equal
 void MonoTypeUnifier::unify(const MonoTypePtr& lhs, const MonoTypePtr& rhs) {
+  inferenceDepthGuard depthGuard("unification");
+
   if (suppressed(lhs) || suppressed(rhs)) {
     return;
   }
@@ -264,82 +319,75 @@ struct substituteInto : public switchTyFn {
   }
 
   MonoTypePtr with(const TApp* v) const override {
-    this->uty.visited = true;
+    markVisited mv(this->uty);
     MonoTypePtr f = this->s->substitute(v->fn());
     MonoTypes args;
     for (const auto& arg : v->args()) {
       args.push_back(this->s->substitute(arg));
     }
-    this->uty.visited = false;
     return MonoTypePtr(TApp::make(f, args));
   }
 
   MonoTypePtr with(const FixedArray* v) const override {
-    this->uty.visited = true;
+    markVisited mv(this->uty);
     MonoTypePtr t = this->s->substitute(v->type());
     MonoTypePtr l = this->s->substitute(v->length());
-    this->uty.visited = false;
     return MonoTypePtr(FixedArray::make(t, l));
   }
 
   MonoTypePtr with(const Array* v) const override {
-    this->uty.visited = true;
+    markVisited mv(this->uty);
     MonoTypePtr e = this->s->substitute(v->type());
-    this->uty.visited = false;
     return MonoTypePtr(Array::make(e));
   }
 
   MonoTypePtr with(const Variant* v) const override {
-    this->uty.visited = true;
+    markVisited mv(this->uty);
     Variant::Members vms;
     for (const auto& c : v->members()) {
       vms.push_back(Variant::Member(c.selector, this->s->substitute(c.type), c.id));
     }
-    this->uty.visited = false;
     return MonoTypePtr(Variant::make(vms));
   }
 
   MonoTypePtr with(const Record* v) const override {
-    this->uty.visited = true;
+    markVisited mv(this->uty);
     Record::Members rms;
     for (const auto& f : v->members()) {
       rms.push_back(Record::Member(f.field, this->s->substitute(f.type), f.offset));
     }
-    this->uty.visited = false;
     return MonoTypePtr(Record::make(rms));
   }
 
   MonoTypePtr with(const Func* v) const override {
-    this->uty.visited = true;
+    markVisited mv(this->uty);
     MonoTypePtr a = this->s->substitute(v->argument());
     MonoTypePtr r = this->s->substitute(v->result());
-    this->uty.visited = false;
     return MonoTypePtr(Func::make(a, r));
   }
 
   MonoTypePtr with(const Exists* v) const override {
-    this->uty.visited = true;
+    markVisited mv(this->uty);
     MonoTypePtr at = this->s->substitute(v->absType());
-    this->uty.visited = false;
     return MonoTypePtr(Exists::make(v->absTypeName(), at));
   }
 
   MonoTypePtr with(const Recursive* v) const override {
-    this->uty.visited = true;
+    markVisited mv(this->uty);
     MonoTypePtr rt = this->s->substitute(v->recType());
-    this->uty.visited = false;
     return MonoTypePtr(Recursive::make(v->recTypeName(), rt));
   }
 
   MonoTypePtr with(const TExpr* v) const override {
-    this->uty.visited = true;
+    markVisited mv(this->uty);
     ExprPtr e = substitute(this->s, v->expr());
-    this->uty.visited = false;
     return MonoTypePtr(TExpr::make(e));
   }
 };
 
 MonoTypePtr MonoTypeUnifier::substitute(const MonoTypePtr& ty) {
+  inferenceDepthGuard depthGuard("substitution");
+
   if (isMonoSingular(ty)) {
     return ty;
   }
@@ -502,8 +550,22 @@ bool refine(const TEnvPtr& tenv, const ConstraintPtr& c, MonoTypeUnifier* s, Def
 }
 
 bool refine(const TEnvPtr& tenv, const Constraints& cs, MonoTypeUnifier* s, Definitions* ds) {
+  // this fixpoint runs until a whole pass refines nothing. A convergent set
+  // reaches that quickly, but a pathological one can keep reporting an update
+  // without ever converging, spinning here forever and pinning the inference
+  // thread (STRFR-433979). Cap the passes and raise a recoverable error. The
+  // worst case for a well-founded set is one pass per constraint (information
+  // propagating one constraint at a time), so the bound scales with the set
+  // size -- generously, so a large machine-generated set that legitimately
+  // needs many passes is not refused -- with a floor for small sets.
+  const size_t maxRefinePasses = 100000 + 8 * cs.size();
+  size_t passes = 0;
+
   bool upd = true;
   while (upd) {
+    if (++passes > maxRefinePasses) {
+      throw std::runtime_error("Constraint refinement did not converge within " + std::to_string(maxRefinePasses) + " passes");
+    }
     upd = false;
     for (const auto &c : cs) {
       upd |= refine(tenv, c, s, ds);

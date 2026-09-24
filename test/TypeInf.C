@@ -32,6 +32,65 @@ TEST(TypeInf, Unification) {
   EXPECT_TRUE(*substitute(&u, t0) == *t5);
 }
 
+// Build a `depth`-level nested Array over `leaf`, holding every node so the
+// chain can be released without recursion. Destroying a deep shared_ptr chain
+// the naive way recurses one destructor frame per level -- the very stack
+// overflow these tests are about -- so keep the nodes and drop them outermost
+// first, which frees each one without cascading into its child.
+struct DeepType {
+  std::vector<MonoTypePtr> nodes; // leaf .. outer
+  MonoTypePtr outer() const { return this->nodes.back(); }
+  DeepType(const MonoTypePtr& leaf, size_t depth) {
+    this->nodes.push_back(leaf);
+    for (size_t i = 0; i < depth; ++i) {
+      this->nodes.push_back(MonoTypePtr(Array::make(this->nodes.back())));
+    }
+  }
+  ~DeepType() {
+    for (size_t i = this->nodes.size(); i-- > 0; ) {
+      this->nodes[i] = MonoTypePtr();
+    }
+  }
+};
+
+TEST(TypeInf, DeeplyNestedTypesAreRejectedNotCrashed) {
+  // A type deep enough to run the unifier's / substitution's native recursion
+  // off the stack must raise a recoverable error, not SIGSEGV. Such a type can
+  // reach inference before anything is evaluated -- written in an annotation
+  // (which the parse-time expression-depth check does not walk) or decoded from
+  // the wire -- so a depth guard inside unify/substitute is what stands between
+  // it and an uncatchable crash (STRFR-433979). Build one well past the guard.
+  DeepType deepVar(tvar("a"), 4000);
+
+  // substitution recurses once per level; past the guard it throws rather than
+  // running the stack out
+  {
+    MonoTypeUnifier u(std::make_shared<TEnv>());
+    EXPECT_EXCEPTION(substitute(&u, deepVar.outer()));
+  }
+
+  // unification recurses once per constituent; unifying against a differently
+  // shaped type of the same depth descends both and throws past the guard.
+  // deepInt outlives the unifier so that when the unifier's node map is torn
+  // down, deepInt still holds every node and the map releases them flatly.
+  {
+    DeepType deepInt(primty("int"), 4000);
+    {
+      MonoTypeUnifier u(std::make_shared<TEnv>());
+      EXPECT_EXCEPTION(mgu(deepVar.outer(), deepInt.outer(), &u));
+    }
+  }
+}
+
+TEST(TypeInf, ModeratelyDeepTypesStillResolve) {
+  // the guard sits well above any legitimate type's nesting, so a type
+  // comfortably under the limit still substitutes without being refused
+  DeepType deep(tvar("a"), 500);
+  MonoTypeUnifier u(std::make_shared<TEnv>());
+  MonoTypePtr r = substitute(&u, deep.outer()); // must not throw
+  EXPECT_TRUE(r != nullptr);
+}
+
 
 TEST(TypeInf, DecodeRejectsTruncatedInput) {
   // the binary type decoder consumes buffers that can be malformed or truncated
