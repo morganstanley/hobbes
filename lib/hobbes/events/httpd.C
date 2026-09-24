@@ -72,6 +72,8 @@ public:
   bool transition(const char* b, const char* e) {
     while (b != e) {
       if (!transition(*b)) {
+        // A completed request is dispatched; a rejected request is dropped
+        // without handing a partial request to the application handler.
         if (!this->rejected) {
           this->f(this->req, this->s, this->ud);
         }
@@ -110,6 +112,7 @@ private:
   static constexpr size_t maxRequestLineBytes = 8192;
   static constexpr size_t maxHeaderBytes = 65536;
   static constexpr size_t maxHeaderCount = 100;
+  static constexpr size_t maxRequestBodyBytes = 64 * 1024 * 1024;
 
   bool transition(char c) {
     if (this->state == Method || this->state == Document || this->state == FindHeaderBegin) {
@@ -157,9 +160,17 @@ private:
         if (cl == this->req.headers.end()) {
           return false;
         } else {
-          std::istringstream slen(cl->second);
-          slen >> this->len;
-          if (!slen || this->len == 0) { return false; }
+          // ">> size_t" turns a "-1" into SIZE_MAX and then AccData buffers
+          // forever; parse strictly and hold it to a bound. A malformed or
+          // over-limit value is refused; a well-formed 0 is a complete
+          // request with no body and dispatches as it did before.
+          if (!str::parseNonNegative(cl->second, maxRequestBodyBytes, &this->len)) {
+            this->rejected = true;
+            return false;
+          }
+          if (this->len == 0) {
+            return false;
+          }
 
           this->state = AccData;
         }
@@ -193,7 +204,7 @@ private:
       break;
     case AccData:
       this->req.data.push_back(c);
-      if (this->req.data.size() == this->len) {
+      if (this->req.data.size() >= this->len) {
         return false;
       }
       break;

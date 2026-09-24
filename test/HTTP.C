@@ -56,6 +56,23 @@ uint16_t boundIPv4Port(int fd) {
   return ntohs(address.sin_port);
 }
 
+int connectHTTPClient(int listener) {
+  int client = socket(AF_INET, SOCK_STREAM, 0);
+  if (client < 0) {
+    throw std::runtime_error("Unable to allocate HTTP client socket");
+  }
+
+  sockaddr_in address = {};
+  address.sin_family = AF_INET;
+  address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+  address.sin_port = htons(boundIPv4Port(listener));
+  if (connect(client, reinterpret_cast<sockaddr*>(&address), sizeof(address)) != 0) {
+    close(client);
+    throw std::runtime_error("Unable to connect HTTP client socket");
+  }
+  return client;
+}
+
 } // namespace
 
 TEST(HTTP, bindsToLoopbackByDefault) {
@@ -106,18 +123,47 @@ TEST(HTTP, RejectsOversizedRequestLineWithoutDispatch) {
   int requests = 0;
   RegisteredHTTPListener listener(installHTTPD(0, &countRequest, &requests));
 
-  int client = socket(AF_INET, SOCK_STREAM, 0);
-  EXPECT_TRUE(client >= 0);
-  sockaddr_in address = {};
-  address.sin_family = AF_INET;
-  address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-  address.sin_port = htons(boundIPv4Port(listener.get()));
-  EXPECT_EQ(connect(client, reinterpret_cast<sockaddr*>(&address), sizeof(address)), 0);
+  int client = connectHTTPClient(listener.get());
 
   std::string request(8193, 'G');
   EXPECT_EQ(send(client, request.data(), request.size(), 0), static_cast<ssize_t>(request.size()));
   EXPECT_TRUE(stepEventLoop(1000)); // accept
   EXPECT_TRUE(stepEventLoop(1000)); // reject request data
   EXPECT_EQ(requests, 0);
+  close(client);
+}
+
+TEST(HTTP, RejectsInvalidOrOversizedContentLengthWithoutDispatch) {
+  int requests = 0;
+  RegisteredHTTPListener listener(installHTTPD(0, &countRequest, &requests));
+
+  for (const std::string& length : {
+           std::string("-1"),
+           std::string("67108865"),
+           std::string("99999999999999999999999999")}) {
+    int client = connectHTTPClient(listener.get());
+    const std::string request =
+        "POST / HTTP/1.1\r\nContent-Length: " + length + "\r\n\r\n";
+    EXPECT_EQ(send(client, request.data(), request.size(), 0),
+              static_cast<ssize_t>(request.size()));
+    EXPECT_TRUE(stepEventLoop(1000)); // accept
+    EXPECT_TRUE(stepEventLoop(1000)); // reject the completed headers
+    EXPECT_EQ(requests, 0);
+    close(client);
+  }
+}
+
+TEST(HTTP, DispatchesAZeroLengthRequestBody) {
+  int requests = 0;
+  RegisteredHTTPListener listener(installHTTPD(0, &countRequest, &requests));
+  int client = connectHTTPClient(listener.get());
+  const std::string request =
+      "POST / HTTP/1.1\r\nContent-Length: 0\r\n\r\n";
+
+  EXPECT_EQ(send(client, request.data(), request.size(), 0),
+            static_cast<ssize_t>(request.size()));
+  EXPECT_TRUE(stepEventLoop(1000)); // accept
+  EXPECT_TRUE(stepEventLoop(1000)); // dispatch the completed request
+  EXPECT_EQ(requests, 1);
   close(client);
 }

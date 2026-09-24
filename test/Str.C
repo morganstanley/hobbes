@@ -287,3 +287,34 @@ TEST(Str, isIdentifier) {
   EXPECT_FALSE(str::isIdentifier(std::string("nul\0byte", 8)));
   EXPECT_FALSE(str::isIdentifier("\xff\xfe"));
 }
+
+// Where a length arrives as untrusted text -- an HTTP Content-Length is the
+// case this exists for (STRFR-433996) -- it must not be parsed with
+// ">> size_t", which turns "-1" into SIZE_MAX and lets the reader buffer
+// without limit. parseNonNegative accepts only decimal digits, refuses a sign,
+// overflow, or a value past the caller's bound.
+TEST(Str, parseNonNegative) {
+  size_t v = 123;
+
+  // ordinary values, within the bound
+  EXPECT_TRUE(str::parseNonNegative("0", 1000, &v) && v == 0);
+  EXPECT_TRUE(str::parseNonNegative("42", 1000, &v) && v == 42);
+  EXPECT_TRUE(str::parseNonNegative("1000", 1000, &v) && v == 1000);
+
+  // an untrusted "-1": a sign is not a digit, so it is refused rather than
+  // wrapping to SIZE_MAX as ">> size_t" would
+  EXPECT_FALSE(str::parseNonNegative("-1", std::numeric_limits<size_t>::max(), &v));
+  EXPECT_FALSE(str::parseNonNegative("+5", 1000, &v));
+
+  // junk, whitespace, empty
+  EXPECT_FALSE(str::parseNonNegative("", 1000, &v));
+  EXPECT_FALSE(str::parseNonNegative("12x", 1000, &v));
+  EXPECT_FALSE(str::parseNonNegative(" 12", 1000, &v));
+  EXPECT_FALSE(str::parseNonNegative("0x10", 1000, &v));
+
+  // past the caller's bound
+  EXPECT_FALSE(str::parseNonNegative("1001", 1000, &v));
+
+  // an overflowing decimal is refused, not wrapped
+  EXPECT_FALSE(str::parseNonNegative("99999999999999999999999999", std::numeric_limits<size_t>::max(), &v));
+}
