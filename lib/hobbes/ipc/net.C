@@ -17,6 +17,7 @@
 #include <netinet/in.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <sys/types.h>
 #include <sys/un.h>
 #include <unistd.h>
@@ -451,12 +452,49 @@ void netREPLConnection(int c, void *d) {
 
 }
 
+// A ceiling on how long one blocking response write can hold the shared event
+// loop. Request reads no longer block the loop, but responses -- the status /
+// type replies the request handler writes, and an invoke's compiled result --
+// still go out with blocking sends. A peer that connects, sends a valid
+// request, and then never reads its reply would otherwise wedge the loop in
+// send() forever once its receive window and the local send buffer fill,
+// freezing every other client (STRFR-434002, the response-write half of the
+// same stall class). SO_SNDTIMEO makes such a send fail instead: the write
+// throws and the connection is dropped.
+//
+// This is defense in depth against the common non-reading peer (a port scan, a
+// health probe, a buggy or dead client), not a hard bound, and deliberately so:
+//
+//   - SO_SNDTIMEO limits each write() / send() syscall, not a whole transfer.
+//     fdwrite / sendData loop over a large reply, so a peer that accepts a few
+//     bytes just before each expiry keeps every syscall making progress and is
+//     never timed out. A deliberate slow-drip peer is not bounded by this.
+//   - A prepare that fails writes a status byte and then an error string; if the
+//     status write is what timed out, the error writes get their own windows, so
+//     a fully wedged peer can hold the loop for a small multiple of this value
+//     before it is dropped.
+//
+// A genuinely bounded, drip-proof fix is non-blocking responses with a
+// per-connection outbound queue and EPOLLOUT in the event loop -- a larger
+// change tracked as follow-up. The value here is small so the common case is
+// contained quickly, while still far above any real client's read latency (a
+// client actually reading its reply makes progress every round trip and never
+// approaches it).
+static const time_t netREPLSendTimeoutSeconds = 10;
+
 void registerNetREPL(int s, Server *svr) {
   registerEventHandler(
       s,
       [](int s, void *d) {
         int c = accept(s, nullptr, nullptr);
         if (c != -1) {
+          // best effort: if this cannot be set the connection still works, it
+          // just keeps the prior unbounded-write behavior
+          struct timeval sndTimeout;
+          sndTimeout.tv_sec  = netREPLSendTimeoutSeconds;
+          sndTimeout.tv_usec = 0;
+          setsockopt(c, SOL_SOCKET, SO_SNDTIMEO, &sndTimeout, sizeof(sndTimeout));
+
           try {
             rememberHandshake(c, HandshakeState());
             registerEventHandler(c, &netREPLConnection, d);
