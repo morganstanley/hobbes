@@ -5,11 +5,13 @@
 #include <hobbes/util/codec.H>
 #include <hobbes/util/str.H>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <map>
 #include <mutex>
 #include <sstream>
+#include <vector>
 
 #include <cstring>
 #include <fcntl.h>
@@ -251,12 +253,57 @@ void prepareStrExpr(Server *s, int c, exprid eid, const std::string &expr,
   }
 }
 
-void evaluateNetREPLRequest(int c, void *d) {
-  auto *s = reinterpret_cast<Server *>(d);
+// process one net-REPL request whose bytes are all present in [b, b + n).
+//
+// The fields used to be read straight off the socket with a run of blocking
+// fdread calls -- the command byte, then the eid / expression / type payloads
+// behind it -- on the shared, single-threaded event loop. A peer that sent one
+// command byte and then went silent parked this handler in read() waiting for
+// the next field, freezing every other connection in the process until it gave
+// up or disconnected (STRFR-434002). The bytes are now accumulated without
+// blocking (readNetREPLRequests, below) and a request is handed here only once
+// it has fully arrived, so a partial request waits in a buffer rather than
+// stopping the loop.
+//
+// Returns true to keep serving the connection, false if it should be
+// disconnected (the caller performs the disconnect). The per-command paths that
+// reject a bad expression or type are unchanged: they report the failure back
+// to the peer over the same socket and keep the connection.
+bool processNetREPLRequest(Server *s, int c, const char *b, size_t n) {
+  // a cursor over the frame. scanRequestFrame has already checked that every
+  // field is fully present, so in normal operation these reads stay in bounds;
+  // 'need' re-checks against n anyway, so that if the two parsers ever drift out
+  // of step a mismatch becomes a caught exception and a disconnect rather than
+  // an out-of-bounds read
+  size_t off = 0;
+  auto need = [&](size_t k) {
+    if (k > n - off) {
+      throw std::runtime_error("net REPL request frame shorter than its fields");
+    }
+  };
+  auto readPrim = [&](void *dst, size_t k) {
+    need(k);
+    std::memcpy(dst, b + off, k);
+    off += k;
+  };
+  auto readStr = [&](std::string *out) {
+    size_t l = 0;
+    readPrim(&l, sizeof(l));
+    need(l);
+    out->assign(b + off, l);
+    off += l;
+  };
+  auto readBlob = [&](RawData *out) {
+    size_t l = 0;
+    readPrim(&l, sizeof(l));
+    need(l);
+    out->assign(b + off, b + off + l);
+    off += l;
+  };
 
   try {
     uint8_t cmd = 0;
-    fdread(c, &cmd);
+    readPrim(&cmd, sizeof(cmd));
 
     switch (cmd) {
     case 0:
@@ -268,14 +315,14 @@ void evaluateNetREPLRequest(int c, void *d) {
         CompactMTypeMemoryAtExit compactAfter;
 
         exprid eid = 0;
-        fdread(c, &eid);
+        readPrim(&eid, sizeof(eid));
 
         std::string expr;
-        fdread(c, &expr);
+        readStr(&expr);
 
         RawData ityd, otyd;
-        fdread(c, &ityd);
-        fdread(c, &otyd);
+        readBlob(&ityd);
+        readBlob(&otyd);
 
         MonoTypePtr itye = decode(ityd);
         MonoTypes itys;
@@ -299,14 +346,14 @@ void evaluateNetREPLRequest(int c, void *d) {
         CompactMTypeMemoryAtExit compactAfter;
 
         exprid eid = 0;
-        fdread(c, &eid);
+        readPrim(&eid, sizeof(eid));
         RawData exprd;
-        fdread(c, &exprd);
+        readBlob(&exprd);
         ExprPtr expr;
         decode(exprd, &expr);
 
         RawData tyd;
-        fdread(c, &tyd);
+        readBlob(&tyd);
         MonoTypePtr ty = decode(tyd);
 
         MonoTypePtr rty = s->prepare(c, eid, expr, ty);
@@ -322,22 +369,24 @@ void evaluateNetREPLRequest(int c, void *d) {
         fdwrite(c, std::string(ex.what()));
       }
       break;
-    case 2:
+    case 2: {
       // invoke a prepared expression
-      exprid evid;
-      fdread(c, &evid);
+      exprid evid = 0;
+      readPrim(&evid, sizeof(evid));
       s->evaluate(c, evid);
       break;
-    default:
-      throw std::runtime_error("protocol violation: cmd=" + str::from(cmd));
     }
-  } catch (std::exception &ex) {
-    // something went wrong, disconnect (the handler must go before the
-    // descriptor: the number can be reused the moment it is closed)
-    unregisterEventHandler(c);
-    close(c);
-    s->disconnect(c);
+    default:
+      // unreachable: scanRequestFrame rejects an unknown command before a
+      // frame is ever handed to this function
+      return false;
+    }
+  } catch (std::exception &) {
+    // a failure outside a per-command report path -- an invoke that threw, or
+    // a broken pipe while writing a response -- means disconnect
+    return false;
   }
+  return true;
 }
 
 // the protocol version word, read a piece at a time
@@ -355,11 +404,10 @@ void evaluateNetREPLRequest(int c, void *d) {
 // is already registered is EPOLL_CTL_ADD of an existing entry on Linux, which
 // fails.
 //
-// The read is MSG_DONTWAIT rather than O_NONBLOCK on the descriptor, because
-// once the handshake is done the request handler reads with blocking fdreads
-// and expects to keep doing so. A peer that sends the version word and a
-// command in one packet is not left waiting: the epoll set is level
-// triggered, so the bytes still unread wake this handler again.
+// The read is MSG_DONTWAIT rather than O_NONBLOCK on the descriptor. A peer
+// that sends the version word and a command in one packet is not left waiting:
+// the epoll set is level triggered, so the bytes still unread wake this handler
+// again -- for the handshake here, and for the request bytes that follow it.
 namespace {
 
 struct HandshakeState {
@@ -369,6 +417,35 @@ struct HandshakeState {
 
 std::mutex                    handshakeMutex;
 std::map<int, HandshakeState> handshakes;
+
+// bytes received for a connection's next request but not yet forming a whole
+// one. Like the handshake, request reads no longer block the event loop: bytes
+// are pulled off the socket as they arrive and a request is processed only once
+// it has fully landed, so a peer that sends part of a request and stops waits
+// here instead of parking the shared loop in read() (STRFR-434002).
+//
+// Only the one thread whose epoll owns a descriptor ever handles it, so a
+// connection's own bytes are never touched concurrently; the mutex guards the
+// map structure against handlers running for other descriptors in other event
+// loop threads, exactly as handshakeMutex does.
+std::mutex                    requestMutex;
+std::map<int, std::string>    requestBuffers;
+
+// a backstop, not the primary control: the fix is that an incomplete request
+// no longer stalls the loop. This just keeps a peer that streams bytes without
+// ever completing a request (for instance a cmd-0 request that claims a huge
+// expression length and then dribbles it) from growing one buffer without
+// bound.
+//
+// Only a request *header* is buffered here -- the command byte, the eid, and,
+// for a prepare, the serialized expression and type descriptions. Those are
+// small: a serialized expression or type is orders of magnitude under this
+// limit, so a real request never approaches it. Invocation argument data, the
+// one payload that can legitimately be large, is not buffered here at all: it
+// is read straight off the socket by the compiled call, so this cap does not
+// constrain it. (CWE-400 is the finding's own class, so bounding the buffer is
+// on point rather than a new restriction out of nowhere.)
+const size_t maxBufferedRequestBytes = 64 * 1024 * 1024;
 
 bool handshakePending(int c, HandshakeState* st) {
   std::lock_guard<std::mutex> lk(handshakeMutex);
@@ -390,10 +467,16 @@ void forgetHandshake(int c) {
   handshakes.erase(c);
 }
 
+void forgetRequestBuffer(int c) {
+  std::lock_guard<std::mutex> lk(requestMutex);
+  requestBuffers.erase(c);
+}
+
 // the handler must go before the descriptor: the number can be reused the
 // moment it is closed
 void dropConnection(int c) {
   forgetHandshake(c);
+  forgetRequestBuffer(c);
   unregisterEventHandler(c);
   close(c);
 }
@@ -420,10 +503,199 @@ bool readVersionWord(int c, HandshakeState* st) {
   return true;
 }
 
+// look at the request header bytes accumulated so far in 'b'.
+//
+//  - Complete: a whole header is present; '*frameLen' is its byte length. For
+//    cmd 0/1 that is the entire request; for cmd 2 (invoke) it is only the
+//    command byte and the eid -- the argument bytes that follow are read
+//    straight off the socket by the compiled invocation, so the header must
+//    stop before them and leave them in the socket (see readNetREPLRequests).
+//  - NeedMore: the header is not all here yet; '*want' is how many more bytes
+//    can be read *without* passing the end of this header -- i.e. the shortfall
+//    of the field currently being read. Reading only that many keeps invoke
+//    arguments (and any following request) in the socket.
+//  - Invalid: the command byte is not one the protocol defines.
+//
+// The field layout mirrors what a client writes: a size_t length ahead of each
+// string / blob payload, a uint32 eid, a one-byte command.
+enum class FrameScan { NeedMore, Complete, Invalid };
+
+FrameScan scanRequestFrame(const std::string& b, size_t* frameLen, size_t* want) {
+  size_t off = 0;
+
+  // a fixed-width field of k bytes
+  auto fixed = [&](size_t k) {
+    size_t have = b.size() - off;
+    if (have < k) { *want = k - have; return false; }
+    off += k;
+    return true;
+  };
+  // a size_t length prefix followed by that many payload bytes
+  auto sized = [&]() {
+    size_t have = b.size() - off;
+    if (have < sizeof(size_t)) { *want = sizeof(size_t) - have; return false; }
+    size_t len = 0;
+    std::memcpy(&len, b.data() + off, sizeof(len));
+    size_t payloadHave = b.size() - off - sizeof(size_t);
+    if (payloadHave < len) { *want = len - payloadHave; return false; }
+    off += sizeof(size_t) + len;
+    return true;
+  };
+
+  if (b.empty()) {
+    *want = 1; // the command byte
+    return FrameScan::NeedMore;
+  }
+
+  const auto cmd = static_cast<uint8_t>(b[0]);
+  off = 1;
+
+  bool complete = false;
+  switch (cmd) {
+  case 0: // eid, expr string, input-type blob, output-type blob
+    complete = fixed(sizeof(exprid)) && sized() && sized() && sized();
+    break;
+  case 1: // eid, expr blob, type blob
+    complete = fixed(sizeof(exprid)) && sized() && sized();
+    break;
+  case 2: // eid only; the invocation's arguments stay in the socket
+    complete = fixed(sizeof(exprid));
+    break;
+  default:
+    return FrameScan::Invalid;
+  }
+
+  if (!complete) {
+    return FrameScan::NeedMore; // *want was set by the field that came up short
+  }
+  *frameLen = off;
+  return FrameScan::Complete;
+}
+
+// serve a connection whose handshake is done. Read the next request's header a
+// field at a time without ever blocking, and only when a whole header has
+// arrived hand it to processNetREPLRequest. Crucially, no more than the current
+// field's outstanding bytes are read at a time, so a cmd-2 invocation's
+// arguments -- which the compiled call reads from the socket itself -- are left
+// untouched in the socket rather than swallowed into this buffer.
+//
+// A peer that sends part of a request and then stops no longer parks the shared
+// event loop in read(): its bytes wait in a per-connection buffer and every
+// other connection keeps being served (STRFR-434002).
+//
+// This change covers the finding's enumerated reads -- cmd, eid, expr, type.
+// Two same-class stalls on this path remain, both a larger change than the
+// request reader and called out here so they are a stated boundary, not a
+// silent gap:
+//
+//   - Invocation arguments. A cmd-2 invoke whose eid resolves reads its
+//     argument bytes synchronously in compiled code (CCServer::evaluate -> the
+//     prepared NetFn), so a peer that sends cmd+eid and withholds the arguments
+//     can still stall the loop. Making argument deserialization resumable means
+//     reworking the generated read path.
+//
+//   - Response writes. Replies (the status byte and error text here, and the
+//     compiled result of an invoke) go back with blocking fdwrite/writes. A
+//     peer that sends a whole request but never reads the reply can, once its
+//     receive window and the local send buffer fill, park the loop in write()
+//     just as the read did. Non-blocking responses need an outbound queue and
+//     EPOLLOUT handling.
+//
+// Both are the write/eval half of the same event-loop-blocking class and are
+// better tracked as their own follow-up than folded into the request reader.
+void readNetREPLRequests(int c, void *d) {
+  auto *s = reinterpret_cast<Server *>(d);
+
+  // take this connection's carried-over header bytes; moving a std::string is
+  // O(1), so the map is locked only to hand off the buffer, not across reads
+  std::string buf;
+  {
+    std::lock_guard<std::mutex> lk(requestMutex);
+    auto it = requestBuffers.find(c);
+    if (it != requestBuffers.end()) {
+      buf = std::move(it->second);
+    }
+  }
+
+  // carry the leftover header bytes (if any) to the next wake-up. An empty tail
+  // gets no entry, so a connection that just finished a request -- including a
+  // cmd-2 invoke whose handler closed the descriptor on a bad eid -- leaves no
+  // stale buffer behind.
+  auto saveTail = [&]() {
+    std::lock_guard<std::mutex> lk(requestMutex);
+    if (buf.empty()) {
+      requestBuffers.erase(c);
+    } else {
+      requestBuffers[c] = std::move(buf);
+    }
+  };
+
+  // Process at most one request per wake-up, then return -- exactly as the old
+  // handler did. The event loop is level triggered, so if more requests are
+  // already readable it wakes us again. Returning right after processing also
+  // means we never touch the descriptor once a cmd-2 invocation may have closed
+  // it (CCServer::evaluate closes on a bad eid), avoiding a double close.
+  for (;;) {
+    size_t frameLen = 0;
+    size_t want     = 0;
+    FrameScan sc = scanRequestFrame(buf, &frameLen, &want);
+
+    if (sc == FrameScan::Invalid) {
+      dropConnection(c);
+      s->disconnect(c);
+      return;
+    }
+
+    if (sc == FrameScan::Complete) {
+      if (!processNetREPLRequest(s, c, buf.data(), frameLen)) {
+        dropConnection(c);
+        s->disconnect(c);
+        return;
+      }
+      buf.erase(0, frameLen);
+      saveTail();
+      return;
+    }
+
+    // NeedMore: read up to the current field's shortfall (never past the header,
+    // so a following invocation's argument bytes stay in the socket)
+    size_t chunk = std::min<size_t>(want, 64 * 1024);
+    if (buf.size() + chunk > maxBufferedRequestBytes) {
+      dropConnection(c);
+      s->disconnect(c);
+      return;
+    }
+
+    // read straight into the buffer's tail, then shrink to what actually
+    // arrived -- no intermediate copy
+    size_t base = buf.size();
+    buf.resize(base + chunk);
+    ssize_t r = recv(c, &buf[base], chunk, MSG_DONTWAIT);
+    if (r > 0) {
+      buf.resize(base + static_cast<size_t>(r)); // re-scan with the new bytes
+    } else if (r == 0) {
+      dropConnection(c); // the peer closed the connection
+      s->disconnect(c);
+      return;
+    } else if (errno == EINTR) {
+      buf.resize(base);
+      continue;
+    } else if (errno == EAGAIN || errno == EWOULDBLOCK) {
+      buf.resize(base);
+      saveTail(); // nothing more right now; keep what we have for next time
+      return;
+    } else {
+      dropConnection(c);
+      s->disconnect(c);
+      return;
+    }
+  }
+}
+
 void netREPLConnection(int c, void *d) {
   HandshakeState st;
   if (!handshakePending(c, &st)) {
-    evaluateNetREPLRequest(c, d);
+    readNetREPLRequests(c, d);
     return;
   }
 

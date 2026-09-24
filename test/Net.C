@@ -965,6 +965,39 @@ TEST(Net, aPartialHandshakeDoesNotStallTheServer) {
   }
   ::close(fd);
 }
+
+TEST(Net, aPartialRequestDoesNotStallTheServer) {
+  // completing the handshake and then sending only part of a request used to
+  // wedge the loop just as an incomplete handshake did: the request fields
+  // (the command byte, then the eid / expression / type payloads) were read
+  // with blocking fdreads on the shared event loop, so a peer that sent one
+  // command byte and stopped parked every other connection until it gave up
+  // (STRFR-434002, the "identical-effect" variant the finding itself called
+  // out). The request bytes are now accumulated without blocking and a request
+  // is acted on only once it has fully arrived.
+  int fd = connectSocket("localhost", testServerPort());
+
+  // a complete handshake, so the connection is past the version word and into
+  // the request phase
+  fdwrite(fd, static_cast<uint32_t>(0x00010000));
+
+  // one command byte (0 == prepare a lexical expression) and then nothing more:
+  // the server is now waiting for the rest of a request that never comes
+  uint8_t cmd = 0;
+  EXPECT_EQ(::send(fd, &cmd, sizeof(cmd), 0), ssize_t(sizeof(cmd)));
+
+  // the server keeps serving everyone else while that peer says nothing more
+  {
+    SyncClient c("localhost", testServerPort());
+    EXPECT_EQ(c.add(1, 2), 3);
+  }
+  {
+    SyncClient c("localhost", testServerPort());
+    EXPECT_EQ(c.add(4, 5), 9);
+  }
+
+  ::close(fd);
+}
 // Resolving a (Connect "host:port" c) constraint opens a live outbound
 // connection, and an (Invoke ...) constraint ships code to the peer and
 // executes it there, both as a side effect of type-constraint resolution --
