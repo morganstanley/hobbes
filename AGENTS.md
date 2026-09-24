@@ -32,7 +32,7 @@ Custom framework in `test/test.H`. Tests use the `TEST(Group, Name)` macro and a
 ./hobbes-test --tests Storage
 ```
 
-There are 18 test groups: Arrays, Compiler, Convert, Definitions, Existentials, MC, Matching, Net, Objects, PREPL, Prelude, Python, Recursives, Spawn, Storage, Structs, TypeInf, Variants.
+One test file per group under `test/`; the file name is the group name (`test/Safe.C` holds `TEST(Safe, ...)`), and `hobbes-test --tests <Group>` runs one. Tests for a hardening change go with what they exercise (`Safe`, `Process`, `Arrays`, `Region`, ...) rather than into `Compiler`, so unrelated changes do not collide in one file.
 
 ## Architecture
 
