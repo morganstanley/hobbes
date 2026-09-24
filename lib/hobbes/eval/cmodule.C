@@ -604,6 +604,20 @@ private:
                                  // stdstrsize, like salength, only reads the
                                  // size and is left alone.
                                  {"stdstrelem", {"stdstrelem", {}}},
+                                 // cstrelem is the same shape again for the
+                                 // <char> C-string Array instance: a bare
+                                 // x[i] load at a caller-chosen index
+                                 // (funcdefs.C, cstrelem), wrapped by that instance's
+                                 // bounds-checking elementM (amapping.hob:
+                                 // elementM x i = getElementByIndex(x,
+                                 // cstrelem, i, cstrlen(x))). C strings are an
+                                 // ordinary Safe-visible type, so its raw
+                                 // accessor is denied too. (cptrrefby, the raw
+                                 // accessor for the (<char>*long)/(long*<char>)
+                                 // pointer-pair instances, is the same shape
+                                 // but the finding scopes it out as an accepted
+                                 // follow-up, so it is left for that ticket.)
+                                 {"cstrelem", {"cstrelem", {}}},
                                  // and 'unsafeSetLength' writes a
                                  // caller-chosen long into a variable-length
                                  // array's length field (func.C, asetlen),
