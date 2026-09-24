@@ -1627,6 +1627,34 @@ TEST(Storage, CorruptQueueSegmentsAreRejected) {
   }
 }
 
+TEST(Storage, WriterIgnoresAPoisonedSharedWriteIndex) {
+  // The write index lives in the shared segment, which the peer -- and, with
+  // the segment's 0666 permissions, any local user -- can overwrite with any
+  // value. The producer must not derive its memcpy target from that word: a
+  // poisoned wi used to steer the producer's own next write far outside the
+  // queue (STRFR-434014, the writer counterpart of the reader index check).
+  // The writer keeps its own copy of its position, so rewriting wi cannot move
+  // where it writes.
+  std::string name = "/hobbes-unittest-wq." + str::from(getpid());
+  storage::bytes meta;
+  const size_t valsz = 64, count = 4;
+  storage::writer w(meta, name, valsz, count, storage::WaitPolicy::Spin);
+
+  // a fresh writer's next value goes in slot 0, at the base of the data region
+  uint8_t* slot0 = w.pollNext();
+  EXPECT_TRUE(slot0 != nullptr);
+  EXPECT_EQ(slot0, w.config().data);
+
+  // a peer stores a wildly out-of-range value into the shared write index
+  *w.config().writerIndex = 0x40000000;
+
+  // the writer still hands out slot 0 from its private index -- not a pointer
+  // 0x40000000 * valuesz outside the mapping, which is what re-reading the
+  // shared word would have produced
+  uint8_t* stillSlot0 = w.pollNext();
+  EXPECT_EQ(stillSlot0, w.config().data);
+}
+
 // Resolving a (LoadFile "path" t) constraint for an outputFile-shaped t
 // (i.e. compiling a use of 'outputFile') creates/truncates the file at
 // "path" as a side effect of type-checking, not evaluation -- merely

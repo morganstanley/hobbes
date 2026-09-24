@@ -578,11 +578,29 @@ private:
   WaitFn        waitFn;
   WakeFn        wakeFn;
 
+  // the writer's own copy of its position in the queue. Only the writer ever
+  // advances the write index, so it is kept here and published to the segment
+  // on push rather than re-read from the wi word each time. That word lives in
+  // the shared mapping, which the peer -- and, with the segment's 0666
+  // permissions, any local user -- can overwrite with any value; deriving the
+  // memcpy target from it let a poisoned wi steer the producer's own write far
+  // outside the queue (STRFR-434014). A private copy the peer cannot reach is
+  // the reader-side index check's counterpart for the producer.
+  uint32_t wpos = 0;
+
   inline volatile uint32_t* waitState()                     const { return this->cfg.wstate; }
   inline volatile uint32_t* readIndex()                     const { return this->cfg.readerIndex; }
   inline volatile uint32_t* writeIndex()                    const { return this->cfg.writerIndex; }
-  inline uint8_t*           value(size_t i)                 const { return this->cfg.data + (i*this->cfg.valuesz); }
-  inline uint32_t           nextIndex(volatile uint32_t* i) const { return (*i + 1) % this->cfg.count; }
+  // even though wpos is now the source of the index, a raw index still gets a
+  // bounds check before it sizes a pointer -- matching the reader and guarding
+  // against a future path handing value() an out-of-range index
+  inline uint8_t*           value(size_t i)                 const {
+    if (PRIV_HSTORE_UNLIKELY(i >= this->cfg.count)) {
+      throw std::runtime_error("queue index " + std::to_string(i) + " out of range for a queue of " + std::to_string(this->cfg.count) + " values");
+    }
+    return this->cfg.data + (i*this->cfg.valuesz);
+  }
+  inline uint32_t           advance(uint32_t i)             const { return (i + 1) % this->cfg.count; }
 public:
   writer(const bytes& meta, const std::string& shmname, size_t qvalsz, size_t count, const WaitPolicy wp) : waitFn(hobbes::storage::waitFn(wp)), wakeFn(hobbes::storage::wakeFn(wp)) {
     shm_unlink(shmname.c_str());
@@ -645,10 +663,10 @@ public:
   inline const pqueue_config& config() const { return this->cfg; }
 
   uint8_t* next(size_t timeoutNS = 0, const std::function<void()>& timeoutF = [](){}) {
-    uint32_t nwi = nextIndex(writeIndex());
+    uint32_t nwi = advance(this->wpos);
 
     unsigned count = PRIV_HSTORE_SPIN_MIN;
-  
+
     while (PRIV_HSTORE_UNLIKELY(*readIndex() == nwi)) {
       if (count < PRIV_HSTORE_SPIN_MAX) {
         // back-off the writer
@@ -673,20 +691,21 @@ public:
         }
       }
     }
-    return value(*writeIndex());
+    return value(this->wpos);
   }
-  
+
   uint8_t* pollNext() {
-    if (PRIV_HSTORE_UNLIKELY(*readIndex() == nextIndex(writeIndex()))) {
+    if (PRIV_HSTORE_UNLIKELY(*readIndex() == advance(this->wpos))) {
       return nullptr;
     } else {
-      return value(*writeIndex());
+      return value(this->wpos);
     }
   }
 
   void push() {
-    uxchg(writeIndex(), nextIndex(writeIndex()));
-  
+    this->wpos = advance(this->wpos);
+    uxchg(writeIndex(), this->wpos);
+
     // when the writer advances, the reader can be unblocked
     if (PRIV_HSTORE_UNLIKELY(xchg(waitState(), PRIV_HSTORE_STATE_UNBLOCKED) == PRIV_HSTORE_STATE_READER_WAITING)) {
       (*wakeFn)(waitState(), 1);
