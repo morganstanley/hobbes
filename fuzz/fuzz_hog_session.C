@@ -77,6 +77,21 @@ const std::vector<ReadFn> &readers() {
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
   const auto &fns = readers(); // first call pays the one-time JIT cost
 
+  // The readers allocate what they read -- arrays, strings -- out of the
+  // thread-local expression pool, which hobbes reclaims by resetting at a
+  // transaction boundary rather than by freeing each value. The dispatch loop
+  // below is modelled on initStorageSession in bin/hog/session.C, and that is
+  // where session.C resets it: once per transaction, after the loop. Without
+  // the same reset here every input's allocations stay live for the rest of
+  // the process, so the harness grows without bound and is eventually killed
+  // for it -- an artifact of the harness, reported against a target whose
+  // actual subject is memory *safety*.
+  //
+  // Scoped rather than a call after the loop, because a reader that throws on
+  // malformed input is the common case here, not the exceptional one, and the
+  // allocations it made before throwing need reclaiming just the same.
+  scoped_pool_reset resetPool;
+
   try {
     storage::Transaction txn(data, size);
     // mirrors the dispatch loop in bin/hog/session.C's initStorageSession:
