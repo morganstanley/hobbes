@@ -638,7 +638,12 @@ public:
     hdr->valsz  = qvalsz;
     hdr->count  = count;
     hdr->metasz = meta.size();
-    memcpy(mem + sizeof(ShQueueHeader), &meta[0], meta.size());
+    // a queue with no metadata is legitimate, so take the buffer with data()
+    // and skip the copy entirely when it is empty -- '&meta[0]' on an empty
+    // vector is undefined, and aborts where libstdc++ assertions are on
+    if (!meta.empty()) {
+      memcpy(mem + sizeof(ShQueueHeader), meta.data(), meta.size());
+    }
   
     // OK, this queue is fully initialized
     uxchg(&hdr->ready, 1);
