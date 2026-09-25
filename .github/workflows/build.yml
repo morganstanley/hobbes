@@ -183,6 +183,14 @@ jobs:
           # installs LLVM the same way)
           LLVM_SH_COMMIT: 6dc0d1ad7de83d0782731687fd555a7859b4da58
           LLVM_SH_SHA256: 03878e08f47b66cc95bc4b544b0db3c6d9ce8d60e6cf2492ae357984330a9eae
+          # the repository's signing key, taken from the checkout rather than
+          # the network (see .clusterfuzzlite/Dockerfile, which installs LLVM
+          # the same way): the installer writes the key it fetches with a tee
+          # that creates the file before the download produces anything, and
+          # then guards the download on that file existing -- so one short
+          # fetch leaves a zero-byte key that makes every later attempt skip
+          # the key, add the repository, and fail with NO_PUBKEY
+          LLVM_APT_KEY_FPR: 6084F3CF814B57C1CF12EFD515CF4D18AF4F7421
         run: |
           export DEBIAN_FRONTEND=noninteractive
           sudo apt-get update
@@ -190,6 +198,11 @@ jobs:
             cmake make python3 \
             libncurses-dev zlib1g-dev libreadline-dev libzstd-dev \
             wget gnupg lsb-release software-properties-common
+          # put the key where the installer would have, so it skips the fetch
+          gpg --show-keys --with-colons .github/apt.llvm.org.asc \
+            | grep -qx "fpr:::::::::${LLVM_APT_KEY_FPR}:"
+          sudo install -m 0644 .github/apt.llvm.org.asc \
+            /etc/apt/trusted.gpg.d/apt.llvm.org.asc
           wget -q -O /tmp/llvm.sh \
             "https://raw.githubusercontent.com/opencollab/llvm-jenkins.debian.net/${LLVM_SH_COMMIT}/llvm.sh"
           echo "${LLVM_SH_SHA256}  /tmp/llvm.sh" | sha256sum -c -
