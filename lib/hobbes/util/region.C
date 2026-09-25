@@ -14,10 +14,21 @@ region::region(size_t minPageSize, size_t initialFreePages, size_t maxPageSize) 
   minPageSize(minPageSize), maxPageSize(maxPageSize), lastAllocPageSize(minPageSize),
   abortOnOOM(false), maxTotalAllocation(0), totalAllocation(0), usedp(nullptr), freep(nullptr)
 {
-  this->usedp = newpage(nullptr, minPageSize);
+  // newpage can now throw if a page allocation fails; free whatever pages we did
+  // obtain before the exception leaves the constructor, since the destructor
+  // does not run for a throwing constructor (STRFR-433966). freepages walks a
+  // page chain and tolerates a null head, so it covers both the single usedp
+  // page and the freep list whether or not either was set.
+  try {
+    this->usedp = newpage(nullptr, minPageSize);
 
-  for (size_t i = 0; i < initialFreePages; ++i) {
-    this->freep = newpage(this->freep, minPageSize);
+    for (size_t i = 0; i < initialFreePages; ++i) {
+      this->freep = newpage(this->freep, minPageSize);
+    }
+  } catch (...) {
+    freepages(this->usedp);
+    freepages(this->freep);
+    throw;
   }
 }
 
@@ -169,7 +180,6 @@ mempage* region::newpage(mempage* succ, size_t sz) {
   size_t psz = 0;
   if (this->lastAllocPageSize < this->maxPageSize) {
     psz = std::max(sz, this->lastAllocPageSize);
-    this->lastAllocPageSize *= 2;
   } else {
     psz = std::max(sz, this->maxPageSize);
   }
@@ -184,8 +194,26 @@ mempage* region::newpage(mempage* succ, size_t sz) {
   auto* p = new mempage;
   p->size = psz;
   p->base = ::malloc(p->size);
+  // a page size can be arithmetically valid yet more than malloc can satisfy: a
+  // large array length from untrusted data (a wire-decoded count, a codec
+  // block) reaches here as psz, and malloc returns null for a request that big.
+  // Using that null base would hand the caller a near-null pointer to write the
+  // array's size field through -- a single message SIGSEGVs the process. Fail
+  // with a recoverable error the compile/eval path can catch instead, and undo
+  // the accounting for the page we did not get (STRFR-433966).
+  if (p->base == nullptr) {
+    delete p;
+    this->totalAllocation -= psz;
+    throw std::runtime_error("region page allocation of " + str::from(psz) + " bytes failed");
+  }
   p->read = 0;
   p->succ = succ;
+
+  // the page exists now, so grow the next page-size target -- doing this only on
+  // success leaves the region's sizing state untouched when an allocation fails
+  if (this->lastAllocPageSize < this->maxPageSize) {
+    this->lastAllocPageSize *= 2;
+  }
 
   return p;
 }
