@@ -321,3 +321,62 @@ jobs:
             echo "::error::Test failures detected"
             exit 1
           fi
+  fuzz-corpus-replay:
+    # Replay every checked-in fuzz corpus input through its harness, once each.
+    #
+    # ClusterFuzzLite already fuzzes each pull request for new findings; this is
+    # the other half, and the half nothing ran: a reproducer committed alongside
+    # a fix is a regression test, and until now it was only replayed by whoever
+    # happened to configure a fuzzing build by hand. The ctest suites the other
+    # jobs run are built with BUILD_FUZZERS off, so the *-corpus tests do not
+    # exist in them at all.
+    #
+    # Deterministic and quick -- the corpora are small and every input is one
+    # that already terminates -- so this is a normal build, not a fuzzing run,
+    # and needs no engine: both harness shapes take inputs as arguments and fail
+    # by exiting non-zero.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Install dependencies
+        run: |
+          export DEBIAN_FRONTEND=noninteractive
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake make python3 \
+            libncurses-dev zlib1g-dev libreadline-dev libzstd-dev \
+            llvm-18-dev clang-18 libclang-18-dev
+      - name: Configure
+        # LLVM is pinned to 18, the version .clusterfuzzlite/Dockerfile builds
+        # these same harnesses against. The runner image carries several LLVM
+        # versions, including ones this project does not support -- an unpinned
+        # find_package(LLVM) picked up 17, which has no getPointerElementType --
+        # so name the one we want rather than take whatever is found first.
+        #
+        # An optimized build defines NDEBUG, which compiles away asserts of the
+        # form 'auto rc = write(...); assert(rc > 0);' in ipc/prepl.C and leaves
+        # rc unused. hobbes appends -Werror after CMAKE_CXX_FLAGS, so that
+        # cannot be relaxed from the command line; add_compile_options lands
+        # after it on the compile line, which is how fuzz/oss-fuzz-build.sh
+        # handles the same collision. Narrowed to those two warnings so the rest
+        # still fail the build.
+        run: |
+          cat > build-overrides.cmake <<'CMAKE'
+          add_compile_options(-Wno-error=unused-variable -Wno-error=unused-but-set-variable)
+          CMAKE
+          CC=clang-18 CXX=clang++-18 cmake -B build \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DBUILD_FUZZERS=ON \
+            -DLLVM_DIR=/usr/lib/llvm-18/lib/cmake/llvm \
+            -DCMAKE_PROJECT_hobbes_INCLUDE="$PWD/build-overrides.cmake"
+      - name: Build harnesses
+        # only the harnesses: hobbes-test is not what this job checks, and the
+        # library they link comes along with them
+        run: |
+          cmake --build build -j$(nproc) --target \
+            fuzz-type-decode fuzz-fregion-reader fuzz-parse-expr \
+            fuzz-typecheck-expr fuzz-hog-session
+      - name: Replay corpora
+        # a harness that hangs on an input is as much a regression as one that
+        # crashes, so bound each replay rather than leaving it to the job limit
+        run: ctest --test-dir build -R 'corpus$' --output-on-failure --timeout 900
