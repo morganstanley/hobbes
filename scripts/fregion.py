@@ -653,18 +653,31 @@ class FREnvelope:
     if (not(self.version in [1,2])):
       raise Exception('Structured data file format version ' + str(self.version) + ' not supported')
 
+    # the page size is read out of the file, and everything below sizes and
+    # offsets pages by it; the first page has to hold the 8-byte header and an
+    # 8-byte page-table link at least, so a value under that cannot describe a
+    # real file (STRFR-433962)
+    if (self.pageSize < 16):
+      raise Exception('Structured data file page size ' + str(self.pageSize) + ' too small: ' + self.p)
+
     # read the page data in this file
     self.pages = []
     self.readPageEntries(self.pages, 8, self.pageSize)
 
-    # read the environment data in this file
+    # read the environment data in this file. The record offsets and lengths in
+    # these pages are read from the file too, so a corrupt image can drive an
+    # index or slice out of range; surface that as a clear error instead of a
+    # raw traceback (STRFR-433962).
     self.env = dict([])
-    page=0
-    while (page < len(self.pages)):
-      if (isEnvPage(self.pages[page])):
-        page += self.readEnvPage(self.env, page)
-      else:
-        page += 1
+    try:
+      page=0
+      while (page < len(self.pages)):
+        if (isEnvPage(self.pages[page])):
+          page += self.readEnvPage(self.env, page)
+        else:
+          page += 1
+    except (struct.error, IndexError, UnicodeDecodeError, ValueError) as ex:
+      raise Exception('Structured data file environment is malformed (' + str(ex) + '): ' + self.p)
 
     # if reading the old format, we need to reinterpret recorded types
     if (self.version == 1):
@@ -673,18 +686,37 @@ class FREnvelope:
 
   # read page data entries into the 'pages' argument
   # if there is a link to a subsequent page to read page data from, follow it
+  #
+  # The page-entry blocks and the links between them come straight out of the
+  # file, so a corrupt or untrusted image can point a link out of range or back
+  # at a block already read. Follow the chain iteratively (not recursively),
+  # refuse a block that does not lie wholly within the file, and refuse to
+  # revisit one, so such a file raises a clear error instead of running the
+  # interpreter out of stack or reading past the mapping (STRFR-433962).
   def readPageEntries(self, pages, i, o):
-    k = i
-    e = o - 8
-    while (k < e):
-      p = struct.unpack('H', self.m[k:k+2])[0]
-      if (p == 0):
+    filesize = len(self.m)
+    seen = set()
+    while True:
+      # a block spans [i, o); its trailing 8 bytes are the link to the next one
+      if (o < 8 or o > filesize or i < 0 or i > o - 8):
+        raise Exception('Structured data file page block out of range: [' + str(i) + ', ' + str(o) + ') in a ' + str(filesize) + ' byte file: ' + self.p)
+      if (i in seen):
+        raise Exception('Structured data file has a cyclic page link at offset ' + str(i) + ': ' + self.p)
+      seen.add(i)
+
+      k = i
+      e = o - 8
+      while (k < e):
+        p = struct.unpack('H', self.m[k:k+2])[0]
+        if (p == 0):
+          break
+        pages.append(p)
+        k += 2
+      n = struct.unpack('Q', self.m[e:e+8])[0]
+      if (n == 0):
         break
-      pages.append(p)
-      k += 2
-    n = struct.unpack('Q', self.m[e:e+8])[0]
-    if (n != 0):
-      self.readPageEntries(pages, n*self.pageSize, (n+1)*self.pageSize)
+      i = n * self.pageSize
+      o = (n + 1) * self.pageSize
 
   # read environment data into the 'env' argument out of 'page'
   def readEnvPage(self, env, page):

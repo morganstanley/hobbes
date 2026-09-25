@@ -292,3 +292,84 @@ TEST(Python, FRegion) {
 #endif
 }
 
+// The page-entry chain fregion.py follows comes straight out of the file, so a
+// corrupt or untrusted image can point a link out of range or back at a block
+// already read. This script crafts such files and confirms the reader raises a
+// clear error rather than recursing until the interpreter dies (STRFR-433962).
+// It writes its crafted bytes to the path it is given as argv[1] and exits 0
+// only if every case is rejected cleanly (never RecursionError, never silent).
+void makeCorruptPageScript(const std::string& path) {
+  static const char script[] = R"SCRIPT(
+import sys, struct
+import fregion
+
+scratch = sys.argv[1]
+PS = 64
+
+def hdr(pagesize=PS, version=1):
+    return struct.pack('I', 0x10A1DB0D) + struct.pack('H', pagesize) + struct.pack('H', version)
+
+def expect_rejected(name, data):
+    with open(scratch, 'wb') as fh:
+        fh.write(data)
+    try:
+        fregion.FREnvelope(scratch)
+    except RecursionError:
+        print('FAIL', name, '-> RecursionError'); sys.exit(1)
+    except Exception as ex:
+        print('ok', name, '->', ex); return
+    print('FAIL', name, '-> no exception raised'); sys.exit(1)
+
+# a cyclic page chain: block0 -> page2 -> page3 -> page2 ...
+d = bytearray(hdr() + bytes(4 * PS - 8))
+struct.pack_into('H', d, 8, 0)          # block0: no entries
+struct.pack_into('Q', d, PS - 8, 2)     # block0 link -> page 2
+struct.pack_into('H', d, 2 * PS, 0)
+struct.pack_into('Q', d, 3 * PS - 8, 3) # page2 link -> page 3
+struct.pack_into('H', d, 3 * PS, 0)
+struct.pack_into('Q', d, 4 * PS - 8, 2) # page3 link -> page 2 (cycle)
+expect_rejected('cyclic page link', bytes(d))
+
+# a link pointing far past the end of the file
+d = bytearray(hdr() + bytes(PS - 8))
+struct.pack_into('H', d, 8, 0)
+struct.pack_into('Q', d, PS - 8, 1000)  # -> offset 64000 in a 64 byte file
+expect_rejected('out-of-range page link', bytes(d))
+
+# a page size that does not even fit in the file
+d = bytearray(hdr() + bytes(32))        # 40 bytes, but the header claims 64
+expect_rejected('truncated page block', bytes(d))
+
+# a page size too small to hold the header and a page-table link
+expect_rejected('undersized page size', hdr(4) + bytes(16))
+
+print('all corrupt page chains rejected cleanly')
+sys.exit(0)
+)SCRIPT";
+
+  std::ofstream f(path.c_str());
+  f << script;
+}
+
+TEST(Python, FRegionRejectsCorruptPageChains) {
+#if !defined(PYTHON_EXECUTABLE) or !defined(SCRIPT_DIR)
+  std::cout << "Warning: no python compatibility tests will be run" << std::endl;
+#else
+  auto scratch = mkFName("db");
+  auto py = mkFName("py");
+  try {
+    makeCorruptPageScript(py);
+
+    PythonProc p(DEF_STR(PYTHON_EXECUTABLE), DEF_STR(SCRIPT_DIR), py, scratch);
+    EXPECT_EQ(p.run(), 0);
+
+    unlink(py.c_str());
+    unlink(scratch.c_str());
+  } catch (...) {
+    unlink(py.c_str());
+    unlink(scratch.c_str());
+    throw;
+  }
+#endif
+}
+
