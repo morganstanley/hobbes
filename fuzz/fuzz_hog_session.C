@@ -97,7 +97,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     // mirrors the dispatch loop in bin/hog/session.C's initStorageSession:
     // read a uint32 id, run the reader picked out for it, repeat
     while (txn.canRead(sizeof(uint32_t))) {
-      uint32_t id = *txn.read<uint32_t>();
+      uint32_t id = txn.read<uint32_t>();
       fns[id % fns.size()](&txn);
     }
   } catch (const std::exception &) {

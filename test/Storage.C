@@ -1655,6 +1655,31 @@ TEST(Storage, WriterIgnoresAPoisonedSharedWriteIndex) {
   EXPECT_EQ(stillSlot0, w.config().data);
 }
 
+TEST(Storage, TransactionReadsAtAnUnalignedOffset) {
+  // A transaction's cursor sits wherever the preceding fields left it, so the
+  // offset a multi-byte field is read from is whatever the peer's framing
+  // makes it. read<T>() used to hand back a T* cast straight from that cursor
+  // and callers dereferenced it, which is undefined at an offset that does not
+  // suit T -- it faults outright where alignment is required, and sanitizers
+  // report it elsewhere. Reading at a deliberately odd offset
+  // exercises that: it is a plain pass here and an abort under the ASan/UBSan
+  // builds before the fix.
+  alignas(8) uint8_t buf[16] = {0};
+  const uint32_t want = 0xDEADBEEFu;
+
+  // place the value one byte past alignment, then read it back from there
+  memcpy(buf + 1, &want, sizeof(want));
+
+  storage::Transaction txn(buf, sizeof(buf));
+  txn.skip(1);
+  EXPECT_TRUE(txn.canRead(sizeof(uint32_t)));
+  EXPECT_EQ(txn.read<uint32_t>(), want);
+
+  // and the cursor advanced by exactly the field it read
+  EXPECT_TRUE(txn.canRead(sizeof(buf) - 1 - sizeof(want)));
+  EXPECT_TRUE(!txn.canRead(sizeof(buf)));
+}
+
 // Resolving a (LoadFile "path" t) constraint for an outputFile-shaped t
 // (i.e. compiling a use of 'outputFile') creates/truncates the file at
 // "path" as a side effect of type-checking, not evaluation -- merely

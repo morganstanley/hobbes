@@ -25,6 +25,7 @@
 #include <stdexcept>
 #include <string>
 #include <tuple>
+#include <type_traits>
 #include <vector>
 
 #include <unistd.h>
@@ -2243,11 +2244,23 @@ public:
     this->ri += d;
   }
 
+  // Returns the value, not a pointer into the stream. The cursor sits wherever
+  // the preceding fields left it, so a T* formed from it is only as aligned as
+  // that offset happened to be, and reading through such a pointer is
+  // undefined -- it faults outright on targets that require alignment, and
+  // sanitizers report it on the ones that do not. Copying the bytes out has
+  // the same cost here and cannot be misused that way.
+  //
+  // The caller still bounds the read itself: canRead(sizeof(T)) first, as the
+  // dispatch loops in bin/hog/session.C do.
   template <typename T>
-    const T* read() {
-      const auto *p = reinterpret_cast<const T*>(ptr());
+    T read() {
+      static_assert(std::is_trivially_copyable<T>::value,
+                    "Transaction::read copies raw bytes out of the stream");
+      T v;
+      memcpy(&v, ptr(), sizeof(T));
       skip(sizeof(T));
-      return p;
+      return v;
     }
 
   size_t size() const {
