@@ -356,7 +356,7 @@ ProcessTxnF initStorageSession(Session* s, const std::string& dirPfx, storage::P
     return
       [s](storage::Transaction& txn) {
         while (txn.canRead(sizeof(uint32_t))) {
-          uint32_t id = *txn.read<uint32_t>();
+          uint32_t id = txn.read<uint32_t>();
           if (id < s->writeFns.size()) {
             s->writeFns[id](&txn);
           } else {
@@ -370,7 +370,7 @@ ProcessTxnF initStorageSession(Session* s, const std::string& dirPfx, storage::P
     return
       [s](storage::Transaction& txn) {
         while (txn.canRead(sizeof(uint32_t))) {
-          uint32_t id = *txn.read<uint32_t>();
+          uint32_t id = txn.read<uint32_t>();
           if (id < s->writeFns.size()) {
             std::pair<uint32_t, long> log(id, s->streams[id]->writePosition());
             s->writeFns[id](&txn);
@@ -391,7 +391,7 @@ ProcessTxnF initStorageSession(Session* s, const std::string& dirPfx, storage::P
         s->txnScratch.push_back(0); // initially assume we will write no entries
 
         while (txn.canRead(sizeof(uint32_t))) {
-          uint32_t id = *txn.read<uint32_t>();
+          uint32_t id = txn.read<uint32_t>();
           if (id < s->writeFns.size()) {
             s->txnScratch.push_back(id);
             s->txnScratch.push_back(s->streams[id]->writePosition());
