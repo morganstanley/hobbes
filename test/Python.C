@@ -6,6 +6,7 @@
 #include <fstream>
 #include "test.H"
 
+#include <cerrno>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -42,9 +43,25 @@ public:
       std::cout << "error trying to exec '" << argv[0] << "' : " << strerror(errno) << std::endl;
       exit(-1);
     } else {
-      int ws;
-      wait(&ws);
-      pid = -1;
+      // Reap this child specifically. wait() takes whichever child exits
+      // first, and this process has others: the Spawn group runs mock-proc and
+      // the PREPL group spawns machine REPLs, so a straggler from either can
+      // be reaped here and its status reported as python's. That is a silent
+      // wrong answer in both directions -- a failing script read as a pass, or
+      // a passing one as a failure with an exit code the script never returns.
+      // ipc/prepl.C reaps its own child for the same reason.
+      int ws = 0;
+      while (waitpid(pid, &ws, 0) == -1) {
+        if (errno != EINTR) {
+          throw std::runtime_error("error waiting for python: " + std::string(strerror(errno)));
+        }
+      }
+
+      // a script killed by a signal has no exit status to report; say so
+      // rather than returning WEXITSTATUS of a status that never held one
+      if (!WIFEXITED(ws)) {
+        throw std::runtime_error("python did not exit normally (status " + std::to_string(ws) + ")");
+      }
       return WEXITSTATUS(ws);
     }
   }
