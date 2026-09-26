@@ -1,4 +1,5 @@
 
+#include <cerrno>
 #include <csignal>
 #include <cstring>
 #include <fcntl.h>
@@ -248,6 +249,31 @@ using ThunkFs = std::vector<ThunkF>;
 
 static int machineREPLLogFD = -1;
 
+// Best-effort write to the diagnostic log: losing a log line must not take the
+// process down, and the two callers below cannot report a failure anyway -- one
+// is the logger itself, the other a signal handler. Loops so that a short write
+// still delivers the whole line, retries an interrupted call, and gives up on
+// any other error. Touches nothing but write(), so it stays usable from the
+// signal handler.
+//
+// The previous 'auto rc = write(...); assert(rc > 0);' at each of these sites
+// checked nothing in a release build, where NDEBUG removes the assert and
+// leaves rc unused -- and even in a debug build it accepted a short write as
+// success.
+static void logWrite(int fd, const char* p, size_t n) {
+  while (n > 0) {
+    ssize_t c = write(fd, p, n);
+    if (c > 0) {
+      p += c;
+      n -= static_cast<size_t>(c);
+    } else if (c < 0 && errno == EINTR) {
+      continue;
+    } else {
+      return;
+    }
+  }
+}
+
 void dbglog(const std::string& msg) {
   if (machineREPLLogFD > 0) {
     char buf[256];
@@ -255,8 +281,7 @@ void dbglog(const std::string& msg) {
     strftime(buf, sizeof(buf), "%H:%M:%S", localtime(reinterpret_cast<time_t*>(&t)));
 
     std::string logmsg = std::string(buf) + ": " + msg + "\n";
-    auto rc = write(machineREPLLogFD, logmsg.c_str(), logmsg.size());
-    assert(rc > 0);
+    logWrite(machineREPLLogFD, logmsg.c_str(), logmsg.size());
   }
 }
 
@@ -567,29 +592,33 @@ using Signames = std::map<int, const char *>;
 static Signames rsignames;
 static void deadlySignal [[noreturn]] (int sig, siginfo_t*, void*) {
   if (machineREPLLogFD > 0) {
+    // a signal handler: nothing here may throw, allocate or lock, so these
+    // writes stay best-effort by necessity as well as by choice
     static const char* msg = "RECEIVED DEADLY SIGNAL: ";
-    auto rc = write(machineREPLLogFD, msg, strlen(msg));
+    logWrite(machineREPLLogFD, msg, strlen(msg));
 
     auto s = rsignames.find(sig);
     if (s != rsignames.end()) {
-      rc = write(machineREPLLogFD, s->second, strlen(s->second));
+      logWrite(machineREPLLogFD, s->second, strlen(s->second));
     } else {
       static const char* unk = "UNKNOWN SIGNAL";
-      rc = write(machineREPLLogFD, unk, strlen(unk));
+      logWrite(machineREPLLogFD, unk, strlen(unk));
     }
 
     static const char* eol = "\n";
-    rc = write(machineREPLLogFD, eol, strlen(eol));
-    assert(rc > 0);
+    logWrite(machineREPLLogFD, eol, strlen(eol));
   }
   exit(-1);
 }
 
 void runMachineREPL(cc* c) {
-  // send the startup message
+  // Send the startup message. Unlike the log writes above this one is part of
+  // the protocol: the peer waits for this word before sending anything, so a
+  // failed or short write leaves it waiting on a REPL that believes it has
+  // handshaked. fdwrite is what the rest of this file already uses for the
+  // replies -- it writes the whole value or throws.
   int success = 1;
-  auto rc = write(STDOUT_FILENO, &success, sizeof(success));
-  assert(rc > 0);
+  fdwrite(STDOUT_FILENO, success);
   
   // for now, create a log for all processes run in machine mode
   // this will help us to diagnose errors that cause the process to die
