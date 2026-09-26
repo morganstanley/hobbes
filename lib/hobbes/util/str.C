@@ -1,9 +1,12 @@
 
 #include <hobbes/util/str.H>
+#include <cctype>
 #include <iterator>
 #include <memory>
-#include <wordexp.h>
 #include <glob.h>
+#include <pwd.h>
+#include <unistd.h>
+#include <vector>
 
 namespace hobbes { namespace str {
 
@@ -538,21 +541,88 @@ bool relativePathInRoot(const std::string& path, std::string* relPath) {
   return true;
 }
 
+// the home directory for a '~' or '~user' prefix, or false if there is none
+static bool homeDir(const std::string& user, std::string* out) {
+  if (user.empty()) {
+    *out = env("HOME");
+    if (!out->empty()) {
+      return true;
+    }
+  }
+
+  long bsz = sysconf(_SC_GETPW_R_SIZE_MAX);
+  std::vector<char> buf(bsz > 0 ? static_cast<size_t>(bsz) : 16384);
+  struct passwd pw {};
+  struct passwd* r = nullptr;
+  int rc = user.empty() ? getpwuid_r(getuid(), &pw, buf.data(), buf.size(), &r)
+                        : getpwnam_r(user.c_str(), &pw, buf.data(), buf.size(), &r);
+  if (rc != 0 || r == nullptr || r->pw_dir == nullptr) {
+    return false;
+  }
+  *out = r->pw_dir;
+  return true;
+}
+
+static bool isVarStart(char c) { return std::isalpha(static_cast<unsigned char>(c)) != 0 || c == '_'; }
+static bool isVarChar(char c)  { return std::isalnum(static_cast<unsigned char>(c)) != 0 || c == '_'; }
+
 std::string expandPath(const std::string& x) {
   // x reaches here from untrusted type-checker input (LoadFile constraints,
-  // lib/hobbes/db/bindings.C) as well as trusted local paths, so this must
-  // never run a subshell: WRDE_NOCMD makes wordexp() fail (returning x
-  // unexpanded, same as any other wordexp failure) instead of executing a
-  // $(...)/`...` command substitution embedded in x (STRFR-433916). A
-  // zero-word expansion (e.g. an empty x) must also fall back to x rather
-  // than index we_wordv[0], which wordexp does not guarantee is present.
-  wordexp_t we;
-  if (wordexp(x.c_str(), &we, WRDE_NOCMD) != 0) {
-    return x;
+  // lib/hobbes/db/bindings.C) as well as trusted local paths. This used to be
+  // wordexp(), which is a shell in all but name: WRDE_NOCMD stopped it running
+  // $(...)/`...` command substitutions (STRFR-433916), but nothing stops it
+  // expanding a pathname pattern, and glibc's glob() recurses once per
+  // directory level of a pattern -- a path with a '*' and some thousands of
+  // '/'s overflowed the stack while type checking (OSS-Fuzz 566427894).
+  // Arithmetic $((...)) and nested ${...} are recursive descents of the same
+  // kind. None of that was ever wanted here: only the first word of the
+  // expansion was kept, so a pattern matching several files quietly opened
+  // one of them. So expand exactly what this is documented to expand, in one
+  // pass: a leading '~' or '~user', and $NAME / ${NAME} environment
+  // variables. Anything else, including a '$' not followed by a variable name,
+  // is copied through as written.
+  std::string r;
+  size_t i = 0;
+
+  if (!x.empty() && x[0] == '~') {
+    size_t e = x.find('/');
+    if (e == std::string::npos) {
+      e = x.size();
+    }
+    std::string home;
+    if (homeDir(x.substr(1, e - 1), &home)) {
+      r = home;
+      i = e;
+    }
   }
-  std::string result = we.we_wordc > 0 ? std::string(we.we_wordv[0]) : x;
-  wordfree(&we);
-  return result;
+
+  while (i < x.size()) {
+    char c = x[i];
+    if (c == '$' && i + 1 < x.size() && isVarStart(x[i + 1])) {
+      size_t e = i + 2;
+      while (e < x.size() && isVarChar(x[e])) {
+        ++e;
+      }
+      r += env(x.substr(i + 1, e - i - 1));
+      i = e;
+    } else if (c == '$' && i + 2 < x.size() && x[i + 1] == '{' && isVarStart(x[i + 2])) {
+      size_t e = i + 3;
+      while (e < x.size() && isVarChar(x[e])) {
+        ++e;
+      }
+      if (e < x.size() && x[e] == '}') {
+        r += env(x.substr(i + 2, e - i - 2));
+        i = e + 1;
+      } else {
+        r += c;
+        ++i;
+      }
+    } else {
+      r += c;
+      ++i;
+    }
+  }
+  return r;
 }
 
 // display a byte count in typical units
