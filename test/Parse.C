@@ -267,6 +267,39 @@ TEST(Parse, GrammarsWithNullableRulesAreGenerated) {
   EXPECT_EQ(lc.compileFn<int()>("match np(\"\")   with | |1=x| -> x | _ -> -1")(), -1);
 }
 
+// the code generated for a `parse { ... }` grammar is quadratic in the length
+// of a rule (each character of a literal is a terminal, and each state takes
+// the stack below it as arguments), and readExpr generates it: a rule with a
+// literal of a few thousand characters took some 3GB to read (OSS-Fuzz
+// 566458274). A grammar past cc::parserMaxStackDepthSum is refused up front.
+static std::string literalGrammar(size_t n) {
+  return "parse { S := \"" + std::string(n, 'a') + "\" { 1 } }";
+}
+
+TEST(Parse, OversizedGrammarsAreRejected) {
+  cc lc;
+
+  // a rule of n characters has states of depth 1..n: 3000 sums to ~4.5M
+  try {
+    lc.readExpr(literalGrammar(3000));
+    EXPECT_TRUE(false && "an oversized grammar was accepted");
+  } catch (std::exception& ex) {
+    EXPECT_TRUE(std::string(ex.what()).find("grammar is too large") != std::string::npos);
+  }
+
+  // the limit is the cc's to set, either way
+  lc.parserMaxStackDepthSum(1000);
+  EXPECT_EXCEPTION(lc.readExpr(literalGrammar(100)));  // ~5k
+  lc.parserMaxStackDepthSum(10000);
+  EXPECT_TRUE(lc.readExpr(literalGrammar(100)) != nullptr);
+
+  // and a grammar within the default reads, and parses, as it always has
+  cc dc;
+  dc.define("p", literalGrammar(200));  // ~20k
+  EXPECT_EQ(dc.compileFn<int()>(("match p(\"" + std::string(200, 'a') + "\") with | |1=x| -> x | _ -> -1").c_str())(), 1);
+  EXPECT_EQ(dc.compileFn<int()>("match p(\"aa\") with | |1=x| -> x | _ -> -1")(), -1);
+}
+
 // an error thrown from a lexer or grammar action (an unsupported literal here)
 // goes past yyerror, which is what records where a syntax error was found. The
 // position reported for such an error used to be whatever the last syntax

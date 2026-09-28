@@ -407,6 +407,11 @@ public:
   void regexDFAOverNFAMaxRatio(int f);
   int regexDFAOverNFAMaxRatio() const;
 
+  // the largest `parse {}` grammar to generate a parser for, measured as the
+  // sum over its LALR(1) states of each state's stack depth (see parse/parser.C)
+  void parserMaxStackDepthSum(size_t f);
+  size_t parserMaxStackDepthSum() const;
+
   UnreachableMatchRowsPtr unreachableMatchRowsPtr;
 
   // allow low-level functions to be added
@@ -456,6 +461,7 @@ private:
   // build one past this many states rather than let a short regex literal
   // consume the machine
   size_t maxDFAStates = {10000};
+  size_t maxParserStackDepthSum = {100000};
   // abort compilation of regexes which translate into huge dfa transition
   // states
   bool shouldThrowOnHugeRegexDFA = false;

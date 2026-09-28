@@ -306,12 +306,34 @@ LetRec::Bindings makeParserStates(const ParserEvalInfo& pei) {
   return bs;
 }
 
+// Each state becomes a function taking the values on the parse stack below
+// it as arguments, so the code generated for a grammar grows with the sum of
+// its states' stack depths rather than with the number of states. That is
+// quadratic in the length of a rule: every character of a string literal is
+// a terminal of its own, and a rule of n of them has n states of depths
+// 1..n. A rule with a literal of a few thousand characters -- a few KB of
+// `parse {}` source, read by readExpr before anything is type checked --
+// generated some 3GB of expression (OSS-Fuzz 566458274), at about 1.2KB of
+// memory per unit of this sum. So it is bounded before any code is made.
+static void checkParserSize(cc* c, const ParserEvalInfo& pei, const LexicalAnnotation& la) {
+  size_t depthSum = 0;
+  for (size_t i = 0; i < stateCount(pei); ++i) {
+    depthSum += parseDepth(pei, i);
+    if (depthSum > c->parserMaxStackDepthSum()) {
+      throw annotated_error(la,
+        "grammar is too large to generate a parser for (its states' stack depths sum to more than " +
+        str::from(c->parserMaxStackDepthSum()) + "; see cc::parserMaxStackDepthSum)");
+    }
+  }
+}
+
 // generate parser code from a parser definition
 ExprPtr makeParser(cc* c, const Parser& p, terminal* root, const precedence& prec, const LexicalAnnotation& la) {
   // first we need to derive the LALR(1) parse table
   // and derive secondary indexes for producing expressions for this table
   ParserEvalInfo pei;
   prepareEvalInfo(c, p, root, prec, &pei, la);
+  checkParserSize(c, pei, la);
 
   // then we translate the parse table to an equivalent expression
   LetRec::Bindings sbs = makeParserStates(pei);
