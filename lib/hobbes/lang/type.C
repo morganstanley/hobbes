@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cstring>
+#include <hobbes/eval/hlock.H>
 #include <hobbes/lang/constraints.H>
 #include <hobbes/lang/expr.H>
 #include <hobbes/lang/tylift.H>
@@ -587,7 +588,16 @@ MTypeCtorMaps* tctorMaps() {
   return x;
 }
 
+// an entry the memo alone holds is garbage only if no thread is reading
+// through a plain pointer or reference into it, and type inference does that
+// routinely (is<Func>(t->instantiate()->monoType()) and then the parameters
+// of what it points to, say). Those readers all run under the compiler lock,
+// so take it here too: a compaction from another thread (a net REPL request
+// finishing, some other compiler going away) then waits for a compile in
+// progress to finish rather than freeing types out from under it. The maps'
+// own locks cannot do this; the reader holds none of them between lookups.
 void compactMTypeMemory() {
+  hlock _;
   tctorMaps()->compact();
 }
 

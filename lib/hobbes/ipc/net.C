@@ -307,14 +307,17 @@ bool processNetREPLRequest(Server *s, int c, const char *b, size_t n) {
     readPrim(&cmd, sizeof(cmd));
 
     switch (cmd) {
-    case 0:
+    case 0: {
       // prepare a lexical expression with input and output types given
+      //
+      // the type descriptions read below are interned in the process-wide
+      // type memo whether or not they are accepted; release what this
+      // request does not end up keeping, on every way out of here. Only
+      // once the reply is written, though: compacting takes the compiler
+      // lock, and the peer may be a thread of this process that holds it
+      // while it waits for this answer
+      CompactMTypeMemoryAtExit compactAfter;
       try {
-        // the type descriptions read below are interned in the process-wide
-        // type memo whether or not they are accepted; release what this
-        // request does not end up keeping, on every way out of here
-        CompactMTypeMemoryAtExit compactAfter;
-
         exprid eid = 0;
         readPrim(&eid, sizeof(eid));
 
@@ -341,11 +344,11 @@ bool processNetREPLRequest(Server *s, int c, const char *b, size_t n) {
         fdwrite(c, std::string(ex.what()));
       }
       break;
-    case 1:
+    }
+    case 1: {
       // prepare a serialized expression, also return its type
+      CompactMTypeMemoryAtExit compactAfter;
       try {
-        CompactMTypeMemoryAtExit compactAfter;
-
         exprid eid = 0;
         readPrim(&eid, sizeof(eid));
         RawData exprd;
@@ -370,6 +373,7 @@ bool processNetREPLRequest(Server *s, int c, const char *b, size_t n) {
         fdwrite(c, std::string(ex.what()));
       }
       break;
+    }
     case 2: {
       // invoke a prepared expression
       exprid evid = 0;

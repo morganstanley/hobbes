@@ -2,6 +2,7 @@
 #ifndef HOBBES_EVAL_CC_HPP_INCLUDED
 #define HOBBES_EVAL_CC_HPP_INCLUDED
 
+#include <hobbes/eval/hlock.H>
 #include <hobbes/eval/jitcc.H>
 #include <hobbes/eval/search.H>
 #include <hobbes/lang/expr.H>
@@ -28,22 +29,6 @@
 #include <vector>
 
 namespace hobbes {
-
-// protect access to hobbes/llvm resources between threads
-class hlock {
-public:
-  hlock();
-  ~hlock();
-};
-class phlock {
-public:
-  phlock();
-  void release();
-  ~phlock();
-
-private:
-  bool f;
-};
 
 // parameter parsing for the 'compileFn' family of functions
 using ExprParser = std::function<ExprPtr (const std::string &)>;

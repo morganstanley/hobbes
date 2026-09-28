@@ -10,6 +10,8 @@
 #include <chrono>
 #include <vector>
 #include <functional>
+#include <atomic>
+#include <thread>
 
 using namespace hobbes;
 
@@ -923,4 +925,39 @@ TEST(TypeInf, ADecodedFixedArrayLengthCannotBeNegative) {
   hobbes::MonoTypePtr t = hobbes::FixedArray::make(hobbes::primty("byte"), hobbes::tlong(4));
   hobbes::encode(t, &ok);
   EXPECT_TRUE(*hobbes::decode(ok) == *t);
+}
+
+// The type memo is process-wide, and compacting it frees every type that only
+// the memo still holds. Type inference holds plain pointers and references
+// into types it has not (yet) taken a reference to, so a compaction from
+// another thread -- a net REPL request finishing, some other compiler being
+// destroyed -- must not run in the middle of it. Compile expressions whose
+// types are new each time (so they are garbage as soon as the compile is over)
+// while another thread compacts as fast as it can.
+TEST(TypeInf, typeMemoCompactionWaitsForInferenceOnOtherThreads) {
+  hobbes::cc lc;
+  std::atomic<bool> done{false};
+  std::thread compactor([&done] {
+    // with a pause between: a compaction waits for a compile in progress,
+    // and one retried the moment it finishes would hold the compiling thread
+    // off the compiler lock all the time
+    while (!done.load()) {
+      compactMTypeMemory();
+      std::this_thread::sleep_for(std::chrono::microseconds(100));
+    }
+  });
+  struct Stop {
+    std::atomic<bool>& done;
+    std::thread& t;
+    ~Stop() { this->done = true; this->t.join(); }
+  } stop{done, compactor};
+
+  // method-call syntax (x.append(y)) resolves by looking up and instantiating
+  // the function's type, a fresh type every time, which inference then reads
+  // through a plain pointer
+  for (int i = 0; i < 500; ++i) {
+    const std::string n = str::from(i);
+    EXPECT_EQ(lc.compileFn<int()>(
+      "(\\r.r.f" + n + ".append(r.g" + n + ")[0])({f" + n + "=[" + n + "], g" + n + "=[1]})")(), i);
+  }
 }
