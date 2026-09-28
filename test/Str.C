@@ -80,6 +80,43 @@ TEST(Str, ExpandPathStillExpandsHomeDirectory) {
   EXPECT_TRUE(str::expandPath("~") == home);
 }
 
+TEST(Str, ExpandPathExpandsVariablesAndUserHome) {
+  std::string home = str::env("HOME");
+  EXPECT_TRUE(str::expandPath("~/a/b") == home + "/a/b");
+  EXPECT_TRUE(str::expandPath("a/~/b") == "a/~/b");
+
+  str::env("HOBBES_TEST_EXPAND_PATH", "xyz");
+  EXPECT_TRUE(str::expandPath("/p/$HOBBES_TEST_EXPAND_PATH/q") == "/p/xyz/q");
+  EXPECT_TRUE(str::expandPath("/p/${HOBBES_TEST_EXPAND_PATH}.q") == "/p/xyz.q");
+  EXPECT_TRUE(str::expandPath("/p/$HOBBES_TEST_EXPAND_PATH_UNSET/q") == "/p//q");
+
+  // no word splitting: a path with a space is one path
+  EXPECT_TRUE(str::expandPath("/a b/c") == "/a b/c");
+
+  // a '$' that does not start a variable reference is kept as written
+  EXPECT_TRUE(str::expandPath("a$") == "a$");
+  EXPECT_TRUE(str::expandPath("$((1+2))") == "$((1+2))");
+  EXPECT_TRUE(str::expandPath("${unterminated") == "${unterminated");
+}
+
+// OSS-Fuzz 566427894: expandPath used wordexp(), which expands pathname
+// patterns with glob(), and glibc's glob() recurses once per directory level
+// of the pattern. A LoadFile path with a '*' and thousands of '/'s, written
+// in source text, overflowed the stack while it was type checked. A pattern
+// is not expanded now at all, so it names the file literally.
+TEST(Str, ExpandPathDoesNotGlob) {
+  EXPECT_TRUE(str::expandPath("/tmp/*") == "/tmp/*");
+  EXPECT_TRUE(str::expandPath("/t?p/[a-z]") == "/t?p/[a-z]");
+
+  std::string deep = "*" + std::string(20000, '/') + "x";
+  EXPECT_TRUE(str::expandPath(deep) == deep);
+
+  // and through the type checker, the way the fuzzer reached it: the file
+  // does not exist, so this is a type error, not a crash
+  cc c;
+  EXPECT_EXCEPTION(c.define("f", "inputFile :: (LoadFile \"" + deep + "\" w) => w"));
+}
+
 TEST(Str, relativePathInRoot) {
   std::string p;
 
