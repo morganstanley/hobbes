@@ -293,9 +293,13 @@ Three things follow.
   grows by roughly the figures above per edit until a side is rebuilt.
   Nothing on the compile path compacts the memo by itself; a process that
   keeps one ``cc`` for a long time and wants the growth back sooner can call
-  ``hobbes::compactMTypeMemory()`` after a compile, from any thread — it
-  takes the memo's own lock, not the compiler's. Either way, watch resident
-  size in production rather than assuming.
+  ``hobbes::compactMTypeMemory()`` after a compile, from any thread. It
+  takes ``hobbes::hlock``, because type inference reads through plain
+  pointers into types that only the memo holds while a compile is running,
+  so a compaction (including the one at the end of destroying a ``cc``)
+  waits for any compile in progress to finish — call it where a background
+  compile's stall is harmless, never on the handling thread. Either way,
+  watch resident size in production rather than assuming.
 * **``buildColumnwiseMatches`` is the largest lever available.** For the
   same 70-row table it is a 25× faster compile and 6× less memory; a
   400-row table compiles columnwise in the time a 70-row one takes

@@ -1289,6 +1289,9 @@ inline MonoTypePtr fnresult(const MonoTypePtr& fty) {
   throw std::runtime_error("Expected function type: " + show(fty));
 }
 
+// release the memo entries for types nothing else holds. This takes the
+// compiler lock (hlock, eval/hlock.H), so it waits for a compile in progress
+// on any other thread to finish first
 void compactMTypeMemory();
 
 // compact the type memo when the enclosing scope ends, however it ends: for
