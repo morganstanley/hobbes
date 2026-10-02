@@ -1,24 +1,42 @@
-// Fuzz the compiler front end past the parser: type inference, type-class
-// constraint resolution, pattern-match compilation and desugaring, via
-// hobbes::cc::unsweetenExpression. Nothing is evaluated.
+// Fuzz the compiler past the parser: type inference, type-class constraint
+// resolution, pattern-match compilation and desugaring, via
+// hobbes::cc::unsweetenExpression, and then the lowering of the result to
+// LLVM IR, via hobbes::cc::verifyCodeForExpr. Nothing is evaluated, and no
+// machine code is made for the input.
 //
 // fuzz_parse_expr stops at readExpr, which is lexing and LALR parsing; a
 // well-formed expression is a success for it the moment the parser accepts
-// it. This harness carries the same input on into the type checker, which is
-// where most of the compiler's logic lives, and asks the same question of
-// it: arbitrary source text may be rejected with an exception, but it must
-// not crash the process. Whether the *evaluation* of an expression can crash
-// is a different question with a different answer -- compiled Hobbes code is
-// native code with the host's privileges, so a crash there is the
-// expression's, not the compiler's -- and this harness stays clear of it.
-// Type checking is not entirely free of code generation, though: resolving
-// a constraint can leave residual definitions (type-class instance members,
-// for instance) that unsweetenExpression hands to the JIT before returning.
-// That code is generated, never run.
+// it. This harness carries the same input on into the type checker and the
+// code generator, which is where most of the compiler's logic lives, and asks
+// the same question of them: arbitrary source text may be rejected with an
+// exception, but it must not crash the process. Whether the *evaluation* of
+// an expression can crash is a different question with a different answer --
+// compiled Hobbes code is native code with the host's privileges, so a crash
+// there is the expression's, not the compiler's -- and this harness stays
+// clear of it.
+//
+// Code generation stops at the IR. What comes after it -- LLVM's optimizer
+// and its instruction selection, run by the ORC JIT -- is LLVM's code rather
+// than hobbes's, and on an expression that type checks it costs more than
+// type checking does (about 3ms against 2ms per expression on the test
+// suite's, unsanitized; lowering to IR is about 0.04ms). Fuzzed inputs mostly
+// fail to type check, so its share of a campaign is smaller, but it is time
+// spent on code that is not hobbes's, and it grows faster than linearly in
+// the size of the function it is given. So verifyCodeForExpr runs LLVM's
+// verifier over the IR instead and then takes it back out of the module. The
+// verifier is the oracle for the code generator: IR it rejects is IR that
+// hobbes would have handed to the JIT, where a release build of LLVM does not
+// check it and may crash or quietly miscompile, so a complaint from it is
+// reported as a crash. Type checking is not entirely free of machine code, though:
+// resolving a constraint can leave residual definitions (type-class instance
+// members, for instance) that the compiler keeps and compiles for later use,
+// and a global initializer met while lowering can make machine code of its
+// own. That code is generated, never run.
 //
 // Two things distinguish this from the parser harness.
 //
-// Cost. Parsing is linear in the input; type checking is not. Pattern-match
+// Cost. Parsing is linear in the input; type checking is not (and LLVM's
+// back end, which is why it is left out; see above). Pattern-match
 // compilation and regex determinization are both super-linear in the size of
 // the match or regex (see test/Matching.C and the parse-expr corpus for
 // inputs that showed it), and unification recurses over the types it builds.
@@ -39,9 +57,12 @@
 // parser leaves something behind in the compiler -- interned types in the
 // process-wide type memo, memoized instance resolutions, residual
 // definitions and the LLVM modules holding them -- and nothing takes it back
-// out. So the memo is compacted and the compiler replaced on a schedule, as
-// fuzz_parse_expr does, but by input count alone rather than by the presence
-// of a quote, since here any input can have grown the compiler. The
+// out. (The IR for the input itself is the exception: verifyCodeForExpr
+// removes it, leaving at most a trapping stub for a function that a constant
+// it emitted still refers to.) So the memo is compacted and the compiler
+// replaced on a schedule, as fuzz_parse_expr does, but by input count alone
+// rather than by the presence of a quote, since here any input can have grown
+// the compiler. The
 // replacement lands inside a timed input, which is why it is done after the
 // input has been timed rather than before, and why the first compiler is
 // built in LLVMFuzzerInitialize (see the parser harness for the AFL++
@@ -74,6 +95,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <exception>
 #include <memory>
@@ -149,12 +171,18 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   std::string src(reinterpret_cast<const char*>(data), size);
 
   const auto start = std::chrono::steady_clock::now();
+  std::string badIR;
   try {
     hobbes::cc& c = compiler();
-    c.unsweetenExpression(c.readExpr(src));
+    badIR = c.verifyCodeForExpr(c.readExpr(src));
   } catch (const std::exception&) {
     // rejecting source that does not parse or type check is the expected
     // behavior
+  }
+  if (!badIR.empty()) {
+    // the code generator wrote IR that LLVM would not accept: a compiler bug
+    std::fprintf(stderr, "invalid IR generated for this input:\n%s\n", badIR.c_str());
+    std::abort();
   }
   const std::chrono::duration<double> elapsed = std::chrono::steady_clock::now() - start;
 

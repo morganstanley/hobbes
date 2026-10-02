@@ -129,3 +129,31 @@ TEST(Codegen, TypeConversions) {
   EXPECT_EQ(c().compileFn<long()>("i2l(42)")(), 42L);
   EXPECT_TRUE(c().compileFn<bool()>("l2d(100L) > 99.9")());
 }
+
+// verifyCodeForExpr lowers to IR, checks it and takes it back out again, leaving
+// the compiler as it found it (it is what the type-checker fuzzer runs on every input)
+TEST(Codegen, VerifyCodeForExpr) {
+  cc vc;
+  const char* exprs[] = {
+    "i2l(42)",
+    "(\\x.x+1)(2)",
+    "[x*x | x <- [1..5]]",
+    "match 1 2 with | 1 y -> y | _ _ -> 0",
+    "{x=[1,2,3], y=\\().putStrLn(\"hello world\")}",
+    "let f = (\\x.if (x > 0) then x else 0) in f(3)",
+  };
+  for (const char* e : exprs) {
+    ExprPtr x = vc.readExpr(e);
+    vc.unsweetenExpression(x); // leave any residual definitions behind before counting
+    size_t before = vc.module()->size();
+    EXPECT_EQ(vc.verifyCodeForExpr(x), std::string());
+    // nothing left but a trapping stub for a function a constant still refers to
+    EXPECT_TRUE(vc.module()->size() <= before + 1);
+  }
+
+  // an expression that does not type check throws as it would from compileFn
+  EXPECT_EXCEPTION(vc.verifyCodeForExpr(vc.readExpr("1 + \"one\"")));
+
+  // and the compiler still works afterwards
+  EXPECT_EQ(vc.compileFn<int()>("let f = (\\x.if (x > 0) then x else 0) in f(3)")(), 3);
+}

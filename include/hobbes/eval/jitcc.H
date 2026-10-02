@@ -129,6 +129,12 @@ public:
   using bytes = std::vector<uint8_t>;
   bytes machineCodeForExpr(const ExprPtr&);
 
+  // lower an expression to LLVM IR and run LLVM's verifier over it, without
+  // producing machine code: everything the lowering added to the module is
+  // taken back out again, so this is only good for testing the compiler
+  // (returns the verifier's complaints, empty if the IR is well-formed)
+  std::string verifyCodeForExpr(const ExprPtr&);
+
   // inline all global definitions within an expression
   ExprPtr inlineGlobals(const ExprPtr&);
 

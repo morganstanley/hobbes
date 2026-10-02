@@ -614,6 +614,11 @@ cc::bytes cc::machineCodeForExpr(const std::string& expr) {
   return this->jit->machineCodeForExpr(unsweetenExpression(readExpr(expr)));
 }
 
+std::string cc::verifyCodeForExpr(const ExprPtr& e) {
+  hlock _;
+  return this->jit->verifyCodeForExpr(unsweetenExpression(e));
+}
+
 template <typename K, typename T>
   inline T lookup(const std::map<K, T>& tenv, const K& n) {
     typename std::map<K, T>::const_iterator t = tenv.find(n);

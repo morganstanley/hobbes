@@ -220,6 +220,12 @@ public:
   using bytes = std::vector<unsigned char>;
   bytes machineCodeForExpr(const std::string &expr);
 
+  // type check an expression, lower it to LLVM IR and verify that IR, but
+  // keep none of it and make no machine code for it (useful for testing the
+  // compiler: returns the verifier's complaints, empty if the IR is
+  // well-formed; an expression that fails to type check throws as usual)
+  std::string verifyCodeForExpr(const ExprPtr &e);
+
   // keep track of C++ classes so that we can perform upcasts where necessary
   template <typename T> void addObj() {
     hlock _;

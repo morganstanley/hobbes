@@ -12,11 +12,13 @@
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Value.h>
 #include <llvm/IR/ValueHandle.h>
+#include <llvm/IR/Verifier.h>
 #include <llvm/Support/Casting.h>
 #include <llvm/Support/Compiler.h>
 #include <llvm/Support/Error.h>
 #include <llvm/Target/TargetMachine.h>
 #include <stdexcept>
+#include <unordered_set>
 #include <utility>
 
 #pragma GCC diagnostic push
@@ -936,6 +938,68 @@ jitcc::bytes jitcc::machineCodeForExpr(const ExprPtr& e) {
   bytes           r  = bytes(reinterpret_cast<uint8_t*>(f), reinterpret_cast<uint8_t*>(f) + lenwatch.size());
 
   releaseMachineCode(f);
+  return r;
+}
+
+std::string jitcc::verifyCodeForExpr(const ExprPtr& e) {
+  // lowering one expression can add several functions (one per lambda, match
+  // and recursive binding in it), and only the new ones are to be checked and
+  // taken out; drained definitions waiting for their machine code share the
+  // module and have to stay
+  llvm::Module* m = module();
+  std::unordered_set<const llvm::Function*> before;
+  for (const auto& f : *m) {
+    before.insert(&f);
+  }
+
+  // a global initializer can make machine code mid-lowering, after which the
+  // module belongs to the JIT and is no longer ours to read or edit
+  const auto stillOurs = [this, m] {
+#if LLVM_VERSION_MAJOR >= 11
+    return this->currentModule.get() == m;
+#else
+    return this->currentModule == m;
+#endif
+  };
+
+  // on the way out whether or not lowering finished (a failure backs out the
+  // function it was writing, but not the ones it had finished inside it)
+  struct Discard {
+    jitcc*                                           c;
+    llvm::Module*                                    m;
+    const std::unordered_set<const llvm::Function*>& before;
+    const decltype(stillOurs)&                       stillOurs;
+    ~Discard() {
+      if (!stillOurs()) return;
+      std::vector<llvm::Function*> added;
+      for (auto& f : *m) {
+        if (before.count(&f) == 0) added.push_back(&f);
+      }
+      withContext([&](auto&) {
+        // drop the bodies first, since they may call each other
+        for (auto* f : added) {
+          f->deleteBody();
+          f->removeDeadConstantUsers();
+        }
+        for (auto* f : added) {
+          c->discardFunction(f);
+        }
+      });
+    }
+  } discard{this, m, before, stillOurs};
+
+  compileFunction(".verify" + freshName(), str::seq(), MonoTypes(), e);
+
+  std::string r;
+  if (stillOurs()) {
+    llvm::raw_string_ostream out(r);
+    for (const auto& f : *m) {
+      if (before.count(&f) == 0 && !f.isDeclaration()) {
+        llvm::verifyFunction(f, &out);
+      }
+    }
+    out.flush();
+  }
   return r;
 }
 
