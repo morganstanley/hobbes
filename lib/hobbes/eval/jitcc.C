@@ -952,23 +952,23 @@ std::string jitcc::verifyCodeForExpr(const ExprPtr& e) {
     before.insert(&f);
   }
 
-  // a global initializer can make machine code mid-lowering, after which the
-  // module belongs to the JIT and is no longer ours to read or edit
-  const auto stillOurs = [this, m] {
-#if LLVM_VERSION_MAJOR >= 11
-    return this->currentModule.get() == m;
-#else
-    return this->currentModule == m;
-#endif
-  };
-
   // on the way out whether or not lowering finished (a failure backs out the
   // function it was writing, but not the ones it had finished inside it)
   struct Discard {
     jitcc*                                           c;
     llvm::Module*                                    m;
     const std::unordered_set<const llvm::Function*>& before;
-    const decltype(stillOurs)&                       stillOurs;
+
+    // a global initializer can make machine code mid-lowering, after which
+    // the module belongs to the JIT and is no longer ours to read or edit
+    bool stillOurs() const {
+#if LLVM_VERSION_MAJOR >= 11
+      return c->currentModule.get() == m;
+#else
+      return c->currentModule == m;
+#endif
+    }
+
     ~Discard() {
       if (!stillOurs()) return;
       std::vector<llvm::Function*> added;
@@ -986,12 +986,12 @@ std::string jitcc::verifyCodeForExpr(const ExprPtr& e) {
         }
       });
     }
-  } discard{this, m, before, stillOurs};
+  } discard{this, m, before};
 
   compileFunction(".verify" + freshName(), str::seq(), MonoTypes(), e);
 
   std::string r;
-  if (stillOurs()) {
+  if (discard.stillOurs()) {
     llvm::raw_string_ostream out(r);
     for (const auto& f : *m) {
       if (before.count(&f) == 0 && !f.isDeclaration()) {
