@@ -191,6 +191,42 @@ Two environment notes it handles for you:
   (`__lsan_is_turned_off`), because not every engine that replays a testcase
   on OSS-Fuzz reads the `.options` file; see the comment there.
 
+## Comparing fuzzing coverage with test coverage
+
+`coverage.sh` measures which lines of hobbes a set of corpora reaches and
+compares that, line by line, with what `hobbes-test` reaches, using Clang's
+source-based coverage for both. It needs a build where the harnesses and the
+test binary link against the same instrumented library, so the harnesses are
+built as standalone replay runners (`FUZZ_STANDALONE`) instead of fuzzers:
+
+```bash
+COV="-fprofile-instr-generate -fcoverage-mapping"
+cmake -B build-cov -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+  -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang \
+  -DBUILD_FUZZERS=ON -DFUZZ_STANDALONE=ON \
+  -DCMAKE_CXX_FLAGS="$COV" -DCMAKE_C_FLAGS="$COV" -DCMAKE_EXE_LINKER_FLAGS="$COV"
+cmake --build build-cov
+fuzz/coverage.sh build-cov path/to/corpora
+```
+
+The corpora directory holds one directory per harness, named as under
+`corpus/` (`parse-expr`, `typecheck-expr`, ...). The checked-in `corpus/`
+holds only reproducers, so the useful input is a corpus a fuzzer has grown:
+point a libFuzzer build at a copy of the seeds for a while (see "Running a
+campaign") and pass that. The report, `build-cov/coverage-compare/report.md`,
+splits every instrumented line into covered by both, by the tests only, by
+the fuzzers only, or by neither, per directory and per file, and counts the
+lines each harness reaches that nothing else does; the lcov files next to it
+can go to `genhtml` for a browsable view.
+
+The two are measured the same way but answer different questions. Test
+coverage says which lines some test has run; fuzzing coverage says which
+lines arbitrary input can reach, which for a parser or a decoder is the
+attack surface that the harness actually exercises. A line both reach is
+not redundant: the fuzzer runs it with inputs no test thought of. The
+numbers differ from the CI coverage report, which uses gcov over a Debug
+build of the tests only and counts lines differently.
+
 ## Triaging findings
 
 A campaign produces far more artifacts than distinct bugs — one defect

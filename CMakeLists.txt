@@ -144,7 +144,12 @@ if(USE_ASAN_AND_UBSAN)
 endif()
 
 option(BUILD_FUZZERS "Build fuzzing harnesses (libFuzzer with Clang, standalone runners otherwise)" OFF)
-if(BUILD_FUZZERS AND CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+# standalone runners even where libFuzzer is available, with the rest of the
+# build left as it would be without the fuzzers: the harnesses then link
+# against the same libhobbes as hobbes-test, which is what measuring a
+# corpus's coverage beside the tests' needs (see fuzz/coverage.sh)
+option(FUZZ_STANDALONE "Build the fuzzing harnesses as standalone replay runners, without fuzzer instrumentation" OFF)
+if(BUILD_FUZZERS AND NOT FUZZ_STANDALONE AND CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
   # instrument everything (not just the harnesses) so the fuzzers see
   # coverage inside libhobbes; the fuzzer runtime itself only links into the
   # harness executables
