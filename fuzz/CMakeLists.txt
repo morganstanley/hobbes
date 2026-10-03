@@ -24,7 +24,7 @@ set(FUZZING_ENGINE_LIB "" CACHE STRING
 # of assuming, so that turning BUILD_FUZZERS on cannot break a build that only
 # wants the corpus replayed -- the standalone runner replays it just as well.
 include(CheckCXXSourceCompiles)
-if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND NOT FUZZ_STANDALONE)
   # append rather than replace, and put back whatever was there: a toolchain
   # file may have set flags the probe needs to compile at all (a sysroot, a
   # stdlib), and the rest of the configuration needs them after it
@@ -39,7 +39,11 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
   unset(saved_required_flags)
 endif()
 
-if(FUZZING_ENGINE_LIB)
+if(FUZZ_STANDALONE)
+  set(fuzz_driver standalone_main.C)
+  set(fuzz_flags "")
+  message(STATUS "fuzzers: building standalone replay runners (FUZZ_STANDALONE)")
+elseif(FUZZING_ENGINE_LIB)
   set(fuzz_driver "")
   set(fuzz_flags "")
   message(STATUS "fuzzers: linking against externally supplied engine ${FUZZING_ENGINE_LIB}")
@@ -60,7 +64,7 @@ function(add_fuzzer name)
     target_compile_options(${name} PRIVATE ${fuzz_flags})
     target_link_options(${name} PRIVATE ${fuzz_flags})
   endif()
-  if(FUZZING_ENGINE_LIB)
+  if(FUZZING_ENGINE_LIB AND NOT FUZZ_STANDALONE)
     # as a link library rather than a link option: the engine is often a static
     # archive, which only resolves symbols in objects that precede it
     target_link_libraries(${name} PRIVATE ${FUZZING_ENGINE_LIB})
