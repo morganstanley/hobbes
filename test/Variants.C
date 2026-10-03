@@ -273,3 +273,12 @@ newpen = unsafeCast(3S)::e347
   x.compileFn<void()>("newpen <- |e2|::e347")();
   EXPECT_TRUE(x.compileFn<bool()>("show(newpen) == \"|e2|\"")());
 }
+
+// a case whose payload type cannot be lowered (here a type variable the type
+// checker let through) must fail without closing a scope it never opened --
+// it used to pop its caller's, leaving the compiler's scope stack empty
+TEST(Variants, CaseUnlowerablePayloadKeepsScopes) {
+  cc vc;
+  EXPECT_EXCEPTION(vc.compileFn<int()>("(\\v.(case v of |0:x=x| default -1))(|0=42|::int+int+in4)"));
+  EXPECT_EQ(vc.compileFn<int()>("let f = (\\x.x+1) in f(41)")(), 42);
+}

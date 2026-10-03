@@ -419,11 +419,13 @@ public:
         llvm::BasicBlock* caseBlock = llvm::BasicBlock::Create(c, "case_" + str::from(caseID), thisFn);
 
         builder()->SetInsertPoint(caseBlock);
+        bool scoped = false; // the payload's type can fail to lower before its scope opens
         try {
           MonoTypePtr valty = vty->payload(b.selector);
 
           if (isUnit(valty)) {
             beginScope(b.vname, cvalue(true)); // this is unit, so should never be looked at
+            scoped = true;
           } else {
             // otherwise the data here is available inline
             // (and functions are stored as pointers)
@@ -440,6 +442,7 @@ public:
 #endif
 
             beginScope(b.vname, val);
+            scoped = true;
           }
 
           llvm::Value* caseValue = switchOf(b.exp, compileExpF("", this->c));
@@ -447,7 +450,7 @@ public:
           builder()->CreateBr(mergeBlock);
           endScope();
         } catch (...) {
-          endScope();
+          if (scoped) endScope();
           throw;
         }
 

@@ -9,7 +9,7 @@ harness here:
 | `fuzz-type-decode`   | binary type descriptions (`hobbes::decode`, used by the RPC layer on peer-supplied bytes) |
 | `fuzz-fregion-reader`| structured data file images (`hobbes::fregion::reader`: header, page table, environment records) |
 | `fuzz-parse-expr`    | source text through the lexer/LALR parser (`cc::readExpr`; parse only, nothing is evaluated) |
-| `fuzz-typecheck-expr`| source text on through type inference, constraint resolution and match compilation (`cc::unsweetenExpression`; still nothing is evaluated) |
+| `fuzz-typecheck-expr`| source text on through type inference, constraint resolution, match compilation and lowering to LLVM IR (`cc::verifyCodeForExpr`; nothing is evaluated, and no machine code is made) |
 | `fuzz-hog-session`   | `hog`'s live transaction stream (`storage::Transaction`, read by the JIT-compiled `HStoreRead` instances in `bin/hog/boot/read.hob`) |
 
 For all of them, throwing an exception on malformed input is the expected
@@ -17,8 +17,8 @@ behavior; the harnesses catch those. What fuzzing hunts for is memory
 unsafety — out-of-bounds access, overflow-driven size math — which is why
 these should run under sanitizers.
 
-The type checker is a different kind of target from the other four. The
-security model treats type-checking source as carrying the same trust as
+The type checker and code generator are a different kind of target from the
+other four. The security model treats type-checking source as carrying the same trust as
 running it, because some type-class constraints have side effects; so a
 crash there is a robustness bug in the compiler rather than a vulnerability,
 and belongs in an ordinary issue. Evaluating an expression is not fuzzed at
@@ -108,6 +108,19 @@ Notes per harness:
   ./fuzz/extract-seeds.py corpus/typecheck-expr test/*.C
   ./build-fuzz/fuzz/fuzz-typecheck-expr -dict=fuzz/parse-expr.dict -timeout=60 -report_slow_units=5 corpus/typecheck-expr
   ```
+
+  Past the type checker, the harness lowers each input to LLVM IR and runs
+  LLVM's verifier over it, then throws the IR away rather than handing it to
+  the JIT. The verifier is the oracle: IR it rejects is reported as a crash,
+  since a release build of LLVM does not check what it is given and may
+  crash or miscompile on it. Optimizing and making machine code are left
+  out because they are LLVM's code rather than hobbes's, and on an
+  expression that type checks they cost more than type checking does
+  (about 3ms against 2ms on the test suite's expressions, unsanitized),
+  where lowering costs about 0.04ms. Most of what a fuzzer generates is
+  rejected before it gets that far -- about a quarter of a grown corpus
+  type checks -- so in a campaign the back end is a smaller share than
+  that, but it is a share spent on code this project does not own.
 
   Type checking is not linear in the input the way parsing is, and a fuzzer
   chasing coverage finds the expensive corners (large matches, regexes that
