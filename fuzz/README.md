@@ -45,6 +45,58 @@ cmake -B build-fuzz -DCMAKE_BUILD_TYPE=Debug -DBUILD_FUZZERS=ON -DUSE_ASAN_AND_U
 cmake --build build-fuzz -j --target fuzz-type-decode fuzz-fregion-reader fuzz-parse-expr fuzz-typecheck-expr
 ```
 
+### Sanitizers on macOS: use Clang 22
+
+On macOS, build the fuzzers with Homebrew's `llvm@22`. Older Homebrew Clangs
+have two problems there that it does not. With `llvm@18`, an ASan binary
+hangs before `main` on macOS 26, inside the ASan runtime's initialization.
+And a UBSan build from Clang 17 or 18 aborts while the first `hobbes::cc` is
+being constructed:
+
+```
+include/hobbes/reflect.H:566:7: runtime error: call to function hobbes::variantAppInit<0ul, void, hobbes::variantPayloadDtor, void, hobbes::tuple<>, hobbes::unit, bool>::thunk(void*) through pointer to incorrect function type 'void (*)(void *)'
+```
+
+That report is false; the function and the pointer have the same type. The
+`function` check, which `undefined` includes, works by having Clang put a
+magic word and a hash of the function's type in the eight bytes in front of
+every function, and having each indirect call compare the hash with the
+pointer's type. On Mach-O, Clang 18 writes those eight bytes before the
+function's symbol with no symbol of their own, so the linker, which splits
+sections into atoms at symbols, counts them as the tail of the *preceding*
+function. When that preceding function is a template instantiation whose copy
+from another object file is the one kept, it is dropped with the callee's
+header inside it, and the callee ends up behind some other function's header
+-- valid magic, somebody else's hash. Whether a given call trips depends only
+on link order. Clang 22 labels the header so that it stays with its own
+function; ELF has no such problem, so Linux builds, OSS-Fuzz's and
+ClusterFuzzLite's UBSan jobs among them, are unaffected.
+
+```bash
+brew install llvm@22
+LLVM=$(brew --prefix llvm@22)
+cmake -B build-fuzz -DCMAKE_BUILD_TYPE=Debug -DBUILD_FUZZERS=ON -DUSE_ASAN_AND_UBSAN=ON \
+  -DCMAKE_C_COMPILER=$LLVM/bin/clang -DCMAKE_CXX_COMPILER=$LLVM/bin/clang++ \
+  -DCMAKE_PREFIX_PATH=$LLVM -DLLVM_DIR=$LLVM/lib/cmake/llvm
+```
+
+Install the versioned `llvm@22` formula rather than relying on `llvm`, which
+moves to each new major release; a major that `include/hobbes/util/llvm.H`
+does not list yet fails the build.
+
+If you are stuck on Clang 17 or 18, use UBSan alone and turn that one check
+off; every other UBSan check stays on, and function-type mismatches are
+still caught on Linux:
+
+```bash
+UB="-fno-omit-frame-pointer -fsanitize=undefined,signed-integer-overflow,shift,integer-divide-by-zero -fno-sanitize=function -fno-sanitize-recover=all"
+cmake -B build-fuzz -DCMAKE_BUILD_TYPE=Debug -DBUILD_FUZZERS=ON \
+  -DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm@18/bin/clang \
+  -DCMAKE_CXX_COMPILER=/opt/homebrew/opt/llvm@18/bin/clang++ \
+  -DCMAKE_PREFIX_PATH=/opt/homebrew/opt/llvm@18 \
+  -DCMAKE_CXX_FLAGS="$UB" -DCMAKE_EXE_LINKER_FLAGS="$UB"
+```
+
 ## Replaying the corpus
 
 `BUILD_FUZZERS=ON` also registers a ctest test per harness that replays every
