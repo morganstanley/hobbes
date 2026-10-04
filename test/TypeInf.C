@@ -12,6 +12,7 @@
 #include <functional>
 #include <atomic>
 #include <thread>
+#include <pthread.h>
 
 using namespace hobbes;
 
@@ -729,6 +730,78 @@ TEST(TypeInf, DecodeRejectsDeeplyNestedDescriptions) {
   std::vector<unsigned char> nenc;
   encode(nested, &nenc);
   EXPECT_TRUE(show(decode(nenc)) == show(nested));
+}
+
+// The nesting bound is only a defense if a description at the bound fits on
+// the stack, and so it is the stack cost of each level that this checks. A
+// quoted expression inside a type (TExpr) is decoded by the expression decoder,
+// whose per-kind functions an optimizing build used to inline back into one
+// recursing frame of 3.6KB under the OSS-Fuzz build, which ran ClusterFuzz's
+// stack out short of the bound (OSS-Fuzz issue 569129860). Here a
+// description as deep as the bound allows, nesting the node kinds that
+// reproducer did, is decoded on a thread with a 2MB stack: room for two
+// thousand levels of small frames, not of large ones. An unfixed build,
+// sanitized and optimized as OSS-Fuzz builds it, overflows here rather than
+// failing the test.
+//
+// AddressSanitizer pads every frame with redzones, so a sanitized build gets
+// twice that. Unoptimized and sanitized, the decoder takes about 1KB a level;
+// the regression this catches took 3.6KB a level under the OSS-Fuzz build.
+#if defined(__SANITIZE_ADDRESS__)
+#define HOBBES_TEST_ASAN 1
+#elif defined(__has_feature)
+#if __has_feature(address_sanitizer)
+#define HOBBES_TEST_ASAN 1
+#endif
+#endif
+#if defined(HOBBES_TEST_ASAN)
+static const size_t decodeTestStackSize = 4 * 1024 * 1024;
+#else
+static const size_t decodeTestStackSize = 2 * 1024 * 1024;
+#endif
+
+TEST(TypeInf, DecodeAtTheNestingBoundFitsOnASmallStack) {
+  auto la = LexicalAnnotation::null();
+  ExprPtr deep(new Unit(la));
+  // one level is taken by the TExpr type that carries the expression
+  for (size_t i = 0; i + 2 < maxDecodeNesting; ++i) {
+    switch (i % 3) {
+    case 0:  deep = ExprPtr(new App(deep, list(ExprPtr(new Unit(la))), la)); break;
+    case 1:  deep = ExprPtr(new AIndex(deep, ExprPtr(new Unit(la)), la)); break;
+    default: deep = ExprPtr(new Proj(deep, "f", la)); break;
+    }
+  }
+  std::vector<unsigned char> enc;
+  encode(texpr(deep), &enc);
+  releaseNesting(deep);
+
+  struct Run {
+    const std::vector<unsigned char>* enc;
+    MonoTypePtr                       result;
+    std::string                       error;
+  } run{&enc, MonoTypePtr(), ""};
+
+  pthread_attr_t attr;
+  pthread_attr_init(&attr);
+  pthread_attr_setstacksize(&attr, decodeTestStackSize);
+  auto body = [](void* p) -> void* {
+    auto* r = static_cast<Run*>(p);
+    try {
+      // the decoded type is handed back rather than dropped here, so that
+      // releasing it -- which also recurses per level -- is not what is measured
+      r->result = decode(*r->enc);
+    } catch (const std::exception& ex) {
+      r->error = ex.what();
+    }
+    return nullptr;
+  };
+  pthread_t t;
+  EXPECT_EQ(pthread_create(&t, &attr, body, &run), 0);
+  pthread_join(t, nullptr);
+  pthread_attr_destroy(&attr);
+
+  EXPECT_EQ(run.error, std::string());
+  EXPECT_TRUE(embedsExpression(run.result));
 }
 
 // Instance resolution recurses through instance generators, and the memos that

@@ -1976,26 +1976,35 @@ void encode(const ExprPtr& e, std::ostream& out) {
 // reached (TypeInf.DecodeRejectsDeeplyNestedDescriptions, under the
 // sanitizer builds). So each kind is decoded by a function of its own, and
 // the frame that recurs holds only that kind's locals.
+//
+// Each of those functions is marked noinline, because splitting them out is
+// not enough by itself: each has one caller, so an optimizing build inlines
+// all of them back into decodeExprNode, and that into decode, which brings
+// back the one large frame. Under the OSS-Fuzz build (-O1 with
+// AddressSanitizer) that frame was 3.6KB, so the 2000 levels the bound allows
+// needed about 7MB of stack: a 4MB stack ran out at about 1300 levels, and
+// ClusterFuzz's ran out short of the bound too (OSS-Fuzz issue 569129860,
+// fuzz/corpus/type-decode/ossfuzz_569129860_deep_expr.bin).
 namespace {
 
-ExprPtr decodeUnit(std::istream&) {
+[[gnu::noinline]] ExprPtr decodeUnit(std::istream&) {
   return ExprPtr(new Unit(LexicalAnnotation::null()));
 }
 
 template <typename Node, typename T>
-  ExprPtr decodePrim(std::istream& in) {
+  [[gnu::noinline]] ExprPtr decodePrim(std::istream& in) {
     T x = T();
     decode(&x, in);
     return ExprPtr(new Node(x, LexicalAnnotation::null()));
   }
 
-ExprPtr decodeVar(std::istream& in) {
+[[gnu::noinline]] ExprPtr decodeVar(std::istream& in) {
   std::string x;
   decode(&x, in);
   return ExprPtr(new Var(x, LexicalAnnotation::null()));
 }
 
-ExprPtr decodeLet(std::istream& in) {
+[[gnu::noinline]] ExprPtr decodeLet(std::istream& in) {
   std::string vn;
   ExprPtr     ve;
   ExprPtr     be;
@@ -2007,7 +2016,7 @@ ExprPtr decodeLet(std::istream& in) {
   return ExprPtr(new Let(vn, ve, be, LexicalAnnotation::null()));
 }
 
-ExprPtr decodeLetRec(std::istream& in) {
+[[gnu::noinline]] ExprPtr decodeLetRec(std::istream& in) {
   LetRec::Bindings bs;
   ExprPtr          e;
 
@@ -2017,7 +2026,7 @@ ExprPtr decodeLetRec(std::istream& in) {
   return ExprPtr(new LetRec(bs, e, LexicalAnnotation::null()));
 }
 
-ExprPtr decodeFn(std::istream& in) {
+[[gnu::noinline]] ExprPtr decodeFn(std::istream& in) {
   Fn::VarNames args;
   ExprPtr      b;
 
@@ -2027,7 +2036,7 @@ ExprPtr decodeFn(std::istream& in) {
   return ExprPtr(new Fn(args, b, LexicalAnnotation::null()));
 }
 
-ExprPtr decodeApp(std::istream& in) {
+[[gnu::noinline]] ExprPtr decodeApp(std::istream& in) {
   ExprPtr f;
   Exprs   args;
 
@@ -2037,7 +2046,7 @@ ExprPtr decodeApp(std::istream& in) {
   return ExprPtr(new App(f, args, LexicalAnnotation::null()));
 }
 
-ExprPtr decodeAssign(std::istream& in) {
+[[gnu::noinline]] ExprPtr decodeAssign(std::istream& in) {
   ExprPtr le;
   ExprPtr re;
 
@@ -2047,13 +2056,13 @@ ExprPtr decodeAssign(std::istream& in) {
   return ExprPtr(new Assign(le, re, LexicalAnnotation::null()));
 }
 
-ExprPtr decodeMkArray(std::istream& in) {
+[[gnu::noinline]] ExprPtr decodeMkArray(std::istream& in) {
   Exprs es;
   decode(&es, in);
   return ExprPtr(new MkArray(es, LexicalAnnotation::null()));
 }
 
-ExprPtr decodeMkVariant(std::istream& in) {
+[[gnu::noinline]] ExprPtr decodeMkVariant(std::istream& in) {
   std::string lbl;
   ExprPtr     v;
 
@@ -2063,13 +2072,13 @@ ExprPtr decodeMkVariant(std::istream& in) {
   return ExprPtr(new MkVariant(lbl, v, LexicalAnnotation::null()));
 }
 
-ExprPtr decodeMkRecord(std::istream& in) {
+[[gnu::noinline]] ExprPtr decodeMkRecord(std::istream& in) {
   MkRecord::FieldDefs fs;
   decode(&fs, in);
   return ExprPtr(new MkRecord(fs, LexicalAnnotation::null()));
 }
 
-ExprPtr decodeAIndex(std::istream& in) {
+[[gnu::noinline]] ExprPtr decodeAIndex(std::istream& in) {
   ExprPtr a;
   ExprPtr i;
 
@@ -2082,7 +2091,7 @@ ExprPtr decodeAIndex(std::istream& in) {
 // Case and Switch are encoded alike: the scrutinee, the bindings, then a
 // flag saying whether a default expression follows
 template <typename Node>
-  ExprPtr decodeCaseLike(std::istream& in) {
+  [[gnu::noinline]] ExprPtr decodeCaseLike(std::istream& in) {
     ExprPtr v;
     typename Node::Bindings bs;
 
@@ -2100,7 +2109,7 @@ template <typename Node>
     }
   }
 
-ExprPtr decodeProj(std::istream& in) {
+[[gnu::noinline]] ExprPtr decodeProj(std::istream& in) {
   ExprPtr     r;
   std::string f;
 
@@ -2110,7 +2119,7 @@ ExprPtr decodeProj(std::istream& in) {
   return ExprPtr(new Proj(r, f, LexicalAnnotation::null()));
 }
 
-ExprPtr decodeAssump(std::istream& in) {
+[[gnu::noinline]] ExprPtr decodeAssump(std::istream& in) {
   ExprPtr     e;
   QualTypePtr t;
 
@@ -2120,13 +2129,13 @@ ExprPtr decodeAssump(std::istream& in) {
   return ExprPtr(new Assump(e, t, LexicalAnnotation::null()));
 }
 
-ExprPtr decodePack(std::istream& in) {
+[[gnu::noinline]] ExprPtr decodePack(std::istream& in) {
   ExprPtr e;
   decode(&e, in);
   return ExprPtr(new Pack(e, LexicalAnnotation::null()));
 }
 
-ExprPtr decodeUnpack(std::istream& in) {
+[[gnu::noinline]] ExprPtr decodeUnpack(std::istream& in) {
   std::string vn;
   ExprPtr     p;
   ExprPtr     e;
