@@ -20,6 +20,58 @@ The build produces:
 
 Set `LLVM_DIR` if CMake cannot find LLVM's `LLVMConfig.cmake`.
 
+### Setting up a fresh machine
+
+Hobbes is usually built on Ubuntu 24.04 or macOS (Apple Silicon). A cloud
+agent container (such as Claude Code on the web) is Ubuntu 24.04. It ships
+`clang`, `cmake` and the LLVM 18 runtime but not the LLVM development files,
+so CMake stops with "Could not find a package configuration file provided by
+LLVM" until you install them:
+
+```bash
+# Ubuntu 24.04 (cloud containers run as root; prefix with sudo elsewhere)
+apt-get update
+apt-get install -y cmake clang llvm-18-dev zlib1g-dev libreadline-dev libncurses-dev libzstd-dev
+# also needed for ASan/UBSan and libFuzzer builds (USE_ASAN_AND_UBSAN, BUILD_FUZZERS)
+apt-get install -y libclang-rt-18-dev
+
+cmake -B build -DCMAKE_BUILD_TYPE=Debug -DLLVM_DIR=/usr/lib/llvm-18/lib/cmake/llvm
+cmake --build build -j$(nproc) --target hobbes-test hi mock-proc
+./build/hobbes-test
+```
+
+```bash
+# macOS (Homebrew)
+brew install cmake llvm@18 readline zstd
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DLLVM_DIR="$(brew --prefix llvm@18)/lib/cmake/llvm"
+cmake --build build -j$(sysctl -n hw.ncpu)
+```
+
+A Debug build of `hobbes-test` takes a few minutes on 4 cores. The `PREPL`,
+`Process` and `Spawn` test groups launch `hi` and `mock-proc` from the build
+directory and fail with "Unable to launch process" if those targets were not
+built. Keep build directories outside the source tree or under `build*/`
+(git ignores those).
+
+To reproduce an OSS-Fuzz crash, build the harness with the flags OSS-Fuzz
+uses (an `-O1` ASan build; a `Debug` build has different stack frames and may
+not reproduce stack overflows) and run it on the testcase:
+
+```bash
+F="-O1 -fno-omit-frame-pointer -gline-tables-only -fsanitize=address -fsanitize-address-use-after-scope -fsanitize=fuzzer-no-link"
+echo 'add_compile_options(-Wno-error)' > /tmp/overrides.cmake
+CC=clang CXX=clang++ cmake -B build-fuzz -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_C_FLAGS="$F" -DCMAKE_CXX_FLAGS="$F" -DCMAKE_PROJECT_hobbes_INCLUDE=/tmp/overrides.cmake \
+  -DLLVM_DIR=/usr/lib/llvm-18/lib/cmake/llvm -DBUILD_FUZZERS=ON -DFUZZING_ENGINE_LIB=-fsanitize=fuzzer
+cmake --build build-fuzz -j$(nproc) --target fuzz-type-decode
+ASAN_OPTIONS=detect_container_overflow=0:detect_stack_use_after_return=1 \
+  ./build-fuzz/fuzz/fuzz-type-decode <testcase>
+```
+
+ClusterFuzz may have less stack headroom than your shell. If a reported stack
+overflow does not reproduce, retry with a smaller stack (`ulimit -s 4096`)
+before deciding the report is spurious. See `fuzz/README.md` for more.
+
 ## Testing
 
 Custom framework in `test/test.H`. Tests use the `TEST(Group, Name)` macro and assertions like `EXPECT_EQ`, `EXPECT_TRUE`, `EXPECT_ALMOST_EQ`, `EXPECT_EXCEPTION`.
