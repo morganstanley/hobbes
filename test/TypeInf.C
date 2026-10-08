@@ -1031,9 +1031,34 @@ TEST(TypeInf, LayoutOfATypeThatUnfoldsWithoutEndIsRefused) {
   auto growing = tapp(grow, list(grow, primty("int")));
   EXPECT_EXCEPTION(Record::make(list(Record::Member("f", growing))));
 
+  // \x.{f:(..((x x) int)..) int} -- reaching 'x x' at the head of a spine of
+  // applications takes a reduction call per application, and those calls are
+  // still live while the record 'x x' reduces to is laid out. Each unfolding is
+  // well within the step budget of the reduction that starts it, so the
+  // reductions nested across unfoldings have to be bounded together.
+  auto spine = [](MonoTypePtr t, const MonoTypePtr& arg, size_t n) {
+    for (size_t i = 0; i < n; ++i) {
+      t = tapp(t, list(arg));
+    }
+    return t;
+  };
+  auto spineRecord = omega(tabs(str::strings("x"), Record::make(list(Record::Member("f", spine(tapp(x, list(x)), primty("int"), 900))))));
+  EXPECT_EXCEPTION(Record::make(list(Record::Member("f", spineRecord))));
+
+  // \x.[..[{f:x x}]..] -- the same for the substitution that builds the record
+  // 'x x' reduces to, which is under way while that record is laid out
+  auto buried = [](MonoTypePtr t, size_t n) {
+    for (size_t i = 0; i < n; ++i) {
+      t = arrayty(t);
+    }
+    return t;
+  };
+  auto buriedRecord = omega(tabs(str::strings("x"), buried(Record::make(list(Record::Member("f", tapp(x, list(x))))), 900)));
+  EXPECT_EXCEPTION(Record::make(list(Record::Member("f", buriedRecord))));
+
   // and as an encoded type description, a record holding such a type is
   // rejected by the decoder rather than crashing it
-  for (const auto& ty : list(selfArray, selfRecord, growing)) {
+  for (const auto& ty : list(selfArray, selfRecord, growing, spineRecord, buriedRecord)) {
     bytes enc;
     auto put = [&](const void* p, size_t n) {
       const auto* b = static_cast<const unsigned char*>(p);
@@ -1055,6 +1080,12 @@ TEST(TypeInf, LayoutOfATypeThatUnfoldsWithoutEndIsRefused) {
   // a type-level application with a finite layout is laid out as before
   auto pair = primty("pair", tabs(str::strings("x", "y"), Record::make(list(Record::Member("a", x), Record::Member("b", y)))));
   EXPECT_EQ(sizeOf(Record::make(list(Record::Member("f", tapp(pair, list(primty("char"), primty("long"))))))), 16U);
+
+  // and long spines of applications, and deep terms, still reduce
+  auto idf = primty("idf", tabs(str::strings("x"), x));
+  EXPECT_TRUE(*repType(tapp(spine(idf, idf, 300), list(primty("long")))) == *primty("long"));
+  auto deep = buried(primty("long"), 1500);
+  EXPECT_TRUE(*repType(tapp(idf, list(deep))) == *deep);
 }
 
 // The type memo is process-wide, and compacting it frees every type that only
