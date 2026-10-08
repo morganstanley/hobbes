@@ -1000,6 +1000,63 @@ TEST(TypeInf, ADecodedFixedArrayLengthCannotBeNegative) {
   EXPECT_TRUE(*hobbes::decode(ok) == *t);
 }
 
+// '(\x.x x) w' reduces to 'w w', and with 'w = \x.[x x : n]' that is an array of
+// 'w w' again: every reduction finishes, but the layout of the result holds the
+// application it came from. Laying out such a type (as constructing a record
+// that holds one inline does) has to be refused, not unfolded until the stack
+// runs out. OSS-Fuzz issues 570955317 and 570957169 decode exactly this shape.
+TEST(TypeInf, LayoutOfATypeThatUnfoldsWithoutEndIsRefused) {
+  auto x     = tvar("x");
+  auto omega = [&](const MonoTypePtr& w) { return tapp(tabs(str::strings("x"), tapp(x, list(x))), list(w)); };
+
+  // \x.[x x : 1] -- the application is an array of itself
+  auto selfArray = omega(tabs(str::strings("x"), FixedArray::make(tapp(x, list(x)), tlong(1))));
+  EXPECT_EXCEPTION(alignment(selfArray));
+  EXPECT_EXCEPTION(Record::make(list(Record::Member("f", selfArray))));
+  EXPECT_EXCEPTION(sizeOf(Variant::make(list(Variant::Member("f", selfArray, 0)))));
+
+  // the same through a named type function, whose size can be asked for directly
+  auto w = primty("w", tabs(str::strings("x"), FixedArray::make(tapp(x, list(x)), tlong(1))));
+  EXPECT_EXCEPTION(sizeOf(tapp(w, list(w))));
+
+  // \x.{f:x x} -- the application is a record of itself
+  auto selfRecord = omega(tabs(str::strings("x"), Record::make(list(Record::Member("f", tapp(x, list(x)))))));
+  EXPECT_EXCEPTION(Record::make(list(Record::Member("f", selfRecord))));
+
+  // \x y.{f:x x {g:y}} -- the application grows by a level with each unfolding,
+  // so no type in it repeats
+  auto y       = tvar("y");
+  auto grow    = tabs(str::strings("x", "y"),
+                      Record::make(list(Record::Member("f", tapp(x, list(x, Record::make(list(Record::Member("g", y)))))))));
+  auto growing = tapp(grow, list(grow, primty("int")));
+  EXPECT_EXCEPTION(Record::make(list(Record::Member("f", growing))));
+
+  // and as an encoded type description, a record holding such a type is
+  // rejected by the decoder rather than crashing it
+  for (const auto& ty : list(selfArray, selfRecord, growing)) {
+    bytes enc;
+    auto put = [&](const void* p, size_t n) {
+      const auto* b = static_cast<const unsigned char*>(p);
+      enc.insert(enc.end(), b, b + n);
+    };
+    const int          tcode  = Record::type_case_id;
+    const size_t       nmems  = 1;
+    const size_t       namesz = 1;
+    const unsigned int offset = static_cast<unsigned int>(-1); // 'determine this offset'
+    put(&tcode,  sizeof(tcode));
+    put(&nmems,  sizeof(nmems));
+    put(&namesz, sizeof(namesz));
+    put("f", 1);
+    put(&offset, sizeof(offset));
+    encode(ty, &enc);
+    EXPECT_EXCEPTION(decode(enc));
+  }
+
+  // a type-level application with a finite layout is laid out as before
+  auto pair = primty("pair", tabs(str::strings("x", "y"), Record::make(list(Record::Member("a", x), Record::Member("b", y)))));
+  EXPECT_EQ(sizeOf(Record::make(list(Record::Member("f", tapp(pair, list(primty("char"), primty("long"))))))), 16U);
+}
+
 // The type memo is process-wide, and compacting it frees every type that only
 // the memo still holds. Type inference holds plain pointers and references
 // into types it has not (yet) taken a reference to, so a compaction from

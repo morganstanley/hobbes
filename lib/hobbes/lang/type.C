@@ -510,8 +510,46 @@ bool isFileRef(const MonoTypePtr& mt) {
   return false;
 }
 
+// laying out a type recurs into the types it holds inline, and those are reduced
+// (repType) only as they are reached. Each reduction is bounded, but a type-level
+// application can reduce to a type that holds the application again -- the
+// type-level reading of '(\x.[x x]) (\x.[x x])' is an array of itself -- so its
+// layout unfolds without end, one bounded reduction per level, until the stack
+// runs out. Type descriptions are read from files and from network peers, so the
+// depth of a layout is bounded and such a type rejected.
+//
+// A type built bottom-up has its components laid out (and memoized) before it is
+// itself laid out, so ordinary layouts nest only a few levels deep at a time (no
+// more than 4 across the test suite); the bound is far above that, and low enough
+// that each level's frames -- a reduction, and the construction of the record it
+// substitutes into -- fit a 1MB stack even under ASan.
+static const unsigned int maxLayoutNesting = 200;
+
+static thread_local unsigned int layoutNestingDepth = 0;
+
+namespace {
+class layoutNesting {
+public:
+  explicit layoutNesting(const MonoTypePtr& ty) {
+    if (layoutNestingDepth >= maxLayoutNesting) {
+      throw std::runtime_error(
+        "Type layout nests more than " + str::from(maxLayoutNesting) + " levels deep "
+        "(a type-level application that unfolds without end?): " + show(ty)
+      );
+    }
+    ++layoutNestingDepth;
+  }
+  ~layoutNesting() { --layoutNestingDepth; }
+
+  layoutNesting(const layoutNesting&) = delete;
+  layoutNesting& operator=(const layoutNesting&) = delete;
+};
+}
+
 // memory alignment for monotypes -- this may need to be looked at more closely and factored out of this module
 static unsigned int computeAlignment(const MonoTypePtr& pty) {
+  layoutNesting nesting(pty);
+
   MonoTypePtr ty = repType(pty);
 
   if (is<Prim>(ty) != nullptr) {
@@ -2405,6 +2443,7 @@ private:
 
   unsigned int r(const MonoTypePtr& t) const {
     if (t->memorySize == static_cast<unsigned int>(-1)) {
+      layoutNesting nesting(t);
       t->memorySize = switchOf(t, *this);
     }
     return t->memorySize;
@@ -2427,6 +2466,7 @@ private:
 
 unsigned int sizeOf(const MonoTypePtr& mt) {
   if (mt->memorySize == static_cast<unsigned int>(-1)) {
+    layoutNesting nesting(mt);
     mt->memorySize = switchOf(mt, sizeOfF());
   }
   return mt->memorySize;
