@@ -600,13 +600,23 @@ public:
 // identity transform, with (unsafe) bit cast
 class castexp : public op {
 public:
-  llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr& rty, const Exprs& es) override {
+  llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) override {
     llvm::Value* r = c->compile(es[0]);
     if (isUnit(rty)) {
       return cvalue(true);
+    } else if (isUnit(tys[0])) {
+      // unit carries no bits to reinterpret (unsafeCast(())::t names a 't' only for its type),
+      // so make a zero 't' rather than bitcast the unit placeholder to it
+      return withContext([&](auto&) {
+        return llvm::Constant::getNullValue(toLLVM(rty, true));
+      });
     } else {
       return withContext([&](auto&) {
-        return c->builder()->CreateBitCast(r, toLLVM(rty, true));
+        llvm::Type* ty = toLLVM(rty, true);
+        if (!llvm::CastInst::castIsValid(llvm::Instruction::BitCast, r, ty)) {
+          throw annotated_error(*es[0], "Cannot cast " + show(tys[0]) + " to " + show(rty) + ", their representations differ");
+        }
+        return c->builder()->CreateBitCast(r, ty);
       });
     }
   }

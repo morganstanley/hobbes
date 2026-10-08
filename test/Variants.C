@@ -282,3 +282,13 @@ TEST(Variants, CaseUnlowerablePayloadKeepsScopes) {
   EXPECT_EXCEPTION(vc.compileFn<int()>("(\\v.(case v of |0:x=x| default -1))(|0=42|::int+int+in4)"));
   EXPECT_EQ(vc.compileFn<int()>("let f = (\\x.x+1) in f(41)")(), 42);
 }
+
+TEST(Variants, UnsafeCastUnitToVariant) {
+  cc vc;
+  // unit is i1 and a variant is a pointer, which LLVM cannot bitcast between
+  EXPECT_EQ(vc.verifyCodeForExpr(vc.readExpr("unsafeCast()::(|t|)")), std::string());
+  EXPECT_EQ(vc.verifyCodeForExpr(vc.readExpr("unsafeCast(())::|a:int,b:bool|")), std::string());
+  // the prelude's variant reader names a variant type this way
+  EXPECT_EQ(vc.verifyCodeForExpr(vc.readExpr("variantHeadLabel(unsafeCast(())::|a:int,b:bool|)")), std::string());
+  EXPECT_TRUE(vc.compileFn<bool()>("variantHeadLabel(unsafeCast(())::|a:int,b:bool|) == \"a\"")());
+}
