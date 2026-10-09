@@ -118,6 +118,16 @@ public:
     this->allocsz = this->pagesz * std::max<size_t>(initPages, 1);
     this->mem     = allocateBuffer(this->allocsz);
     this->sz      = 0;
+
+    // Code starts codeOffset bytes in, not at the start of the page. A caller
+    // compiled with Clang's -fsanitize=function (part of -fsanitize=undefined
+    // on x86-64) reads the 8 bytes before every indirect-call target, looking
+    // for the type signature Clang puts ahead of the functions it compiles.
+    // At the start of a fresh mapping those bytes are in the previous page,
+    // which may not be mapped, so the call faults before reaching our code.
+    // Here they are int3, which is never mistaken for the signature, so the
+    // check finds none and lets the call through.
+    std::memset(allocate(codeOffset), 0xCC, codeOffset);
   }
   ~buffer() {
     releaseBuffer(this->mem, this->allocsz);
@@ -201,8 +211,12 @@ public:
 
     __builtin___clear_cache(reinterpret_cast<char*>(this->mem), reinterpret_cast<char*>(this->mem + this->allocsz));
 
-    return reinterpret_cast<ThunkF>(this->mem);
+    return reinterpret_cast<ThunkF>(this->mem + codeOffset);
   }
+
+  // how far into the buffer the code starts (see the constructor); kept at 16 so
+  // the entry point stays as aligned as the page
+  static constexpr size_t codeOffset = 16;
 private:
   size_t pagesz;       // how large is a system page? (probably 4K)
   size_t sz, allocsz;  // how many bytes have we written, allocated?

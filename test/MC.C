@@ -133,6 +133,24 @@ TEST(MC, BasicIntFn) {
   EXPECT_EQ(f(21), 42);
 }
 
+TEST(MC, EntryHasMappedBytesBeforeIt) {
+  // -fsanitize=function reads the 8 bytes before an indirect-call target, so
+  // they must be inside the buffer rather than in whatever page precedes it,
+  // and must not look like the type signature that check is looking for
+  mc::buffer b;
+  mc::encode(&b, { mc::MInst::make("ret") });
+  const auto* entry = reinterpret_cast<const uint8_t*>(b.finalize());
+  EXPECT_TRUE(entry - b.base() >= 8);
+
+  bool allTrap = true;
+  for (const uint8_t* p = entry - 8; p != entry; ++p) {
+    allTrap = allTrap && *p == 0xCC;
+  }
+  EXPECT_TRUE(allTrap);
+
+  reinterpret_cast<void (*)()>(const_cast<uint8_t*>(entry))();
+}
+
 TEST(MC, BasicFloatFn) {
   auto f = assemble<float(*)(float)>({
     mc::MInst::make("addss", "xmm0f", "xmm0f"),
