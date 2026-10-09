@@ -326,13 +326,12 @@ jobs:
     # so a change that breaks it fails here rather than in the scanner's
     # build-failure email.
     #
-    # It also stands in for the job that used to replay the fuzz corpora: the
-    # image is a clang-18 build with BUILD_FUZZERS on, and its ctest run
-    # replays every checked-in corpus input through its harness (a reproducer
-    # committed alongside a fix is a regression test, and the ctest suites the
-    # other jobs run are built with BUILD_FUZZERS off, so they have no *-corpus
-    # tests). The replay now runs under ASan and UBSan, along with hobbes-test
-    # and the Rosetta Code examples.
+    # It also replaces the separate fuzz-corpus-replay job. The image is a
+    # clang-18 build with BUILD_FUZZERS on, and its ctest run replays every
+    # checked-in corpus input under ASan and UBSan, alongside hobbes-test and
+    # the Rosetta Code examples. The linux-clang-ASanAndUBSan-build matrix
+    # replays the corpora too (nix/overlays.nix turns BUILD_FUZZERS on there);
+    # this job checks that the replay also passes in the scanner's image.
     #
     # The Dockerfile only warns when a test fails, because the scanner wants an
     # image regardless; STRICT_TESTS=1 makes a failure fail the build here.
