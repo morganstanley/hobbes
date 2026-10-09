@@ -17,9 +17,13 @@ segments.
 The image has one build in `/src/build`: `-O2 -g`, AddressSanitizer and
 UndefinedBehaviorSanitizer, asserts on, fuzz harnesses linked with libFuzzer.
 
-- `fuzz/README.md` maps each untrusted surface to a harness, built as
-  `/src/build/fuzz/fuzz-<name>` with seed corpora in `fuzz/corpus/<name>/`.
-  Pass a file to replay one input. Use `-detect_leaks=0`.
+- `fuzz/README.md` lists the harnesses and the surface each covers: binary
+  type descriptions, structured data files, source text, and `hog -s`
+  transaction streams. They are built as `/src/build/fuzz/fuzz-<name>` with
+  seed corpora in `fuzz/corpus/<name>/`. Pass a file to replay one input. Use
+  `-detect_leaks=0`.
+- RPC handshake and framing, and `hi -w` request parsing and path mapping, have
+  no harness. Exercise them through the tools below.
 - `/src/build/hobbes-test` is the unit test suite (`--tests <Group>` runs the
   group in `test/<Group>.C`).
 - `/src/build/hi` and `/src/build/hog` are the tools; `hi -w <port>`,

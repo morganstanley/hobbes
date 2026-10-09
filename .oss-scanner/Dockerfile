@@ -4,9 +4,10 @@
 #
 # One build, in /src/build: optimized, with debug info and frame pointers, under
 # AddressSanitizer and UndefinedBehaviorSanitizer, and with the fuzzing
-# harnesses in fuzz/ built against libFuzzer. The untrusted-input surfaces
-# (.oss-scanner/threat_model.md) are exactly what those harnesses exercise, and
-# a reproducer is most useful when a sanitizer says what went wrong. One build
+# harnesses in fuzz/ built against libFuzzer. Those harnesses cover most of the
+# untrusted-input surfaces in .oss-scanner/threat_model.md; the RPC and hi -w
+# listeners have none, and are driven through the built hi and hog instead. A
+# reproducer is most useful when a sanitizer says what went wrong. One build
 # rather than a plain one beside it keeps the image inside the scanner's build
 # time limit.
 
