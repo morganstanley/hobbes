@@ -510,8 +510,55 @@ bool isFileRef(const MonoTypePtr& mt) {
   return false;
 }
 
+// laying out a type recurs into the types it holds inline, and those are reduced
+// (repType) only as they are reached. Each reduction is bounded, but a type-level
+// application can reduce to a type that holds the application again -- the
+// type-level reading of '(\x.[x x]) (\x.[x x])' is an array of itself -- so its
+// layout unfolds without end, one bounded reduction per level, until the stack
+// runs out. Type descriptions are read from files and from network peers, so the
+// depth of a layout is bounded and such a type rejected.
+//
+// A type built bottom-up has its components laid out (and memoized) before it is
+// itself laid out, so ordinary layouts nest only a few levels deep at a time (no
+// more than 4 across the test suite); the bound is far above that, and low enough
+// that each level's frames -- a reduction, and the construction of the record it
+// substitutes into -- fit a 1MB stack even under ASan.
+static const unsigned int maxLayoutNesting = 200;
+
+static thread_local unsigned int layoutNestingDepth = 0;
+
+namespace {
+// levels of nesting counted against a thread-local depth, refused past a bound
+class nestingGuard {
+public:
+  nestingGuard(unsigned int* depth, unsigned int maxDepth, const char* what, const MonoTypePtr& ty, unsigned int levels = 1) : depth(depth), levels(levels) {
+    if (levels > maxDepth || *depth > maxDepth - levels) {
+      throw std::runtime_error(
+        std::string(what) + " nests more than " + str::from(maxDepth) + " levels deep "
+        "(a type-level application that unfolds without end?): " + show(ty)
+      );
+    }
+    *depth += levels;
+  }
+  ~nestingGuard() { *depth -= levels; }
+
+  nestingGuard(const nestingGuard&) = delete;
+  nestingGuard& operator=(const nestingGuard&) = delete;
+private:
+  unsigned int* depth;
+  unsigned int  levels;
+};
+
+class layoutNesting : public nestingGuard {
+public:
+  explicit layoutNesting(const MonoTypePtr& ty) : nestingGuard(&layoutNestingDepth, maxLayoutNesting, "Type layout", ty) { }
+};
+}
+
 // memory alignment for monotypes -- this may need to be looked at more closely and factored out of this module
 static unsigned int computeAlignment(const MonoTypePtr& pty) {
+  layoutNesting nesting(pty);
+
   MonoTypePtr ty = repType(pty);
 
   if (is<Prim>(ty) != nullptr) {
@@ -2221,9 +2268,60 @@ MonoTypes simplifyVarNames(const MonoTypes& mts) {
 // and the type rejected, rather than reduced until the stack runs out.
 static const size_t maxRepTypeSteps = 1000;
 
+// a reduction recurs into the function position of an application, and substitutes
+// into the body of the function it finds there, and both are still on the stack if
+// what the substitution builds is laid out (a record is laid out as it is
+// constructed) -- a layout that starts reductions of its own, each with a fresh
+// step budget. So that a layout that unfolds without end can't stack up a whole
+// reduction's worth of frames at each of its levels before the layout bound is
+// reached, the frames live at once are bounded across all of the reductions on the
+// stack: a level per call into a function position, and the depth of the terms
+// being substituted (the body, and the deepest argument substituted into it) for
+// as long as the substitution runs.
+//
+// The bound leaves room for a whole step budget of calls together with a
+// substitution into terms twice as deep as the decoder accepts, while a reduction
+// nested under the layout of another one finds only what the outer one left.
+static const unsigned int maxReductionNesting = maxRepTypeSteps + 2 * maxDecodeNesting;
+
+static thread_local unsigned int reductionNestingDepth = 0;
+
+namespace {
+// the depth of a type's term, as substitution recurs into it
+class typeDepthF : public switchType<unsigned int> {
+public:
+  unsigned int with(const Prim*        ) const override { return 1; }
+  unsigned int with(const OpaquePtr*   ) const override { return 1; }
+  unsigned int with(const TVar*        ) const override { return 1; }
+  unsigned int with(const TGen*        ) const override { return 1; }
+  unsigned int with(const TAbs*       v) const override { return 1 + switchOf(v->body(), *this); }
+  unsigned int with(const TApp*       v) const override { return 1 + std::max(switchOf(v->fn(), *this), deepest(v->args())); }
+  unsigned int with(const FixedArray* v) const override { return 1 + std::max(switchOf(v->type(), *this), switchOf(v->length(), *this)); }
+  unsigned int with(const Array*      v) const override { return 1 + switchOf(v->type(), *this); }
+  unsigned int with(const Variant*    v) const override { unsigned int d = 0; for (const auto& m : v->members()) { d = std::max(d, switchOf(m.type, *this)); } return 1 + d; }
+  unsigned int with(const Record*     v) const override { unsigned int d = 0; for (const auto& m : v->members()) { d = std::max(d, switchOf(m.type, *this)); } return 1 + d; }
+  unsigned int with(const Func*       v) const override { return 1 + std::max(switchOf(v->argument(), *this), switchOf(v->result(), *this)); }
+  unsigned int with(const Exists*     v) const override { return 1 + switchOf(v->absType(), *this); }
+  unsigned int with(const Recursive*  v) const override { return 1 + switchOf(v->recType(), *this); }
+  unsigned int with(const TString*     ) const override { return 1; }
+  unsigned int with(const TLong*       ) const override { return 1; }
+  unsigned int with(const TExpr*       ) const override { return 1; }
+
+  unsigned int deepest(const MonoTypes& ts) const {
+    unsigned int d = 0;
+    for (const auto& t : ts) {
+      d = std::max(d, switchOf(t, *this));
+    }
+    return d;
+  }
+};
+}
+
 // the step budget is shared with the reduction of the applied type function, so that
 // the whole reduction is bounded rather than each nested one starting over
 static MonoTypePtr repTypeWithin(const MonoTypePtr& ty, size_t* steps) {
+  nestingGuard nesting(&reductionNestingDepth, maxReductionNesting, "Type-level reduction", ty);
+
   MonoTypePtr t = ty;
 
   while (true) {
@@ -2239,6 +2337,9 @@ static MonoTypePtr repTypeWithin(const MonoTypePtr& ty, size_t* steps) {
       }
     } else if (const TApp* a = is<TApp>(t)) {
       if (const TAbs* tf = is<TAbs>(repTypeWithin(a->fn(), steps))) {
+        typeDepthF depth;
+        nestingGuard substituting(&reductionNestingDepth, maxReductionNesting, "Type-level reduction", ty,
+                                  switchOf(tf->body(), depth) + depth.deepest(a->args()));
         t = substitute(substitution(tf->args(), a->args()), tf->body());
         continue;
       }
@@ -2405,6 +2506,7 @@ private:
 
   unsigned int r(const MonoTypePtr& t) const {
     if (t->memorySize == static_cast<unsigned int>(-1)) {
+      layoutNesting nesting(t);
       t->memorySize = switchOf(t, *this);
     }
     return t->memorySize;
@@ -2427,6 +2529,7 @@ private:
 
 unsigned int sizeOf(const MonoTypePtr& mt) {
   if (mt->memorySize == static_cast<unsigned int>(-1)) {
+    layoutNesting nesting(mt);
     mt->memorySize = switchOf(mt, sizeOfF());
   }
   return mt->memorySize;
