@@ -49,11 +49,31 @@ RUN cmake -S /src -B /src/build \
       -DBUILD_FUZZERS=ON \
     && cmake --build /src/build -j"$(nproc)"
 
-# Run the tests (hobbes-test, the Rosetta Code examples, and a replay of every
-# checked-in fuzz corpus input) so the image is known to work. The scanner
-# wants an image even when a test fails, so by default a failure is only a
-# warning; CI builds this same image with STRICT_TESTS=1 (build.yml,
-# oss-scanner-image), where a failure fails the build.
+# Run tests so the image is known to work, but not the same set in both places.
+#
+# Everything here is built under ASan and UBSan, which makes the suite slow:
+# measured on a 4-CPU machine, the build takes 8 minutes and hobbes-test alone
+# 19, with the Rosetta Code examples another 11. The scanner gives the whole
+# build 45 minutes, so running all of it leaves little room on a machine slower
+# than the one that was measured -- and what it buys is a second run of what CI
+# already runs on every push.
+#
+# So the scanner's build runs the fuzz corpus replays only: seconds, and enough
+# to show that the binaries, the sanitizer runtimes and the corpora in the image
+# all work. The agent can run the full suite itself in the finished image, which
+# .oss-scanner/threat_model.md tells it how to do.
+#
+# STRICT_TESTS=1 (CI, .github/workflows/build.yml, oss-scanner-image) runs
+# everything and fails the build on a failure -- that is where this image's
+# tests are supposed to have teeth, with no 45-minute limit over them. Its
+# timeout is set high enough that a slow runner cannot trip it: the same
+# ctest run that takes 19 minutes above fits inside 900s on CI's runners
+# today, which is closer to the limit than it should be.
 ARG STRICT_TESTS=0
-RUN cd /src/build && (ctest --output-on-failure -j"$(nproc)" --timeout 900 \
-      || { [ "$STRICT_TESTS" = 1 ] && exit 1; echo "WARNING: ctest reported failures"; })
+RUN cd /src/build && \
+    if [ "$STRICT_TESTS" = 1 ]; then \
+      ctest --output-on-failure -j"$(nproc)" --timeout 2400; \
+    else \
+      ctest --output-on-failure -j"$(nproc)" --timeout 900 -R 'corpus$' \
+        || echo "WARNING: ctest reported failures"; \
+    fi
