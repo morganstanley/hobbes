@@ -138,7 +138,7 @@ parserdef lr0parser(const grammar& g, terminal* s);
 struct parserlimits {
   size_t maxStackDepthSum = static_cast<size_t>(-1); // the sum over its states of each one's stack depth (the longest item read so far in it)
   size_t maxItems         = static_cast<size_t>(-1); // the number of items in all of its states
-  size_t maxLookahead     = static_cast<size_t>(-1); // the number of lookahead terminals computed for its transitions and items (see lalr1lookahead)
+  size_t maxLookahead     = static_cast<size_t>(-1); // the number of lookahead terminals copied and merged for its transitions and items (see lalr1lookahead)
 };
 
 class parser_too_large : public std::runtime_error {
@@ -274,8 +274,9 @@ parserdef lalr1parser(const grammar& g, terminal* s);
 //   (lalr1parser is lr0parser followed by this, split so that the LR(0) parser can be checked in between)
 void lalr1lookahead(parserdef* p);
 
-// the same, but giving up with parser_too_large once it has computed more than limits.maxLookahead lookahead terminals
-//   (a set of them for each nonterminal transition and each completed item, so as many as transitions times terminals)
+// the same, but giving up with parser_too_large once it has copied and merged more than limits.maxLookahead lookahead terminals
+//   (a set of them for each nonterminal transition and each completed item, merged along each edge of the lookahead
+//    relations, so as many as edges times terminals)
 void lalr1lookahead(parserdef* p, const parserlimits& limits);
 
 // an ambiguity conflict on a particular terminal

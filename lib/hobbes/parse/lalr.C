@@ -387,7 +387,7 @@ const itemset& parserStateDef(const parserdef& p, nat n) {
 parser_too_large::parser_too_large(limit l, size_t bound) :
   std::runtime_error(
     l == limit::items     ? "parser states hold more than " + std::to_string(bound) + " items" :
-    l == limit::lookahead ? "parser lookahead holds more than " + std::to_string(bound) + " terminals" :
+    l == limit::lookahead ? "parser lookahead copies and merges more than " + std::to_string(bound) + " terminals" :
                             "parser states' stack depths sum to more than " + std::to_string(bound)),
   l(l), b(bound) {
 }
@@ -673,7 +673,7 @@ edges readsEdges(const parserdef& p, const transitionIndex& ti) {
   std::vector<bool> done(p.states.size(), false);
   for (const auto& x : ti.ts) {
     nat s = follow(p, x);
-    if (s < done.size() && !done[s]) {
+    if (!done[s]) {
       done[s] = true;
       for (const auto& st : transitions(p, s)) {
         if (derivesNull(p, st.first)) {
@@ -722,25 +722,31 @@ edges includesEdges(const parserdef& p, const transitionIndex& ti) {
   return r;
 }
 
-// counts the lookahead terminals computed for a parser, giving up once there are too many
-//   (the sets are as many as its transitions and items, each as large as its terminals, so
-//    their size can be quadratic in a grammar that passes the bounds on its LR(0) states)
+// counts the lookahead terminals copied and merged for a parser, giving up once there are too many
+//   (the sets are as many as its transitions and items, each as large as its terminals, so their
+//    size can be quadratic in a grammar that passes the bounds on its LR(0) states; and they are
+//    merged along each edge of the relations, so the time to make them can be cubic. Each copy
+//    and merge is counted, whether or not it adds anything, so this bounds the time as well as
+//    the size, which can't be more than what was copied and merged into it)
 class lookaheadBudget {
 public:
   explicit lookaheadBudget(size_t limit) : limit(limit) { }
 
-  void resized(size_t before, size_t after) {
-    this->n = this->n + after - before;
+  void count(size_t k) {
+    this->n += k;
     if (this->n > this->limit) {
       throw parser_too_large(parser_too_large::limit::lookahead, this->limit);
     }
   }
 
-  // add ts to s
+  void assign(terminalset* s, const terminalset& ts) {
+    count(ts.size());
+    *s = ts;
+  }
+
   void insert(terminalset* s, const terminalset& ts) {
-    size_t before = s->size();
+    count(ts.size());
     s->insert(ts.begin(), ts.end());
-    resized(before, s->size());
   }
 private:
   size_t limit;
@@ -778,12 +784,10 @@ transition_lookahead digraph(const transitionIndex& ti, const std::vector<const 
 
     auto ds = doneShapes.find(shape(fp[x], es[x]));
     if (ds != doneShapes.end()) {
-      f[x] = f[ds->second];
-      b->resized(0, f[x].size());
+      b->assign(&f[x], f[ds->second]);
       frames.push_back(frame{x, d, static_cast<nat>(es[x]->size()), false});
     } else {
-      f[x] = *fp[x];
-      b->resized(0, f[x].size());
+      b->assign(&f[x], *fp[x]);
       frames.push_back(frame{x, d, 0, false});
     }
   };
@@ -824,9 +828,7 @@ transition_lookahead digraph(const transitionIndex& ti, const std::vector<const 
           if (cx == x) {
             break;
           } else {
-            size_t before = f[cx].size();
-            f[cx] = f[x];
-            b->resized(before, f[cx].size());
+            b->assign(&f[cx], f[x]);
           }
         }
       }

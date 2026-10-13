@@ -336,7 +336,8 @@ TEST(Parse, GrammarsWithLargeParserStatesAreRejected) {
 // transition and completed item: with m rules S -> b_j X Y, k rules
 // X -> B_i -> c_i and t rules Y -> u_l, there are m*k transitions to look
 // ahead from, each to all t terminals. At 400x400x200 that took 1.7GB with
-// 400k items, within the item bound. The lookahead's terminals are bounded too.
+// 400k items, within the item bound. The terminals copied and merged to make
+// the lookahead are bounded too, which bounds its time as well as its size.
 static grammar lookaheadGrammar(size_t m, size_t k, size_t t, terminal** s) {
   static std::map<std::string, terminal*> syms;
   auto sym = [&](const std::string& n) { auto& x = syms[n]; if (x == nullptr) { x = new symbol(n); } return x; };
@@ -359,7 +360,7 @@ static grammar lookaheadGrammar(size_t m, size_t k, size_t t, terminal** s) {
 
 TEST(Parse, GrammarsWithLargeLookaheadAreRejected) {
   terminal* s = nullptr;
-  grammar   g = lookaheadGrammar(40, 40, 20, &s);  // about 33k lookahead terminals
+  grammar   g = lookaheadGrammar(40, 40, 20, &s);
 
   parserlimits limits;
   limits.maxLookahead = 10000;
@@ -385,6 +386,9 @@ TEST(Parse, GrammarsWithLargeLookaheadAreRejected) {
 // What a transition reads depends only on the state it leads to, but it was
 // found again for each transition: m*n edges (105s and 1.3GB at 10k x 30k,
 // within every bound) or m*n terminals before any of them were counted.
+// And merging sets along m*n includes edges, each of T terminals, took time
+// cubic within every bound (2.6s at 300 x 300 x 600) until every merge was
+// counted against the lookahead bound.
 static grammar sharedTargetGrammar(size_t m, size_t n, bool nullable, terminal** s) {
   static std::map<std::string, terminal*> syms;
   auto sym = [&](const std::string& x) { auto& t = syms[x]; if (t == nullptr) { t = new symbol(x); } return t; };
@@ -412,7 +416,7 @@ TEST(Parse, ManyTransitionsToOneStateAreCheap) {
   parserlimits limits;
   limits.maxStackDepthSum = 100000;
   limits.maxItems         = 500000;
-  limits.maxLookahead     = 2000000;
+  limits.maxLookahead     = 5000000;
 
   // reads: m*n edges, now n (the grammar is ambiguous, all N_i being empty,
   // so it has no table, but its lookahead is found)
@@ -426,6 +430,27 @@ TEST(Parse, ManyTransitionsToOneStateAreCheap) {
   grammar   h = sharedTargetGrammar(3000, 3000, false, &s);
   parserdef q = lr0parser(h, s, limits);
   EXPECT_EXCEPTION(lalr1lookahead(&q, limits));
+
+  // includes: S -> b_j D, D -> B C, B -> c A_i, A_i -> a_i, C -> u_l makes every
+  // (s, A_i) include every (s', B), each reading all of the u_l: m*n merges of T
+  // terminals, which add nothing after the first but are counted (and refused)
+  static std::map<std::string, terminal*> syms;
+  auto sym = [&](const std::string& x) { auto& t = syms[x]; if (t == nullptr) { t = new symbol(x); } return t; };
+  grammar k;
+  for (size_t j = 0; j < 300; ++j) {
+    k[sym("S")].push_back(rule{sym("b" + std::to_string(j)), sym("D")});
+  }
+  k[sym("D")].push_back(rule{sym("B"), sym("C")});
+  for (size_t i = 0; i < 300; ++i) {
+    terminal* a = sym("A" + std::to_string(i));
+    k[sym("B")].push_back(rule{sym("c"), a});
+    k[a].push_back(rule{sym("a" + std::to_string(i))});
+  }
+  for (size_t l = 0; l < 600; ++l) {
+    k[sym("C")].push_back(rule{sym("u" + std::to_string(l))});
+  }
+  parserdef r = lr0parser(k, sym("S"), limits);
+  EXPECT_EXCEPTION(lalr1lookahead(&r, limits));
 }
 
 // LALR(1) lookahead used to be found by deciding its relations (reads,
