@@ -80,15 +80,16 @@ static std::string parserTooLarge(cc* c) {
 // Nor do those two bound its lookahead, a set of terminals for each of its
 // transitions and completed items, merged along each edge of the lookahead
 // relations: a grammar within both bounds can make that gigabytes, or
-// minutes. The terminals copied and merged are counted, and bounded too.
+// minutes. The steps taken to find it (each terminal copied or merged, each
+// step along a rule and each edge of the relations) are bounded too.
 static std::string parserTooLarge(cc* c, const parser_too_large& e) {
   switch (e.which()) {
   case parser_too_large::limit::items:
     return "grammar is too large to generate a parser for (its LR(0) states hold more than " +
            str::from(c->parserMaxItems()) + " items; see cc::parserMaxItems)";
   case parser_too_large::limit::lookahead:
-    return "grammar is too large to generate a parser for (its lookahead copies and merges more than " +
-           str::from(c->parserMaxLookahead()) + " terminals; see cc::parserMaxLookahead)";
+    return "grammar is too large to generate a parser for (its lookahead takes more than " +
+           str::from(c->parserMaxLookahead()) + " steps; see cc::parserMaxLookahead)";
   default:
     return parserTooLarge(c);
   }

@@ -387,7 +387,7 @@ const itemset& parserStateDef(const parserdef& p, nat n) {
 parser_too_large::parser_too_large(limit l, size_t bound) :
   std::runtime_error(
     l == limit::items     ? "parser states hold more than " + std::to_string(bound) + " items" :
-    l == limit::lookahead ? "parser lookahead copies and merges more than " + std::to_string(bound) + " terminals" :
+    l == limit::lookahead ? "parser lookahead takes more than " + std::to_string(bound) + " steps" :
                             "parser states' stack depths sum to more than " + std::to_string(bound)),
   l(l), b(bound) {
 }
@@ -654,6 +654,40 @@ struct transitionIndex {
   }
 };
 
+// counts the steps taken to find a parser's lookahead (terminals copied and merged, rule walks
+// and edges), giving up once there are too many
+//   (the sets are as many as its transitions and items, each as large as its terminals, so their
+//    size can be quadratic in a grammar that passes the bounds on its LR(0) states; and they are
+//    merged along each edge of the relations, so the time to make them can be cubic. Each copy
+//    and merge is counted, whether or not it adds anything, so this bounds the time as well as
+//    the size, which can't be more than what was copied and merged into it; and the walks along
+//    rules that find the relations' edges are counted as well, as there can be as many of those
+//    as transitions on a nonterminal times the length of its rules)
+class lookaheadBudget {
+public:
+  explicit lookaheadBudget(size_t limit) : limit(limit) { }
+
+  void count(size_t k) {
+    this->n += k;
+    if (this->n > this->limit) {
+      throw parser_too_large(parser_too_large::limit::lookahead, this->limit);
+    }
+  }
+
+  void assign(terminalset* s, const terminalset& ts) {
+    count(ts.size());
+    *s = ts;
+  }
+
+  void insert(terminalset* s, const terminalset& ts) {
+    count(ts.size());
+    s->insert(ts.begin(), ts.end());
+  }
+private:
+  size_t limit;
+  size_t n = 0;
+};
+
 using edges = std::vector<std::vector<nat>>;
 
 // list each node's edges in transitionset order, without repeats
@@ -691,12 +725,13 @@ edges readsEdges(const parserdef& p, const transitionIndex& ti) {
 
 // x=(s,A) includes y=(s',B) if B -> wAg, g =>* eps, and s' --w--> s
 //   so walk each rule of B from s', and take the edge at each A in its nullable tail
-edges includesEdges(const parserdef& p, const transitionIndex& ti) {
+edges includesEdges(const parserdef& p, const transitionIndex& ti, lookaheadBudget* b) {
   edges r(ti.ts.size());
   std::vector<nat> path;
   for (nat y = 0; y < ti.ts.size(); ++y) {
     for (const auto& w : *aggRules(p.g, ti.ts[y].second)) {
       // the states before each symbol (but the last, after which nothing is looked for)
+      b->count(w.size() + 1);
       path.resize(w.size());
       nat s = ti.ts[y].first;
       for (nat i = 0; i < w.size(); ++i) {
@@ -710,6 +745,7 @@ edges includesEdges(const parserdef& p, const transitionIndex& ti) {
         --i;
         nat x = ti.find(path[i], w[i]);
         if (x < ti.ts.size()) {
+          b->count(1);
           r[x].push_back(y);
         }
         if (!derivesNull(p, w[i])) {
@@ -722,36 +758,6 @@ edges includesEdges(const parserdef& p, const transitionIndex& ti) {
   return r;
 }
 
-// counts the lookahead terminals copied and merged for a parser, giving up once there are too many
-//   (the sets are as many as its transitions and items, each as large as its terminals, so their
-//    size can be quadratic in a grammar that passes the bounds on its LR(0) states; and they are
-//    merged along each edge of the relations, so the time to make them can be cubic. Each copy
-//    and merge is counted, whether or not it adds anything, so this bounds the time as well as
-//    the size, which can't be more than what was copied and merged into it)
-class lookaheadBudget {
-public:
-  explicit lookaheadBudget(size_t limit) : limit(limit) { }
-
-  void count(size_t k) {
-    this->n += k;
-    if (this->n > this->limit) {
-      throw parser_too_large(parser_too_large::limit::lookahead, this->limit);
-    }
-  }
-
-  void assign(terminalset* s, const terminalset& ts) {
-    count(ts.size());
-    *s = ts;
-  }
-
-  void insert(terminalset* s, const terminalset& ts) {
-    count(ts.size());
-    s->insert(ts.begin(), ts.end());
-  }
-private:
-  size_t limit;
-  size_t n = 0;
-};
 
 // for each x, f(x) = fp(x) + sum(f(y) | x R y), as digraphF computes it
 // (visiting nodes and edges in the same order, so with the same result),
@@ -883,7 +889,7 @@ transition_lookahead Follow(const parserdef& p, const transitionIndex& ti, looka
   }
   rs.clear();
 
-  edges ies = includesEdges(p, ti);
+  edges ies = includesEdges(p, ti, b);
   std::vector<const terminalset*>      fp(ti.ts.size());
   std::vector<const std::vector<nat>*> es(ti.ts.size());
   for (nat x = 0; x < ti.ts.size(); ++x) {
@@ -894,6 +900,7 @@ transition_lookahead Follow(const parserdef& p, const transitionIndex& ti, looka
 }
 
 // (q, A -> w.) looks back to (s,A) when s --w--> q, so walk each rule of A from s
+//   (counting each walk, as includesEdges does)
 void apply(const transition_lookahead& tl, parserdef* p, lookaheadBudget* b) {
   std::vector<itemset*> states(p->states.size(), nullptr);
   for (auto& s : p->states) {
@@ -907,6 +914,7 @@ void apply(const transition_lookahead& tl, parserdef* p, lookaheadBudget* b) {
     const rules* rs = aggRules(p->g, a);
     for (nat r = 0; r < rs->size(); ++r) {
       const rule& w = (*rs)[r];
+      b->count(w.size() + 1);
       nat  q  = tli.first.first;
       bool ok = true;
       for (auto* t : w) {

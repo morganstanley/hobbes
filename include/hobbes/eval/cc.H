@@ -407,7 +407,7 @@ public:
   void parserMaxItems(size_t f);
   size_t parserMaxItems() const;
 
-  // and measured as the number of terminals copied and merged to make its LALR(1) lookahead (see parse/parser.C)
+  // and measured as the number of steps taken to find its LALR(1) lookahead (see parse/parser.C)
   void parserMaxLookahead(size_t f);
   size_t parserMaxLookahead() const;
 

@@ -336,8 +336,9 @@ TEST(Parse, GrammarsWithLargeParserStatesAreRejected) {
 // transition and completed item: with m rules S -> b_j X Y, k rules
 // X -> B_i -> c_i and t rules Y -> u_l, there are m*k transitions to look
 // ahead from, each to all t terminals. At 400x400x200 that took 1.7GB with
-// 400k items, within the item bound. The terminals copied and merged to make
-// the lookahead are bounded too, which bounds its time as well as its size.
+// 400k items, within the item bound. The steps taken to find the lookahead
+// (terminals copied and merged, rule walks, edges) are bounded too, which
+// bounds its time as well as its size.
 static grammar lookaheadGrammar(size_t m, size_t k, size_t t, terminal** s) {
   static std::map<std::string, terminal*> syms;
   auto sym = [&](const std::string& n) { auto& x = syms[n]; if (x == nullptr) { x = new symbol(n); } return x; };
@@ -367,7 +368,7 @@ TEST(Parse, GrammarsWithLargeLookaheadAreRejected) {
   parserdef p = lr0parser(g, s, limits);
   EXPECT_EXCEPTION(lalr1lookahead(&p, limits));
 
-  limits.maxLookahead = 100000;
+  limits.maxLookahead = 1000000;
   parserdef q = lr0parser(g, s, limits);
   lalr1lookahead(&q, limits);
   EXPECT_EQ(lalrTable(q).size(), q.states.size());
@@ -388,7 +389,9 @@ TEST(Parse, GrammarsWithLargeLookaheadAreRejected) {
 // within every bound) or m*n terminals before any of them were counted.
 // And merging sets along m*n includes edges, each of T terminals, took time
 // cubic within every bound (2.6s at 300 x 300 x 600) until every merge was
-// counted against the lookahead bound.
+// counted against the lookahead bound. (So are the walks along each rule
+// of a nonterminal from each transition on it, which find the relations'
+// edges: S -> b_j V, V -> B U, B -> N^300 M_i took 18s within every bound.)
 static grammar sharedTargetGrammar(size_t m, size_t n, bool nullable, terminal** s) {
   static std::map<std::string, terminal*> syms;
   auto sym = [&](const std::string& x) { auto& t = syms[x]; if (t == nullptr) { t = new symbol(x); } return t; };
@@ -451,6 +454,29 @@ TEST(Parse, ManyTransitionsToOneStateAreCheap) {
   }
   parserdef r = lr0parser(k, sym("S"), limits);
   EXPECT_EXCEPTION(lalr1lookahead(&r, limits));
+
+  // rule walks: S -> b_j V, V -> B U, U -> x, B -> N^k M_i, N -> z, M_i -> q_i walks
+  // each of B's n rules, k long, from each of the m transitions on B: m*n*k steps
+  // (here 400*20*100) that every LR(0) state shares, now counted (and refused)
+  grammar w;
+  rule    nk(100, sym("N"));
+  for (size_t j = 0; j < 400; ++j) {
+    w[sym("S")].push_back(rule{sym("b" + std::to_string(j)), sym("V")});
+  }
+  w[sym("V")].push_back(rule{sym("B"), sym("U")});
+  w[sym("U")].push_back(rule{sym("x")});
+  w[sym("N")].push_back(rule{sym("z")});
+  for (size_t i = 0; i < 20; ++i) {
+    terminal* mi = sym("M" + std::to_string(i));
+    rule      bw = nk;
+    bw.push_back(mi);
+    w[sym("B")].push_back(bw);
+    w[mi].push_back(rule{sym("q" + std::to_string(i))});
+  }
+  parserlimits small = limits;
+  small.maxLookahead = 100000;
+  parserdef t = lr0parser(w, sym("S"), small);
+  EXPECT_EXCEPTION(lalr1lookahead(&t, small));
 }
 
 // LALR(1) lookahead used to be found by deciding its relations (reads,
