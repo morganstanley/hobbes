@@ -479,6 +479,37 @@ TEST(Parse, ManyTransitionsToOneStateAreCheap) {
   EXPECT_EXCEPTION(lalr1lookahead(&t, small));
 }
 
+// which symbols derive the empty string used to be found by passing over
+// all of them until none changed, but a chain A_i -> A_i+1 x? can learn just
+// one more symbol on each pass: quadratic, before any bound is checked (3.6s
+// for 8,000 symbols that the parser needn't even reach). It is linear now.
+TEST(Parse, NullableSymbolsAreFoundInLinearTime) {
+  static std::map<std::string, terminal*> syms;
+  auto sym = [&](const std::string& x) { auto& t = syms[x]; if (t == nullptr) { t = new symbol(x); } return t; };
+
+  // A_0 -> E A_1, ..., A_n -> eps, with E -> eps; read from the start of the chain
+  const size_t n = 50000;
+  grammar g;
+  g[sym("E")].push_back(rule{});
+  for (size_t i = 0; i < n; ++i) {
+    g[sym("A" + std::to_string(i))].push_back(rule{sym("E"), sym("A" + std::to_string(i + 1))});
+  }
+  g[sym("A" + std::to_string(n))].push_back(rule{});
+
+  // and a few that don't derive null: one through a terminal, one only through itself
+  g[sym("T")].push_back(rule{sym("A0"), sym("t")});
+  g[sym("C")].push_back(rule{sym("C")});
+  g[sym("C")].push_back(rule{sym("E"), sym("C"), sym("E")});
+  // and one that does, only through two others
+  g[sym("P")].push_back(rule{sym("T")});
+  g[sym("P")].push_back(rule{sym("A7"), sym("A" + std::to_string(n)), sym("E")});
+
+  terminalset nulls = symbolsDerivingNull(g);
+  EXPECT_EQ(nulls.size(), n + 3); // E, A_0..A_n, P
+  EXPECT_TRUE(nulls.count(sym("A0")) == 1 && nulls.count(sym("P")) == 1);
+  EXPECT_TRUE(nulls.count(sym("T")) == 0 && nulls.count(sym("C")) == 0 && nulls.count(sym("t")) == 0);
+}
+
 // LALR(1) lookahead used to be found by deciding its relations (reads,
 // includes, lookback) one pair of transitions at a time, which took hours for
 // a `parse {}` grammar of a few thousand states (OSS-Fuzz 571908642). It is

@@ -189,22 +189,41 @@ bool derivesNull(const parserdef& p, terminal* s) {
   return p.nullable.find(s) != p.nullable.end();
 }
 
+// the least set of defined symbols with a rule all of whose symbols are in the set
+//   (found from a worklist: each rule counts its symbols not yet known to derive null, and is
+//    told as each becomes known, so each rule is visited once per symbol in it. Passing over all
+//    of the symbols until none changed took time quadratic in a chain of them, A_i -> A_i+1,
+//    which each pass could advance by just one)
 terminalset symbolsDerivingNull(const grammar& g) {
   terminalset nulls;
-  terminalset potentials = definedSymbols(g);
-  bool        changed    = true;
 
-  while (changed) {
-    changed = false;
-    // erasing the element an iterator refers to invalidates that iterator, so
-    // advance from what erase returns rather than incrementing the dead one
-    for (auto s = potentials.begin(); s != potentials.end(); ) {
-      if (nulls.find(*s) == nulls.end() && derivesNull(g, nulls, *s)) {
-        nulls.insert(*s);
-        s = potentials.erase(s);
-        changed = true;
-      } else {
-        ++s;
+  std::vector<std::pair<terminal*, size_t>> unknowns; // for each rule, its symbol and how many of its symbols aren't known to derive null
+  std::map<terminal*, std::vector<size_t>>  uses;     // for each symbol, the rules it appears in (once for each time)
+  std::vector<terminal*>                    known;    // symbols known to derive null, whose uses are still to be told
+
+  for (const auto& sd : g) {
+    for (const auto& r : sd.second) {
+      size_t i = unknowns.size();
+      unknowns.push_back(std::make_pair(sd.first, r.size()));
+      for (auto* v : r) {
+        uses[v].push_back(i);
+      }
+      if (r.empty() && nulls.insert(sd.first).second) {
+        known.push_back(sd.first);
+      }
+    }
+  }
+
+  while (!known.empty()) {
+    terminal* v = known.back();
+    known.pop_back();
+
+    auto u = uses.find(v);
+    if (u != uses.end()) {
+      for (size_t i : u->second) {
+        if (--unknowns[i].second == 0 && nulls.insert(unknowns[i].first).second) {
+          known.push_back(unknowns[i].first);
+        }
       }
     }
   }
