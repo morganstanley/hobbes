@@ -72,6 +72,18 @@ static std::string parserTooLarge(cc* c) {
          str::from(c->parserMaxStackDepthSum()) + "; see cc::parserMaxStackDepthSum)";
 }
 
+// The stack depth sum doesn't bound the LR(0) parser itself, though: a state
+// holds an item for each rule of each nonterminal it can expect next, so M
+// rules S -> b_i A over N rules A -> x_j make M states of N items each, with
+// a stack depth sum of only about 3M+N. The parser's items are bounded too.
+static std::string parserTooLarge(cc* c, const parser_too_large& e) {
+  if (e.which() == parser_too_large::limit::items) {
+    return "grammar is too large to generate a parser for (its LR(0) states hold more than " +
+           str::from(c->parserMaxItems()) + " items; see cc::parserMaxItems)";
+  }
+  return parserTooLarge(c);
+}
+
 static void checkParserSize(cc* c, ParserEvalInfo* pei, const LexicalAnnotation& la) {
   size_t depthSum = 0;
   pei->depths.clear();
@@ -118,9 +130,12 @@ void prepareEvalInfo(cc* c, const Parser& p, terminal* root, const precedence& p
   // compile an LALR(1) parser and table from this parser definition
   //   (bounding its size first, from its LR(0) states, before the more costly steps that follow)
   try {
-    pei->pdef = lr0parser(extractGrammar(p), root, c->parserMaxStackDepthSum());
-  } catch (const parser_too_large&) {
-    throw annotated_error(la, parserTooLarge(c));
+    lr0limits limits;
+    limits.maxStackDepthSum = c->parserMaxStackDepthSum();
+    limits.maxItems         = c->parserMaxItems();
+    pei->pdef = lr0parser(extractGrammar(p), root, limits);
+  } catch (const parser_too_large& e) {
+    throw annotated_error(la, parserTooLarge(c, e));
   }
   checkParserSize(c, pei, la);
   lalr1lookahead(&pei->pdef);

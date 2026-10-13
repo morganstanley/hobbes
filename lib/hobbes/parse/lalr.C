@@ -384,7 +384,52 @@ const itemset& parserStateDef(const parserdef& p, nat n) {
   }
 }
 
-state_transitions follow(const grammar& g, const itemset& is, const terminalset& vs, parserdef* p) {
+parser_too_large::parser_too_large(limit l, size_t bound) :
+  std::runtime_error(l == limit::items ?
+    "parser states hold more than " + std::to_string(bound) + " items" :
+    "parser states' stack depths sum to more than " + std::to_string(bound)),
+  l(l), b(bound) {
+}
+parser_too_large::limit parser_too_large::which() const { return this->l; }
+size_t parser_too_large::bound() const { return this->b; }
+
+namespace {
+
+// counts the size of an LR(0) parser as its states are made, giving up once it is past its limits
+//   (checked as each state is made, not as it is visited: a state can have as many successors
+//    as the grammar has rules, each of them as large as the grammar, so the parser can grow
+//    quadratically in the grammar before the next state is visited)
+class lr0budget {
+public:
+  explicit lr0budget(const lr0limits& limits) : limits(limits) { }
+
+  nat state(const itemset& s, parserdef* p) {
+    size_t n = p->states.size();
+    nat    r = parserState(s, p);
+    if (p->states.size() != n) {
+      nat d = 0;
+      for (const auto& i : s) {
+        d = std::max(d, i.p);
+      }
+      this->depthSum += d;
+      this->items    += s.size();
+
+      if (this->depthSum > this->limits.maxStackDepthSum) {
+        throw parser_too_large(parser_too_large::limit::stackDepthSum, this->limits.maxStackDepthSum);
+      }
+      if (this->items > this->limits.maxItems) {
+        throw parser_too_large(parser_too_large::limit::items, this->limits.maxItems);
+      }
+    }
+    return r;
+  }
+private:
+  const lr0limits& limits;
+  size_t           depthSum = 0;
+  size_t           items    = 0;
+};
+
+state_transitions follow(const grammar& g, const itemset& is, const terminalset& vs, parserdef* p, lr0budget* b) {
   // sort the items by the symbol they expect in one pass,
   // rather than passing over all of them for each symbol
   std::map<terminal*, itemset> succs;
@@ -401,18 +446,27 @@ state_transitions follow(const grammar& g, const itemset& is, const terminalset&
     if (v != endOfFile::value()) {
       itemset& vis = succs[v];
       gclosure(g, &vis);
-      r[v] = parserState(vis, p);
+      r[v] = b->state(vis, p);
     }
   }
   return r;
 }
 
-parserdef lr0parser(const grammar& g, terminal* s) {
-  return lr0parser(g, s, static_cast<size_t>(-1));
 }
 
-parserdef lr0parser(const grammar& g, terminal* s, size_t maxDepthSum) {
+state_transitions follow(const grammar& g, const itemset& is, const terminalset& vs, parserdef* p) {
+  static const lr0limits unlimited;
+  lr0budget b(unlimited);
+  return follow(g, is, vs, p, &b);
+}
+
+parserdef lr0parser(const grammar& g, terminal* s) {
+  return lr0parser(g, s, lr0limits());
+}
+
+parserdef lr0parser(const grammar& g, terminal* s, const lr0limits& limits) {
   parserdef p;
+  lr0budget b(limits);
 
   // tweak this grammar to have a boot rule
   // s' -> s $
@@ -425,21 +479,10 @@ parserdef lr0parser(const grammar& g, terminal* s, size_t maxDepthSum) {
   p.g[boot].push_back(br);
 
   // enumerate the state space implied by this grammar
-  nat    n        = parserState(gclosure(p.g, ruleItems(p.g, boot)), &p);
-  size_t depthSum = 0;
+  nat n = b.state(gclosure(p.g, ruleItems(p.g, boot)), &p);
   while (n < p.states.size()) {
     const itemset& nis = parserStateDef(p, n);
-
-    nat d = 0;
-    for (const auto& i : nis) {
-      d = std::max(d, i.p);
-    }
-    depthSum += d;
-    if (depthSum > maxDepthSum) {
-      throw parser_too_large("parser states' stack depths sum to more than " + std::to_string(maxDepthSum));
-    }
-
-    p.transitions[n] = follow(p.g, nis, next(p.g, nis), &p);
+    p.transitions[n] = follow(p.g, nis, next(p.g, nis), &p, &b);
     ++n;
   }
   p.nullable = symbolsDerivingNull(p.g);

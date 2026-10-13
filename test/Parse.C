@@ -303,6 +303,35 @@ TEST(Parse, OversizedGrammarsAreRejected) {
   EXPECT_EQ(dc.compileFn<int()>("match p(\"aa\") with | |1=x| -> x | _ -> -1")(), -1);
 }
 
+// the stack depth sum doesn't bound the LR(0) parser itself: a state holds an
+// item for each rule of each nonterminal it can expect next. Here each of m
+// rules S -> "i" A has a state of its own holding all n rules of A, for m*n
+// items in all, while the stack depths sum to only about 3m+n. At 2000x2000
+// that took 6s and 1.5GB to build, and 3000x3000 took 15s and 3.3GB. Its
+// items are bounded too, and it is refused as soon as it passes the bound.
+static std::string closureGrammar(size_t m, size_t n) {
+  std::string r = "parse { S := ";
+  for (size_t i = 0; i < m; ++i) {
+    r += (i == 0 ? "" : " | ") + std::string("\"") + std::to_string(i) + "\" a:A { 1 }";
+  }
+  r += " A := ";
+  for (size_t j = 0; j < n; ++j) {
+    r += (j == 0 ? "" : " | ") + std::string("\"x") + std::to_string(j) + "\" { 1 }";
+  }
+  return r + " }";
+}
+
+TEST(Parse, GrammarsWithLargeParserStatesAreRejected) {
+  cc lc;
+  EXPECT_EXCEPTION_MSG(lc.readExpr(closureGrammar(2000, 2000)), std::exception, "cc::parserMaxItems");
+
+  // the limit is the cc's to set, either way
+  lc.parserMaxItems(1000);
+  EXPECT_EXCEPTION_MSG(lc.readExpr(closureGrammar(40, 40)), std::exception, "cc::parserMaxItems");  // ~1.7k
+  lc.parserMaxItems(10000);
+  EXPECT_TRUE(lc.readExpr(closureGrammar(40, 40)) != nullptr);
+}
+
 // LALR(1) lookahead used to be found by deciding its relations (reads,
 // includes, lookback) one pair of transitions at a time, which took hours for
 // a `parse {}` grammar of a few thousand states (OSS-Fuzz 571908642). It is

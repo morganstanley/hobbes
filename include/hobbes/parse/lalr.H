@@ -134,13 +134,25 @@ state_transitions follow(const grammar& g, const itemset& is, const terminalset&
 // determine the parser state graph (ie: the LR(0) parser) for a grammar, given a start symbol
 parserdef lr0parser(const grammar& g, terminal* s);
 
-// the same, but giving up with parser_too_large once the stack depths of its states
-// (the length of the longest item read so far in each) sum to more than maxDepthSum
+// the same, but giving up with parser_too_large as soon as the parser passes one of these limits
+struct lr0limits {
+  size_t maxStackDepthSum = static_cast<size_t>(-1); // the sum over its states of each one's stack depth (the longest item read so far in it)
+  size_t maxItems         = static_cast<size_t>(-1); // the number of items in all of its states
+};
+
 class parser_too_large : public std::runtime_error {
 public:
-  using std::runtime_error::runtime_error;
+  enum class limit { stackDepthSum, items };
+  parser_too_large(limit l, size_t bound);
+
+  limit  which() const;
+  size_t bound() const;
+private:
+  limit  l;
+  size_t b;
 };
-parserdef lr0parser(const grammar& g, terminal* s, size_t maxDepthSum);
+
+parserdef lr0parser(const grammar& g, terminal* s, const lr0limits& limits);
 
 // from a state q and symbol t, what state do you go to?
 nat follow(const parserdef& p, nat q, terminal* t);

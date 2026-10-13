@@ -403,6 +403,10 @@ public:
   void parserMaxStackDepthSum(size_t f);
   size_t parserMaxStackDepthSum() const;
 
+  // and measured as the number of items in its LR(0) states (see parse/parser.C)
+  void parserMaxItems(size_t f);
+  size_t parserMaxItems() const;
+
   UnreachableMatchRowsPtr unreachableMatchRowsPtr;
 
   // allow low-level functions to be added
@@ -453,6 +457,7 @@ private:
   // consume the machine
   size_t maxDFAStates = {10000};
   size_t maxParserStackDepthSum = {100000};
+  size_t maxParserItems = {500000};
   // abort compilation of regexes which translate into huge dfa transition
   // states
   bool shouldThrowOnHugeRegexDFA = false;
