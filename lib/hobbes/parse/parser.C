@@ -76,12 +76,22 @@ static std::string parserTooLarge(cc* c) {
 // holds an item for each rule of each nonterminal it can expect next, so M
 // rules S -> b_i A over N rules A -> x_j make M states of N items each, with
 // a stack depth sum of only about 3M+N. The parser's items are bounded too.
+//
+// Nor do those two bound its lookahead, a set of terminals for each of its
+// transitions and completed items: up to the product of those and the
+// grammar's terminals, which a grammar within both bounds can make into
+// gigabytes. The lookahead terminals are counted, and bounded too.
 static std::string parserTooLarge(cc* c, const parser_too_large& e) {
-  if (e.which() == parser_too_large::limit::items) {
+  switch (e.which()) {
+  case parser_too_large::limit::items:
     return "grammar is too large to generate a parser for (its LR(0) states hold more than " +
            str::from(c->parserMaxItems()) + " items; see cc::parserMaxItems)";
+  case parser_too_large::limit::lookahead:
+    return "grammar is too large to generate a parser for (its lookahead holds more than " +
+           str::from(c->parserMaxLookahead()) + " terminals; see cc::parserMaxLookahead)";
+  default:
+    return parserTooLarge(c);
   }
-  return parserTooLarge(c);
 }
 
 static void checkParserSize(cc* c, ParserEvalInfo* pei, const LexicalAnnotation& la) {
@@ -129,16 +139,17 @@ void prepareEvalInfo(cc* c, const Parser& p, terminal* root, const precedence& p
 
   // compile an LALR(1) parser and table from this parser definition
   //   (bounding its size first, from its LR(0) states, before the more costly steps that follow)
+  parserlimits limits;
+  limits.maxStackDepthSum = c->parserMaxStackDepthSum();
+  limits.maxItems         = c->parserMaxItems();
+  limits.maxLookahead     = c->parserMaxLookahead();
   try {
-    lr0limits limits;
-    limits.maxStackDepthSum = c->parserMaxStackDepthSum();
-    limits.maxItems         = c->parserMaxItems();
     pei->pdef = lr0parser(extractGrammar(p), root, limits);
+    checkParserSize(c, pei, la);
+    lalr1lookahead(&pei->pdef, limits);
   } catch (const parser_too_large& e) {
     throw annotated_error(la, parserTooLarge(c, e));
   }
-  checkParserSize(c, pei, la);
-  lalr1lookahead(&pei->pdef);
   pei->table = lalrTable(pei->pdef, prec);
   pei->variantTy = makeParseVariant(*pei);
 }

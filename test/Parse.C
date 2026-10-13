@@ -332,6 +332,53 @@ TEST(Parse, GrammarsWithLargeParserStatesAreRejected) {
   EXPECT_TRUE(lc.readExpr(closureGrammar(40, 40)) != nullptr);
 }
 
+// and neither bound limits the lookahead, a set of terminals for each
+// transition and completed item: with m rules S -> b_j X Y, k rules
+// X -> B_i -> c_i and t rules Y -> u_l, there are m*k transitions to look
+// ahead from, each to all t terminals. At 400x400x200 that took 1.7GB with
+// 400k items, within the item bound. The lookahead's terminals are bounded too.
+static grammar lookaheadGrammar(size_t m, size_t k, size_t t, terminal** s) {
+  static std::map<std::string, terminal*> syms;
+  auto sym = [&](const std::string& n) { auto& x = syms[n]; if (x == nullptr) { x = new symbol(n); } return x; };
+
+  grammar g;
+  *s = sym("S");
+  for (size_t j = 0; j < m; ++j) {
+    g[*s].push_back(rule{sym("b" + std::to_string(j)), sym("X"), sym("Y")});
+  }
+  for (size_t i = 0; i < k; ++i) {
+    terminal* b = sym("B" + std::to_string(i));
+    g[sym("X")].push_back(rule{b});
+    g[b].push_back(rule{sym("c" + std::to_string(i))});
+  }
+  for (size_t l = 0; l < t; ++l) {
+    g[sym("Y")].push_back(rule{sym("u" + std::to_string(l))});
+  }
+  return g;
+}
+
+TEST(Parse, GrammarsWithLargeLookaheadAreRejected) {
+  terminal* s = nullptr;
+  grammar   g = lookaheadGrammar(40, 40, 20, &s);  // about 33k lookahead terminals
+
+  parserlimits limits;
+  limits.maxLookahead = 10000;
+  parserdef p = lr0parser(g, s, limits);
+  EXPECT_EXCEPTION(lalr1lookahead(&p, limits));
+
+  limits.maxLookahead = 100000;
+  parserdef q = lr0parser(g, s, limits);
+  lalr1lookahead(&q, limits);
+  EXPECT_EQ(lalrTable(q).size(), q.states.size());
+
+  // and through readExpr, where the limit is the cc's to set
+  cc lc;
+  lc.parserMaxLookahead(1);
+  EXPECT_EXCEPTION_MSG(lc.readExpr(literalGrammar(10)), std::exception, "cc::parserMaxLookahead");
+  lc.parserMaxLookahead(1000);
+  EXPECT_TRUE(lc.readExpr(literalGrammar(10)) != nullptr);
+}
+
 // LALR(1) lookahead used to be found by deciding its relations (reads,
 // includes, lookback) one pair of transitions at a time, which took hours for
 // a `parse {}` grammar of a few thousand states (OSS-Fuzz 571908642). It is
@@ -425,7 +472,7 @@ TEST(Parse, LalrLookaheadMatchesThePairwiseConstruction) {
 // transitions. Building its parser took time quadratic in those (in the LR(0)
 // states' closures and transitions, and pairwise in the lookahead relations):
 // some 25s for this grammar of 10,000 alternatives of up to four characters,
-// far more under a sanitizer. It is linear now, and takes a tenth of a second.
+// far more under a sanitizer. It is linear now, and takes a fraction of a second.
 TEST(Parse, WideGrammarsAreBuiltInLinearTime) {
   static std::map<std::string, terminal*> syms;
   auto sym = [&](const std::string& n) { auto& t = syms[n]; if (t == nullptr) { t = new symbol(n); } return t; };

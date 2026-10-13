@@ -407,6 +407,10 @@ public:
   void parserMaxItems(size_t f);
   size_t parserMaxItems() const;
 
+  // and measured as the number of terminals in its LALR(1) lookahead sets (see parse/parser.C)
+  void parserMaxLookahead(size_t f);
+  size_t parserMaxLookahead() const;
+
   UnreachableMatchRowsPtr unreachableMatchRowsPtr;
 
   // allow low-level functions to be added
@@ -458,6 +462,7 @@ private:
   size_t maxDFAStates = {10000};
   size_t maxParserStackDepthSum = {100000};
   size_t maxParserItems = {500000};
+  size_t maxParserLookahead = {2000000};
   // abort compilation of regexes which translate into huge dfa transition
   // states
   bool shouldThrowOnHugeRegexDFA = false;

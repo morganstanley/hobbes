@@ -385,9 +385,10 @@ const itemset& parserStateDef(const parserdef& p, nat n) {
 }
 
 parser_too_large::parser_too_large(limit l, size_t bound) :
-  std::runtime_error(l == limit::items ?
-    "parser states hold more than " + std::to_string(bound) + " items" :
-    "parser states' stack depths sum to more than " + std::to_string(bound)),
+  std::runtime_error(
+    l == limit::items     ? "parser states hold more than " + std::to_string(bound) + " items" :
+    l == limit::lookahead ? "parser lookahead holds more than " + std::to_string(bound) + " terminals" :
+                            "parser states' stack depths sum to more than " + std::to_string(bound)),
   l(l), b(bound) {
 }
 parser_too_large::limit parser_too_large::which() const { return this->l; }
@@ -401,7 +402,24 @@ namespace {
 //    quadratically in the grammar before the next state is visited)
 class lr0budget {
 public:
-  explicit lr0budget(const lr0limits& limits) : limits(limits) { }
+  explicit lr0budget(const parserlimits& limits) : limits(limits) { }
+
+  // the state reached from a kernel of items (the successors of some state's items on one symbol)
+  //   (a state is found by its kernel before its closure is made: many states can reach one
+  //    state, and making its closure again for each of them took time quadratic in the grammar;
+  //    a kernel's items have all read something, and its closure adds only items that haven't,
+  //    so kernels and the states made from them determine each other)
+  nat successor(const grammar& g, itemset* kernel, parserdef* p) {
+    auto k = this->kernels.find(*kernel);
+    if (k != this->kernels.end()) {
+      return k->second;
+    }
+    itemset ks = *kernel;
+    gclosure(g, kernel);
+    nat r = state(*kernel, p);
+    this->kernels[std::move(ks)] = r;
+    return r;
+  }
 
   nat state(const itemset& s, parserdef* p) {
     size_t n = p->states.size();
@@ -424,9 +442,10 @@ public:
     return r;
   }
 private:
-  const lr0limits& limits;
-  size_t           depthSum = 0;
-  size_t           items    = 0;
+  const parserlimits&     limits;
+  size_t                  depthSum = 0;
+  size_t                  items    = 0;
+  std::map<itemset, nat>  kernels;
 };
 
 state_transitions follow(const grammar& g, const itemset& is, const terminalset& vs, parserdef* p, lr0budget* b) {
@@ -444,9 +463,7 @@ state_transitions follow(const grammar& g, const itemset& is, const terminalset&
   state_transitions r;
   for (auto *v : vs) {
     if (v != endOfFile::value()) {
-      itemset& vis = succs[v];
-      gclosure(g, &vis);
-      r[v] = b->state(vis, p);
+      r[v] = b->successor(g, &succs[v], p);
     }
   }
   return r;
@@ -455,16 +472,16 @@ state_transitions follow(const grammar& g, const itemset& is, const terminalset&
 }
 
 state_transitions follow(const grammar& g, const itemset& is, const terminalset& vs, parserdef* p) {
-  static const lr0limits unlimited;
+  static const parserlimits unlimited;
   lr0budget b(unlimited);
   return follow(g, is, vs, p, &b);
 }
 
 parserdef lr0parser(const grammar& g, terminal* s) {
-  return lr0parser(g, s, lr0limits());
+  return lr0parser(g, s, parserlimits());
 }
 
-parserdef lr0parser(const grammar& g, terminal* s, const lr0limits& limits) {
+parserdef lr0parser(const grammar& g, terminal* s, const parserlimits& limits) {
   parserdef p;
   lr0budget b(limits);
 
@@ -672,11 +689,14 @@ edges includesEdges(const parserdef& p, const transitionIndex& ti) {
   std::vector<nat> path;
   for (nat y = 0; y < ti.ts.size(); ++y) {
     for (const auto& w : *aggRules(p.g, ti.ts[y].second)) {
+      // the states before each symbol (but the last, after which nothing is looked for)
       path.resize(w.size());
       nat s = ti.ts[y].first;
       for (nat i = 0; i < w.size(); ++i) {
         path[i] = s;
-        s = follow(p, s, w[i]);
+        if (i + 1 < w.size()) {
+          s = follow(p, s, w[i]);
+        }
       }
 
       for (nat i = w.size(); i > 0;) {
@@ -695,11 +715,36 @@ edges includesEdges(const parserdef& p, const transitionIndex& ti) {
   return r;
 }
 
+// counts the lookahead terminals computed for a parser, giving up once there are too many
+//   (the sets are as many as its transitions and items, each as large as its terminals, so
+//    their size can be quadratic in a grammar that passes the bounds on its LR(0) states)
+class lookaheadBudget {
+public:
+  explicit lookaheadBudget(size_t limit) : limit(limit) { }
+
+  void resized(size_t before, size_t after) {
+    this->n = this->n + after - before;
+    if (this->n > this->limit) {
+      throw parser_too_large(parser_too_large::limit::lookahead, this->limit);
+    }
+  }
+
+  // add ts to s
+  void insert(terminalset* s, const terminalset& ts) {
+    size_t before = s->size();
+    s->insert(ts.begin(), ts.end());
+    resized(before, s->size());
+  }
+private:
+  size_t limit;
+  size_t n = 0;
+};
+
 // for each x, f(x) = fp(x) + sum(f(y) | x R y), as digraphF computes it
 // (visiting nodes and edges in the same order, so with the same result),
 // but with R given as edges, and without recursion: an edge chain can be as
 // long as the parser has transitions
-transition_lookahead digraph(const transitionIndex& ti, const std::vector<terminalset>& fp, const edges& es) {
+transition_lookahead digraph(const transitionIndex& ti, const std::vector<terminalset>& fp, const edges& es, lookaheadBudget* b) {
   static const nat inf = static_cast<nat>(-1);
 
   nat                      n = ti.ts.size();
@@ -715,6 +760,7 @@ transition_lookahead digraph(const transitionIndex& ti, const std::vector<termin
     nat d = stack.size();
     depth[x] = d;
     f[x] = fp[x];
+    b->resized(0, f[x].size());
     frames.push_back(frame{x, d, 0});
   };
 
@@ -734,7 +780,7 @@ transition_lookahead digraph(const transitionIndex& ti, const std::vector<termin
           // visit y first, then come back to this edge to add in its value
           enter(y);
         } else {
-          f[fr.x].insert(f[y].begin(), f[y].end());
+          b->insert(&f[fr.x], f[y]);
           ++fr.e;
         }
         continue;
@@ -750,7 +796,9 @@ transition_lookahead digraph(const transitionIndex& ti, const std::vector<termin
           if (cx == x) {
             break;
           } else {
+            size_t before = f[cx].size();
             f[cx] = f[x];
+            b->resized(before, f[cx].size());
           }
         }
       }
@@ -759,7 +807,7 @@ transition_lookahead digraph(const transitionIndex& ti, const std::vector<termin
       // and add this node's value to the edge that led here
       if (!frames.empty()) {
         frame& pr = frames.back();
-        f[pr.x].insert(f[x].begin(), f[x].end());
+        b->insert(&f[pr.x], f[x]);
         ++pr.e;
       }
     }
@@ -772,40 +820,28 @@ transition_lookahead digraph(const transitionIndex& ti, const std::vector<termin
   return r;
 }
 
-transition_lookahead Reads(const parserdef& p, const transitionIndex& ti) {
+transition_lookahead Reads(const parserdef& p, const transitionIndex& ti, lookaheadBudget* b) {
   std::vector<terminalset> dr;
   dr.reserve(ti.ts.size());
   for (const auto& x : ti.ts) {
     dr.push_back(directReads(p, x));
   }
-  return digraph(ti, dr, readsEdges(p, ti));
+  return digraph(ti, dr, readsEdges(p, ti), b);
 }
 
-transition_lookahead Follow(const parserdef& p, const transitionIndex& ti) {
-  transition_lookahead rs = Reads(p, ti);
+transition_lookahead Follow(const parserdef& p, const transitionIndex& ti, lookaheadBudget* b) {
+  transition_lookahead rs = Reads(p, ti, b);
   std::vector<terminalset> rds;
   rds.reserve(ti.ts.size());
   for (const auto& x : ti.ts) {
-    rds.push_back(rs[x]);
+    rds.push_back(std::move(rs[x]));
   }
-  return digraph(ti, rds, includesEdges(p, ti));
+  rs.clear();
+  return digraph(ti, rds, includesEdges(p, ti), b);
 }
 
-}
-
-// compute Read(x=(s,A)) = directReads(s,A) + (Read(q,B) | (s,A) reads (q,B))
-transition_lookahead Reads(const parserdef& p, const transitionset& ts) {
-  return Reads(p, transitionIndex(ts));
-}
-
-// compute Follow(x=(s,A)) = Read((s,A)) + (Follow(q,B) | (s,A) includes (q,B))
-transition_lookahead Follow(const parserdef& p, const transitionset& ts) {
-  return Follow(p, transitionIndex(ts));
-}
-
-// apply transition lookahead to every applicable completed item in an LR(0) parser
-//   (q, A -> w.) looks back to (s,A) when s --w--> q, so walk each rule of A from s
-void apply(const transition_lookahead& tl, parserdef* p) {
+// (q, A -> w.) looks back to (s,A) when s --w--> q, so walk each rule of A from s
+void apply(const transition_lookahead& tl, parserdef* p, lookaheadBudget* b) {
   std::vector<itemset*> states(p->states.size(), nullptr);
   for (auto& s : p->states) {
     if (s.second < states.size()) {
@@ -835,15 +871,40 @@ void apply(const transition_lookahead& tl, parserdef* p) {
 
       auto i = states[q]->find(item(a, w.size(), r));
       if (i != states[q]->end()) {
-        const_cast<item*>(&(*i))->la.insert(tli.second.begin(), tli.second.end());
+        b->insert(&const_cast<item*>(&(*i))->la, tli.second);
       }
     }
   }
 }
 
+}
+
+// compute Read(x=(s,A)) = directReads(s,A) + (Read(q,B) | (s,A) reads (q,B))
+transition_lookahead Reads(const parserdef& p, const transitionset& ts) {
+  lookaheadBudget b(static_cast<size_t>(-1));
+  return Reads(p, transitionIndex(ts), &b);
+}
+
+// compute Follow(x=(s,A)) = Read((s,A)) + (Follow(q,B) | (s,A) includes (q,B))
+transition_lookahead Follow(const parserdef& p, const transitionset& ts) {
+  lookaheadBudget b(static_cast<size_t>(-1));
+  return Follow(p, transitionIndex(ts), &b);
+}
+
+// apply transition lookahead to every applicable completed item in an LR(0) parser
+void apply(const transition_lookahead& tl, parserdef* p) {
+  lookaheadBudget b(static_cast<size_t>(-1));
+  apply(tl, p, &b);
+}
+
 // determine the LALR(1) parser definition
 void lalr1lookahead(parserdef* p) {
-  hobbes::apply(Follow(*p, transitions(*p)), p);
+  lalr1lookahead(p, parserlimits());
+}
+
+void lalr1lookahead(parserdef* p, const parserlimits& limits) {
+  lookaheadBudget b(limits.maxLookahead);
+  apply(Follow(*p, transitionIndex(transitions(*p)), &b), p, &b);
 }
 
 parserdef lalr1parser(const grammar& g, terminal* s) {

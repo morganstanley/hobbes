@@ -135,14 +135,15 @@ state_transitions follow(const grammar& g, const itemset& is, const terminalset&
 parserdef lr0parser(const grammar& g, terminal* s);
 
 // the same, but giving up with parser_too_large as soon as the parser passes one of these limits
-struct lr0limits {
+struct parserlimits {
   size_t maxStackDepthSum = static_cast<size_t>(-1); // the sum over its states of each one's stack depth (the longest item read so far in it)
   size_t maxItems         = static_cast<size_t>(-1); // the number of items in all of its states
+  size_t maxLookahead     = static_cast<size_t>(-1); // the number of lookahead terminals computed for its transitions and items (see lalr1lookahead)
 };
 
 class parser_too_large : public std::runtime_error {
 public:
-  enum class limit { stackDepthSum, items };
+  enum class limit { stackDepthSum, items, lookahead };
   parser_too_large(limit l, size_t bound);
 
   limit  which() const;
@@ -152,7 +153,7 @@ private:
   size_t b;
 };
 
-parserdef lr0parser(const grammar& g, terminal* s, const lr0limits& limits);
+parserdef lr0parser(const grammar& g, terminal* s, const parserlimits& limits);
 
 // from a state q and symbol t, what state do you go to?
 nat follow(const parserdef& p, nat q, terminal* t);
@@ -272,6 +273,10 @@ parserdef lalr1parser(const grammar& g, terminal* s);
 // fill in the lookahead of an LR(0) parser's completed items, making it the LALR(1) parser
 //   (lalr1parser is lr0parser followed by this, split so that the LR(0) parser can be checked in between)
 void lalr1lookahead(parserdef* p);
+
+// the same, but giving up with parser_too_large once it has computed more than limits.maxLookahead lookahead terminals
+//   (a set of them for each nonterminal transition and each completed item, so as many as transitions times terminals)
+void lalr1lookahead(parserdef* p, const parserlimits& limits);
 
 // an ambiguity conflict on a particular terminal
 class ambiguity_conflict : public std::runtime_error {
