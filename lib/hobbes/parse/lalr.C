@@ -1,6 +1,9 @@
 
 #include <hobbes/parse/lalr.H>
+#include <algorithm>
 #include <stdexcept>
+#include <string>
+#include <vector>
 
 namespace hobbes {
 
@@ -330,14 +333,25 @@ itemsets follow(const grammar& g, const itemset& is, const terminals& vs) {
 
 void gclosure(const grammar& g, itemset* is) {
   // add implied items to a fixed point
-  bool changed = true;
-  while (changed) {
-    changed = false;
+  //   (each nonterminal is expanded once, and only the items it adds are looked at again,
+  //    rather than the whole set once per round)
+  terminalset              expanded;
+  std::vector<const item*> pending;
+  for (const auto& i : *is) {
+    pending.push_back(&i);
+  }
 
-    terminalset ts = next(g, *is);
-    for (auto *t : ts) {
-      if ((t != nullptr) && hasRule(g, t)) {
-        changed |= ruleItems(g, t, is);
+  while (!pending.empty()) {
+    terminal* t = next(g, *pending.back());
+    pending.pop_back();
+
+    if ((t != nullptr) && hasRule(g, t) && expanded.insert(t).second) {
+      const rules* rs = aggRules(g, t);
+      for (nat r = 0; r < rs->size(); ++r) {
+        auto ins = is->insert(item(t, 0, r));
+        if (ins.second) {
+          pending.push_back(&(*ins.first));
+        }
       }
     }
   }
@@ -371,16 +385,33 @@ const itemset& parserStateDef(const parserdef& p, nat n) {
 }
 
 state_transitions follow(const grammar& g, const itemset& is, const terminalset& vs, parserdef* p) {
+  // sort the items by the symbol they expect in one pass,
+  // rather than passing over all of them for each symbol
+  std::map<terminal*, itemset> succs;
+  for (const auto& i : is) {
+    terminal* v = next(g, i);
+    if (v != nullptr && vs.count(v) != 0) {
+      succs[v].insert(succ(i));
+    }
+  }
+
+  // and number the states they make in the order of vs
   state_transitions r;
   for (auto *v : vs) {
     if (v != endOfFile::value()) {
-      r[v] = parserState(gclosure(g, follow(g, is, v)), p);
+      itemset& vis = succs[v];
+      gclosure(g, &vis);
+      r[v] = parserState(vis, p);
     }
   }
   return r;
 }
 
 parserdef lr0parser(const grammar& g, terminal* s) {
+  return lr0parser(g, s, static_cast<size_t>(-1));
+}
+
+parserdef lr0parser(const grammar& g, terminal* s, size_t maxDepthSum) {
   parserdef p;
 
   // tweak this grammar to have a boot rule
@@ -394,9 +425,20 @@ parserdef lr0parser(const grammar& g, terminal* s) {
   p.g[boot].push_back(br);
 
   // enumerate the state space implied by this grammar
-  nat n = parserState(gclosure(p.g, ruleItems(p.g, boot)), &p);
+  nat    n        = parserState(gclosure(p.g, ruleItems(p.g, boot)), &p);
+  size_t depthSum = 0;
   while (n < p.states.size()) {
     const itemset& nis = parserStateDef(p, n);
+
+    nat d = 0;
+    for (const auto& i : nis) {
+      d = std::max(d, i.p);
+    }
+    depthSum += d;
+    if (depthSum > maxDepthSum) {
+      throw parser_too_large("parser states' stack depths sum to more than " + std::to_string(maxDepthSum));
+    }
+
     p.transitions[n] = follow(p.g, nis, next(p.g, nis), &p);
     ++n;
   }
@@ -523,69 +565,247 @@ terminalset directReads(const parserdef& p, const transition& x) {
   return nextPrim(p.g, parserStateDef(p, follow(p, x)));
 }
 
-// a utility to make it easier to create closures
-template <typename E, typename X0, typename R>
-  struct clos1 {
-    using PFN = R (*)(const E &, const X0 &);
-    const E& env;
-    PFN      fn;
-    
-    clos1(const E& env, PFN fn) : env(env), fn(fn) { }
-    R operator()(const X0& x0) const { return fn(env, x0); }
+// the relations above (reads, includes, lookback) define LALR(1) lookahead,
+// but deciding them one pair at a time costs a search over every pair of
+// transitions (and, for lookback, over every completed item besides): more
+// than a minute, under a sanitizer, for a `parse {}` grammar of a few
+// thousand states (OSS-Fuzz 571908642).
+// The edges of each relation can instead be built forward from each
+// transition, as DeRemer and Pennello do, in time linear in the size of the
+// LR(0) parser, which is what the functions below do.
+namespace {
+
+// the nonterminal transitions of a parser, numbered in the order of a
+// transitionset, with each relation as a list of edges between those numbers
+struct transitionIndex {
+  std::vector<transition> ts;
+  std::map<transition, nat> idx;
+
+  explicit transitionIndex(const transitionset& xs) : ts(xs.begin(), xs.end()) {
+    for (nat i = 0; i < this->ts.size(); ++i) {
+      this->idx[this->ts[i]] = i;
+    }
+  }
+
+  // the number of a transition, or ts.size() if it isn't one
+  nat find(nat s, terminal* t) const {
+    auto i = this->idx.find(transition(s, t));
+    return (i == this->idx.end()) ? static_cast<nat>(this->ts.size()) : i->second;
+  }
+};
+
+using edges = std::vector<std::vector<nat>>;
+
+// list each node's edges in transitionset order, without repeats
+void normalize(edges* es) {
+  for (auto& e : *es) {
+    std::sort(e.begin(), e.end());
+    e.erase(std::unique(e.begin(), e.end()), e.end());
+  }
+}
+
+// (s,A) reads (s',B) if s --A--> s' and B =>* eps
+edges readsEdges(const parserdef& p, const transitionIndex& ti) {
+  edges r(ti.ts.size());
+  for (nat x = 0; x < ti.ts.size(); ++x) {
+    nat s = follow(p, ti.ts[x]);
+    for (const auto& st : transitions(p, s)) {
+      if (derivesNull(p, st.first)) {
+        nat y = ti.find(s, st.first);
+        if (y < ti.ts.size()) {
+          r[x].push_back(y);
+        }
+      }
+    }
+  }
+  normalize(&r);
+  return r;
+}
+
+// x=(s,A) includes y=(s',B) if B -> wAg, g =>* eps, and s' --w--> s
+//   so walk each rule of B from s', and take the edge at each A in its nullable tail
+edges includesEdges(const parserdef& p, const transitionIndex& ti) {
+  edges r(ti.ts.size());
+  std::vector<nat> path;
+  for (nat y = 0; y < ti.ts.size(); ++y) {
+    for (const auto& w : *aggRules(p.g, ti.ts[y].second)) {
+      path.resize(w.size());
+      nat s = ti.ts[y].first;
+      for (nat i = 0; i < w.size(); ++i) {
+        path[i] = s;
+        s = follow(p, s, w[i]);
+      }
+
+      for (nat i = w.size(); i > 0;) {
+        --i;
+        nat x = ti.find(path[i], w[i]);
+        if (x < ti.ts.size()) {
+          r[x].push_back(y);
+        }
+        if (!derivesNull(p, w[i])) {
+          break;
+        }
+      }
+    }
+  }
+  normalize(&r);
+  return r;
+}
+
+// for each x, f(x) = fp(x) + sum(f(y) | x R y), as digraphF computes it
+// (visiting nodes and edges in the same order, so with the same result),
+// but with R given as edges, and without recursion: an edge chain can be as
+// long as the parser has transitions
+transition_lookahead digraph(const transitionIndex& ti, const std::vector<terminalset>& fp, const edges& es) {
+  static const nat inf = static_cast<nat>(-1);
+
+  nat                      n = ti.ts.size();
+  std::vector<nat>         depth(n, 0);
+  std::vector<terminalset> f(n);
+  std::vector<nat>         stack;
+
+  struct frame { nat x; nat d; nat e; };
+  std::vector<frame> frames;
+
+  auto enter = [&](nat x) {
+    stack.push_back(x);
+    nat d = stack.size();
+    depth[x] = d;
+    f[x] = fp[x];
+    frames.push_back(frame{x, d, 0});
   };
 
-template <typename E, typename X0, typename X1, typename R>
-  struct clos2 {
-    using PFN = R (*)(const E &, const X0 &, const X1 &);
-    const E& env;
-    PFN      fn;
+  for (nat root = 0; root < n; ++root) {
+    if (depth[root] != 0) {
+      continue;
+    }
+    enter(root);
 
-    clos2(const E& env, PFN fn) : env(env), fn(fn) { }
-    R operator()(const X0& x0, const X1& x1) const { return fn(env, x0, x1); }
-  };
+    while (!frames.empty()) {
+      frame& fr = frames.back();
+      const auto& e = es[fr.x];
 
-// typedefs to work around type inference failure for the below digraph expressions
-using ptsappend = terminalset (*)(const terminalset &, const terminalset &);
+      if (fr.e < e.size()) {
+        nat y = e[fr.e];
+        if (depth[y] == 0) {
+          // visit y first, then come back to this edge to add in its value
+          enter(y);
+        } else {
+          f[fr.x].insert(f[y].begin(), f[y].end());
+          ++fr.e;
+        }
+        continue;
+      }
 
-using DRT = clos1<parserdef, transition, terminalset>;
-using readsT = clos2<parserdef, transition, transition, bool>;
+      // join all the nodes in this SCC
+      nat x = fr.x;
+      if (depth[x] == fr.d) {
+        while (true) {
+          nat cx = stack.back();
+          stack.pop_back();
+          depth[cx] = inf;
+          if (cx == x) {
+            break;
+          } else {
+            f[cx] = f[x];
+          }
+        }
+      }
+      frames.pop_back();
 
-using RT = clos1<transition_lookahead, transition, terminalset>;
-using includesT = clos2<parserdef, transition, transition, bool>;
+      // and add this node's value to the edge that led here
+      if (!frames.empty()) {
+        frame& pr = frames.back();
+        f[pr.x].insert(f[x].begin(), f[x].end());
+        ++pr.e;
+      }
+    }
+  }
+
+  transition_lookahead r;
+  for (nat x = 0; x < n; ++x) {
+    r[ti.ts[x]] = std::move(f[x]);
+  }
+  return r;
+}
+
+transition_lookahead Reads(const parserdef& p, const transitionIndex& ti) {
+  std::vector<terminalset> dr;
+  dr.reserve(ti.ts.size());
+  for (const auto& x : ti.ts) {
+    dr.push_back(directReads(p, x));
+  }
+  return digraph(ti, dr, readsEdges(p, ti));
+}
+
+transition_lookahead Follow(const parserdef& p, const transitionIndex& ti) {
+  transition_lookahead rs = Reads(p, ti);
+  std::vector<terminalset> rds;
+  rds.reserve(ti.ts.size());
+  for (const auto& x : ti.ts) {
+    rds.push_back(rs[x]);
+  }
+  return digraph(ti, rds, includesEdges(p, ti));
+}
+
+}
 
 // compute Read(x=(s,A)) = directReads(s,A) + (Read(q,B) | (s,A) reads (q,B))
 transition_lookahead Reads(const parserdef& p, const transitionset& ts) {
-  return digraphF<transition, terminalset, DRT, ptsappend, readsT>::map(ts, DRT(p, &directReads), &setUnion, readsT(p, &reads));
+  return Reads(p, transitionIndex(ts));
 }
 
 // compute Follow(x=(s,A)) = Read((s,A)) + (Follow(q,B) | (s,A) includes (q,B))
 transition_lookahead Follow(const parserdef& p, const transitionset& ts) {
-  transition_lookahead r = Reads(p, ts);
-  return digraphF<transition, terminalset, RT, ptsappend, includesT>::map(ts, RT(r, &mapLookup), &setUnion, includesT(p, &includes));
+  return Follow(p, transitionIndex(ts));
 }
 
 // apply transition lookahead to every applicable completed item in an LR(0) parser
+//   (q, A -> w.) looks back to (s,A) when s --w--> q, so walk each rule of A from s
 void apply(const transition_lookahead& tl, parserdef* p) {
-  for (auto s = p->states.begin(); s != p->states.end(); ++s) {
-    for (auto i = s->first.begin(); i != s->first.end(); ++i) {
-      // if this is a completed item, then we need to give it lookahead terminals
-      if (next(p->g, *i) == nullptr) {
-        for (const auto &tli : tl) {
-          if (lookback(*p, s->second, i->agg, nthRule(aggRules(p->g, i->agg), i->r), tli.first)) {
-            const_cast<item*>(&(*(i)))->la.insert(tli.second.begin(), tli.second.end());
-          }
+  std::vector<itemset*> states(p->states.size(), nullptr);
+  for (auto& s : p->states) {
+    if (s.second < states.size()) {
+      states[s.second] = const_cast<itemset*>(&s.first);
+    }
+  }
+
+  for (const auto& tli : tl) {
+    terminal*    a  = tli.first.second;
+    const rules* rs = aggRules(p->g, a);
+    for (nat r = 0; r < rs->size(); ++r) {
+      const rule& w = (*rs)[r];
+      nat  q  = tli.first.first;
+      bool ok = true;
+      for (auto* t : w) {
+        const state_transitions& st = transitions(*p, q);
+        auto n = st.find(t);
+        if (n == st.end()) {
+          ok = false;
+          break;
         }
+        q = n->second;
+      }
+      if (!ok || q >= states.size() || states[q] == nullptr) {
+        continue;
+      }
+
+      auto i = states[q]->find(item(a, w.size(), r));
+      if (i != states[q]->end()) {
+        const_cast<item*>(&(*i))->la.insert(tli.second.begin(), tli.second.end());
       }
     }
   }
 }
 
 // determine the LALR(1) parser definition
-parserdef lalr1parser(const grammar& g, terminal* s) {
-  parserdef     p  = lr0parser(g, s);
-  transitionset ts = transitions(p);
+void lalr1lookahead(parserdef* p) {
+  hobbes::apply(Follow(*p, transitions(*p)), p);
+}
 
-  hobbes::apply(Follow(p, ts), &p);
+parserdef lalr1parser(const grammar& g, terminal* s) {
+  parserdef p = lr0parser(g, s);
+  lalr1lookahead(&p);
   return p;
 }
 

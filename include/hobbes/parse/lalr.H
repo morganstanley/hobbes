@@ -134,6 +134,14 @@ state_transitions follow(const grammar& g, const itemset& is, const terminalset&
 // determine the parser state graph (ie: the LR(0) parser) for a grammar, given a start symbol
 parserdef lr0parser(const grammar& g, terminal* s);
 
+// the same, but giving up with parser_too_large once the stack depths of its states
+// (the length of the longest item read so far in each) sum to more than maxDepthSum
+class parser_too_large : public std::runtime_error {
+public:
+  using std::runtime_error::runtime_error;
+};
+parserdef lr0parser(const grammar& g, terminal* s, size_t maxDepthSum);
+
 // from a state q and symbol t, what state do you go to?
 nat follow(const parserdef& p, nat q, terminal* t);
 
@@ -248,6 +256,10 @@ transition_lookahead Follow(const parserdef& p, const transitionset& ts);
 
 // determine the LALR(1) parser for a grammar, given a start symbol
 parserdef lalr1parser(const grammar& g, terminal* s);
+
+// fill in the lookahead of an LR(0) parser's completed items, making it the LALR(1) parser
+//   (lalr1parser is lr0parser followed by this, split so that the LR(0) parser can be checked in between)
+void lalr1lookahead(parserdef* p);
 
 // an ambiguity conflict on a particular terminal
 class ambiguity_conflict : public std::runtime_error {

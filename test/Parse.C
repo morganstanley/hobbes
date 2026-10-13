@@ -1,5 +1,8 @@
 #include "test.H"
 #include <hobbes/hobbes.H>
+#include <hobbes/parse/lalr.H>
+#include <map>
+#include <random>
 #include <string>
 
 using namespace hobbes;
@@ -298,6 +301,122 @@ TEST(Parse, OversizedGrammarsAreRejected) {
   dc.define("p", literalGrammar(200));  // ~20k
   EXPECT_EQ(dc.compileFn<int()>(("match p(\"" + std::string(200, 'a') + "\") with | |1=x| -> x | _ -> -1").c_str())(), 1);
   EXPECT_EQ(dc.compileFn<int()>("match p(\"aa\") with | |1=x| -> x | _ -> -1")(), -1);
+}
+
+// LALR(1) lookahead used to be found by deciding its relations (reads,
+// includes, lookback) one pair of transitions at a time, which took hours for
+// a `parse {}` grammar of a few thousand states (OSS-Fuzz 571908642). It is
+// now built forward from each transition. The pairwise construction is kept
+// here as the reference: the two must give every item the same lookahead.
+static void pairwiseLookahead(parserdef* p) {
+  transitionset ts = transitions(*p);
+  auto un = [](const terminalset& a, const terminalset& b) { return setUnion(a, b); };
+
+  auto dr = [&](const transition& x) { return directReads(*p, x); };
+  auto rd = [&](const transition& x, const transition& y) { return reads(*p, x, y); };
+  transition_lookahead rs = digraphF<transition, terminalset, decltype(dr), decltype(un), decltype(rd)>::map(ts, dr, un, rd);
+
+  auto rl = [&](const transition& x) { return rs[x]; };
+  auto in = [&](const transition& x, const transition& y) { return includes(*p, x, y); };
+  transition_lookahead fs = digraphF<transition, terminalset, decltype(rl), decltype(un), decltype(in)>::map(ts, rl, un, in);
+
+  for (auto& s : p->states) {
+    for (const auto& i : s.first) {
+      const rule& w = p->g[i.agg][i.r];
+      if (i.p == w.size()) {
+        for (const auto& f : fs) {
+          if (lookback(*p, s.second, i.agg, w, f.first)) {
+            const_cast<item*>(&i)->la.insert(f.second.begin(), f.second.end());
+          }
+        }
+      }
+    }
+  }
+}
+
+static bool sameLookahead(const grammar& g, terminal* s) {
+  parserdef ref = lr0parser(g, s);
+  pairwiseLookahead(&ref);
+  parserdef p = lr0parser(g, s);
+  lalr1lookahead(&p);
+
+  if (ref.states.size() != p.states.size()) {
+    return false;
+  }
+  for (auto rs = ref.states.begin(), ps = p.states.begin(); rs != ref.states.end(); ++rs, ++ps) {
+    if (rs->second != ps->second || rs->first.size() != ps->first.size()) {
+      return false;
+    }
+    for (auto ri = rs->first.begin(), pi = ps->first.begin(); ri != rs->first.end(); ++ri, ++pi) {
+      if (!(*ri == *pi) || ri->la != pi->la) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+TEST(Parse, LalrLookaheadMatchesThePairwiseConstruction) {
+  // terminals are interned and live as long as the process, as the grammar reader makes them
+  static std::map<std::string, terminal*> syms;
+  auto sym = [&](const std::string& n) { auto& t = syms[n]; if (t == nullptr) { t = new symbol(n); } return t; };
+
+  // LALR(1) but not SLR(1): S -> L = R | R, L -> * R | id, R -> L
+  {
+    terminal *S = sym("S"), *L = sym("L"), *R = sym("R"), *eq = sym("="), *st = sym("*"), *id = sym("id");
+    grammar g;
+    g[S] = rules{ rule{L, eq, R}, rule{R} };
+    g[L] = rules{ rule{st, R}, rule{id} };
+    g[R] = rules{ rule{L} };
+    EXPECT_TRUE(sameLookahead(g, S));
+  }
+
+  // random grammars, with nullable rules, left and right recursion, and cycles of includes
+  std::mt19937 rng(571908642);
+  for (size_t n = 0; n < 300; ++n) {
+    std::vector<terminal*> nts, ts;
+    for (size_t i = 0, k = 1 + rng() % 6; i < k; ++i) { nts.push_back(sym("N" + std::to_string(i))); }
+    for (size_t i = 0, k = 1 + rng() % 4; i < k; ++i) { ts.push_back(sym("t" + std::to_string(i))); }
+
+    grammar g;
+    for (auto* nt : nts) {
+      for (size_t r = 0, k = 1 + rng() % 3; r < k; ++r) {
+        rule w;
+        for (size_t i = 0, len = rng() % 5; i < len; ++i) {
+          w.push_back((rng() % 2 == 0) ? nts[rng() % nts.size()] : ts[rng() % ts.size()]);
+        }
+        g[nt].push_back(w);
+      }
+    }
+    EXPECT_TRUE(sameLookahead(g, nts[0]));
+  }
+}
+
+// the grammar from OSS-Fuzz 571908642 had thousands of states, rules and
+// transitions. Building its parser took time quadratic in those (in the LR(0)
+// states' closures and transitions, and pairwise in the lookahead relations):
+// some 25s for this grammar of 10,000 alternatives of up to four characters,
+// far more under a sanitizer. It is linear now, and takes a tenth of a second.
+TEST(Parse, WideGrammarsAreBuiltInLinearTime) {
+  static std::map<std::string, terminal*> syms;
+  auto sym = [&](const std::string& n) { auto& t = syms[n]; if (t == nullptr) { t = new symbol(n); } return t; };
+
+  // S -> X0 | X1 | ..., Xi -> the digits of i
+  terminal* s = sym("S");
+  grammar g;
+  for (size_t i = 0; i < 10000; ++i) {
+    terminal* x = sym("X" + std::to_string(i));
+    g[s].push_back(rule{x});
+    rule w;
+    for (char d : std::to_string(i)) {
+      w.push_back(sym(std::string(1, d)));
+    }
+    g[x].push_back(w);
+  }
+
+  parserdef p = lalr1parser(g, s);
+  EXPECT_EQ(p.states.size(), size_t(20002));
+  EXPECT_EQ(lalrTable(p).size(), size_t(20002));
 }
 
 // an error thrown from a lexer or grammar action (an unsupported literal here)
