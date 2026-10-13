@@ -379,6 +379,55 @@ TEST(Parse, GrammarsWithLargeLookaheadAreRejected) {
   EXPECT_TRUE(lc.readExpr(literalGrammar(10)) != nullptr);
 }
 
+// many transitions can lead to one state, which can have many transitions
+// out of it: m rules S -> b_j A, each through A -> X Z, all lead on X to one
+// state with n nullable transitions Z -> N_i -> eps, or n terminals Y -> u_l.
+// What a transition reads depends only on the state it leads to, but it was
+// found again for each transition: m*n edges (105s and 1.3GB at 10k x 30k,
+// within every bound) or m*n terminals before any of them were counted.
+static grammar sharedTargetGrammar(size_t m, size_t n, bool nullable, terminal** s) {
+  static std::map<std::string, terminal*> syms;
+  auto sym = [&](const std::string& x) { auto& t = syms[x]; if (t == nullptr) { t = new symbol(x); } return t; };
+
+  grammar g;
+  *s = sym("S");
+  for (size_t j = 0; j < m; ++j) {
+    g[*s].push_back(rule{sym("b" + std::to_string(j)), sym("A")});
+  }
+  g[sym("A")].push_back(rule{sym("X"), sym("Z")});
+  g[sym("X")].push_back(rule{sym("x")});
+  for (size_t i = 0; i < n; ++i) {
+    if (nullable) {
+      terminal* ni = sym("N" + std::to_string(i));
+      g[sym("Z")].push_back(rule{ni});
+      g[ni].push_back(rule{});
+    } else {
+      g[sym("Z")].push_back(rule{sym("u" + std::to_string(i))});
+    }
+  }
+  return g;
+}
+
+TEST(Parse, ManyTransitionsToOneStateAreCheap) {
+  parserlimits limits;
+  limits.maxStackDepthSum = 100000;
+  limits.maxItems         = 500000;
+  limits.maxLookahead     = 2000000;
+
+  // reads: m*n edges, now n (the grammar is ambiguous, all N_i being empty,
+  // so it has no table, but its lookahead is found)
+  terminal* s = nullptr;
+  grammar   g = sharedTargetGrammar(3000, 3000, true, &s);
+  parserdef p = lr0parser(g, s, limits);
+  lalr1lookahead(&p, limits);
+  EXPECT_EQ(p.states.size(), size_t(9005));
+
+  // direct reads: m*n terminals, now counted (and refused) as they are made
+  grammar   h = sharedTargetGrammar(3000, 3000, false, &s);
+  parserdef q = lr0parser(h, s, limits);
+  EXPECT_EXCEPTION(lalr1lookahead(&q, limits));
+}
+
 // LALR(1) lookahead used to be found by deciding its relations (reads,
 // includes, lookback) one pair of transitions at a time, which took hours for
 // a `parse {}` grammar of a few thousand states (OSS-Fuzz 571908642). It is

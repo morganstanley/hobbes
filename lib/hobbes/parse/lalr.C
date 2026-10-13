@@ -665,15 +665,22 @@ void normalize(edges* es) {
 }
 
 // (s,A) reads (s',B) if s --A--> s' and B =>* eps
+//   (which depends only on s', so the edges are found once for each state that transitions lead
+//    to, rather than once for each transition: many transitions can lead to one state, which can
+//    have many transitions out of it)
 edges readsEdges(const parserdef& p, const transitionIndex& ti) {
-  edges r(ti.ts.size());
-  for (nat x = 0; x < ti.ts.size(); ++x) {
-    nat s = follow(p, ti.ts[x]);
-    for (const auto& st : transitions(p, s)) {
-      if (derivesNull(p, st.first)) {
-        nat y = ti.find(s, st.first);
-        if (y < ti.ts.size()) {
-          r[x].push_back(y);
+  edges r(p.states.size());
+  std::vector<bool> done(p.states.size(), false);
+  for (const auto& x : ti.ts) {
+    nat s = follow(p, x);
+    if (s < done.size() && !done[s]) {
+      done[s] = true;
+      for (const auto& st : transitions(p, s)) {
+        if (derivesNull(p, st.first)) {
+          nat y = ti.find(s, st.first);
+          if (y < ti.ts.size()) {
+            r[s].push_back(y);
+          }
         }
       }
     }
@@ -743,8 +750,14 @@ private:
 // for each x, f(x) = fp(x) + sum(f(y) | x R y), as digraphF computes it
 // (visiting nodes and edges in the same order, so with the same result),
 // but with R given as edges, and without recursion: an edge chain can be as
-// long as the parser has transitions
-transition_lookahead digraph(const transitionIndex& ti, const std::vector<terminalset>& fp, const edges& es, lookaheadBudget* b) {
+// long as the parser has transitions.
+//
+// Many nodes can share one fp and one list of edges (all of the transitions
+// to one state, for reads). Once one of them is done, having read only values
+// that were themselves done (none of its edges went back into the stack), its
+// value is what any other node with the same fp and edges would compute, so
+// that is used rather than visiting the same edges again for each of them.
+transition_lookahead digraph(const transitionIndex& ti, const std::vector<const terminalset*>& fp, const std::vector<const std::vector<nat>*>& es, lookaheadBudget* b) {
   static const nat inf = static_cast<nat>(-1);
 
   nat                      n = ti.ts.size();
@@ -752,16 +765,27 @@ transition_lookahead digraph(const transitionIndex& ti, const std::vector<termin
   std::vector<terminalset> f(n);
   std::vector<nat>         stack;
 
-  struct frame { nat x; nat d; nat e; };
+  using shape = std::pair<const terminalset*, const std::vector<nat>*>;
+  std::map<shape, nat> doneShapes;
+
+  struct frame { nat x; nat d; nat e; bool partial; };
   std::vector<frame> frames;
 
   auto enter = [&](nat x) {
     stack.push_back(x);
     nat d = stack.size();
     depth[x] = d;
-    f[x] = fp[x];
-    b->resized(0, f[x].size());
-    frames.push_back(frame{x, d, 0});
+
+    auto ds = doneShapes.find(shape(fp[x], es[x]));
+    if (ds != doneShapes.end()) {
+      f[x] = f[ds->second];
+      b->resized(0, f[x].size());
+      frames.push_back(frame{x, d, static_cast<nat>(es[x]->size()), false});
+    } else {
+      f[x] = *fp[x];
+      b->resized(0, f[x].size());
+      frames.push_back(frame{x, d, 0, false});
+    }
   };
 
   for (nat root = 0; root < n; ++root) {
@@ -772,7 +796,7 @@ transition_lookahead digraph(const transitionIndex& ti, const std::vector<termin
 
     while (!frames.empty()) {
       frame& fr = frames.back();
-      const auto& e = es[fr.x];
+      const auto& e = *es[fr.x];
 
       if (fr.e < e.size()) {
         nat y = e[fr.e];
@@ -780,6 +804,9 @@ transition_lookahead digraph(const transitionIndex& ti, const std::vector<termin
           // visit y first, then come back to this edge to add in its value
           enter(y);
         } else {
+          if (depth[y] != inf) {
+            fr.partial = true; // y is still in the stack, so its value isn't done
+          }
           b->insert(&f[fr.x], f[y]);
           ++fr.e;
         }
@@ -787,7 +814,8 @@ transition_lookahead digraph(const transitionIndex& ti, const std::vector<termin
       }
 
       // join all the nodes in this SCC
-      nat x = fr.x;
+      nat  x       = fr.x;
+      bool partial = fr.partial;
       if (depth[x] == fr.d) {
         while (true) {
           nat cx = stack.back();
@@ -803,6 +831,9 @@ transition_lookahead digraph(const transitionIndex& ti, const std::vector<termin
         }
       }
       frames.pop_back();
+      if (!partial) {
+        doneShapes.insert(std::make_pair(shape(fp[x], es[x]), x));
+      }
 
       // and add this node's value to the edge that led here
       if (!frames.empty()) {
@@ -821,12 +852,24 @@ transition_lookahead digraph(const transitionIndex& ti, const std::vector<termin
 }
 
 transition_lookahead Reads(const parserdef& p, const transitionIndex& ti, lookaheadBudget* b) {
-  std::vector<terminalset> dr;
-  dr.reserve(ti.ts.size());
-  for (const auto& x : ti.ts) {
-    dr.push_back(directReads(p, x));
+  // the terminals read directly after a transition, and the transitions it reads,
+  // depend only on the state that it leads to, so are found once for each such state
+  std::vector<terminalset> drs(p.states.size());
+  std::vector<bool>        done(p.states.size(), false);
+  edges                    res = readsEdges(p, ti);
+
+  std::vector<const terminalset*>      dr(ti.ts.size());
+  std::vector<const std::vector<nat>*> es(ti.ts.size());
+  for (nat x = 0; x < ti.ts.size(); ++x) {
+    nat s = follow(p, ti.ts[x]);
+    if (!done[s]) {
+      done[s] = true;
+      drs[s]  = directReads(p, ti.ts[x]);
+    }
+    dr[x] = &drs[s];
+    es[x] = &res[s];
   }
-  return digraph(ti, dr, readsEdges(p, ti), b);
+  return digraph(ti, dr, es, b);
 }
 
 transition_lookahead Follow(const parserdef& p, const transitionIndex& ti, lookaheadBudget* b) {
@@ -837,7 +880,15 @@ transition_lookahead Follow(const parserdef& p, const transitionIndex& ti, looka
     rds.push_back(std::move(rs[x]));
   }
   rs.clear();
-  return digraph(ti, rds, includesEdges(p, ti), b);
+
+  edges ies = includesEdges(p, ti);
+  std::vector<const terminalset*>      fp(ti.ts.size());
+  std::vector<const std::vector<nat>*> es(ti.ts.size());
+  for (nat x = 0; x < ti.ts.size(); ++x) {
+    fp[x] = &rds[x];
+    es[x] = &ies[x];
+  }
+  return digraph(ti, fp, es, b);
 }
 
 // (q, A -> w.) looks back to (s,A) when s --w--> q, so walk each rule of A from s
