@@ -8,6 +8,9 @@ Stanley's responsible disclosure program:
 
 https://www.morganstanley.com/vulnerability-disclosure
 
+Private reports, including automated scanner findings, can also be sent to
+the Hobbes maintainers at hobbes-dev@morganstanley.com.
+
 Please do not report security vulnerabilities through public GitHub issues.
 
 ## Scope: what is (and is not) a vulnerability in Hobbes
