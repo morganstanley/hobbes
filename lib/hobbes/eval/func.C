@@ -607,8 +607,16 @@ public:
     } else if (isUnit(tys[0])) {
       // unit carries no bits to reinterpret (unsafeCast(())::t names a 't' only for its type),
       // so make a zero 't' rather than bitcast the unit placeholder to it
-      return withContext([&](auto&) {
-        return llvm::Constant::getNullValue(toLLVM(rty, true));
+      return withContext([&](auto&) -> llvm::Value* {
+        llvm::Type* ty = toLLVM(rty, true);
+        if (ty->isVoidTy()) {
+          // 't' lowers to nothing, as unit does
+          return cvalue(true);
+        } else if (!ty->isFirstClassType() || ty->isLabelTy() || ty->isMetadataTy()) {
+          // LLVM has no zero value for these (getNullValue can't be asked for one)
+          throw annotated_error(*es[0], "Cannot cast () to " + show(rty) + ", it has no zero value");
+        }
+        return llvm::Constant::getNullValue(ty);
       });
     } else {
       return withContext([&](auto&) {
