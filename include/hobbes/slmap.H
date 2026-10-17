@@ -110,12 +110,14 @@ template <typename K, typename V>
     }
 
     // find the list node after this node with the key we're looking for
+    // (this node only heads the list, its own key and value are not an entry,
+    //  so it is never the node found)
     slnode<K,V>* findNext(fregion::imagefile* f, const K& k) {
       if (this->next.size == 0) {
         return 0;
       } else {
         auto* r = findNextGLEB(f, this->next.size-1, k, [](slnode<K,V>*){});
-        return (r && r->key == k) ? r : 0;
+        return (r && r != this && r->key == k) ? r : 0;
       }
     }
 
@@ -173,20 +175,17 @@ template <typename K, typename V>
       }
 
       std::stack<slnode<K,V>*> glebSpine;
-      if (auto* n = findNextGLEB(f, this->next.size - 1, k, [&](slnode<K,V>* n){ glebSpine.push(n); })) {
-        if (n->key < k) {
-          // insert after the GLEB (because we don't have this exact key)
-          insertAt(f, n, allocNode(f), k, v, glebSpine);
-          return true;
-        } else {
-          // n->key==k
-          // we don't need to allocate a new node
-          n->value = v;
-          return false;
-        }
+      auto* n = findNextGLEB(f, this->next.size - 1, k, [&](slnode<K,V>* n){ glebSpine.push(n); });
+      if (n != this && !(n->key < k)) {
+        // n->key==k
+        // we don't need to allocate a new node
+        n->value = v;
+        return false;
       } else {
-        // insert at the root
-        insertAt(f, this, allocNode(f), k, v, glebSpine);
+        // insert after the GLEB (because we don't have this exact key)
+        // or at the root, if every key in the list is greater than this one
+        // (the root's own key and value are not an entry, so k is never compared to them)
+        insertAt(f, n, allocNode(f), k, v, glebSpine);
         return true;
       }
     }
