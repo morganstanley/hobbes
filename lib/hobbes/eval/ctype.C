@@ -126,6 +126,12 @@ public:
   }
 
   llvm::Type* with(const Record* v) const override {
+    // a record's aligned members (its memory layout) are only worked out once
+    // all of its member types are known, so with no layout it has no
+    // representation yet (and mustn't be mistaken for an empty record)
+    if (!isMonoSingular(v)) {
+      throw std::runtime_error("Can't translate to LLVM monotype with unresolved type variables: " + show(v));
+    }
     const Record::Members& ams = v->alignedMembers();
 
     Types cms;

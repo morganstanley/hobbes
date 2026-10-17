@@ -292,3 +292,18 @@ TEST(Variants, UnsafeCastUnitToVariant) {
   EXPECT_EQ(vc.verifyCodeForExpr(vc.readExpr("variantHeadLabel(unsafeCast(())::|a:int,b:bool|)")), std::string());
   EXPECT_TRUE(vc.compileFn<bool()>("variantHeadLabel(unsafeCast(())::|a:int,b:bool|) == \"a\"")());
 }
+
+TEST(Variants, UnsafeCastUnitToUnloweredType) {
+  cc vc;
+  // a tuple with a type variable in it has no memory layout yet, and used to lower
+  // to LLVM's void type, which has no zero value to make (OSS-Fuzz 573787443)
+  for (const char* e : {"unsafeCast()::(|t|)*xfseq", "unsafeCast()::(|t|)*a", "unsafeCast()::(int*a)",
+                        "unsafeCast()::{x:a,y:int}", "unsafeCast(1)::(int*a)", "newPrim()::(int*a)"}) {
+    EXPECT_EXCEPTION(vc.verifyCodeForExpr(vc.readExpr(e)));
+  }
+  // these do lower, unit-like ones to nothing and the rest to a zero value
+  for (const char* e : {"unsafeCast()::(()*())", "unsafeCast()::{x:()}", "unsafeCast()::(()->())",
+                        "unsafeCast()::(int*())", "unsafeCast()::((|t|)*int)", "unsafeCast(())::(quote a)"}) {
+    EXPECT_EQ(vc.verifyCodeForExpr(vc.readExpr(e)), std::string());
+  }
+}
