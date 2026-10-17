@@ -7,6 +7,7 @@
 // useful for debugging generated expressions
 #include <hobbes/lang/pat/print.H>
 #include <memory>
+#include <vector>
 
 namespace hobbes {
 
@@ -44,7 +45,76 @@ struct ParserEvalInfo {
 
   using ReduceExprs = std::map<terminal *, Exprs>;
   ReduceExprs reduceExprs;
+
+  // the type of a parse stack's values, with a case for each nonterminal (see parseVariant)
+  MonoTypePtr variantTy;
+
+  // the parse stack depth at each state (see parseDepth)
+  std::vector<size_t> depths;
 };
+
+// Each state becomes a function taking the values on the parse stack below
+// it as arguments, so the code generated for a grammar grows with the sum of
+// its states' stack depths rather than with the number of states. That is
+// quadratic in the length of a rule: every character of a string literal is
+// a terminal of its own, and a rule of n of them has n states of depths
+// 1..n. A rule with a literal of a few thousand characters -- a few KB of
+// `parse {}` source, read by readExpr before anything is type checked --
+// generated some 3GB of expression (OSS-Fuzz 566458274), at about 1.2KB of
+// memory per unit of this sum. So it is bounded before any code is made.
+//
+// The sum is counted as the LR(0) states are made, and they stop being made
+// once it is past the limit, ahead of the LALR(1) lookahead and table (whose
+// cost grows with the same states). The depths are kept, as code is made for
+// each state's transitions from them.
+static std::string parserTooLarge(cc* c) {
+  return "grammar is too large to generate a parser for (its states' stack depths sum to more than " +
+         str::from(c->parserMaxStackDepthSum()) + "; see cc::parserMaxStackDepthSum)";
+}
+
+// The stack depth sum doesn't bound the LR(0) parser itself, though: a state
+// holds an item for each rule of each nonterminal it can expect next, so M
+// rules S -> b_i A over N rules A -> x_j make M states of N items each, with
+// a stack depth sum of only about 3M+N. The parser's items are bounded too.
+//
+// Nor do those two bound its lookahead, a set of terminals for each of its
+// transitions and completed items, merged along each edge of the lookahead
+// relations: a grammar within both bounds can make that gigabytes, or
+// minutes. The steps taken to find it (each terminal copied or merged, each
+// step along a rule and each edge of the relations) are bounded too.
+static std::string parserTooLarge(cc* c, const parser_too_large& e) {
+  switch (e.which()) {
+  case parser_too_large::limit::items:
+    return "grammar is too large to generate a parser for (its LR(0) states hold more than " +
+           str::from(c->parserMaxItems()) + " items; see cc::parserMaxItems)";
+  case parser_too_large::limit::lookahead:
+    return "grammar is too large to generate a parser for (its lookahead takes more than " +
+           str::from(c->parserMaxLookahead()) + " steps; see cc::parserMaxLookahead)";
+  default:
+    return parserTooLarge(c);
+  }
+}
+
+static void checkParserSize(cc* c, ParserEvalInfo* pei, const LexicalAnnotation& la) {
+  size_t depthSum = 0;
+  pei->depths.clear();
+  for (const auto& sd : pei->pdef.state_defs) {
+    if (sd.first != pei->depths.size() || sd.second.empty()) {
+      throw std::runtime_error("Internal error, can't find depth for invalid state #" + str::from(sd.first));
+    }
+    size_t d = 0;
+    for (const auto& itm : sd.second) {
+      d = std::max<size_t>(d, itm.p);
+    }
+    pei->depths.push_back(d);
+    depthSum += d;
+    if (depthSum > c->parserMaxStackDepthSum()) {
+      throw annotated_error(la, parserTooLarge(c));
+    }
+  }
+}
+
+static MonoTypePtr makeParseVariant(const ParserEvalInfo& pei);
 
 void prepareEvalInfo(cc* c, const Parser& p, terminal* root, const precedence& prec, ParserEvalInfo* pei, const LexicalAnnotation& la) {
   pei->c     = c;
@@ -69,8 +139,20 @@ void prepareEvalInfo(cc* c, const Parser& p, terminal* root, const precedence& p
   }
 
   // compile an LALR(1) parser and table from this parser definition
-  pei->pdef  = lalr1parser(extractGrammar(p), root);
+  //   (bounding its size first, from its LR(0) states, before the more costly steps that follow)
+  parserlimits limits;
+  limits.maxStackDepthSum = c->parserMaxStackDepthSum();
+  limits.maxItems         = c->parserMaxItems();
+  limits.maxLookahead     = c->parserMaxLookahead();
+  try {
+    pei->pdef = lr0parser(extractGrammar(p), root, limits);
+    checkParserSize(c, pei, la);
+    lalr1lookahead(&pei->pdef, limits);
+  } catch (const parser_too_large& e) {
+    throw annotated_error(la, parserTooLarge(c, e));
+  }
   pei->table = lalrTable(pei->pdef, prec);
+  pei->variantTy = makeParseVariant(*pei);
 }
 
 ExprPtr evalExpr(const ParserEvalInfo& pei, terminal* s, size_t rule) {
@@ -82,7 +164,10 @@ ExprPtr evalExpr(const ParserEvalInfo& pei, terminal* s, size_t rule) {
   }
 }
 
-MonoTypePtr parseVariant(const ParserEvalInfo& pei) {
+// every reduction states this type, and it has a case for each nonterminal,
+// so it is made once for a parser (making it for each reduction took time
+// quadratic in the number of nonterminals)
+static MonoTypePtr makeParseVariant(const ParserEvalInfo& pei) {
   Variant::Members ms;
   ms.push_back(Variant::Member(".failure", primty("unit"), 0));
   ms.push_back(Variant::Member(".success", TVar::make("..r"), 1));
@@ -91,6 +176,10 @@ MonoTypePtr parseVariant(const ParserEvalInfo& pei) {
     ms.push_back(Variant::Member(constructorName(re.first), TVar::make("." + constructorName(re.first)), i++));
   }
   return MonoTypePtr(Variant::make(ms));
+}
+
+MonoTypePtr parseVariant(const ParserEvalInfo& pei) {
+  return pei.variantTy;
 }
 
 MonoTypePtr parseResultType(const ParserEvalInfo&) {
@@ -134,15 +223,10 @@ str::seq varNames(size_t n) {
 }
 
 size_t parseDepth(const ParserEvalInfo& pei, size_t i) {
-  auto sd = pei.pdef.state_defs.find(i);
-  if (sd == pei.pdef.state_defs.end() || sd->second.empty()) {
+  if (i >= pei.depths.size()) {
     throw std::runtime_error("Internal error, can't find depth for invalid state #" + str::from(i));
   } else {
-    size_t d = 0;
-    for (const auto& itm : sd->second) {
-      d = std::max<size_t>(d, itm.p);
-    }
-    return d;
+    return pei.depths[i];
   }
 }
 
@@ -306,34 +390,12 @@ LetRec::Bindings makeParserStates(const ParserEvalInfo& pei) {
   return bs;
 }
 
-// Each state becomes a function taking the values on the parse stack below
-// it as arguments, so the code generated for a grammar grows with the sum of
-// its states' stack depths rather than with the number of states. That is
-// quadratic in the length of a rule: every character of a string literal is
-// a terminal of its own, and a rule of n of them has n states of depths
-// 1..n. A rule with a literal of a few thousand characters -- a few KB of
-// `parse {}` source, read by readExpr before anything is type checked --
-// generated some 3GB of expression (OSS-Fuzz 566458274), at about 1.2KB of
-// memory per unit of this sum. So it is bounded before any code is made.
-static void checkParserSize(cc* c, const ParserEvalInfo& pei, const LexicalAnnotation& la) {
-  size_t depthSum = 0;
-  for (size_t i = 0; i < stateCount(pei); ++i) {
-    depthSum += parseDepth(pei, i);
-    if (depthSum > c->parserMaxStackDepthSum()) {
-      throw annotated_error(la,
-        "grammar is too large to generate a parser for (its states' stack depths sum to more than " +
-        str::from(c->parserMaxStackDepthSum()) + "; see cc::parserMaxStackDepthSum)");
-    }
-  }
-}
-
 // generate parser code from a parser definition
 ExprPtr makeParser(cc* c, const Parser& p, terminal* root, const precedence& prec, const LexicalAnnotation& la) {
   // first we need to derive the LALR(1) parse table
   // and derive secondary indexes for producing expressions for this table
   ParserEvalInfo pei;
   prepareEvalInfo(c, p, root, prec, &pei, la);
-  checkParserSize(c, pei, la);
 
   // then we translate the parse table to an equivalent expression
   LetRec::Bindings sbs = makeParserStates(pei);

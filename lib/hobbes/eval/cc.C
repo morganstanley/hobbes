@@ -788,6 +788,12 @@ size_t cc::regexMaxDFAStates() const { return this->maxDFAStates; }
 void cc::parserMaxStackDepthSum(size_t f) { this->maxParserStackDepthSum = f; }
 size_t cc::parserMaxStackDepthSum() const { return this->maxParserStackDepthSum; }
 
+void cc::parserMaxItems(size_t f) { this->maxParserItems = f; }
+size_t cc::parserMaxItems() const { return this->maxParserItems; }
+
+void cc::parserMaxLookahead(size_t f) { this->maxParserLookahead = f; }
+size_t cc::parserMaxLookahead() const { return this->maxParserLookahead; }
+
 void cc::throwOnHugeRegexDFA(bool f) { this->shouldThrowOnHugeRegexDFA = f; }
 bool cc::throwOnHugeRegexDFA() const { return this-> shouldThrowOnHugeRegexDFA; }
 

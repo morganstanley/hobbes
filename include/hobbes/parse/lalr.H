@@ -134,6 +134,27 @@ state_transitions follow(const grammar& g, const itemset& is, const terminalset&
 // determine the parser state graph (ie: the LR(0) parser) for a grammar, given a start symbol
 parserdef lr0parser(const grammar& g, terminal* s);
 
+// the same, but giving up with parser_too_large as soon as the parser passes one of these limits
+struct parserlimits {
+  size_t maxStackDepthSum = static_cast<size_t>(-1); // the sum over its states of each one's stack depth (the longest item read so far in it)
+  size_t maxItems         = static_cast<size_t>(-1); // the number of items in all of its states
+  size_t maxLookahead     = static_cast<size_t>(-1); // the number of steps taken to find its lookahead: terminals copied and merged, rule walks and edges (see lalr1lookahead)
+};
+
+class parser_too_large : public std::runtime_error {
+public:
+  enum class limit { stackDepthSum, items, lookahead };
+  parser_too_large(limit l, size_t bound);
+
+  limit  which() const;
+  size_t bound() const;
+private:
+  limit  l;
+  size_t b;
+};
+
+parserdef lr0parser(const grammar& g, terminal* s, const parserlimits& limits);
+
 // from a state q and symbol t, what state do you go to?
 nat follow(const parserdef& p, nat q, terminal* t);
 
@@ -248,6 +269,16 @@ transition_lookahead Follow(const parserdef& p, const transitionset& ts);
 
 // determine the LALR(1) parser for a grammar, given a start symbol
 parserdef lalr1parser(const grammar& g, terminal* s);
+
+// fill in the lookahead of an LR(0) parser's completed items, making it the LALR(1) parser
+//   (lalr1parser is lr0parser followed by this, split so that the LR(0) parser can be checked in between)
+void lalr1lookahead(parserdef* p);
+
+// the same, but giving up with parser_too_large once it has taken more than limits.maxLookahead steps
+//   (it makes a set of terminals for each nonterminal transition and each completed item, merged along each edge of the
+//    lookahead relations, whose edges are found by walking each rule of a nonterminal from each transition on it;
+//    each terminal copied or merged, each step of a walk and each edge counts)
+void lalr1lookahead(parserdef* p, const parserlimits& limits);
 
 // an ambiguity conflict on a particular terminal
 class ambiguity_conflict : public std::runtime_error {

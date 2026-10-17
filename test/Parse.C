@@ -1,5 +1,8 @@
 #include "test.H"
 #include <hobbes/hobbes.H>
+#include <hobbes/parse/lalr.H>
+#include <map>
+#include <random>
 #include <string>
 
 using namespace hobbes;
@@ -298,6 +301,329 @@ TEST(Parse, OversizedGrammarsAreRejected) {
   dc.define("p", literalGrammar(200));  // ~20k
   EXPECT_EQ(dc.compileFn<int()>(("match p(\"" + std::string(200, 'a') + "\") with | |1=x| -> x | _ -> -1").c_str())(), 1);
   EXPECT_EQ(dc.compileFn<int()>("match p(\"aa\") with | |1=x| -> x | _ -> -1")(), -1);
+}
+
+// the stack depth sum doesn't bound the LR(0) parser itself: a state holds an
+// item for each rule of each nonterminal it can expect next. Here each of m
+// rules S -> "i" A has a state of its own holding all n rules of A, for m*n
+// items in all, while the stack depths sum to only about 3m+n. At 2000x2000
+// that took 6s and 1.5GB to build, and 3000x3000 took 15s and 3.3GB. Its
+// items are bounded too, and it is refused as soon as it passes the bound.
+static std::string closureGrammar(size_t m, size_t n) {
+  std::string r = "parse { S := ";
+  for (size_t i = 0; i < m; ++i) {
+    r += (i == 0 ? "" : " | ") + std::string("\"") + std::to_string(i) + "\" a:A { 1 }";
+  }
+  r += " A := ";
+  for (size_t j = 0; j < n; ++j) {
+    r += (j == 0 ? "" : " | ") + std::string("\"x") + std::to_string(j) + "\" { 1 }";
+  }
+  return r + " }";
+}
+
+TEST(Parse, GrammarsWithLargeParserStatesAreRejected) {
+  cc lc;
+  EXPECT_EXCEPTION_MSG(lc.readExpr(closureGrammar(2000, 2000)), std::exception, "cc::parserMaxItems");
+
+  // the limit is the cc's to set, either way
+  lc.parserMaxItems(1000);
+  EXPECT_EXCEPTION_MSG(lc.readExpr(closureGrammar(40, 40)), std::exception, "cc::parserMaxItems");  // ~1.7k
+  lc.parserMaxItems(10000);
+  EXPECT_TRUE(lc.readExpr(closureGrammar(40, 40)) != nullptr);
+}
+
+// and neither bound limits the lookahead, a set of terminals for each
+// transition and completed item: with m rules S -> b_j X Y, k rules
+// X -> B_i -> c_i and t rules Y -> u_l, there are m*k transitions to look
+// ahead from, each to all t terminals. At 400x400x200 that took 1.7GB with
+// 400k items, within the item bound. The steps taken to find the lookahead
+// (terminals copied and merged, rule walks, edges) are bounded too, which
+// bounds its time as well as its size.
+static grammar lookaheadGrammar(size_t m, size_t k, size_t t, terminal** s) {
+  static std::map<std::string, terminal*> syms;
+  auto sym = [&](const std::string& n) { auto& x = syms[n]; if (x == nullptr) { x = new symbol(n); } return x; };
+
+  grammar g;
+  *s = sym("S");
+  for (size_t j = 0; j < m; ++j) {
+    g[*s].push_back(rule{sym("b" + std::to_string(j)), sym("X"), sym("Y")});
+  }
+  for (size_t i = 0; i < k; ++i) {
+    terminal* b = sym("B" + std::to_string(i));
+    g[sym("X")].push_back(rule{b});
+    g[b].push_back(rule{sym("c" + std::to_string(i))});
+  }
+  for (size_t l = 0; l < t; ++l) {
+    g[sym("Y")].push_back(rule{sym("u" + std::to_string(l))});
+  }
+  return g;
+}
+
+TEST(Parse, GrammarsWithLargeLookaheadAreRejected) {
+  terminal* s = nullptr;
+  grammar   g = lookaheadGrammar(40, 40, 20, &s);
+
+  parserlimits limits;
+  limits.maxLookahead = 10000;
+  parserdef p = lr0parser(g, s, limits);
+  EXPECT_EXCEPTION(lalr1lookahead(&p, limits));
+
+  limits.maxLookahead = 1000000;
+  parserdef q = lr0parser(g, s, limits);
+  lalr1lookahead(&q, limits);
+  EXPECT_EQ(lalrTable(q).size(), q.states.size());
+
+  // and through readExpr, where the limit is the cc's to set
+  cc lc;
+  lc.parserMaxLookahead(1);
+  EXPECT_EXCEPTION_MSG(lc.readExpr(literalGrammar(10)), std::exception, "cc::parserMaxLookahead");
+  lc.parserMaxLookahead(1000);
+  EXPECT_TRUE(lc.readExpr(literalGrammar(10)) != nullptr);
+}
+
+// many transitions can lead to one state, which can have many transitions
+// out of it: m rules S -> b_j A, each through A -> X Z, all lead on X to one
+// state with n nullable transitions Z -> N_i -> eps, or n terminals Y -> u_l.
+// What a transition reads depends only on the state it leads to, but it was
+// found again for each transition: m*n edges (105s and 1.3GB at 10k x 30k,
+// within every bound) or m*n terminals before any of them were counted.
+// And merging sets along m*n includes edges, each of T terminals, took time
+// cubic within every bound (2.6s at 300 x 300 x 600) until every merge was
+// counted against the lookahead bound. (So are the walks along each rule
+// of a nonterminal from each transition on it, which find the relations'
+// edges: S -> b_j V, V -> B U, B -> N^300 M_i took 18s within every bound.)
+static grammar sharedTargetGrammar(size_t m, size_t n, bool nullable, terminal** s) {
+  static std::map<std::string, terminal*> syms;
+  auto sym = [&](const std::string& x) { auto& t = syms[x]; if (t == nullptr) { t = new symbol(x); } return t; };
+
+  grammar g;
+  *s = sym("S");
+  for (size_t j = 0; j < m; ++j) {
+    g[*s].push_back(rule{sym("b" + std::to_string(j)), sym("A")});
+  }
+  g[sym("A")].push_back(rule{sym("X"), sym("Z")});
+  g[sym("X")].push_back(rule{sym("x")});
+  for (size_t i = 0; i < n; ++i) {
+    if (nullable) {
+      terminal* ni = sym("N" + std::to_string(i));
+      g[sym("Z")].push_back(rule{ni});
+      g[ni].push_back(rule{});
+    } else {
+      g[sym("Z")].push_back(rule{sym("u" + std::to_string(i))});
+    }
+  }
+  return g;
+}
+
+TEST(Parse, ManyTransitionsToOneStateAreCheap) {
+  parserlimits limits;
+  limits.maxStackDepthSum = 100000;
+  limits.maxItems         = 500000;
+  limits.maxLookahead     = 5000000;
+
+  // reads: m*n edges, now n (the grammar is ambiguous, all N_i being empty,
+  // so it has no table, but its lookahead is found)
+  terminal* s = nullptr;
+  grammar   g = sharedTargetGrammar(3000, 3000, true, &s);
+  parserdef p = lr0parser(g, s, limits);
+  lalr1lookahead(&p, limits);
+  EXPECT_EQ(p.states.size(), size_t(9005));
+
+  // direct reads: m*n terminals, now counted (and refused) as they are made
+  grammar   h = sharedTargetGrammar(3000, 3000, false, &s);
+  parserdef q = lr0parser(h, s, limits);
+  EXPECT_EXCEPTION(lalr1lookahead(&q, limits));
+
+  // includes: S -> b_j D, D -> B C, B -> c A_i, A_i -> a_i, C -> u_l makes every
+  // (s, A_i) include every (s', B), each reading all of the u_l: m*n merges of T
+  // terminals, which add nothing after the first but are counted (and refused)
+  static std::map<std::string, terminal*> syms;
+  auto sym = [&](const std::string& x) { auto& t = syms[x]; if (t == nullptr) { t = new symbol(x); } return t; };
+  grammar k;
+  for (size_t j = 0; j < 300; ++j) {
+    k[sym("S")].push_back(rule{sym("b" + std::to_string(j)), sym("D")});
+  }
+  k[sym("D")].push_back(rule{sym("B"), sym("C")});
+  for (size_t i = 0; i < 300; ++i) {
+    terminal* a = sym("A" + std::to_string(i));
+    k[sym("B")].push_back(rule{sym("c"), a});
+    k[a].push_back(rule{sym("a" + std::to_string(i))});
+  }
+  for (size_t l = 0; l < 600; ++l) {
+    k[sym("C")].push_back(rule{sym("u" + std::to_string(l))});
+  }
+  parserdef r = lr0parser(k, sym("S"), limits);
+  EXPECT_EXCEPTION(lalr1lookahead(&r, limits));
+
+  // rule walks: S -> b_j V, V -> B U, U -> x, B -> N^k M_i, N -> z, M_i -> q_i walks
+  // each of B's n rules, k long, from each of the m transitions on B: m*n*k steps
+  // (here 400*20*100) that every LR(0) state shares, now counted (and refused)
+  grammar w;
+  rule    nk(100, sym("N"));
+  for (size_t j = 0; j < 400; ++j) {
+    w[sym("S")].push_back(rule{sym("b" + std::to_string(j)), sym("V")});
+  }
+  w[sym("V")].push_back(rule{sym("B"), sym("U")});
+  w[sym("U")].push_back(rule{sym("x")});
+  w[sym("N")].push_back(rule{sym("z")});
+  for (size_t i = 0; i < 20; ++i) {
+    terminal* mi = sym("M" + std::to_string(i));
+    rule      bw = nk;
+    bw.push_back(mi);
+    w[sym("B")].push_back(bw);
+    w[mi].push_back(rule{sym("q" + std::to_string(i))});
+  }
+  parserlimits small = limits;
+  small.maxLookahead = 100000;
+  parserdef t = lr0parser(w, sym("S"), small);
+  EXPECT_EXCEPTION(lalr1lookahead(&t, small));
+}
+
+// which symbols derive the empty string used to be found by passing over
+// all of them until none changed, but a chain A_i -> A_i+1 x? can learn just
+// one more symbol on each pass: quadratic, before any bound is checked (3.6s
+// for 8,000 symbols that the parser needn't even reach). It is linear now.
+TEST(Parse, NullableSymbolsAreFoundInLinearTime) {
+  static std::map<std::string, terminal*> syms;
+  auto sym = [&](const std::string& x) { auto& t = syms[x]; if (t == nullptr) { t = new symbol(x); } return t; };
+
+  // A_0 -> E A_1, ..., A_n -> eps, with E -> eps; read from the start of the chain
+  const size_t n = 50000;
+  grammar g;
+  g[sym("E")].push_back(rule{});
+  for (size_t i = 0; i < n; ++i) {
+    g[sym("A" + std::to_string(i))].push_back(rule{sym("E"), sym("A" + std::to_string(i + 1))});
+  }
+  g[sym("A" + std::to_string(n))].push_back(rule{});
+
+  // and a few that don't derive null: one through a terminal, one only through itself
+  g[sym("T")].push_back(rule{sym("A0"), sym("t")});
+  g[sym("C")].push_back(rule{sym("C")});
+  g[sym("C")].push_back(rule{sym("E"), sym("C"), sym("E")});
+  // and one that does, only through two others
+  g[sym("P")].push_back(rule{sym("T")});
+  g[sym("P")].push_back(rule{sym("A7"), sym("A" + std::to_string(n)), sym("E")});
+
+  terminalset nulls = symbolsDerivingNull(g);
+  EXPECT_EQ(nulls.size(), n + 3); // E, A_0..A_n, P
+  EXPECT_TRUE(nulls.count(sym("A0")) == 1 && nulls.count(sym("P")) == 1);
+  EXPECT_TRUE(nulls.count(sym("T")) == 0 && nulls.count(sym("C")) == 0 && nulls.count(sym("t")) == 0);
+}
+
+// LALR(1) lookahead used to be found by deciding its relations (reads,
+// includes, lookback) one pair of transitions at a time, which took hours for
+// a `parse {}` grammar of a few thousand states (OSS-Fuzz 571908642). It is
+// now built forward from each transition. The pairwise construction is kept
+// here as the reference: the two must give every item the same lookahead.
+static void pairwiseLookahead(parserdef* p) {
+  transitionset ts = transitions(*p);
+  auto un = [](const terminalset& a, const terminalset& b) { return setUnion(a, b); };
+
+  auto dr = [&](const transition& x) { return directReads(*p, x); };
+  auto rd = [&](const transition& x, const transition& y) { return reads(*p, x, y); };
+  transition_lookahead rs = digraphF<transition, terminalset, decltype(dr), decltype(un), decltype(rd)>::map(ts, dr, un, rd);
+
+  auto rl = [&](const transition& x) { return rs[x]; };
+  auto in = [&](const transition& x, const transition& y) { return includes(*p, x, y); };
+  transition_lookahead fs = digraphF<transition, terminalset, decltype(rl), decltype(un), decltype(in)>::map(ts, rl, un, in);
+
+  for (auto& s : p->states) {
+    for (const auto& i : s.first) {
+      const rule& w = p->g[i.agg][i.r];
+      if (i.p == w.size()) {
+        for (const auto& f : fs) {
+          if (lookback(*p, s.second, i.agg, w, f.first)) {
+            const_cast<item*>(&i)->la.insert(f.second.begin(), f.second.end());
+          }
+        }
+      }
+    }
+  }
+}
+
+static bool sameLookahead(const grammar& g, terminal* s) {
+  parserdef ref = lr0parser(g, s);
+  pairwiseLookahead(&ref);
+  parserdef p = lr0parser(g, s);
+  lalr1lookahead(&p);
+
+  if (ref.states.size() != p.states.size()) {
+    return false;
+  }
+  for (auto rs = ref.states.begin(), ps = p.states.begin(); rs != ref.states.end(); ++rs, ++ps) {
+    if (rs->second != ps->second || rs->first.size() != ps->first.size()) {
+      return false;
+    }
+    for (auto ri = rs->first.begin(), pi = ps->first.begin(); ri != rs->first.end(); ++ri, ++pi) {
+      if (!(*ri == *pi) || ri->la != pi->la) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+TEST(Parse, LalrLookaheadMatchesThePairwiseConstruction) {
+  // terminals are interned and live as long as the process, as the grammar reader makes them
+  static std::map<std::string, terminal*> syms;
+  auto sym = [&](const std::string& n) { auto& t = syms[n]; if (t == nullptr) { t = new symbol(n); } return t; };
+
+  // LALR(1) but not SLR(1): S -> L = R | R, L -> * R | id, R -> L
+  {
+    terminal *S = sym("S"), *L = sym("L"), *R = sym("R"), *eq = sym("="), *st = sym("*"), *id = sym("id");
+    grammar g;
+    g[S] = rules{ rule{L, eq, R}, rule{R} };
+    g[L] = rules{ rule{st, R}, rule{id} };
+    g[R] = rules{ rule{L} };
+    EXPECT_TRUE(sameLookahead(g, S));
+  }
+
+  // random grammars, with nullable rules, left and right recursion, and cycles of includes
+  std::mt19937 rng(571908642);
+  for (size_t n = 0; n < 300; ++n) {
+    std::vector<terminal*> nts, ts;
+    for (size_t i = 0, k = 1 + rng() % 6; i < k; ++i) { nts.push_back(sym("N" + std::to_string(i))); }
+    for (size_t i = 0, k = 1 + rng() % 4; i < k; ++i) { ts.push_back(sym("t" + std::to_string(i))); }
+
+    grammar g;
+    for (auto* nt : nts) {
+      for (size_t r = 0, k = 1 + rng() % 3; r < k; ++r) {
+        rule w;
+        for (size_t i = 0, len = rng() % 5; i < len; ++i) {
+          w.push_back((rng() % 2 == 0) ? nts[rng() % nts.size()] : ts[rng() % ts.size()]);
+        }
+        g[nt].push_back(w);
+      }
+    }
+    EXPECT_TRUE(sameLookahead(g, nts[0]));
+  }
+}
+
+// the grammar from OSS-Fuzz 571908642 had thousands of states, rules and
+// transitions. Building its parser took time quadratic in those (in the LR(0)
+// states' closures and transitions, and pairwise in the lookahead relations):
+// some 25s for this grammar of 10,000 alternatives of up to four characters,
+// far more under a sanitizer. It is linear now, and takes a fraction of a second.
+TEST(Parse, WideGrammarsAreBuiltInLinearTime) {
+  static std::map<std::string, terminal*> syms;
+  auto sym = [&](const std::string& n) { auto& t = syms[n]; if (t == nullptr) { t = new symbol(n); } return t; };
+
+  // S -> X0 | X1 | ..., Xi -> the digits of i
+  terminal* s = sym("S");
+  grammar g;
+  for (size_t i = 0; i < 10000; ++i) {
+    terminal* x = sym("X" + std::to_string(i));
+    g[s].push_back(rule{x});
+    rule w;
+    for (char d : std::to_string(i)) {
+      w.push_back(sym(std::string(1, d)));
+    }
+    g[x].push_back(w);
+  }
+
+  parserdef p = lalr1parser(g, s);
+  EXPECT_EQ(p.states.size(), size_t(20002));
+  EXPECT_EQ(lalrTable(p).size(), size_t(20002));
 }
 
 // an error thrown from a lexer or grammar action (an unsupported literal here)
