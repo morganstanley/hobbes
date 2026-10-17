@@ -1183,19 +1183,22 @@ class SLView:
   def __init__(self,sl):
     self.sl=sl
 
+  # the root only heads the list, its own key and value are not an entry,
+  # so None (not the root) is returned when every key is greater than k
   @staticmethod
   def findNextGLEB(n, level, k):
+    root=n
     while (not(n==None)):
       sn=n.next[level]
       if (sn==None or k < sn.key):
         if (level==0):
-          return n
+          return None if n is root else n
         else:
           level=level-1
       elif (sn.key <= k):
         n = sn
       else:
-        return n
+        return None if n is root else n
 
   def __getitem__(self,k):
     if (self.sl.count==0):
@@ -1210,7 +1213,7 @@ class SLView:
     if (self.sl.count==0):
       return False
     else:
-      n=SLView.findNextGLEB(self.sl.root, len(self.sl.root.__next__)-1, k)
+      n=SLView.findNextGLEB(self.sl.root, len(self.sl.root.next)-1, k)
       return (not(n==None) and n.key==k)
   def __iter__(self):
     n=self.sl.root.next[0]

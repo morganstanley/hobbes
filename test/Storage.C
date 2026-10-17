@@ -1052,6 +1052,40 @@ TEST(Storage, SkipListLevelFitsItsLinks) {
   }
 }
 
+// the root of a skip list only heads the list, but its own key (zero-filled)
+// used to be compared to new keys as if it were an entry: a key equal to it
+// was stored in the root (found, but neither counted nor iterated), and a key
+// less than it was taken for that key and overwrote its value
+TEST(Storage, SkipListRootIsNotAnEntry) {
+  std::string fname = mkFName();
+  try {
+    {
+      fregion::writer w(fname);
+      slmap<int64_t, int64_t> m("m", w);
+      m.insert(5, 50);
+      m.insert(0, 1);
+      m.insert(-3, 2);
+      m.insert(0, 3); // an update, not a new entry
+
+      EXPECT_EQ(m.size(), size_t(3));
+      EXPECT_TRUE(m.find(5) && m.find(5)->second == 50);
+      EXPECT_TRUE(m.find(0) && m.find(0)->second == 3);
+      EXPECT_TRUE(m.find(-3) && m.find(-3)->second == 2);
+      EXPECT_TRUE(!m.find(-4) && !m.find(1) && !m.find(6));
+
+      std::vector<std::pair<int64_t, int64_t>> kvs;
+      for (auto i = m.begin(); i; ++i) {
+        kvs.push_back(*i);
+      }
+      EXPECT_TRUE((kvs == std::vector<std::pair<int64_t, int64_t>>{{-3, 2}, {0, 3}, {5, 50}}));
+    }
+    unlink(fname.c_str());
+  } catch (...) {
+    unlink(fname.c_str());
+    throw;
+  }
+}
+
 // this test was added after some analysis found a case where "torn reads" could happen
 // (where a partial map is considered total for some value that we want to read, though it
 // actually is not and so an attempt to read the whole value causes a crash)
