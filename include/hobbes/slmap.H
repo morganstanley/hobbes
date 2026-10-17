@@ -124,10 +124,14 @@ template <typename K, typename V>
     //   to do this, it should be sufficient to count the number of trailing 1 bits
     //   in a uniformly distributed random number
     //    (1/2 end in 1b, 1/4 end in 11b, 1/8 end in 111b, etc)
+    //   capped at maxLevels, since a node has no more 'next' links than that
+    //   (a number with all of its bits set would otherwise ask for one more,
+    //    which lands on the key stored after the links, and a later insert
+    //    would read that key back as a link)
     static level chooseLevel() {
       auto bv = static_cast<level>(rand());
       level r = 1;
-      while ((bv&1) != 0) {
+      while ((bv&1) != 0 && r < maxLevels) {
         ++r;
         bv>>=1;
       }

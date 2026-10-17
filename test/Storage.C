@@ -6,6 +6,7 @@
 #include <hobbes/fregion.H>
 #include <hobbes/cfregion.H>
 #include <hobbes/storage.H>
+#include <hobbes/slmap.H>
 #include "test.H"
 
 #include <fstream>
@@ -1002,6 +1003,48 @@ TEST(Storage, KeySeries) {
     c.define("db", "inputFile::(LoadFile \"" + fname + "\" w)=>w");
     EXPECT_TRUE(c.compileFn<bool()>("concat([[({k=k},t)|t<-v[0:10]]|(k,v)<-db.ticks])==[({k=\"bob\"},{bpx=3.14159,bsz=20,apx=6.282,asz=1})|_<-[0..9]]++[({k=\"jim\"},{bpx=4.2,bsz=90,apx=8.4,asz=1})|_<-[0..9]]")());
 
+    unlink(fname.c_str());
+  } catch (...) {
+    unlink(fname.c_str());
+    throw;
+  }
+}
+
+// a skip-list node has room for maxLevels 'next' links, and each new node takes
+// its level from the trailing 1 bits of a random number, so a number with all
+// of its bits set asked for one link too many: the extra link landed on the key
+// stored after the links, and a later insert read that key back as a link (a
+// misaligned slnode under UBSan, which KeySeries hit about once in 65536 keys)
+TEST(Storage, SkipListLevelFitsItsLinks) {
+  // find a seed whose first random number has all of a level's bits set
+  // (there is none where RAND_MAX is under 0xFFFF, but then there is no overflow either)
+  unsigned int seed = 0;
+  for (;; ++seed) {
+    if (seed == (1u << 24)) {
+      return;
+    }
+    srand(seed);
+    if ((rand() & 0xFFFF) == 0xFFFF) {
+      break;
+    }
+  }
+
+  std::string fname = mkFName();
+  try {
+    {
+      fregion::writer w(fname);
+      slmap<std::array<char,10>, size_t> m("m", w);
+
+      std::array<char,10> bob{'b', 'o', 'b', '\0'};
+      std::array<char,10> jim{'j', 'i', 'm', '\0'};
+      srand(seed);
+      m.insert(bob, 1);
+      m.insert(jim, 2);
+
+      EXPECT_EQ(m.size(), size_t(2));
+      EXPECT_TRUE(m.find(bob) && m.find(bob)->second == 1);
+      EXPECT_TRUE(m.find(jim) && m.find(jim)->second == 2);
+    }
     unlink(fname.c_str());
   } catch (...) {
     unlink(fname.c_str());
