@@ -10,6 +10,7 @@
 #include "test.H"
 
 #include <fstream>
+#include <limits>
 #include <thread>
 
 using namespace hobbes;
@@ -1044,6 +1045,76 @@ TEST(Storage, SkipListLevelFitsItsLinks) {
       EXPECT_EQ(m.size(), size_t(2));
       EXPECT_TRUE(m.find(bob) && m.find(bob)->second == 1);
       EXPECT_TRUE(m.find(jim) && m.find(jim)->second == 2);
+    }
+    unlink(fname.c_str());
+  } catch (...) {
+    unlink(fname.c_str());
+    throw;
+  }
+}
+
+// the root of a skip list only heads the list, but its own key (zero-filled)
+// used to be compared to new keys as if it were an entry: a key equal to it
+// was stored in the root (found, but neither counted nor iterated), and a key
+// less than it was taken for that key and overwrote its value
+TEST(Storage, SkipListRootIsNotAnEntry) {
+  std::string fname = mkFName();
+  try {
+    {
+      fregion::writer w(fname);
+      slmap<int64_t, int64_t> m("m", w);
+      m.insert(5, 50);
+      m.insert(0, 1);
+      m.insert(-3, 2);
+      m.insert(0, 3); // an update, not a new entry
+
+      EXPECT_EQ(m.size(), size_t(3));
+      EXPECT_TRUE(m.find(5) && m.find(5)->second == 50);
+      EXPECT_TRUE(m.find(0) && m.find(0)->second == 3);
+      EXPECT_TRUE(m.find(-3) && m.find(-3)->second == 2);
+      EXPECT_TRUE(!m.find(-4) && !m.find(1) && !m.find(6));
+
+      std::vector<std::pair<int64_t, int64_t>> kvs;
+      for (auto i = m.begin(); i; ++i) {
+        kvs.push_back(*i);
+      }
+      EXPECT_TRUE((kvs == std::vector<std::pair<int64_t, int64_t>>{{-3, 2}, {0, 3}, {5, 50}}));
+
+      // a missing key equal to the root's key isn't found in the root either
+      slmap<int64_t, int64_t> m5("m5", w);
+      m5.insert(5, 50);
+      EXPECT_TRUE(!m5.find(0) && m5.find(5) && m5.find(5)->second == 50);
+    }
+    unlink(fname.c_str());
+  } catch (...) {
+    unlink(fname.c_str());
+    throw;
+  }
+}
+
+// a key that isn't ordered with itself (a NaN) has no place in a skip list:
+// the search for it stops wherever it first compares, so it used to overwrite
+// the value of whichever entry the search stopped at
+TEST(Storage, SkipListRejectsUnorderedKeys) {
+  std::string fname = mkFName();
+  try {
+    {
+      fregion::writer w(fname);
+      slmap<double, int64_t> m("m", w);
+      for (int64_t i = 1; i <= 1000; ++i) {
+        m.insert(static_cast<double>(i), i);
+      }
+      for (size_t i = 0; i < 5; ++i) {
+        EXPECT_EXCEPTION(m.insert(std::numeric_limits<double>::quiet_NaN(), -1));
+      }
+
+      EXPECT_EQ(m.size(), size_t(1000));
+      bool allFound = true;
+      for (int64_t i = 1; i <= 1000; ++i) {
+        auto e = m.find(static_cast<double>(i));
+        allFound = allFound && e && e->second == i;
+      }
+      EXPECT_TRUE(allFound);
     }
     unlink(fname.c_str());
   } catch (...) {
