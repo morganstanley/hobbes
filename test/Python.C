@@ -121,6 +121,9 @@ void makeTestData(const std::string& path) {
   *w.define<uint8_t>("b") = 0xff;
   *w.define<short>  ("s") = 42;
   *w.define<int>    ("i") = 42;
+  *w.define<int16_t>("ns") = -42;
+  *w.define<int32_t>("ni") = -42;
+  *w.define<int64_t>("nl") = -42;
   *w.define<float>  ("e") = 3.14159;
   *w.define<double> ("d") = 3.14159;
 
@@ -210,6 +213,7 @@ void makeTestData(const std::string& path) {
 
   hobbes::slmap<int, int> m5("slmap5", w);
   m5.insert(5, 50);
+  m5.insert(-3, 8);
 }
 
 void makeTestScript(const std::string& path) {
@@ -292,6 +296,14 @@ if (len(f.slmap) != 3 or list(f.slmap) != [(0, 7), (42, 31337), (99, 100)]):
 
 if (f.slmap5[0] != None or (0 in f.slmap5) or f.slmap5[5] != 50):
   print("Expected slmap5 to map 5 to 50, and not to map 0 (the root's key)")
+  sys.exit(-1)
+
+if (f.ns != -42 or f.ni != -42 or f.nl != -42):
+  print("Expected signed short, int and long to read as -42: " + str((f.ns, f.ni, f.nl)))
+  sys.exit(-1)
+
+if (f.slmap5[-3] != 8 or not(-3 in f.slmap5) or list(f.slmap5) != [(-3, 8), (5, 50)]):
+  print("Expected slmap5 to map -3 to 8, ahead of 5: " + str(list(f.slmap5)))
   sys.exit(-1)
 
 sys.exit(0)
