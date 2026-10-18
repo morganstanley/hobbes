@@ -212,6 +212,10 @@ template <typename K>
     }
 
     void record(const K& k, const void* v, bool signal = true) {
+      // before anything is allocated for it, and before the map lookup
+      // (which would take an unordered key for the smallest key in the map)
+      requireOrderedKey(k);
+
       auto d = this->dmap.find(k);
       if (d != this->dmap.end()) {
         d->second->record(v, signal);
