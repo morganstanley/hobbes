@@ -206,6 +206,10 @@ void makeTestData(const std::string& path) {
   hobbes::slmap<int, int> m("slmap", w);
   m.insert(42, 31337);
   m.insert(99, 100);
+  m.insert(0, 7); // equal to the root's (zero-filled) key
+
+  hobbes::slmap<int, int> m5("slmap5", w);
+  m5.insert(5, 50);
 }
 
 void makeTestScript(const std::string& path) {
@@ -276,6 +280,18 @@ if (b''.join(f.cbuffer[0:len(expectCB)]).decode('utf-8') != expectCB):
 
 if (f.slmap[42] != 31337):
   print("Expected slmap to have a key=42 mapping: " + str(f.slmap))
+  sys.exit(-1)
+
+if (f.slmap[0] != 7 or not(0 in f.slmap) or f.slmap[1] != None or (1 in f.slmap)):
+  print("Expected slmap to map 0 to 7, and not to map 1")
+  sys.exit(-1)
+
+if (len(f.slmap) != 3 or list(f.slmap) != [(0, 7), (42, 31337), (99, 100)]):
+  print("Expected slmap to hold 3 entries in key order: " + str(list(f.slmap)))
+  sys.exit(-1)
+
+if (f.slmap5[0] != None or (0 in f.slmap5) or f.slmap5[5] != 50):
+  print("Expected slmap5 to map 5 to 50, and not to map 0 (the root's key)")
   sys.exit(-1)
 
 sys.exit(0)
