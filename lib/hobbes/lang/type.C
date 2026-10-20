@@ -2429,6 +2429,12 @@ public:
   }
 
   nat with(const TApp* v) const override {
+    // the applications a size is decided by, before any arguments: for the named
+    // type constructors below the size doesn't depend on the arguments, so a
+    // curried application is sized by its head, but anything else is sized by
+    // what the whole application reduces to
+    const TApp* whole = v;
+
     // uncurry type function applications
     while (const TApp* lv = is<TApp>(v->fn())) {
       v = lv;
@@ -2458,17 +2464,20 @@ public:
         return 0;
       } else if (f->name() == "promise") {
         return sizeof(long);
-      } else if (is<TAbs>(f->representation()) != nullptr) {
-        // reduce to a normal form first: recurring on a single reduction step
-        // would not terminate for an application that has no normal form
-        MonoTypePtr app = clone(v);
-        MonoTypePtr rty = repType(app);
-        if (rty != app) {
-          return r(rty);
-        }
       }
     }
-    throw std::runtime_error("Can't determine size of monotype: " + show(v));
+
+    // reduce the whole application (as alignment() does) to a normal form first:
+    // recurring on a single reduction step would not terminate for an application
+    // that has no normal form, and reducing only the innermost application would
+    // drop the arguments of the ones around it -- '(k char) long' with
+    // 'k = \x.\y.{a:y}' was sized as '\y.{a:y}', which has no size
+    MonoTypePtr app = clone(whole);
+    MonoTypePtr rty = repType(app);
+    if (rty != app) {
+      return r(rty);
+    }
+    throw std::runtime_error("Can't determine size of monotype: " + show(whole));
   }
 
   // type-level values/expressions have no runtime content (they're equivalent to unit)
