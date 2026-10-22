@@ -1115,7 +1115,56 @@ TEST(Storage, SkipListRejectsUnorderedKeys) {
         allFound = allFound && e && e->second == i;
       }
       EXPECT_TRUE(allFound);
+
+      // a NaN inside a pair or an array is just as unordered, though the pair or array
+      // compares <= itself: (NaN,0) <= (NaN,0), since neither NaN is less than the other
+      const double nan = std::numeric_limits<double>::quiet_NaN();
+      slmap<std::pair<double, int64_t>, int64_t> mp("mp", w);
+      slmap<std::array<double, 2>, int64_t> ma("ma", w);
+      for (int64_t i = 1; i <= 1000; ++i) {
+        mp.insert(std::make_pair(static_cast<double>(i), int64_t(0)), i);
+        ma.insert(std::array<double, 2>{static_cast<double>(i), 0.0}, i);
+      }
+      EXPECT_EXCEPTION(mp.insert(std::make_pair(nan, int64_t(0)), -1));
+      EXPECT_EXCEPTION(ma.insert(std::array<double, 2>{0.0, nan}, -1));
+
+      EXPECT_EQ(mp.size(), size_t(1000));
+      EXPECT_EQ(ma.size(), size_t(1000));
+      bool allPairsFound = true;
+      for (int64_t i = 1; i <= 1000; ++i) {
+        auto ep = mp.find(std::make_pair(static_cast<double>(i), int64_t(0)));
+        auto ea = ma.find(std::array<double, 2>{static_cast<double>(i), 0.0});
+        allPairsFound = allPairsFound && ep && ep->second == i && ea && ea->second == i;
+      }
+      EXPECT_TRUE(allPairsFound);
     }
+    unlink(fname.c_str());
+  } catch (...) {
+    unlink(fname.c_str());
+    throw;
+  }
+}
+
+// a keyseries keeps its keys in a skip-list map, so it can't take a NaN key either,
+// and has to refuse one before it allocates a series for it (or looks it up, since
+// std::map takes a NaN for the smallest key it holds)
+TEST(Storage, KeySeriesRejectsUnorderedKeys) {
+  std::string fname = mkFName();
+  try {
+    writer w(fname);
+    keyseries<double, Quote> ks(&c(), &w, "ks", 10000, StoredSeries::Compressed);
+
+    auto q = [](double px) { Quote r; r.bpx = px; r.bsz = 1; r.apx = px; r.asz = 1; return r; };
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    EXPECT_EXCEPTION(ks.record(nan, q(1.0)));
+    ks.record(1.0, q(2.0));
+    EXPECT_EXCEPTION(ks.record(nan, q(3.0)));
+    ks.record(1.0, q(4.0));
+
+    hobbes::cc c;
+    c.define("db", "inputFile::(LoadFile \"" + fname + "\" w)=>w");
+    EXPECT_TRUE(c.compileFn<bool()>("[(k,[x.bpx|x<-v[0:2]])|(k,v)<-db.ks]==[(1.0,[2.0,4.0])]")());
+
     unlink(fname.c_str());
   } catch (...) {
     unlink(fname.c_str());

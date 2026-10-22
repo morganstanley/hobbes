@@ -974,11 +974,11 @@ def makePrimReader(renv, p):
   elif (p.name == "byte"):
     return UnpackReader('B', 1)
   elif (p.name == "short"):
-    return UnpackReader('H', 2)
+    return UnpackReader('h', 2)
   elif (p.name == "int"):
-    return UnpackReader('I', 4)
+    return UnpackReader('i', 4)
   elif (p.name == "long"):
-    return UnpackReader('Q', 8)
+    return UnpackReader('q', 8)
   elif (p.name == "float"):
     return UnpackReader('f', 4)
   elif (p.name == "double"):
