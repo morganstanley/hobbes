@@ -1088,6 +1088,23 @@ TEST(TypeInf, LayoutOfATypeThatUnfoldsWithoutEndIsRefused) {
   EXPECT_TRUE(*repType(tapp(idf, list(deep))) == *deep);
 }
 
+// A reduction can finish within its step budget and still take unbounded time:
+// each step substitutes into the term it has so far, and that term can double at
+// every step while the type that holds it, whose parts are shared, stays small.
+// OSS-Fuzz issue 574069291 decodes a record holding 'P (\x.x (P (\x.x (x y))))'
+// with 'P = \x.x x' -- every variable is named alike, so each substitution also
+// substitutes under the inner abstractions -- and laying it out took minutes on a
+// type of a few dozen nodes. The work of a reduction is bounded, and the type refused.
+TEST(TypeInf, ReductionWhoseTermGrowsWithoutEndIsRefused) {
+  auto x = tvar("x");
+  auto P = primty("P", tabs(str::strings("x"), tapp(x, list(x))));
+  auto inner = tabs(str::strings("x"), tapp(x, list(tapp(x, list(tvar("y"))))));
+  auto outer = tabs(str::strings("x"), tapp(x, list(tapp(P, list(inner)))));
+  auto t     = tapp(P, list(outer));
+
+  EXPECT_EXCEPTION(Record::make(list(Record::Member("f", t))));
+}
+
 // The type memo is process-wide, and compacting it frees every type that only
 // the memo still holds. Type inference holds plain pointers and references
 // into types it has not (yet) taken a reference to, so a compaction from

@@ -510,6 +510,84 @@ bool isFileRef(const MonoTypePtr& mt) {
   return false;
 }
 
+// types are shared (each distinct type is made once), so the term a type stands
+// for -- what show() prints, and what substitution and the type-level reductions
+// built on it walk -- can be exponentially larger than the type itself: each
+// reduction of '(\x.x x) t' doubles the term and adds a node. Measures of the term
+// are memoized per shared type, so that they cost what the type does, and the
+// size is counted only up to a limit.
+namespace {
+class typeTermMeasure {
+public:
+  explicit typeTermMeasure(size_t sizeLimit) : sizeLimit(sizeLimit) { }
+
+  // the number of nodes in the term, or sizeLimit if it has at least that many
+  size_t size(const MonoTypePtr& t) { return measure(t).size; }
+
+  // the depth of the term, as substitution recurs into it
+  unsigned int depth(const MonoTypePtr& t) { return measure(t).depth; }
+
+  unsigned int deepest(const MonoTypes& ts) {
+    unsigned int d = 0;
+    for (const auto& t : ts) {
+      d = std::max(d, depth(t));
+    }
+    return d;
+  }
+private:
+  struct termMeasure { size_t size; unsigned int depth; };
+
+  size_t sizeLimit;
+  std::unordered_map<const MonoType*, termMeasure> memo;
+
+  // the types a type holds, as substitution visits them
+  struct childrenF : public switchType<MonoTypes> {
+    MonoTypes with(const Prim*        ) const override { return {}; }
+    MonoTypes with(const OpaquePtr*   ) const override { return {}; }
+    MonoTypes with(const TVar*        ) const override { return {}; }
+    MonoTypes with(const TGen*        ) const override { return {}; }
+    MonoTypes with(const TAbs*       v) const override { return {v->body()}; }
+    MonoTypes with(const TApp*       v) const override { MonoTypes r{v->fn()}; r.insert(r.end(), v->args().begin(), v->args().end()); return r; }
+    MonoTypes with(const FixedArray* v) const override { return {v->type(), v->length()}; }
+    MonoTypes with(const Array*      v) const override { return {v->type()}; }
+    MonoTypes with(const Variant*    v) const override { MonoTypes r; for (const auto& m : v->members()) { r.push_back(m.type); } return r; }
+    MonoTypes with(const Record*     v) const override { MonoTypes r; for (const auto& m : v->members()) { r.push_back(m.type); } return r; }
+    MonoTypes with(const Func*       v) const override { return {v->argument(), v->result()}; }
+    MonoTypes with(const Exists*     v) const override { return {v->absType()}; }
+    MonoTypes with(const Recursive*  v) const override { return {v->recType()}; }
+    MonoTypes with(const TString*     ) const override { return {}; }
+    MonoTypes with(const TLong*       ) const override { return {}; }
+    MonoTypes with(const TExpr*       ) const override { return {}; }
+  };
+
+  termMeasure measure(const MonoTypePtr& t) {
+    auto m = this->memo.find(t.get());
+    if (m != this->memo.end()) {
+      return m->second;
+    }
+    termMeasure r{1, 1};
+    for (const auto& c : switchOf(t, childrenF())) {
+      termMeasure cm = measure(c);
+      r.size  = std::min(this->sizeLimit, r.size + cm.size);
+      r.depth = std::max(r.depth, 1 + cm.depth);
+    }
+    this->memo[t.get()] = r;
+    return r;
+  }
+};
+}
+
+// a type to show in an error message, unless its term is too large to print
+static const size_t maxShownTypeSize = 1000;
+
+static std::string showBounded(const MonoTypePtr& ty) {
+  if (typeTermMeasure(maxShownTypeSize + 1).size(ty) <= maxShownTypeSize) {
+    return show(ty);
+  } else {
+    return "a type whose term has more than " + str::from(maxShownTypeSize) + " nodes";
+  }
+}
+
 // laying out a type recurs into the types it holds inline, and those are reduced
 // (repType) only as they are reached. Each reduction is bounded, but a type-level
 // application can reduce to a type that holds the application again -- the
@@ -535,7 +613,7 @@ public:
     if (levels > maxDepth || *depth > maxDepth - levels) {
       throw std::runtime_error(
         std::string(what) + " nests more than " + str::from(maxDepth) + " levels deep "
-        "(a type-level application that unfolds without end?): " + show(ty)
+        "(a type-level application that unfolds without end?): " + showBounded(ty)
       );
     }
     *depth += levels;
@@ -2104,11 +2182,31 @@ ConstraintPtr substitute(const MonoTypeSubst& s, const ConstraintPtr& p) {
   return p->substitute(s);
 }
 
+// thrown by a substitution that runs out of the work it was given
+struct substitutionWorkExhausted { };
+
 class substituteF : public switchTyFn {
 public:
-  substituteF(bool transitive, const MonoTypeSubst& s) : transitive(transitive), s(s) { }
+  // with 'work', each node visited is counted against it, and the substitution
+  // stops (substitutionWorkExhausted) when it runs out
+  substituteF(bool transitive, const MonoTypeSubst& s, size_t* work = nullptr) : transitive(transitive), s(s), work(work) { }
+
+  MonoTypePtr with(const Prim*       v) const override { visit(); return switchTyFn::with(v); }
+  MonoTypePtr with(const OpaquePtr*  v) const override { visit(); return switchTyFn::with(v); }
+  MonoTypePtr with(const TGen*       v) const override { visit(); return switchTyFn::with(v); }
+  MonoTypePtr with(const TAbs*       v) const override { visit(); return switchTyFn::with(v); }
+  MonoTypePtr with(const TApp*       v) const override { visit(); return switchTyFn::with(v); }
+  MonoTypePtr with(const FixedArray* v) const override { visit(); return switchTyFn::with(v); }
+  MonoTypePtr with(const Array*      v) const override { visit(); return switchTyFn::with(v); }
+  MonoTypePtr with(const Variant*    v) const override { visit(); return switchTyFn::with(v); }
+  MonoTypePtr with(const Record*     v) const override { visit(); return switchTyFn::with(v); }
+  MonoTypePtr with(const Func*       v) const override { visit(); return switchTyFn::with(v); }
+  MonoTypePtr with(const TString*    v) const override { visit(); return switchTyFn::with(v); }
+  MonoTypePtr with(const TLong*      v) const override { visit(); return switchTyFn::with(v); }
+  MonoTypePtr with(const TExpr*      v) const override { visit(); return switchTyFn::with(v); }
 
   MonoTypePtr with(const TVar* v) const override {
+    visit();
     auto si = this->s.find(v->name());
     if (si != this->s.end()) {
       if (this->transitive) {
@@ -2130,27 +2228,39 @@ public:
   }
 
   MonoTypePtr with(const Exists* v) const override {
+    visit();
     if (this->s.find(v->absTypeName()) == this->s.end()) {
       return Exists::make(v->absTypeName(), switchOf(v->absType(), *this));
     } else {
       MonoTypeSubst cuts = this->s;
       cuts.erase(v->absTypeName());
-      return Exists::make(v->absTypeName(), switchOf(v->absType(), substituteF(this->transitive, cuts)));
+      return Exists::make(v->absTypeName(), switchOf(v->absType(), substituteF(this->transitive, cuts, this->work)));
     }
   }
 
   MonoTypePtr with(const Recursive* v) const override {
+    visit();
     if (this->s.find(v->recTypeName()) == this->s.end()) {
       return Recursive::make(v->recTypeName(), switchOf(v->recType(), *this));
     } else {
       MonoTypeSubst cuts = this->s;
       cuts.erase(v->recTypeName());
-      return Recursive::make(v->recTypeName(), switchOf(v->recType(), substituteF(this->transitive, cuts)));
+      return Recursive::make(v->recTypeName(), switchOf(v->recType(), substituteF(this->transitive, cuts, this->work)));
     }
   }
 private:
   bool transitive;
   const MonoTypeSubst& s;
+  size_t* work;
+
+  void visit() const {
+    if (this->work != nullptr) {
+      if (*this->work == 0) {
+        throw substitutionWorkExhausted();
+      }
+      --*this->work;
+    }
+  }
 
   // the chain of type variables currently being expanded, held as stack frames
   // linked through the visitor so that a cycle can be detected without allocating
@@ -2286,34 +2396,39 @@ static const unsigned int maxReductionNesting = maxRepTypeSteps + 2 * maxDecodeN
 
 static thread_local unsigned int reductionNestingDepth = 0;
 
-namespace {
-// the depth of a type's term, as substitution recurs into it
-class typeDepthF : public switchType<unsigned int> {
-public:
-  unsigned int with(const Prim*        ) const override { return 1; }
-  unsigned int with(const OpaquePtr*   ) const override { return 1; }
-  unsigned int with(const TVar*        ) const override { return 1; }
-  unsigned int with(const TGen*        ) const override { return 1; }
-  unsigned int with(const TAbs*       v) const override { return 1 + switchOf(v->body(), *this); }
-  unsigned int with(const TApp*       v) const override { return 1 + std::max(switchOf(v->fn(), *this), deepest(v->args())); }
-  unsigned int with(const FixedArray* v) const override { return 1 + std::max(switchOf(v->type(), *this), switchOf(v->length(), *this)); }
-  unsigned int with(const Array*      v) const override { return 1 + switchOf(v->type(), *this); }
-  unsigned int with(const Variant*    v) const override { unsigned int d = 0; for (const auto& m : v->members()) { d = std::max(d, switchOf(m.type, *this)); } return 1 + d; }
-  unsigned int with(const Record*     v) const override { unsigned int d = 0; for (const auto& m : v->members()) { d = std::max(d, switchOf(m.type, *this)); } return 1 + d; }
-  unsigned int with(const Func*       v) const override { return 1 + std::max(switchOf(v->argument(), *this), switchOf(v->result(), *this)); }
-  unsigned int with(const Exists*     v) const override { return 1 + switchOf(v->absType(), *this); }
-  unsigned int with(const Recursive*  v) const override { return 1 + switchOf(v->recType(), *this); }
-  unsigned int with(const TString*     ) const override { return 1; }
-  unsigned int with(const TLong*       ) const override { return 1; }
-  unsigned int with(const TExpr*       ) const override { return 1; }
+// a bounded number of steps can still take unbounded time: each substitution walks
+// the term it substitutes into, and the term can double at every step while the
+// type stays small (the type-level reading of '(\x.x x) t', with 't' applying
+// it again, shares the doubled term rather than copying it). So the work of a
+// reduction's substitutions -- the nodes they visit -- is bounded as well, and the
+// budget is shared by the reductions nested under it, as the nesting above is.
+//
+// No reduction across the test suite visits more than about 15,000 nodes; the
+// bound is far above that, and spending it takes about a tenth of a second in an
+// optimized build.
+static const size_t maxReductionWork = 1000000;
 
-  unsigned int deepest(const MonoTypes& ts) const {
-    unsigned int d = 0;
-    for (const auto& t : ts) {
-      d = std::max(d, switchOf(t, *this));
+static thread_local size_t* reductionWork = nullptr;
+
+// the work budget of the outermost reduction on this thread, while it runs
+namespace {
+class reductionWorkBudget {
+public:
+  reductionWorkBudget() : work(maxReductionWork), outermost(reductionWork == nullptr) {
+    if (this->outermost) {
+      reductionWork = &this->work;
     }
-    return d;
   }
+  ~reductionWorkBudget() {
+    if (this->outermost) {
+      reductionWork = nullptr;
+    }
+  }
+  reductionWorkBudget(const reductionWorkBudget&) = delete;
+  reductionWorkBudget& operator=(const reductionWorkBudget&) = delete;
+private:
+  size_t work;
+  bool   outermost;
 };
 }
 
@@ -2326,7 +2441,7 @@ static MonoTypePtr repTypeWithin(const MonoTypePtr& ty, size_t* steps) {
 
   while (true) {
     if (*steps == 0) {
-      throw std::runtime_error("Type-level application does not reduce: " + show(ty));
+      throw std::runtime_error("Type-level application does not reduce: " + showBounded(ty));
     }
     --*steps;
 
@@ -2337,10 +2452,17 @@ static MonoTypePtr repTypeWithin(const MonoTypePtr& ty, size_t* steps) {
       }
     } else if (const TApp* a = is<TApp>(t)) {
       if (const TAbs* tf = is<TAbs>(repTypeWithin(a->fn(), steps))) {
-        typeDepthF depth;
+        typeTermMeasure term(1);
         nestingGuard substituting(&reductionNestingDepth, maxReductionNesting, "Type-level reduction", ty,
-                                  switchOf(tf->body(), depth) + depth.deepest(a->args()));
-        t = substitute(substitution(tf->args(), a->args()), tf->body());
+                                  term.depth(tf->body()) + term.deepest(a->args()));
+        try {
+          t = isMonoSingular(tf->body()) ? tf->body() : switchOf(tf->body(), substituteF(true, substitution(tf->args(), a->args()), reductionWork));
+        } catch (const substitutionWorkExhausted&) {
+          throw std::runtime_error(
+            "Type-level reduction visits more than " + str::from(maxReductionWork) + " nodes, "
+            "with the reductions it is nested in (a type-level application whose term grows at each step?): " + showBounded(ty)
+          );
+        }
         continue;
       }
     }
@@ -2362,6 +2484,7 @@ MonoTypePtr repType(const MonoTypePtr& t) {
     return t->repTypeMemo;
   }
   size_t steps = maxRepTypeSteps;
+  reductionWorkBudget work;
   MonoTypePtr r = repTypeWithin(t, &steps);
   if (r.get() != t.get()) {
     t->repTypeMemo = r;
