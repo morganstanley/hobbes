@@ -29,10 +29,52 @@
 #define HOBBES_SLMAP_H_INCLUDED
 
 #include "fregion.H"
+#include <array>
 #include <stack>
 #include <stdexcept>
+#include <utility>
 
 namespace hobbes {
+
+// whether a key is ordered with itself, as every key in a skip-list map has to be
+// (a NaN isn't, and std::pair and std::array hide one in their parts:
+//  (NaN,0) <= (NaN,0), since neither NaN is less than the other)
+//
+// a key is taken to be ordered with itself if it equals itself, which asks of a
+// key's parts only the == that a skip-list map already asks of its keys
+template <typename K>
+  inline bool orderedKey(const K& k);
+template <typename A, typename B>
+  inline bool orderedKey(const std::pair<A, B>& k);
+template <typename T, size_t N>
+  inline bool orderedKey(const std::array<T, N>& k);
+
+template <typename K>
+  inline bool orderedKey(const K& k) {
+    return k == k;
+  }
+template <typename A, typename B>
+  inline bool orderedKey(const std::pair<A, B>& k) {
+    return orderedKey(k.first) && orderedKey(k.second);
+  }
+template <typename T, size_t N>
+  inline bool orderedKey(const std::array<T, N>& k) {
+    for (const auto& x : k) {
+      if (!orderedKey(x)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+// a key that isn't ordered with itself is neither before nor after any key,
+// so the search for it can stop at any level and its place in the list is undefined
+template <typename K>
+  inline void requireOrderedKey(const K& k) {
+    if (!orderedKey(k)) {
+      throw std::runtime_error("Can't insert a key that isn't ordered with itself (e.g. NaN) into a skip-list map");
+    }
+  }
 
 template <typename K, typename V>
   struct slnode {
@@ -171,11 +213,7 @@ template <typename K, typename V>
 
     // insert a new key:value or update an existing one
     bool insert(fregion::imagefile* f, const K& k, const V& v) {
-      // a key that isn't ordered with itself (e.g. a NaN) is neither before nor after any key,
-      // so the search for it can stop at any level and its place in the list is undefined
-      if (!(k <= k)) {
-        throw std::runtime_error("Can't insert a key that isn't ordered with itself (e.g. NaN) into a skip-list map");
-      }
+      requireOrderedKey(k);
       if (this->next.size == 0) {
         this->next.size=1;
       }
