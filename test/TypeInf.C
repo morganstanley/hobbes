@@ -1022,6 +1022,12 @@ TEST(TypeInf, SizeOfACurriedTypeApplication) {
 
   // the named type constructors are still sized by their head, whatever their arguments
   EXPECT_EQ(sizeOf(tapp(tapp(primty("->"), list(primty("int"))), list(primty("long")))), static_cast<unsigned int>(sizeof(void*)));
+
+  // and so is a type function that reduces to a named type constructor applied to
+  // only some of its arguments
+  auto x  = tvar("x");
+  auto pf = primty("pf", tabs(str::strings("x"), tapp(primty("->"), list(x))));
+  EXPECT_EQ(sizeOf(tapp(tapp(pf, list(primty("int"))), list(primty("long")))), static_cast<unsigned int>(sizeof(void*)));
 }
 
 // '(\x.x x) w' reduces to 'w w', and with 'w = \x.[x x : n]' that is an array of

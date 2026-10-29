@@ -2600,6 +2600,14 @@ public:
     if (rty != app) {
       return r(rty);
     }
+
+    // the head can still reduce to an application that isn't an abstraction, a
+    // named type constructor applied to some of its arguments -- '(k int) long'
+    // with 'k = \x.(-> x)' -- and that is sized by its own head
+    MonoTypePtr hd = repType(whole->fn());
+    if (hd != whole->fn()) {
+      return r(tapp(hd, whole->args()));
+    }
     throw std::runtime_error("Can't determine size of monotype: " + show(whole));
   }
 
