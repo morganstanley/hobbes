@@ -179,6 +179,32 @@ TEST(TypeInf, SizeAndLayoutRejectUnrepresentableTypes) {
   // a negative length describes no array at all
   EXPECT_EXCEPTION(sizeOf(MonoTypePtr(FixedArray::make(primty("char"), MonoTypePtr(TLong::make(-1))))));
 
+  // A fixed array can fit in the unsigned size API by itself but leave no room
+  // for the tag stored before a variant payload. Adding the tag used to wrap
+  // through zero, making allocations disagree with accessors for the payload.
+  const unsigned int maxTypeSize = std::numeric_limits<unsigned int>::max();
+  const MonoTypePtr nearlyMax(
+    FixedArray::make(primty("byte"), tlong(static_cast<long>(maxTypeSize) - 3L)));
+  EXPECT_EQ(sizeOf(nearlyMax), maxTypeSize - 3U);
+
+  const MonoTypePtr oversizedVariant(
+    Variant::make(list(Variant::Member("x", nearlyMax, 0))));
+  EXPECT_EXCEPTION_MSG(sizeOf(oversizedVariant), std::runtime_error, "Variant size is out of range");
+
+  // The same hostile type arriving through the binary decoder must be refused
+  // when a consumer asks for its layout.
+  std::vector<unsigned char> oversizedVariantBytes;
+  encode(oversizedVariant, &oversizedVariantBytes);
+  EXPECT_EXCEPTION_MSG(
+    sizeOf(decode(oversizedVariantBytes)), std::runtime_error, "Variant size is out of range");
+
+  // Keep the boundary precise: the largest four-byte-aligned result that the
+  // unsigned size API can represent is still a valid size.
+  const MonoTypePtr largestVariant(
+    Variant::make(list(Variant::Member(
+      "x", FixedArray::make(primty("byte"), tlong(static_cast<long>(maxTypeSize) - 7L)), 0))));
+  EXPECT_EQ(sizeOf(largestVariant), maxTypeSize - 3U);
+
   // members that each fit but together run past the end of the layout are
   // rejected too -- here it is the running offset that goes out of range
   const MonoTypePtr big(FixedArray::make(primty("char"), MonoTypePtr(TLong::make(0x40000000))));

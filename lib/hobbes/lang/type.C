@@ -1170,7 +1170,24 @@ unsigned int Variant::size() const {
   for (const auto& m : this->ms) {
     malign = std::max<unsigned int>(malign, alignment(m.type));
   }
-  return align<unsigned int>(payloadOffset() + payloadSize(), malign);
+
+  // The payload size can use the full unsigned-int range, but the variant also
+  // stores a tag before it. Compute the complete aligned size in a wider type
+  // so a hostile type description cannot wrap that addition into a small
+  // allocation while retaining its original payload layout.
+  const unsigned long sz =
+    align<unsigned long>(
+      static_cast<unsigned long>(payloadOffset()) + static_cast<unsigned long>(payloadSize()),
+      static_cast<unsigned long>(malign));
+  if (sz > std::numeric_limits<unsigned int>::max()) {
+    throw
+      std::runtime_error(
+        "Variant size is out of range (" + str::from(sz) + " is greater than " +
+        str::from(std::numeric_limits<unsigned int>::max()) + "): " +
+        hobbes::show(static_cast<const MonoType*>(this))
+      );
+  }
+  return static_cast<unsigned int>(sz);
 }
 
 // record types
