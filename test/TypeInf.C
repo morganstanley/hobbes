@@ -1105,6 +1105,30 @@ TEST(TypeInf, ReductionWhoseTermGrowsWithoutEndIsRefused) {
   EXPECT_EXCEPTION(Record::make(list(Record::Member("f", t))));
 }
 
+// Type inference refines each node's constraints as it types the node, and those
+// are all the unresolved constraints of the nodes under it. In a chain of
+// 'x.f0*y.g0 ~ x.f1*y.g1 ~ ...' none is resolved until the whole expression is
+// unqualified, so every link refines all of those before it again and the work
+// grows with the square of the chain: OSS-Fuzz issue 579182043 is 18KB of a chain
+// like it that ran past the fuzzer's 60s. The constraints refined are counted,
+// and a chain that refines too many is refused rather than typed.
+TEST(TypeInf, InferenceWhoseConstraintsAccumulateIsBounded) {
+  auto chain = [](size_t n) {
+    std::ostringstream ss;
+    ss << "\\x y.x.f0*y.g0";
+    for (size_t i = 1; i < n; ++i) {
+      ss << " ~ x.f" << i << "*y.g" << i;
+    }
+    return ss.str();
+  };
+
+  hobbes::cc lc;
+  // a short chain fails for the reason it always did
+  EXPECT_EXCEPTION_MSG(lc.unsweetenExpression(lc.readExpr(chain(10))), std::exception, "Constraint not satisfiable");
+  // a long one runs out of inference work first
+  EXPECT_EXCEPTION_MSG(lc.unsweetenExpression(lc.readExpr(chain(900))), std::exception, "Type inference refines more than");
+}
+
 // The type memo is process-wide, and compacting it frees every type that only
 // the memo still holds. Type inference holds plain pointers and references
 // into types it has not (yet) taken a reference to, so a compaction from

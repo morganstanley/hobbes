@@ -594,6 +594,60 @@ bool refine(const TEnvPtr& tenv, const ExprPtr& e, MonoTypeUnifier* s, Definitio
   return refine(tenv, e->type(), s, ds);
 }
 
+// type inference refines the constraints of each node's type as it makes it, and
+// a node's constraints are all of those of the nodes under it that are not yet
+// resolved. That is usually a handful, but an expression can carry many that only
+// unqualifying it will decide (each 'x ~ y' in a long chain of them leaves an
+// ApproxEquiv for a type not yet known, for instance), and then every node above
+// them refines them all again: the work grows with the square of the expression.
+// So the constraints refined are counted against a budget, shared by the
+// inferences nested under it (checking one constraint can infer the type of
+// another expression), and inference fails when it runs out.
+//
+// The most any inference across the test suite refines is about 150,000
+// constraints, for the large match table in test/Matching.C; the largest table of
+// that shape that the match compiler accepts at all (about 100 rows) refines about
+// 290,000. The bound is well above both, and spending it takes about five seconds
+// in an optimized build.
+static const size_t maxInferenceRefineWork = 1000000;
+
+static thread_local size_t* inferenceRefineWork = nullptr;
+
+// the work budget of the outermost inference on this thread, while it runs
+namespace {
+class inferenceWorkBudget {
+public:
+  inferenceWorkBudget() : work(maxInferenceRefineWork), outermost(inferenceRefineWork == nullptr) {
+    if (this->outermost) {
+      inferenceRefineWork = &this->work;
+    }
+  }
+  ~inferenceWorkBudget() {
+    if (this->outermost) {
+      inferenceRefineWork = nullptr;
+    }
+  }
+  inferenceWorkBudget(const inferenceWorkBudget&) = delete;
+  inferenceWorkBudget& operator=(const inferenceWorkBudget&) = delete;
+private:
+  size_t work;
+  bool   outermost;
+};
+}
+
+static void spendInferenceRefineWork(size_t n) {
+  if (inferenceRefineWork == nullptr) {
+    return;
+  }
+  if (n > *inferenceRefineWork) {
+    throw std::runtime_error(
+      "Type inference refines more than " + str::from(maxInferenceRefineWork) + " constraints, "
+      "with the inferences it is nested in (an expression whose unresolved constraints accumulate at every node?)"
+    );
+  }
+  *inferenceRefineWork -= n;
+}
+
 // utilities for working with some basic types
 Record::Members makeRecordMembers(const MkRecord::FieldDefs& fds, const MonoTypes& mts) {
   Record::Members r;
@@ -612,6 +666,7 @@ struct expTypeInfF : public switchExprM<UnitV> {
   expTypeInfF(const TEnvPtr& tenv, MonoTypeUnifier* u, Definitions* ds) : tenv(tenv), u(u), ds(ds) { }
 
   const QualTypePtr& qt(const QualTypePtr& qty) {
+    spendInferenceRefineWork(qty->constraints().size());
     refine(this->tenv, qty, this->u, this->ds);
     return qty;
   }
@@ -998,6 +1053,7 @@ struct applySubstitutionF : public switchExprTyFnM {
 ExprPtr validateType(const TEnvPtr& tenv, const ExprPtr& e, Definitions* ds) {
   try {
     MonoTypeUnifier u(tenv);
+    inferenceWorkBudget work;
     switchOf(e, expTypeInfF(tenv, &u, ds));
     refine(tenv, e, &u, ds);
     switchOf(e, applySubstitutionF(&u));
@@ -1012,6 +1068,7 @@ ExprPtr validateType(const TEnvPtr& tenv, const ExprPtr& e, Definitions* ds) {
 ExprPtr validateType(const TEnvPtr& tenv, const std::string& vname, const ExprPtr& e, Definitions* ds) {
   try {
     MonoTypeUnifier u(tenv);
+    inferenceWorkBudget work;
 
     TEnvPtr rtenv(new TEnv(tenv));
     MonoTypePtr defTy = freshTypeVar();
