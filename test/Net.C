@@ -14,6 +14,7 @@
 #include <thread>
 
 #include <fcntl.h>
+#include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -136,6 +137,63 @@ static void joinServerThreadsAtExit() {
     serverWithHostThread.join();
   }
 }
+
+namespace {
+
+class NullNetREPLServer : public Server {
+public:
+  void connect(int) override {}
+  ExprPtr readExpr(const std::string &) override { return ExprPtr(); }
+  MonoTypePtr prepare(int, exprid, const ExprPtr &,
+                      const MonoTypePtr &) override {
+    return MonoTypePtr();
+  }
+  void evaluate(int, exprid) override {}
+  void disconnect(int) override {}
+};
+
+class RegisteredListener {
+public:
+  explicit RegisteredListener(int fd) : fd(fd) {}
+  ~RegisteredListener() {
+    unregisterEventHandler(fd);
+    close(fd);
+  }
+
+  int get() const { return fd; }
+
+private:
+  int fd;
+};
+
+uint32_t boundIPv4Address(int fd) {
+  sockaddr_in address = {};
+  socklen_t addressSize = sizeof(address);
+  if (getsockname(fd, reinterpret_cast<sockaddr *>(&address), &addressSize) !=
+      0) {
+    throw std::runtime_error("Unable to inspect netREPL listening address");
+  }
+  if (address.sin_family != AF_INET) {
+    throw std::runtime_error("netREPL listener did not use IPv4");
+  }
+  return ntohl(address.sin_addr.s_addr);
+}
+
+} // namespace
+
+TEST(Net, netREPLBindsToLoopbackByDefault) {
+  NullNetREPLServer server;
+
+  RegisteredListener defaultListener(installNetREPL(0, &server));
+  EXPECT_EQ(boundIPv4Address(defaultListener.get()),
+            static_cast<uint32_t>(INADDR_LOOPBACK));
+
+  RegisteredListener explicitListener(
+      installNetREPL("0.0.0.0", 0, &server));
+  EXPECT_EQ(boundIPv4Address(explicitListener.get()),
+            static_cast<uint32_t>(INADDR_ANY));
+}
+
 /**************************
  * types/data for net communication
  **************************/

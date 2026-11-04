@@ -116,6 +116,11 @@ A peer that can connect can execute native code in the server process.
 
 There is no built-in authentication, authorization, or transport encryption.
 
+The port-only ``installNetREPL`` overload and ``hi -p`` therefore bind to IPv4
+loopback (``127.0.0.1``) by default. Listening on another interface requires
+the explicit-host overload. This prevents accidental remote exposure; it is
+not an authentication boundary and does not make untrusted local clients safe.
+
 **Implication:** only expose Hobbes RPC endpoints on trusted internal
 networks. If the transport crosses anything less trusted, the embedding
 application must provide the controls (network segmentation, firewalls,
@@ -259,8 +264,9 @@ Guidance for embedding applications
   any Hobbes code they evaluate — or type-check — can do anything the
   process can do.
 * Keep RPC endpoints, ``hi -p``/``hi -w`` and ``hog -s`` on trusted network
-  segments; wrap them in authenticated, encrypted transports if they must
-  cross anything else.
+  segments. The port-only netREPL API and ``hi -p`` listen on IPv4 loopback by
+  default; use the explicit-host overload only when remote access is required,
+  and wrap remotely exposed endpoints in authenticated, encrypted transports.
 * Don't rely on ``option Safe`` to contain code you don't trust.
 * Only call ``cc::enableProcessSpawning``, ``cc::enableRemoteConnections``,
   ``cc::enableRemoteInvocation``, ``cc::enableFileWrites`` or
