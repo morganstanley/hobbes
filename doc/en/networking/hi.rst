@@ -16,10 +16,14 @@ Setting up the receiver
 
   $ hi -p 8080
   [...]
-  running a repl server at myhost:8080
+  running a repl server at 127.0.0.1:8080
   >
 
-We'll call this the *server*, and next we'll connect to it over the network.
+``hi -p`` binds to IPv4 loopback by default, so clients must run on the same
+host. An embedding application can deliberately listen on another interface
+with the explicit-host ``installNetREPL`` overload, but must supply
+authentication and transport encryption before exposing a netREPL beyond the
+local host. We'll call this the *server*, and next we'll connect to it.
 
 Opening a connection
 ====================
@@ -29,7 +33,7 @@ From another instance of *hi*, create a connection to the *server* using the ``C
 ::
   
   $ hi -s -o no-Safe
-  > c = connection :: (Connect "myhost:8080" p) => p
+  > c = connection :: (Connect "127.0.0.1:8080" p) => p
 
 .. note:: **Why -o no-Safe**
 

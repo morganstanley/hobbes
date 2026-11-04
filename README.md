@@ -23,6 +23,8 @@ a language, embedded compiler, and runtime for efficient dynamic expression eval
 
 Hobbes is built for high performance integration with C/C++ applications. While Hobbes is a strongly typed language that offers compile-time checks, it doesn't have a sandboxed runtime environment or runtime safety features. By design, Hobbes gives direct access to memory and does not have array bounds checks. Additionally, Hobbes supports compilation and execution of native code remotely over a network (RPC). This feature is meant for use within your trusted internal network only. If you choose to utilize such functionality, you need to be aware of these design choices and understand the security implications.
 
+The port-only `installNetREPL` API and `hi -p` bind to IPv4 loopback (`127.0.0.1`) by default. Embedding applications must use the explicit-host overload to listen on another interface, and should add authentication and transport encryption before exposing a netREPL beyond the local host.
+
 ## Building <a name="building"></a>
 
 To build hobbes, you will need [LLVM](http://llvm.org/) 3.3 or later, [cmake](http://cmake.org/) 3.19 or later, [GNU gcc](https://gcc.gnu.org/) 4.8 or later, and a version 2.5 or later Linux kernel.
@@ -677,6 +679,8 @@ We can run a `hi` process to quietly listen on port 8080 like this:
 $ hi -s -p 8080
 >
 ```
+
+`hi -p` listens on `127.0.0.1`, so clients must run on the same host. An embedding application can deliberately select another interface with the explicit-host `installNetREPL` overload, but remote exposure requires authentication and transport encryption supplied by the application.
 
 And if we've compiled our test program above to an executable named `test` then we can invoke and run it against our running server to observe results like:
 

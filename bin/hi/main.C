@@ -738,7 +738,7 @@ int main(int argc, char** argv) {
                 << std::endl;
 
       if (args.replPort > 0) {
-        std::cout << setfgc(colors.hlfg) << "running repl server at " << setfgc(colors.stdtextfg) << str::env("HOSTNAME") << ":" << args.replPort << resetfmt() << std::endl;
+        std::cout << setfgc(colors.hlfg) << "running repl server at " << setfgc(colors.stdtextfg) << "127.0.0.1:" << args.replPort << resetfmt() << std::endl;
       }
 
       if (args.httpdPort > 0) {

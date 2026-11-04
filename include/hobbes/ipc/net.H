@@ -45,12 +45,16 @@ struct Server {
   virtual void        disconnect(int conn) = 0;
 };
 
+// The port-only overload listens on IPv4 loopback. Use the host overload to
+// deliberately select another interface.
 int installNetREPL(int port, Server*);
 int installNetREPL(const std::string& host, int port, Server*);
 // install a net repl on a unix domain socket (using file paths)
 int installNetREPL(const std::string& /*filepath*/, Server*);
 
 class cc;
+// The port-only overload listens on IPv4 loopback. Use the host overload to
+// deliberately select another interface.
 int installNetREPL(int port, cc*, ReWriteExprFn const& = [](ExprPtr const& e) -> ExprPtr { return e; });
 int installNetREPL(const std::string& host, int port, cc*, ReWriteExprFn const& = [](ExprPtr const& e) -> ExprPtr { return e; });
 // install a net repl on a unix domain socket (using file paths)

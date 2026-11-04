@@ -784,7 +784,10 @@ void registerNetREPL(int s, Server *svr) {
 }
 
 int installNetREPL(int port, Server *svr) {
-  int s = allocateServer(port);
+  // A netREPL can execute native code in this process. Keep the convenient
+  // port-only API local to this host; callers that deliberately expose it
+  // must choose a listening address through the host overload below.
+  int s = allocateServer(port, "127.0.0.1");
   registerNetREPL(s, svr);
   return s;
 }
