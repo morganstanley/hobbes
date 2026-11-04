@@ -1000,6 +1000,36 @@ TEST(TypeInf, ADecodedFixedArrayLengthCannotBeNegative) {
   EXPECT_TRUE(*hobbes::decode(ok) == *t);
 }
 
+// sizeOf uncurried a type-level application to find its head, then reduced only
+// the innermost application: '(k char) long', with 'k = \x.\y.{a:y}', was sized as
+// 'k char', an abstraction, which has no size, though the whole application
+// reduces to '{a:long}'. And an application of an abstraction itself wasn't reduced
+// at all. alignment() reduces the whole type, so either could have an alignment
+// but no size.
+TEST(TypeInf, SizeOfACurriedTypeApplication) {
+  auto y  = tvar("y");
+  auto k  = primty("k", tabs(str::strings("x"), tabs(str::strings("y"), Record::make(list(Record::Member("a", y))))));
+  auto cl = tapp(tapp(k, list(primty("char"))), list(primty("long")));
+  EXPECT_TRUE(*repType(cl) == *Record::make(list(Record::Member("a", primty("long")))));
+  EXPECT_EQ(sizeOf(cl), 8U);
+  EXPECT_EQ(alignment(cl), 8U);
+  EXPECT_EQ(sizeOf(Record::make(list(Record::Member("f", primty("char")), Record::Member("g", cl)))), 16U);
+
+  // the abstraction applied directly, rather than through a named type
+  auto direct = tapp(tabs(str::strings("y"), Record::make(list(Record::Member("a", y)))), list(primty("long")));
+  EXPECT_EQ(sizeOf(direct), 8U);
+  EXPECT_EQ(alignment(direct), 8U);
+
+  // the named type constructors are still sized by their head, whatever their arguments
+  EXPECT_EQ(sizeOf(tapp(tapp(primty("->"), list(primty("int"))), list(primty("long")))), static_cast<unsigned int>(sizeof(void*)));
+
+  // and so is a type function that reduces to a named type constructor applied to
+  // only some of its arguments
+  auto x  = tvar("x");
+  auto pf = primty("pf", tabs(str::strings("x"), tapp(primty("->"), list(x))));
+  EXPECT_EQ(sizeOf(tapp(tapp(pf, list(primty("int"))), list(primty("long")))), static_cast<unsigned int>(sizeof(void*)));
+}
+
 // '(\x.x x) w' reduces to 'w w', and with 'w = \x.[x x : n]' that is an array of
 // 'w w' again: every reduction finishes, but the layout of the result holds the
 // application it came from. Laying out such a type (as constructing a record
