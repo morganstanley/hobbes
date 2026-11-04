@@ -25,6 +25,8 @@ Hobbes is built for high performance integration with C/C++ applications. While 
 
 The port-only `installNetREPL` API and `hi -p` bind to IPv4 loopback (`127.0.0.1`) by default. Embedding applications must use the explicit-host overload to listen on another interface, and should add authentication and transport encryption before exposing a netREPL beyond the local host.
 
+The port-only `installHTTPD` API and `hi -w` bind to IPv4 loopback (`127.0.0.1`) by default. Embedding applications must use the explicit-host overload to listen on another interface. Because the embedded server provides neither authentication nor TLS, expose it beyond the local host only through an authenticated, encrypted fronting proxy.
+
 ## Building <a name="building"></a>
 
 To build hobbes, you will need [LLVM](http://llvm.org/) 3.3 or later, [cmake](http://cmake.org/) 3.19 or later, [GNU gcc](https://gcc.gnu.org/) 4.8 or later, and a version 2.5 or later Linux kernel.

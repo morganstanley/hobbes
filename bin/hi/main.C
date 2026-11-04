@@ -588,7 +588,7 @@ void printUsage() {
             << "usage: hi [-p port] [-w port] [-e expr] [-s] [-x] [-o opt] [-a name=val]* [file+]" << std::endl
             << std::endl
             << "    -p          : run a REPL server on <port>"                                              << std::endl
-            << "    -w          : run a web server on <port>"                                               << std::endl
+            << "    -w          : run a loopback-only web server on <port>"                                 << std::endl
             << "    -e          : evaluate <expr>"                                                          << std::endl
             << "    -s          : run in 'silent' mode without normal formatting"                           << std::endl
             << "    -x          : exit after input scripts are evaluated"                                   << std::endl
@@ -742,7 +742,7 @@ int main(int argc, char** argv) {
       }
 
       if (args.httpdPort > 0) {
-        std::cout << setfgc(colors.hlfg) << "running web server at " << setfgc(colors.stdtextfg) << "http://" << str::env("HOSTNAME") << ":" << args.httpdPort << "/" << resetfmt() << std::endl;
+        std::cout << setfgc(colors.hlfg) << "running web server at " << setfgc(colors.stdtextfg) << "http://127.0.0.1:" << args.httpdPort << "/" << resetfmt() << std::endl;
       }
     }
 

@@ -149,7 +149,15 @@ void evaluatePartialHTTPRequest(int c, void* ud) {
 }
 
 int installHTTPD(int port, HTTPRequestHandler f, void* ud) {
-  int s = allocateServer(port);
+  // HTTP handlers can evaluate native code in this process. Keep the
+  // convenient port-only API local to this host; callers that deliberately
+  // expose it must choose a listening address through the host overload.
+  return installHTTPD("127.0.0.1", port, f, ud);
+}
+
+int installHTTPD(const std::string& host, int port, HTTPRequestHandler f,
+                 void* ud) {
+  int s = allocateServer(port, host);
 
   using ReqCB = std::pair<HTTPRequestHandler, void *>;
   auto* rcb = new ReqCB(f, ud);
