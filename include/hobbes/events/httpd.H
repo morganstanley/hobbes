@@ -23,7 +23,13 @@ struct HTTPRequest {
 
 using HTTPRequestHandler = void (*)(const HTTPRequest &, int, void *);
 
+// The port-only overload listens on IPv4 loopback. Use the host overload to
+// deliberately select another interface. The server provides no
+// authentication or TLS; put non-loopback listeners behind an authenticated,
+// encrypted fronting proxy.
 int installHTTPD(int port, HTTPRequestHandler, void* ud = nullptr);
+int installHTTPD(const std::string& host, int port, HTTPRequestHandler,
+                 void* ud = nullptr);
 
 }
 
