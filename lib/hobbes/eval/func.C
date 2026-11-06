@@ -87,6 +87,7 @@ CASTOP(s2i,   llvm::Instruction::SExt,   short,         int);
 CASTOP(f2d,   llvm::Instruction::FPExt,  float,         double);
 
 CASTOP(tl2i, llvm::Instruction::Trunc, long, int);
+CASTOP(ti162l, llvm::Instruction::Trunc, int128_t, long);
 CASTOP(ti2s, llvm::Instruction::Trunc, int,  short);
 CASTOP(ti2b, llvm::Instruction::Trunc, int,  unsigned char);
 CASTOP(tl2b, llvm::Instruction::Trunc, long, unsigned char);
@@ -1298,7 +1299,7 @@ void initDefOperators(cc* c) {
   DEC(b2i); DEC(b2l); DEC(i2d); DEC(i2l); DEC(l2d); DEC(l2i16); DEC(l2f);
   DEC(s2i); DEC(i2f); DEC(f2d);
   
-  DEC(tl2i); DEC(ti2s); DEC(ti2b); DEC(tl2b);
+  DEC(tl2i); DEC(ti162l); DEC(ti2s); DEC(ti2b); DEC(tl2b);
 
   DEC(sneg); DEC(ineg); DEC(lneg); DEC(i16neg); DEC(fneg); DEC(dneg);
 

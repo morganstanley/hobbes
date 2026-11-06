@@ -172,6 +172,8 @@ Also, variants can be combined with [isorecursive types](https://en.wikipedia.or
 
 These types and type constructors together make up the "algebraic data types" common in the ML family of programming languages (SML, ocaml, Haskell, ...).  The syntax and names for these types also come from ML and common academic programming language textbooks as in [TaPL](https://www.cis.upenn.edu/~bcpierce/tapl/) and [PFPL](http://www.cs.cmu.edu/~rwh/pfpl.html).
 
+`ti162l` explicitly truncates an `int128` to its low-order `long`, complementing the widening `l2i16` conversion. Use it when the discarded high bits are intentional; `unsafeCast` only accepts representations that LLVM can bitcast directly.
+
 As in Haskell, hobbes supports a form of _qualified types_ with type classes and even user-defined constraint resolvers (which we will see in more detail later).  Among many other uses, this allows both mixed-type arithmetic and type inference to coexist:
 
 ```
