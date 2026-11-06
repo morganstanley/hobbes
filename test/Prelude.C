@@ -104,6 +104,11 @@ TEST(Prelude, Int128) {
   EXPECT_TRUE((c().compileFn<bool(int128_t)>("x", "x==42")(42)));
   EXPECT_EQ(hobbes::makeStdString(c().compileFn<const hobbes::array<char>*()>("show(42H)")()), "42");
 
+  const int128_t halves = (int128_t(0x123456789abcdef0ULL) << 64) | int128_t(0xfedcba9876543210ULL);
+  EXPECT_EQ(c().compileFn<uint64_t(int128_t)>("x", "ti162l(x)")(halves), 0xfedcba9876543210ULL);
+  EXPECT_EQ(c().compileFn<uint64_t(int128_t)>("x", "ti162l(i16lshr(x, 64H))")(halves), 0x123456789abcdef0ULL);
+  EXPECT_EXCEPTION(c().compileFn<uint64_t(int128_t)>("x", "unsafeCast(x)::long"));
+
   // INT128_MAX w/  'H'
   EXPECT_EQ((makeStdString(c().compileFn<const array<char>*()>("show(readInt128(\"170141183460469231731687303715884105727H\"))")())), "|1=170141183460469231731687303715884105727|");
   // INT128_MAX w/o 'H'
