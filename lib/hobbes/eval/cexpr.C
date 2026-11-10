@@ -463,7 +463,8 @@ public:
     llvm::Function* f = this->c->lookupFunction(".failvarmatch");
     if (f == nullptr) { throw std::runtime_error("Internal compiler error -- no default variant match failure handler defined."); }
 
-    auto ltxts = v->la().lines(v->la().p0.first-1, v->la().p1.first);
+    const size_t firstLine = v->la().p0.first == 0 ? 0 : v->la().p0.first - 1;
+    auto ltxts = v->la().lines(firstLine, v->la().p1.first);
     auto ltxt  = !ltxts.empty() ? ltxts[0] : "???";
 
     return withContext([&](auto&) -> llvm::Value* {

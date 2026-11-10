@@ -66,13 +66,15 @@ bool httpHeaderMatches(const HTTPRequest& req, const std::string& name,
 // evaluate HTTP request data until completed
 class PartialHTTPRequestState {
 public:
-  PartialHTTPRequestState(int s, HTTPRequestHandler f, void* ud) : s(s), f(f), ud(ud), state(Method) {
+  PartialHTTPRequestState(int s, HTTPRequestHandler f, void* ud) : s(s), f(f), ud(ud), state(Method), len(0), requestLineBytes(0), headerBytes(0), headerCount(0), rejected(false) {
   }
 
   bool transition(const char* b, const char* e) {
     while (b != e) {
       if (!transition(*b)) {
-        this->f(this->req, this->s, this->ud);
+        if (!this->rejected) {
+          this->f(this->req, this->s, this->ud);
+        }
         return false;
       }
       ++b;
@@ -98,10 +100,30 @@ private:
   std::ostringstream r0;
   std::ostringstream r1;
   size_t             len;
+  size_t             requestLineBytes;
+  size_t             headerBytes;
+  size_t             headerCount;
+  bool               rejected;
 
   HTTPRequest req;
 
+  static constexpr size_t maxRequestLineBytes = 8192;
+  static constexpr size_t maxHeaderBytes = 65536;
+  static constexpr size_t maxHeaderCount = 100;
+
   bool transition(char c) {
+    if (this->state == Method || this->state == Document || this->state == FindHeaderBegin) {
+      if (++this->requestLineBytes > maxRequestLineBytes) {
+        this->rejected = true;
+        return false;
+      }
+    } else if (this->state == HeaderNameOrEnd || this->state == HeaderName || this->state == HeaderValue) {
+      if (++this->headerBytes > maxHeaderBytes) {
+        this->rejected = true;
+        return false;
+      }
+    }
+
     switch (this->state) {
     case Method:
       if (c != ' ') {
@@ -155,6 +177,10 @@ private:
       break;
     case HeaderValue:
       if (c == '\n') {
+        if (++this->headerCount > maxHeaderCount) {
+          this->rejected = true;
+          return false;
+        }
         this->req.headers[this->r0.str()] = str::trim(this->r1.str());
 
         this->r0.str("");

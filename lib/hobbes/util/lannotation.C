@@ -25,7 +25,9 @@ str::seq slurpLines(std::istream& in, size_t i, size_t f) {
   str::seq    result;
   std::string mline;
   for (size_t k = 0; k < i; ++k) {
-    std::getline(in, mline);
+    if (!std::getline(in, mline)) {
+      return result;
+    }
   }
   for (size_t k = i; k < f; ++k) {
     if (std::getline(in, mline)) {

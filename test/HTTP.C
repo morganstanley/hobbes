@@ -16,6 +16,9 @@ using namespace hobbes;
 namespace {
 
 void ignoreRequest(const HTTPRequest &, int, void *) {}
+void countRequest(const HTTPRequest &, int, void *ud) {
+  ++*static_cast<int*>(ud);
+}
 
 class RegisteredHTTPListener {
 public:
@@ -42,6 +45,15 @@ uint32_t boundIPv4Address(int fd) {
     throw std::runtime_error("HTTP listener did not use IPv4");
   }
   return ntohl(address.sin_addr.s_addr);
+}
+
+uint16_t boundIPv4Port(int fd) {
+  sockaddr_in address = {};
+  socklen_t addressSize = sizeof(address);
+  if (getsockname(fd, reinterpret_cast<sockaddr *>(&address), &addressSize) != 0) {
+    throw std::runtime_error("Unable to inspect HTTP listening port");
+  }
+  return ntohs(address.sin_port);
 }
 
 } // namespace
@@ -88,4 +100,24 @@ TEST(HTTP, identifiesEveryExecutableWebRoute) {
   EXPECT_TRUE(hi::isWebEvalRequest(request));
   request.document = "/report.hxp.txt";
   EXPECT_TRUE(!hi::isWebEvalRequest(request));
+}
+
+TEST(HTTP, RejectsOversizedRequestLineWithoutDispatch) {
+  int requests = 0;
+  RegisteredHTTPListener listener(installHTTPD(0, &countRequest, &requests));
+
+  int client = socket(AF_INET, SOCK_STREAM, 0);
+  EXPECT_TRUE(client >= 0);
+  sockaddr_in address = {};
+  address.sin_family = AF_INET;
+  address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+  address.sin_port = htons(boundIPv4Port(listener.get()));
+  EXPECT_EQ(connect(client, reinterpret_cast<sockaddr*>(&address), sizeof(address)), 0);
+
+  std::string request(8193, 'G');
+  EXPECT_EQ(send(client, request.data(), request.size(), 0), static_cast<ssize_t>(request.size()));
+  EXPECT_TRUE(stepEventLoop(1000)); // accept
+  EXPECT_TRUE(stepEventLoop(1000)); // reject request data
+  EXPECT_EQ(requests, 0);
+  close(client);
 }

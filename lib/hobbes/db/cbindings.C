@@ -317,6 +317,14 @@ static long checkedUCFixedArrayLength(long n, long capacity) {
   return n;
 }
 
+static long checkedUCArrayLength(long n) {
+  static const long maxDecodedArrayElements = 1000000;
+  if (n < 0 || n > maxDecodedArrayElements) {
+    throw std::runtime_error("Invalid compressed array element count: " + str::from(n));
+  }
+  return n;
+}
+
 // write a compressed series of values
 UCWriter::UCWriter(writer* f, size_t root, size_t batchSize, size_t modelSize) : batchSize(batchSize), modelSize(modelSize), out(f->fileData()) {
   // load the head batch and initialize from it
@@ -392,6 +400,7 @@ void initCStorageFileDefs(FieldVerifier*, cc& c) {
   c.bind("ucReaderRead",     memberfn(&UCReader::read));
   c.bind("ucReaderDestroy",  &destroyUCReader);
   c.bind("ucFixedArrayLength", &checkedUCFixedArrayLength);
+  c.bind("ucArrayLength",     &checkedUCArrayLength);
 
   c.bind("ucWriterMake",      &makeUCWriter);
   c.bind("ucWriterStep",      memberfn(&UCWriter::step));

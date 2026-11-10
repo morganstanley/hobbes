@@ -209,7 +209,7 @@ instance (UCModel t tsm tdm) => UCModel [:t|n:] ((pcsmodel 8) * tsm) ((pdmodel 8
 
 ucTakeNStep :: (UCRead t sm dm) => (<hobbes.UCReader>, dm, long, [t], long) -> [t]
 ucTakeNStep r dm n x i =
-  if (ucReaderEOF(r) or i == n) then
+  if (ucReaderEOF(r) or i >= n) then
     do { unsafeSetLength(x, i); return (x::[t]) }
   else
     do {
@@ -219,7 +219,7 @@ ucTakeNStep r dm n x i =
 {-# UNSAFE ucTakeNStep #-}
 
 ucTakeN :: (UCRead t sm dm) => (<hobbes.UCReader>, dm, long) -> [t]
-ucTakeN r dm n = ucTakeNStep(r, dm, n, newArray(n), 0L)
+ucTakeN r dm n = let count = ucArrayLength(n) in ucTakeNStep(r, dm, count, newArray(count), 0L)
 
 instance (UCModel t tsm tdm) => UCRead [t] ((pcsmodel 8) * tsm) ((pdmodel 8) * tdm) where
   ucRead r dm = ucTakeN(r, dm.1, (ucRead::(UCRead long _ _)=>(_,_)->_)(r, dm.0))

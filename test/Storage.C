@@ -36,6 +36,13 @@ TEST(Storage, CompressedFixedArrayLengthChecksCapacity) {
   EXPECT_EXCEPTION(check(5, 4));
 }
 
+TEST(Storage, CompressedArrayLengthsAreBounded) {
+  auto check = c().compileFn<long(long)>("n", "ucArrayLength(n)");
+  EXPECT_EQ(check(10), 10L);
+  EXPECT_EXCEPTION(check(-1));
+  EXPECT_EXCEPTION(check(1000001));
+}
+
 template <typename T>
   T sum(const T* b, const T* e) {
     T r = T(0);
