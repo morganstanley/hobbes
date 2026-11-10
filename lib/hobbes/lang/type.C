@@ -1988,7 +1988,11 @@ public:
   instantiateF(const MonoTypes& ts) : ts(ts) { }
 
   MonoTypePtr with(const TGen* v) const override {
-    return MonoTypePtr(this->ts[v->id()]);
+    const int id = v->id();
+    if (id < 0 || static_cast<size_t>(id) >= this->ts.size()) {
+      throw std::runtime_error("Type variable index is outside its quantified type: " + str::from(id));
+    }
+    return this->ts[static_cast<size_t>(id)];
   }
 private:
   const MonoTypes& ts;

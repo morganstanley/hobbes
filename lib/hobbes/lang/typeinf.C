@@ -113,12 +113,23 @@ struct encodeCtorForm : public switchType<std::string> {
 
   encodeCtorForm(const MonoTypePtr& forTy, MonoTypes* targs, str::seq* ignvs) : forTy(forTy), targs(targs), ignvs(ignvs) { }
 
+  static std::string name(const std::string& x) {
+    return str::from(x.size()) + ":" + x;
+  }
+
+  static bool intrinsicPrimitive(const std::string& x) {
+    return x == "unit" || x == "bool" || x == "char" || x == "byte" ||
+           x == "short" || x == "int" || x == "long" || x == "int128" ||
+           x == "float" || x == "double" || x == "void";
+  }
+
   std::string with(const Prim* v) const override {
-    return "prim:" + v->name();
+    return "prim:" + name(v->name());
   }
 
   std::string with(const OpaquePtr* v) const override {
-    return "ptr" + std::string(v->storedContiguously() ? "c" : "") + ":" + v->name();
+    return "ptr" + std::string(v->storedContiguously() ? "c" : "p") + ":" +
+           str::from(v->size()) + ":" + name(v->name());
   }
 
   std::string with(const TVar* v) const override {
@@ -156,7 +167,7 @@ struct encodeCtorForm : public switchType<std::string> {
     std::ostringstream vn;
     vn << "variant:";
     for (const auto &c : v->members()) {
-      vn << c.selector << "=" << ";";
+      vn << name(c.selector) << "=" << c.id << ";";
       this->targs->push_back(c.type);
     }
     return vn.str();
@@ -166,7 +177,7 @@ struct encodeCtorForm : public switchType<std::string> {
     std::ostringstream rn;
     rn << "record:";
     for (const auto &f : v->members()) {
-      rn << f.field << "=" << ";";
+      rn << name(f.field) << "=;";
       this->targs->push_back(f.type);
     }
     return rn.str();
@@ -283,6 +294,40 @@ void MonoTypeUnifier::unify(const MonoTypePtr& lhs, const MonoTypePtr& rhs) {
       std::string rhscn;
       MonoTypes rhsts;
       typeCtorForm(rhsv, &rhscn, &rhsts, &ignvs);
+
+      // A primitive alias is often mentioned by name before its representation
+      // is available, and parameterized aliases can carry alpha-equivalent
+      // abstractions with different binder names.  Intrinsic primitives are
+      // never aliases, however: attaching any representation to one changes
+      // its fixed language-defined layout and must always be rejected.
+      if (const Prim* lp = is<Prim>(lhsv)) {
+        if (const Prim* rp = is<Prim>(rhsv)) {
+          const MonoTypePtr& lr = lp->representation();
+          const MonoTypePtr& rr = rp->representation();
+          if ((lr || rr) && encodeCtorForm::intrinsicPrimitive(lp->name())) {
+            throw std::runtime_error(
+              "Cannot unify an intrinsic primitive type carrying a representation: " +
+              show(substitute(lhsv)) + " != " + show(substitute(rhsv)));
+          }
+        }
+      }
+
+      // Record offsets remain unresolved (-1) while a member contains type
+      // variables.  Compare concrete offsets without making an unresolved
+      // inference-time record incompatible with its resolved form.
+      if (const Record* lr = is<Record>(lhsv)) {
+        if (const Record* rr = is<Record>(rhsv)) {
+          const auto& lms = lr->members();
+          const auto& rms = rr->members();
+          for (size_t i = 0; i < lms.size() && i < rms.size(); ++i) {
+            if (lms[i].offset >= 0 && rms[i].offset >= 0 && lms[i].offset != rms[i].offset) {
+              throw std::runtime_error(
+                "Cannot unify record types with distinct member offsets: " +
+                show(substitute(lhsv)) + " != " + show(substitute(rhsv)));
+            }
+          }
+        }
+      }
 
       if (lhsts.size() != rhsts.size() || lhscn != rhscn) {
         throw std::runtime_error("Cannot unify types: " + show(substitute(lhsv)) + " != " + show(substitute(rhsv)));

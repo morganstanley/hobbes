@@ -16,6 +16,26 @@
 using namespace hobbes;
 static cc& c() { static cc x; return x; }
 
+TEST(Storage, ReflectDecoderRejectsTruncationAndDepth) {
+  ty::bytes truncated(1, 0);
+  EXPECT_EXCEPTION(ty::decode(truncated));
+
+  ty::bytes deep;
+  for (size_t i = 0; i <= ty::maxReflectDecodeDepth; ++i) {
+    ty::w(PRIV_HPPF_TYCTOR_ARR, &deep);
+  }
+  ty::bytes leaf = ty::encoding(ty::prim("int"));
+  deep.insert(deep.end(), leaf.begin(), leaf.end());
+  EXPECT_EXCEPTION(ty::decode(deep));
+}
+
+TEST(Storage, CompressedFixedArrayLengthChecksCapacity) {
+  auto check = c().compileFn<long(long, long)>("n", "capacity", "ucFixedArrayLength(n, capacity)");
+  EXPECT_EQ(check(4, 4), 4L);
+  EXPECT_EXCEPTION(check(-1, 4));
+  EXPECT_EXCEPTION(check(5, 4));
+}
+
 template <typename T>
   T sum(const T* b, const T* e) {
     T r = T(0);
