@@ -308,6 +308,15 @@ void destroyUCReader(UCReader* r) {
   delete r;
 }
 
+static long checkedUCFixedArrayLength(long n, long capacity) {
+  if (n < 0 || n > capacity) {
+    throw std::runtime_error(
+      "Compressed fixed-array element count " + str::from(n) +
+      " exceeds capacity " + str::from(capacity));
+  }
+  return n;
+}
+
 // write a compressed series of values
 UCWriter::UCWriter(writer* f, size_t root, size_t batchSize, size_t modelSize) : batchSize(batchSize), modelSize(modelSize), out(f->fileData()) {
   // load the head batch and initialize from it
@@ -382,6 +391,7 @@ void initCStorageFileDefs(FieldVerifier*, cc& c) {
   c.bind("ucReaderModel",    memberfn(&UCReader::currentInitModel));
   c.bind("ucReaderRead",     memberfn(&UCReader::read));
   c.bind("ucReaderDestroy",  &destroyUCReader);
+  c.bind("ucFixedArrayLength", &checkedUCFixedArrayLength);
 
   c.bind("ucWriterMake",      &makeUCWriter);
   c.bind("ucWriterStep",      memberfn(&UCWriter::step));

@@ -226,7 +226,7 @@ instance (UCModel t tsm tdm) => UCRead [t] ((pcsmodel 8) * tsm) ((pdmodel 8) * t
 
 ucFTakeNStep :: (UCRead t sm dm) => (<hobbes.UCReader>, dm, long, [:t|n:], long) -> [:t|n:]
 ucFTakeNStep r dm n x i =
-  if (ucReaderEOF(r) or i == n) then
+  if (ucReaderEOF(r) or i >= n) then
     x
   else
     do {
@@ -235,7 +235,7 @@ ucFTakeNStep r dm n x i =
     }
 
 ucFTakeN :: (UCRead t sm dm) => (<hobbes.UCReader>, dm, long) -> [:t|n:]
-ucFTakeN r dm n = ucFTakeNStep(r, dm, n, newPrim()::[:t|n:], 0L)
+ucFTakeN r dm n = let x = newPrim()::[:t|n:]; count = ucFixedArrayLength(n, salength(x)) in ucFTakeNStep(r, dm, count, x, 0L)
 
 instance (UCModel t tsm tdm) => UCRead [:t|n:] ((pcsmodel 8) * tsm) ((pdmodel 8) * tdm) where
   ucRead r dm = ucFTakeN(r, dm.1, (ucRead::(UCRead long _ _)=>(_,_)->_)(r, dm.0))

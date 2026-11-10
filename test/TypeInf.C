@@ -35,6 +35,26 @@ TEST(TypeInf, Unification) {
   EXPECT_TRUE(*substitute(&u, t0) == *t5);
 }
 
+TEST(TypeInf, UnificationPreservesDecodedLayoutAttributes) {
+  auto rejects = [](const MonoTypePtr& lhs, const MonoTypePtr& rhs) {
+    MonoTypeUnifier u(std::make_shared<TEnv>());
+    EXPECT_EXCEPTION(mgu(lhs, rhs, &u));
+  };
+
+  rejects(OpaquePtr::make("p", 8, true), OpaquePtr::make("p", 16, true));
+  rejects(
+    Variant::make(list(Variant::Member("x", primty("int"), 0))),
+    Variant::make(list(Variant::Member("x", primty("int"), 1))));
+  rejects(
+    Record::make(list(Record::Member("x", tvar("a"), 0))),
+    Record::make(list(Record::Member("x", tvar("a"), 8))));
+  rejects(Prim::make("int"), Prim::make("int", primty("long")));
+}
+
+TEST(TypeInf, InstantiateRejectsOutOfRangeTGen) {
+  EXPECT_EXCEPTION(instantiate(list(primty("int")), MonoTypePtr(TGen::make(1))));
+}
+
 // Build a `depth`-level nested Array over `leaf`, holding every node so the
 // chain can be released without recursion. Destroying a deep shared_ptr chain
 // the naive way recurses one destructor frame per level -- the very stack
