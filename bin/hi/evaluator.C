@@ -10,12 +10,36 @@
 #include <hobbes/util/perf.H>
 #include <hobbes/util/str.H>
 #include <hobbes/util/time.H>
+#include <fstream>
 #include <iostream>
 #include <memory>
 
 namespace {
 void defPrintUnreachableMatches(const hobbes::cc::UnreachableMatches& m) {
   std::cout << "warning: " << m.la.filename() << ':' << m.la.lineDesc() << "    " << m.lines << std::endl;
+}
+
+std::string readWebEvalSecret(const std::string& path) {
+  std::ifstream in(path.c_str(), std::ios::binary);
+  if (!in.is_open()) {
+    throw std::runtime_error("Unable to read the web-eval secret file: " + path);
+  }
+
+  std::string secret((std::istreambuf_iterator<char>(in)),
+                     std::istreambuf_iterator<char>());
+  while (!secret.empty() &&
+         (secret.back() == '\n' || secret.back() == '\r')) {
+    secret.pop_back();
+  }
+  if (secret.empty()) {
+    throw std::runtime_error("The web-eval secret file is empty: " + path);
+  }
+  if (secret.find('\n') != std::string::npos ||
+      secret.find('\r') != std::string::npos) {
+    throw std::runtime_error(
+        "The web-eval secret file must contain exactly one line: " + path);
+  }
+  return secret;
 }
 } // namespace
 
@@ -104,7 +128,11 @@ evaluator::evaluator(const Args& args) : silent(args.silent), wwwd(nullptr), opt
 
   if (args.httpdPort > 0) {
     // run a local web server (for diagnostics and alternate queries) if requested
-    this->wwwd = new WWWServer(args.httpdPort, &this->ctx, this->opts);
+    const std::string webEvalSecret = args.allowWebEval
+        ? readWebEvalSecret(args.webEvalSecretFile)
+        : std::string();
+    this->wwwd = new WWWServer(args.httpdPort, &this->ctx, this->opts,
+                               args.allowWebEval, webEvalSecret);
   }
 
   // The option set the user asked for governs modules too, not only what is

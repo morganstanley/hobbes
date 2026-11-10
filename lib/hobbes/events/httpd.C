@@ -6,6 +6,7 @@
 
 #include <sstream>
 
+#include <cctype>
 #include <cstring>
 #include <fcntl.h>
 #include <netdb.h>
@@ -16,6 +17,51 @@
 #include <unistd.h>
 
 namespace hobbes {
+
+namespace {
+
+bool sameHTTPHeaderName(const std::string& x, const std::string& y) {
+  if (x.size() != y.size()) {
+    return false;
+  }
+
+  for (size_t i = 0; i < x.size(); ++i) {
+    const auto xc = static_cast<unsigned char>(x[i]);
+    const auto yc = static_cast<unsigned char>(y[i]);
+    if (std::tolower(xc) != std::tolower(yc)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+} // namespace
+
+bool httpHeaderMatches(const HTTPRequest& req, const std::string& name,
+                       const std::string& expectedValue) {
+  const std::string* actualValue = nullptr;
+  for (const auto& header : req.headers) {
+    if (sameHTTPHeaderName(header.first, name)) {
+      actualValue = &header.second;
+      break;
+    }
+  }
+  if (actualValue == nullptr) {
+    return false;
+  }
+
+  // volatile prevents the compiler from replacing this with an early-exit
+  // string comparison. Iterate over the server-owned secret length so a
+  // client cannot use matching-prefix timing to recover it byte by byte.
+  volatile size_t difference = actualValue->size() ^ expectedValue.size();
+  for (size_t i = 0; i < expectedValue.size(); ++i) {
+    const auto actual = static_cast<unsigned char>(
+        i < actualValue->size() ? (*actualValue)[i] : 0);
+    const auto expected = static_cast<unsigned char>(expectedValue[i]);
+    difference |= static_cast<size_t>(actual ^ expected);
+  }
+  return difference == 0;
+}
 
 // evaluate HTTP request data until completed
 class PartialHTTPRequestState {

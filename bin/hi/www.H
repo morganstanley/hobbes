@@ -8,18 +8,28 @@
 
 namespace hi {
 
+inline bool isWebEvalRequest(const hobbes::HTTPRequest& req) {
+  const hobbes::str::pair p = hobbes::str::lsplit(req.document, "?");
+  return (p.first == "/" && !p.second.empty()) ||
+         hobbes::str::endsWith(p.first, ".hxp");
+}
+
 class WWWServer {
 public:
   // opts is applied (via translateExprWithOpts) to every query expression
   // before it is compiled, the same way the net REPL treats client
-  // expressions -- the web server has no other trust boundary against a
-  // remote GET /?<expr> request, so this is what makes Safe mode (on by
-  // default, see evaluator.H) actually apply to it (STRFR-433924).
-  WWWServer(int port, hobbes::cc*, std::vector<std::string> opts = {"Safe"});
+  // expressions. Safe mode and the proxy-secret gate are separate layers:
+  // authentication decides who may evaluate, while Safe narrows the set of
+  // primitives available after that decision (STRFR-433914/STRFR-433924).
+  WWWServer(int port, hobbes::cc*, std::vector<std::string> opts = {"Safe"},
+            bool allowWebEval = false,
+            std::string webEvalSecret = std::string());
   ~WWWServer();
 private:
   hobbes::cc* c;
   std::vector<std::string> opts;
+  bool allowWebEval;
+  std::string webEvalSecret;
 
   void printDefaultPage(int);
   void printQueryResult(int, const std::string&);

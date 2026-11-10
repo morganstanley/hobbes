@@ -124,8 +124,16 @@ not an authentication boundary and does not make untrusted local clients safe.
 The port-only ``installHTTPD`` overload and ``hi -w`` therefore bind to IPv4
 loopback (``127.0.0.1``) by default. Listening on another interface requires
 the explicit-host overload. This prevents accidental remote exposure; it is
-not an authentication boundary. Put a deliberately exposed HTTP listener
-behind an authenticated, encrypted fronting proxy.
+not an authentication boundary. ``hi -w`` serves static diagnostics by
+default, but leaves ``/?expr`` and ``.hxp`` evaluation disabled. Enabling
+those routes requires both ``--allow-web-eval`` and
+``--web-eval-secret-file <path>``. The fronting proxy must replace the
+``X-Hobbes-Proxy-Secret`` request header with that file's value; never accept
+the value supplied by the external client. Keep the secret file readable only
+by the service account. Hobbes still does not authenticate end users or
+encrypt transport, so put a deliberately exposed listener behind an
+authenticated, encrypted fronting proxy and keep the proxy-to-Hobbes hop on
+the same host.
 
 **Implication:** only expose Hobbes RPC endpoints on trusted internal
 networks. If the transport crosses anything less trusted, the embedding

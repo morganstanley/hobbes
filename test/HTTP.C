@@ -2,6 +2,7 @@
 
 #include <hobbes/events/events.H>
 #include <hobbes/events/httpd.H>
+#include "../bin/hi/www.H"
 
 #include <cstdint>
 #include <stdexcept>
@@ -54,4 +55,37 @@ TEST(HTTP, bindsToLoopbackByDefault) {
       installHTTPD("0.0.0.0", 0, &ignoreRequest));
   EXPECT_EQ(boundIPv4Address(explicitListener.get()),
             static_cast<uint32_t>(INADDR_ANY));
+}
+
+TEST(HTTP, matchesSecretHeadersCaseInsensitively) {
+  HTTPRequest request;
+  request.headers["x-hObBeS-pRoXy-SeCrEt"] = "correct horse battery staple";
+
+  EXPECT_TRUE(httpHeaderMatches(request, "X-Hobbes-Proxy-Secret",
+                                "correct horse battery staple"));
+  EXPECT_TRUE(!httpHeaderMatches(request, "X-Hobbes-Proxy-Secret",
+                                 "correct horse battery staplf"));
+  EXPECT_TRUE(!httpHeaderMatches(request, "X-Hobbes-Proxy-Secret",
+                                 "correct horse battery"));
+  EXPECT_TRUE(!httpHeaderMatches(request, "X-Hobbes-Proxy-Secret",
+                                 "correct horse battery staple!"));
+  EXPECT_TRUE(!httpHeaderMatches(request, "Authorization",
+                                 "correct horse battery staple"));
+}
+
+TEST(HTTP, identifiesEveryExecutableWebRoute) {
+  HTTPRequest request;
+
+  request.document = "/";
+  EXPECT_TRUE(!hi::isWebEvalRequest(request));
+  request.document = "/index.html?theme=light";
+  EXPECT_TRUE(!hi::isWebEvalRequest(request));
+  request.document = "/?1%2B1";
+  EXPECT_TRUE(hi::isWebEvalRequest(request));
+  request.document = "/report.hxp";
+  EXPECT_TRUE(hi::isWebEvalRequest(request));
+  request.document = "/report.hxp?desk=FX";
+  EXPECT_TRUE(hi::isWebEvalRequest(request));
+  request.document = "/report.hxp.txt";
+  EXPECT_TRUE(!hi::isWebEvalRequest(request));
 }

@@ -25,7 +25,7 @@ Hobbes is built for high performance integration with C/C++ applications. While 
 
 The port-only `installNetREPL` API and `hi -p` bind to IPv4 loopback (`127.0.0.1`) by default. Embedding applications must use the explicit-host overload to listen on another interface, and should add authentication and transport encryption before exposing a netREPL beyond the local host.
 
-The port-only `installHTTPD` API and `hi -w` bind to IPv4 loopback (`127.0.0.1`) by default. Embedding applications must use the explicit-host overload to listen on another interface. Because the embedded server provides neither authentication nor TLS, expose it beyond the local host only through an authenticated, encrypted fronting proxy.
+The port-only `installHTTPD` API and `hi -w` bind to IPv4 loopback (`127.0.0.1`) by default. Embedding applications must use the explicit-host overload to listen on another interface. `hi -w` serves static diagnostics by default, but its `/?expr` and `.hxp` evaluation routes require both `--allow-web-eval` and `--web-eval-secret-file <path>`; a fronting proxy must replace `X-Hobbes-Proxy-Secret` with the value read from that file. Hobbes does not provide TLS or end-user authentication, so expose it beyond the local host only through an authenticated, encrypted fronting proxy.
 
 ## Building <a name="building"></a>
 
