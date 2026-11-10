@@ -2098,6 +2098,13 @@ template <typename Node>
     decode(&v,  in);
     decode(&bs, in);
 
+    // The Switch type-inference path inspects binding zero.  Preserve that
+    // invariant at the binary trust boundary without changing Case, whose
+    // default-only form does not make that assumption.
+    if (Node::type_case_id == Switch::type_case_id && bs.empty()) {
+      throw std::runtime_error("Invalid encoded switch expression: empty binding set");
+    }
+
     bool hasDef = false;
     decode(&hasDef, in);
     if (hasDef) {

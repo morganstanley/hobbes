@@ -944,6 +944,9 @@ struct expTypeInfF : public switchExprM<UnitV> {
   }
 
   UnitV with(Switch* v) override {
+    if (v->bindings().empty()) {
+      throw annotated_error(*v, "switch expression requires at least one binding");
+    }
     switchOf(v->expr(), *this);
     mgu(v->expr(), qualtype(v->bindings()[0].value->primType()), this->u);
 
