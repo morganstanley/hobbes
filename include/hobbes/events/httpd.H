@@ -21,6 +21,13 @@ struct HTTPRequest {
   Data        data;
 };
 
+// HTTP field names are case-insensitive. Compare a request header value with
+// an expected secret without returning early on the first differing byte.
+// The running time is bounded by the server-owned expected value rather than
+// by a matching prefix supplied by the client.
+bool httpHeaderMatches(const HTTPRequest&, const std::string& name,
+                       const std::string& expectedValue);
+
 using HTTPRequestHandler = void (*)(const HTTPRequest &, int, void *);
 
 // The port-only overload listens on IPv4 loopback. Use the host overload to

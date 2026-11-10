@@ -585,10 +585,12 @@ using namespace hi;
 void printUsage() {
   std::cout << "hi : an interactive interpreter for hobbes" << std::endl
             << std::endl
-            << "usage: hi [-p port] [-w port] [-e expr] [-s] [-x] [-o opt] [-a name=val]* [file+]" << std::endl
+            << "usage: hi [-p port] [-w port] [--allow-web-eval --web-eval-secret-file path] [-e expr] [-s] [-x] [-o opt] [-a name=val]* [file+]" << std::endl
             << std::endl
             << "    -p          : run a REPL server on <port>"                                              << std::endl
-            << "    -w          : run a loopback-only web server on <port>"                                 << std::endl
+            << "    -w          : run a loopback-only web server on <port>; evaluation is disabled by default" << std::endl
+            << "    --allow-web-eval : allow authenticated /?expr and .hxp evaluation"                       << std::endl
+            << "    --web-eval-secret-file path : read the X-Hobbes-Proxy-Secret value from path"            << std::endl
             << "    -e          : evaluate <expr>"                                                          << std::endl
             << "    -s          : run in 'silent' mode without normal formatting"                           << std::endl
             << "    -x          : exit after input scripts are evaluated"                                   << std::endl
@@ -616,6 +618,10 @@ Args processCommandLine(int argc, char** argv) {
       m = 2;
     } else if (arg == "-w") {
       m = 3;
+    } else if (arg == "--allow-web-eval") {
+      r.allowWebEval = true;
+    } else if (arg == "--web-eval-secret-file") {
+      m = 6;
     } else if (arg == "-a") {
       m = 4;
     } else if (arg == "-o") {
@@ -664,8 +670,24 @@ Args processCommandLine(int argc, char** argv) {
         }
         m = 0;
         break;
+      case 6:
+        r.webEvalSecretFile = arg;
+        m = 0;
+        break;
       }
     }
+  }
+
+  if (r.allowWebEval && r.httpdPort <= 0) {
+    throw std::runtime_error("--allow-web-eval requires -w <port>");
+  }
+  if (r.allowWebEval && r.webEvalSecretFile.empty()) {
+    throw std::runtime_error(
+        "--allow-web-eval requires --web-eval-secret-file <path>");
+  }
+  if (!r.allowWebEval && !r.webEvalSecretFile.empty()) {
+    throw std::runtime_error(
+        "--web-eval-secret-file requires --allow-web-eval");
   }
 
   return r;

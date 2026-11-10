@@ -293,7 +293,15 @@ const cstr* jsEscape(const cstr* x) {
 }
 
 // the basic hi web server
-WWWServer::WWWServer(int port, hobbes::cc* c, std::vector<std::string> opts) : c(c), opts(std::move(opts)) {
+WWWServer::WWWServer(int port, hobbes::cc* c, std::vector<std::string> opts,
+                     bool allowWebEval, std::string webEvalSecret)
+    : c(c), opts(std::move(opts)), allowWebEval(allowWebEval),
+      webEvalSecret(std::move(webEvalSecret)) {
+  if (this->allowWebEval && this->webEvalSecret.empty()) {
+    throw std::runtime_error(
+        "Web evaluation requires a non-empty proxy secret");
+  }
+
   // add a few bindings that are convenient for web servers
   //
   // linkTarget/slurpFile read arbitrary caller-chosen paths (readlink/ifstream
@@ -507,8 +515,20 @@ void WWWServer::evalHTTPRequest(const hobbes::HTTPRequest& req, int fd, void* ud
   // go back to blocking mode for this socket .. we have nothing left to incrementally read
   fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) & ~O_NONBLOCK);
 
-  // evaluate it
-  reinterpret_cast<WWWServer*>(ud)->eval(req, fd);
+  auto* server = reinterpret_cast<WWWServer*>(ud);
+  if (isWebEvalRequest(req)) {
+    if (!server->allowWebEval) {
+      write(fd, "HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\nWeb evaluation is disabled.\n");
+      return;
+    }
+    if (!hobbes::httpHeaderMatches(req, "X-Hobbes-Proxy-Secret",
+                                   server->webEvalSecret)) {
+      write(fd, "HTTP/1.1 401 Unauthorized\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\nUnauthorized.\n");
+      return;
+    }
+  }
+
+  server->eval(req, fd);
 }
 
 std::string WWWServer::mimeType(const std::string& fpath) {
