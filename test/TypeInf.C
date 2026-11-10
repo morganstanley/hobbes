@@ -299,6 +299,24 @@ TEST(TypeInf, CodecRejectsInvalidBoolValue) {
   }
 }
 
+TEST(TypeInf, CodecRejectsTruncatedPrimitiveAndMap) {
+  {
+    std::istringstream in(std::string(sizeof(long) - 1, '\0'));
+    long value = 42;
+    EXPECT_EXCEPTION(decode(&value, in));
+    EXPECT_EQ(value, 42L);
+  }
+
+  {
+    std::ostringstream out;
+    encode(std::numeric_limits<size_t>::max(), out);
+    std::istringstream in(out.str());
+    std::map<int, int> values;
+    EXPECT_EXCEPTION(decode(&values, in));
+    EXPECT_TRUE(values.empty());
+  }
+}
+
 TEST(TypeInf, CodecRejectsOversizedLength) {
   // a length field taken from untrusted data must be checked against what the
   // input can supply, else a hostile count drives an unbounded allocation

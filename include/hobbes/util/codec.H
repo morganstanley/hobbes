@@ -18,7 +18,14 @@ using int128_t = __int128;
 
 #define PRIM_CODEC(T) \
   inline void encode(T x, std::ostream& out) { out.write(reinterpret_cast<const char*>(&x), sizeof(x)); } \
-  inline void decode(T* x, std::istream& in) { in.read(reinterpret_cast<char*>(x), sizeof(*x)); }
+  inline void decode(T* x, std::istream& in) { \
+    T value{}; \
+    in.read(reinterpret_cast<char*>(&value), sizeof(value)); \
+    if (in.gcount() != static_cast<std::streamsize>(sizeof(value))) { \
+      throw std::runtime_error("Truncated input decoding a primitive value"); \
+    } \
+    *x = value; \
+  }
 
 PRIM_CODEC(unsigned char);
 PRIM_CODEC(char);
@@ -207,6 +214,9 @@ template <typename K, typename V>
     size_t sz = 0;
     decode(&sz, in);
 
+    // A map entry consumes at least one byte.  Refuse an impossible count
+    // before entering the loop, just as the vector decoder does.
+    ensureAvail(in, sz, 1);
     for (size_t i = 0; i < sz; ++i) {
       std::pair<K, V> p;
       decode(&p, in);
