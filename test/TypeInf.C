@@ -433,9 +433,10 @@ TEST(TypeInf, DecodeRejectsNonPrimitiveSwitchSelector) {
   auto nestedSwitchSel = [&](std::ostream& out) {
     encode(Switch::type_case_id, out);
     unitExpr(out);                                     // scrutinee: ()
-    encode(static_cast<size_t>(0), out);               // no bindings...
-    encode(true, out);                                 // ...but a default case,
-    unitExpr(out);                                     // so this switch is valid
+    encode(static_cast<size_t>(1), out);               // one valid binding
+    unitExpr(out);                                     // selector: ()
+    unitExpr(out);                                     // body: ()
+    encode(false, out);                                // no default case
     encode(false, out);
   };
 
@@ -498,6 +499,23 @@ TEST(TypeInf, DecodeRejectsNonPrimitiveSwitchSelector) {
   ExprPtr rt;
   decode(good, &rt);
   EXPECT_TRUE(*rt == *sw);
+}
+
+TEST(TypeInf, DecodeRejectsEmptySwitchBindings) {
+  std::ostringstream out;
+  encode(Switch::type_case_id, out);
+  encode(Unit::type_case_id, out);                     // scrutinee
+  encode(false, out);                                  // no scrutinee type
+  encode(static_cast<size_t>(0), out);                 // empty bindings
+  encode(true, out);                                   // default follows
+  encode(Unit::type_case_id, out);
+  encode(false, out);                                  // no default type
+  encode(false, out);                                  // no switch type
+
+  const std::string raw = out.str();
+  std::vector<uint8_t> enc(raw.begin(), raw.end());
+  ExprPtr result;
+  EXPECT_EXCEPTION(decode(enc, &result));
 }
 
 TEST(TypeInf, ShowToleratesFileRefWithoutArguments) {

@@ -1,4 +1,5 @@
 #include <hobbes/hobbes.H>
+#include <hobbes/lang/macroexpand.H>
 #include <hobbes/lang/tylift.H>
 #include <hobbes/db/file.H>
 #include <hobbes/util/region.H>
@@ -57,6 +58,28 @@ TEST(Compiler, liftApathy) {
 TEST(Compiler, compileFnTypes) {
   EXPECT_EQ(c().compileFn<int(const std::string&)>("_","42")(""), 42);
   EXPECT_EQ(c().compileFn<int(*)(const std::string&)>("_","42")(""), 42);
+}
+
+TEST(Compiler, BooleanMacrosRespectLexicalShadowing) {
+  const auto la = LexicalAnnotation::null();
+  const auto oneArg = [&la](const std::string& name) {
+    return ExprPtr(new App(
+      ExprPtr(new Var(name, la)),
+      list(ExprPtr(new Bool(true, la))),
+      la));
+  };
+
+  for (const auto& name : {std::string("and"), std::string("or")}) {
+    ExprPtr shadowed(new Fn(list(name), oneArg(name), la));
+    ExprPtr expandedExpr = macroExpand(shadowed);
+    const Fn* expanded = is<Fn>(expandedExpr);
+    EXPECT_TRUE(expanded != nullptr);
+    const App* body = is<App>(expanded->body());
+    EXPECT_TRUE(body != nullptr);
+    EXPECT_EQ(body->args().size(), size_t(1));
+
+    EXPECT_EXCEPTION(macroExpand(oneArg(name)));
+  }
 }
 
 // issue #584: a failed compile must not poison a long-lived compiler
