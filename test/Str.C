@@ -3,11 +3,18 @@
 #include <hobbes/util/str.H>
 #include <cerrno>
 #include <fstream>
+#include <limits>
 #include <string>
 #include <sys/stat.h>
 #include <unistd.h>
 
 using namespace hobbes;
+
+TEST(Str, LexicalAnnotationOutOfRangeLineDoesNotLoop) {
+  auto la = LexicalAnnotation::null();
+  const size_t invalidLine = std::numeric_limits<size_t>::max();
+  EXPECT_TRUE(la.lines(invalidLine, invalidLine).empty());
+}
 
 TEST(Str, UnescapeTruncatedHexEscape) {
   // unescape runs on string and char literals taken from source text, which
