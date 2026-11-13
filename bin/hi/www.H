@@ -4,9 +4,30 @@
 
 #include <hobbes/hobbes.H>
 #include <hobbes/events/httpd.H>
+#include <cctype>
+#include <string>
 #include <unordered_map>
 
 namespace hi {
+
+// Whether a (normalized) path names an HXP page, which hi compiles and runs.
+// The suffix is matched without regard to case: on a case-insensitive
+// filesystem (the macOS default) "/report.HXP" opens report.hxp, and a
+// case-sensitive match would serve its source as a plain file without the
+// authentication that guards HXP pages.
+inline bool isHxpPath(const std::string& path) {
+  static const char ext[] = ".hxp";
+  const size_t n = sizeof(ext) - 1;
+  if (path.size() < n) {
+    return false;
+  }
+  for (size_t i = 0; i < n; ++i) {
+    if (std::tolower(static_cast<unsigned char>(path[path.size() - n + i])) != ext[i]) {
+      return false;
+    }
+  }
+  return true;
+}
 
 inline bool isWebEvalRequest(const hobbes::HTTPRequest& req) {
   const hobbes::str::pair p = hobbes::str::lsplit(req.document, "?");
@@ -20,7 +41,7 @@ inline bool isWebEvalRequest(const hobbes::HTTPRequest& req) {
   // gate here and still normalize to an executable ".hxp" path later.
   std::string normalizedPath;
   return hobbes::str::relativePathInRoot(p.first, &normalizedPath) &&
-         hobbes::str::endsWith(normalizedPath, ".hxp");
+         isHxpPath(normalizedPath);
 }
 
 class WWWServer {

@@ -110,6 +110,10 @@ TEST(HTTP, identifiesEveryExecutableWebRoute) {
   EXPECT_TRUE(!hi::isWebEvalRequest(request));
   request.document = "/../report.hxp";
   EXPECT_TRUE(!hi::isWebEvalRequest(request));
+  request.document = "/report.HXP";
+  EXPECT_TRUE(hi::isWebEvalRequest(request));
+  request.document = "/reports/Daily.Hxp/";
+  EXPECT_TRUE(hi::isWebEvalRequest(request));
 }
 
 TEST(HTTP, RejectsOversizedRequestLineWithoutDispatch) {
