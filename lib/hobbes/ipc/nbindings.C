@@ -96,8 +96,13 @@ public:
   }
   void setSharedSecret(const std::string& hostport,
                        const std::string& sharedSecret) {
+    // validate now, not when a Connect constraint first opens the connection
+    // (keyed by the exact "host:port" spelling the Connect constraint uses)
     if (sharedSecret.empty()) {
       throw std::runtime_error("The netREPL shared secret must not be empty");
+    }
+    if (sharedSecret.size() > 4096) { // the limit Client enforces on connect
+      throw std::runtime_error("The netREPL shared secret is too large");
     }
     this->sharedSecrets[hostport] = sharedSecret;
   }

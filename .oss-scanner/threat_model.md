@@ -27,7 +27,9 @@ UndefinedBehaviorSanitizer, asserts on, fuzz harnesses linked with libFuzzer.
 - `/src/build/hobbes-test` is the unit test suite (`--tests <Group>` runs the
   group in `test/<Group>.C`).
 - `/src/build/hi` and `/src/build/hog` are the tools; `hi -w <port>`,
-  `hi -p <port>` and `hog -s <port>` can be driven over localhost.
+  `hi -p <port> --netrepl-secret-file <path>` and `hog -s <port>` can be
+  driven over localhost. `hi -p` requires the secret file, and a netREPL
+  peer is only served after it sends that secret.
 - If a stack overflow does not reproduce, retry with `ulimit -s 4096`.
 
 ## How you rate severity

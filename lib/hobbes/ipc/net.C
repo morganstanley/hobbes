@@ -418,6 +418,31 @@ namespace {
 const uint32_t netREPLProtocolVersion = 0x00010000;
 const uint32_t authenticatedNetREPLProtocolVersion = 0x00010001;
 const size_t maxNetREPLSharedSecretBytes = 4096;
+const uint8_t netREPLAuthAccepted = 1;
+const uint8_t netREPLAuthRejected = 0;
+
+#if defined(MSG_NOSIGNAL)
+const int netREPLSendFlags = MSG_NOSIGNAL;
+#else
+const int netREPLSendFlags = 0;
+#endif
+
+// one byte on a freshly accepted connection always fits in the send buffer, so
+// this does not block the event loop; if it cannot be sent the peer is gone and
+// the connection is dropped by the caller either way
+bool sendHandshakeStatus(int c, uint8_t status) {
+  return send(c, &status, sizeof(status), MSG_DONTWAIT | netREPLSendFlags) ==
+         static_cast<ssize_t>(sizeof(status));
+}
+
+void validateSharedSecret(const std::string& sharedSecret) {
+  if (sharedSecret.empty()) {
+    throw std::runtime_error("The netREPL shared secret must not be empty");
+  }
+  if (sharedSecret.size() > maxNetREPLSharedSecretBytes) {
+    throw std::runtime_error("The netREPL shared secret is too large");
+  }
+}
 
 struct HandshakeState {
   uint32_t    word = 0;
@@ -805,6 +830,11 @@ void netREPLConnection(int c, void *d) {
       return;
     }
     if (!sharedSecretsMatch(st.secret, registration->sharedSecret)) {
+      sendHandshakeStatus(c, netREPLAuthRejected);
+      dropConnection(c);
+      return;
+    }
+    if (!sendHandshakeStatus(c, netREPLAuthAccepted)) {
       dropConnection(c);
       return;
     }
@@ -908,9 +938,7 @@ int installNetREPL(const std::string &filepath, Server *svr) {
 
 int installNetREPL(int port, Server *svr,
                    const std::string& sharedSecret) {
-  if (sharedSecret.empty()) {
-    throw std::runtime_error("The netREPL shared secret must not be empty");
-  }
+  validateSharedSecret(sharedSecret);
   int s = allocateServer(port, "127.0.0.1");
   registerNetREPL(s, svr, sharedSecret);
   return s;
@@ -918,9 +946,7 @@ int installNetREPL(int port, Server *svr,
 
 int installNetREPL(const std::string &host, int port, Server *svr,
                    const std::string& sharedSecret) {
-  if (sharedSecret.empty()) {
-    throw std::runtime_error("The netREPL shared secret must not be empty");
-  }
+  validateSharedSecret(sharedSecret);
   int s = allocateServer(port, host);
   registerNetREPL(s, svr, sharedSecret);
   return s;
@@ -928,9 +954,7 @@ int installNetREPL(const std::string &host, int port, Server *svr,
 
 int installNetREPL(const std::string &filepath, Server *svr,
                    const std::string& sharedSecret) {
-  if (sharedSecret.empty()) {
-    throw std::runtime_error("The netREPL shared secret must not be empty");
-  }
+  validateSharedSecret(sharedSecret);
   int s = allocateFileSocketServer(filepath);
   registerNetREPL(s, svr, sharedSecret);
   return s;
@@ -1015,18 +1039,21 @@ int installNetREPL(const std::string &filepath, cc *c,
 
 int installNetREPL(int port, cc *c, const std::string& sharedSecret,
                    ReWriteExprFn const &wrExprFn) {
+  validateSharedSecret(sharedSecret); // before the server object is allocated
   return installNetREPL(port, new CCServer(c, wrExprFn), sharedSecret);
 }
 
 int installNetREPL(const std::string &host, int port, cc *c,
                    const std::string& sharedSecret,
                    ReWriteExprFn const &wrExprFn) {
+  validateSharedSecret(sharedSecret); // before the server object is allocated
   return installNetREPL(host, port, new CCServer(c, wrExprFn), sharedSecret);
 }
 
 int installNetREPL(const std::string &filepath, cc *c,
                    const std::string& sharedSecret,
                    ReWriteExprFn const &wrExprFn) {
+  validateSharedSecret(sharedSecret); // before the server object is allocated
   return installNetREPL(filepath, new CCServer(c, wrExprFn), sharedSecret);
 }
 
@@ -1039,19 +1066,27 @@ Client::Client(const std::string &hostport)
 
 Client::Client(const std::string &hostport, const std::string& sharedSecret)
     : hostport(hostport), eid(0), rbno(0), reno(0) {
-  if (sharedSecret.empty()) {
-    throw std::runtime_error("The netREPL shared secret must not be empty");
-  }
-  if (sharedSecret.size() > maxNetREPLSharedSecretBytes) {
-    throw std::runtime_error("The netREPL shared secret is too large");
-  }
+  validateSharedSecret(sharedSecret);
   this->c = connectSocket(hostport);
+#if defined(SO_NOSIGPIPE)
+  // a peer that refuses the secret closes the connection; writing to it must
+  // fail with an error rather than raise SIGPIPE in an embedding process
+  int noSigPipe = 1;
+  setsockopt(this->c, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, sizeof(noSigPipe));
+#endif
+  uint8_t status = netREPLAuthRejected;
   try {
     fdwrite(this->c, authenticatedNetREPLProtocolVersion);
     fdwrite(this->c, sharedSecret);
-  } catch (...) {
+    fdread(this->c, &status, sizeof(status));
+  } catch (std::exception&) {
+    status = netREPLAuthRejected;
+  }
+  if (status != netREPLAuthAccepted) {
     close(this->c);
-    throw;
+    throw std::runtime_error(
+      "netREPL authentication rejected by '" + hostport +
+      "': the server refused the shared secret or does not require one");
   }
 }
 
