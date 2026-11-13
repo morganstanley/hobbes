@@ -1204,9 +1204,19 @@ TEST(TypeInf, LayoutOfATypeThatUnfoldsWithoutEndIsRefused) {
 // each step substitutes into the term it has so far, and that term can double at
 // every step while the type that holds it, whose parts are shared, stays small.
 // OSS-Fuzz issue 574069291 decodes a record holding 'P (\x.x (P (\x.x (x y))))'
-// with 'P = \x.x x' -- every variable is named alike, so each substitution also
-// substitutes under the inner abstractions -- and laying it out took minutes on a
-// type of a few dozen nodes. The work of a reduction is bounded, and the type refused.
+// with 'P = \x.x x', where every variable is named alike. Substitution used to go
+// under the inner abstractions as well, which made the term double, and laying it
+// out took minutes on a type of a few dozen nodes. It is now quick either way.
+//
+// Respecting binders does not bound the work by itself. Here a correctly scoped
+// term passes on a type twice the size of the one it was handed at each step, in
+// continuation-passing style:
+//
+//   dbl int (\a0. dbl a0 (\a1. dbl a1 (... (\an. an))))   where dbl = \x k. k (x -> x)
+//
+// which reaches a normal form in a few steps per level: a function type 2^n nodes
+// in size, but of n distinct ones. The work of a reduction is bounded, and the
+// type refused.
 TEST(TypeInf, ReductionWhoseTermGrowsWithoutEndIsRefused) {
   auto x = tvar("x");
   auto P = primty("P", tabs(str::strings("x"), tapp(x, list(x))));
@@ -1214,7 +1224,79 @@ TEST(TypeInf, ReductionWhoseTermGrowsWithoutEndIsRefused) {
   auto outer = tabs(str::strings("x"), tapp(x, list(tapp(P, list(inner)))));
   auto t     = tapp(P, list(outer));
 
-  EXPECT_EXCEPTION(Record::make(list(Record::Member("f", t))));
+  auto t0 = std::chrono::steady_clock::now();
+  try {
+    Record::make(list(Record::Member("f", t)));
+  } catch (std::exception&) {
+    // what it reduces to leaves 'y' applied, which has no layout
+  }
+  EXPECT_TRUE(std::chrono::steady_clock::now() - t0 < std::chrono::seconds(5));
+
+  auto dbl = primty("dbl", tabs(str::strings("x", "k"), tapp(tvar("k"), list(functy(x, x)))));
+  auto doublings = [&](size_t levels, const MonoTypePtr& base, const std::string& sfx) {
+    auto a = [&](size_t i) { return "a" + str::from(i) + sfx; };
+    MonoTypePtr k = tabs(str::strings(a(levels)), tvar(a(levels)));
+    for (size_t i = levels; i > 0; --i) {
+      k = tabs(str::strings(a(i - 1)), tapp(dbl, list(tvar(a(i - 1)), k)));
+    }
+    return tapp(dbl, list(base, k));
+  };
+
+  t0 = std::chrono::steady_clock::now();
+  EXPECT_EXCEPTION(repType(doublings(64, primty("int"), "")));
+  EXPECT_EXCEPTION(Record::make(list(Record::Member("f", doublings(64, primty("long"), "")))));
+  EXPECT_TRUE(std::chrono::steady_clock::now() - t0 < std::chrono::seconds(5));
+
+  // while a few levels of the same reduce, to a normal form of the expected size
+  auto i2 = functy(primty("int"), primty("int"));
+  auto i4 = functy(i2, i2);
+  EXPECT_TRUE(*repType(doublings(2, primty("int"), "")) == *functy(i4, i4));
+
+  // The budget covers all of the reductions that decoding one description makes.
+  // Each field of this record reduces within it on its own, but a peer could send a
+  // record with as many fields as it likes. It is encoded by hand: building the
+  // record would reduce (and memoize) its fields, each of which reduces to a
+  // function type, laid out as a pointer.
+  auto recordOf = [](const MonoTypes& fields) {
+    std::vector<unsigned char> out;
+    auto put = [&](const void* p, size_t n) { out.insert(out.end(), static_cast<const unsigned char*>(p), static_cast<const unsigned char*>(p) + n); };
+    int cid = Record::type_case_id;
+    size_t n = fields.size();
+    put(&cid, sizeof(cid));
+    put(&n, sizeof(n));
+    for (size_t i = 0; i < fields.size(); ++i) {
+      std::string f = "f" + str::from(i);
+      size_t fn = f.size();
+      unsigned int offset = static_cast<unsigned int>(i * sizeof(void*));
+      put(&fn, sizeof(fn));
+      put(f.data(), f.size());
+      put(&offset, sizeof(offset));
+      std::vector<unsigned char> ty;
+      encode(fields[i], &ty);
+      out.insert(out.end(), ty.begin(), ty.end());
+    }
+    return out;
+  };
+  MonoTypes fields;
+  for (size_t i = 0; i < 8; ++i) {
+    fields.push_back(doublings(15, primty("int"), "_" + str::from(i)));
+  }
+  EXPECT_TRUE(decode(recordOf(list(fields[0]))) != MonoTypePtr());
+  t0 = std::chrono::steady_clock::now();
+  EXPECT_EXCEPTION(decode(recordOf(fields)));
+  EXPECT_TRUE(std::chrono::steady_clock::now() - t0 < std::chrono::seconds(5));
+}
+
+// Substitution into the body of a type function stops at its binders: applying
+// '\x.(x -> \x.x)' to int gives 'int -> \x.x', not 'int -> \x.int'.
+TEST(TypeInf, TypeApplicationRespectsTheBindersOfTypeFunctions) {
+  auto inner = tabs(str::strings("x"), tvar("x"));
+  auto k = primty("k", tabs(str::strings("x"), functy(tvar("x"), inner)));
+  EXPECT_TRUE(*repType(tapp(k, list(primty("int")))) == *functy(primty("int"), inner));
+
+  // a binder only shadows its own name
+  auto j = primty("j", tabs(str::strings("x"), functy(tvar("x"), tabs(str::strings("y"), functy(tvar("x"), tvar("y"))))));
+  EXPECT_TRUE(*repType(tapp(j, list(primty("int")))) == *functy(primty("int"), tabs(str::strings("y"), functy(primty("int"), tvar("y")))));
 }
 
 // Type inference refines each node's constraints as it types the node, and those
