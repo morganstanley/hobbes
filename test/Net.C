@@ -1324,8 +1324,9 @@ TEST(Net, invokeConstraintDeniedByDefaultEvenWhenConnectingIsAllowed) {
 //   $ (sleep 600 | ./hi -s -p 9601 --netrepl-secret-file /tmp/netrepl.secret) &
 //                                              # a peer; stdin must be a pipe,
 //                                              # hi registers it with epoll
-//   $ ./hi -s -x -o no-Safe \
-//       --netrepl-client-secret-file localhost:9601=/tmp/netrepl.secret \
+//   (one command, split over lines here)
+//   $ ./hi -s -x -o no-Safe
+//       --netrepl-client-secret-file localhost:9601=/tmp/netrepl.secret
 //       -e 'let c = (connection ::
 //       (Connect "localhost:9601" p) => p) in
 //       print(receive(invoke(c, `(\x.x+1)`, 41)))'
