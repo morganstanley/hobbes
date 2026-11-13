@@ -10,8 +10,17 @@ namespace hi {
 
 inline bool isWebEvalRequest(const hobbes::HTTPRequest& req) {
   const hobbes::str::pair p = hobbes::str::lsplit(req.document, "?");
-  return (p.first == "/" && !p.second.empty()) ||
-         hobbes::str::endsWith(p.first, ".hxp");
+  if (p.first == "/" && !p.second.empty()) {
+    return true;
+  }
+
+  // Keep this classification identical to the path reduction used by
+  // urlPathToFSPath before eval() decides whether a resolved file is an HXP.
+  // Otherwise spellings such as "/report.hxp/" can miss the authentication
+  // gate here and still normalize to an executable ".hxp" path later.
+  std::string normalizedPath;
+  return hobbes::str::relativePathInRoot(p.first, &normalizedPath) &&
+         hobbes::str::endsWith(normalizedPath, ".hxp");
 }
 
 class WWWServer {
