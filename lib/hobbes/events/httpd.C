@@ -35,17 +35,22 @@ bool sameHTTPHeaderName(const std::string& x, const std::string& y) {
   return true;
 }
 
+// HTTP header names are case-insensitive (RFC 9110 section 5.1), and proxies
+// that bridge from HTTP/2 send them in lower case.
+const std::string* findHTTPHeader(const HTTPRequest& req, const std::string& name) {
+  for (const auto& header : req.headers) {
+    if (sameHTTPHeaderName(header.first, name)) {
+      return &header.second;
+    }
+  }
+  return nullptr;
+}
+
 } // namespace
 
 bool httpHeaderMatches(const HTTPRequest& req, const std::string& name,
                        const std::string& expectedValue) {
-  const std::string* actualValue = nullptr;
-  for (const auto& header : req.headers) {
-    if (sameHTTPHeaderName(header.first, name)) {
-      actualValue = &header.second;
-      break;
-    }
-  }
+  const std::string* actualValue = findHTTPHeader(req, name);
   if (actualValue == nullptr) {
     return false;
   }
@@ -93,6 +98,7 @@ private:
     Document,
     FindHeaderBegin,
     HeaderNameOrEnd,
+    HeadersEndLF,
     HeaderName,
     HeaderValue,
     AccData
@@ -113,6 +119,27 @@ private:
   static constexpr size_t maxHeaderBytes = 65536;
   static constexpr size_t maxHeaderCount = 100;
   static constexpr size_t maxRequestBodyBytes = 64 * 1024 * 1024;
+
+  // the headers are complete: dispatch now, or read the body they declare
+  bool endHeaders() {
+    const std::string* cl = findHTTPHeader(this->req, "Content-Length");
+    if (cl == nullptr) {
+      return false;
+    }
+    // ">> size_t" turns a "-1" into SIZE_MAX and then AccData buffers
+    // forever; parse strictly and hold it to a bound. A malformed or
+    // over-limit value is refused; a well-formed 0 is a complete
+    // request with no body and dispatches as it did before.
+    if (!str::parseNonNegative(*cl, maxRequestBodyBytes, &this->len)) {
+      this->rejected = true;
+      return false;
+    }
+    if (this->len == 0) {
+      return false;
+    }
+    this->state = AccData;
+    return true;
+  }
 
   bool transition(char c) {
     if (this->state == Method || this->state == Document || this->state == FindHeaderBegin) {
@@ -155,25 +182,12 @@ private:
       }
       break;
     case HeaderNameOrEnd:
-      if (c == '\r' || c == '\n') {
-        auto cl = this->req.headers.find("Content-Length");
-        if (cl == this->req.headers.end()) {
-          return false;
-        } else {
-          // ">> size_t" turns a "-1" into SIZE_MAX and then AccData buffers
-          // forever; parse strictly and hold it to a bound. A malformed or
-          // over-limit value is refused; a well-formed 0 is a complete
-          // request with no body and dispatches as it did before.
-          if (!str::parseNonNegative(cl->second, maxRequestBodyBytes, &this->len)) {
-            this->rejected = true;
-            return false;
-          }
-          if (this->len == 0) {
-            return false;
-          }
-
-          this->state = AccData;
-        }
+      if (c == '\r') {
+        // the blank line that ends the headers is "\r\n"; its '\n' is not
+        // the first byte of the body
+        this->state = HeadersEndLF;
+      } else if (c == '\n') {
+        return endHeaders();
       } else {
         this->r0.put(c);
         this->state = HeaderName;
@@ -202,6 +216,12 @@ private:
         this->r1.put(c);
       }
       break;
+    case HeadersEndLF:
+      if (c != '\n') {
+        this->rejected = true;
+        return false;
+      }
+      return endHeaders();
     case AccData:
       this->req.data.push_back(c);
       if (this->req.data.size() >= this->len) {

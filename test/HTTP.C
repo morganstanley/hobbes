@@ -6,6 +6,8 @@
 
 #include <cstdint>
 #include <stdexcept>
+#include <string>
+#include <vector>
 
 #include <netinet/in.h>
 #include <sys/socket.h>
@@ -18,6 +20,9 @@ namespace {
 void ignoreRequest(const HTTPRequest &, int, void *) {}
 void countRequest(const HTTPRequest &, int, void *ud) {
   ++*static_cast<int*>(ud);
+}
+void recordRequestBody(const HTTPRequest &req, int, void *ud) {
+  static_cast<std::vector<std::string>*>(ud)->emplace_back(req.data.begin(), req.data.end());
 }
 
 class RegisteredHTTPListener {
@@ -166,4 +171,28 @@ TEST(HTTP, DispatchesAZeroLengthRequestBody) {
   EXPECT_TRUE(stepEventLoop(1000)); // dispatch the completed request
   EXPECT_EQ(requests, 1);
   close(client);
+}
+
+// The blank line that ends the headers is "\r\n"; the body begins after its
+// '\n' (which was once read as the body's first byte). Header names match in
+// any case, as proxies bridging from HTTP/2 send them in lower case.
+TEST(HTTP, ReadsTheBodyNamedByAnyCaseOfContentLength) {
+  for (const std::string& name : {std::string("Content-Length"), std::string("content-length")}) {
+    std::vector<std::string> bodies;
+    RegisteredHTTPListener listener(installHTTPD(0, &recordRequestBody, &bodies));
+    int client = connectHTTPClient(listener.get());
+    const std::string request =
+        "POST / HTTP/1.1\r\n" + name + ": 5\r\n\r\nhello";
+
+    EXPECT_EQ(send(client, request.data(), request.size(), 0),
+              static_cast<ssize_t>(request.size()));
+    for (int i = 0; i < 4 && bodies.empty(); ++i) {
+      EXPECT_TRUE(stepEventLoop(1000));
+    }
+    EXPECT_EQ(bodies.size(), static_cast<size_t>(1));
+    if (!bodies.empty()) {
+      EXPECT_EQ(bodies[0], std::string("hello"));
+    }
+    close(client);
+  }
 }
