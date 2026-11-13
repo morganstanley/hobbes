@@ -52,6 +52,14 @@ int installNetREPL(const std::string& host, int port, Server*);
 // install a net repl on a unix domain socket (using file paths)
 int installNetREPL(const std::string& /*filepath*/, Server*);
 
+// Authenticated variants require the client to prove knowledge of a shared
+// secret before Server::connect or any expression decoding occurs. The secret
+// is transport authentication, not encryption: for remote clients, terminate
+// TLS in a same-host proxy and keep the Hobbes listener on loopback.
+int installNetREPL(int port, Server*, const std::string& sharedSecret);
+int installNetREPL(const std::string& host, int port, Server*, const std::string& sharedSecret);
+int installNetREPL(const std::string& /*filepath*/, Server*, const std::string& sharedSecret);
+
 class cc;
 // The port-only overload listens on IPv4 loopback. Use the host overload to
 // deliberately select another interface.
@@ -59,6 +67,10 @@ int installNetREPL(int port, cc*, ReWriteExprFn const& = [](ExprPtr const& e) ->
 int installNetREPL(const std::string& host, int port, cc*, ReWriteExprFn const& = [](ExprPtr const& e) -> ExprPtr { return e; });
 // install a net repl on a unix domain socket (using file paths)
 int installNetREPL(const std::string& /*filepath*/, cc*, ReWriteExprFn const& = [](ExprPtr const& e) -> ExprPtr { return e; });
+
+int installNetREPL(int port, cc*, const std::string& sharedSecret, ReWriteExprFn const& = [](ExprPtr const& e) -> ExprPtr { return e; });
+int installNetREPL(const std::string& host, int port, cc*, const std::string& sharedSecret, ReWriteExprFn const& = [](ExprPtr const& e) -> ExprPtr { return e; });
+int installNetREPL(const std::string& /*filepath*/, cc*, const std::string& sharedSecret, ReWriteExprFn const& = [](ExprPtr const& e) -> ExprPtr { return e; });
 
 // How long to wait for a peer to answer a compile-time type query (the
 // (Connect ...)/(Invoke ...) exchanges), in milliseconds; 0 or less waits
@@ -75,6 +87,7 @@ class Client {
 public:
   /* init/compile-time methods */
   Client(const std::string& hostport);
+  Client(const std::string& hostport, const std::string& sharedSecret);
   ~Client();
   const std::string& remoteHost() const;
 

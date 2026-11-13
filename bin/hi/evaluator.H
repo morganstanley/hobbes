@@ -19,6 +19,8 @@ struct Args {
   bool                     useDefColors;
   bool                     silent;
   int                      replPort;
+  std::string              netREPLSecretFile;
+  NameVals                 netREPLClientSecretFiles;
   int                      httpdPort;
   bool                     allowWebEval;
   std::string              webEvalSecretFile;

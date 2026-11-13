@@ -721,6 +721,11 @@ void cc::enableRemoteConnections() {
   hobbes::enableRemoteConnections(*this);
 }
 
+void cc::setRemoteConnectionSharedSecret(
+    const std::string& hostPort, const std::string& sharedSecret) {
+  hobbes::setRemoteConnectionSharedSecret(*this, hostPort, sharedSecret);
+}
+
 void cc::enableRemoteInvocation(const std::set<std::string>& allowedHostPorts) {
   hlock _;
   hobbes::enableRemoteInvocation(*this, allowedHostPorts);

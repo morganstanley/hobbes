@@ -17,6 +17,8 @@ void initNetworkDefs(cc&);
 void enableRemoteConnections(cc&, const std::set<std::string>& allowedHostPorts);
 // ... or any target at all, for a compiler that only ever sees trusted source
 void enableRemoteConnections(cc&);
+void setRemoteConnectionSharedSecret(cc&, const std::string& hostPort,
+                                     const std::string& sharedSecret);
 
 // Resolving an (Invoke ...) constraint ships code to a remote peer and
 // executes it there as a side effect of type-constraint resolution, not

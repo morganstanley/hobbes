@@ -415,9 +415,22 @@ bool processNetREPLRequest(Server *s, int c, const char *b, size_t n) {
 // again -- for the handshake here, and for the request bytes that follow it.
 namespace {
 
+const uint32_t netREPLProtocolVersion = 0x00010000;
+const uint32_t authenticatedNetREPLProtocolVersion = 0x00010001;
+const size_t maxNetREPLSharedSecretBytes = 4096;
+
 struct HandshakeState {
-  uint32_t word = 0;
-  size_t   have = 0;
+  uint32_t    word = 0;
+  size_t      have = 0;
+  size_t      secretSize = 0;
+  size_t      secretSizeHave = 0;
+  std::string secret;
+  size_t      secretHave = 0;
+};
+
+struct NetREPLRegistration {
+  Server*     server;
+  std::string sharedSecret;
 };
 
 std::mutex                    handshakeMutex;
@@ -488,6 +501,9 @@ void dropConnection(int c) {
 
 // read what there is of the version word; true once all four bytes are in
 bool readVersionWord(int c, HandshakeState* st) {
+  if (st->have == sizeof(st->word)) {
+    return true;
+  }
   ssize_t r = recv(c, reinterpret_cast<char *>(&st->word) + st->have, sizeof(st->word) - st->have, MSG_DONTWAIT);
   if (r > 0) {
     st->have += static_cast<size_t>(r);
@@ -506,6 +522,72 @@ bool readVersionWord(int c, HandshakeState* st) {
     return false;
   }
   return true;
+}
+
+bool readSharedSecret(int c, HandshakeState* st) {
+  if (st->secretSizeHave < sizeof(st->secretSize)) {
+    ssize_t r = recv(c,
+                     reinterpret_cast<char *>(&st->secretSize) + st->secretSizeHave,
+                     sizeof(st->secretSize) - st->secretSizeHave,
+                     MSG_DONTWAIT);
+    if (r > 0) {
+      st->secretSizeHave += static_cast<size_t>(r);
+    } else if (r == 0) {
+      dropConnection(c);
+      return false;
+    } else if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK) {
+      rememberHandshake(c, *st);
+      return false;
+    } else {
+      dropConnection(c);
+      return false;
+    }
+
+    if (st->secretSizeHave < sizeof(st->secretSize)) {
+      rememberHandshake(c, *st);
+      return false;
+    }
+    if (st->secretSize > maxNetREPLSharedSecretBytes) {
+      dropConnection(c);
+      return false;
+    }
+    st->secret.resize(st->secretSize);
+  }
+
+  if (st->secretHave < st->secretSize) {
+    ssize_t r = recv(c, &st->secret[st->secretHave],
+                     st->secretSize - st->secretHave, MSG_DONTWAIT);
+    if (r > 0) {
+      st->secretHave += static_cast<size_t>(r);
+    } else if (r == 0) {
+      dropConnection(c);
+      return false;
+    } else if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK) {
+      rememberHandshake(c, *st);
+      return false;
+    } else {
+      dropConnection(c);
+      return false;
+    }
+  }
+
+  if (st->secretHave < st->secretSize) {
+    rememberHandshake(c, *st);
+    return false;
+  }
+  return true;
+}
+
+bool sharedSecretsMatch(const std::string& actual,
+                        const std::string& expected) {
+  volatile size_t difference = actual.size() ^ expected.size();
+  for (size_t i = 0; i < expected.size(); ++i) {
+    const auto actualByte = static_cast<unsigned char>(
+        i < actual.size() ? actual[i] : 0);
+    const auto expectedByte = static_cast<unsigned char>(expected[i]);
+    difference |= static_cast<size_t>(actualByte ^ expectedByte);
+  }
+  return difference == 0;
 }
 
 // look at the request header bytes accumulated so far in 'b'.
@@ -698,9 +780,10 @@ void readNetREPLRequests(int c, void *d) {
 }
 
 void netREPLConnection(int c, void *d) {
+  auto* registration = reinterpret_cast<NetREPLRegistration *>(d);
   HandshakeState st;
   if (!handshakePending(c, &st)) {
-    readNetREPLRequests(c, d);
+    readNetREPLRequests(c, registration->server);
     return;
   }
 
@@ -708,21 +791,31 @@ void netREPLConnection(int c, void *d) {
     return;
   }
 
-  forgetHandshake(c);
-
-  if (st.word != 0x00010000) {
-    // the peer speaks another protocol: drop it here rather than falling
-    // through to serve a connection that cannot be understood
-    unregisterEventHandler(c);
-    close(c);
-    return;
+  if (registration->sharedSecret.empty()) {
+    if (st.word != netREPLProtocolVersion) {
+      dropConnection(c);
+      return;
+    }
+  } else {
+    if (st.word != authenticatedNetREPLProtocolVersion) {
+      dropConnection(c);
+      return;
+    }
+    if (!readSharedSecret(c, &st)) {
+      return;
+    }
+    if (!sharedSecretsMatch(st.secret, registration->sharedSecret)) {
+      dropConnection(c);
+      return;
+    }
   }
 
+  forgetHandshake(c);
+
   try {
-    reinterpret_cast<Server *>(d)->connect(c);
+    registration->server->connect(c);
   } catch (std::exception &) {
-    unregisterEventHandler(c);
-    close(c);
+    dropConnection(c);
   }
 }
 
@@ -758,7 +851,12 @@ void netREPLConnection(int c, void *d) {
 // approaches it).
 static const time_t netREPLSendTimeoutSeconds = 10;
 
-void registerNetREPL(int s, Server *svr) {
+void registerNetREPL(int s, Server *svr, const std::string& sharedSecret) {
+  if (sharedSecret.size() > maxNetREPLSharedSecretBytes) {
+    close(s);
+    throw std::runtime_error("The netREPL shared secret is too large");
+  }
+  auto* registration = new NetREPLRegistration{svr, sharedSecret};
   registerEventHandler(
       s,
       [](int s, void *d) {
@@ -780,7 +878,11 @@ void registerNetREPL(int s, Server *svr) {
           }
         }
       },
-      svr);
+      registration);
+}
+
+void registerNetREPL(int s, Server *svr) {
+  registerNetREPL(s, svr, std::string());
 }
 
 int installNetREPL(int port, Server *svr) {
@@ -801,6 +903,36 @@ int installNetREPL(const std::string &host, int port, Server *svr) {
 int installNetREPL(const std::string &filepath, Server *svr) {
   int s = allocateFileSocketServer(filepath);
   registerNetREPL(s, svr);
+  return s;
+}
+
+int installNetREPL(int port, Server *svr,
+                   const std::string& sharedSecret) {
+  if (sharedSecret.empty()) {
+    throw std::runtime_error("The netREPL shared secret must not be empty");
+  }
+  int s = allocateServer(port, "127.0.0.1");
+  registerNetREPL(s, svr, sharedSecret);
+  return s;
+}
+
+int installNetREPL(const std::string &host, int port, Server *svr,
+                   const std::string& sharedSecret) {
+  if (sharedSecret.empty()) {
+    throw std::runtime_error("The netREPL shared secret must not be empty");
+  }
+  int s = allocateServer(port, host);
+  registerNetREPL(s, svr, sharedSecret);
+  return s;
+}
+
+int installNetREPL(const std::string &filepath, Server *svr,
+                   const std::string& sharedSecret) {
+  if (sharedSecret.empty()) {
+    throw std::runtime_error("The netREPL shared secret must not be empty");
+  }
+  int s = allocateFileSocketServer(filepath);
+  registerNetREPL(s, svr, sharedSecret);
   return s;
 }
 
@@ -881,11 +1013,46 @@ int installNetREPL(const std::string &filepath, cc *c,
   return installNetREPL(filepath, new CCServer(c, wrExprFn));
 }
 
+int installNetREPL(int port, cc *c, const std::string& sharedSecret,
+                   ReWriteExprFn const &wrExprFn) {
+  return installNetREPL(port, new CCServer(c, wrExprFn), sharedSecret);
+}
+
+int installNetREPL(const std::string &host, int port, cc *c,
+                   const std::string& sharedSecret,
+                   ReWriteExprFn const &wrExprFn) {
+  return installNetREPL(host, port, new CCServer(c, wrExprFn), sharedSecret);
+}
+
+int installNetREPL(const std::string &filepath, cc *c,
+                   const std::string& sharedSecret,
+                   ReWriteExprFn const &wrExprFn) {
+  return installNetREPL(filepath, new CCServer(c, wrExprFn), sharedSecret);
+}
+
 // connect to a running net REPL
 Client::Client(const std::string &hostport)
     : hostport(hostport), eid(0), rbno(0), reno(0) {
   this->c = connectSocket(hostport);
-  fdwrite(this->c, static_cast<uint32_t>(0x00010000));
+  fdwrite(this->c, netREPLProtocolVersion);
+}
+
+Client::Client(const std::string &hostport, const std::string& sharedSecret)
+    : hostport(hostport), eid(0), rbno(0), reno(0) {
+  if (sharedSecret.empty()) {
+    throw std::runtime_error("The netREPL shared secret must not be empty");
+  }
+  if (sharedSecret.size() > maxNetREPLSharedSecretBytes) {
+    throw std::runtime_error("The netREPL shared secret is too large");
+  }
+  this->c = connectSocket(hostport);
+  try {
+    fdwrite(this->c, authenticatedNetREPLProtocolVersion);
+    fdwrite(this->c, sharedSecret);
+  } catch (...) {
+    close(this->c);
+    throw;
+  }
 }
 
 Client::~Client() { close(this->c); }

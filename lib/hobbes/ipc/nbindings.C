@@ -26,6 +26,13 @@ Client* makeConnection(const std::string& hp) {
   return r;
 }
 
+Client* makeConnection(const std::string& hp,
+                       const std::string& sharedSecret) {
+  auto* r = new Client(hp, sharedSecret);
+  connections.insert(r);
+  return r;
+}
+
 
 /************
  * connection :: (Connection hostport c) => c
@@ -87,6 +94,13 @@ public:
   bool connectingAllowed(const std::string& hostport) const {
     return this->anyHostPort || this->allowedHostPorts.count(hostport) > 0;
   }
+  void setSharedSecret(const std::string& hostport,
+                       const std::string& sharedSecret) {
+    if (sharedSecret.empty()) {
+      throw std::runtime_error("The netREPL shared secret must not be empty");
+    }
+    this->sharedSecrets[hostport] = sharedSecret;
+  }
 
   bool refine(const TEnvPtr&, const ConstraintPtr& cst, MonoTypeUnifier* u, Definitions*) override {
     MonoTypePtr hostport;
@@ -108,7 +122,11 @@ public:
             "target -- note that hi does not, for the compiler behind -p or -w)");
         }
         size_t uc = u->size();
-        mgu(handle, makeConnType(makeConnection(hp->value())), u);
+        auto secret = this->sharedSecrets.find(hp->value());
+        Client* client = secret == this->sharedSecrets.end()
+            ? makeConnection(hp->value())
+            : makeConnection(hp->value(), secret->second);
+        mgu(handle, makeConnType(client), u);
         return uc != u->size();
       }
     }
@@ -222,6 +240,9 @@ private:
     }
     return false;
   }
+
+private:
+  std::map<std::string, std::string> sharedSecrets;
 };
 
 /*******************************************
@@ -736,6 +757,12 @@ void enableRemoteConnections(cc& c, const std::set<std::string>& allowedHostPort
 void enableRemoteConnections(cc& c) {
   hlock _;
   connectionUnqualifier(c)->enableConnecting();
+}
+
+void setRemoteConnectionSharedSecret(cc& c, const std::string& hostPort,
+                                     const std::string& sharedSecret) {
+  hlock _;
+  connectionUnqualifier(c)->setSharedSecret(hostPort, sharedSecret);
 }
 
 void enableRemoteInvocation(cc& c, const std::set<std::string>& allowedHostPorts) {

@@ -23,7 +23,7 @@ a language, embedded compiler, and runtime for efficient dynamic expression eval
 
 Hobbes is built for high performance integration with C/C++ applications. While Hobbes is a strongly typed language that offers compile-time checks, it doesn't have a sandboxed runtime environment or runtime safety features. By design, Hobbes gives direct access to memory and does not have array bounds checks. Additionally, Hobbes supports compilation and execution of native code remotely over a network (RPC). This feature is meant for use within your trusted internal network only. If you choose to utilize such functionality, you need to be aware of these design choices and understand the security implications.
 
-The port-only `installNetREPL` API and `hi -p` bind to IPv4 loopback (`127.0.0.1`) by default. Embedding applications must use the explicit-host overload to listen on another interface, and should add authentication and transport encryption before exposing a netREPL beyond the local host.
+The port-only `installNetREPL` API and `hi -p` bind to IPv4 loopback (`127.0.0.1`) by default. `hi -p` also requires `--netrepl-secret-file <path>`, and authenticated `installNetREPL`/client overloads accept the same shared secret. The secret authenticates the proxy-to-Hobbes hop but does not encrypt it: terminate TLS and authenticate users in a same-host proxy, keep Hobbes bound to loopback, and keep the secret file readable only by the service account.
 
 The port-only `installHTTPD` API and `hi -w` bind to IPv4 loopback (`127.0.0.1`) by default. Embedding applications must use the explicit-host overload to listen on another interface. `hi -w` serves static diagnostics by default, but its `/?expr` and `.hxp` evaluation routes require both `--allow-web-eval` and `--web-eval-secret-file <path>`; a fronting proxy must replace `X-Hobbes-Proxy-Secret` with the value read from that file. Hobbes does not provide TLS or end-user authentication, so expose it beyond the local host only through an authenticated, encrypted fronting proxy.
 
@@ -663,7 +663,8 @@ DEFINE_NET_CLIENT(
 
 int main(int, char**) {
   try {
-    Connection c("localhost:8080");
+    Connection c("localhost:8080",
+                 hobbes::net::NetREPLSharedSecret("example-secret"));
 
     std::cout << "c.add(1,2) = " << c.add(1,2) << std::endl
               << "c.mul(1,2) = " << c.mul(1,2) << std::endl;
@@ -680,11 +681,13 @@ Here we assume that a process is running at `localhost:8080` to accept our reque
 We can run a `hi` process to quietly listen on port 8080 like this:
 
 ```
-$ hi -s -p 8080
+$ printf '%s\n' 'example-secret' > netrepl.secret
+$ chmod 600 netrepl.secret
+$ hi -s -p 8080 --netrepl-secret-file netrepl.secret
 >
 ```
 
-`hi -p` listens on `127.0.0.1`, so clients must run on the same host. An embedding application can deliberately select another interface with the explicit-host `installNetREPL` overload, but remote exposure requires authentication and transport encryption supplied by the application.
+`hi -p` listens on `127.0.0.1` and rejects clients that do not prove knowledge of the configured secret. For remote access, put a TLS/authenticating proxy on the same host and forward only to the loopback listener; the shared secret then protects the local proxy-to-Hobbes trust boundary without being exposed on the network. The literal above is for illustration—production clients should read the secret from a restricted file or credential provider.
 
 And if we've compiled our test program above to an executable named `test` then we can invoke and run it against our running server to observe results like:
 
@@ -700,7 +703,7 @@ Just as lightweight storage definitions can be added by specializing `hobbes::st
 This networking/remote-evaluation method can be accessed purely from hobbes as well.  For example, with the previous `hi` server process still running, we can start a new `hi` process to talk to it like this:
 
 ```
-$ hi -s
+$ hi -s --netrepl-client-secret-file localhost:8080=netrepl.secret
 > c = connection :: (Connect "localhost:8080" p) => p
 >
 ```

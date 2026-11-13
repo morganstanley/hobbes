@@ -325,6 +325,12 @@ public:
   // ... or every target, for a cc that only ever sees trusted source
   void enableRemoteConnections();
 
+  // Use an authenticated netREPL handshake when Connect opens this exact
+  // host:port. This configures credentials only; the target must still be
+  // permitted with enableRemoteConnections.
+  void setRemoteConnectionSharedSecret(const std::string &hostPort,
+                                       const std::string &sharedSecret);
+
   // Resolving an (Invoke ...) type-class constraint ships code to a remote
   // peer and executes it there as a side effect of type-checking, not
   // evaluation -- disabled by default, independent of

@@ -114,12 +114,19 @@ The networking layer (``hobbes/ipc``, ``hobbes::net``, and ``hi -p``) lets a
 connected peer define and invoke expressions remotely — that is its purpose.
 A peer that can connect can execute native code in the server process.
 
-There is no built-in authentication, authorization, or transport encryption.
+There is no built-in end-user authorization or transport encryption. A
+netREPL listener can require a shared-secret handshake before it accepts a
+peer, and ``hi -p`` requires ``--netrepl-secret-file <path>``. This is intended
+to authenticate the local proxy-to-Hobbes hop: terminate TLS and authenticate
+users in a same-host proxy, keep Hobbes on loopback, and keep the secret file
+readable only by the service account. Do not send the secret over an
+unencrypted remote connection.
 
-The port-only ``installNetREPL`` overload and ``hi -p`` therefore bind to IPv4
-loopback (``127.0.0.1``) by default. Listening on another interface requires
-the explicit-host overload. This prevents accidental remote exposure; it is
-not an authentication boundary and does not make untrusted local clients safe.
+The port-only ``installNetREPL`` overload and ``hi -p`` bind to IPv4 loopback
+(``127.0.0.1``) by default. Listening on another interface requires the
+explicit-host overload. The legacy library overload without a shared secret
+is for already-trusted peers; prefer the authenticated overload whenever
+local accounts or a fronting proxy are part of the trust boundary.
 
 The port-only ``installHTTPD`` overload and ``hi -w`` therefore bind to IPv4
 loopback (``127.0.0.1``) by default. Listening on another interface requires
@@ -280,8 +287,9 @@ Guidance for embedding applications
 * Keep RPC endpoints, ``hi -p``/``hi -w`` and ``hog -s`` on trusted network
   segments. The port-only netREPL and HTTP APIs, ``hi -p`` and ``hi -w`` listen
   on IPv4 loopback by default; use the explicit-host overload only when remote
-  access is required. Put remotely exposed HTTP endpoints behind an
-  authenticated, encrypted fronting proxy, and wrap the other remotely exposed
+  access is required. Put remotely exposed HTTP and netREPL endpoints behind
+  an authenticated, encrypted same-host fronting proxy. Configure the netREPL
+  shared secret on both sides of the local hop, and wrap other remotely exposed
   endpoints in authenticated, encrypted transports.
 * Don't rely on ``option Safe`` to contain code you don't trust.
 * Only call ``cc::enableProcessSpawning``, ``cc::enableRemoteConnections``,

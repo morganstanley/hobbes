@@ -20,7 +20,7 @@
 
 using namespace hobbes;
 
-// Forward declaration so the atexit cleanup can reach both server thread sets.
+// Forward declaration so the atexit cleanup can reach all server thread sets.
 static void joinServerThreadsAtExit();
 
 static cc &c() {
@@ -89,6 +89,15 @@ static std::condition_variable serverWithHostStartup;
 static std::atomic<bool> serverWithHostStop{false};
 static std::thread serverWithHostThread;
 
+static const std::string authenticatedServerSecret =
+    "test-only-netrepl-shared-secret";
+static int authenticatedServerPort = -1;
+static bool authenticatedServerReady = false;
+static std::mutex authenticatedServerMtx;
+static std::condition_variable authenticatedServerStartup;
+static std::atomic<bool> authenticatedServerStop{false};
+static std::thread authenticatedServerThread;
+
 static void runTestServerWithHost(int ps, int pe, const std::string &host) {
   std::unique_lock<std::mutex> lk(serverMtxWithHost);
   serverPortWithHost = ps;
@@ -127,14 +136,58 @@ int testServerWithHostPort(const std::string &host = "") {
   return serverPortWithHost;
 }
 
+static void runAuthenticatedTestServer(int ps, int pe) {
+  std::unique_lock<std::mutex> lk(authenticatedServerMtx);
+  authenticatedServerPort = ps;
+  while (authenticatedServerPort < pe) {
+    try {
+      installNetREPL(authenticatedServerPort, &c(),
+                     authenticatedServerSecret);
+      authenticatedServerReady = true;
+      lk.unlock();
+      authenticatedServerStartup.notify_one();
+      runEventLoop([&]{ return authenticatedServerStop.load(); });
+      return;
+    } catch (std::exception &) {
+      ++authenticatedServerPort;
+    }
+  }
+  authenticatedServerPort = -1;
+  authenticatedServerReady = true;
+  lk.unlock();
+  authenticatedServerStartup.notify_one();
+}
+
+int testAuthenticatedServerPort() {
+  if (authenticatedServerPort < 0) {
+    if (authenticatedServerThread.joinable()) {
+      authenticatedServerThread.join();
+    }
+    std::unique_lock<std::mutex> lk(authenticatedServerMtx);
+    authenticatedServerReady = false;
+    authenticatedServerThread = std::thread(
+        [] { return runAuthenticatedTestServer(10501, 11500); });
+    authenticatedServerStartup.wait(lk, []{ return authenticatedServerReady; });
+    if (authenticatedServerPort < 0) {
+      throw std::runtime_error(
+          "Couldn't allocate port for authenticated test server");
+    }
+  }
+  return authenticatedServerPort;
+}
+
 static void joinServerThreadsAtExit() {
   serverStop = true;
   serverWithHostStop = true;
+  authenticatedServerStop = true;
   if (serverThread.joinable()) {
     serverThread.join();
   }
   if (serverWithHostThread.joinable()) {
     serverWithHostThread.join();
+  }
+  if (authenticatedServerThread.joinable()) {
+    authenticatedServerThread.join();
   }
 }
 
@@ -367,6 +420,47 @@ TEST(Net, rejectedHandshakeLeavesTheServerServing) {
 
   SyncClient c("localhost", testServerPort());
   EXPECT_EQ(c.add(1, 2), 3);
+}
+
+TEST(Net, authenticatedNetREPLRejectsMissingAndWrongSecrets) {
+  const int port = testAuthenticatedServerPort();
+
+  int legacy = connectSocket("localhost", port);
+  fdwrite(legacy, static_cast<uint32_t>(0x00010000));
+  char b = 0;
+  EXPECT_EQ(::recv(legacy, &b, 1, 0), ssize_t(0));
+  ::close(legacy);
+
+  int wrong = connectSocket("localhost", port);
+  fdwrite(wrong, static_cast<uint32_t>(0x00010001));
+  fdwrite(wrong, std::string("wrong-secret"));
+  EXPECT_EQ(::recv(wrong, &b, 1, 0), ssize_t(0));
+  ::close(wrong);
+
+  int oversized = connectSocket("localhost", port);
+  fdwrite(oversized, static_cast<uint32_t>(0x00010001));
+  fdwrite(oversized, static_cast<size_t>(4097));
+  EXPECT_EQ(::recv(oversized, &b, 1, 0), ssize_t(0));
+  ::close(oversized);
+
+  SyncClient authorized(
+      "localhost", static_cast<size_t>(port),
+      net::NetREPLSharedSecret(authenticatedServerSecret));
+  EXPECT_EQ(authorized.add(20, 22), 42);
+}
+
+TEST(Net, partialAuthenticatedHandshakeDoesNotStallTheServer) {
+  const int port = testAuthenticatedServerPort();
+  int stalled = connectSocket("localhost", port);
+  fdwrite(stalled, static_cast<uint32_t>(0x00010001));
+  fdwrite(stalled, authenticatedServerSecret.size());
+  fdwrite(stalled, authenticatedServerSecret.data(), 1);
+
+  SyncClient authorized(
+      "localhost", static_cast<size_t>(port),
+      net::NetREPLSharedSecret(authenticatedServerSecret));
+  EXPECT_EQ(authorized.add(19, 23), 42);
+  ::close(stalled);
 }
 
 TEST(Net, syncClientAPIWithConfiguredHostName) {
@@ -1072,6 +1166,11 @@ static std::string testServerHostPort() {
   return "localhost:" + hobbes::str::from(testServerPort());
 }
 
+static std::string testAuthenticatedServerHostPort() {
+  return "localhost:" +
+      hobbes::str::from(testAuthenticatedServerPort());
+}
+
 TEST(Net, connectConstraintDeniedByDefault) {
   hobbes::cc client;
   bool threw = false;
@@ -1089,6 +1188,17 @@ TEST(Net, connectConstraintAllowedWithExactAllowlist) {
   client.enableRemoteConnections({testServerHostPort()});
   // must not throw: the exact allowlisted target is permitted to connect
   client.compileFn<void()>("let x = (connection :: (Connect \"" + testServerHostPort() + "\" p) => p) in ()")();
+}
+
+TEST(Net, connectConstraintUsesConfiguredSharedSecret) {
+  hobbes::cc client;
+  const std::string hostPort = testAuthenticatedServerHostPort();
+  client.enableRemoteConnections({hostPort});
+  client.setRemoteConnectionSharedSecret(hostPort,
+                                         authenticatedServerSecret);
+  client.compileFn<void()>(
+      "let x = (connection :: (Connect \"" + hostPort +
+      "\" p) => p) in ()")();
 }
 
 TEST(Net, invokeConstraintDeniedByDefaultEvenWhenConnectingIsAllowed) {

@@ -25,7 +25,8 @@ Using the connection
 
   int main(int, char**) {
     try {
-      Connection c("localhost:8080");
+      Connection c("localhost:8080",
+                   hobbes::net::NetREPLSharedSecret("example-secret"));
   
       std::cout << "c.mul(1,2) = " << c.mul(1,2) << std::endl;
   
@@ -44,7 +45,9 @@ Again, spin up an instance of *hi* listening on port 8080. You won't see any out
 
 ::
 
-  $ hi -s -p 8080
+  $ printf '%s\n' 'example-secret' > netrepl.secret
+  $ chmod 600 netrepl.secret
+  $ hi -s -p 8080 --netrepl-secret-file netrepl.secret
 
 Next, simply run your c++ driver program!
 
