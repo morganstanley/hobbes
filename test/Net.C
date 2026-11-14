@@ -535,17 +535,25 @@ TEST(Net, authenticatedClientReportsAPeerThatResetsDuringTheHandshake) {
   EXPECT_EQ(::getsockname(listener, reinterpret_cast<sockaddr*>(&addr), &addrLen), 0);
   const std::string hostPort = "127.0.0.1:" + str::from(ntohs(addr.sin_port));
 
+  // accept() waits at most this long for each client, so the peer cannot block
+  // forever on one that never connects
+  timeval acceptTimeout = {10, 0};
+  EXPECT_EQ(::setsockopt(listener, SOL_SOCKET, SO_RCVTIMEO, &acceptTimeout, sizeof(acceptTimeout)), 0);
+
   const int attempts = 50;
   std::thread peer([listener] {
     for (int i = 0; i < attempts; ++i) {
       int c = ::accept(listener, nullptr, nullptr);
       if (c < 0) {
-        if (errno == EINTR || errno == ECONNABORTED) {
+        if (errno == EINTR) {
           --i;
           continue;
         }
-        break; // closing the listener refuses later clients rather than
-               // leaving them waiting on a status byte no one will send
+        // anything else, including the listener's receive timeout running out
+        // because a client never arrived, ends the peer; closing the listener
+        // refuses later clients rather than leaving them waiting on a status
+        // byte no one will send
+        break;
       }
       uint32_t version = 0;
       ssize_t ignored = ::recv(c, &version, sizeof(version), MSG_WAITALL);
