@@ -811,16 +811,21 @@ ExprPtr desugarComprehension(cc* c, const ExprPtr& e, const CSelection& cs, cons
   }
 }
 
+// the grammar action runs this mid-parse and takes a copy of the result, which
+// recurs once per level, so the result is bounded first: each selection's
+// source ('xs' in 'x <- xs') goes into it as written, without passing through
+// the match compiler's bound, and '[1 | x <- 1+1+...]' with 50,000 terms
+// overflowed the stack in that copy
 Expr* desugarComprehension(cc* c, const ExprPtr& ex, const CSelections& cs, const LexicalAnnotation& la) {
-  if (cs.empty()) {
-    return ex->clone();
-  } else {
-    ExprPtr e = desugarComprehension(c, ex, *cs[cs.size()-1], la);
+  ExprPtr e = ex;
+  if (!cs.empty()) {
+    e = desugarComprehension(c, ex, *cs[cs.size()-1], la);
     for (size_t i = cs.size()-1; i > 0; --i) {
       e = fncall(var("mflatten", la), list(desugarComprehension(c, e, *cs[i-1], la)), la);
     }
-    return e->clone();
   }
+  checkNestingDepth(e);
+  return e->clone();
 }
 
 }

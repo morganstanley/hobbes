@@ -109,6 +109,7 @@ TEST(Parse, DeepExpressionsCompiledMidParseAreRejected) {
   EXPECT_TRUE(rejectedForNesting("match 1 with | _ -> " + chain));
   EXPECT_TRUE(rejectedForNesting("let (a, b) = p in " + chain));
   EXPECT_TRUE(rejectedForNesting("[" + chain + " | x <- xs]"));
+  EXPECT_TRUE(rejectedForNesting("[1 | x <- " + chain + "]"));        // the source is copied mid-parse too
   EXPECT_TRUE(rejectedForNesting("parse { S := x:\"a\" { " + chain + " } }"));
 
   // the action for a parenthesised expression copies it, which also recurs
