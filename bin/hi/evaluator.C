@@ -19,10 +19,12 @@ void defPrintUnreachableMatches(const hobbes::cc::UnreachableMatches& m) {
   std::cout << "warning: " << m.la.filename() << ':' << m.la.lineDesc() << "    " << m.lines << std::endl;
 }
 
-std::string readWebEvalSecret(const std::string& path) {
+std::string readSecretFile(const std::string& path,
+                           const std::string& purpose) {
   std::ifstream in(path.c_str(), std::ios::binary);
   if (!in.is_open()) {
-    throw std::runtime_error("Unable to read the web-eval secret file: " + path);
+    throw std::runtime_error("Unable to read the " + purpose +
+                             " secret file: " + path);
   }
 
   std::string secret((std::istreambuf_iterator<char>(in)),
@@ -32,12 +34,14 @@ std::string readWebEvalSecret(const std::string& path) {
     secret.pop_back();
   }
   if (secret.empty()) {
-    throw std::runtime_error("The web-eval secret file is empty: " + path);
+    throw std::runtime_error("The " + purpose +
+                             " secret file is empty: " + path);
   }
   if (secret.find('\n') != std::string::npos ||
       secret.find('\r') != std::string::npos) {
     throw std::runtime_error(
-        "The web-eval secret file must contain exactly one line: " + path);
+        "The " + purpose +
+        " secret file must contain exactly one line: " + path);
   }
   return secret;
 }
@@ -114,6 +118,10 @@ evaluator::evaluator(const Args& args) : silent(args.silent), wwwd(nullptr), opt
     this->ctx.enableFileWrites();
     this->ctx.enableFilesystemGlobs();
   }
+  for (const auto& secretFile : args.netREPLClientSecretFiles) {
+    this->ctx.setRemoteConnectionSharedSecret(
+        secretFile.first, readSecretFile(secretFile.second, "netREPL client"));
+  }
 
   const bool ignoreUM = (std::find(opts.cbegin(), opts.cend(), std::string("IgnoreUnreachableMatches")) != opts.cend());
   this->ctx.ignoreUnreachableMatches(ignoreUM);
@@ -123,13 +131,18 @@ evaluator::evaluator(const Args& args) : silent(args.silent), wwwd(nullptr), opt
 
   // start alternate input services if necessary
   if (args.replPort > 0) {
-    installNetREPL(args.replPort, &this->ctx, [this](ExprPtr const& e) -> ExprPtr { return hobbes::translateExprWithOpts(this->opts, e); });
+    const std::string netREPLSecret =
+        readSecretFile(args.netREPLSecretFile, "netREPL");
+    installNetREPL(args.replPort, &this->ctx, netREPLSecret,
+                   [this](ExprPtr const& e) -> ExprPtr {
+                     return hobbes::translateExprWithOpts(this->opts, e);
+                   });
   }
 
   if (args.httpdPort > 0) {
     // run a local web server (for diagnostics and alternate queries) if requested
     const std::string webEvalSecret = args.allowWebEval
-        ? readWebEvalSecret(args.webEvalSecretFile)
+        ? readSecretFile(args.webEvalSecretFile, "web-eval")
         : std::string();
     this->wwwd = new WWWServer(args.httpdPort, &this->ctx, this->opts,
                                args.allowWebEval, webEvalSecret);

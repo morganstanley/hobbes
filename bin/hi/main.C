@@ -585,9 +585,11 @@ using namespace hi;
 void printUsage() {
   std::cout << "hi : an interactive interpreter for hobbes" << std::endl
             << std::endl
-            << "usage: hi [-p port] [-w port] [--allow-web-eval --web-eval-secret-file path] [-e expr] [-s] [-x] [-o opt] [-a name=val]* [file+]" << std::endl
+            << "usage: hi [-p port --netrepl-secret-file path] [--netrepl-client-secret-file host:port=path] [-w port] [--allow-web-eval --web-eval-secret-file path] [-e expr] [-s] [-x] [-o opt] [-a name=val]* [file+]" << std::endl
             << std::endl
-            << "    -p          : run a REPL server on <port>"                                              << std::endl
+            << "    -p          : run an authenticated loopback REPL server on <port>"                      << std::endl
+            << "    --netrepl-secret-file path : require clients to send the secret read from path"         << std::endl
+            << "    --netrepl-client-secret-file host:port=path : authenticate Connect to host:port"        << std::endl
             << "    -w          : run a loopback-only web server on <port>; evaluation is disabled by default" << std::endl
             << "    --allow-web-eval : allow authenticated /?expr and .hxp evaluation"                       << std::endl
             << "    --web-eval-secret-file path : read the X-Hobbes-Proxy-Secret value from path"            << std::endl
@@ -620,6 +622,10 @@ Args processCommandLine(int argc, char** argv) {
       m = 3;
     } else if (arg == "--allow-web-eval") {
       r.allowWebEval = true;
+    } else if (arg == "--netrepl-secret-file") {
+      m = 7;
+    } else if (arg == "--netrepl-client-secret-file") {
+      m = 8;
     } else if (arg == "--web-eval-secret-file") {
       m = 6;
     } else if (arg == "-a") {
@@ -674,6 +680,20 @@ Args processCommandLine(int argc, char** argv) {
         r.webEvalSecretFile = arg;
         m = 0;
         break;
+      case 7:
+        r.netREPLSecretFile = arg;
+        m = 0;
+        break;
+      case 8: {
+        auto p = str::lsplit(arg, "=");
+        if (p.first.empty() || p.second.empty()) {
+          throw std::runtime_error(
+              "--netrepl-client-secret-file requires host:port=path");
+        }
+        r.netREPLClientSecretFiles[p.first] = p.second;
+        m = 0;
+        break;
+      }
       }
     }
   }
@@ -688,6 +708,14 @@ Args processCommandLine(int argc, char** argv) {
   if (!r.allowWebEval && !r.webEvalSecretFile.empty()) {
     throw std::runtime_error(
         "--web-eval-secret-file requires --allow-web-eval");
+  }
+  if (r.replPort > 0 && r.netREPLSecretFile.empty()) {
+    throw std::runtime_error(
+        "-p requires --netrepl-secret-file <path>");
+  }
+  if (r.replPort <= 0 && !r.netREPLSecretFile.empty()) {
+    throw std::runtime_error(
+        "--netrepl-secret-file requires -p <port>");
   }
 
   return r;

@@ -14,16 +14,18 @@ Setting up the receiver
 
 ::
 
-  $ hi -p 8080
+  $ printf '%s\n' 'example-secret' > netrepl.secret
+  $ chmod 600 netrepl.secret
+  $ hi -p 8080 --netrepl-secret-file netrepl.secret
   [...]
   running a repl server at 127.0.0.1:8080
   >
 
-``hi -p`` binds to IPv4 loopback by default, so clients must run on the same
-host. An embedding application can deliberately listen on another interface
-with the explicit-host ``installNetREPL`` overload, but must supply
-authentication and transport encryption before exposing a netREPL beyond the
-local host. We'll call this the *server*, and next we'll connect to it.
+``hi -p`` binds to IPv4 loopback and requires a shared secret. For remote
+access, terminate TLS and authenticate users in a same-host proxy, forward to
+the loopback listener, and keep the secret file readable only by the service
+account. The secret authenticates the local proxy-to-Hobbes hop; it does not
+encrypt transport. We'll call this the *server*, and next we'll connect to it.
 
 Opening a connection
 ====================
@@ -32,7 +34,8 @@ From another instance of *hi*, create a connection to the *server* using the ``C
 
 ::
   
-  $ hi -s -o no-Safe
+  $ hi -s -o no-Safe \
+      --netrepl-client-secret-file 127.0.0.1:8080=netrepl.secret
   > c = connection :: (Connect "127.0.0.1:8080" p) => p
 
 .. note:: **Why -o no-Safe**

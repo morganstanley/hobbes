@@ -37,17 +37,50 @@
 namespace hobbes { namespace net {
 
 #define HNET_VERSION     static_cast<uint32_t>(0x00010000)
+#define HNET_AUTH_VERSION static_cast<uint32_t>(0x00010001)
 #define HNET_CMD_DEFEXPR static_cast<uint8_t>(0)
 #define HNET_CMD_INVOKE  static_cast<uint8_t>(2)
 #define HNET_RESULT_FAIL 0
 
+// after an authenticated handshake the server answers with one status byte, so
+// that a wrong or missing secret is reported when the session is opened rather
+// than surfacing later as an unexplained EOF (or a SIGPIPE) on the first call
+#define HNET_AUTH_ACCEPTED static_cast<uint8_t>(1)
+#define HNET_AUTH_REJECTED static_cast<uint8_t>(0)
+
+// where the platform has it, keep a write to a peer that has gone away from
+// raising SIGPIPE; the failed send is reported as an exception instead
+#if defined(MSG_NOSIGNAL)
+#define HNET_SEND_FLAGS MSG_NOSIGNAL
+#else
+#define HNET_SEND_FLAGS 0
+#endif
+
 using bytes = std::vector<uint8_t>;
+static constexpr size_t maxNetREPLSharedSecretBytes = 4096;
+
+class NetREPLSharedSecret {
+public:
+  explicit NetREPLSharedSecret(const std::string& value) : secret(value) {
+    if (this->secret.empty()) {
+      throw std::runtime_error("The netREPL shared secret must not be empty");
+    }
+    if (this->secret.size() > maxNetREPLSharedSecretBytes) {
+      throw std::runtime_error("The netREPL shared secret is too large");
+    }
+  }
+
+  const std::string& value() const { return this->secret; }
+
+private:
+  std::string secret;
+};
 
 // basic socket I/O
 inline void sendData(int socket, const uint8_t* d, size_t sz) {
   size_t i = 0;
   while (i < sz) {
-    ssize_t c = ::send(socket, d + i, sz - i, 0);
+    ssize_t c = ::send(socket, d + i, sz - i, HNET_SEND_FLAGS);
     if (c < 0) {
       throw std::runtime_error("Couldn't write to socket: " + std::string(strerror(errno)));
     }
@@ -130,9 +163,26 @@ struct RPCDef {
 using RPCDefs = std::vector<RPCDef>;
 
 // initiate a session on a connected socket by sending all of the RPC defs
-inline int initSession(int s, const RPCDefs& rpcds) {
-  auto version = HNET_VERSION;
+inline int initSessionImpl(int s, const RPCDefs& rpcds,
+                           const NetREPLSharedSecret* auth) {
+  auto version = auth == nullptr ? HNET_VERSION : HNET_AUTH_VERSION;
   sendData(s, reinterpret_cast<const uint8_t*>(&version), sizeof(version));
+  if (auth != nullptr) {
+#if defined(SO_NOSIGPIPE)
+    int noSigPipe = 1;
+    setsockopt(s, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, sizeof(noSigPipe));
+#endif
+    uint8_t status = HNET_AUTH_REJECTED;
+    try {
+      sendString(s, auth->value());
+      recvData(s, &status, sizeof(status));
+    } catch (std::exception&) {
+      status = HNET_AUTH_REJECTED;
+    }
+    if (status != HNET_AUTH_ACCEPTED) {
+      throw std::runtime_error("netREPL authentication rejected: the server refused the shared secret or does not require one");
+    }
+  }
 
   for (const auto& rpcd : rpcds) {
     auto defCmd = HNET_CMD_DEFEXPR;
@@ -153,6 +203,15 @@ inline int initSession(int s, const RPCDefs& rpcds) {
     }
   }
   return s;
+}
+
+inline int initSession(int s, const RPCDefs& rpcds) {
+  return initSessionImpl(s, rpcds, nullptr);
+}
+
+inline int initSession(int s, const RPCDefs& rpcds,
+                       const NetREPLSharedSecret& auth) {
+  return initSessionImpl(s, rpcds, &auth);
 }
 
 inline addrinfo* lookupAddrInfo(const std::string& host, const std::string& port) {
@@ -953,19 +1012,31 @@ template <typename ... Args>
     int s; \
   public: \
     T(int fd) : s(::hobbes::net::initSession(fd, makeRPCDefs())) PRIV_HPPF_MAP(PRIV_HNET_CLIENT_INIT_RPCFUNC, C) { } \
+    T(int fd, const ::hobbes::net::NetREPLSharedSecret& auth) : s(::hobbes::net::initSession(fd, makeRPCDefs(), auth)) PRIV_HPPF_MAP(PRIV_HNET_CLIENT_INIT_RPCFUNC, C) { } \
     T(const std::string& host, size_t port) : T(::hobbes::net::makeConnection(host, port)) { } \
+    T(const std::string& host, size_t port, const ::hobbes::net::NetREPLSharedSecret& auth) : T(::hobbes::net::makeConnection(host, port), auth) { } \
     T(const std::string& host, const std::string& port) : T(::hobbes::net::makeConnection(host, port)) { } \
+    T(const std::string& host, const std::string& port, const ::hobbes::net::NetREPLSharedSecret& auth) : T(::hobbes::net::makeConnection(host, port), auth) { } \
     T(const std::string& localAddr, const std::string& host, size_t port) : T(::hobbes::net::makeConnection(localAddr, host, port)) { } \
+    T(const std::string& localAddr, const std::string& host, size_t port, const ::hobbes::net::NetREPLSharedSecret& auth) : T(::hobbes::net::makeConnection(localAddr, host, port), auth) { } \
     T(const std::string& localAddr, const std::string& host, const std::string& port) : T(::hobbes::net::makeConnection(localAddr, host, port)) { } \
+    T(const std::string& localAddr, const std::string& host, const std::string& port, const ::hobbes::net::NetREPLSharedSecret& auth) : T(::hobbes::net::makeConnection(localAddr, host, port), auth) { } \
     T(const std::string& hostport) : T(::hobbes::net::makeConnection(hostport)) { } \
+    T(const std::string& hostport, const ::hobbes::net::NetREPLSharedSecret& auth) : T(::hobbes::net::makeConnection(hostport), auth) { } \
     virtual ~T() { closeC(); } \
     int fd() const { return this->s; } \
     void reconnect(int fd) { closeC(); this->s = ::hobbes::net::initSession(fd, makeRPCDefs()); } \
+    void reconnect(int fd, const ::hobbes::net::NetREPLSharedSecret& auth) { closeC(); this->s = ::hobbes::net::initSession(fd, makeRPCDefs(), auth); } \
     void reconnect(const std::string& host, size_t port) { reconnect(::hobbes::net::makeConnection(host, port)); } \
+    void reconnect(const std::string& host, size_t port, const ::hobbes::net::NetREPLSharedSecret& auth) { reconnect(::hobbes::net::makeConnection(host, port), auth); } \
     void reconnect(const std::string& host, const std::string& port) { reconnect(::hobbes::net::makeConnection(host, port)); } \
+    void reconnect(const std::string& host, const std::string& port, const ::hobbes::net::NetREPLSharedSecret& auth) { reconnect(::hobbes::net::makeConnection(host, port), auth); } \
     void reconnect(const std::string& localAddr, const std::string& host, size_t port) { reconnect(::hobbes::net::makeConnection(localAddr, host, port)); } \
+    void reconnect(const std::string& localAddr, const std::string& host, size_t port, const ::hobbes::net::NetREPLSharedSecret& auth) { reconnect(::hobbes::net::makeConnection(localAddr, host, port), auth); } \
     void reconnect(const std::string& localAddr, const std::string& host, const std::string& port) { reconnect(::hobbes::net::makeConnection(localAddr, host, port)); } \
+    void reconnect(const std::string& localAddr, const std::string& host, const std::string& port, const ::hobbes::net::NetREPLSharedSecret& auth) { reconnect(::hobbes::net::makeConnection(localAddr, host, port), auth); } \
     void reconnect(const std::string& hostport) { reconnect(::hobbes::net::makeConnection(hostport)); } \
+    void reconnect(const std::string& hostport, const ::hobbes::net::NetREPLSharedSecret& auth) { reconnect(::hobbes::net::makeConnection(hostport), auth); } \
     \
     PRIV_HPPF_MAP(PRIV_HNET_CLIENT_MAKE_RPCFUNC, C) \
   private: \
@@ -1069,19 +1140,31 @@ template <typename ... Args>
     int s; \
   public: \
     T(int fd) : s(::hobbes::net::initSession(fd, makeRPCDefs())) PRIV_HPPF_MAP(PRIV_HNET_CLIENT_INIT_ASYNC_RPCFUNC, C) { } \
+    T(int fd, const ::hobbes::net::NetREPLSharedSecret& auth) : s(::hobbes::net::initSession(fd, makeRPCDefs(), auth)) PRIV_HPPF_MAP(PRIV_HNET_CLIENT_INIT_ASYNC_RPCFUNC, C) { } \
     T(const std::string& host, size_t port) : T(::hobbes::net::makeConnection(host, port)) { } \
+    T(const std::string& host, size_t port, const ::hobbes::net::NetREPLSharedSecret& auth) : T(::hobbes::net::makeConnection(host, port), auth) { } \
     T(const std::string& host, const std::string& port) : T(::hobbes::net::makeConnection(host, port)) { } \
+    T(const std::string& host, const std::string& port, const ::hobbes::net::NetREPLSharedSecret& auth) : T(::hobbes::net::makeConnection(host, port), auth) { } \
     T(const std::string& localAddr, const std::string& host, size_t port) : T(::hobbes::net::makeConnection(localAddr, host, port)) { } \
+    T(const std::string& localAddr, const std::string& host, size_t port, const ::hobbes::net::NetREPLSharedSecret& auth) : T(::hobbes::net::makeConnection(localAddr, host, port), auth) { } \
     T(const std::string& localAddr, const std::string& host, const std::string& port) : T(::hobbes::net::makeConnection(localAddr, host, port)) { } \
+    T(const std::string& localAddr, const std::string& host, const std::string& port, const ::hobbes::net::NetREPLSharedSecret& auth) : T(::hobbes::net::makeConnection(localAddr, host, port), auth) { } \
     T(const std::string& hostport) : T(::hobbes::net::makeConnection(hostport)) { } \
+    T(const std::string& hostport, const ::hobbes::net::NetREPLSharedSecret& auth) : T(::hobbes::net::makeConnection(hostport), auth) { } \
     virtual ~T() { closeC(); } \
     int fd() const { return this->s; } \
     void reconnect(int fd) { closeC(); this->s = ::hobbes::net::initSession(fd, makeRPCDefs()); } \
+    void reconnect(int fd, const ::hobbes::net::NetREPLSharedSecret& auth) { closeC(); this->s = ::hobbes::net::initSession(fd, makeRPCDefs(), auth); } \
     void reconnect(const std::string& host, size_t port) { reconnect(::hobbes::net::makeConnection(host, port)); } \
+    void reconnect(const std::string& host, size_t port, const ::hobbes::net::NetREPLSharedSecret& auth) { reconnect(::hobbes::net::makeConnection(host, port), auth); } \
     void reconnect(const std::string& host, const std::string& port) { reconnect(::hobbes::net::makeConnection(host, port)); } \
+    void reconnect(const std::string& host, const std::string& port, const ::hobbes::net::NetREPLSharedSecret& auth) { reconnect(::hobbes::net::makeConnection(host, port), auth); } \
     void reconnect(const std::string& localAddr, const std::string& host, size_t port) { reconnect(::hobbes::net::makeConnection(localAddr, host, port)); } \
+    void reconnect(const std::string& localAddr, const std::string& host, size_t port, const ::hobbes::net::NetREPLSharedSecret& auth) { reconnect(::hobbes::net::makeConnection(localAddr, host, port), auth); } \
     void reconnect(const std::string& localAddr, const std::string& host, const std::string& port) { reconnect(::hobbes::net::makeConnection(localAddr, host, port)); } \
+    void reconnect(const std::string& localAddr, const std::string& host, const std::string& port, const ::hobbes::net::NetREPLSharedSecret& auth) { reconnect(::hobbes::net::makeConnection(localAddr, host, port), auth); } \
     void reconnect(const std::string& hostport) { reconnect(::hobbes::net::makeConnection(hostport)); } \
+    void reconnect(const std::string& hostport, const ::hobbes::net::NetREPLSharedSecret& auth) { reconnect(::hobbes::net::makeConnection(hostport), auth); } \
     void step() { while (this->asyncReaders.size() > 0 && this->asyncReaders.front()->readAndFinish()) { this->asyncReaders.pop(); } } \
     size_t pendingRequests() const { return this->asyncReaders.size(); } \
     \

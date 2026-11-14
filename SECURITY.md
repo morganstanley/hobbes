@@ -32,10 +32,10 @@ design choices here. The full threat model is documented in
     from local producers;
   * binary type descriptions decoded by `hobbes::decode`
     (`hobbes/lang/type.H`);
-  * network input read before a peer would be trusted: the RPC handshake and
-    framing, transaction streams received by `hog -s`, and HTTP requests to
-    `hi -w` before any expression in them is evaluated (including which files
-    a request path can reach).
+  * network input read before a peer would be trusted: the RPC version,
+    shared-secret handshake and framing, transaction streams received by
+    `hog -s`, and HTTP requests to `hi -w` before any expression in them is
+    evaluated (including which files a request path can reach).
 * Crashes, memory corruption, or unbounded work in the lexer/parser triggered
   by malformed *source text*, as distinct from type-checking or running it.
 * One connection or producer being able to crash or stall a listener for
@@ -52,9 +52,11 @@ design choices here. The full threat model is documented in
   (`Connect`, `Invoke`, `LoadFile`, `Ls`, `Process`) consult files, the
   network or other programs while an expression's type is inferred, so
   type-checking source carries the same trust as running it.
-* Remote code execution over the RPC/networking layer by a connected peer.
-  Hobbes RPC exists to let peers define and invoke native code remotely; it
-  must only be exposed on trusted internal networks (see the threat model).
+* Remote code execution over the RPC/networking layer by an authenticated or
+  otherwise trusted peer. Hobbes RPC exists to let those peers define and
+  invoke native code remotely. Use the shared-secret handshake behind a
+  same-host TLS/authenticating proxy, or keep a legacy unauthenticated listener
+  entirely within an already-trusted network (see the threat model).
 * Getting around `option Safe`. It is a name-based guard rail against
   accidents, not a sandbox; code compiled under it is still trusted.
 * Denial of service through legitimately compiled Hobbes code (e.g. a
