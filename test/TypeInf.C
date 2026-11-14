@@ -1299,6 +1299,13 @@ TEST(TypeInf, TypeApplicationRespectsTheBindersOfTypeFunctions) {
   // a binder only shadows its own name
   auto j = primty("j", tabs(str::strings("x"), functy(tvar("x"), tabs(str::strings("y"), functy(tvar("x"), tvar("y"))))));
   EXPECT_TRUE(*repType(tapp(j, list(primty("int")))) == *functy(primty("int"), tabs(str::strings("y"), functy(primty("int"), tvar("y")))));
+
+  // a cyclic substitution is still cut off under a binder that shadows: '\a b.a'
+  // applied to '\b.a' and int maps 'a' to a type mentioning 'a', which expands
+  // once to '\b.a' and no further, rather than once more per shadowing binder
+  auto f = primty("F", tabs(str::strings("a", "b"), tvar("a")));
+  auto cyc = tabs(str::strings("b"), tvar("a"));
+  EXPECT_TRUE(*repType(tapp(f, list(cyc, primty("int")))) == *cyc);
 }
 
 // Type inference refines each node's constraints as it types the node, and those

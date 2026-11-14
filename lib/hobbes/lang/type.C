@@ -2266,7 +2266,7 @@ public:
     if (!shadows) {
       return TAbs::make(v->args(), switchOf(v->body(), *this));
     } else {
-      return TAbs::make(v->args(), switchOf(v->body(), substituteF(this->transitive, cuts, this->work)));
+      return TAbs::make(v->args(), underBinder(v->body(), cuts));
     }
   }
 
@@ -2277,7 +2277,7 @@ public:
     } else {
       MonoTypeSubst cuts = this->s;
       cuts.erase(v->absTypeName());
-      return Exists::make(v->absTypeName(), switchOf(v->absType(), substituteF(this->transitive, cuts, this->work)));
+      return Exists::make(v->absTypeName(), underBinder(v->absType(), cuts));
     }
   }
 
@@ -2288,7 +2288,7 @@ public:
     } else {
       MonoTypeSubst cuts = this->s;
       cuts.erase(v->recTypeName());
-      return Recursive::make(v->recTypeName(), switchOf(v->recType(), substituteF(this->transitive, cuts, this->work)));
+      return Recursive::make(v->recTypeName(), underBinder(v->recType(), cuts));
     }
   }
 private:
@@ -2303,6 +2303,16 @@ private:
       }
       --*this->work;
     }
+  }
+
+  // substitute 'cuts' (this substitution less the names a binder shadows) into the
+  // binder's body; the variables already under expansion are still being expanded
+  // there, so the inner substitution starts from the same chain, or a cyclic one
+  // would unfold once more at every shadowing binder
+  MonoTypePtr underBinder(const MonoTypePtr& body, const MonoTypeSubst& cuts) const {
+    substituteF inner(this->transitive, cuts, this->work);
+    inner.expansions = this->expansions;
+    return switchOf(body, inner);
   }
 
   // the chain of type variables currently being expanded, held as stack frames
