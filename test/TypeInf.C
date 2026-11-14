@@ -1298,4 +1298,12 @@ TEST(TypeInf, WideRecordAndVariantTypesGatherTheirVariablesInLinearTime) {
   EXPECT_TRUE(std::chrono::steady_clock::now() - t0 < std::chrono::seconds(5));
   EXPECT_EQ(wideRecord->freeTVars.size(), n);
   EXPECT_EQ(wideVariant->freeTVars.size(), n);
+
+  // release the 200k interned variables and both wide types rather than leaving
+  // them in the type memo for every test that runs after this one
+  wideRecord = MonoTypePtr();
+  wideVariant = MonoTypePtr();
+  rms.clear();
+  vms.clear();
+  compactMTypeMemory();
 }
