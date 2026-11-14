@@ -7,6 +7,7 @@
 #include <hobbes/util/codec.H>
 
 #include <atomic>
+#include <cerrno>
 #include <chrono>
 #include <condition_variable>
 #include <cstdlib>
@@ -517,10 +518,11 @@ TEST(Net, authenticatedClientsReportARejectedSecret) {
 // Linux has no SO_NOSIGPIPE, so a client that lost that race would be killed
 // by SIGPIPE rather than see the rejection. Here the peer resets each
 // connection as soon as the version word arrives; every attempt must come
-// back as an ordinary rejection. (The race is narrow -- the client usually
-// finishes writing before the peer reads -- so this covers the path rather
-// than reliably reproducing the old failure.)
-TEST(Net, authenticatedClientSurvivesAPeerThatHangsUpMidHandshake) {
+// back as an ordinary rejection. (The race was narrow -- the client usually
+// finished writing before the peer read -- and the handshake now goes out in
+// one send that fits the socket buffer, so this checks how a reset peer is
+// reported rather than reproducing the old failure.)
+TEST(Net, authenticatedClientReportsAPeerThatResetsDuringTheHandshake) {
   int listener = ::socket(AF_INET, SOCK_STREAM, 0);
   EXPECT_TRUE(listener >= 0);
   sockaddr_in addr = {};
@@ -533,12 +535,17 @@ TEST(Net, authenticatedClientSurvivesAPeerThatHangsUpMidHandshake) {
   EXPECT_EQ(::getsockname(listener, reinterpret_cast<sockaddr*>(&addr), &addrLen), 0);
   const std::string hostPort = "127.0.0.1:" + str::from(ntohs(addr.sin_port));
 
-  const int attempts = 300;
+  const int attempts = 50;
   std::thread peer([listener] {
     for (int i = 0; i < attempts; ++i) {
       int c = ::accept(listener, nullptr, nullptr);
       if (c < 0) {
-        return;
+        if (errno == EINTR || errno == ECONNABORTED) {
+          --i;
+          continue;
+        }
+        break; // closing the listener refuses later clients rather than
+               // leaving them waiting on a status byte no one will send
       }
       uint32_t version = 0;
       ssize_t ignored = ::recv(c, &version, sizeof(version), MSG_WAITALL);
@@ -547,6 +554,7 @@ TEST(Net, authenticatedClientSurvivesAPeerThatHangsUpMidHandshake) {
       ::setsockopt(c, SOL_SOCKET, SO_LINGER, &reset, sizeof(reset));
       ::close(c);
     }
+    ::close(listener);
   });
 
   int rejected = 0;
@@ -560,7 +568,6 @@ TEST(Net, authenticatedClientSurvivesAPeerThatHangsUpMidHandshake) {
     }
   }
   peer.join();
-  ::close(listener);
   EXPECT_EQ(rejected, attempts);
 }
 
