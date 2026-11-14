@@ -657,7 +657,17 @@ ExprPtr compileMatch(cc* c, const Exprs& es, const PatternRows& ps, const Lexica
   assignNames(vns, const_cast<PatternRows&>(ps), &mappedVs);
 
   // produce a match expression from the DFA induced by these patterns
-  return inLetExp(vns, es, liftDFAExpr(c, ps, rootLA), rootLA);
+  ExprPtr r = inLetExp(vns, es, liftDFAExpr(c, ps, rootLA), rootLA);
+
+  // what comes out can nest far more deeply than what went in: each variable a
+  // pattern binds is a 'let' around the rest of the row's result, so a tuple
+  // pattern binding 80,000 names is a chain of 80,000 nested lets. The grammar
+  // actions that run this copy the result (clone(), one frame per level) before
+  // the parser's own bound sees it, and that overflowed the stack. So the bound
+  // is applied to the result too, before it is handed back; a result past it is
+  // released iteratively as the exception unwinds.
+  checkNestingDepth(r);
+  return r;
 }
 
 ExprPtr compileMatchTest(cc* c, const ExprPtr& e, const PatternPtr& p, const LexicalAnnotation& rootLA) {

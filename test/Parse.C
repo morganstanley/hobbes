@@ -116,6 +116,35 @@ TEST(Parse, DeepExpressionsCompiledMidParseAreRejected) {
   EXPECT_EQ(c().compileFn<int()>("(\\x.x+1)(1)")(), 2);
 }
 
+TEST(Parse, PatternsBindingTooManyNamesAreRejected) {
+  // the match compiler's result nests one 'let' per name a pattern binds, so
+  // a shallow pattern can compile to a deep expression: a tuple pattern of
+  // 80,000 variables is 80,000 nested lets, and the grammar action copied
+  // that (one frame per level) before the parser's nesting bound saw it --
+  // a stack overflow. The result is now bounded as it leaves the match
+  // compiler; an unfixed build crashes here rather than failing the test.
+  auto tuplePattern = [](size_t n) {
+    std::string vals, vars;
+    for (size_t i = 0; i < n; ++i) {
+      vals += (i == 0 ? "" : ",") + std::string("1");
+      vars += (i == 0 ? "x" : ",x") + str::from(i);
+    }
+    return std::make_pair(vals, vars);
+  };
+
+  // a pattern binding a few hundred names still compiles and runs
+  auto small = tuplePattern(300);
+  EXPECT_EQ(c().compileFn<int()>("match (" + small.first + ") with | (" + small.second + ") -> x299")(), 1);
+
+  auto wide = tuplePattern(80000);
+  EXPECT_TRUE(rejectedForNesting("match (" + wide.first + ") with | (" + wide.second + ") -> 1"));
+  EXPECT_TRUE(rejectedForNesting("\\(" + wide.second + ").1"));
+  EXPECT_TRUE(rejectedForNesting("let (" + wide.second + ") = p in 1"));
+
+  // and the process is still usable afterwards
+  EXPECT_EQ(c().compileFn<int()>("(\\x.x+1)(1)")(), 2);
+}
+
 TEST(Parse, DeepQuotedExpressionsAreRejected) {
   // a quoted expression is folded into a type as it is parsed, and making
   // that type prints the expression (TExpr::make interns it by its printed
