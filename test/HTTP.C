@@ -120,8 +120,22 @@ TEST(HTTP, identifiesEveryExecutableWebRoute) {
   EXPECT_TRUE(hi::isWebEvalRequest(request));
   request.document = "/report.hxp?desk=FX";
   EXPECT_TRUE(hi::isWebEvalRequest(request));
+  request.document = "/report.hxp/";
+  EXPECT_TRUE(hi::isWebEvalRequest(request));
+  request.document = "/reports//./daily.hxp//?desk=FX";
+  EXPECT_TRUE(hi::isWebEvalRequest(request));
+  request.document = "/reports/archive/../daily.hxp/.";
+  EXPECT_TRUE(hi::isWebEvalRequest(request));
   request.document = "/report.hxp.txt";
   EXPECT_TRUE(!hi::isWebEvalRequest(request));
+  request.document = "/report.hxp/assets";
+  EXPECT_TRUE(!hi::isWebEvalRequest(request));
+  request.document = "/../report.hxp";
+  EXPECT_TRUE(!hi::isWebEvalRequest(request));
+  request.document = "/report.HXP";
+  EXPECT_TRUE(hi::isWebEvalRequest(request));
+  request.document = "/reports/Daily.Hxp/";
+  EXPECT_TRUE(hi::isWebEvalRequest(request));
 }
 
 TEST(HTTP, RejectsOversizedRequestLineWithoutDispatch) {

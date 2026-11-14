@@ -81,10 +81,13 @@ std::string exeDir() {
 // directory that the first of them serves -- and it is also what decides
 // whether a request reaches a .hxp file, which hi compiles and runs. The path
 // is not percent-decoded anywhere on this route, so there is no encoded
-// spelling of a segment to consider.
+// spelling of a segment to consider. A NUL byte is refused outright: open()
+// would stop at it, so "/report.hxp\0.txt" would be classified by its whole
+// spelling but open (and disclose) report.hxp.
 bool catPathToFSPath(const std::string& cat, const std::string& urlPath, std::string* fsPath) {
   std::string cpath;
-  if (!hobbes::str::relativePathInRoot(urlPath, &cpath)) {
+  if (urlPath.find('\0') != std::string::npos ||
+      !hobbes::str::relativePathInRoot(urlPath, &cpath)) {
     return false;
   }
 
@@ -500,7 +503,7 @@ void WWWServer::eval(const hobbes::HTTPRequest& req, int fd) {
   } else {
     std::string fsPath;
     if (urlPathToFSPath(p.first, &fsPath)) {
-      if (str::endsWith(fsPath, ".hxp")) {
+      if (isHxpPath(fsPath)) {
         evalHxpFile(req, fd, fsPath, p.second);
       } else {
         printFileContents(fd, fsPath);
