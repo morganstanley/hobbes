@@ -111,6 +111,11 @@ TEST(Parse, DeepExpressionsCompiledMidParseAreRejected) {
   EXPECT_TRUE(rejectedForNesting("[" + chain + " | x <- xs]"));
   EXPECT_TRUE(rejectedForNesting("parse { S := x:\"a\" { " + chain + " } }"));
 
+  // the action for a parenthesised expression copies it, which also recurs
+  // once per level before the parser's bound sees the tree
+  EXPECT_TRUE(c().readExpr("(N<N)") != nullptr);
+  EXPECT_TRUE(rejectedForNesting("(" + chain + ")"));
+
   // and the process is still usable afterwards
   EXPECT_EQ(show(c().readExpr("1+2")), "+(1, 2)");
   EXPECT_EQ(c().compileFn<int()>("(\\x.x+1)(1)")(), 2);
@@ -138,7 +143,7 @@ TEST(Parse, PatternsBindingTooManyNamesAreRejected) {
 
   auto wide = tuplePattern(80000);
   EXPECT_TRUE(rejectedForNesting("match (" + wide.first + ") with | (" + wide.second + ") -> 1"));
-  EXPECT_TRUE(rejectedForNesting("\\(" + wide.second + ").1"));
+  EXPECT_TRUE(rejectedForNesting("\\(" + wide.second + ").1")); // not copied mid-parse, so this one was already rejected
   EXPECT_TRUE(rejectedForNesting("let (" + wide.second + ") = p in 1"));
 
   // and the process is still usable afterwards
