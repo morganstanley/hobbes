@@ -1,4 +1,5 @@
 
+#include <limits>
 #include <hobbes/util/str.H>
 #include <cctype>
 #include <iterator>
@@ -806,6 +807,28 @@ std::string mustEndWith(const std::string& x, const std::string& sfx) {
   } else {
     return x + sfx;
   }
+}
+
+bool parseNonNegative(const std::string& s, size_t max, size_t* out) {
+  if (s.empty()) {
+    return false;
+  }
+  size_t v = 0;
+  for (const char c : s) {
+    if (c < '0' || c > '9') {
+      return false;
+    }
+    const size_t d = static_cast<size_t>(c - '0');
+    if (v > (std::numeric_limits<size_t>::max() - d) / 10) {
+      return false;
+    }
+    v = v * 10 + d;
+    if (v > max) {
+      return false;
+    }
+  }
+  *out = v;
+  return true;
 }
 
 // is x a plain identifier? (declaration in str.H documents why)

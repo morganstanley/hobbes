@@ -433,6 +433,13 @@ str::seq paths(const std::string& p);
 // rather than to whatever happens to parse.
 bool isIdentifier(const std::string& x);
 
+// Parse s as a non-negative decimal integer into *out, returning false unless
+// s is entirely decimal digits (no sign, no whitespace, no junk), does not
+// overflow size_t, and is <= max. Used where a length arrives as untrusted
+// text -- an HTTP Content-Length, say -- and must not be allowed to wrap
+// (">> size_t" turns "-1" into SIZE_MAX) or to name an unbounded amount.
+bool parseNonNegative(const std::string& s, size_t max, size_t* out);
+
 }}
 
 #endif
