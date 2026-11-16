@@ -2221,7 +2221,6 @@ public:
   MonoTypePtr with(const Prim*       v) const override { visit(); return switchTyFn::with(v); }
   MonoTypePtr with(const OpaquePtr*  v) const override { visit(); return switchTyFn::with(v); }
   MonoTypePtr with(const TGen*       v) const override { visit(); return switchTyFn::with(v); }
-  MonoTypePtr with(const TAbs*       v) const override { visit(); return switchTyFn::with(v); }
   MonoTypePtr with(const TApp*       v) const override { visit(); return switchTyFn::with(v); }
   MonoTypePtr with(const FixedArray* v) const override { visit(); return switchTyFn::with(v); }
   MonoTypePtr with(const Array*      v) const override { visit(); return switchTyFn::with(v); }
@@ -2254,6 +2253,29 @@ public:
     }
   }
 
+  // a type function binds its argument names in its body, so there they are not the
+  // variables this substitution replaces -- applying '\x.(x -> \x.x)' substitutes
+  // for the outer 'x', and must leave the inner one alone
+  MonoTypePtr with(const TAbs* v) const override {
+    visit();
+    MonoTypeSubst cuts;
+    bool shadows = false;
+    for (const auto& arg : v->args()) {
+      if (this->s.find(arg) != this->s.end()) {
+        if (!shadows) {
+          cuts = this->s;
+          shadows = true;
+        }
+        cuts.erase(arg);
+      }
+    }
+    if (!shadows) {
+      return TAbs::make(v->args(), switchOf(v->body(), *this));
+    } else {
+      return TAbs::make(v->args(), underBinder(v->body(), cuts));
+    }
+  }
+
   MonoTypePtr with(const Exists* v) const override {
     visit();
     if (this->s.find(v->absTypeName()) == this->s.end()) {
@@ -2261,7 +2283,7 @@ public:
     } else {
       MonoTypeSubst cuts = this->s;
       cuts.erase(v->absTypeName());
-      return Exists::make(v->absTypeName(), switchOf(v->absType(), substituteF(this->transitive, cuts, this->work)));
+      return Exists::make(v->absTypeName(), underBinder(v->absType(), cuts));
     }
   }
 
@@ -2272,7 +2294,7 @@ public:
     } else {
       MonoTypeSubst cuts = this->s;
       cuts.erase(v->recTypeName());
-      return Recursive::make(v->recTypeName(), switchOf(v->recType(), substituteF(this->transitive, cuts, this->work)));
+      return Recursive::make(v->recTypeName(), underBinder(v->recType(), cuts));
     }
   }
 private:
@@ -2287,6 +2309,16 @@ private:
       }
       --*this->work;
     }
+  }
+
+  // substitute 'cuts' (this substitution less the names a binder shadows) into the
+  // binder's body; the variables already under expansion are still being expanded
+  // there, so the inner substitution starts from the same chain, or a cyclic one
+  // would unfold once more at every shadowing binder
+  MonoTypePtr underBinder(const MonoTypePtr& body, const MonoTypeSubst& cuts) const {
+    substituteF inner(this->transitive, cuts, this->work);
+    inner.expansions = this->expansions;
+    return switchOf(body, inner);
   }
 
   // the chain of type variables currently being expanded, held as stack frames
@@ -2428,7 +2460,8 @@ static thread_local unsigned int reductionNestingDepth = 0;
 // type stays small (the type-level reading of '(\x.x x) t', with 't' applying
 // it again, shares the doubled term rather than copying it). So the work of a
 // reduction's substitutions -- the nodes they visit -- is bounded as well, and the
-// budget is shared by the reductions nested under it, as the nesting above is.
+// budget is shared by the reductions nested under it, as the nesting above is, and
+// by all of the reductions that decoding one type description makes.
 //
 // No reduction across the test suite visits more than about 15,000 nodes; the
 // bound is far above that, and spending it takes about a tenth of a second in an
@@ -2437,7 +2470,7 @@ static const size_t maxReductionWork = 1000000;
 
 static thread_local size_t* reductionWork = nullptr;
 
-// the work budget of the outermost reduction on this thread, while it runs
+// the work budget of the outermost reduction (or decode) on this thread, while it runs
 namespace {
 class reductionWorkBudget {
 public:
@@ -2505,7 +2538,10 @@ static MonoTypePtr repTypeWithin(const MonoTypePtr& ty, size_t* steps) {
 // The memo does not weaken the bound above. A reduction that fails to reach a
 // normal form throws with nothing memoized, and one that reduces to itself is
 // over in one case-check, so only completed reductions to a different type are
-// stored -- and re-serving one of those is what the memo is for.
+// stored -- and re-serving one of those is what the memo is for. The work of one
+// decode is bounded; a decode that runs out of budget may still have memoized
+// the members it reduced before it did, so sending the same description again
+// gets further. Each attempt is still bounded, which is what the budget is for.
 MonoTypePtr repType(const MonoTypePtr& t) {
   if (t->repTypeMemo) {
     return t->repTypeMemo;
@@ -3232,6 +3268,10 @@ MonoTypePtr decodeFrom(const bytes& in, unsigned int* n) {
 }
 
 MonoTypePtr decode(const std::vector<unsigned char>& in) {
+  // laying out each record and variant in a description reduces its members' types,
+  // and those reductions share one work budget, so that a description with many
+  // members that each reduce just within the budget is still bounded as a whole
+  reductionWorkBudget work;
   unsigned int n = 0;
   return decodeFrom(in, &n);
 }
