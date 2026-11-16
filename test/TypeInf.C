@@ -1275,3 +1275,35 @@ TEST(TypeInf, typeMemoCompactionWaitsForInferenceOnOtherThreads) {
       "(\\r.r.f" + n + ".append(r.g" + n + ")[0])({f" + n + "=[" + n + "], g" + n + "=[1]})")(), i);
   }
 }
+
+// A record or variant type gathers the free type variables of its members.
+// Each member's set was once unioned into a fresh copy of everything gathered
+// so far, quadratic in the number of members: a tuple pattern of n variables
+// makes a record type of n members with a type variable each, and OSS-Fuzz
+// 585817239 (a match with a 126,800-wide tuple pattern) ran for minutes. A
+// type this wide now takes a fraction of a second; the old way took minutes.
+TEST(TypeInf, WideRecordAndVariantTypesGatherTheirVariablesInLinearTime) {
+  const size_t n = 200000;
+  Record::Members rms;
+  Variant::Members vms;
+  for (size_t i = 0; i < n; ++i) {
+    const std::string v = "wide" + str::from(i);
+    rms.push_back(Record::Member(".f" + str::from(i), tvar(v)));
+    vms.push_back(Variant::Member("c" + str::from(i), tvar(v), static_cast<unsigned int>(i)));
+  }
+
+  auto t0 = std::chrono::steady_clock::now();
+  MonoTypePtr wideRecord = Record::make(rms);
+  MonoTypePtr wideVariant = Variant::make(vms);
+  EXPECT_TRUE(std::chrono::steady_clock::now() - t0 < std::chrono::seconds(5));
+  EXPECT_EQ(wideRecord->freeTVars.size(), n);
+  EXPECT_EQ(wideVariant->freeTVars.size(), n);
+
+  // release the 200k interned variables and both wide types rather than leaving
+  // them in the type memo for every test that runs after this one
+  wideRecord = MonoTypePtr();
+  wideVariant = MonoTypePtr();
+  rms.clear();
+  vms.clear();
+  compactMTypeMemory();
+}

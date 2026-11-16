@@ -1054,7 +1054,9 @@ Variant::Variant(const Members& ms) : payloadSizeM(-1), ms(ms) {
   std::set<std::string> cnames;
 
   for (const Member& m : ms) {
-    this->freeTVars = setUnion(this->freeTVars, m.type->freeTVars);
+    // accumulated in place: a union into a fresh set copies everything gathered
+    // so far, quadratic in the number of members (see Record::Record)
+    this->freeTVars.insert(m.type->freeTVars.begin(), m.type->freeTVars.end());
     this->tgenCount = std::max<int>(this->tgenCount, m.type->tgenCount);
     
     if (!isHiddenCtorName(m.selector) && !cnames.insert(m.selector).second) {
@@ -1231,7 +1233,11 @@ Record::Record(const Record::Members& tms) : ms(tms), maxFieldAlignmentM(-1) {
       throw std::runtime_error("Can't construct record with duplicate field name '" + m.field + "': " + showRecord(tms));
     }
 
-    this->freeTVars = setUnion(this->freeTVars, m.type->freeTVars);
+    // accumulated in place: a union into a fresh set copies everything gathered
+    // so far, so a record of n members with a type variable each (a tuple
+    // pattern of n variables) took time quadratic in n -- OSS-Fuzz 585817239,
+    // a 126,800-wide tuple pattern, ran for minutes
+    this->freeTVars.insert(m.type->freeTVars.begin(), m.type->freeTVars.end());
     this->tgenCount = std::max<int>(this->tgenCount, m.type->tgenCount);
   }
 
