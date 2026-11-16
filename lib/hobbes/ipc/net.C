@@ -13,6 +13,7 @@
 #include <sstream>
 #include <vector>
 
+#include <cerrno>
 #include <cstring>
 #include <fcntl.h>
 #include <netdb.h>
@@ -1057,6 +1058,35 @@ int installNetREPL(const std::string &filepath, cc *c,
   return installNetREPL(filepath, new CCServer(c, wrExprFn), sharedSecret);
 }
 
+// The authenticated handshake goes out in one send that cannot raise SIGPIPE.
+// A listener that refuses it (a legacy one sees the authenticated version word
+// and hangs up) can close the connection while the secret is still being
+// written; Linux has no SO_NOSIGPIPE, so a plain write() there killed the
+// client process instead of letting it report the refusal.
+static void sendAuthenticatedHandshake(int c, const std::string& sharedSecret) {
+  std::vector<char> msg;
+  auto put = [&](const void* p, size_t n) {
+    msg.insert(msg.end(), static_cast<const char*>(p), static_cast<const char*>(p) + n);
+  };
+  const uint32_t version = authenticatedNetREPLProtocolVersion;
+  const size_t len = sharedSecret.size();
+  put(&version, sizeof(version));
+  put(&len, sizeof(len)); // the encoding of fdwrite(int, const std::string&)
+  put(sharedSecret.data(), sharedSecret.size());
+
+  size_t sent = 0;
+  while (sent < msg.size()) {
+    ssize_t n = send(c, msg.data() + sent, msg.size() - sent, netREPLSendFlags);
+    if (n < 0) {
+      if (errno == EINTR) {
+        continue;
+      }
+      throw std::runtime_error("Couldn't send the netREPL handshake: " + std::string(strerror(errno)));
+    }
+    sent += static_cast<size_t>(n);
+  }
+}
+
 // connect to a running net REPL
 Client::Client(const std::string &hostport)
     : hostport(hostport), eid(0), rbno(0), reno(0) {
@@ -1076,8 +1106,7 @@ Client::Client(const std::string &hostport, const std::string& sharedSecret)
 #endif
   uint8_t status = netREPLAuthRejected;
   try {
-    fdwrite(this->c, authenticatedNetREPLProtocolVersion);
-    fdwrite(this->c, sharedSecret);
+    sendAuthenticatedHandshake(this->c, sharedSecret);
     fdread(this->c, &status, sizeof(status));
   } catch (std::exception&) {
     status = netREPLAuthRejected;
