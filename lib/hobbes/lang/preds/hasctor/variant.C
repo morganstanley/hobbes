@@ -59,21 +59,25 @@ bool HCVariantEliminator::refine(const TEnvPtr&, const HasCtor& hc, MonoTypeUnif
   return false;
 }
 
-// just remove the 'hasfield' constraint from variant constructor expressions
+// just remove the 'hasctor' constraints from variant constructor expressions
 struct HCVariantUnqualify : public switchExprTyFn {
-  const ConstraintPtr& constraint;
-  HCVariantUnqualify(const ConstraintPtr& cst) : constraint(cst) {
+  EliminatedConstraints constraints;
+  HCVariantUnqualify(const Constraints& csts) : constraints(csts) {
   }
 
   ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const override {
     ExprPtr result(e);
-    result->type(removeConstraint(this->constraint, qty));
+    result->type(removeConstraints(this->constraints, qty));
     return result;
   }
 };
 
-ExprPtr HCVariantEliminator::unqualify(const TEnvPtr&, const ConstraintPtr& cst, const HasCtor&, const ExprPtr& e, Definitions*) const {
-  return switchOf(e, HCVariantUnqualify(cst));
+ExprPtr HCVariantEliminator::unqualify(const TEnvPtr& tenv, const ConstraintPtr& cst, const HasCtor&, const ExprPtr& e, Definitions* ds) const {
+  return unqualify(tenv, list(cst), e, ds);
+}
+
+ExprPtr HCVariantEliminator::unqualify(const TEnvPtr&, const Constraints& csts, const ExprPtr& e, Definitions*) const {
+  return switchOf(e, HCVariantUnqualify(csts));
 }
 
 std::string HCVariantEliminator::name() const { return "variant constructors"; }

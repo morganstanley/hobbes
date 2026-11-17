@@ -27,13 +27,30 @@ ExprPtr unqualifyTypes(const TEnvPtr& tenv, const ExprPtr& e, Definitions* ds) {
       // traversal per contiguous run, since a rewrite per constraint (each copying
       // and then discarding the entire expression) dominates compile time for large
       // generated expressions like match tables
+      //
+      // so are the constraints that an unqualifier says it can eliminate together
+      // (Unqualifier::batchable): an expression has a field constraint for each
+      // field it reads, and a constructor constraint for each case it tests. The
+      // parser made for a `parse {}` grammar has three of the first for each of
+      // its states that follows a nonterminal and one of the second for each
+      // nonterminal, and at two rewrites of the whole parser for each of them,
+      // unqualifying a grammar of one long rule took a minute (OSS-Fuzz 586582947)
+      //
+      // (a run is eliminated when it ends, so a constraint after it that can't be
+      // satisfied is reported before an error in eliminating the run would be)
       const Constraints& cs = eqt->constraints();
       TCInstConstraints batch;
+      Constraints       uqBatch;
+      UnqualifierPtr    uqBatchBy;
 
       auto flushBatch = [&]() {
         if (!batch.empty()) {
           result = unqualifyClassConstraints(tenv, batch, result, ds);
           batch.clear();
+        }
+        if (!uqBatch.empty()) {
+          result = uqBatchBy->unqualifyBatch(tenv, uqBatch, result, ds);
+          uqBatch.clear();
         }
       };
 
@@ -55,7 +72,16 @@ ExprPtr unqualifyTypes(const TEnvPtr& tenv, const ExprPtr& e, Definitions* ds) {
           }
 
           if (inst != TCInstancePtr()) {
+            if (!uqBatch.empty()) {
+              flushBatch();
+            }
             batch.push_back(std::make_pair(c, inst));
+          } else if (uq->batchable(tenv, c, ds)) {
+            if (!batch.empty() || uq != uqBatchBy) {
+              flushBatch();
+            }
+            uqBatchBy = uq;
+            uqBatch.push_back(c);
           } else {
             flushBatch();
             result = uq->unqualify(tenv, c, result, ds);
