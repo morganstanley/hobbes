@@ -94,7 +94,7 @@ template <typename T>
 //  * strings, lists and the like are registered with the AutoreleaseSet as
 //    they are made, and released between parses (see ParseScope, below);
 //  * the finished tree, handed over by the start rule in a parse that then
-//    fails, is deleted by the reader (see ParsedResult, below).
+//    fails, is deleted by the parse itself (see Parsed and ParseScope, below).
 //
 // The first of those only happens on the parser's own ways out, so an
 // exception -- from the lexer (a literal out of range) or from an action (a
@@ -141,9 +141,39 @@ template <typename T>
 // back on the way out, every parse starts as a fresh process would, and the
 // parse of an imported script -- which runs nested inside its importer's --
 // hands the importer's state back when it is done.
+//
+// It also owns what the parse makes. The grammar's start rule hands the
+// finished tree over through yyParsedModule and yyParsedExpr, and its action
+// can run in a parse that fails: where a state has one thing it can do, bison
+// does it without looking at the next token, so an expression followed by
+// something that can't follow it is reduced all the way to the start rule --
+// its tree handed over -- before the token is read and reported ("unexpected
+// intV, expecting end of file"). Each reader used to take the tree after the
+// parser returned, in a statement that the error was thrown past, and since
+// the pointer is cleared for the next parse, nothing ever freed it: a string
+// literal of 1MB with a digit after its closing quote is a million character
+// constants, and each read of it left 145MB behind (OSS-Fuzz 587020633, where
+// a fuzzer that keeps reading the same input in one process ran out of
+// memory).
+//
+// So the hand-over belongs to the scope of the parse rather than to whoever
+// asked for it: cleared on the way in, taken by runParserOnBuffer if the parse
+// gets that far (take), and deleted on the way out if not. A reader has
+// nothing to remember, and a new one can't forget. What an enclosing parse had
+// been handed is kept aside and put back, so that this holds without relying
+// on the start rule being the last thing a parse does.
+struct Parsed {
+  ModulePtr   module;
+  ExprPtr     expr;
+  std::string var; // the name defined, when a definition was read
+};
+
 class ParseScope {
 public:
-  ParseScope(cc* c, int initTok, YY_BUFFER_STATE bs) : bs(bs) {
+  ParseScope(cc* c, int initTok, YY_BUFFER_STATE bs) : bs(bs), outerModule(yyParsedModule), outerExpr(yyParsedExpr), outerVar(yyParsedVar) {
+    yyParsedModule = nullptr;
+    yyParsedExpr   = nullptr;
+    yyParsedVar    = "";
     yyParseCC      = c;
     yyInitToken    = initTok;
     yylineno       = 1;
@@ -158,7 +188,34 @@ public:
     activeParseBuffers.push(bs);
   }
 
+  // what the parse made, which is the caller's from here on
+  Parsed take() {
+    // (out of the globals first: making a shared_ptr deletes what it was given
+    //  if it can't allocate, and the destructor must not then delete it again)
+    Module* m = yyParsedModule;
+    Expr*   e = yyParsedExpr;
+    yyParsedModule = nullptr;
+    yyParsedExpr   = nullptr;
+
+    Parsed r;
+    r.var = yyParsedVar;
+    try {
+      r.module = ModulePtr(m);
+    } catch (...) {
+      delete e;
+      throw;
+    }
+    r.expr = ExprPtr(e);
+    return r;
+  }
+
   ~ParseScope() {
+    delete yyParsedModule;
+    delete yyParsedExpr;
+    yyParsedModule = this->outerModule;
+    yyParsedExpr   = this->outerExpr;
+    yyParsedVar    = this->outerVar;
+
     activeParseBuffers.pop();
     freeParserData();
     yy_delete_buffer(this->bs);
@@ -170,6 +227,9 @@ public:
   ParseScope& operator=(const ParseScope&) = delete;
 private:
   YY_BUFFER_STATE bs;
+  Module*         outerModule;
+  Expr*           outerExpr;
+  std::string     outerVar;
 };
 
 // where an error in the parse just run was found. yyerror records the
@@ -182,10 +242,12 @@ YYLTYPE parseErrorPos() {
   return yyErrPos.first_line != 0 ? yyErrPos : yylloc;
 }
 
-void runParserOnBuffer(cc* c, int initTok, YY_BUFFER_STATE bs) {
+Parsed runParserOnBuffer(cc* c, int initTok, YY_BUFFER_STATE bs) {
+  Parsed parsed;
   {
     ParseScope scope(c, initTok, bs);
     yyparse();
+    parsed = scope.take();
   }
 
   // what the lexer or a grammar action threw, carried around the parser rather
@@ -202,18 +264,20 @@ void runParserOnBuffer(cc* c, int initTok, YY_BUFFER_STATE bs) {
     yyVexpLexError = "";
     throw std::runtime_error(msg);
   }
+  return parsed;
 }
 
-void runParserOnFile(cc* c, int initTok, const std::string& fname) {
+Parsed runParserOnFile(cc* c, int initTok, const std::string& fname) {
   FILE* f = fopen(fname.c_str(), "r");
   if (f == nullptr) {
     throw std::runtime_error("Failed to open file for reading, '" + fname + "'");
   }
   try {
     LexicallyAnnotated::pushFileContext(fname);
-    runParserOnBuffer(c, initTok, yy_create_buffer(f, YY_BUF_SIZE));
+    Parsed parsed = runParserOnBuffer(c, initTok, yy_create_buffer(f, YY_BUF_SIZE));
     fclose(f);
     LexicallyAnnotated::popContext();
+    return parsed;
   } catch (annotated_error&) {
     fclose(f);
     LexicallyAnnotated::popContext();
@@ -225,11 +289,12 @@ void runParserOnFile(cc* c, int initTok, const std::string& fname) {
   }
 }
 
-void runParserOnString(cc* c, int initTok, const char* s) {
+Parsed runParserOnString(cc* c, int initTok, const char* s) {
   try {
     LexicallyAnnotated::pushLiteralContext(s);
-    runParserOnBuffer(c, initTok, yy_scan_string(s));
+    Parsed parsed = runParserOnBuffer(c, initTok, yy_scan_string(s));
     LexicallyAnnotated::popContext();
+    return parsed;
   } catch (annotated_error&) {
     LexicallyAnnotated::popContext();
     throw;
@@ -254,41 +319,6 @@ static void checkNestingDepth(const ModulePtr& m) {
   }
 }
 
-// What a parse made is handed over through yyParsedModule and yyParsedExpr,
-// set by the action of the grammar's start rule. That action can run in a
-// parse that fails: where a state has one thing it can do, bison does it
-// without looking at the next token, so an expression followed by something
-// that can't follow it is reduced all the way to the start rule -- its tree
-// handed over -- before the token is read and reported ("unexpected intV,
-// expecting end of file"). The error is thrown from runParserOnBuffer, past
-// the statements that would have taken the tree, and since the pointer is
-// cleared for the next parse, nothing ever freed it: a string literal of 1MB
-// with a digit after its closing quote is a million character constants, and
-// each read of it left 145MB behind (OSS-Fuzz 587020633, where a fuzzer that
-// keeps reading the same input in one process ran out of memory).
-//
-// So what was handed over is owned from the moment the parse is over, however
-// it ended: taken by the reader if it gets that far, and deleted here if not.
-template <typename T>
-  class ParsedResult {
-  public:
-    explicit ParsedResult(T** p) : p(p) { *p = nullptr; }
-    ~ParsedResult() { delete *this->p; *this->p = nullptr; }
-
-    std::shared_ptr<T> take() {
-      // (out of the global first: making a shared_ptr deletes what it was given
-      //  if it can't allocate, and this must not then delete it again)
-      T* x = *this->p;
-      *this->p = nullptr;
-      return std::shared_ptr<T>(x);
-    }
-
-    ParsedResult(const ParsedResult&) = delete;
-    ParsedResult& operator=(const ParsedResult&) = delete;
-  private:
-    T** p;
-  };
-
 // yyModulePath is parser-global state copied into every MImport node.  Scope
 // it to one read so a syntax/open failure cannot make a later in-memory module
 // search the failed file's directory (and potentially load a library there).
@@ -309,11 +339,8 @@ private:
 ModulePtr defReadModuleFile(cc* c, const std::string& file) {
   LOCK_PARSER;
 
-  ParsedResult<Module> parsed(&yyParsedModule);
   ModulePathScope modulePath(str::rsplit(file, "/").first);
-  runParserOnFile(c, TPARSEMODULE, file);
-
-  ModulePtr m = checkReturn(parsed.take());
+  ModulePtr m = checkReturn(runParserOnFile(c, TPARSEMODULE, file).module);
   checkNestingDepth(m);
   return m;
 }
@@ -321,11 +348,8 @@ ModulePtr defReadModuleFile(cc* c, const std::string& file) {
 ModulePtr defReadModule(cc* c, const char* text) {
   LOCK_PARSER;
 
-  ParsedResult<Module> parsed(&yyParsedModule);
   ModulePathScope modulePath("");
-  runParserOnString(c, TPARSEMODULE, text);
-
-  ModulePtr m = checkReturn(parsed.take());
+  ModulePtr m = checkReturn(runParserOnString(c, TPARSEMODULE, text).module);
   checkNestingDepth(m);
   return m;
 }
@@ -337,24 +361,19 @@ ModulePtr defReadModule(cc* c, const std::string& text) {
 ExprDefn defReadExprDefn(cc* c, const std::string& expr) {
   LOCK_PARSER;
 
-  yyParsedVar  = "";
-  ParsedResult<Expr> parsed(&yyParsedExpr);
   ModulePathScope modulePath("");
-  runParserOnString(c, TPARSEDEFN, expr.c_str());
+  Parsed parsed = runParserOnString(c, TPARSEDEFN, expr.c_str());
 
-  ExprPtr e = checkReturn(parsed.take());
+  ExprPtr e = checkReturn(parsed.expr);
   checkNestingDepth(e);
-  return ExprDefn(yyParsedVar, e);
+  return ExprDefn(parsed.var, e);
 }
 
 ExprPtr defReadExpr(cc* c, const std::string& expr) {
   LOCK_PARSER;
 
-  ParsedResult<Expr> parsed(&yyParsedExpr);
   ModulePathScope modulePath("");
-  runParserOnString(c, TPARSEEXPR, expr.c_str());
-
-  ExprPtr e = checkReturn(parsed.take());
+  ExprPtr e = checkReturn(runParserOnString(c, TPARSEEXPR, expr.c_str()).expr);
   checkNestingDepth(e);
   return e;
 }
