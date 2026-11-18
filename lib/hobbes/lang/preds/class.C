@@ -744,12 +744,12 @@ ExprPtr TCInstance::unqualify(Definitions* ds, const TEnvPtr& tenv, const Constr
 struct TCUnqualifyBatch : public switchExprTyFn {
   // member-name -> [(constraint, resolved member expr)] in batch order
   using MemberSubs = std::unordered_map<std::string, std::vector<std::pair<ConstraintPtr, ExprPtr>>>;
-  Constraints cs;
-  MemberSubs  subs;
+  EliminatedConstraints cs;
+  MemberSubs    subs;
 
   explicit TCUnqualifyBatch(const TCInstConstraints& cis) {
     for (const auto& ci : cis) {
-      this->cs.push_back(ci.first);
+      this->cs.insert(ci.first);
       for (const auto& mm : ci.second->memberMapping()) {
         this->subs[mm.first].push_back(std::make_pair(ci.first, mm.second));
       }
@@ -757,16 +757,7 @@ struct TCUnqualifyBatch : public switchExprTyFn {
   }
 
   QualTypePtr withTy(const QualTypePtr& qt) const override {
-    Constraints r;
-    for (const auto& c : qt->constraints()) {
-      if (!hasConstraint(c, this->cs)) {
-        r.push_back(c);
-      }
-    }
-    if (r.size() == qt->constraints().size()) {
-      return qt;
-    }
-    return qualtype(r, qt->monoType());
+    return removeConstraints(this->cs, qt);
   }
 
   ExprPtr with(const Var* v) const override {

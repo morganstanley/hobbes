@@ -60,6 +60,18 @@ void UnqualifierSet::explain(const TEnvPtr& tenv, const ConstraintPtr& cst, cons
   }
 }
 
+bool Unqualifier::batchable(const TEnvPtr&, const ConstraintPtr&, Definitions*) const {
+  return false;
+}
+
+ExprPtr Unqualifier::unqualifyBatch(const TEnvPtr& tenv, const Constraints& csts, const ExprPtr& e, Definitions* ds) const {
+  ExprPtr result = e;
+  for (const auto& cst : csts) {
+    result = unqualify(tenv, cst, result, ds);
+  }
+  return result;
+}
+
 ExprPtr UnqualifierSet::unqualify(const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPtr& e, Definitions* ds) const {
   auto uq = this->uqs.find(cst->name());
   if (uq == this->uqs.end()) {
@@ -123,6 +135,52 @@ Constraints removeConstraint(const ConstraintPtr& c, const Constraints& cs) {
 
 QualTypePtr removeConstraint(const ConstraintPtr& c, const QualTypePtr& qt) {
   return qualtype(removeConstraint(c, qt->constraints()), qt->monoType());
+}
+
+// consistent with Constraint::operator==, which compares the arguments (types, so unique by address) and the name
+size_t ConstraintHash::operator()(const ConstraintPtr& c) const {
+  size_t h = c->arguments().size();
+  for (const auto& a : c->arguments()) {
+    h = (h * 1099511628211ULL) ^ std::hash<const MonoType*>()(a.get());
+  }
+  return h;
+}
+
+bool ConstraintEq::operator()(const ConstraintPtr& lhs, const ConstraintPtr& rhs) const {
+  return *lhs == *rhs;
+}
+
+EliminatedConstraints::EliminatedConstraints(const Constraints& cs) : cs(cs.begin(), cs.end()) {
+}
+
+void EliminatedConstraints::insert(const ConstraintPtr& c) {
+  this->cs.insert(c);
+}
+
+bool EliminatedConstraints::has(const ConstraintPtr& c) const {
+  return this->cs.find(c) != this->cs.end();
+}
+
+bool EliminatedConstraints::hasAny(const QualTypePtr& qt) const {
+  for (const auto& c : qt->constraints()) {
+    if (has(c)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+QualTypePtr removeConstraints(const EliminatedConstraints& cs, const QualTypePtr& qt) {
+  Constraints r;
+  for (const auto& c : qt->constraints()) {
+    if (!cs.has(c)) {
+      r.push_back(c);
+    }
+  }
+  if (r.size() == qt->constraints().size()) {
+    return qt;
+  }
+  return qualtype(r, qt->monoType());
 }
 
 }

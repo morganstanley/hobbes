@@ -8,7 +8,7 @@ static MonoTypePtr stdstrty  = OpaquePtr::make("std::string", 0, false);
 static MonoTypePtr chararrty = arrayty(primty("char"));
 static MonoTypePtr unitty    = primty("unit");
 
-static bool isFieldName(const MonoTypePtr& fn, std::string* sfn) {
+bool isFieldName(const MonoTypePtr& fn, std::string* sfn) {
   if (const TString* fns = is<TString>(fn)) {
     *sfn = fns->value();
     return true;
@@ -73,21 +73,21 @@ bool HFRecordEliminator::refine(const TEnvPtr&, const HasField& hf, MonoTypeUnif
   return false;
 }
 
-// just remove the 'hasfield' constraint from record projection expressions
+// just remove the 'hasfield' constraints from record projection expressions
 struct HFRecordUnqualify : public switchExprTyFn {
-  const ConstraintPtr& constraint;
-  HFRecordUnqualify(const ConstraintPtr& cst) : constraint(cst) {
+  EliminatedConstraints constraints;
+  HFRecordUnqualify(const Constraints& csts) : constraints(csts) {
   }
 
   ExprPtr wrapWithTy(const QualTypePtr& qty, Expr* e) const override {
     ExprPtr result(e);
-    result->type(removeConstraint(this->constraint, qty));
+    result->type(removeConstraints(this->constraints, qty));
     return result;
   }
 
   ExprPtr with(const Assign* v) const override {
     // hack to assign [char] into <std.string>
-    if (hasConstraint(this->constraint, v->type())) {
+    if (this->constraints.hasAny(v->type())) {
       if (*v->left()->type()->monoType() == *stdstrty && *v->right()->type()->monoType() == *chararrty) {
         static MonoTypePtr assignty = functy(list(stdstrty, chararrty), unitty);
 
@@ -99,8 +99,12 @@ struct HFRecordUnqualify : public switchExprTyFn {
   }
 };
 
-ExprPtr HFRecordEliminator::unqualify(const TEnvPtr&, const ConstraintPtr& cst, const ExprPtr& e, Definitions*) const {
-  return switchOf(e, HFRecordUnqualify(cst));
+ExprPtr HFRecordEliminator::unqualify(const TEnvPtr& tenv, const ConstraintPtr& cst, const ExprPtr& e, Definitions* ds) const {
+  return unqualify(tenv, list(cst), e, ds);
+}
+
+ExprPtr HFRecordEliminator::unqualify(const TEnvPtr&, const Constraints& csts, const ExprPtr& e, Definitions*) const {
+  return switchOf(e, HFRecordUnqualify(csts));
 }
 
 std::string HFRecordEliminator::name() const { return "record fields"; }

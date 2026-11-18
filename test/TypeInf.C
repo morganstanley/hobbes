@@ -3,7 +3,9 @@
 #include <hobbes/hobbes.H>
 #include <hobbes/util/codec.H>
 #include <hobbes/util/stream.H>
+#include <cctype>
 #include <cstring>
+#include <map>
 #include <memory>
 #include <limits>
 #include <sstream>
@@ -1397,4 +1399,199 @@ TEST(TypeInf, WideRecordAndVariantTypesGatherTheirVariablesInLinearTime) {
   rms.clear();
   vms.clear();
   compactMTypeMemory();
+}
+
+// Eliminating a constraint rewrites the whole expression that states it, and
+// an expression states a field constraint for each field it reads and a
+// constructor constraint for each case it tests: the parser made for a
+// `parse {}` grammar has hundreds of them, and at a rewrite or two of the
+// whole parser for each, unqualifying one took a minute (OSS-Fuzz 586582947).
+// unqualifyTypes now hands an unqualifier that can take them together
+// (Unqualifier::batchable) each run of its constraints at once.
+namespace {
+
+// eliminates its constraints by taking them out of the types that state them,
+// and says how it was asked to
+struct RecordingUnqualifier : public Unqualifier {
+  bool                      batches;
+  std::vector<std::string>* asked;
+
+  RecordingUnqualifier(bool batches, std::vector<std::string>* asked) : batches(batches), asked(asked) { }
+
+  struct Strip : public switchExprTyFn {
+    EliminatedConstraints cs;
+    explicit Strip(const Constraints& cs) : cs(cs) { }
+    QualTypePtr withTy(const QualTypePtr& qt) const override { return removeConstraints(this->cs, qt); }
+  };
+
+  bool refine(const TEnvPtr&, const ConstraintPtr&, MonoTypeUnifier*, Definitions*) override { return false; }
+  bool satisfied(const TEnvPtr&, const ConstraintPtr&, Definitions*) const override { return true; }
+  bool satisfiable(const TEnvPtr&, const ConstraintPtr&, Definitions*) const override { return true; }
+  void explain(const TEnvPtr&, const ConstraintPtr&, const ExprPtr&, Definitions*, annmsgs*) override { }
+  PolyTypePtr lookup(const std::string&) const override { return PolyTypePtr(); }
+  SymSet bindings() const override { return SymSet(); }
+  FunDeps dependencies(const ConstraintPtr&) const override { return FunDeps(); }
+
+  ExprPtr unqualify(const TEnvPtr&, const ConstraintPtr& cst, const ExprPtr& e, Definitions*) const override {
+    this->asked->push_back("one " + cst->name());
+    return switchOf(e, Strip(list(cst)));
+  }
+
+  bool batchable(const TEnvPtr&, const ConstraintPtr&, Definitions*) const override {
+    return this->batches;
+  }
+  ExprPtr unqualifyBatch(const TEnvPtr&, const Constraints& csts, const ExprPtr& e, Definitions*) const override {
+    this->asked->push_back(str::from(csts.size()) + " " + csts[0]->name());
+    return switchOf(e, Strip(csts));
+  }
+};
+
+}
+
+TEST(TypeInf, BatchableConstraintsAreUnqualifiedARunAtATime) {
+  cc c;
+  std::vector<std::string> asked;
+  c.typeEnv()->bind("TogetherA", UnqualifierPtr(new RecordingUnqualifier(true, &asked)));
+  c.typeEnv()->bind("TogetherB", UnqualifierPtr(new RecordingUnqualifier(true, &asked)));
+  c.typeEnv()->bind("Apart",     UnqualifierPtr(new RecordingUnqualifier(false, &asked)));
+
+  auto cst = [](const std::string& n, long i) { return std::make_shared<Constraint>(n, list(tlong(i))); };
+
+  // runs are kept in the order that the constraints are stated in: a run ends
+  // where the next constraint is another unqualifier's, or can't be batched
+  Constraints cs;
+  for (long i = 0; i < 300; ++i) { cs.push_back(cst("TogetherA", i)); }
+  cs.push_back(cst("Apart", 0));
+  cs.push_back(cst("Apart", 1));
+  cs.push_back(cst("TogetherA", 300));
+  cs.push_back(cst("TogetherB", 0));
+  cs.push_back(cst("TogetherB", 1));
+  cs.push_back(std::make_shared<Constraint>("Eq", list(primty("int")))); // a class constraint, batched by its own means
+  cs.push_back(cst("TogetherB", 2));
+
+  const auto la = LexicalAnnotation::null();
+  ExprPtr e = fncall(var("id", qualtype(cs, functy(list(primty("int")), primty("int"))), la), list(constant(static_cast<int>(1), la)), la);
+  e->type(qualtype(cs, primty("int")));
+  const_cast<ExprPtr&>(is<App>(e)->args()[0])->type(qualtype(primty("int")));
+
+  Definitions ds;
+  ExprPtr u = unqualifyTypes(c.typeEnv(), e, &ds);
+  EXPECT_TRUE(u->type()->constraints().empty());
+  EXPECT_TRUE(is<App>(u)->fn()->type()->constraints().empty());
+
+  const std::vector<std::string> expected = { "300 TogetherA", "one Apart", "one Apart", "1 TogetherA", "2 TogetherB", "1 TogetherB" };
+  EXPECT_TRUE(asked == expected);
+}
+
+// (to give an unqualifier a record to write through, with a field that is a std::string)
+DEFINE_STRUCT(
+  BatchedWrites,
+  (int,         n),
+  (std::string, s),
+  (double,      d)
+);
+
+// The constraints that are batched are those for the fields of records and
+// for the constructors of variants. Eliminating them one at a time is kept
+// (it is what Unqualifier::unqualifyBatch does unless it is overridden), and
+// is the reference here: for a run of constraints, the two must give the same
+// expression, with the same type at every term of it.
+//
+// A use of 'fieldValue' or 'maybeFromCtor' that isn't applied becomes a
+// function of a variable with a fresh name, which differs between any two
+// rewrites, so those names are numbered in the order they appear before the
+// two are compared.
+static std::string withFreshNamesNumbered(const std::string& x) {
+  std::map<std::string, std::string> names;
+  std::string r;
+  for (size_t i = 0; i < x.size();) {
+    if (x.compare(i, 2, ".t") == 0 && i + 2 < x.size() && std::isdigit(static_cast<unsigned char>(x[i + 2])) != 0) {
+      size_t j = i + 2;
+      while (j < x.size() && std::isdigit(static_cast<unsigned char>(x[j])) != 0) { ++j; }
+      auto n = names.insert(std::make_pair(x.substr(i, j - i), ".fresh" + str::from(names.size()))).first;
+      r += n->second;
+      i = j;
+    } else {
+      r += x[i++];
+    }
+  }
+  return r;
+}
+
+static std::string unqualified(const ExprPtr& e) {
+  return withFreshNamesNumbered(showAnnotated(e));
+}
+
+static bool batchUnqualifiesAsOneAtATime(cc& c, const std::string& pred, size_t atLeast, const std::string& expr) {
+  const TEnvPtr& tenv = c.typeEnv();
+  Definitions ds;
+  ExprPtr e = validateType(tenv, c.readExpr(expr), &ds);
+
+  UnqualifierPtr uq;
+  Constraints cs;
+  for (const auto& cst : e->type()->constraints()) {
+    if (cst->name() == pred) {
+      uq = tenv->lookupUnqualifier(cst);
+      if (uq->satisfied(tenv, cst, &ds) && uq->batchable(tenv, cst, &ds)) {
+        cs.push_back(cst);
+      }
+    }
+  }
+  if (cs.size() < atLeast) {
+    return false;
+  }
+
+  // (out of the order they were stated in as well, since the first of a run to match a term decides it)
+  Constraints rcs(cs.rbegin(), cs.rend());
+  return unqualified(uq->unqualifyBatch(tenv, cs,  e, &ds)) == unqualified(uq->Unqualifier::unqualifyBatch(tenv, cs,  e, &ds)) &&
+         unqualified(uq->unqualifyBatch(tenv, rcs, e, &ds)) == unqualified(uq->Unqualifier::unqualifyBatch(tenv, rcs, e, &ds));
+}
+
+TEST(TypeInf, BatchedFieldAndConstructorConstraintsUnqualifyAsTheyDoOneAtATime) {
+  cc c;
+
+  // fields read by projection, by 'fieldValue' applied, and with one field read twice
+  EXPECT_TRUE(batchUnqualifiesAsOneAtATime(c, "HasField", 4,
+    "(\\r.(r.x, r.y, r.z, r.x, (fieldValue(r) :: ({x:int,y:double,z:[char]}/\"y\" :: double) => double)))({x=1, y=2.0, z=\"c\"})"
+  ));
+  EXPECT_TRUE(batchUnqualifiesAsOneAtATime(c, "HasField", 4, "(\\p q.p.a + q.b + p.c.d + q.b)({a=1, c={d=2}}, {b=3})"));
+
+  // 'fieldValue' used without being applied, alongside uses that are
+  EXPECT_TRUE(batchUnqualifiesAsOneAtATime(c, "HasField", 3,
+    "(\\r.((fieldValue :: ({x:int,y:double}/\"x\" :: int) => {x:int,y:double} -> int)(r), (fieldValue :: ({x:int,y:double}/\"y\" :: double) => {x:int,y:double} -> double), r.y, r.x))({x=1, y=2.0})"
+  ));
+
+  // fields written, one of them a std::string written from a [char] (which is rewritten to a call that copies it)
+  static BatchedWrites w;
+  c.bind("batchedWrites", &w);
+  const std::string writes = "do { batchedWrites.s <- \"written\"; batchedWrites.n <- 7; batchedWrites.d <- batchedWrites.d + 1.5; }";
+  EXPECT_TRUE(batchUnqualifiesAsOneAtATime(c, "HasField", 3, writes));
+  w.n = 0; w.s = ""; w.d = 1.0;
+  c.compileFn<void()>(writes)();
+  EXPECT_EQ(w.n, 7);
+  EXPECT_EQ(w.s, "written");
+  EXPECT_EQ(w.d, 2.5);
+
+  // constructors selected by 'maybeFromCtor' applied, one selection inside another
+  EXPECT_TRUE(batchUnqualifiesAsOneAtATime(c, "HasCtor", 2,
+    "(\\v.(maybeFromCtor(maybeFromCtor(v) :: (|\"a\"/(()+int)| :: |a:(()+int),b:double|) => (()+(()+int))) :: (|\".f1\"/(()+int)| :: (()+(()+int))) => (()+(()+int))))(|a=just(3)|)"
+  ));
+
+  // five selections deep, each at a constraint of its own, and one that isn't applied
+  const std::string v0 = "|a:(()+int),b:double|", m1 = "(()+(()+int))", m2 = "(()+())";
+  const std::string s1 = "(maybeFromCtor(v) :: (|\"a\"/(()+int)| :: " + v0 + ") => " + m1 + ")";
+  const std::string s2 = "(maybeFromCtor(" + s1 + ") :: (|\".f1\"/(()+int)| :: " + m1 + ") => " + m1 + ")";
+  const std::string s3 = "(maybeFromCtor(" + s2 + ") :: (|\".f0\"/()| :: " + m1 + ") => " + m2 + ")";
+  const std::string s4 = "(maybeFromCtor(" + s3 + ") :: (|\".f1\"/()| :: " + m2 + ") => " + m2 + ")";
+  const std::string s5 = "(maybeFromCtor(" + s4 + ") :: (|\".f0\"/()| :: " + m2 + ") => " + m2 + ")";
+  EXPECT_TRUE(batchUnqualifiesAsOneAtATime(c, "HasCtor", 5, "(\\v." + s5 + ")(|a=just(3)|)"));
+  EXPECT_TRUE(batchUnqualifiesAsOneAtATime(c, "HasCtor", 2,
+    "(\\v.((maybeFromCtor :: (|\"a\"/(()+int)| :: " + v0 + ") => " + v0 + " -> " + m1 + "), " + s2 + "))(|a=just(3)|)"
+  ));
+
+  // and through the compiler, where every way of reading a field and selecting a constructor is resolved
+  EXPECT_EQ(c.compileFn<int()>("(\\r.(fieldValue :: ({x:int,y:int}/\"x\" :: int) => {x:int,y:int} -> int)(r) + (fieldValue(r) :: ({x:int,y:int}/\"y\" :: int) => int) + r.x)({x=1,y=20})")(), 22);
+  EXPECT_EQ(c.compileFn<int()>("match (maybeFromCtor :: (|\"a\"/int| :: |a:int,b:double|) => |a:int,b:double| -> (()+int))(|a=3|) with | |1=x| -> x | _ -> -1")(), 3);
+  EXPECT_EQ(c.compileFn<int()>("match (maybeFromCtor(|b=3.0|) :: (|\"a\"/int| :: |a:int,b:double|) => (()+int)) with | |1=x| -> x | _ -> -1")(), -1);
+  EXPECT_EQ(c.compileFn<int()>("(\\v.match v with | |a=x| -> x | |b=y| -> y.p + y.q | |c=z| -> z.r)(|b={p=1,q=2}| :: |a:int,b:{p:int,q:int},c:{r:int}|)")(), 3);
 }

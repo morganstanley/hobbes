@@ -50,6 +50,8 @@ struct HFEliminator {
   virtual std::string name() const = 0;
 };
 
+struct HFRecordEliminator;
+
 // a 'field verifier' is a scheme for validating types as containing a named field somehow
 class FieldVerifier : public Unqualifier {
 public:
@@ -68,9 +70,19 @@ public:
   PolyTypePtr lookup   (const std::string& vn)                                             const override;
   SymSet      bindings ()                                                                  const override;
   FunDeps     dependencies(const ConstraintPtr&)                                           const override;
+
+  // Most field constraints are for a field of a record type, and all that
+  // unqualifying one of those does is rewrite the uses of 'fieldValue' that
+  // state it and take it out of the types that state it, so those are done
+  // in batches (the other ways to resolve a field are left to go one by one).
+  bool    batchable(const TEnvPtr&, const ConstraintPtr&, Definitions*) const override;
+  ExprPtr unqualifyBatch(const TEnvPtr&, const Constraints&, const ExprPtr&, Definitions*) const override;
 private:
   using HFEliminators = std::vector<std::shared_ptr<HFEliminator>>;
   HFEliminators eliminators;
+
+  // the first of the eliminators, so the first to be asked about any constraint
+  std::shared_ptr<HFRecordEliminator> records;
 };
 
 }
