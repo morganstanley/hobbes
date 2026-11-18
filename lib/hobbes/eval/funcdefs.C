@@ -697,20 +697,48 @@ uint8_t compressLength(size_t len, uint8_t slen[9]) {
   return 9;
 }
 
-uint8_t uncompressLength(const uint8_t* data, size_t* len) {
+uint8_t uncompressLength(const uint8_t* data, size_t size, size_t* len) {
+  *len = 0;
+  if (size == 0) {
+    return 0;
+  }
+
   switch (*data & 3) {
   case 0:
     *len = *data >> 2;
     return 1;
-  case 1:
-    *len = *reinterpret_cast<const uint16_t*>(data) >> 2;
+  case 1: {
+    if (size < sizeof(uint16_t)) {
+      return 0;
+    }
+    uint16_t encoded = 0;
+    memcpy(&encoded, data, sizeof(encoded));
+    *len = encoded >> 2;
     return 2;
-  case 2:
-    *len = *reinterpret_cast<const uint32_t*>(data) >> 2;
+  }
+  case 2: {
+    if (size < sizeof(uint32_t)) {
+      return 0;
+    }
+    uint32_t encoded = 0;
+    memcpy(&encoded, data, sizeof(encoded));
+    *len = encoded >> 2;
     return 4;
-  default:
-    *len = *reinterpret_cast<const uint64_t*>(data+1);
+  }
+  default: {
+    if (size < 1 + sizeof(uint64_t)) {
+      return 0;
+    }
+    uint64_t encoded = 0;
+    memcpy(&encoded, data + 1, sizeof(encoded));
+    if constexpr (sizeof(size_t) < sizeof(uint64_t)) {
+      if (encoded > static_cast<uint64_t>(std::numeric_limits<size_t>::max())) {
+        return 0;
+      }
+    }
+    *len = static_cast<size_t>(encoded);
     return 9;
+  }
   }
 }
 
@@ -736,12 +764,28 @@ const array<uint8_t>* compressBytes(const array<uint8_t>* bs) {
 }
 
 const array<uint8_t>* uncompressBytes(const array<uint8_t>* bs) {
+  static constexpr size_t maxUncompressedLength = 256ULL * 1024ULL * 1024ULL;
+
+  if (bs == nullptr || bs->size == 0) {
+    return makeArray<uint8_t>(0);
+  }
+
+  const size_t sourceLength = bs->size;
   size_t  ulen;
-  uint8_t ulensz = uncompressLength(bs->data, &ulen);
+  uint8_t ulensz = uncompressLength(bs->data, sourceLength, &ulen);
+
+  if (ulensz == 0 || sourceLength < ulensz ||
+      sourceLength > static_cast<size_t>(std::numeric_limits<uLong>::max()) ||
+      ulen > maxUncompressedLength) {
+    return makeArray<uint8_t>(0);
+  }
 
   array<uint8_t>* r = makeArray<uint8_t>(ulen);
-  if (uncompress(r->data, reinterpret_cast<uLongf*>(&r->size), bs->data + ulensz, bs->size - ulensz) != Z_OK) {
+  uLongf outputLength = static_cast<uLongf>(ulen);
+  if (uncompress(r->data, &outputLength, bs->data + ulensz, sourceLength - ulensz) != Z_OK) {
     r->size = 0;
+  } else {
+    r->size = static_cast<size_t>(outputLength);
   }
   return r;
 }
