@@ -5,6 +5,7 @@
 #include <map>
 #include <random>
 #include <string>
+#include <sys/stat.h>
 #include <unistd.h>
 
 using namespace hobbes;
@@ -371,6 +372,61 @@ TEST(Parse, AFailedParseFreesWhatItMade) {
   EXPECT_EQ(varsLeftBy([&]() { e = c().readExpr("f(x, y)"); }, &error), size_t(3));
   EXPECT_TRUE(error.empty());
   EXPECT_EQ(varsLeftBy([&]() { e = ExprPtr(); }, &error), static_cast<size_t>(-3));
+}
+
+// An `import` in a module file is looked for beside the file: the reader notes
+// the file's directory for the grammar to give each import. A file that failed
+// to parse left that note behind, and a module read from text afterwards --
+// which has no directory, and should give its imports none -- had its imports
+// resolved against the directory of the file that had failed.
+static std::string importPath(const ModulePtr& m) {
+  for (const auto& md : m->definitions()) {
+    if (const MImport* imp = is<MImport>(md)) {
+      return imp->path();
+    }
+  }
+  return "<no import>";
+}
+
+TEST(Parse, AModuleFileThatFailsToParseLeavesNoImportPathBehind) {
+  const std::string dir  = "./.hobbes-test-import-path-" + str::from(static_cast<long>(getpid()));
+  const std::string good = dir + "/good.hob";
+  const std::string bad  = dir + "/bad.hob";
+  EXPECT_EQ(mkdir(dir.c_str(), 0700), 0);
+  {
+    std::ofstream g(good.c_str());
+    g << "import beside\nx = 1\n";
+    std::ofstream b(bad.c_str());
+    b << "import beside\nx = (1\n";
+  }
+
+  std::string goodPath, textPath;
+  bool rejected = false;
+  try {
+    // an import in a file is given the file's directory
+    goodPath = importPath(c().readModuleFile(good));
+
+    try {
+      c().readModuleFile(bad);
+    } catch (std::exception&) {
+      rejected = true;
+    }
+
+    // and an import in text is given none, whatever was read before it
+    textPath = importPath(c().readModule("import elsewhere\ny = 2\n"));
+  } catch (...) {
+    unlink(good.c_str());
+    unlink(bad.c_str());
+    rmdir(dir.c_str());
+    throw;
+  }
+  unlink(good.c_str());
+  unlink(bad.c_str());
+  rmdir(dir.c_str());
+
+  EXPECT_EQ(goodPath, dir);
+  EXPECT_TRUE(rejected);
+  EXPECT_EQ(textPath, "");
 }
 
 // the code generated for a `parse { ... }` grammar is quadratic in the length

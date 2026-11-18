@@ -289,13 +289,32 @@ template <typename T>
     T** p;
   };
 
+// The directory of the module file being read, which the grammar gives to
+// each `import` in it so that the import is looked for beside the file.
+//
+// It was set before the parse and cleared after it by plain statements, so a
+// file that didn't parse left its directory behind, and the imports of the
+// next module read from text -- which has no directory -- were resolved
+// against the directory of that unrelated, failed file. It is put back however
+// the read ends, to what it was (a file is read from text's point of view, and
+// from another file's if reads ever nest).
+class ModulePathScope {
+public:
+  explicit ModulePathScope(const std::string& path) : outer(yyModulePath) { yyModulePath = path; }
+  ~ModulePathScope() { yyModulePath = this->outer; }
+
+  ModulePathScope(const ModulePathScope&) = delete;
+  ModulePathScope& operator=(const ModulePathScope&) = delete;
+private:
+  std::string outer;
+};
+
 ModulePtr defReadModuleFile(cc* c, const std::string& file) {
   LOCK_PARSER;
 
   ParsedResult<Module> parsed(&yyParsedModule);
-  yyModulePath = str::rsplit(file, "/").first;
+  ModulePathScope path(str::rsplit(file, "/").first);
   runParserOnFile(c, TPARSEMODULE, file);
-  yyModulePath = "";
 
   ModulePtr m = checkReturn(parsed.take());
   checkNestingDepth(m);
