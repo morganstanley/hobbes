@@ -1,9 +1,11 @@
 #include "test.H"
 #include <hobbes/hobbes.H>
 #include <hobbes/parse/lalr.H>
+#include <fstream>
 #include <map>
 #include <random>
 #include <string>
+#include <unistd.h>
 
 using namespace hobbes;
 
@@ -268,6 +270,107 @@ TEST(Parse, GrammarsWithNullableRulesAreGenerated) {
   EXPECT_EQ(lc.compileFn<int()>("match np(\"ba\") with | |1=x| -> x | _ -> -1")(), 1);
   EXPECT_EQ(lc.compileFn<int()>("match np(\"bb\") with | |1=x| -> x | _ -> -1")(), -1);
   EXPECT_EQ(lc.compileFn<int()>("match np(\"\")   with | |1=x| -> x | _ -> -1")(), -1);
+}
+
+// A parse that fails has to free what it made, in each of the ways it can
+// fail, and in three of them it didn't:
+//
+//  * The parser reduces an expression all the way to its start rule, handing
+//    the tree over, before it reads a token that can't follow the expression,
+//    and the error thrown for that token went past what would have taken the
+//    tree. A string literal of 1MB followed by a digit left 145MB behind each
+//    time it was read (OSS-Fuzz 587020633).
+//  * An exception from the lexer (a numeric literal out of range) unwound
+//    through the parser, whose stack of values is only freed on its own ways
+//    out.
+//  * So did an exception from a grammar action (a match that doesn't compile).
+//
+// The variables of an expression are made through a hook, so they can be
+// counted here as they are made and destroyed.
+namespace {
+size_t liveCountedVars = 0;
+
+struct CountedVar : public Var {
+  CountedVar(const std::string& vn, const LexicalAnnotation& la) : Var(vn, la) { ++liveCountedVars; }
+  ~CountedVar() override { --liveCountedVars; }
+};
+
+Expr* makeCountedVar(const std::string& vn, const LexicalAnnotation& la) { return new CountedVar(vn, la); }
+Expr* makePlainVar(const std::string& vn, const LexicalAnnotation& la) { return new Var(vn, la); }
+
+// counts variables for as long as it lives
+struct CountingVars {
+  CountingVars() { overrideVarCtor(&makeCountedVar); }
+  ~CountingVars() { overrideVarCtor(&makePlainVar); }
+};
+
+// how many more variables are alive after a read than before it, and what the read said if it failed
+template <typename Read>
+size_t varsLeftBy(const Read& read, std::string* error) {
+  const size_t before = liveCountedVars;
+  error->clear();
+  try {
+    read();
+  } catch (std::exception& ex) {
+    *error = ex.what();
+  }
+  return liveCountedVars - before;
+}
+}
+
+TEST(Parse, AFailedParseFreesWhatItMade) {
+  CountingVars counting;
+  std::string error;
+
+  // an expression that is complete, and then a token that can't follow it
+  for (const char* src : { "f(x, y) 2", "[a, b, c] \"s\"", "f(x, y) $" }) {
+    const std::string text = src;
+    EXPECT_EQ(varsLeftBy([&]() { c().readExpr(text); }, &error), size_t(0));
+    EXPECT_TRUE(error.find("expecting end of file") != std::string::npos);
+  }
+  EXPECT_EQ(varsLeftBy([&]() { c().readExprDefn("x = f(y) 2"); }, &error), size_t(0));
+  EXPECT_TRUE(error.find("expecting end of file") != std::string::npos);
+
+  // an expression on the parser's stack when the lexer throws, at the start of an operand and at the end of one
+  for (const char* src : { "f(x, y) + 99999999999999999999999999S", "f(x, y) 99999999999999999999999999S" }) {
+    const std::string text = src;
+    EXPECT_EQ(varsLeftBy([&]() { c().readExpr(text); }, &error), size_t(0));
+    EXPECT_TRUE(error.find("literal 99999999999999999999999999 is not supported") != std::string::npos);
+  }
+
+  // and when a grammar action does: the match is compiled as it is reduced, and its rows don't fit its arguments
+  for (const char* src : { "f(x, y) + (match 1 2 with | 1 -> 1)", "if a then g(b, c) else (match 1 2 with | 1 -> d)" }) {
+    const std::string text = src;
+    EXPECT_EQ(varsLeftBy([&]() { c().readExpr(text); }, &error), size_t(0));
+    EXPECT_TRUE(error.find("Invalid pattern match sequence") != std::string::npos);
+  }
+
+  // the same for a module, read from text and from a file
+  const std::string module = "x = f(y)\ny = g(x, z) )";
+  EXPECT_EQ(varsLeftBy([&]() { c().readModule(module); }, &error), size_t(0));
+  EXPECT_TRUE(error.find("expecting end of file") != std::string::npos);
+
+  EXPECT_EQ(varsLeftBy([&]() { c().readModule("x = f(y)\ny = g(x, z) + 99999999999999999999999999S"); }, &error), size_t(0));
+  EXPECT_TRUE(error.find("is not supported") != std::string::npos);
+  EXPECT_EQ(varsLeftBy([&]() { c().readModule("x = f(y)\ny = g(x, z) + (match 1 2 with | 1 -> 1)"); }, &error), size_t(0));
+  EXPECT_TRUE(error.find("Invalid pattern match sequence") != std::string::npos);
+  EXPECT_EQ(varsLeftBy([&]() { c().readExprDefn("x = f(y) + (match 1 2 with | 1 -> 1)"); }, &error), size_t(0));
+  EXPECT_TRUE(error.find("Invalid pattern match sequence") != std::string::npos);
+
+  const std::string path = "./.hobbes-test-late-syntax-error-" + str::from(static_cast<long>(getpid())) + ".hob";
+  {
+    std::ofstream f(path.c_str());
+    f << module;
+  }
+  EXPECT_EQ(varsLeftBy([&]() { c().readModuleFile(path); }, &error), size_t(0));
+  unlink(path.c_str());
+  EXPECT_TRUE(error.find("expecting end of file") != std::string::npos);
+
+  // one that parses still hands over its tree, and frees it when it is let go
+  ExprPtr e;
+  EXPECT_EQ(varsLeftBy([&]() { e = c().readExpr("f(x, y)"); }, &error), size_t(3));
+  EXPECT_TRUE(error.empty());
+  EXPECT_EQ(varsLeftBy([&]() { e = ExprPtr(); }, &error), static_cast<size_t>(-3));
 }
 
 // the code generated for a `parse { ... }` grammar is quadratic in the length

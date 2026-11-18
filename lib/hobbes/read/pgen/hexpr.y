@@ -1,4 +1,5 @@
 %{
+#include <exception>
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wold-style-cast"
 
@@ -314,6 +315,38 @@ extern PatVarCtorFn patVarCtorFn;
 
 %locations
 %define parse.error verbose
+
+/* An exception must not leave yyparse by unwinding through it. The parser is
+   C: it keeps the values of the symbols it has read on a stack of its own,
+   and frees them (see the %destructor below) only on its own ways out, so an
+   exception thrown from the lexer or from an action left everything on that
+   stack allocated for good -- an out-of-range literal after a string literal
+   of 1MB leaked the million character constants read before it, on every
+   read (found while fixing OSS-Fuzz 587020633).
+
+   So an exception is carried around the parser instead. One from the lexer
+   is caught here, and the parser told to give up (YYerror starts error
+   recovery without a message, and with no error rules in this grammar that
+   empties the stack and returns). One from an action is caught around the
+   actions (pgen.sh puts that in, since bison has no hook for it) and the
+   parse aborted. Either way the reader rethrows it when yyparse has returned.
+
+   The symbols of the rule whose action threw are the exception: bison leaves
+   them alone when an action stops a parse, and so they must be, as there is
+   no telling which of them the action had already taken ownership of. */
+%code {
+std::exception_ptr yyParseThrown;
+
+static int yylexNoThrow() {
+  try {
+    return yylex();
+  } catch (...) {
+    yyParseThrown = std::current_exception();
+    return YYerror;
+  }
+}
+#define yylex yylexNoThrow
+}
 
 /* token data types */
 %union {
