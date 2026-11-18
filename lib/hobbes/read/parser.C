@@ -289,13 +289,29 @@ template <typename T>
     T** p;
   };
 
+// yyModulePath is parser-global state copied into every MImport node.  Scope
+// it to one read so a syntax/open failure cannot make a later in-memory module
+// search the failed file's directory (and potentially load a library there).
+class ModulePathScope {
+public:
+  explicit ModulePathScope(const std::string& path) : previous(yyModulePath) {
+    yyModulePath = path;
+  }
+  ~ModulePathScope() noexcept { yyModulePath.swap(this->previous); }
+
+  ModulePathScope(const ModulePathScope&) = delete;
+  ModulePathScope& operator=(const ModulePathScope&) = delete;
+
+private:
+  std::string previous;
+};
+
 ModulePtr defReadModuleFile(cc* c, const std::string& file) {
   LOCK_PARSER;
 
   ParsedResult<Module> parsed(&yyParsedModule);
-  yyModulePath = str::rsplit(file, "/").first;
+  ModulePathScope modulePath(str::rsplit(file, "/").first);
   runParserOnFile(c, TPARSEMODULE, file);
-  yyModulePath = "";
 
   ModulePtr m = checkReturn(parsed.take());
   checkNestingDepth(m);
@@ -306,6 +322,7 @@ ModulePtr defReadModule(cc* c, const char* text) {
   LOCK_PARSER;
 
   ParsedResult<Module> parsed(&yyParsedModule);
+  ModulePathScope modulePath("");
   runParserOnString(c, TPARSEMODULE, text);
 
   ModulePtr m = checkReturn(parsed.take());
@@ -322,6 +339,7 @@ ExprDefn defReadExprDefn(cc* c, const std::string& expr) {
 
   yyParsedVar  = "";
   ParsedResult<Expr> parsed(&yyParsedExpr);
+  ModulePathScope modulePath("");
   runParserOnString(c, TPARSEDEFN, expr.c_str());
 
   ExprPtr e = checkReturn(parsed.take());
@@ -333,6 +351,7 @@ ExprPtr defReadExpr(cc* c, const std::string& expr) {
   LOCK_PARSER;
 
   ParsedResult<Expr> parsed(&yyParsedExpr);
+  ModulePathScope modulePath("");
   runParserOnString(c, TPARSEEXPR, expr.c_str());
 
   ExprPtr e = checkReturn(parsed.take());

@@ -5,6 +5,7 @@
 #include <map>
 #include <random>
 #include <string>
+#include <sys/stat.h>
 #include <unistd.h>
 
 using namespace hobbes;
@@ -371,6 +372,55 @@ TEST(Parse, AFailedParseFreesWhatItMade) {
   EXPECT_EQ(varsLeftBy([&]() { e = c().readExpr("f(x, y)"); }, &error), size_t(3));
   EXPECT_TRUE(error.empty());
   EXPECT_EQ(varsLeftBy([&]() { e = ExprPtr(); }, &error), static_cast<size_t>(-3));
+}
+
+static std::string firstImportPath(const ModulePtr& module) {
+  for (const auto& definition : module->definitions()) {
+    if (const auto* import = is<MImport>(definition)) {
+      return import->path();
+    }
+  }
+  return "<no import>";
+}
+
+TEST(Parse, failedModuleFileDoesNotPoisonTheNextImportPath) {
+  const std::string dir =
+    "./.hobbes-test-module-path-" + str::from(static_cast<long>(getpid()));
+  const std::string good = dir + "/good.hob";
+  const std::string bad  = dir + "/bad.hob";
+  EXPECT_EQ(mkdir(dir.c_str(), 0700), 0);
+  {
+    std::ofstream goodFile(good.c_str());
+    goodFile << "import beside\nx = 1\n";
+    std::ofstream badFile(bad.c_str());
+    badFile << "import beside\nx = (1\n";
+  }
+
+  std::string filePath;
+  std::string memoryPath;
+  bool rejected = false;
+  try {
+    filePath = firstImportPath(c().readModuleFile(good));
+    try {
+      c().readModuleFile(bad);
+    } catch (const std::exception&) {
+      rejected = true;
+    }
+    memoryPath = firstImportPath(c().readModule("import elsewhere\ny = 2\n"));
+  } catch (...) {
+    unlink(good.c_str());
+    unlink(bad.c_str());
+    rmdir(dir.c_str());
+    throw;
+  }
+
+  unlink(good.c_str());
+  unlink(bad.c_str());
+  rmdir(dir.c_str());
+
+  EXPECT_EQ(filePath, dir);
+  EXPECT_TRUE(rejected);
+  EXPECT_EQ(memoryPath, "");
 }
 
 // the code generated for a `parse { ... }` grammar is quadratic in the length
