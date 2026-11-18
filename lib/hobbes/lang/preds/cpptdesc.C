@@ -7,6 +7,7 @@
 namespace hobbes {
 
 using RDefs = std::vector<std::string>;
+static constexpr size_t maxCPPTypeDescDepth = 512;
 static void describeCPPTypeMin(std::ostream*, const std::string& tname, const MonoTypePtr& ty, const LexicalAnnotation& la, RDefs*);
 
 struct defineCPPTy : public switchType<UnitV> {
@@ -14,8 +15,17 @@ struct defineCPPTy : public switchType<UnitV> {
   std::string       tname;
   LexicalAnnotation la;
   RDefs*            rds;
+  size_t            depth;
 
-  defineCPPTy(std::ostream* out, const std::string& tname, const LexicalAnnotation& la, RDefs* rds) : out(out), tname(tname), la(la), rds(rds) { }
+  defineCPPTy(std::ostream* out, const std::string& tname, const LexicalAnnotation& la, RDefs* rds, size_t depth = 0)
+      : out(out), tname(tname), la(la), rds(rds), depth(depth) {
+    if (depth > maxCPPTypeDescDepth) {
+      throw annotated_error(
+        la,
+        "Can't translate type to C++ type: maximum nesting depth (" +
+          str::from(maxCPPTypeDescDepth) + ") exceeded.");
+    }
+  }
 
   static std::string cppPrimName(const std::string& hprimName) {
     if (hprimName == "byte") {
@@ -40,7 +50,7 @@ struct defineCPPTy : public switchType<UnitV> {
 
     // ok, we have to make an explicit name for this type
     std::ostringstream ss;
-    switchOf(ty, defineCPPTy(&ss, n, this->la, this->rds));
+    switchOf(ty, defineCPPTy(&ss, n, this->la, this->rds, this->depth + 1));
     this->rds->push_back(ss.str());
     return n;
   }
@@ -233,7 +243,14 @@ struct CPPTypeDescUnqualify : public switchExprTyFn {
   MonoTypePtr   ty;
 
   CPPTypeDescUnqualify(const ConstraintPtr& constraint) : constraint(constraint) {
-    this->tname = is<TString>(constraint->arguments()[0])->value();
+    if (constraint->arguments().size() != 2) {
+      throw std::runtime_error("Invalid CPPType constraint: expected two arguments");
+    }
+    const auto* name = is<TString>(constraint->arguments()[0]);
+    if (name == nullptr) {
+      throw std::runtime_error("Invalid CPPType constraint: expected a type string first");
+    }
+    this->tname = name->value();
     this->ty    = constraint->arguments()[1];
   }
 

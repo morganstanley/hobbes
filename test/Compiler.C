@@ -361,3 +361,25 @@ TEST(Compiler, eachCPPTypeSiteUsesItsOwnConstraint) {
   EXPECT_TRUE(d.find("typedef int A;") != std::string::npos);
   EXPECT_TRUE(d.find("typedef double B;") != std::string::npos);
 }
+
+static std::string nestedArrayType(size_t depth) {
+  return std::string(depth, '[') + "int" + std::string(depth, ']');
+}
+
+TEST(Compiler, cppTypeDescriptionHasARecursionBudget) {
+  cc lc;
+
+  // Useful nesting still translates normally.
+  const std::string ordinary = makeStdString(lc.compileFn<const array<char>*()>(
+    "cppType :: (CPPType \"Nested\" " + nestedArrayType(16) + ") => [char]")());
+  EXPECT_TRUE(ordinary.find("Nested") != std::string::npos);
+
+  // The description walk used to recurse until the native stack ran out.
+  // Reject beyond the fixed budget before either it or show(type) gets there.
+  const std::string excessive =
+    "cppType :: (CPPType \"TooDeep\" " + nestedArrayType(600) + ") => [char]";
+  EXPECT_EXCEPTION_MSG(
+    lc.compileFn<const array<char>*()>(excessive),
+    std::exception,
+    "maximum nesting depth");
+}
