@@ -1,5 +1,6 @@
 
 #include <cstdio>
+#include <exception>
 #include <fstream>
 #include <hobbes/lang/expr.H>
 #include <hobbes/lang/module.H>
@@ -29,6 +30,7 @@ extern std::string     yyVexpLexError;
 extern hobbes::Module* yyParsedModule;
 extern std::string     yyParsedVar;
 extern hobbes::Expr*   yyParsedExpr;
+extern std::exception_ptr yyParseThrown;
 extern std::string     yyMatchDiagram;
 extern int             yyInitToken;
 extern std::string     yyModulePath;
@@ -80,34 +82,29 @@ template <typename T>
     }
   }
 
-// KNOWN LEAK ON THE SYNTAX-ERROR PATH (documented, not fixed)
+// WHAT A FAILED PARSE FREES
 //
-// When yyparse hits a syntax error it recovers by discarding the semantic
-// values on its stack. Those values are partly-built AST fragments, and the
-// grammar declares no bison %destructor for them, so whichever ones are not
-// registered with the AutoreleaseSet are orphaned -- notably the bare `new`
-// results from defVarCtor / defPatVarCtor below, and the source-text copy that
-// pushLiteralContext attaches to each fragment's LexicalAnnotation. A
-// successful parse does not leak: the completed tree is returned and owned by
-// the caller's ExprPtr.
+// Grammar actions build tree nodes with a bare `new`, and the action that
+// consumes a node takes ownership of it. A parse that fails leaves nodes that
+// no action consumed, and each of the ways it can leave them has its own
+// cleanup:
 //
-// Measured at ~200 bytes per rejected parse for the tested short input. Because
-// an orphaned fragment's LexicalAnnotation shares ownership of the complete
-// source-text buffer created by pushLiteralContext, the retained bytes can
-// also grow with input length. LeakSanitizer roots it at the yyparse call below,
-// defPatVarCtor, and pushLiteralContext; live-heap bytes are flat across valid
-// parses and climb only on rejected ones. The RSS growth visible while fuzzing
-// is separate AddressSanitizer quarantine/shadow retention, which release
-// builds do not have.
+//  * values still on bison's stack at a syntax error are deleted by the
+//    %destructor that hexpr.y declares for their types;
+//  * strings, lists and the like are registered with the AutoreleaseSet as
+//    they are made, and released between parses (see ParseScope, below);
+//  * the finished tree, handed over by the start rule in a parse that then
+//    fails, is deleted by the reader (see ParsedResult, below).
 //
-// This is left as-is deliberately. In the deployed shape -- an embedded
-// compiler parsing source it is given, or an RPC peer sending expressions --
-// malformed input is the rare case, so a few hundred bytes per rejection is a
-// slow leak that a process restart clears. A real fix means giving the grammar
-// %destructor coverage (or autoreleasing every semantic-value allocation) and
-// touching the checked-in generated parser, which is not worth the risk for
-// the exposure. Revisit if a path ever parses attacker-controlled input in a
-// tight loop without restarting.
+// The first of those only happens on the parser's own ways out, so an
+// exception -- from the lexer (a literal out of range) or from an action (a
+// match or a `parse` block that doesn't compile) -- is not allowed to unwind
+// through yyparse: it is caught, the parse is stopped the parser's way, and
+// runParserOnBuffer rethrows it afterwards (see yyParseThrown in hexpr.y).
+//
+// What is still stranded is the right-hand side of the one rule whose action
+// threw, where that action hadn't yet taken ownership of it: bison leaves
+// those symbols alone, since it can't tell which ones the action took.
 
 // Every expression the parser returns is bounded in how deeply it nests
 // (checkNestingDepth, and the reasoning behind it, in lang/expr.H): the parser
@@ -152,6 +149,7 @@ public:
     yylineno       = 1;
     yycolumn       = 1;
     yyVexpLexError = ""; // a lexer error left by a parse that threw is not this one's
+    yyParseThrown  = nullptr;
     yyErrPos       = YYLTYPE(); // nor is the position of one (see parseErrorPos)
     yylloc         = YYLTYPE{1, 1, 1, 1}; // the lexer sets this per token, and an empty parse has none: its
                                           // end-of-file error would otherwise sit where the previous parse's last token was
@@ -188,6 +186,15 @@ void runParserOnBuffer(cc* c, int initTok, YY_BUFFER_STATE bs) {
   {
     ParseScope scope(c, initTok, bs);
     yyparse();
+  }
+
+  // what the lexer or a grammar action threw, carried around the parser rather
+  // than through it (see yyParseThrown in hexpr.y)
+  if (yyParseThrown) {
+    std::exception_ptr thrown;
+    std::swap(thrown, yyParseThrown);
+    yyVexpLexError = "";
+    std::rethrow_exception(thrown);
   }
 
   if (!yyVexpLexError.empty()) {
@@ -247,15 +254,50 @@ static void checkNestingDepth(const ModulePtr& m) {
   }
 }
 
+// What a parse made is handed over through yyParsedModule and yyParsedExpr,
+// set by the action of the grammar's start rule. That action can run in a
+// parse that fails: where a state has one thing it can do, bison does it
+// without looking at the next token, so an expression followed by something
+// that can't follow it is reduced all the way to the start rule -- its tree
+// handed over -- before the token is read and reported ("unexpected intV,
+// expecting end of file"). The error is thrown from runParserOnBuffer, past
+// the statements that would have taken the tree, and since the pointer is
+// cleared for the next parse, nothing ever freed it: a string literal of 1MB
+// with a digit after its closing quote is a million character constants, and
+// each read of it left 145MB behind (OSS-Fuzz 587020633, where a fuzzer that
+// keeps reading the same input in one process ran out of memory).
+//
+// So what was handed over is owned from the moment the parse is over, however
+// it ended: taken by the reader if it gets that far, and deleted here if not.
+template <typename T>
+  class ParsedResult {
+  public:
+    explicit ParsedResult(T** p) : p(p) { *p = nullptr; }
+    ~ParsedResult() { delete *this->p; *this->p = nullptr; }
+
+    std::shared_ptr<T> take() {
+      // (out of the global first: making a shared_ptr deletes what it was given
+      //  if it can't allocate, and this must not then delete it again)
+      T* x = *this->p;
+      *this->p = nullptr;
+      return std::shared_ptr<T>(x);
+    }
+
+    ParsedResult(const ParsedResult&) = delete;
+    ParsedResult& operator=(const ParsedResult&) = delete;
+  private:
+    T** p;
+  };
+
 ModulePtr defReadModuleFile(cc* c, const std::string& file) {
   LOCK_PARSER;
 
-  yyParsedModule = nullptr;
+  ParsedResult<Module> parsed(&yyParsedModule);
   yyModulePath = str::rsplit(file, "/").first;
   runParserOnFile(c, TPARSEMODULE, file);
   yyModulePath = "";
 
-  ModulePtr m = checkReturn(yyParsedModule != nullptr ? ModulePtr(yyParsedModule) : ModulePtr());
+  ModulePtr m = checkReturn(parsed.take());
   checkNestingDepth(m);
   return m;
 }
@@ -263,10 +305,10 @@ ModulePtr defReadModuleFile(cc* c, const std::string& file) {
 ModulePtr defReadModule(cc* c, const char* text) {
   LOCK_PARSER;
 
-  yyParsedModule = nullptr;
+  ParsedResult<Module> parsed(&yyParsedModule);
   runParserOnString(c, TPARSEMODULE, text);
 
-  ModulePtr m = checkReturn(yyParsedModule != nullptr ? ModulePtr(yyParsedModule) : ModulePtr());
+  ModulePtr m = checkReturn(parsed.take());
   checkNestingDepth(m);
   return m;
 }
@@ -279,10 +321,10 @@ ExprDefn defReadExprDefn(cc* c, const std::string& expr) {
   LOCK_PARSER;
 
   yyParsedVar  = "";
-  yyParsedExpr = nullptr;
+  ParsedResult<Expr> parsed(&yyParsedExpr);
   runParserOnString(c, TPARSEDEFN, expr.c_str());
 
-  ExprPtr e = checkReturn(yyParsedExpr != nullptr ? ExprPtr(yyParsedExpr) : ExprPtr());
+  ExprPtr e = checkReturn(parsed.take());
   checkNestingDepth(e);
   return ExprDefn(yyParsedVar, e);
 }
@@ -290,10 +332,10 @@ ExprDefn defReadExprDefn(cc* c, const std::string& expr) {
 ExprPtr defReadExpr(cc* c, const std::string& expr) {
   LOCK_PARSER;
 
-  yyParsedExpr = nullptr;
+  ParsedResult<Expr> parsed(&yyParsedExpr);
   runParserOnString(c, TPARSEEXPR, expr.c_str());
 
-  ExprPtr e = checkReturn(yyParsedExpr != nullptr ? ExprPtr(yyParsedExpr) : ExprPtr());
+  ExprPtr e = checkReturn(parsed.take());
   checkNestingDepth(e);
   return e;
 }
