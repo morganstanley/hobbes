@@ -647,6 +647,30 @@ template <typename T>
     return x;
   }
 
+// BlockCodec array lengths come directly from the peer and become both an
+// allocation size and the bound of readFromIntoArr.  Read this field without
+// readOrMark's zero-fill fallback: a short header must stop the decode rather
+// than turn into a plausible empty array.  The element-count cap also keeps a
+// peer from naming an effectively unbounded allocation before sending data.
+long fdReadBlockLen(int fd) {
+  static constexpr long maxBlockCodecArrayLength = 1L << 28;
+
+  long n = 0;
+  try {
+    fdread(fd, reinterpret_cast<char*>(&n), sizeof(n));
+  } catch (const std::exception&) {
+    markBadFD(fd);
+    throw std::runtime_error("BlockCodec array length is truncated");
+  }
+
+  if (n < 0 || n > maxBlockCodecArrayLength) {
+    markBadFD(fd);
+    throw std::runtime_error(
+      "BlockCodec array length is out of range: " + str::from(n));
+  }
+  return n;
+}
+
 void writeOrMark(int fd, const char* b, size_t sz) {
   try {
     fdwrite(fd, b, sz);
@@ -842,6 +866,7 @@ void initStdFuncDefs(cc& ctx) {
   ctx.bind("fdWriteInt",    &fdWrite<int>);
   ctx.bind("fdReadLong",    &fdRead<long>);
   ctx.bind("fdWriteLong",   &fdWrite<long>);
+  ctx.bind("fdReadBlockLen", &fdReadBlockLen);
   ctx.bind("fdReadInt128",  &fdRead<int128_t>);
   ctx.bind("fdWriteInt128", &fdWrite<int128_t>);
   ctx.bind("fdReadFloat",   &fdRead<float>);
