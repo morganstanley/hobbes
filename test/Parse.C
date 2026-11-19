@@ -109,10 +109,45 @@ TEST(Parse, DeepExpressionsCompiledMidParseAreRejected) {
   EXPECT_TRUE(rejectedForNesting("match 1 with | _ -> " + chain));
   EXPECT_TRUE(rejectedForNesting("let (a, b) = p in " + chain));
   EXPECT_TRUE(rejectedForNesting("[" + chain + " | x <- xs]"));
+  EXPECT_TRUE(rejectedForNesting("[1 | x <- " + chain + "]"));        // the source is copied mid-parse too
   EXPECT_TRUE(rejectedForNesting("parse { S := x:\"a\" { " + chain + " } }"));
+
+  // the action for a parenthesised expression copies it, which also recurs
+  // once per level before the parser's bound sees the tree
+  EXPECT_TRUE(c().readExpr("(N<N)") != nullptr);
+  EXPECT_TRUE(rejectedForNesting("(" + chain + ")"));
 
   // and the process is still usable afterwards
   EXPECT_EQ(show(c().readExpr("1+2")), "+(1, 2)");
+  EXPECT_EQ(c().compileFn<int()>("(\\x.x+1)(1)")(), 2);
+}
+
+TEST(Parse, PatternsBindingTooManyNamesAreRejected) {
+  // the match compiler's result nests one 'let' per name a pattern binds, so
+  // a shallow pattern can compile to a deep expression: a tuple pattern of
+  // 80,000 variables is 80,000 nested lets, and the grammar action copied
+  // that (one frame per level) before the parser's nesting bound saw it --
+  // a stack overflow. The result is now bounded as it leaves the match
+  // compiler; an unfixed build crashes here rather than failing the test.
+  auto tuplePattern = [](size_t n) {
+    std::string vals, vars;
+    for (size_t i = 0; i < n; ++i) {
+      vals += (i == 0 ? "" : ",") + std::string("1");
+      vars += (i == 0 ? "x" : ",x") + str::from(i);
+    }
+    return std::make_pair(vals, vars);
+  };
+
+  // a pattern binding a few hundred names still compiles and runs
+  auto small = tuplePattern(300);
+  EXPECT_EQ(c().compileFn<int()>("match (" + small.first + ") with | (" + small.second + ") -> x299")(), 1);
+
+  auto wide = tuplePattern(80000);
+  EXPECT_TRUE(rejectedForNesting("match (" + wide.first + ") with | (" + wide.second + ") -> 1"));
+  EXPECT_TRUE(rejectedForNesting("\\(" + wide.second + ").1")); // not copied mid-parse, so this one was already rejected
+  EXPECT_TRUE(rejectedForNesting("let (" + wide.second + ") = p in 1"));
+
+  // and the process is still usable afterwards
   EXPECT_EQ(c().compileFn<int()>("(\\x.x+1)(1)")(), 2);
 }
 
