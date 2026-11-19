@@ -1,0 +1,34 @@
+name: Devcontainer
+
+on:
+  push:
+    paths:
+      - '.devcontainer/**'
+      - '.github/scripts/check-devcontainer-security.sh'
+      - '.github/workflows/devcontainer.yml'
+      - 'README.md'
+  pull_request:
+    paths:
+      - '.devcontainer/**'
+      - '.github/scripts/check-devcontainer-security.sh'
+      - '.github/workflows/devcontainer.yml'
+      - 'README.md'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Check trust boundaries
+        run: .github/scripts/check-devcontainer-security.sh
+      - name: Build image
+        run: docker build --progress=plain -t hobbes-devcontainer -f .devcontainer/Dockerfile .
+      - name: Check Nix as the container user
+        run: |
+          docker run --rm --user vscode --env HOME=/home/vscode \
+            hobbes-devcontainer nix --version
+          docker run --rm --user vscode --env HOME=/home/vscode \
+            hobbes-devcontainer nix-store --verify

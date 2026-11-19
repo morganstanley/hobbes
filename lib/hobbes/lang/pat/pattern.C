@@ -657,7 +657,17 @@ ExprPtr compileMatch(cc* c, const Exprs& es, const PatternRows& ps, const Lexica
   assignNames(vns, const_cast<PatternRows&>(ps), &mappedVs);
 
   // produce a match expression from the DFA induced by these patterns
-  return inLetExp(vns, es, liftDFAExpr(c, ps, rootLA), rootLA);
+  ExprPtr r = inLetExp(vns, es, liftDFAExpr(c, ps, rootLA), rootLA);
+
+  // what comes out can nest far more deeply than what went in: each variable a
+  // pattern binds is a 'let' around the rest of the row's result, so a tuple
+  // pattern binding 80,000 names is a chain of 80,000 nested lets. The grammar
+  // actions that run this copy the result (clone(), one frame per level) before
+  // the parser's own bound sees it, and that overflowed the stack. So the bound
+  // is applied to the result too, before it is handed back; a result past it is
+  // released iteratively as the exception unwinds.
+  checkNestingDepth(r);
+  return r;
 }
 
 ExprPtr compileMatchTest(cc* c, const ExprPtr& e, const PatternPtr& p, const LexicalAnnotation& rootLA) {
@@ -801,16 +811,21 @@ ExprPtr desugarComprehension(cc* c, const ExprPtr& e, const CSelection& cs, cons
   }
 }
 
+// the grammar action runs this mid-parse and takes a copy of the result, which
+// recurs once per level, so the result is bounded first: each selection's
+// source ('xs' in 'x <- xs') goes into it as written, without passing through
+// the match compiler's bound, and '[1 | x <- 1+1+...]' with 50,000 terms
+// overflowed the stack in that copy
 Expr* desugarComprehension(cc* c, const ExprPtr& ex, const CSelections& cs, const LexicalAnnotation& la) {
-  if (cs.empty()) {
-    return ex->clone();
-  } else {
-    ExprPtr e = desugarComprehension(c, ex, *cs[cs.size()-1], la);
+  ExprPtr e = ex;
+  if (!cs.empty()) {
+    e = desugarComprehension(c, ex, *cs[cs.size()-1], la);
     for (size_t i = cs.size()-1; i > 0; --i) {
       e = fncall(var("mflatten", la), list(desugarComprehension(c, e, *cs[i-1], la)), la);
     }
-    return e->clone();
   }
+  checkNestingDepth(e);
+  return e->clone();
 }
 
 }
