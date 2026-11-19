@@ -41,6 +41,20 @@ $ make install
 
 Depending on where you've installed LLVM, this might not work until you give cmake the path to LLVM's cmake modules.  In particular, you want the path to LLVM's `LLVMConfig.cmake` file.  If you set the environment variable `LLVM_DIR` to point to that directory, then the previous steps should complete successfully.
 
+### Development container
+
+The development container includes Nix, but opening a terminal deliberately
+does not evaluate the checkout's flake or enter its development shell.  After
+reviewing the checked-out branch, opt in explicitly from the repository root:
+
+```
+$ nix develop --profile .devcontainer/.profile
+```
+
+Run the command again after changing to a branch whose Nix definition you
+trust.  Keeping this step explicit prevents a checkout from running its
+`shellHook` merely because a login shell was opened.
+
 The build process will produce a static library, `libhobbes.a`, which can be linked into a C++ executable (if you want to use hobbes in a .so instead, the build produces a different static library to use, `libhobbes-pic.a`).
 
 In addition, the build process will produce two utility programs, `hi` and `hog`.  The `hi` program is a basic interactive interpreter for hobbes expressions and the `hog` program will efficiently record structured data produced by applications into data files (these files can be loaded and queried at the same time by `hi`).  The source code for these programs can be informative as well, because they demonstrate many different aspects of the hobbes API.

@@ -55,9 +55,24 @@ generate() {
   # the initial array, but GCC cannot see that and warns (-Wfree-nonheap-object,
   # https://gcc.gnu.org/bugzilla/show_bug.cgi?id=98753) -- which -Werror turns
   # into a failed build. Spell the condition out where GCC can see it. This is
-  # the one hand edit the checked-in parser carries.
+  # one of the two edits the checked-in parser carries (the other is below).
   sed -i 's|^    YYSTACK_FREE (yyss);$|    YYSTACK_FREE (yyss == yyssa ? nullptr : yyss);|' hexpr.parse.C
   sed -i 's|^#ifndef yyoverflow$|#ifndef yyoverflow\n // false positive https://gcc.gnu.org/bugzilla/show_bug.cgi?id=98753|' hexpr.parse.C
+
+  # an action that throws must not unwind through the parser, which would
+  # strand everything on its stack (see the note on yyParseThrown in hexpr.y),
+  # and bison has no hook to put around the actions. So the switch that holds
+  # them is wrapped here: the exception is kept for the reader to rethrow, and
+  # the parse aborted, which empties the stack on the way out.
+  sed -i 's|^  switch (yyn)$|  try {\n  switch (yyn)|' hexpr.parse.C
+  sed -i '/^      default: break;$/{n;s|^    }$|    }\n  } catch (...) {\n    yyParseThrown = std::current_exception();\n    YYABORT;\n  }|}' hexpr.parse.C
+  # (checked where the edits go, not anywhere in the file: the lexer wrapper
+  # in hexpr.y has a try and a catch of its own that would pass for them)
+  grep -B1 '^  switch (yyn)$' hexpr.parse.C | grep -q '^  try {$' &&
+  grep -A2 '^      default: break;$' hexpr.parse.C | grep -q '^  } catch (...) {$' || {
+    echo "pgen.sh: could not wrap the parser's actions in a try block (has bison's output changed?)" >&2
+    exit 1
+  }
 
   # obey internal convention for division of source and header files
   mv hexpr.parse.H ../../../../include/hobbes/read/pgen/
