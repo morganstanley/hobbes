@@ -7,10 +7,11 @@ namespace {
 struct Options {
   int timeout = -1;
   bool valid = false;
+  bool writeStderr = false;
 };
 
 Options getOptions(int argc, char **argv) {
-  if (argc != 2) {
+  if (argc != 2 && argc != 3) {
     return {};
   }
   std::size_t pos = 0;
@@ -19,7 +20,11 @@ Options getOptions(int argc, char **argv) {
   if (pos != g.size() || t <= 0) {
     return {};
   }
-  return {.timeout = t, .valid = true};
+  const bool writeStderr = argc == 3 && std::string(argv[2]) == "stderr";
+  if (argc == 3 && !writeStderr) {
+    return {};
+  }
+  return {.timeout = t, .valid = true, .writeStderr = writeStderr};
 }
 
 extern "C" [[noreturn]] void exitApp(int /* sig */) {
@@ -35,6 +40,13 @@ int main(int argc, char **argv) {
   }
 
   std::signal(SIGTERM, exitApp);
+
+  if (o.writeStderr) {
+    static const char diagnostic[] = "mock child diagnostic\n";
+    if (write(STDERR_FILENO, diagnostic, sizeof(diagnostic) - 1) == -1) {
+      return EXIT_FAILURE;
+    }
+  }
 
   for (int i = 0; i < o.timeout; ++i) {
     sleep(1);

@@ -128,7 +128,10 @@ void spawn(const std::string& cmd, proc* p, const FailToKillCallback& fn) {
   
       close(c2p[0]);
       dup2(c2p[1], STDOUT_FILENO);
-      dup2(c2p[1], STDERR_FILENO);
+      // stderr is diagnostic output, not machine-REPL protocol.  Merging it
+      // into c2p let any child or library warning become raw bytes that the
+      // parent parsed as result codes, lengths, and encoded types.  Inherit
+      // the supervisor's stderr and reserve c2p exclusively for RPC bytes.
       close(c2p[1]);
   
       execProcess(cmd);
@@ -149,7 +152,7 @@ void spawn(const std::string& cmd, proc* p, const FailToKillCallback& fn) {
       int fail = 0;
       ssize_t rc = write(STDOUT_FILENO, &fail, sizeof(fail));
       static const char msg[] = "Terminating process after exec failure.\n";
-      rc = write(STDERR_FILENO, msg, sizeof(msg) - 1);
+      rc = write(STDOUT_FILENO, msg, sizeof(msg) - 1);
       static_cast<void>(rc); // nothing useful to do if even this fails
       _exit(1);
     } else {

@@ -13,7 +13,7 @@ bool exists(const std::string &filename) {
   return stat(filename.c_str(), &sb) == 0;
 }
 
-void startChild(int t, hobbes::proc &p) {
+void startChild(int t, hobbes::proc &p, const std::string& extraArg = "") {
   execPath([&](const std::string &ep) {
     const auto execName = [&] {
       auto name = ep + "/mock-proc";
@@ -23,7 +23,7 @@ void startChild(int t, hobbes::proc &p) {
       return ep + "/mock-proc-g";
     }();
 
-    spawn(execName + " " + std::to_string(t), &p);
+    spawn(execName + " " + std::to_string(t) + extraArg, &p);
   });
 }
 
@@ -52,4 +52,13 @@ TEST(Spawn, Normal) {
   hobbes::proc p{};
   unsetenv(KEY);
   startChild(2, p); // should not throw any exceptions
+}
+
+TEST(Spawn, ChildStderrIsNotPartOfTheRPCProtocol) {
+  hobbes::proc p{};
+  unsetenv(KEY);
+
+  // Before stderr was separated, the parent's four-byte init read consumed
+  // "mock" as the response word and rejected an otherwise healthy child.
+  startChild(1, p, " stderr");
 }
