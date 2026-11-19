@@ -81,6 +81,10 @@ Expr* pickNestedExp(Exprs* exprs, const LexicalAnnotation& la) {
   if (exprs->empty()) {
     return new Unit(la);
   } else if (exprs->size() == 1) {
+    // copying recurs once per level, and runs before the parser's nesting bound
+    // sees the tree: '(1+1+...)' with 200,000 terms overflowed the stack here
+    // although the same chain without the parentheses is rejected cleanly
+    checkNestingDepth((*exprs)[0]);
     return (*exprs)[0]->clone();
   } else {
     MkRecord::FieldDefs fds;
