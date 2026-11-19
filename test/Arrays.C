@@ -1,12 +1,51 @@
 #include <limits>
+#include <cstdint>
+#include <cstring>
+#include <utility>
 
 #include <hobbes/hobbes.H>
 #include "test.H"
 
 namespace hobbes { region& threadRegion(); }
+namespace hobbes {
+const array<uint8_t>* compressBytes(const array<uint8_t>*);
+const array<uint8_t>* uncompressBytes(const array<uint8_t>*);
+}
 
 using namespace hobbes;
 static cc& c() { static cc x; return x; }
+
+TEST(Arrays, DecompressionValidatesLengthsBeforeAllocation) {
+  array<uint8_t>* input = makeArray<uint8_t>(4);
+  input->data[0] = 1;
+  input->data[1] = 2;
+  input->data[2] = 3;
+  input->data[3] = 4;
+  const array<uint8_t>* roundTrip = uncompressBytes(compressBytes(input));
+  EXPECT_EQ(roundTrip->size, input->size);
+  EXPECT_TRUE(std::memcmp(roundTrip->data, input->data, input->size) == 0);
+
+  // Each tag names a different header width.  None may read beyond a short
+  // source array while trying to discover its claimed output length.
+  for (const std::pair<long, uint8_t>& truncated : {
+         std::pair<long, uint8_t>(1, 1),
+         std::pair<long, uint8_t>(3, 2),
+         std::pair<long, uint8_t>(8, 3)}) {
+    array<uint8_t>* data = makeArray<uint8_t>(truncated.first);
+    std::memset(data->data, 0, data->size);
+    data->data[0] = truncated.second;
+    EXPECT_EQ(uncompressBytes(data)->size, size_t(0));
+  }
+  EXPECT_EQ(uncompressBytes(makeArray<uint8_t>(0))->size, size_t(0));
+
+  // The nine-byte form can express all of uint64_t.  Refuse an output above
+  // the allocation cap before zlib sees it or memory is reserved for it.
+  array<uint8_t>* huge = makeArray<uint8_t>(9);
+  huge->data[0] = 3;
+  const uint64_t overCap = 256ULL * 1024ULL * 1024ULL + 1;
+  std::memcpy(huge->data + 1, &overCap, sizeof(overCap));
+  EXPECT_EQ(uncompressBytes(huge)->size, size_t(0));
+}
 
 TEST(Arrays, Strings) {
   EXPECT_TRUE ((c().compileFn<bool()>("\"foo\" <= \"foo\"")()));
