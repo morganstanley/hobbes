@@ -7,12 +7,13 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 find_package(ZLIB REQUIRED)
 include_directories(${ZLIB_INCLUDE_DIRS})
 
+# readline, and the curses library it draws the terminal with, are for hi's
+# prompt and nothing else: they are found here and linked into hi alone (below),
+# so that a program that links libhobbes doesn't have to have either
 find_package(Readline REQUIRED)
-include_directories(${Readline_INCLUDE_DIRS})
 
 set(CURSES_NEED_NCURSES TRUE)
 find_package(Curses REQUIRED)
-include_directories(${CURSES_INCLUDE_DIRS})
 
 # Prefer LLVM 12 when several LLVM installs are discoverable. LLVM's package
 # version files only accept an exact major.minor match, so this probe fails on
@@ -69,14 +70,39 @@ else()
   execute_process(COMMAND ${llvm-config} --ldflags
                   OUTPUT_VARIABLE llvm_ldflags
                   OUTPUT_STRIP_TRAILING_WHITESPACE)
-  execute_process(COMMAND ${llvm-config} --system-libs --ignore-libllvm --ignore-libxml2
-                  OUTPUT_VARIABLE sys_libs
-                  OUTPUT_STRIP_TRAILING_WHITESPACE)
+  # The system libraries that LLVM's static libraries themselves need: the
+  # terminal library, where LLVM was built to use terminfo, is the one that
+  # matters. This used to be asked with an option (--ignore-libxml2) that
+  # llvm-config doesn't have, so it failed and answered nothing, and the build
+  # only linked because libhobbes linked curses for another reason.
+  #
+  # Three of the libraries it names are left out: libxml2, which none of the
+  # components here use (and so needn't be installed); and zlib and zstd,
+  # which are found and linked as packages, below and above. So is anything
+  # that isn't a library name at all (an LLVM built by a package manager can
+  # answer with that package manager's CMake target names).
+  execute_process(COMMAND ${llvm-config} --system-libs --link-static ipo ${llvm_arch_lib} ${jit_lib}
+                  OUTPUT_VARIABLE llvm_sys_libs
+                  OUTPUT_STRIP_TRAILING_WHITESPACE
+                  COMMAND_ERROR_IS_FATAL ANY)
+  separate_arguments(llvm_sys_libs)
+  set(sys_libs "")
+  foreach(llvm_sys_lib ${llvm_sys_libs})
+    if(NOT llvm_sys_lib MATCHES "::" AND NOT llvm_sys_lib MATCHES "^-l(xml2|z|zstd)$")
+      list(APPEND sys_libs ${llvm_sys_lib})
+    endif()
+  endforeach()
 endif()
 
+# a zstd package may provide the shared library, the static one or both (and a
+# package manager's may name its target for neither), so link the one that is there
 find_package(zstd QUIET)
-if(zstd_FOUND)
+if(TARGET zstd::libzstd_shared)
   set(sys_libs ${sys_libs} zstd::libzstd_shared)
+elseif(TARGET zstd::libzstd_static)
+  set(sys_libs ${sys_libs} zstd::libzstd_static)
+elseif(TARGET zstd::libzstd)
+  set(sys_libs ${sys_libs} zstd::libzstd)
 else()
   find_library(ZSTD_LIBRARY NAMES zstd)
   if(ZSTD_LIBRARY)
@@ -186,14 +212,15 @@ include_directories(${generated_include_dir})
 
 add_library(hobbes STATIC ${lib_files})
 add_dependencies(hobbes bootdata)
-target_link_libraries(hobbes PUBLIC ${llvm_ldflags} ${llvm_libs} ${ZLIB_LIBRARIES} ${CURSES_LIBRARIES} ${sys_libs})
+target_link_libraries(hobbes PUBLIC ${llvm_ldflags} ${llvm_libs} ${ZLIB_LIBRARIES} ${sys_libs})
 add_library(hobbes-pic STATIC ${lib_files})
-target_link_libraries(hobbes-pic PUBLIC ${llvm_ldflags} ${llvm_libs} ${ZLIB_LIBRARIES} ${CURSES_LIBRARIES} ${sys_libs})
+target_link_libraries(hobbes-pic PUBLIC ${llvm_ldflags} ${llvm_libs} ${ZLIB_LIBRARIES} ${sys_libs})
 add_dependencies(hobbes-pic bootdata)
 set_property(TARGET hobbes-pic PROPERTY POSITION_INDEPENDENT_CODE TRUE)
 
 add_executable(hi ${hi_files})
-target_link_libraries(hi PUBLIC "-rdynamic" PRIVATE hobbes ${Readline_LIBRARIES})
+target_include_directories(hi PRIVATE ${Readline_INCLUDE_DIRS} ${CURSES_INCLUDE_DIRS})
+target_link_libraries(hi PUBLIC "-rdynamic" PRIVATE hobbes ${Readline_LIBRARIES} ${CURSES_LIBRARIES})
 add_executable(hog ${hog_files})
 add_dependencies(hog bootdata)
 target_link_libraries(hog PRIVATE hobbes)
