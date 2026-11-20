@@ -1,0 +1,58 @@
+name: "Conan package"
+
+# conanfile.py builds hobbes through CMakeLists.txt against dependencies from
+# ConanCenter, and test_package/ compiles and runs a program against the
+# result. Nothing else builds hobbes that way, so a change to the build that
+# the recipe depends on (how LLVM, readline or zstd are found and linked) would
+# otherwise only be noticed by whoever next tried to make the package.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'conanfile.py'
+      - 'test_package/**'
+      - 'CMakeLists.txt'
+      - 'cmake/**'
+      - '.github/workflows/conan.yml'
+  pull_request:
+    paths:
+      - 'conanfile.py'
+      - 'test_package/**'
+      - 'CMakeLists.txt'
+      - 'cmake/**'
+      - '.github/workflows/conan.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  create:
+    # gcc 13 here is a configuration ConanCenter has LLVM prebuilt for. Only
+    # hobbes itself is built: if the LLVM binary stops matching, `conan create`
+    # stops with "missing prebuilt package" rather than building LLVM for hours.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Install Conan
+        run: pipx install conan==2.34.0
+      - name: Make a profile
+        run: |
+          conan profile detect
+          # the prebuilt LLVM was built against zlib 1.3 (see "Conan" in README.md)
+          printf '\n[replace_requires]\nzlib/*: zlib/1.3.1\n' >> "$(conan profile path default)"
+          conan profile show
+      - name: Build the package and test it
+        # readline is built here too (a minute's work): the recipe asks for it
+        # with ncurses as its terminal library, which ConanCenter has no
+        # prebuilt package of
+        # (naming what to build replaces the default, which is hobbes alone,
+        # so hobbes is named as well)
+        run: conan create . --version=0.0.0-ci --build="readline/*" --build="hobbes/*"
+      - name: Build the package against the machine's LLVM and readline, and test it
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends llvm-18-dev libreadline-dev libncurses-dev libzstd-dev
+          conan create . --version=0.0.0-ci-system --build=missing \
+            -o "hobbes/*:with_system_llvm=True" -o "hobbes/*:with_system_readline=True" \
+            -c 'tools.cmake.cmaketoolchain:extra_variables={"LLVM_DIR": "/usr/lib/llvm-18/lib/cmake/llvm"}'

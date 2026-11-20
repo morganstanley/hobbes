@@ -30,3 +30,7 @@ cmake_install.cmake
 # and the headers it generates there (see embed_boot_scripts in CMakeLists.txt)
 /generated/
 test_report.json
+
+# what `conan create` and `conan install` leave behind
+/test_package/build/
+CMakeUserPresets.json
