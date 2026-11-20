@@ -1,7 +1,9 @@
-# Fuzz the harnesses in fuzz/ on pull requests that touch code they cover.
-# ClusterFuzzLite reuses the OSS-Fuzz build (fuzz/oss-fuzz-build.sh) and needs
-# no registration with any service, so it covers changes whether or not the
-# OSS-Fuzz submission is accepted. See fuzz/README.md.
+# Build the harnesses in fuzz/ the way OSS-Fuzz does, and run them briefly, on
+# pull requests that touch code they cover. ClusterFuzzLite reuses the OSS-Fuzz
+# build (fuzz/oss-fuzz-build.sh), so this is the check that a change has not
+# broken that build or made a harness fail on its seeds. It is not where
+# findings are expected to come from: that is OSS-Fuzz, which runs the same
+# harnesses continuously with a corpus it keeps. See fuzz/README.md.
 name: "ClusterFuzzLite"
 on:
   pull_request:
@@ -20,8 +22,24 @@ jobs:
   fuzz:
     runs-on: ubuntu-latest
     # The image installs LLVM and the build links it statically into each
-    # harness, so this is a long job by CI standards.
-    timeout-minutes: 120
+    # harness, so this is a long job by CI standards: about five minutes to
+    # build and five to fuzz.
+    timeout-minutes: 45
+    env:
+      # ClusterFuzzLite can keep a corpus and a coverage report between runs,
+      # as artifacts of this repository, and by default it looks for them: the
+      # coverage report when it builds (to drop the harnesses a change can't
+      # reach) and each harness's corpus before it fuzzes. Nothing here ever
+      # stores either, so each lookup pages through every artifact the
+      # repository has -- some twelve thousand, mostly build logs -- to find
+      # nothing. That was most of this job's time, and when the lookups ran
+      # into the API's rate limit the job hung until it was cancelled.
+      #
+      # So it is told there is no stored state. Every harness is kept and each
+      # starts from its seed corpus, which is what was happening anyway. With
+      # that, ClusterFuzzLite no longer uploads a crashing input itself, so
+      # the last step below does.
+      NO_CLUSTERFUZZ_DEPLOYMENT: 'true'
     concurrency:
       group: ${{ github.workflow }}-${{ matrix.sanitizer }}-${{ github.ref }}
       cancel-in-progress: true
@@ -46,3 +64,11 @@ jobs:
           fuzz-seconds: 300
           mode: 'code-change'
           sanitizer: ${{ matrix.sanitizer }}
+      - name: Upload crash reproducers
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: fuzz-crashes-${{ matrix.sanitizer }}
+          path: out/artifacts
+          if-no-files-found: ignore
+          retention-days: 14
