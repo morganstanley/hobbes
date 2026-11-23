@@ -40,7 +40,11 @@ inline bool isValidStatementName(const std::string& n) {
 // provide a hook to users who want to see what output file gets decided and why
 class SessionGroup;
 SessionGroup* makeSessionGroup(bool consolidate = false, hobbes::StoredSeries::StorageMode sm = hobbes::StoredSeries::Raw);
+void destroySessionGroup(SessionGroup*);
 
+// In a non-consolidated group, the returned function owns its storage session;
+// releasing the function closes the writer and its mappings. Consolidated
+// groups retain and reuse their matching sessions.
 using ProcessTxnF = std::function<void (hobbes::storage::Transaction &)>;
 ProcessTxnF appendStorageSession(SessionGroup*, const std::string& dirPfx, hobbes::storage::PipeQOS qos, hobbes::storage::CommitMethod cm, const hobbes::storage::statements& stmts);
 

@@ -1,8 +1,9 @@
 #include <iostream>
 #include <map>
+#include <memory>
+#include <mutex>
 #include <set>
 #include <thread>
-#include <mutex>
 #include <glob.h>
 
 #include <hobbes/util/perf.H>
@@ -68,8 +69,22 @@ std::string freshTempFile(const std::string& dirPfx) {
 }
 
 struct Session {
+  Session() : db(nullptr), ownsDB(false) {}
+
+  ~Session() {
+    for (auto* stream : this->streams) {
+      delete stream;
+    }
+    if (this->ownsDB) {
+      delete this->db;
+    }
+  }
+
   // the file being written into
   hobbes::writer* db;
+  // FileAllocMethod owns db until ready() succeeds. After that, the session
+  // owns it and must close it when the connection/session is released.
+  bool ownsDB;
 
   // sections of the file for structured data
   using StoredSeriess = std::vector<hobbes::StoredSeries *>;
@@ -319,7 +334,7 @@ static void checkStatements(const storage::statements& stmts) {
 
 // initialize a storage session with a caller-defined file allocation method
 template <typename FileAllocMethod>
-ProcessTxnF initStorageSession(Session* s, const std::string& dirPfx, storage::PipeQOS, storage::CommitMethod cm, const storage::statements& stmts, hobbes::StoredSeries::StorageMode sm) {
+ProcessTxnF initStorageSession(const std::shared_ptr<Session>& s, const std::string& dirPfx, storage::PipeQOS, storage::CommitMethod cm, const storage::statements& stmts, hobbes::StoredSeries::StorageMode sm) {
   static std::mutex initMtx; // make sure that only one thread initializes at a time
   std::lock_guard<std::mutex> lk(initMtx);
 
@@ -385,6 +400,7 @@ ProcessTxnF initStorageSession(Session* s, const std::string& dirPfx, storage::P
 
   // now our file is fully prepared, make note of the final filename
   std::string fpath = sfileTxn.ready();
+  s->ownsDB = true;
   out << "finished preparing statements, writing data to '" << fpath << "'" << std::endl;
 
   // and now we can write transactions to this prepared state
@@ -464,30 +480,32 @@ public:
 
   ProcessTxnF appendStorageSession(const std::string& dirPfx, hobbes::storage::PipeQOS qos, hobbes::storage::CommitMethod cm, const hobbes::storage::statements& stmts) override {
     std::lock_guard<std::mutex> slock(this->m);
-    for (auto* cs : this->sessions) {
+    for (const auto& cs : this->sessions) {
       if (dirPfx == cs->dirPfx && cm == cs->cm && sameLogSpace(stmts, cs->stmts)) {
-        return csfn(cs);
+        return csfn(cs.get());
       }
     }
 
-    auto* cs = new CSession;
+    auto cs = std::make_unique<CSession>();
     cs->dirPfx = dirPfx;
     cs->cm     = cm;
     cs->stmts  = stmts;
-    cs->sproc  = initStorageSession<AppendFirstMatchingFile>(&cs->s, dirPfx, qos, cm, stmts, this->sm);
-    this->sessions.push_back(cs);
-    return csfn(cs);
+    cs->s      = std::make_shared<Session>();
+    cs->sproc  = initStorageSession<AppendFirstMatchingFile>(cs->s, dirPfx, qos, cm, stmts, this->sm);
+    CSession* session = cs.get();
+    this->sessions.push_back(std::move(cs));
+    return csfn(session);
   }
 private:
   struct CSession {
     std::string                   dirPfx;
     hobbes::storage::CommitMethod cm;
     hobbes::storage::statements   stmts;
-    Session                       s;
+    std::shared_ptr<Session>      s;
     std::mutex                    sm;
     ProcessTxnF                   sproc;
   };
-  std::vector<CSession*> sessions;
+  std::vector<std::unique_ptr<CSession>> sessions;
   std::mutex m;
   hobbes::StoredSeries::StorageMode sm;
 
@@ -525,7 +543,7 @@ public:
   }
 
   ProcessTxnF appendStorageSession(const std::string& dirPfx, hobbes::storage::PipeQOS qos, hobbes::storage::CommitMethod cm, const hobbes::storage::statements& stmts) override {
-    auto* s = new Session;
+    auto s = std::make_shared<Session>();
     return initStorageSession<AllocFreshFile>(s, dirPfx, qos, cm, stmts, this->sm);
   }
 private:
@@ -538,6 +556,10 @@ SessionGroup* makeSessionGroup(bool consolidate, hobbes::StoredSeries::StorageMo
   } else {
     return new SimpleGroup(sm);
   }
+}
+
+void destroySessionGroup(SessionGroup* sg) {
+  delete sg;
 }
 
 ProcessTxnF appendStorageSession(SessionGroup* sg, const std::string& dirPfx, hobbes::storage::PipeQOS qos, hobbes::storage::CommitMethod cm, const hobbes::storage::statements& stmts) {

@@ -200,8 +200,7 @@ DEFINE_STRUCT(
   (int,               remotePort)
 );
 
-void runRecvConnection(SessionGroup* sg, NetConnection* pc, const std::string& dir, uint64_t maxSegmentBytes) {
-  std::unique_ptr<NetConnection> connection(pc);
+void runRecvConnection(SessionGroup* sg, std::unique_ptr<NetConnection> connection, const std::string& dir, uint64_t maxSegmentBytes) {
   std::vector<uint8_t> inb, outb, txn;
   outb.resize(1 * 1024 * 1024); // reserve 1MB for buffering
 
@@ -238,15 +237,13 @@ void runRecvConnection(SessionGroup* sg, NetConnection* pc, const std::string& d
     storage::statements stmts;
     read(&zb, &stmts);
 
-    auto txnF = appendStorageSession(sg, instantiateDir(group, dir), static_cast<storage::PipeQOS>(qos), static_cast<storage::CommitMethod>(cm), stmts);
-
+    // Acknowledge the validated session description, but do not allocate a
+    // persistent storage session until the first non-empty data segment has
+    // decoded completely. A segment that will be retried must not allocate a
+    // new file, mappings, and JIT bindings on every connection attempt.
     connection->send(&ack, sizeof(ack));
 
-    // record the fact that we've received a new connection and have associated it with a file
-    StatFile::instance().log(RecvConnection{hobbes::now(), pc->remoteHost(), pc->remotePort()});
-
-    // now that we've prepared a log file,
-    // just throw everything that we read into it
+    // Decode each complete segment before allocating or writing storage.
     //
     // a batch is decoded in full before any of it is applied: inflate can only
     // report a corrupt segment when it reaches the trailer (that is where the
@@ -254,6 +251,7 @@ void runRecvConnection(SessionGroup* sg, NetConnection* pc, const std::string& d
     // applied again when the sender resends it. The sender steps a segment at
     // ~10 MB of log data, so a decoded batch is small next to the receive
     // buffers already held here.
+    ProcessTxnF txnF;
     std::vector<size_t> txnLens;
     while (true) {
       receiveIntoBuffer(*connection, &inb, maxSegmentBytes);
@@ -280,11 +278,20 @@ void runRecvConnection(SessionGroup* sg, NetConnection* pc, const std::string& d
         txnLens.push_back(static_cast<size_t>(n));
       }
 
-      size_t off = 0;
-      for (size_t n : txnLens) {
-        storage::Transaction stxn(txn.data() + off, n);
-        txnF(stxn);
-        off += n;
+      if (!txnLens.empty()) {
+        if (!txnF) {
+          txnF = appendStorageSession(sg, instantiateDir(group, dir), static_cast<storage::PipeQOS>(qos), static_cast<storage::CommitMethod>(cm), stmts);
+
+          // record the fact that this connection now has a storage session
+          StatFile::instance().log(RecvConnection{hobbes::now(), connection->remoteHost(), connection->remotePort()});
+        }
+
+        size_t off = 0;
+        for (size_t n : txnLens) {
+          storage::Transaction stxn(txn.data() + off, n);
+          txnF(stxn);
+          off += n;
+        }
       }
 
       connection->send(&ack, sizeof(ack));
@@ -294,15 +301,22 @@ void runRecvConnection(SessionGroup* sg, NetConnection* pc, const std::string& d
   }
 }
 
+void startRecvConnection(SessionGroup* sg, std::unique_ptr<NetConnection> connection, const std::string& dir, uint64_t maxSegmentBytes) {
+  // Each connection owns its worker. Detaching means the C++ runtime reaps
+  // the thread as soon as it finishes instead of retaining every completed
+  // worker in a process-lifetime vector.
+  std::thread([sg, connection = std::move(connection), dir, maxSegmentBytes]() mutable {
+    runRecvConnection(sg, std::move(connection), dir, maxSegmentBytes);
+  }).detach();
+}
+
 [[noreturn]] void runRecvServer(std::unique_ptr<NetServer> server, const std::string& dir, bool consolidate, hobbes::StoredSeries::StorageMode sm, uint64_t maxSegmentBytes) {
   SessionGroup* sg = makeSessionGroup(consolidate, sm);
-  std::vector<std::thread> cthreads;
 
   while (true) {
     auto conn = server->accept();
     if (conn) {
-      NetConnection* pc = conn.release();
-      cthreads.emplace_back([=](){ runRecvConnection(sg, pc, dir, maxSegmentBytes); });
+      startRecvConnection(sg, std::move(conn), dir, maxSegmentBytes);
     } else {
       out() << "failed to accept network connection: " << strerror(errno) << std::endl;
     }
