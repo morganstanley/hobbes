@@ -247,7 +247,7 @@ void run(const RunMode& m, const std::vector<std::string>& args) {
     StatFile::directory = "./";
     out() << "hog stat file : " << StatFile::instance().filename() << std::endl;
     hog::StatFile::instance().log(hog::ProcessEnvironment{hobbes::now(), sessionHash, hobbes::string::from(m), args, hog::SessionType::Enum::Normal});
-    pullRemoteDataT(m.dir, m.localport, m.consolidate, m.storageMode).join();
+    pullRemoteDataT(m.dir, m.localport, m.consolidate, m.storageMode, m.maxSegmentBytes).join();
   } else if (!m.groups.empty()) {
     out() << "hog stat file : " << StatFile::instance().filename() << std::endl;
     hog::StatFile::instance().log(hog::ProcessEnvironment{hobbes::now(), sessionHash, hobbes::string::from(m), args, hog::SessionType::Enum::Normal});

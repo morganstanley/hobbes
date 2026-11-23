@@ -13,6 +13,7 @@
 #include <hobbes/db/series.H>
 #include <hobbes/util/str.H>
 
+#include "limits.H"
 #include "stat.H"
 
 namespace hog {
@@ -36,6 +37,7 @@ struct RunMode {
 
   // batchrecv
   std::string localport;
+  uint64_t maxSegmentBytes;
 };
 
 template <typename T>

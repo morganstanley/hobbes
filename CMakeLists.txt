@@ -207,7 +207,7 @@ if(BUILD_FUZZERS)
 endif()
 
 add_executable(mock-proc test/mocks/proc.C)
-add_executable(hobbes-test ${test_files})
+add_executable(hobbes-test ${test_files} bin/hog/config.C bin/hog/netconnection.C bin/hog/stat.C)
 target_link_libraries(hobbes-test PRIVATE hobbes)
 add_test(hobbes-test hobbes-test)
 add_test(NAME rosetta-examples COMMAND bash ${CMAKE_SOURCE_DIR}/examples/rosetta/run_tests.sh $<TARGET_FILE:hi>)

@@ -18,7 +18,7 @@ std::ostream& operator<<(std::ostream& o, const RunMode& m) {
     o << "|batchsend={ dir=\"" << m.dir << "\", serverDir=\"" << m.groupServerDir << "\", clevel=" << m.clevel << ", batchsendsize=" << m.batchsendsize << "B, batchsendtime=" << m.batchsendtime << "microsec, sendto=" << m.sendto << ", groups=" << m.groups << " }|";
     break;
   case RunMode::batchrecv:
-    o << "|batchrecv={ dir=\"" << m.dir << "\", localport=" << m.localport << " }|";
+    o << "|batchrecv={ dir=\"" << m.dir << "\", localport=" << m.localport << ", maxsegmentbytes=" << m.maxSegmentBytes << "B }|";
     break;
   default:
     o << "|unknown={ }|";
@@ -43,12 +43,14 @@ void showUsage() {
   <<
     "hog : record structured data locally or to a remote process\n"
     "\n"
-    "  usage: hog [-d <dir>] [-g group+] [-p t s host:port+] [-s port] [-c] [-m <dir>] [-z]\n"
+    "  usage: hog [-d <dir>] [-g group+] [-p t s host:port+] [-s port] [--max-segment-size size] [-c] [-m <dir>] [-z]\n"
     "where\n"
     "  -d <dir>          : decides where structured data (or temporary data) is stored\n"
     "  -g group+         : decides which data to record from memory on this machine\n"
     "  -p t s host:port+ : decides to send data to remote process(es) every t time units or every s uncompressed bytes written\n"
     "  -s port           : decides to receive data on the given port\n"
+    "  --max-segment-size size\n"
+    "                    : maximum compressed or inflated segment size accepted by a receiver (default: 1GB)\n"
     "  -c                : decides to store equally-typed data across processes in a single file\n"
     "  -m <dir>          : decides where to place the domain socket for producer registration and hog stat file (default: " << hobbes::storage::defaultStoreDir() << ")\n"
     "  -z                : store data compressed\n"
@@ -69,7 +71,10 @@ RunMode config(int argc, const char** argv) {
   r.batchsendsize  = 1024;
   r.batchsendtime  = 2;
   // batchrecv
-  r.localport = "";
+  r.localport       = "";
+  r.maxSegmentBytes = defaultMaxSegmentBytes;
+
+  bool maxSegmentSizeSet = false;
 
   if (argc == 1) {
     showUsage();
@@ -130,6 +135,16 @@ RunMode config(int argc, const char** argv) {
         throw std::runtime_error("need port to receive remote data");
       }
       r.t = RunMode::batchrecv;
+    } else if (arg == "--max-segment-size") {
+      ++i;
+      if (i >= argc) {
+        throw std::runtime_error("no maximum segment size specified");
+      }
+      r.maxSegmentBytes = sizeInBytes(argv[i]);
+      if (r.maxSegmentBytes == 0) {
+        throw std::runtime_error("maximum segment size must be greater than zero");
+      }
+      maxSegmentSizeSet = true;
     } else if (arg == "-c") {
       r.consolidate = true;
     } else if (arg == "-m") {
@@ -145,6 +160,10 @@ RunMode config(int argc, const char** argv) {
     } else {
       throw std::runtime_error("invalid argument: " + arg);
     }
+  }
+
+  if (maxSegmentSizeSet && r.t != RunMode::batchrecv) {
+    throw std::runtime_error("--max-segment-size is only valid in receive mode (-s)");
   }
 
   if (r.t == RunMode::local || r.t == RunMode::batchsend) {
