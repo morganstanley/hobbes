@@ -12,6 +12,7 @@
 #include <zlib.h>
 
 #include "network.H"
+#include "limits.H"
 #include "session.H"
 #include "stat.H"
 #include "path.H"
@@ -21,25 +22,18 @@ using namespace hobbes;
 
 namespace hog {
 
-// the most a single batch may inflate to (see decompressChunk): a sender cuts
-// a segment at ~10MB of log data, so this leaves room for a very compressible
-// batch while keeping the decoded size a sender can ask for bounded (the
-// decoded batch is also copied into the transaction buffer, so the memory a
-// batch can name is about twice this)
-static const size_t maxInflatedBytes = 64 * 1024 * 1024;
-
 struct gzbuffer {
   z_stream zin;
   std::vector<uint8_t>*  outb;
   size_t   off;
   size_t   avail;
-  size_t   inflated;
+  InflatedByteCounter inflated;
 
-  gzbuffer(const std::vector<uint8_t>& inb, std::vector<uint8_t>* outb)
+  gzbuffer(const std::vector<uint8_t>& inb, std::vector<uint8_t>* outb, uint64_t maxInflatedBytes)
     :outb(outb),
      off(0),
      avail(0),
-     inflated(0)
+     inflated(maxInflatedBytes)
   {
     memset(&this->zin, 0, sizeof(this->zin));
     this->zin.zalloc    = Z_NULL;
@@ -107,12 +101,9 @@ struct gzbuffer {
     // a small compressed frame can inflate to an arbitrarily large one, and a
     // whole batch is decoded before any of it is applied, so without a bound
     // here a sender within the frame limit can still name any amount of
-    // memory. Count what this batch has produced and stop at a multiple of
-    // what a sender's ~10MB segment could legitimately inflate to.
-    this->inflated += this->avail;
-    if (this->inflated > maxInflatedBytes) {
-      throw std::runtime_error("gzip segment inflated past " + str::from(maxInflatedBytes) + " bytes");
-    }
+    // memory. Count what this batch has produced and enforce the receiver's
+    // configured segment limit.
+    this->inflated.add(this->avail);
   }
 
   void read(uint8_t* b, size_t n) {
@@ -209,7 +200,7 @@ DEFINE_STRUCT(
   (int,               remotePort)
 );
 
-void runRecvConnection(SessionGroup* sg, NetConnection* pc, const std::string& dir) {
+void runRecvConnection(SessionGroup* sg, NetConnection* pc, const std::string& dir, uint64_t maxSegmentBytes) {
   std::unique_ptr<NetConnection> connection(pc);
   std::vector<uint8_t> inb, outb, txn;
   outb.resize(1 * 1024 * 1024); // reserve 1MB for buffering
@@ -218,7 +209,7 @@ void runRecvConnection(SessionGroup* sg, NetConnection* pc, const std::string& d
 
   try {
     // get the log group for incoming data
-    const std::string group = receiveString(*connection);
+    const std::string group = receiveString(*connection, maxSegmentBytes);
 
     // the group name is attacker-controlled and is substituted into a filesystem
     // path; reject anything that is not a single, non-hidden path component so a
@@ -228,8 +219,8 @@ void runRecvConnection(SessionGroup* sg, NetConnection* pc, const std::string& d
     }
 
     // get the (compressed) init message data
-    std::vector<uint8_t> inb = receiveBuffer(*connection);
-    gzbuffer zb(inb, &outb);
+    std::vector<uint8_t> inb = receiveBuffer(*connection, maxSegmentBytes);
+    gzbuffer zb(inb, &outb, maxSegmentBytes);
 
     uint32_t qos, cm;
     read(&zb, &qos);
@@ -256,8 +247,8 @@ void runRecvConnection(SessionGroup* sg, NetConnection* pc, const std::string& d
     // buffers already held here.
     std::vector<size_t> txnLens;
     while (true) {
-      receiveIntoBuffer(*connection, &inb);
-      gzbuffer zb(inb, &outb);
+      receiveIntoBuffer(*connection, &inb, maxSegmentBytes);
+      gzbuffer zb(inb, &outb, maxSegmentBytes);
 
       txn.clear();
       txnLens.clear();
@@ -294,7 +285,7 @@ void runRecvConnection(SessionGroup* sg, NetConnection* pc, const std::string& d
   }
 }
 
-[[noreturn]] void runRecvServer(std::unique_ptr<NetServer> server, const std::string& dir, bool consolidate, hobbes::StoredSeries::StorageMode sm) {
+[[noreturn]] void runRecvServer(std::unique_ptr<NetServer> server, const std::string& dir, bool consolidate, hobbes::StoredSeries::StorageMode sm, uint64_t maxSegmentBytes) {
   SessionGroup* sg = makeSessionGroup(consolidate, sm);
   std::vector<std::thread> cthreads;
 
@@ -302,22 +293,22 @@ void runRecvConnection(SessionGroup* sg, NetConnection* pc, const std::string& d
     auto conn = server->accept();
     if (conn) {
       NetConnection* pc = conn.release();
-      cthreads.emplace_back([=](){ runRecvConnection(sg, pc, dir); });
+      cthreads.emplace_back([=](){ runRecvConnection(sg, pc, dir, maxSegmentBytes); });
     } else {
       out() << "failed to accept network connection: " << strerror(errno) << std::endl;
     }
   }
 }
 
-std::thread pullRemoteDataT(const std::string& dir, const std::string& listenport, bool consolidate, hobbes::StoredSeries::StorageMode sm) {
+std::thread pullRemoteDataT(const std::string& dir, const std::string& listenport, bool consolidate, hobbes::StoredSeries::StorageMode sm, uint64_t maxSegmentBytes) {
   return std::thread([=](){
-    runRecvServer(createNetServer(listenport), dir, consolidate, sm);
+    runRecvServer(createNetServer(listenport), dir, consolidate, sm, maxSegmentBytes);
   });
 }
 
-bool pullRemoteData(const std::string& dir, const std::string& listenport, bool consolidate, hobbes::StoredSeries::StorageMode sm) {
+bool pullRemoteData(const std::string& dir, const std::string& listenport, bool consolidate, hobbes::StoredSeries::StorageMode sm, uint64_t maxSegmentBytes) {
   try {
-    auto recvThread = pullRemoteDataT(dir, listenport, consolidate, sm);
+    auto recvThread = pullRemoteDataT(dir, listenport, consolidate, sm, maxSegmentBytes);
     return true;
   } catch (std::exception& ex) {
     out() << "failed to run receive server @ " << listenport << ": " << ex.what() << std::endl;

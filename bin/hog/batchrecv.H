@@ -10,10 +10,12 @@
 #include <thread>
 #include <hobbes/db/series.H>
 
+#include "limits.H"
+
 namespace hog {
 
-std::thread pullRemoteDataT(const std::string& dir, const std::string& listenport, bool consolidate, hobbes::StoredSeries::StorageMode sm);
-bool pullRemoteData(const std::string& dir, const std::string& listenport, bool consolidate, hobbes::StoredSeries::StorageMode sm);
+std::thread pullRemoteDataT(const std::string& dir, const std::string& listenport, bool consolidate, hobbes::StoredSeries::StorageMode sm, uint64_t maxSegmentBytes = defaultMaxSegmentBytes);
+bool pullRemoteData(const std::string& dir, const std::string& listenport, bool consolidate, hobbes::StoredSeries::StorageMode sm, uint64_t maxSegmentBytes = defaultMaxSegmentBytes);
 
 }
 

@@ -158,7 +158,7 @@ void sendString(NetConnection& c, const std::string& str) {
   if (!ok) { throw std::runtime_error("sendString failed: " + receiveError()); }
 }
 
-void receiveIntoBuffer(NetConnection& c, std::vector<uint8_t>* dst)
+void receiveIntoBuffer(NetConnection& c, std::vector<uint8_t>* dst, uint64_t maxFrameBytes)
 {
   uint64_t size = 0;
   const bool hok = c.receive(&size, sizeof(size));
@@ -178,16 +178,16 @@ void receiveIntoBuffer(NetConnection& c, std::vector<uint8_t>* dst)
   if (!bok) { throw std::runtime_error("receiveIntoBuffer failed to get body: " + receiveError()); }
 }
 
-std::vector<uint8_t> receiveBuffer(NetConnection& c)
+std::vector<uint8_t> receiveBuffer(NetConnection& c, uint64_t maxFrameBytes)
 {
   std::vector<uint8_t> buffer;
-  receiveIntoBuffer(c, &buffer);
+  receiveIntoBuffer(c, &buffer, maxFrameBytes);
   return buffer;
 }
 
-std::string receiveString(NetConnection& c)
+std::string receiveString(NetConnection& c, uint64_t maxFrameBytes)
 {
-  std::vector<uint8_t> buffer(receiveBuffer(c));
+  std::vector<uint8_t> buffer(receiveBuffer(c, maxFrameBytes));
   return std::string(buffer.begin(), buffer.end());
 }
 
