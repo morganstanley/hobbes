@@ -1084,6 +1084,73 @@ TEST(TypeInf, ADecodedFixedArrayLengthCannotBeNegative) {
   EXPECT_TRUE(*hobbes::decode(ok) == *t);
 }
 
+// A tuple's members and a sum's constructors are named .f0, .f1, ... in order,
+// and the instances that walk one count on it: 'p=(h*t)' takes the head member
+// by position and 'p.0' reaches it by name. A description decoded from a file
+// or a peer names its members as it likes, and for '(.f1:a, .f0:b)' the two
+// disagreed -- 'hog -s' read one member twice and the other never, and with
+// '-z' called a handler that was never assigned -- so names out of order are
+// refused where they are decoded.
+TEST(TypeInf, ADecodedTupleOrSumNamesItsMembersInOrder) {
+  auto encodedRecord = [](const str::seq& names) {
+    Record::Members ms;
+    for (const auto& name : names) {
+      ms.push_back(Record::Member(name, primty("int")));
+    }
+    hobbes::bytes enc;
+    hobbes::encode(Record::make(ms), &enc);
+    return enc;
+  };
+  auto encodedVariant = [](const str::seq& names) {
+    Variant::Members ms;
+    for (const auto& name : names) {
+      ms.push_back(Variant::Member(name, primty("int"), static_cast<unsigned int>(ms.size())));
+    }
+    hobbes::bytes enc;
+    hobbes::encode(Variant::make(ms), &enc);
+    return enc;
+  };
+
+  EXPECT_EXCEPTION(hobbes::decode(encodedRecord(str::strings(".f1", ".f0"))));
+  EXPECT_EXCEPTION(hobbes::decode(encodedRecord(str::strings("a", ".f0"))));
+  EXPECT_EXCEPTION(hobbes::decode(encodedRecord(str::strings(".f0", "a"))));
+  EXPECT_EXCEPTION(hobbes::decode(encodedRecord(str::strings(".f0", ".f2"))));
+  EXPECT_EXCEPTION(hobbes::decode(encodedVariant(str::strings(".f1", ".f0"))));
+  EXPECT_EXCEPTION(hobbes::decode(encodedVariant(str::strings("a", ".f0"))));
+
+  // a sum can label some of its constructors and leave the others positional
+  // (as one lifted from a C++ variant does), as long as each positional
+  // constructor is named for the position it is at
+  for (const auto& names : {str::strings("x", ".f1"), str::strings(".f0", "x"), str::strings(".f0", "x", ".f2")}) {
+    hobbes::bytes enc = encodedVariant(names);
+    hobbes::bytes renc;
+    hobbes::encode(hobbes::decode(enc), &renc);
+    EXPECT_TRUE(enc == renc);
+  }
+  EXPECT_EXCEPTION(hobbes::decode(encodedVariant(str::strings("x", ".f0"))));
+  EXPECT_EXCEPTION(hobbes::decode(encodedVariant(str::strings(".f0", "x", ".f1"))));
+
+  // in a tuple a hidden member can't follow a visible one: its tail renumbers
+  // every member after its head, and would make it visible again. In a sum it
+  // is passed over like a labelled constructor, which leaves '.f1' at position 2
+  EXPECT_EXCEPTION(hobbes::decode(encodedRecord(str::strings(".f0", ".p.x", ".f1"))));
+  EXPECT_EXCEPTION(hobbes::decode(encodedVariant(str::strings(".f0", ".p.x", ".f1"))));
+
+  // the tuples, sums and records made here still round-trip, and so do their
+  // tails (which hide the head, and for a tuple renumber the rest) and variants
+  // whose constructor names merely begin with ".f", as a parser's do
+  MonoTypePtr tup = tuplety(list(primty("int"), primty("char"), primty("double")));
+  MonoTypePtr sum = sumtype(primty("unit"), primty("int"));
+  MonoTypePtr rec = Record::make(list(Record::Member("f0", primty("int")), Record::Member("a", primty("char"))));
+  MonoTypePtr pv  = Variant::make(list(Variant::Member(".failure", primty("unit"), 0), Variant::Member(".success", primty("int"), 1)));
+
+  for (const auto& t : list(tup, sum, rec, pv, is<Record>(tup)->tailType(), is<Variant>(sum)->tailType())) {
+    hobbes::bytes enc;
+    hobbes::encode(t, &enc);
+    EXPECT_TRUE(*hobbes::decode(enc) == *t);
+  }
+}
+
 // sizeOf uncurried a type-level application to find its head, then reduced only
 // the innermost application: '(k char) long', with 'k = \x.\y.{a:y}', was sized as
 // 'k char', an abstraction, which has no size, though the whole application
