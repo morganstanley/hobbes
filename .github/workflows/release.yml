@@ -117,9 +117,20 @@ jobs:
           set -euo pipefail
           # sign the checksums rather than the archive: one signature covers
           # every asset listed, and verifying it needs no large download
-          cosign sign-blob --yes \
-            --output-signature SHA256SUMS.sig \
-            --output-certificate SHA256SUMS.pem \
+          # (the bundle holds the signature, the certificate and the
+          # transparency log entry: all that verifying needs)
+          cosign sign-blob --yes --bundle SHA256SUMS.sigstore.json SHA256SUMS
+
+      - name: Verify the signature
+        # what a consumer will do (see "Releases" in README.md), before
+        # anything is published
+        run: |
+          set -euo pipefail
+          cosign verify-blob \
+            --bundle SHA256SUMS.sigstore.json \
+            --certificate-identity-regexp \
+              "^https://github\.com/${GITHUB_REPOSITORY}/\.github/workflows/release\.yml@" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
             SHA256SUMS
 
       - name: Publish the release
@@ -138,8 +149,8 @@ jobs:
             # a re-run against a tag that already has a release: replace its
             # assets, and leave its title and notes as they are
             gh release upload "$TAG" --clobber \
-              "$ARCHIVE" SHA256SUMS SHA256SUMS.sig SHA256SUMS.pem
+              "$ARCHIVE" SHA256SUMS SHA256SUMS.sigstore.json
           else
             gh release create "$TAG" --verify-tag --title "$TITLE" --generate-notes \
-              "$ARCHIVE" SHA256SUMS SHA256SUMS.sig SHA256SUMS.pem
+              "$ARCHIVE" SHA256SUMS SHA256SUMS.sigstore.json
           fi
