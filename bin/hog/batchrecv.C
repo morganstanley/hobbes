@@ -226,6 +226,15 @@ void runRecvConnection(SessionGroup* sg, NetConnection* pc, const std::string& d
     read(&zb, &qos);
     read(&zb, &cm);
 
+    // these select how a session is stored and are cast to enumerations below,
+    // so only the values that the enumerations have are accepted
+    if (qos != storage::Reliable && qos != storage::Unreliable) {
+      throw std::runtime_error("rejected log session: invalid QOS");
+    }
+    if (cm != storage::AutoCommit && cm != storage::ManualCommit) {
+      throw std::runtime_error("rejected log session: invalid commit method");
+    }
+
     storage::statements stmts;
     read(&zb, &stmts);
 

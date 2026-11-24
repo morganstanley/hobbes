@@ -330,6 +330,12 @@ std::string uniqueFilename(const std::string& prefix, const std::string& suffix)
 // a utility function for safely moving to new files
 std::string moveToUniqueFilename(const std::string& oldpath, const std::string& fprefix, const std::string& fsuffix);
 
+// a utility function for safely appending to existing files
+//   a writer assumes that it alone writes its file, but nothing in a file says that it is being written
+//   this takes the file for the writer (until the writer is destroyed) and returns true,
+//   or returns false without waiting if another writer, in this process or another, has taken it
+bool lockForWriting(writer*);
+
 // make it easy to bind files
 template <>
   struct liftValue< reader* > {

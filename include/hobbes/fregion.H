@@ -53,6 +53,7 @@
 #include <cassert>
 #include <cstring>
 #include <fcntl.h>
+#include <sys/file.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -196,6 +197,10 @@ inline size_t pageCount(const imagefile* f, size_t sz) { return (sz / f->page_si
 // basic file I/O primitives
 inline void closeFile(imagefile* f) {
   if (f->fd > -1) {
+    // give up a lock taken on this file (lockForWriting in db/file.H) explicitly:
+    // closing alone doesn't release it on Linux while any part of the file is still mapped
+    // (this only affects a lock taken through this descriptor, never another writer's)
+    ::flock(f->fd, LOCK_UN);
     close(f->fd);
   }
   delete f;
