@@ -123,13 +123,23 @@ jobs:
             SHA256SUMS
 
       - name: Publish the release
-        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
-        with:
-          tag_name: ${{ steps.tag.outputs.name }}
-          name: ${{ steps.codename.outputs.title }}
-          generate_release_notes: true
-          files: |
-            ${{ steps.archive.outputs.name }}.tar.gz
-            SHA256SUMS
-            SHA256SUMS.sig
-            SHA256SUMS.pem
+        # with the gh that the runner has, not an action: the repository only
+        # allows actions from GitHub, verified Marketplace publishers, and a
+        # short list of others
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.tag.outputs.name }}
+          TITLE: ${{ steps.codename.outputs.title }}
+          ARCHIVE: ${{ steps.archive.outputs.name }}.tar.gz
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            # a re-run against a tag that already has a release: replace its
+            # assets, and leave its title and notes as they are
+            gh release upload "$TAG" --clobber \
+              "$ARCHIVE" SHA256SUMS SHA256SUMS.sig SHA256SUMS.pem
+          else
+            gh release create "$TAG" --verify-tag --title "$TITLE" --generate-notes \
+              "$ARCHIVE" SHA256SUMS SHA256SUMS.sig SHA256SUMS.pem
+          fi
