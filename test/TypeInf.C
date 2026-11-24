@@ -1,6 +1,7 @@
 
 #include "test.H"
 #include <hobbes/hobbes.H>
+#include <hobbes/db/series.H>
 #include <hobbes/util/codec.H>
 #include <hobbes/util/stream.H>
 #include <cctype>
@@ -151,6 +152,34 @@ TEST(TypeInf, DecodeRejectsTruncatedInput) {
   bool threw = false;
   try { decode(craft); } catch (const std::exception&) { threw = true; }
   EXPECT_TRUE(threw);
+}
+
+TEST(TypeInf, DecodeRejectsRepresentationsOfBuiltinTypes) {
+  auto decoded = [](const MonoTypePtr& ty) {
+    std::vector<unsigned char> enc;
+    encode(ty, &enc);
+    return decode(enc);
+  };
+  MonoTypePtr wide = tabs(str::strings("x"), primty("int128"));
+  MonoTypePtr tint = primty("int");
+
+  // a built-in type is laid out by name, in some places and not in others: with
+  // a representation of its own, 'closure int' was allocated as a pointer and
+  // stored as an int128. A description can arrive from a file or an untrusted
+  // network peer, so it can't be allowed to say that.
+  for (const char* n : {"closure", "fseq", "lseq", "fileref", "->", "[]", "list", "file", "process", "promise"}) {
+    EXPECT_EXCEPTION(decoded(tapp(primty(n, wide), list(tint))));
+  }
+  EXPECT_EXCEPTION(decoded(primty("long", primty("int128"))));
+  EXPECT_EXCEPTION(decoded(tapp(primty("fseq", tabs(str::strings("t", "c"), tapp(primty("fileref", wide), list(tvar("t"))))), list(tint, tlong(10)))));
+
+  // the representations that these types are written with are still read, as
+  // is an alias that doesn't take the name of a built-in type
+  EXPECT_EQ(sizeOf(decoded(fileRefTy(tint))), sizeof(long));
+  EXPECT_EQ(sizeOf(decoded(fileRefTy(tint, tvar("f")))), sizeof(long));
+  EXPECT_TRUE(show(decoded(storedStreamOf(tint, 10))) == show(storedStreamOf(tint, 10)));
+  EXPECT_EQ(sizeOf(decoded(storedStreamOf(tint, 10))), sizeof(long));
+  EXPECT_EQ(sizeOf(decoded(tapp(primty("reading", wide), list(tint)))), sizeof(int128_t));
 }
 
 TEST(TypeInf, DecodeRejectsOutOfRangeTGen) {
