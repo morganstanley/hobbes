@@ -222,6 +222,93 @@ TEST(Storage, CSeriesAPI) {
   }
 }
 
+// (int64_t rather than long: fregion.H stores the fixed-width integer types, and on macOS 'long' isn't one of them)
+DEFINE_STRUCT(SeriesTestWide,
+  (int64_t, a),
+  (int64_t, b),
+  (int64_t, c),
+  (int64_t, d)
+);
+
+static SeriesTestWide wideRow(long i) {
+  SeriesTestWide st;
+  st.a = i;
+  st.b = 2*i;
+  st.c = 3*i;
+  st.d = 4*i;
+  return st;
+}
+
+TEST(Storage, CSeriesNameKeepsItsType) {
+  std::string fname = mkFName();
+  try {
+    // a compressed series is found by name, and its writer maps the stored model at the size that its own type needs
+    // so make sure that a name already defined can't be written to as another type (or batch size)
+    {
+      writer f(fname);
+      series<SeriesTestWide> ss(&c(), &f, "series_test", 100, StoredSeries::Compressed);
+      for (long i = 0; i < 250; ++i) {
+        ss(wideRow(i));
+      }
+
+      EXPECT_EXCEPTION(series<SeriesTest>(&c(), &f, "series_test", 100, StoredSeries::Compressed));
+      EXPECT_EXCEPTION(series<SeriesTestWide>(&c(), &f, "series_test", 200, StoredSeries::Compressed));
+    }
+
+    // and that it can still be resumed as the type that it was defined with
+    {
+      writer f(fname);
+      EXPECT_EXCEPTION(series<SeriesTest>(&c(), &f, "series_test", 100, StoredSeries::Compressed));
+
+      series<SeriesTestWide> ss(&c(), &f, "series_test", 100, StoredSeries::Compressed);
+      for (long i = 250; i < 500; ++i) {
+        ss(wideRow(i));
+      }
+    }
+
+    hobbes::cc c;
+    c.define("cf", "inputFile :: (LoadFile \"" + fname + "\" w) => w");
+    EXPECT_TRUE(c.compileFn<bool()>("[a|{a=a}<-cf.series_test] == [0L..499L]")());
+    EXPECT_TRUE(c.compileFn<bool()>("[d|{d=d}<-cf.series_test] == [4L*a|{a=a}<-cf.series_test]")());
+    unlink(fname.c_str());
+  } catch (...) {
+    unlink(fname.c_str());
+    throw;
+  }
+}
+
+TEST(Storage, CSeriesResumesFromCWriter) {
+  std::string fname = mkFName();
+  try {
+    // fregion::cwriter encodes the same series type with different bytes
+    // make sure that a series it defined is still resumed (and still only as its own type)
+    {
+      hobbes::fregion::cwriter w(fname);
+      auto& xs = w.series<SeriesTestWide>("series_test", 100);
+      for (long i = 0; i < 250; ++i) {
+        xs(wideRow(i));
+      }
+    }
+    {
+      writer f(fname);
+      EXPECT_EXCEPTION(series<SeriesTest>(&c(), &f, "series_test", 100, StoredSeries::Compressed));
+
+      series<SeriesTestWide> ss(&c(), &f, "series_test", 100, StoredSeries::Compressed);
+      for (long i = 250; i < 500; ++i) {
+        ss(wideRow(i));
+      }
+    }
+
+    hobbes::cc c;
+    c.define("cf", "inputFile :: (LoadFile \"" + fname + "\" w) => w");
+    EXPECT_TRUE(c.compileFn<bool()>("[a|{a=a}<-cf.series_test] == [0L..499L]")());
+    unlink(fname.c_str());
+  } catch (...) {
+    unlink(fname.c_str());
+    throw;
+  }
+}
+
 TEST(Storage, Modify) {
   std::string fname = mkFName();
   try {

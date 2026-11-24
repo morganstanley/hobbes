@@ -534,6 +534,14 @@ size_t makeCRootRef(writer* file, const std::string& fn, const MonoTypePtr& cseq
 
     return hn;
   } else {
+    // an existing series can only be resumed as the type it was defined with
+    // (the writer maps the model stored at this root at the size of its own type)
+    // compare decoded types: fregion::cwriter encodes the same type with different bytes
+    auto storedType = decode(b->second.type);
+    if (!(*storedType == *cseqType)) {
+      throw std::runtime_error("Can't write to compressed series '" + fn + "' as type '" + show(cseqType) + "', already defined as type '" + show(storedType) + "'");
+    }
+
     auto* hnr = reinterpret_cast<size_t*>(mapFileData(fd, b->second.offset, sizeof(size_t)));
     size_t  hn  = *hnr;
 
