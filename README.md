@@ -59,6 +59,62 @@ The build process will produce a static library, `libhobbes.a`, which can be lin
 
 In addition, the build process will produce two utility programs, `hi` and `hog`.  The `hi` program is a basic interactive interpreter for hobbes expressions and the `hog` program will efficiently record structured data produced by applications into data files (these files can be loaded and queried at the same time by `hi`).  The source code for these programs can be informative as well, because they demonstrate many different aspects of the hobbes API.
 
+### Conan
+
+The repository has a [Conan](https://conan.io/) 2 recipe (`conanfile.py`), which builds hobbes against LLVM and its other dependencies from ConanCenter and packages the library, its headers, and the `hi` and `hog` programs:
+
+```
+$ conan create . --version=<version> --build=missing
+```
+
+(`--build=missing` builds what ConanCenter has no prebuilt package of.  That is always readline, which `hi` uses with ncurses as its terminal library; see below for when it is also LLVM, which is worth avoiding.)  Hobbes has no tagged releases yet, so the version is yours to name; without `--version`, the package is versioned by the commit it was built from (`0.0.0-git.<commit>`).  A project that uses the package asks for it in the usual way, and links the `hobbes::hobbes` target:
+
+```
+# conanfile.txt
+[requires]
+hobbes/<version>
+
+[generators]
+CMakeDeps
+CMakeToolchain
+```
+
+```
+# CMakeLists.txt
+find_package(hobbes REQUIRED CONFIG)
+target_link_libraries(my-program PRIVATE hobbes::hobbes)
+```
+
+The package holds `libhobbes-pic.a` by default, and `libhobbes.a` with `-o "hobbes/*:fPIC=False"`.  A program that links it links the LLVM libraries hobbes uses and zlib, and nothing for a terminal: readline and ncurses are linked into `hi` alone.
+
+By default LLVM is the newest version that hobbes supports and a Conan remote has, which is 19 from ConanCenter.  There are two ways to build with another:
+
+* If the LLVM you want is a Conan package (in a remote of your own, say), pin it in your profile:
+
+  ```
+  [replace_requires]
+  llvm-core/*: llvm-core/16.0.6
+  ```
+
+* If it is installed on the machine, or comes with your toolchain, build with `-o "hobbes/*:with_system_llvm=True"`.  CMake finds LLVM as it does in any build of hobbes; where it needs telling, give it the directory of `LLVMConfig.cmake`.  The LLVM installation has to include its static libraries.
+
+`-o "hobbes/*:with_system_readline=True"` does the same for the readline that `hi` uses.  With both, the build takes nothing from ConanCenter but zlib, and is as quick as an ordinary build of hobbes:
+
+```
+$ conan create . --version=<version> --build=missing \
+    -o "hobbes/*:with_system_llvm=True" -o "hobbes/*:with_system_readline=True" \
+    -c 'tools.cmake.cmaketoolchain:extra_variables={"LLVM_DIR": "/usr/lib/llvm-16/lib/cmake/llvm"}'
+```
+
+A package built against the machine's LLVM records where that LLVM is and which of its libraries a program has to link, so it is only good on machines that have the same LLVM in the same place.
+
+LLVM is large, and building it from source takes an hour or more.  ConanCenter has it prebuilt for common configurations, but a prebuilt package is only used when the versions of its own dependencies match the ones it was built with.  If Conan reports that the `llvm-core` binary is missing, `conan graph explain --requires=llvm-core/19.1.7` says which dependency differs; pinning that dependency in your profile gets the prebuilt package back.  At the time of writing that means zlib 1.3:
+
+```
+[replace_requires]
+zlib/*: zlib/1.3.1
+```
+
 ## Embedding <a name="embedding"></a>
 
 Let's consider how to embed hobbes in a simple C++ program.  This code implements a very basic shell, similar to `hi`:
