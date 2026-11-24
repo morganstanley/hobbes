@@ -416,11 +416,11 @@ bool processNetREPLRequest(Server *s, int c, const char *b, size_t n) {
 // again -- for the handshake here, and for the request bytes that follow it.
 namespace {
 
-const uint32_t netREPLProtocolVersion = 0x00010000;
-const uint32_t authenticatedNetREPLProtocolVersion = 0x00010001;
-const size_t maxNetREPLSharedSecretBytes = 4096;
-const uint8_t netREPLAuthAccepted = 1;
-const uint8_t netREPLAuthRejected = 0;
+using net::netREPLAuthAccepted;
+using net::netREPLAuthAcceptedWithToken;
+using net::netREPLAuthContinue;
+using net::netREPLAuthRejected;
+using net::netREPLAuthWrongMechanism;
 
 #if defined(MSG_NOSIGNAL)
 const int netREPLSendFlags = MSG_NOSIGNAL;
@@ -428,39 +428,71 @@ const int netREPLSendFlags = MSG_NOSIGNAL;
 const int netREPLSendFlags = 0;
 #endif
 
-// one byte on a freshly accepted connection always fits in the send buffer, so
-// this does not block the event loop; if it cannot be sent the peer is gone and
-// the connection is dropped by the caller either way
-bool sendHandshakeStatus(int c, uint8_t status) {
-  return send(c, &status, sizeof(status), MSG_DONTWAIT | netREPLSendFlags) ==
-         static_cast<ssize_t>(sizeof(status));
+// The server's answer to a client token: a status byte and, for the two
+// statuses that carry one, the server's own token. It goes out in one send
+// that never waits. A status byte always fits the send buffer of a connection
+// this fresh; a token that does not fit (the peer is not reading its replies,
+// or the token is far larger than a handshake token has any reason to be)
+// means the connection is dropped by the caller, rather than the shared event
+// loop waiting for room.
+bool sendHandshakeReply(int c, uint8_t status, const std::string* token = nullptr) {
+  std::string msg(1, static_cast<char>(status));
+  if (token != nullptr) {
+    const size_t n = token->size();
+    msg.append(reinterpret_cast<const char *>(&n), sizeof(n));
+    msg.append(*token);
+  }
+  return send(c, msg.data(), msg.size(), MSG_DONTWAIT | netREPLSendFlags) ==
+         static_cast<ssize_t>(msg.size());
 }
 
 void validateSharedSecret(const std::string& sharedSecret) {
   if (sharedSecret.empty()) {
     throw std::runtime_error("The netREPL shared secret must not be empty");
   }
-  if (sharedSecret.size() > maxNetREPLSharedSecretBytes) {
+  if (sharedSecret.size() > net::maxNetREPLSharedSecretBytes) {
     throw std::runtime_error("The netREPL shared secret is too large");
   }
 }
 
+// a length-prefixed field of the handshake (the mechanism's name, a token),
+// read a piece at a time
+struct SizedField {
+  size_t      size = 0;
+  size_t      sizeHave = 0;
+  std::string data;
+  size_t      dataHave = 0;
+};
+
 struct HandshakeState {
   uint32_t    word = 0;
   size_t      have = 0;
-  size_t      secretSize = 0;
-  size_t      secretSizeHave = 0;
-  std::string secret;
-  size_t      secretHave = 0;
-};
 
+  // for a listener with an authenticator: the mechanism the client named (when
+  // the version word says it names one), the field being read now, and this
+  // connection's session once its first token has arrived
+  bool        named = false;
+  std::string mechanism;
+  SizedField  field;
+  std::unique_ptr<NetREPLAuthSession> session;
+  size_t      rounds = 0;
+};
+using HandshakeStatePtr = std::shared_ptr<HandshakeState>;
+
+// what a listener was installed with, worked out once
 struct NetREPLRegistration {
-  Server*     server;
-  std::string sharedSecret;
+  Server*     server = nullptr;
+
+  // null for a listener that does not authenticate its peers
+  std::shared_ptr<NetREPLAuthenticator> authenticator;
+  std::string mechanism;
+  uint32_t    version = net::netREPLVersion; // the version word a client must open with
+  bool        namesMechanism = false;        // ... and whether the mechanism's name follows it
+  size_t      maxTokenBytes = 0;
 };
 
 std::mutex                    handshakeMutex;
-std::map<int, HandshakeState> handshakes;
+std::map<int, HandshakeStatePtr> handshakes;
 
 // bytes received for a connection's next request but not yet forming a whole
 // one. Like the handshake, request reads no longer block the event loop: bytes
@@ -491,17 +523,17 @@ std::map<int, std::string>    requestBuffers;
 // on point rather than a new restriction out of nowhere.)
 const size_t maxBufferedRequestBytes = 64 * 1024 * 1024;
 
-bool handshakePending(int c, HandshakeState* st) {
+// The state of a connection still in its handshake, or null once it is done.
+// Only the thread whose event loop owns a descriptor handles it, so the state
+// is updated in place through this pointer; the mutex guards the map.
+HandshakeStatePtr pendingHandshake(int c) {
   std::lock_guard<std::mutex> lk(handshakeMutex);
   auto i = handshakes.find(c);
-  if (i == handshakes.end()) {
-    return false;
-  }
-  *st = i->second;
-  return true;
+  return i == handshakes.end() ? HandshakeStatePtr() : i->second;
 }
 
-void rememberHandshake(int c, const HandshakeState& st) {
+void rememberHandshake(int c) {
+  auto st = std::make_shared<HandshakeState>();
   std::lock_guard<std::mutex> lk(handshakeMutex);
   handshakes[c] = st;
 }
@@ -543,65 +575,54 @@ bool readVersionWord(int c, HandshakeState* st) {
     return false;
   }
 
-  if (st->have < sizeof(st->word)) {
-    rememberHandshake(c, *st); // a piece of it; wait for the rest
-    return false;
-  }
-  return true;
+  return st->have == sizeof(st->word); // else a piece of it; wait for the rest
 }
 
-bool readSharedSecret(int c, HandshakeState* st) {
-  if (st->secretSizeHave < sizeof(st->secretSize)) {
-    ssize_t r = recv(c,
-                     reinterpret_cast<char *>(&st->secretSize) + st->secretSizeHave,
-                     sizeof(st->secretSize) - st->secretSizeHave,
-                     MSG_DONTWAIT);
+// read what there is of a length-prefixed field, never waiting for more. A
+// field that claims more than 'limit' bytes fails before any of it is read or
+// any room is made for it. More may be readable when this returns Incomplete;
+// the event loop is level triggered and calls again.
+enum class FieldRead { Complete, Incomplete, Failed };
+
+FieldRead readSizedField(int c, SizedField* f, size_t limit) {
+  // -1: the connection is no good, 0: nothing more to read for now, 1: read some
+  auto readSome = [c](char* into, size_t want, size_t* have) {
+    ssize_t r = recv(c, into + *have, want - *have, MSG_DONTWAIT);
     if (r > 0) {
-      st->secretSizeHave += static_cast<size_t>(r);
+      *have += static_cast<size_t>(r);
+      return 1;
     } else if (r == 0) {
-      dropConnection(c);
-      return false;
+      return -1; // the peer went away
     } else if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK) {
-      rememberHandshake(c, *st);
-      return false;
-    } else {
-      dropConnection(c);
-      return false;
+      return 0;
     }
+    return -1;
+  };
 
-    if (st->secretSizeHave < sizeof(st->secretSize)) {
-      rememberHandshake(c, *st);
-      return false;
+  if (f->sizeHave < sizeof(f->size)) {
+    if (readSome(reinterpret_cast<char *>(&f->size), sizeof(f->size), &f->sizeHave) < 0) {
+      return FieldRead::Failed;
     }
-    if (st->secretSize > maxNetREPLSharedSecretBytes) {
-      dropConnection(c);
-      return false;
+    if (f->sizeHave < sizeof(f->size)) {
+      return FieldRead::Incomplete;
     }
-    st->secret.resize(st->secretSize);
-  }
-
-  if (st->secretHave < st->secretSize) {
-    ssize_t r = recv(c, &st->secret[st->secretHave],
-                     st->secretSize - st->secretHave, MSG_DONTWAIT);
-    if (r > 0) {
-      st->secretHave += static_cast<size_t>(r);
-    } else if (r == 0) {
-      dropConnection(c);
-      return false;
-    } else if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK) {
-      rememberHandshake(c, *st);
-      return false;
-    } else {
-      dropConnection(c);
-      return false;
+    if (f->size > limit) {
+      return FieldRead::Failed;
     }
   }
 
-  if (st->secretHave < st->secretSize) {
-    rememberHandshake(c, *st);
-    return false;
+  // room is made for the bytes as they arrive, not for the size announced: a
+  // peer that claims a large field and sends none of it holds nothing
+  if (f->dataHave < f->size) {
+    const size_t upTo = f->dataHave + std::min<size_t>(f->size - f->dataHave, 16 * 1024);
+    f->data.resize(upTo);
+    const int r = readSome(&f->data[0], upTo, &f->dataHave);
+    f->data.resize(f->dataHave);
+    if (r < 0) {
+      return FieldRead::Failed;
+    }
   }
-  return true;
+  return f->dataHave == f->size ? FieldRead::Complete : FieldRead::Incomplete;
 }
 
 bool sharedSecretsMatch(const std::string& actual,
@@ -614,6 +635,55 @@ bool sharedSecretsMatch(const std::string& actual,
     difference |= static_cast<size_t>(actualByte ^ expectedByte);
   }
   return difference == 0;
+}
+
+// The shared secret as an authenticator: one token, the secret, accepted or
+// refused. Its wire format is the one shared secrets have always used (see
+// net::netREPLSharedSecretMechanism).
+class SharedSecretAuthenticator : public NetREPLAuthenticator {
+public:
+  explicit SharedSecretAuthenticator(const std::string& secret)
+      : secret(std::make_shared<const std::string>(secret)) {}
+
+  std::string mechanism() const override { return net::netREPLSharedSecretMechanism(); }
+  size_t maxTokenBytes() const override { return net::maxNetREPLSharedSecretBytes; }
+
+  std::unique_ptr<NetREPLAuthSession> newSession(int) override {
+    class Session : public NetREPLAuthSession {
+    public:
+      explicit Session(const std::shared_ptr<const std::string>& secret) : secret(secret) {}
+      Result step(const std::string& token, std::string*) override {
+        return sharedSecretsMatch(token, *this->secret) ? Result::Accept : Result::Reject;
+      }
+    private:
+      std::shared_ptr<const std::string> secret;
+    };
+    return std::unique_ptr<NetREPLAuthSession>(new Session(this->secret));
+  }
+
+private:
+  std::shared_ptr<const std::string> secret;
+};
+
+// check an authenticator before a listener is allocated for it. A null one is
+// an error rather than a listener that lets everyone in.
+NetREPLRegistration describeAuthenticator(const std::shared_ptr<NetREPLAuthenticator>& authenticator) {
+  if (!authenticator) {
+    throw std::runtime_error("The netREPL authenticator must not be null");
+  }
+  NetREPLRegistration r;
+  r.authenticator = authenticator;
+  r.mechanism     = authenticator->mechanism();
+  if (r.mechanism.empty() || r.mechanism.size() > net::maxNetREPLMechanismNameBytes) {
+    throw std::runtime_error("A netREPL authentication mechanism name must be between 1 and 64 bytes");
+  }
+  r.namesMechanism = r.mechanism != net::netREPLSharedSecretMechanism();
+  r.version        = r.namesMechanism ? net::netREPLMechanismVersion : net::netREPLSharedSecretVersion;
+  r.maxTokenBytes  = authenticator->maxTokenBytes();
+  if (r.maxTokenBytes > net::maxNetREPLAuthTokenBytesLimit) {
+    throw std::runtime_error("A netREPL authenticator may not accept tokens larger than 1MB");
+  }
+  return r;
 }
 
 // look at the request header bytes accumulated so far in 'b'.
@@ -805,47 +875,120 @@ void readNetREPLRequests(int c, void *d) {
   }
 }
 
+// Take one step of an authenticating listener's handshake: finish reading the
+// client's next token if it has all arrived, and act on the session's verdict.
+// True once the peer is authenticated; otherwise the connection was dropped or
+// is waiting for more bytes, and either way there is nothing more to do now.
+bool authenticatePeer(int c, const NetREPLRegistration& reg, HandshakeState* st, std::string* identity) {
+  if (st->word != reg.version) {
+    dropConnection(c); // not this listener's way of opening a session
+    return false;
+  }
+
+  if (reg.namesMechanism && !st->named) {
+    switch (readSizedField(c, &st->field, net::maxNetREPLMechanismNameBytes)) {
+    case FieldRead::Incomplete: return false;
+    case FieldRead::Failed:     dropConnection(c); return false;
+    case FieldRead::Complete:   break;
+    }
+    st->mechanism = std::move(st->field.data);
+    st->named     = true;
+    st->field     = SizedField();
+  }
+
+  switch (readSizedField(c, &st->field, reg.maxTokenBytes)) {
+  case FieldRead::Incomplete: return false;
+  case FieldRead::Failed:     dropConnection(c); return false;
+  case FieldRead::Complete:   break;
+  }
+  const std::string token = std::move(st->field.data);
+  st->field = SizedField();
+
+  // a client set up for another mechanism is told so, once its first token
+  // has been read: closing with that token still unread would reset the
+  // connection and could take the answer with it
+  if (reg.namesMechanism && st->mechanism != reg.mechanism) {
+    sendHandshakeReply(c, netREPLAuthWrongMechanism);
+    dropConnection(c);
+    return false;
+  }
+
+  auto        result = NetREPLAuthSession::Result::Reject;
+  std::string reply;
+  try {
+    if (!st->session) {
+      st->session = reg.authenticator->newSession(c);
+    }
+    if (st->session) {
+      result = st->session->step(token, &reply);
+      if (result == NetREPLAuthSession::Result::Accept) {
+        *identity = st->session->peerIdentity();
+      }
+    }
+  } catch (...) {
+    // whatever an authenticator throws refuses the peer; nothing of it may
+    // reach the event loop
+    result = NetREPLAuthSession::Result::Reject;
+  }
+
+  // the client stops after this many rounds too; a session that never
+  // settles is not left to trade tokens with a peer forever
+  if (result == NetREPLAuthSession::Result::Continue &&
+      ++st->rounds >= net::maxNetREPLAuthRounds) {
+    result = NetREPLAuthSession::Result::Reject;
+  }
+
+  switch (result) {
+  case NetREPLAuthSession::Result::Continue:
+    if (!sendHandshakeReply(c, netREPLAuthContinue, &reply)) {
+      dropConnection(c);
+    }
+    return false; // the event loop says when the next token arrives
+  case NetREPLAuthSession::Result::Accept:
+    if (!(reply.empty() ? sendHandshakeReply(c, netREPLAuthAccepted)
+                        : sendHandshakeReply(c, netREPLAuthAcceptedWithToken, &reply))) {
+      dropConnection(c);
+      return false;
+    }
+    return true;
+  case NetREPLAuthSession::Result::Reject:
+    break;
+  }
+  sendHandshakeReply(c, netREPLAuthRejected);
+  dropConnection(c);
+  return false;
+}
+
 void netREPLConnection(int c, void *d) {
   auto* registration = reinterpret_cast<NetREPLRegistration *>(d);
-  HandshakeState st;
-  if (!handshakePending(c, &st)) {
+  HandshakeStatePtr st = pendingHandshake(c);
+  if (!st) {
     readNetREPLRequests(c, registration->server);
     return;
   }
 
-  if (!readVersionWord(c, &st)) {
+  if (!readVersionWord(c, st.get())) {
     return;
   }
 
-  if (registration->sharedSecret.empty()) {
-    if (st.word != netREPLProtocolVersion) {
+  std::string identity;
+  if (!registration->authenticator) {
+    if (st->word != net::netREPLVersion) {
       dropConnection(c);
       return;
     }
-  } else {
-    if (st.word != authenticatedNetREPLProtocolVersion) {
-      dropConnection(c);
-      return;
-    }
-    if (!readSharedSecret(c, &st)) {
-      return;
-    }
-    if (!sharedSecretsMatch(st.secret, registration->sharedSecret)) {
-      sendHandshakeStatus(c, netREPLAuthRejected);
-      dropConnection(c);
-      return;
-    }
-    if (!sendHandshakeStatus(c, netREPLAuthAccepted)) {
-      dropConnection(c);
-      return;
-    }
+  } else if (!authenticatePeer(c, *registration, st.get(), &identity)) {
+    return;
   }
 
   forgetHandshake(c);
 
   try {
+    if (registration->authenticator) {
+      registration->server->authenticated(c, registration->mechanism, identity);
+    }
     registration->server->connect(c);
-  } catch (std::exception &) {
+  } catch (...) {
     dropConnection(c);
   }
 }
@@ -882,12 +1025,9 @@ void netREPLConnection(int c, void *d) {
 // approaches it).
 static const time_t netREPLSendTimeoutSeconds = 10;
 
-void registerNetREPL(int s, Server *svr, const std::string& sharedSecret) {
-  if (sharedSecret.size() > maxNetREPLSharedSecretBytes) {
-    close(s);
-    throw std::runtime_error("The netREPL shared secret is too large");
-  }
-  auto* registration = new NetREPLRegistration{svr, sharedSecret};
+static void registerNetREPL(int s, Server *svr, NetREPLRegistration described = NetREPLRegistration()) {
+  auto* registration = new NetREPLRegistration(std::move(described));
+  registration->server = svr;
   registerEventHandler(
       s,
       [](int s, void *d) {
@@ -901,7 +1041,7 @@ void registerNetREPL(int s, Server *svr, const std::string& sharedSecret) {
           setsockopt(c, SOL_SOCKET, SO_SNDTIMEO, &sndTimeout, sizeof(sndTimeout));
 
           try {
-            rememberHandshake(c, HandshakeState());
+            rememberHandshake(c);
             registerEventHandler(c, &netREPLConnection, d);
           } catch (std::exception &) {
             forgetHandshake(c);
@@ -910,10 +1050,6 @@ void registerNetREPL(int s, Server *svr, const std::string& sharedSecret) {
         }
       },
       registration);
-}
-
-void registerNetREPL(int s, Server *svr) {
-  registerNetREPL(s, svr, std::string());
 }
 
 int installNetREPL(int port, Server *svr) {
@@ -937,28 +1073,49 @@ int installNetREPL(const std::string &filepath, Server *svr) {
   return s;
 }
 
+// the authenticator is checked before a listening socket is allocated for it
 int installNetREPL(int port, Server *svr,
-                   const std::string& sharedSecret) {
-  validateSharedSecret(sharedSecret);
+                   const std::shared_ptr<NetREPLAuthenticator>& authenticator) {
+  auto described = describeAuthenticator(authenticator);
   int s = allocateServer(port, "127.0.0.1");
-  registerNetREPL(s, svr, sharedSecret);
+  registerNetREPL(s, svr, std::move(described));
   return s;
 }
 
 int installNetREPL(const std::string &host, int port, Server *svr,
-                   const std::string& sharedSecret) {
-  validateSharedSecret(sharedSecret);
+                   const std::shared_ptr<NetREPLAuthenticator>& authenticator) {
+  auto described = describeAuthenticator(authenticator);
   int s = allocateServer(port, host);
-  registerNetREPL(s, svr, sharedSecret);
+  registerNetREPL(s, svr, std::move(described));
   return s;
 }
 
 int installNetREPL(const std::string &filepath, Server *svr,
-                   const std::string& sharedSecret) {
-  validateSharedSecret(sharedSecret);
+                   const std::shared_ptr<NetREPLAuthenticator>& authenticator) {
+  auto described = describeAuthenticator(authenticator);
   int s = allocateFileSocketServer(filepath);
-  registerNetREPL(s, svr, sharedSecret);
+  registerNetREPL(s, svr, std::move(described));
   return s;
+}
+
+std::shared_ptr<NetREPLAuthenticator> sharedSecretAuthenticator(const std::string& sharedSecret) {
+  validateSharedSecret(sharedSecret);
+  return std::make_shared<SharedSecretAuthenticator>(sharedSecret);
+}
+
+int installNetREPL(int port, Server *svr,
+                   const std::string& sharedSecret) {
+  return installNetREPL(port, svr, sharedSecretAuthenticator(sharedSecret));
+}
+
+int installNetREPL(const std::string &host, int port, Server *svr,
+                   const std::string& sharedSecret) {
+  return installNetREPL(host, port, svr, sharedSecretAuthenticator(sharedSecret));
+}
+
+int installNetREPL(const std::string &filepath, Server *svr,
+                   const std::string& sharedSecret) {
+  return installNetREPL(filepath, svr, sharedSecretAuthenticator(sharedSecret));
 }
 
 class CCServer : public Server {
@@ -1038,84 +1195,77 @@ int installNetREPL(const std::string &filepath, cc *c,
   return installNetREPL(filepath, new CCServer(c, wrExprFn));
 }
 
+// the authenticator is checked, and the listening socket allocated, before the
+// server object is: one that cannot be installed must not leave a CCServer behind
+int installNetREPL(int port, cc *c,
+                   const std::shared_ptr<NetREPLAuthenticator>& authenticator,
+                   ReWriteExprFn const &wrExprFn) {
+  auto described = describeAuthenticator(authenticator);
+  int s = allocateServer(port, "127.0.0.1");
+  registerNetREPL(s, new CCServer(c, wrExprFn), std::move(described));
+  return s;
+}
+
+int installNetREPL(const std::string &host, int port, cc *c,
+                   const std::shared_ptr<NetREPLAuthenticator>& authenticator,
+                   ReWriteExprFn const &wrExprFn) {
+  auto described = describeAuthenticator(authenticator);
+  int s = allocateServer(port, host);
+  registerNetREPL(s, new CCServer(c, wrExprFn), std::move(described));
+  return s;
+}
+
+int installNetREPL(const std::string &filepath, cc *c,
+                   const std::shared_ptr<NetREPLAuthenticator>& authenticator,
+                   ReWriteExprFn const &wrExprFn) {
+  auto described = describeAuthenticator(authenticator);
+  int s = allocateFileSocketServer(filepath);
+  registerNetREPL(s, new CCServer(c, wrExprFn), std::move(described));
+  return s;
+}
+
 int installNetREPL(int port, cc *c, const std::string& sharedSecret,
                    ReWriteExprFn const &wrExprFn) {
-  validateSharedSecret(sharedSecret); // before the server object is allocated
-  return installNetREPL(port, new CCServer(c, wrExprFn), sharedSecret);
+  return installNetREPL(port, c, sharedSecretAuthenticator(sharedSecret), wrExprFn);
 }
 
 int installNetREPL(const std::string &host, int port, cc *c,
                    const std::string& sharedSecret,
                    ReWriteExprFn const &wrExprFn) {
-  validateSharedSecret(sharedSecret); // before the server object is allocated
-  return installNetREPL(host, port, new CCServer(c, wrExprFn), sharedSecret);
+  return installNetREPL(host, port, c, sharedSecretAuthenticator(sharedSecret), wrExprFn);
 }
 
 int installNetREPL(const std::string &filepath, cc *c,
                    const std::string& sharedSecret,
                    ReWriteExprFn const &wrExprFn) {
-  validateSharedSecret(sharedSecret); // before the server object is allocated
-  return installNetREPL(filepath, new CCServer(c, wrExprFn), sharedSecret);
-}
-
-// The authenticated handshake goes out in one send that cannot raise SIGPIPE.
-// A listener that refuses it (a legacy one sees the authenticated version word
-// and hangs up) can close the connection while the secret is still being
-// written; Linux has no SO_NOSIGPIPE, so a plain write() there killed the
-// client process instead of letting it report the refusal.
-static void sendAuthenticatedHandshake(int c, const std::string& sharedSecret) {
-  std::vector<char> msg;
-  auto put = [&](const void* p, size_t n) {
-    msg.insert(msg.end(), static_cast<const char*>(p), static_cast<const char*>(p) + n);
-  };
-  const uint32_t version = authenticatedNetREPLProtocolVersion;
-  const size_t len = sharedSecret.size();
-  put(&version, sizeof(version));
-  put(&len, sizeof(len)); // the encoding of fdwrite(int, const std::string&)
-  put(sharedSecret.data(), sharedSecret.size());
-
-  size_t sent = 0;
-  while (sent < msg.size()) {
-    ssize_t n = send(c, msg.data() + sent, msg.size() - sent, netREPLSendFlags);
-    if (n < 0) {
-      if (errno == EINTR) {
-        continue;
-      }
-      throw std::runtime_error("Couldn't send the netREPL handshake: " + std::string(strerror(errno)));
-    }
-    sent += static_cast<size_t>(n);
-  }
+  return installNetREPL(filepath, c, sharedSecretAuthenticator(sharedSecret), wrExprFn);
 }
 
 // connect to a running net REPL
 Client::Client(const std::string &hostport)
     : hostport(hostport), eid(0), rbno(0), reno(0) {
   this->c = connectSocket(hostport);
-  fdwrite(this->c, netREPLProtocolVersion);
+  fdwrite(this->c, net::netREPLVersion);
 }
 
+// the secret is checked before a connection is opened for it
 Client::Client(const std::string &hostport, const std::string& sharedSecret)
+    : Client(hostport, net::NetREPLSharedSecret(sharedSecret)) {}
+
+// The handshake (net::authenticateSession) sends its opening in one send that
+// cannot raise SIGPIPE. A listener that refuses it (one without an
+// authenticator sees a version word it does not speak and hangs up) can close
+// the connection while the first token is still being written; Linux has no
+// SO_NOSIGPIPE, so a plain write() there killed the client process instead of
+// letting it report the refusal.
+Client::Client(const std::string &hostport, const net::NetREPLClientAuthenticator& auth)
     : hostport(hostport), eid(0), rbno(0), reno(0) {
-  validateSharedSecret(sharedSecret);
   this->c = connectSocket(hostport);
-#if defined(SO_NOSIGPIPE)
-  // a peer that refuses the secret closes the connection; writing to it must
-  // fail with an error rather than raise SIGPIPE in an embedding process
-  int noSigPipe = 1;
-  setsockopt(this->c, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, sizeof(noSigPipe));
-#endif
-  uint8_t status = netREPLAuthRejected;
   try {
-    sendAuthenticatedHandshake(this->c, sharedSecret);
-    fdread(this->c, &status, sizeof(status));
-  } catch (std::exception&) {
-    status = netREPLAuthRejected;
-  }
-  if (status != netREPLAuthAccepted) {
+    net::authenticateSession(this->c, auth, hostport);
+  } catch (...) {
     close(this->c);
-    throw std::runtime_error(
-      "netREPL authentication rejected by '" + hostport +
-      "': the server refused the shared secret or does not require one");
+    throw;
   }
 }
 

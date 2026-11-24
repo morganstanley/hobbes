@@ -11,6 +11,8 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdlib>
+#include <functional>
+#include <memory>
 #include <mutex>
 #include <thread>
 
@@ -99,6 +101,11 @@ static std::condition_variable authenticatedServerStartup;
 static std::atomic<bool> authenticatedServerStop{false};
 static std::thread authenticatedServerThread;
 
+// listeners that authenticate their peers with a custom NetREPLAuthenticator
+// (defined with the tests that use them)
+static std::atomic<bool> customAuthServerStop{false};
+static std::thread customAuthServerThread;
+
 static void runTestServerWithHost(int ps, int pe, const std::string &host) {
   std::unique_lock<std::mutex> lk(serverMtxWithHost);
   serverPortWithHost = ps;
@@ -181,6 +188,10 @@ static void joinServerThreadsAtExit() {
   serverStop = true;
   serverWithHostStop = true;
   authenticatedServerStop = true;
+  customAuthServerStop = true;
+  if (customAuthServerThread.joinable()) {
+    customAuthServerThread.join();
+  }
   if (serverThread.joinable()) {
     serverThread.join();
   }
@@ -612,6 +623,595 @@ TEST(Net, partialAuthenticatedHandshakeDoesNotStallTheServer) {
       net::NetREPLSharedSecret(authenticatedServerSecret));
   EXPECT_EQ(authorized.add(19, 23), 42);
   ::close(stalled);
+}
+
+// A listener can authenticate its peers with a handshake the embedding
+// application supplies (NetREPLAuthenticator), and a client answers with the
+// matching NetREPLClientAuthenticator. The mechanism here is a toy
+// challenge-response with the shape of a real one: the client names a user,
+// the server sends a challenge, the client answers it with that user's key,
+// and the server's acceptance carries a proof of its own for the client to
+// check. Two rounds, tokens in both directions, an identity at the end.
+namespace {
+
+const std::string testAuthMechanism = "test-challenge";
+const std::string testAuthUser      = "alice";
+const std::string testAuthKey       = "alice-test-only-key";
+
+class TestChallengeAuthenticator : public NetREPLAuthenticator {
+public:
+  std::string mechanism() const override { return testAuthMechanism; }
+  size_t maxTokenBytes() const override { return 256; }
+
+  std::unique_ptr<NetREPLAuthSession> newSession(int) override {
+    return std::unique_ptr<NetREPLAuthSession>(new Session(++this->sessions));
+  }
+
+private:
+  class Session : public NetREPLAuthSession {
+  public:
+    explicit Session(int n) : challenge("challenge-" + str::from(n)) {}
+
+    Result step(const std::string& token, std::string* reply) override {
+      if (this->user.empty()) {
+        if (token == "throw") {
+          throw std::runtime_error("this session cannot go on");
+        }
+        if (token != testAuthUser && token != "mallory" && token != "loop") {
+          return Result::Reject; // no such user
+        }
+        this->user = token;
+        *reply = this->challenge;
+        return Result::Continue;
+      }
+      if (this->user == "loop") {
+        *reply = this->challenge;
+        return Result::Continue; // never settles
+      }
+      const std::string key = this->user == testAuthUser ? testAuthKey : "mallory-test-only-key";
+      if (token != this->challenge + ":" + key) {
+        return Result::Reject;
+      }
+      this->proven = true;
+      *reply = "server-proof:" + key;
+      return Result::Accept;
+    }
+
+    std::string peerIdentity() const override {
+      return this->proven ? this->user : std::string();
+    }
+
+  private:
+    std::string challenge;
+    std::string user;
+    bool        proven = false;
+  };
+
+  int sessions = 0; // only the listener's event loop makes sessions
+};
+
+class TestChallengeClient : public net::NetREPLClientAuthenticator {
+public:
+  TestChallengeClient(const std::string& user, const std::string& key,
+                      const std::string& mechanism = testAuthMechanism)
+      : user(user), key(key), mech(mechanism) {}
+
+  std::string mechanism() const override { return this->mech; }
+
+  std::unique_ptr<net::NetREPLClientAuthSession> begin() const override {
+    return std::unique_ptr<net::NetREPLClientAuthSession>(new Session(*this));
+  }
+
+  // how many sessions checked the server's proof and were satisfied
+  int serversVerified() const { return this->verified.load(); }
+
+private:
+  class Session : public net::NetREPLClientAuthSession {
+  public:
+    explicit Session(const TestChallengeClient& auth) : auth(auth) {}
+
+    std::string next(const std::string& serverToken) override {
+      if (!this->named) {
+        this->named = true;
+        return this->auth.user;
+      }
+      return serverToken + ":" + this->auth.key;
+    }
+
+    void accepted(const std::string& finalToken) override {
+      if (finalToken != "server-proof:" + this->auth.key) {
+        throw std::runtime_error("the server did not prove itself");
+      }
+      ++this->auth.verified;
+    }
+
+  private:
+    const TestChallengeClient& auth;
+    bool named = false;
+  };
+
+  std::string user;
+  std::string key;
+  std::string mech;
+  mutable std::atomic<int> verified{0};
+};
+
+// a Server that notes what the listener tells it about each connection, and
+// turns one authenticated peer away
+class RecordingNetREPLServer : public NullNetREPLServer {
+public:
+  void authenticated(int, const std::string& mechanism, const std::string& identity) override {
+    record("authenticated " + mechanism + " " + identity);
+    if (identity == "mallory") {
+      throw std::runtime_error("mallory is not welcome here");
+    }
+  }
+  void connect(int) override { record("connect"); }
+  void disconnect(int) override { record("disconnect"); }
+
+  // the listener calls in from its own thread, some time after the client has
+  // its answer: wait for the calls a test expects
+  std::vector<std::string> eventsOnceThereAre(size_t n) {
+    std::unique_lock<std::mutex> lk(this->mtx);
+    this->changed.wait_for(lk, std::chrono::seconds(10), [&] { return this->events.size() >= n; });
+    return this->events;
+  }
+  void clear() {
+    std::lock_guard<std::mutex> lk(this->mtx);
+    this->events.clear();
+  }
+
+private:
+  void record(const std::string& e) {
+    {
+      std::lock_guard<std::mutex> lk(this->mtx);
+      this->events.push_back(e);
+    }
+    this->changed.notify_all();
+  }
+
+  std::mutex               mtx;
+  std::condition_variable  changed;
+  std::vector<std::string> events;
+};
+
+RecordingNetREPLServer& recordingServer() {
+  static RecordingNetREPLServer x;
+  return x;
+}
+
+int customAuthServerPort = -1;    // a cc behind the test mechanism
+int recordingAuthServerPort = -1; // recordingServer() behind the same mechanism
+bool customAuthServerReady = false;
+std::mutex customAuthServerMtx;
+std::condition_variable customAuthServerStartup;
+
+void runCustomAuthTestServers() {
+  std::unique_lock<std::mutex> lk(customAuthServerMtx);
+  auto installFrom = [](int port, const std::function<void(int)>& install) {
+    for (int end = port + 500; port < end; ++port) {
+      try {
+        install(port);
+        return port;
+      } catch (std::exception &) {
+      }
+    }
+    throw std::runtime_error("Couldn't allocate port for custom-auth test server");
+  };
+  bool installed = false;
+  try {
+    const int p = installFrom(11501, [](int port) {
+      installNetREPL(port, &c(), std::make_shared<TestChallengeAuthenticator>());
+    });
+    const int r = installFrom(p + 1, [](int port) {
+      installNetREPL(port, &recordingServer(), std::make_shared<TestChallengeAuthenticator>());
+    });
+    customAuthServerPort    = p;
+    recordingAuthServerPort = r;
+    installed = true;
+  } catch (std::exception &) {
+  }
+  customAuthServerReady = true;
+  lk.unlock();
+  customAuthServerStartup.notify_one();
+  if (installed) {
+    runEventLoop([&]{ return customAuthServerStop.load(); });
+  }
+}
+
+void startCustomAuthTestServers() {
+  if (customAuthServerPort < 0) {
+    if (customAuthServerThread.joinable()) {
+      customAuthServerThread.join();
+    }
+    c(); // construct the compiler (and register the exit cleanup) on this thread first
+    std::unique_lock<std::mutex> lk(customAuthServerMtx);
+    customAuthServerReady = false;
+    customAuthServerThread = std::thread(&runCustomAuthTestServers);
+    customAuthServerStartup.wait(lk, []{ return customAuthServerReady; });
+    if (customAuthServerPort < 0) {
+      throw std::runtime_error("Couldn't allocate ports for custom-auth test servers");
+    }
+  }
+}
+
+int testCustomAuthServerPort()    { startCustomAuthTestServers(); return customAuthServerPort; }
+int testRecordingAuthServerPort() { startCustomAuthTestServers(); return recordingAuthServerPort; }
+
+// the handshake as it appears on the wire, for peers that speak it by hand
+std::string sizedField(const std::string& x) {
+  const size_t n = x.size();
+  return std::string(reinterpret_cast<const char*>(&n), sizeof(n)) + x;
+}
+std::string mechanismOpening(const std::string& mechanism) {
+  const uint32_t version = 0x00010002;
+  return std::string(reinterpret_cast<const char*>(&version), sizeof(version)) + sizedField(mechanism);
+}
+bool sendRaw(int fd, const std::string& x) {
+  return ::send(fd, x.data(), x.size(), 0) == static_cast<ssize_t>(x.size());
+}
+// the next status byte, or -1 if the server hung up (or said nothing in time)
+int recvStatus(int fd) {
+  uint8_t b = 0;
+  return ::recv(fd, &b, 1, MSG_WAITALL) == 1 ? static_cast<int>(b) : -1;
+}
+std::string recvSizedField(int fd) {
+  size_t n = 0;
+  if (::recv(fd, &n, sizeof(n), MSG_WAITALL) != static_cast<ssize_t>(sizeof(n)) || n > 4096) {
+    return "<no token>";
+  }
+  std::string x(n, '\0');
+  if (n > 0 && ::recv(fd, &x[0], n, MSG_WAITALL) != static_cast<ssize_t>(n)) {
+    return "<short token>";
+  }
+  return x;
+}
+int connectForHandshake(int port) {
+  int fd = connectSocket("localhost", port);
+  struct timeval tv;
+  tv.tv_sec  = 10;
+  tv.tv_usec = 0;
+  ::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+  return fd;
+}
+
+// what an attempt to open an authenticated session failed with, or "" if it worked
+std::string authFailure(const std::function<void()>& open) {
+  try {
+    open();
+  } catch (std::exception& ex) {
+    return ex.what();
+  }
+  return "";
+}
+bool contains(const std::string& s, const std::string& part) {
+  return s.find(part) != std::string::npos;
+}
+
+} // namespace
+
+TEST(Net, customAuthenticatorAcceptsAPeerAndReportsItsIdentity) {
+  const int port = testCustomAuthServerPort();
+  const TestChallengeClient alice(testAuthUser, testAuthKey);
+
+  // the header-only client, through DEFINE_NET_CLIENT
+  SyncClient sync("localhost", static_cast<size_t>(port), alice);
+  EXPECT_EQ(sync.add(20, 22), 42);
+  sync.reconnect("localhost", static_cast<size_t>(port), alice);
+  EXPECT_EQ(sync.add(1, 2), 3);
+
+  // libhobbes' client
+  const std::string hostPort = "localhost:" + str::from(port);
+  hobbes::Client client(hostPort, alice);
+  EXPECT_EQ(client.remoteHost(), hostPort);
+
+  // and a Connect constraint in Hobbes code, with the authenticator
+  // registered for its host:port
+  hobbes::cc compiler;
+  compiler.enableRemoteConnections({hostPort});
+  compiler.setRemoteConnectionAuthenticator(
+      hostPort, std::make_shared<TestChallengeClient>(testAuthUser, testAuthKey));
+  compiler.compileFn<void()>(
+      "let x = (connection :: (Connect \"" + hostPort + "\" p) => p) in ()")();
+
+  // every one of alice's sessions was handed the token the server sent with
+  // its acceptance, and checked it
+  EXPECT_EQ(alice.serversVerified(), 3);
+
+  // the Server is told who authenticated, before it is told of the connection
+  recordingServer().clear();
+  int fd = connectForHandshake(testRecordingAuthServerPort());
+  net::authenticateSession(fd, alice);
+  auto events = recordingServer().eventsOnceThereAre(2);
+  EXPECT_EQ(events.size(), size_t(2));
+  if (events.size() == 2) {
+    EXPECT_EQ(events[0], "authenticated " + testAuthMechanism + " " + testAuthUser);
+    EXPECT_EQ(events[1], "connect");
+  }
+  ::close(fd);
+  events = recordingServer().eventsOnceThereAre(3);
+  EXPECT_EQ(events.size(), size_t(3));
+  if (events.size() == 3) {
+    EXPECT_EQ(events[2], "disconnect");
+  }
+}
+
+TEST(Net, customAuthenticatorRejectsAPeer) {
+  const int port = testCustomAuthServerPort();
+  const std::string hostPort = "localhost:" + str::from(port);
+  recordingServer().clear();
+
+  // a wrong answer to the challenge, through each client
+  const TestChallengeClient wrongKey(testAuthUser, "not-alices-key");
+  std::string why = authFailure([&] { SyncClient x("localhost", static_cast<size_t>(port), wrongKey); });
+  EXPECT_TRUE(contains(why, "authentication rejected"));
+  EXPECT_TRUE(contains(why, "refused the 'test-challenge' handshake"));
+
+  why = authFailure([&] { hobbes::Client x(hostPort, wrongKey); });
+  EXPECT_TRUE(contains(why, "authentication rejected by '" + hostPort + "'"));
+
+  hobbes::cc compiler;
+  compiler.enableRemoteConnections({hostPort});
+  compiler.setRemoteConnectionAuthenticator(
+      hostPort, std::make_shared<TestChallengeClient>(testAuthUser, "not-alices-key"));
+  EXPECT_EXCEPTION(compiler.compileFn<void()>(
+      "let x = (connection :: (Connect \"" + hostPort + "\" p) => p) in ()"));
+  EXPECT_EXCEPTION(compiler.setRemoteConnectionAuthenticator(hostPort, nullptr));
+
+  // a user the server does not know is refused at the first token, and a
+  // session that throws refuses its peer
+  why = authFailure([&] { hobbes::Client x(hostPort, TestChallengeClient("nobody", testAuthKey)); });
+  EXPECT_TRUE(contains(why, "refused the 'test-challenge' handshake"));
+  why = authFailure([&] { hobbes::Client x(hostPort, TestChallengeClient("throw", testAuthKey)); });
+  EXPECT_TRUE(contains(why, "refused the 'test-challenge' handshake"));
+
+  // a session that never settles is cut off: the listener refuses the peer
+  // once it has gone the most rounds a handshake may take
+  why = authFailure([&] { hobbes::Client x(hostPort, TestChallengeClient("loop", testAuthKey)); });
+  EXPECT_TRUE(contains(why, "authentication rejected"));
+
+  // on the wire: a rejection byte, then the hang-up, and no request is read
+  int fd = connectForHandshake(port);
+  EXPECT_TRUE(sendRaw(fd, mechanismOpening(testAuthMechanism) + sizedField(testAuthUser)));
+  EXPECT_EQ(recvStatus(fd), 2);
+  EXPECT_TRUE(contains(recvSizedField(fd), "challenge-"));
+  EXPECT_TRUE(sendRaw(fd, sizedField("a guess")));
+  EXPECT_EQ(recvStatus(fd), 0);
+  EXPECT_EQ(recvStatus(fd), -1);
+  ::close(fd);
+
+  // a client whose session is not satisfied with the server's acceptance
+  // does not open the session, and what its session threw is what is reported
+  why = authFailure([&] {
+    class DistrustfulClient : public TestChallengeClient {
+    public:
+      DistrustfulClient() : TestChallengeClient(testAuthUser, testAuthKey) {}
+      std::unique_ptr<net::NetREPLClientAuthSession> begin() const override {
+        class Session : public net::NetREPLClientAuthSession {
+        public:
+          explicit Session(std::unique_ptr<net::NetREPLClientAuthSession> inner) : inner(std::move(inner)) {}
+          std::string next(const std::string& t) override { return this->inner->next(t); }
+          void accepted(const std::string&) override { throw std::runtime_error("the server did not prove itself"); }
+        private:
+          std::unique_ptr<net::NetREPLClientAuthSession> inner;
+        };
+        return std::unique_ptr<net::NetREPLClientAuthSession>(new Session(TestChallengeClient::begin()));
+      }
+    };
+    hobbes::Client x(hostPort, DistrustfulClient());
+  });
+  EXPECT_TRUE(contains(why, "the server did not prove itself"));
+
+  // the Server hears nothing of a peer that did not authenticate ...
+  const int recording = testRecordingAuthServerPort();
+  fd = connectForHandshake(recording);
+  why = authFailure([&] { net::authenticateSession(fd, wrongKey); });
+  EXPECT_TRUE(contains(why, "authentication rejected"));
+  ::close(fd);
+
+  // ... and can itself turn away one that did: the connection is dropped
+  // without Server::connect
+  fd = connectForHandshake(recording);
+  net::authenticateSession(fd, TestChallengeClient("mallory", "mallory-test-only-key"));
+  EXPECT_EQ(recvStatus(fd), -1);
+  ::close(fd);
+
+  fd = connectForHandshake(recording);
+  net::authenticateSession(fd, TestChallengeClient(testAuthUser, testAuthKey));
+  auto events = recordingServer().eventsOnceThereAre(3);
+  EXPECT_EQ(events.size(), size_t(3));
+  if (events.size() == 3) {
+    EXPECT_EQ(events[0], "authenticated " + testAuthMechanism + " mallory");
+    EXPECT_EQ(events[1], "authenticated " + testAuthMechanism + " " + testAuthUser);
+    EXPECT_EQ(events[2], "connect");
+  }
+  ::close(fd);
+
+  // an authenticator that cannot be installed is refused outright, rather
+  // than leaving a listener that lets everyone in
+  NullNetREPLServer server;
+  EXPECT_EXCEPTION(installNetREPL(0, &server, std::shared_ptr<NetREPLAuthenticator>()));
+  class Unnamed : public TestChallengeAuthenticator {
+    std::string mechanism() const override { return ""; }
+  };
+  EXPECT_EXCEPTION(installNetREPL(0, &server, std::make_shared<Unnamed>()));
+  class LongNamed : public TestChallengeAuthenticator {
+    std::string mechanism() const override { return std::string(65, 'x'); }
+  };
+  EXPECT_EXCEPTION(installNetREPL(0, &server, std::make_shared<LongNamed>()));
+  class Unbounded : public TestChallengeAuthenticator {
+    size_t maxTokenBytes() const override { return static_cast<size_t>(-1); }
+  };
+  EXPECT_EXCEPTION(installNetREPL(0, &server, std::make_shared<Unbounded>()));
+  EXPECT_EXCEPTION(installNetREPL(0, &c(), std::make_shared<Unbounded>()));
+
+  // after all of which the listener still serves a peer that authenticates
+  SyncClient ok("localhost", static_cast<size_t>(port), TestChallengeClient(testAuthUser, testAuthKey));
+  EXPECT_EQ(ok.add(19, 23), 42);
+}
+
+TEST(Net, aPeerStallingInACustomHandshakeDoesNotStallTheServer) {
+  // the authenticator never sees the connection: the event loop gathers each
+  // token without waiting and calls the session only when a whole one is in,
+  // so a peer that stops anywhere in the handshake holds up no one else
+  const int port = testCustomAuthServerPort();
+  const std::string opening = mechanismOpening(testAuthMechanism);
+  const std::string first   = opening + sizedField(testAuthUser);
+
+  // ... part way through the mechanism's name
+  int inName = connectForHandshake(port);
+  EXPECT_TRUE(sendRaw(inName, first.substr(0, sizeof(uint32_t) + sizeof(size_t) + 3)));
+
+  // ... part way through its first token
+  int inToken = connectForHandshake(port);
+  EXPECT_TRUE(sendRaw(inToken, first.substr(0, first.size() - 1)));
+
+  // ... having been sent the challenge, and not answering it
+  int inChallenge = connectForHandshake(port);
+  EXPECT_TRUE(sendRaw(inChallenge, first));
+  EXPECT_EQ(recvStatus(inChallenge), 2);
+  const std::string challenge = recvSizedField(inChallenge);
+
+  // ... and one that claims a token it will never send, of the largest size
+  // the authenticator allows
+  int inLargeToken = connectForHandshake(port);
+  EXPECT_TRUE(sendRaw(inLargeToken, opening + sizedField(std::string(256, 'x')).substr(0, sizeof(size_t))));
+
+  const TestChallengeClient alice(testAuthUser, testAuthKey);
+  {
+    SyncClient c("localhost", static_cast<size_t>(port), alice);
+    EXPECT_EQ(c.add(1, 2), 3);
+  }
+  {
+    SyncClient c("localhost", testServerPort());
+    EXPECT_EQ(c.add(2, 3), 5);
+  }
+
+  // the stalled peers were kept, not dropped: each picks up where it stopped
+  EXPECT_TRUE(sendRaw(inName, first.substr(sizeof(uint32_t) + sizeof(size_t) + 3)));
+  EXPECT_EQ(recvStatus(inName), 2);
+  EXPECT_TRUE(sendRaw(inName, sizedField(recvSizedField(inName) + ":" + testAuthKey)));
+  EXPECT_EQ(recvStatus(inName), 4);
+  EXPECT_EQ(recvSizedField(inName), "server-proof:" + testAuthKey);
+
+  EXPECT_TRUE(sendRaw(inToken, first.substr(first.size() - 1)));
+  EXPECT_EQ(recvStatus(inToken), 2);
+
+  EXPECT_TRUE(sendRaw(inChallenge, sizedField(challenge + ":" + testAuthKey)));
+  EXPECT_EQ(recvStatus(inChallenge), 4);
+  EXPECT_EQ(recvSizedField(inChallenge), "server-proof:" + testAuthKey);
+
+  // a whole handshake delivered a byte at a time comes to the same end
+  int slow = connectForHandshake(port);
+  auto dribble = [&](const std::string& bytes) {
+    for (char ch : bytes) {
+      EXPECT_EQ(::send(slow, &ch, 1, 0), ssize_t(1));
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+  };
+  dribble(first);
+  EXPECT_EQ(recvStatus(slow), 2);
+  dribble(sizedField(recvSizedField(slow) + ":" + testAuthKey));
+  EXPECT_EQ(recvStatus(slow), 4);
+
+  // a token larger than the authenticator allows is not waited for at all
+  int oversized = connectForHandshake(port);
+  EXPECT_TRUE(sendRaw(oversized, opening + sizedField(std::string(257, 'x')).substr(0, sizeof(size_t))));
+  EXPECT_EQ(recvStatus(oversized), -1);
+  int longName = connectForHandshake(port);
+  EXPECT_TRUE(sendRaw(longName, mechanismOpening(std::string(65, 'x')).substr(0, sizeof(uint32_t) + sizeof(size_t))));
+  EXPECT_EQ(recvStatus(longName), -1);
+
+  for (int fd : {inName, inToken, inChallenge, inLargeToken, slow, oversized, longName}) {
+    ::close(fd);
+  }
+
+  SyncClient c("localhost", static_cast<size_t>(port), alice);
+  EXPECT_EQ(c.add(4, 5), 9);
+}
+
+TEST(Net, mismatchedAuthenticatorsAreRefusedOnBothSides) {
+  const int customPort = testCustomAuthServerPort();
+  const int secretPort = testAuthenticatedServerPort();
+  const int legacyPort = testServerPort();
+  const TestChallengeClient alice(testAuthUser, testAuthKey);
+
+  // a client with another custom mechanism is told the listener does not use it
+  const TestChallengeClient otherMechanism(testAuthUser, testAuthKey, "another-mechanism");
+  std::string why = authFailure([&] { SyncClient x("localhost", static_cast<size_t>(customPort), otherMechanism); });
+  EXPECT_TRUE(contains(why, "authentication rejected"));
+  EXPECT_TRUE(contains(why, "does not use the 'another-mechanism' mechanism"));
+
+  // a shared secret offered to a listener with a custom authenticator
+  why = authFailure([&] {
+    SyncClient x("localhost", static_cast<size_t>(customPort), net::NetREPLSharedSecret(authenticatedServerSecret));
+  });
+  EXPECT_TRUE(contains(why, "authentication rejected"));
+
+  // a custom mechanism offered to a listener with a shared secret
+  why = authFailure([&] { SyncClient x("localhost", static_cast<size_t>(secretPort), alice); });
+  EXPECT_TRUE(contains(why, "authentication rejected"));
+  EXPECT_TRUE(contains(why, "may not use this mechanism"));
+
+  // ... and to a listener with no authentication at all
+  why = authFailure([&] { SyncClient x("localhost", static_cast<size_t>(legacyPort), alice); });
+  EXPECT_TRUE(contains(why, "authentication rejected"));
+  why = authFailure([&] { hobbes::Client x("localhost:" + str::from(legacyPort), alice); });
+  EXPECT_TRUE(contains(why, "authentication rejected"));
+
+  // a client that does not authenticate is hung up on by a listener that
+  // requires it, before anything it sends is read as a request
+  int fd = connectForHandshake(customPort);
+  fdwrite(fd, static_cast<uint32_t>(0x00010000));
+  EXPECT_EQ(recvStatus(fd), -1);
+  ::close(fd);
+  // a client of the shared secret is not served by the custom mechanism's
+  // version word, nor the reverse, whatever it sends next
+  // (each opening goes out in one send: the listener hangs up at the version
+  // word, and a second write could find the connection already reset)
+  const uint32_t sharedSecretVersion = 0x00010001;
+  fd = connectForHandshake(customPort);
+  EXPECT_TRUE(sendRaw(fd, std::string(reinterpret_cast<const char*>(&sharedSecretVersion), sizeof(sharedSecretVersion)) + sizedField(testAuthUser)));
+  EXPECT_EQ(recvStatus(fd), -1);
+  ::close(fd);
+  fd = connectForHandshake(secretPort);
+  EXPECT_TRUE(sendRaw(fd, mechanismOpening(testAuthMechanism) + sizedField(testAuthUser)));
+  EXPECT_EQ(recvStatus(fd), -1);
+  ::close(fd);
+
+  // no listener was any the worse for it
+  {
+    SyncClient c("localhost", static_cast<size_t>(customPort), alice);
+    EXPECT_EQ(c.add(1, 2), 3);
+  }
+  {
+    SyncClient c("localhost", static_cast<size_t>(secretPort), net::NetREPLSharedSecret(authenticatedServerSecret));
+    EXPECT_EQ(c.add(2, 3), 5);
+  }
+  {
+    SyncClient c("localhost", legacyPort);
+    EXPECT_EQ(c.add(3, 4), 7);
+  }
+}
+
+// The shared secret is the built-in authenticator: installing a listener with
+// a secret installs sharedSecretAuthenticator(secret), whose one-token session
+// is what the existing shared-secret tests above exercise over the wire.
+TEST(Net, sharedSecretIsTheBuiltInAuthenticator) {
+  EXPECT_EXCEPTION(sharedSecretAuthenticator(""));
+  EXPECT_EXCEPTION(sharedSecretAuthenticator(std::string(4097, 'x')));
+  auto authenticator = sharedSecretAuthenticator(authenticatedServerSecret);
+  EXPECT_EQ(authenticator->mechanism(), std::string("shared-secret"));
+  EXPECT_EQ(net::NetREPLSharedSecret(authenticatedServerSecret).mechanism(), std::string("shared-secret"));
+
+  auto session = authenticator->newSession(-1);
+  std::string reply;
+  EXPECT_TRUE(session->step("wrong-secret", &reply) == NetREPLAuthSession::Result::Reject);
+  EXPECT_TRUE(session->step(authenticatedServerSecret + "x", &reply) == NetREPLAuthSession::Result::Reject);
+  EXPECT_TRUE(session->step("", &reply) == NetREPLAuthSession::Result::Reject);
+  EXPECT_TRUE(session->step(authenticatedServerSecret, &reply) == NetREPLAuthSession::Result::Accept);
+  EXPECT_TRUE(reply.empty());
+  EXPECT_EQ(session->peerIdentity(), std::string());
 }
 
 TEST(Net, syncClientAPIWithConfiguredHostName) {

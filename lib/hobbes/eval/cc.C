@@ -726,6 +726,12 @@ void cc::setRemoteConnectionSharedSecret(
   hobbes::setRemoteConnectionSharedSecret(*this, hostPort, sharedSecret);
 }
 
+void cc::setRemoteConnectionAuthenticator(
+    const std::string& hostPort,
+    const std::shared_ptr<const net::NetREPLClientAuthenticator>& authenticator) {
+  hobbes::setRemoteConnectionAuthenticator(*this, hostPort, authenticator);
+}
+
 void cc::enableRemoteInvocation(const std::set<std::string>& allowedHostPorts) {
   hlock _;
   hobbes::enableRemoteInvocation(*this, allowedHostPorts);

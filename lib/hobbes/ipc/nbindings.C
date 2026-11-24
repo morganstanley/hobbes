@@ -27,8 +27,8 @@ Client* makeConnection(const std::string& hp) {
 }
 
 Client* makeConnection(const std::string& hp,
-                       const std::string& sharedSecret) {
-  auto* r = new Client(hp, sharedSecret);
+                       const net::NetREPLClientAuthenticator& auth) {
+  auto* r = new Client(hp, auth);
   connections.insert(r);
   return r;
 }
@@ -94,17 +94,20 @@ public:
   bool connectingAllowed(const std::string& hostport) const {
     return this->anyHostPort || this->allowedHostPorts.count(hostport) > 0;
   }
+  // keyed by the exact "host:port" spelling the Connect constraint uses; the
+  // latest authenticator set for a target replaces any earlier one
+  void setAuthenticator(const std::string& hostport,
+                        const std::shared_ptr<const net::NetREPLClientAuthenticator>& auth) {
+    if (!auth) {
+      throw std::runtime_error("The netREPL authenticator must not be null");
+    }
+    this->authenticators[hostport] = auth;
+  }
   void setSharedSecret(const std::string& hostport,
                        const std::string& sharedSecret) {
-    // validate now, not when a Connect constraint first opens the connection
-    // (keyed by the exact "host:port" spelling the Connect constraint uses)
-    if (sharedSecret.empty()) {
-      throw std::runtime_error("The netREPL shared secret must not be empty");
-    }
-    if (sharedSecret.size() > 4096) { // the limit Client enforces on connect
-      throw std::runtime_error("The netREPL shared secret is too large");
-    }
-    this->sharedSecrets[hostport] = sharedSecret;
+    // the secret is validated now (by NetREPLSharedSecret), not when a Connect
+    // constraint first opens the connection
+    setAuthenticator(hostport, std::make_shared<net::NetREPLSharedSecret>(sharedSecret));
   }
 
   bool refine(const TEnvPtr&, const ConstraintPtr& cst, MonoTypeUnifier* u, Definitions*) override {
@@ -127,10 +130,10 @@ public:
             "target -- note that hi does not, for the compiler behind -p or -w)");
         }
         size_t uc = u->size();
-        auto secret = this->sharedSecrets.find(hp->value());
-        Client* client = secret == this->sharedSecrets.end()
+        auto auth = this->authenticators.find(hp->value());
+        Client* client = auth == this->authenticators.end()
             ? makeConnection(hp->value())
-            : makeConnection(hp->value(), secret->second);
+            : makeConnection(hp->value(), *auth->second);
         mgu(handle, makeConnType(client), u);
         return uc != u->size();
       }
@@ -247,7 +250,7 @@ private:
   }
 
 private:
-  std::map<std::string, std::string> sharedSecrets;
+  std::map<std::string, std::shared_ptr<const net::NetREPLClientAuthenticator>> authenticators;
 };
 
 /*******************************************
@@ -768,6 +771,12 @@ void setRemoteConnectionSharedSecret(cc& c, const std::string& hostPort,
                                      const std::string& sharedSecret) {
   hlock _;
   connectionUnqualifier(c)->setSharedSecret(hostPort, sharedSecret);
+}
+
+void setRemoteConnectionAuthenticator(cc& c, const std::string& hostPort,
+                                      const std::shared_ptr<const net::NetREPLClientAuthenticator>& auth) {
+  hlock _;
+  connectionUnqualifier(c)->setAuthenticator(hostPort, auth);
 }
 
 void enableRemoteInvocation(cc& c, const std::set<std::string>& allowedHostPorts) {

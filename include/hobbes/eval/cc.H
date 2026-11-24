@@ -22,6 +22,7 @@
 
 #include <iostream>
 #include <map>
+#include <memory>
 #include <set>
 #include <stdexcept>
 #include <string>
@@ -29,6 +30,9 @@
 #include <vector>
 
 namespace hobbes {
+
+// how a Connect constraint authenticates to a net REPL listener (hobbes/netauth.H)
+namespace net { class NetREPLClientAuthenticator; }
 
 // parameter parsing for the 'compileFn' family of functions
 using ExprParser = std::function<ExprPtr (const std::string &)>;
@@ -330,6 +334,12 @@ public:
   // permitted with enableRemoteConnections.
   void setRemoteConnectionSharedSecret(const std::string &hostPort,
                                        const std::string &sharedSecret);
+  // ... or any other handshake the listener at this exact host:port requires
+  // (hobbes/netauth.H). The latest setting for a host:port replaces any
+  // earlier one, shared secret or authenticator.
+  void setRemoteConnectionAuthenticator(
+      const std::string &hostPort,
+      const std::shared_ptr<const net::NetREPLClientAuthenticator> &authenticator);
 
   // Resolving an (Invoke ...) type-class constraint ships code to a remote
   // peer and executes it there as a side effect of type-checking, not
