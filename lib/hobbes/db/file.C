@@ -12,6 +12,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
+#include <sys/file.h>
 #include <fcntl.h>
 #include <unistd.h>
 
@@ -532,6 +533,15 @@ std::string moveToUniqueFilename(const std::string& oldpath, const std::string& 
       throw std::runtime_error("Failed to move to a log database file with error: " + std::string(strerror(errno)));
     }
   });
+}
+
+// take a file for one writer, or find that another writer already has it
+//  (flock rather than fcntl/lockf because the lock has to belong to the open
+//   file and not to the process: a second writer opened on the file by the
+//   same process must neither succeed in taking it nor, when it is closed,
+//   drop the lock that the first writer holds)
+bool lockForWriting(writer* f) {
+  return flock(f->unsafeGetFD(), LOCK_EX | LOCK_NB) == 0;
 }
 
 }

@@ -336,7 +336,9 @@ void RawStoredSeries::record(const void* v, bool signal) {
   //  (allocate a new batch cell if necessary)
   this->batchHead += this->storageSize;
 
-  if (++(*reinterpret_cast<uint64_t*>(this->batchData)) == this->batchSize) {
+  // (the count is in the file, where something other than this writer may have moved it:
+  //  at or past the batch size, this batch is finished)
+  if (++(*reinterpret_cast<uint64_t*>(this->batchData)) >= this->batchSize) {
     void* oldBatchData = this->batchData;
     consBatchNode(this->batchNode);
     this->outputFile->unsafeUnload(oldBatchData, this->batchStorageSize);

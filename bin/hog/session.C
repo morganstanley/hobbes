@@ -85,12 +85,30 @@ struct Session {
   std::vector<size_t> txnScratch;
 };
 
+// A log file must have exactly one writer: a series keeps its write position
+// to itself and only the stored record count in the file, so a second writer
+// on the same file never sees a batch fill up and runs off the end of it
+// (and then off the end of the file's mapping). Nothing in the file says
+// that it is being written, so a session holds its file with lockForWriting
+// (db/file.H) for as long as it has it open, and a file that cannot be taken
+// is never appended to -- whether the writer that has it is another session
+// of this process or another hog on the same directory.
+
+// nobody else can have a fresh file, so locking it just marks it as being written
+// (if that fails, the file system doesn't support the lock and nothing stops a second writer -- say so)
+static void markFreshFileAsWritten(writer* f, const std::string& path) {
+  if (!lockForWriting(f)) {
+    out << "warning: unable to lock '" << path << "' for writing, log files here are not protected against a second writer" << std::endl;
+  }
+}
+
 // a basic transactional file allocation method -- just start a fresh file
 class AllocFreshFile {
 public:
   AllocFreshFile(const std::string& dirPfx, storage::CommitMethod, const storage::statements&) : dirPfx(dirPfx) {
     this->tmpPath = freshTempFile(dirPfx);
     this->f       = new writer(this->tmpPath);
+    markFreshFileAsWritten(this->f, this->tmpPath);
   }
   ~AllocFreshFile() {
     if (!this->tmpPath.empty()) {
@@ -122,6 +140,7 @@ public:
     if (this->f == nullptr) {
       this->tmpPath = freshTempFile(dirPfx);
       this->f       = new writer(this->tmpPath);
+      markFreshFileAsWritten(this->f, this->tmpPath);
     }
   }
   ~AppendFirstMatchingFile() {
@@ -158,7 +177,10 @@ private:
         writer* f = nullptr;
         try {
           f = new writer(g.gl_pathv[i]);
-          if (fileMatchesStatements(f, cm, stmts)) {
+          // only append to a file that has no other writer (see lockForWriting)
+          // (taken before the file is looked at, so that what is matched can't be changed by a writer that has it)
+          if (lockForWriting(f) && fileMatchesStatements(f, cm, stmts)) {
+            globfree(&g);
             return f;
           } else {
             delete f;
@@ -427,14 +449,13 @@ public:
   ProcessTxnF appendStorageSession(const std::string& dirPfx, hobbes::storage::PipeQOS qos, hobbes::storage::CommitMethod cm, const hobbes::storage::statements& stmts) override {
     std::lock_guard<std::mutex> slock(this->m);
     for (auto* cs : this->sessions) {
-      if (dirPfx == cs->dirPfx && qos == cs->qos && cm == cs->cm && stmts == cs->stmts) {
+      if (dirPfx == cs->dirPfx && cm == cs->cm && sameLogSpace(stmts, cs->stmts)) {
         return csfn(cs);
       }
     }
 
     auto* cs = new CSession;
     cs->dirPfx = dirPfx;
-    cs->qos    = qos;
     cs->cm     = cm;
     cs->stmts  = stmts;
     cs->sproc  = initStorageSession<AppendFirstMatchingFile>(&cs->s, dirPfx, qos, cm, stmts, this->sm);
@@ -444,7 +465,6 @@ public:
 private:
   struct CSession {
     std::string                   dirPfx;
-    hobbes::storage::PipeQOS      qos;
     hobbes::storage::CommitMethod cm;
     hobbes::storage::statements   stmts;
     Session                       s;
@@ -454,6 +474,25 @@ private:
   std::vector<CSession*> sessions;
   std::mutex m;
   hobbes::StoredSeries::StorageMode sm;
+
+  // A connection joins a session when it would be given that session's file,
+  // so sessions are told apart by what files are (variantSpaceMatches above):
+  // each statement's position, name, ID and type. Whatever else an init
+  // message carries -- the QOS, a statement's flags, format string, source
+  // file and line -- is not part of a file's structure, and a connection that
+  // differs only there must share the session rather than become a second
+  // writer on its file.
+  static bool sameLogSpace(const hobbes::storage::statements& lhs, const hobbes::storage::statements& rhs) {
+    if (lhs.size() != rhs.size()) {
+      return false;
+    }
+    for (size_t i = 0; i < lhs.size(); ++i) {
+      if (lhs[i].name != rhs[i].name || lhs[i].id != rhs[i].id || lhs[i].type != rhs[i].type) {
+        return false;
+      }
+    }
+    return true;
+  }
 
   static ProcessTxnF csfn(CSession* cs) {
     return 

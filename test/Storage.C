@@ -11,6 +11,7 @@
 
 #include <fstream>
 #include <limits>
+#include <memory>
 #include <thread>
 
 using namespace hobbes;
@@ -119,6 +120,40 @@ TEST(Storage, uniqueFilenames) {
   // Clean up the files
   unlink(file3.c_str());
   unlink(file1.c_str());
+}
+
+TEST(Storage, FileHasOneWriterAtATime) {
+  // To append a session to an existing log file, hog opens a writer on each
+  // candidate file to look at its structure -- the files that its other
+  // sessions are writing among them. A series keeps its write position to
+  // itself and only the record count in the file, so a second writer on a file
+  // in use stores over the first one's records and, never seeing the batch
+  // fill up, past the end of it. lockForWriting is what tells a file in use
+  // from a free one.
+  std::string fname = mkFName();
+  try {
+    std::unique_ptr<writer> w0(new writer(fname));
+    EXPECT_TRUE(lockForWriting(w0.get()));
+    EXPECT_TRUE(lockForWriting(w0.get())); // the writer that has the file can ask again
+
+    // a second writer on the file can't take it, though the same process opened it
+    std::unique_ptr<writer> w1(new writer(fname));
+    EXPECT_FALSE(lockForWriting(w1.get()));
+
+    // and closing that writer doesn't give up the file on behalf of the first
+    w1.reset();
+    w1.reset(new writer(fname));
+    EXPECT_FALSE(lockForWriting(w1.get()));
+
+    // the file is free once the writer that took it is gone
+    w0.reset();
+    EXPECT_TRUE(lockForWriting(w1.get()));
+
+    unlink(fname.c_str());
+  } catch (...) {
+    unlink(fname.c_str());
+    throw;
+  }
 }
 
 TEST(Storage, Create) {
