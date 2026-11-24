@@ -1410,7 +1410,8 @@ These are just some examples of extensions to hobbes through the `Unqualifier` i
 
 Releases are source-only: Hobbes is consumed by compiling it, so no build
 artifacts are published. Each release consists of a reproducible source
-archive, a `SHA256SUMS` file, and a Sigstore signature over those checksums.
+archive, a `SHA256SUMS` file, and a Sigstore signature over those checksums
+(`SHA256SUMS.sigstore.json`, a bundle of the signature and its certificate).
 
 Signing is keyless — the signature is bound to the release workflow's OIDC
 identity and recorded in the public Rekor transparency log — so there is no
@@ -1420,8 +1421,7 @@ produced by any other workflow here would not be accepted.
 
 ```bash
 cosign verify-blob \
-  --certificate SHA256SUMS.pem \
-  --signature SHA256SUMS.sig \
+  --bundle SHA256SUMS.sigstore.json \
   --certificate-identity-regexp \
     '^https://github\.com/morganstanley/hobbes/\.github/workflows/release\.yml@refs/tags/v' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
