@@ -726,6 +726,18 @@ TEST(TypeInf, EmbedsExpressionFindsATExprAnywhereInAType) {
   EXPECT_TRUE(embedsExpression(functy(list(primty("int")), quoted)));
   EXPECT_TRUE(embedsExpression(TApp::make(primty("fileref"), list(quoted))));
 
+  // a primitive's representation is a child position too (decoded primitives bring their own)
+  EXPECT_FALSE(embedsExpression(primty("p", primty("long"))));
+  EXPECT_TRUE(embedsExpression(primty("p", arrayty(quoted))));
+  EXPECT_TRUE(embedsExpression(tapp(primty("p", tabs(str::strings("x"), tuplety(list(tvar("x"), quoted)))), list(primty("int")))));
+
+  // ... which is looked at once, however often the type gets to it
+  MonoTypePtr nested = primty("long");
+  for (size_t i = 0; i < 60; ++i) {
+    nested = tapp(primty("p", tabs(str::strings("x"), arrayty(nested))), list(nested));
+  }
+  EXPECT_FALSE(embedsExpression(nested));
+
   // and after the round trip an untrusted peer's bytes take
   std::vector<unsigned char> enc;
   encode(Record::make(Record::Members{Record::Member("a", primty("long")), Record::Member("q", arrayty(quoted))}), &enc);

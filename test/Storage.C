@@ -253,6 +253,49 @@ TEST(Storage, Inference) {
   EXPECT_EQ(show(c.unsweetenExpression(c.readExpr("newPrim() :: (StoreInto () {a:int,b:[char]} z) => z"))->type()), "{ a:int, b:[char]@? }");
 }
 
+TEST(Storage, StoredTypesWithEmbeddedExpressionsAreRefused) {
+  // a file reference stored in a file is 'T@?', and is completed with the
+  // reader's own file when a field is projected. A stored type that names
+  // its file itself -- as an expression, which 'load' would compile -- does not
+  // come from a writer, and must not get as far as the compiler, wherever in
+  // the type the expression is
+  MonoTypePtr f   = texpr(var("f", LexicalAnnotation::null()));
+  MonoTypePtr ref = fileRefTy(arrayty(primty("long")), f);
+
+  MonoTypes stored;
+  stored.push_back(ref);
+  stored.push_back(tuplety(list(primty("int"), ref)));
+  stored.push_back(primty("p", ref));
+  stored.push_back(tapp(primty("pseq", tabs(str::strings("x"), ref)), list(primty("long"))));
+
+  cc rc;
+  for (const auto& ty : stored) {
+    std::string fname = mkFName();
+    try {
+      {
+        writer w(fname);
+        w.unsafeDefine("ok", fileRefTy(arrayty(primty("long"))));
+      }
+      {
+        reader r(fname); // the control: an ordinary reference
+        EXPECT_TRUE(r.isDefined("ok"));
+      }
+      {
+        writer w(fname);
+        w.unsafeDefine("xs", ty);
+      }
+      EXPECT_EXCEPTION(reader(fname).size());
+      EXPECT_EXCEPTION(writer(fname).size());
+      EXPECT_EXCEPTION(rc.compileFn<void()>("let x = (inputFile :: (LoadFile \"" + fname + "\" w) => w) in ()"));
+
+      unlink(fname.c_str());
+    } catch (...) {
+      unlink(fname.c_str());
+      throw;
+    }
+  }
+}
+
 TEST(Storage, Scripting) {
   std::string fname = mkFName();
   try {
