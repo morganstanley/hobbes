@@ -115,6 +115,8 @@ LLVM is large, and building it from source takes an hour or more.  ConanCenter h
 zlib/*: zlib/1.3.1
 ```
 
+With a pin like that, one of LLVM's smaller dependencies can lack a prebuilt package of its own (libxml2 does, at the time of writing), and `--build=missing` builds it in a minute or so.  To build whatever is missing except LLVM, and stop if LLVM is, use `--build="missing:~llvm-core/*"` instead.
+
 ## Embedding <a name="embedding"></a>
 
 Let's consider how to embed hobbes in a simple C++ program.  This code implements a very basic shell, similar to `hi`:
