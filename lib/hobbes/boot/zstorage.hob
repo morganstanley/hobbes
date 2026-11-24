@@ -284,7 +284,7 @@ instance (UCMEnumLen t n) => UCRead t (csmodel n) <hobbes.DynDModel0> where
   ucRead r dm = unsafeCast({t=b2i(ucReaderRead(r, dm))})
 
 instance (UCMEnumLen t n) => UCWrite t (csmodel n) <hobbes.DynDModel0> where
-  ucWrite w dm x = ucWriterWrite(w, dm, ti2b((unsafeCast(x)::{t:int}).t))
+  ucWrite w dm x = ucWriterWriteTag(w, dm, (unsafeCast(x)::{t:int}).t)
 
 // compression models for general variants
 class UCDivideVariant t e p | t -> e, t -> p
