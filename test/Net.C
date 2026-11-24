@@ -991,7 +991,7 @@ TEST(Net, customAuthenticatorRejectsAPeer) {
         public:
           explicit Session(std::unique_ptr<net::NetREPLClientAuthSession> inner) : inner(std::move(inner)) {}
           std::string next(const std::string& t) override { return this->inner->next(t); }
-          void accepted(const std::string&) override { throw std::runtime_error("the server did not prove itself"); }
+          [[noreturn]] void accepted(const std::string&) override { throw std::runtime_error("the server did not prove itself"); }
         private:
           std::unique_ptr<net::NetREPLClientAuthSession> inner;
         };
