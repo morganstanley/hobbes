@@ -994,25 +994,48 @@ template <typename ... Ts>
   }
 
 // arrays with dynamically-determined length
+//
+// the contents of an array always start directly behind its length, sizeof(size_t) in:
+// that is where compiled code, the allocators and stored files put them. An element type
+// aligned beyond that (int128, to 16 bytes) would have C++ move 'data' out to offset 16,
+// so such an element is declared here with the alignment of the length instead
+//
+// the accessors below return that element type, so that reading or writing through them doesn't
+// assume more alignment than the element has. For an over-aligned T, don't bind an element to a
+// plain 'T&' / 'T*' (or 'auto&', or a template parameter that deduces T): that drops the declared
+// alignment, and the compiler may then use an aligned access on an address that is only aligned to
+// the length. The same goes for assigning an over-aligned class element whole (its assignment
+// operator takes a plain reference): copy such an element with memcpy
+template <typename T, bool overaligned = (alignof(T) > alignof(size_t))>
+  struct array_element {
+    using type = T;
+  };
+template <typename T>
+  struct array_element<T, true> {
+    typedef T type __attribute__((aligned(alignof(size_t))));
+  };
+
 template <typename T>
   struct array {
     using ptr = array<T> *;
 
-    size_t size;
-    T      data[1]; // unknown length, bytes inline with this structure
+    size_t                          size;
+    typename array_element<T>::type data[1]; // unknown length, bytes inline with this structure
 
-    const T& operator[](size_t i) const { return this->data[i]; }
-          T& operator[](size_t i)       { return this->data[i]; }
+    using element = typename array_element<T>::type;
+
+    const element& operator[](size_t i) const { return this->data[i]; }
+          element& operator[](size_t i)       { return this->data[i]; }
   };
-template <typename T> const T* begin(const array<T>* d) { return d->data; }
-template <typename T> const T* end  (const array<T>* d) { return d->data + d->size; }
-template <typename T>       T* begin(      array<T>* d) { return d->data; }
-template <typename T>       T* end  (      array<T>* d) { return d->data + d->size; }
+template <typename T> const typename array_element<T>::type* begin(const array<T>* d) { return d->data; }
+template <typename T> const typename array_element<T>::type* end  (const array<T>* d) { return d->data + d->size; }
+template <typename T>       typename array_element<T>::type* begin(      array<T>* d) { return d->data; }
+template <typename T>       typename array_element<T>::type* end  (      array<T>* d) { return d->data + d->size; }
 
-template <typename T> const T* begin(const array<T>& d) { return d.data; }
-template <typename T> const T* end  (const array<T>& d) { return d.data + d.size; }
-template <typename T>       T* begin(      array<T>& d) { return d.data; }
-template <typename T>       T* end  (      array<T>& d) { return d.data + d.size; }
+template <typename T> const typename array_element<T>::type* begin(const array<T>& d) { return d.data; }
+template <typename T> const typename array_element<T>::type* end  (const array<T>& d) { return d.data + d.size; }
+template <typename T>       typename array_element<T>::type* begin(      array<T>& d) { return d.data; }
+template <typename T>       typename array_element<T>::type* end  (      array<T>& d) { return d.data + d.size; }
 
 // arrays with dynamically-determined length but with a fixed-capacity
 template <typename T, size_t N>

@@ -37,7 +37,7 @@ llvm::Type* llvmPrim(const std::string& name) {
 
 // an array with unknown length is stored as a record holding the length plus the array contents
 llvm::Type* llvmVarArrType(llvm::Type* elemty, int size) {
-  return recordType(longType(), arrayType(elemty, size));
+  return varArrayType(elemty, static_cast<size_t>(size));
 }
 
 class translateTypeF;

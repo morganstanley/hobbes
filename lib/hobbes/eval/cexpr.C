@@ -877,13 +877,13 @@ public:
     
     return withContext([&](auto&) {
       return ccast(ptrType(caty),
-        new llvm::GlobalVariable(
+        prepgv(new llvm::GlobalVariable(
           *this->c->module(),
           saty,
           true,
           llvm::GlobalVariable::InternalLinkage,
           constArray(this->c->module(), cs, elemTy)
-        )
+        ))
       );
     });
   }

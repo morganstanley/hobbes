@@ -220,8 +220,11 @@ inline llvm::FunctionType* functionType(const Types& argTys, llvm::Type* rty) {
   return llvm::FunctionType::get(rty, argTys, false);
 }
 
+// an array with unknown length is its length followed directly by its contents
+// (everything that allocates, stores or maps an array counts on the contents being sizeof(long) in, so the
+//  record is packed to keep an element type that LLVM aligns beyond that -- i128, to 16 bytes -- from moving them)
 inline llvm::StructType* varArrayType(llvm::Type* elemty, size_t sz = 1) {
-  return recordType(longType(), arrayType(elemty, sz));
+  return packedRecordType(list<llvm::Type*>(longType(), arrayType(elemty, sz)));
 }
 
 // casting
@@ -445,8 +448,11 @@ inline llvm::FunctionType* functionType(const Types& argTys, llvm::Type* rty) {
   return llvm::FunctionType::get(rty, argTys, false);
 }
 
+// an array with unknown length is its length followed directly by its contents
+// (everything that allocates, stores or maps an array counts on the contents being sizeof(long) in, so the
+//  record is packed to keep an element type that LLVM aligns beyond that -- i128, to 16 bytes -- from moving them)
 inline llvm::StructType* varArrayType(llvm::Type* elemty, size_t sz = 1) {
-  return recordType(longType(), arrayType(elemty, sz));
+  return packedRecordType(list<llvm::Type*>(longType(), arrayType(elemty, sz)));
 }
 
 // casting
@@ -634,13 +640,13 @@ inline llvm::Value* tryMkConstVarArray(llvm::IRBuilder<>* b, llvm::Module* m, ll
 
     return
       cast(b, ptrType(caty),
-        new llvm::GlobalVariable(
+        prepgv(new llvm::GlobalVariable(
           *m,
           saty,
           true,
           llvm::GlobalVariable::InternalLinkage,
           constArray(m, cs, elemTy)
-        )
+        ))
       );
   }
 }
