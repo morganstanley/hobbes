@@ -921,6 +921,75 @@ TEST(Storage, CFRegion_CTypes) {
   }
 }
 
+// the arithmetic encoder can owe more bits (its 'roll') than a bit segment holds
+TEST(Storage, CFRegion_RollAcrossSegments) {
+  using namespace hobbes::fregion;
+
+  std::string fname = mkFName();
+  try {
+    imagefile* f = openFile(fname, false);
+
+    // write a 1 and a run of 0s, then a 0 and a run of 1s, for runs that end at, before and past a segment boundary
+    const uint32_t rolls[] = { csegm::maxBits - 1, 100, csegm::maxBits + 100, 3 * csegm::maxBits, 5 * csegm::maxBits / 2 };
+
+    cwbitstream w(f);
+    w.initFresh(0, 0);
+    for (uint32_t roll : rolls) {
+      w.put1roll(roll);
+      EXPECT_TRUE(w.buffer->bitIndex < csegm::maxBits);
+      w.put0roll(roll);
+      EXPECT_TRUE(w.buffer->bitIndex < csegm::maxBits);
+    }
+
+    // verify that the same bits read back
+    crbitstream r(f);
+    r.seg      = reinterpret_cast<const cbatchseg*>(mapFileData(f, w.buffer->headBitBuffer, sizeof(cbatchseg)));
+    r.bitIndex = 0;
+
+    bool ok = true;
+    for (uint32_t roll : rolls) {
+      ok = r.getbit() && ok;
+      for (uint32_t i = 0; i < roll; ++i) { ok = !r.getbit() && ok; }
+      ok = !r.getbit() && ok;
+      for (uint32_t i = 0; i < roll; ++i) { ok = r.getbit() && ok; }
+    }
+    EXPECT_TRUE(ok);
+
+    // now through the encoder: the middle half of its range leaves it undecided, so each one adds a bit to the roll
+    // until the top quarter decides for a 1 (then 0s), or the bottom quarter for a 0 (then 1s)
+    const uint32_t undecided = 70000;
+
+    cwbitstream cw(f);
+    cw.initFresh(0, 0);
+    for (uint32_t i = 0; i < undecided; ++i) { cw.write(1, 3, 4); }
+    EXPECT_EQ(cw.buffer->roll, undecided);
+    cw.write(3, 4, 4);
+    for (uint32_t i = 0; i < undecided; ++i) { cw.write(1, 3, 4); }
+    cw.write(0, 1, 4);
+    cw.flush();
+    EXPECT_TRUE(cw.buffer->bitIndex < csegm::maxBits);
+
+    // verify that the same symbols decode
+    crbitstream cr(f);
+    cr.reset(cw.buffer);
+
+    ok = true;
+    for (uint32_t i = 0; i < undecided; ++i) { auto s = cr.svalue(4); ok = (s == 1 || s == 2) && ok; cr.shift(1, 3, 4); }
+    EXPECT_TRUE(ok);
+    EXPECT_EQ(cr.svalue(4), arithn::code(3));
+    cr.shift(3, 4, 4);
+    for (uint32_t i = 0; i < undecided; ++i) { auto s = cr.svalue(4); ok = (s == 1 || s == 2) && ok; cr.shift(1, 3, 4); }
+    EXPECT_TRUE(ok);
+    EXPECT_EQ(cr.svalue(4), arithn::code(0));
+
+    closeFile(f);
+    unlink(fname.c_str());
+  } catch (...) {
+    unlink(fname.c_str());
+    throw;
+  }
+}
+
 TEST(Storage, FRegionCArrays) {
   std::string fname = mkFName();
   try {
