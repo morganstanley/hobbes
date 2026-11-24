@@ -36,4 +36,29 @@ $ conan create . --version=1.0.0 --build="missing:~llvm-core/*"
 
 ## Tested
 
-See the pull request or commit that added this directory.
+Both runs used the command at the top of this file with `--build="hobbes/*"` added, so hobbes is built from the release archive even when a package of it is cached:
+
+```
+$ conan create . --version=1.0.0 --build="missing:~llvm-core/*" --build="hobbes/*"
+```
+
+and the default profile from `conan profile detect` (gcc 13, `compiler.cppstd=gnu17`, `libstdc++11`, Release) with this appended:
+
+```
+[replace_requires]
+zlib/*: zlib/1.3.1
+```
+
+The only prebuilt `llvm-core/19.1.7` on ConanCenter for this configuration was built against zlib 1.3.  ConanCenter's `libxml2/2.15.4` binary was rebuilt against zlib 1.4, so with the pin it is built from source.
+
+**x86-64 Linux, Conan's CMake (2026-11-24).**  A cloud container on x86-64 hardware (Intel Xeon, 4 cores), Ubuntu 24.04.5, gcc 13.3.0, Conan 2.34.0 (installed with `pipx`), no `[platform_tool_requires]`.  `conan create` exited 0.
+
+* Downloaded from ConanCenter: `llvm-core/19.1.7`, `zlib/1.3.1`, `cmake/3.31.12`, `cmake/4.5.0` (libxml2's `cmake/[>=3.18]`), `z3/4.13.0`, `zstd/1.5.6`, `ncurses/6.4`, `editline/3.1`, `termcap/1.3.1`, `libiconv/1.17`.
+* Built: `libxml2/2.15.4`, `readline/8.2`, `hobbes/1.0.0`.  hobbes's sources came from `https://github.com/morganstanley/hobbes/releases/download/v1.0.0/hobbes-1.0.0.tar.gz`, and it was configured and built with the `cmake/3.31.12` that the recipe's `tool_requires("cmake/[>=3.19 <4]")` brought.
+* `test_package` built and ran, printing `hobbes says the squares of 1..10 sum to 385`.
+
+No change to the recipe was needed.
+
+**x86-64 Linux under emulation, the machine's CMake.**  An earlier run in an x86-64 Ubuntu 24.04 container emulated on an Apple Silicon Mac, gcc 13.3.0, Conan 2.34.0, the same command and zlib pin.  Conan's CMake binary segfaulted under emulation, so Ubuntu's CMake 3.28.3 was given through `[platform_tool_requires]` (`cmake/3.28.3`).  It downloaded `llvm-core/19.1.7` and `zlib/1.3.1`, built `libxml2`, `readline` and `hobbes/1.0.0`, and the test program ran.
+
+**Not tried:** macOS, AArch64 (Linux or macOS), other compilers (clang, other gcc versions), `build_type=Debug`, `fPIC=False`, and ConanCenter's own CI.
