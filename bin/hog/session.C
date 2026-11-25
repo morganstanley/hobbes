@@ -1,5 +1,6 @@
 #include <iostream>
 #include <map>
+#include <set>
 #include <thread>
 #include <mutex>
 #include <glob.h>
@@ -105,7 +106,7 @@ static void markFreshFileAsWritten(writer* f, const std::string& path) {
 // a basic transactional file allocation method -- just start a fresh file
 class AllocFreshFile {
 public:
-  AllocFreshFile(const std::string& dirPfx, storage::CommitMethod, const storage::statements&) : dirPfx(dirPfx) {
+  AllocFreshFile(const std::string& dirPfx, storage::CommitMethod, const storage::statements&, hobbes::StoredSeries::StorageMode) : dirPfx(dirPfx) {
     this->tmpPath = freshTempFile(dirPfx);
     this->f       = new writer(this->tmpPath);
     markFreshFileAsWritten(this->f, this->tmpPath);
@@ -134,8 +135,11 @@ private:
 // a transactional file allocation method to either find the first file to append into (if a matching file exists) or else start a fresh file
 class AppendFirstMatchingFile {
 public:
-  AppendFirstMatchingFile(const std::string& dirPfx, storage::CommitMethod cm, const storage::statements& stmts) : dirPfx(dirPfx) {
-    this->f = findMatchingFile(dirPfx, cm, stmts);
+  AppendFirstMatchingFile(const std::string& dirPfx, storage::CommitMethod cm, const storage::statements& stmts, hobbes::StoredSeries::StorageMode sm) : dirPfx(dirPfx) {
+    // files are matched by the 'log' / 'transactions' definition that only raw storage makes,
+    // so a match is a raw file -- one whose series compressed storage can't resume. Compressed
+    // sessions always start a fresh file.
+    this->f = (sm == hobbes::StoredSeries::Raw) ? findMatchingFile(dirPfx, cm, stmts) : nullptr;
 
     if (this->f == nullptr) {
       this->tmpPath = freshTempFile(dirPfx);
@@ -269,6 +273,7 @@ private:
 // Names and types: see the per-statement checks below.
 static void checkStatements(const storage::statements& stmts) {
   std::vector<bool> seen(stmts.size(), false);
+  std::set<std::string> names;
 
   for (const auto& stmt : stmts) {
     if (stmt.id >= stmts.size()) {
@@ -288,6 +293,17 @@ static void checkStatements(const storage::statements& stmts) {
     // so a rejected session leaves no partial storage file behind.
     if (!isValidStatementName(stmt.name)) {
       throw std::runtime_error("rejected log session: statement name is not an identifier");
+    }
+
+    // Each statement gets a series of its own, bound in the storage file
+    // under the statement's name, so the names have to be distinct as well
+    // as the IDs. A producer's are -- it keeps its statements in a map keyed
+    // by name (allocateStorageStatement in storage.H) -- but a repeated name
+    // off the wire resolved to the series already made for the first
+    // statement, so two writers, possibly of different types, shared one
+    // series' storage.
+    if (!names.insert(stmt.name).second) {
+      throw std::runtime_error("rejected log session: statement name '" + stmt.name + "' appears more than once");
     }
 
     // The type is decoded with the general decoder, which accepts a whole
@@ -311,7 +327,7 @@ ProcessTxnF initStorageSession(Session* s, const std::string& dirPfx, storage::P
 
   cc* c = loggerCompiler();
 
-  FileAllocMethod sfileTxn(dirPfx, cm, stmts);
+  FileAllocMethod sfileTxn(dirPfx, cm, stmts, sm);
   s->db = sfileTxn.file();
  
   // allocate space for every log statement
