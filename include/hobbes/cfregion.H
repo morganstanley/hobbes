@@ -135,6 +135,11 @@ struct cwbitstream {
       unmapFileData(this->file, nextNode, 3*sizeof(size_t));
 
       this->buffer = reinterpret_cast<cbatch*>(mapFileData(this->file, this->batchNode[1], sizeof(cbatch)));
+
+      // every write assumes that the stored position is inside the current segment
+      if (this->buffer->bitIndex >= csegm::maxBits) {
+        throw std::runtime_error("Compressed series has an invalid write position, can't append to it");
+      }
     } else {
       this->batchNode[0] = 1;
       this->batchNode[1] = findSpace(this->file, pagetype::data, sizeof(cbatch), sizeof(size_t));
@@ -236,13 +241,12 @@ struct cwbitstream {
   }
 
   inline void putzeroes(uint32_t bitc) {
-    this->buffer->bitIndex += bitc;
-
-    if (this->buffer->bitIndex >= csegm::maxBits) {
-      uint32_t nextIndex = this->buffer->bitIndex - csegm::maxBits;
+    // a run of zeroes can span any number of segments (an encoder roll is not bounded by the segment size)
+    while (bitc >= csegm::maxBits - this->buffer->bitIndex) {
+      bitc -= csegm::maxBits - this->buffer->bitIndex;
       stepSegment();
-      this->buffer->bitIndex = nextIndex;
     }
+    this->buffer->bitIndex += bitc;
   }
 
   inline void putones(uint32_t bitc) {
