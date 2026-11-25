@@ -3173,8 +3173,57 @@ MonoTypePtr decodeArr(const bytes& in, unsigned int* n) {
   return Array::make(ty);
 }
 
+// The members of a tuple, and the constructors of a sum, are named ".f0",
+// ".f1", ... in the order they are laid out, and code that takes one apart
+// counts on it: 'p=(h*t)' gives 'h' the type of the first member by position,
+// while 'p.0' is the member *named* ".f0" (and likewise for the record of
+// handlers that 'variantApp' takes, whose fields are named after a sum's
+// constructors). Every tuple and sum made in this library is named that way,
+// but a description read from a file or handed over by a peer names its
+// members as it likes, and for '(.f1:a, .f0:b)' position and name disagree --
+// one member is handled twice and the other never (a width summed for one
+// member and bytes read into another, a handler that is never assigned and
+// then called). So a description that uses these names at all has to use them
+// in order, and one that doesn't is refused here, where the names enter,
+// rather than left to each instance that walks a tuple.
+//
+// In a tuple, members hidden by deconstruction (".p...") may only lead, as they
+// do in its tail: the tail of a tuple renumbers everything after its head, and
+// would bring a hidden member found there back into view. And that renumbering
+// is why the visible members of a tuple's tail count from 0 again
+// ('tailRenumbers'). The tail of a sum keeps its constructors' numbers, so in a
+// sum only the positional names are checked, each against the position it is at.
+static bool isTupleMemberName(const std::string& n) {
+  return n.size() > 2 && n[0] == '.' && n[1] == 'f' && n[2] >= '0' && n[2] <= '9';
+}
+
+static void requireTupleNamesInOrder(const str::seq& names, bool tailRenumbers) {
+  if (std::none_of(names.begin(), names.end(), isTupleMemberName)) {
+    return;
+  }
+
+  size_t hidden = 0;
+  while (hidden < names.size() && isHiddenFieldName(names[hidden])) {
+    ++hidden;
+  }
+  for (size_t i = hidden; i < names.size(); ++i) {
+    // a sum lifted from C++ can label some constructors and leave the rest positional
+    // ('|x:int, .f1:double|', liftVarCtors in tylift.H): the labelled ones have no order to
+    // keep, and a positional one still has to be named for the position it is at
+    if (!tailRenumbers && !isTupleMemberName(names[i])) {
+      continue;
+    }
+    const std::string expected = ".f" + str::from(tailRenumbers ? i - hidden : i);
+    if (names[i] != expected) {
+      throw std::runtime_error(
+        "Tuple or sum member '" + names[i] + "' is out of order in a decoded type description ('" + expected + "' expected)");
+    }
+  }
+}
+
 MonoTypePtr decodeVariant(const bytes& in, unsigned int* n) {
   Variant::Members ms;
+  str::seq         names;
 
   auto c = read<size_t>(in, n);
   for (size_t i = 0; i < c; ++i) {
@@ -3182,14 +3231,17 @@ MonoTypePtr decodeVariant(const bytes& in, unsigned int* n) {
     auto id   = read<unsigned int>(in, n);
     MonoTypePtr  ty   = decodeFrom(in, n);
 
+    names.push_back(ctor);
     ms.push_back(Variant::Member(ctor, ty, id));
   }
+  requireTupleNamesInOrder(names, false);
 
   return Variant::make(ms);
 }
 
 MonoTypePtr decodeRecord(const bytes& in, unsigned int* n) {
   Record::Members ms;
+  str::seq        names;
 
   auto c = read<size_t>(in, n);
   for (size_t i = 0; i < c; ++i) {
@@ -3197,8 +3249,10 @@ MonoTypePtr decodeRecord(const bytes& in, unsigned int* n) {
     auto offset = read<unsigned int>(in, n);
     MonoTypePtr  ty     = decodeFrom(in, n);
 
+    names.push_back(field);
     ms.push_back(Record::Member(field, ty, offset));
   }
+  requireTupleNamesInOrder(names, true);
 
   return Record::make(ms);
 }

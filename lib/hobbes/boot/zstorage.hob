@@ -315,7 +315,7 @@ instance (p=(h*pt), f=(_*ft), m=(hm*mt), UCInitVarAppRF v pt ft mt) => UCInitVar
   ucInitVarAppRF i r f dm = do { padV=ucPadVar::(UCPadVar v x)=>x; f.0 <- (\().unsafeCast((i,padV,(ucRead::(UCRead h _ _)=>(_,_)->_)(r, dm.0)::h))::v); (ucInitVarAppRF::(UCInitVarAppRF v pt lft lmt)=>(_,_,_,_)->_)(i+1, r, tupleTail(f)::lft, tupleTail(dm)::lmt); } // a little annoying that we duplicate this logic for variants as "naked sums"
 
 instance (UCDivideVariant v e p, UCModel e esm edm, UCModel p psm pdm) => UCRead v (esm*psm) (edm*pdm) where
-  ucRead r dm = do { f=newPrim(); (ucInitVarAppRF::(UCInitVarAppRF v p _ _)=>(_,_,_,_)->_)(0, r, f, dm.1); return variantApp((ucRead::(UCRead e _ _)=>(_,_)->_)(r,dm.0), f) }
+  ucRead r dm = do { f=newPrimZ(); (ucInitVarAppRF::(UCInitVarAppRF v p _ _)=>(_,_,_,_)->_)(0, r, f, dm.1); return variantApp((ucRead::(UCRead e _ _)=>(_,_)->_)(r,dm.0), f) }
 
 class UCInitVarAppWF v p f m where
   ucInitVarAppWF :: (<hobbes.UCWriter>, f, m) -> ()
@@ -327,7 +327,7 @@ instance (p=(h*pt), f=(_*ft), m=(hm*mt), UCInitVarAppWF v pt ft mt) => UCInitVar
   ucInitVarAppWF w f dm = do { f.0 <- (\x.(ucWrite::(UCWrite h _ _)=>_)(w, dm.0, x)); (ucInitVarAppWF::(UCInitVarAppWF v pt lft lmt)=>_)(w, tupleTail(f)::lft, tupleTail(dm)::lmt); } // naked sums again
 
 instance (UCDivideVariant v e p, UCModel e esm edm, UCModel p psm pdm) => UCWrite v (esm*psm) (edm*pdm) where
-  ucWrite w dm v = do { ucWrite(w, dm.0, (unsafeCast(v)::{x:e}).x); f=newPrim(); (ucInitVarAppWF::(UCInitVarAppWF v p _ _)=>_)(w, f, dm.1); return variantApp(v, f) }
+  ucWrite w dm v = do { ucWrite(w, dm.0, (unsafeCast(v)::{x:e}).x); f=newPrimZ(); (ucInitVarAppWF::(UCInitVarAppWF v p _ _)=>_)(w, f, dm.1); return variantApp(v, f) }
 
 // compression models for aliased types
 instance (UCModel long s d) => UCModel t@? s d where

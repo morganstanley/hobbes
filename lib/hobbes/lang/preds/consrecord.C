@@ -189,6 +189,11 @@ bool RecordDeconstructor::satisfied(const TEnvPtr&, const ConstraintPtr& cst, De
   // reconstructed record can never match a record whose head field is an inline opaque
   // type (eg: a lifted struct with a std::string field followed by any other field)
   if (cr.asTuple) {
+    // the head of a tuple is taken by position here and by name ('p.0' is the member
+    // named '.f0') where it is used, so the two have to be the same member
+    if (rty->headMember().field != ".f0") {
+      return false;
+    }
     if (tty != nullptr) {
       return *rty->headMember().type == *cr.headType &&
              equalVisibleFields(rty->tailType(), cr.tailType);
