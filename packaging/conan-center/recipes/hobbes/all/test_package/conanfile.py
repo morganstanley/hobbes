@@ -15,6 +15,10 @@ class TestPackageConan(ConanFile):
     def layout(self):
         cmake_layout(self)
 
+    def build_requirements(self):
+        # llvm-core's CMake files use cmake_path()
+        self.tool_requires("cmake/[>=3.20 <4]")
+
     def build(self):
         cmake = CMake(self)
         cmake.configure()

@@ -1,6 +1,6 @@
 # ConanCenter recipe (draft)
 
-A staging copy of a recipe for [ConanCenter](https://github.com/conan-io/conan-center-index), laid out as it would be there (`recipes/hobbes/`).  It has not been submitted.  It packages the hobbes 1.0.0 release archive; the recipe at the root of this repository (`conanfile.py`) packages a checkout.
+A staging copy of a recipe for [ConanCenter](https://github.com/conan-io/conan-center-index), laid out as it is there (`recipes/hobbes/`).  It was submitted as [conan-io/conan-center-index#31555](https://github.com/conan-io/conan-center-index/pull/31555), which has not been reviewed yet.  It packages the hobbes 1.0.0 release archive; the recipe at the root of this repository (`conanfile.py`) packages a checkout.
 
 ```
 $ cd packaging/conan-center/recipes/hobbes/all
@@ -23,7 +23,7 @@ $ conan create . --version=1.0.0 --build="missing:~llvm-core/*"
 | `url` | this repository | conan-center-index | ConanCenter convention; `homepage` is this repository |
 | `lib/hobbes-llvm.json` | LLVM's libraries, directories, system libraries and defines | LLVM's libraries only | the rest was for an LLVM that is not a Conan package |
 
-`test_package/` is the same but for its minimum CMake version (3.15).
+`test_package/` is the same but for its minimum CMake version (3.15) and a `tool_requires("cmake/[>=3.20 <4]")`: LLVM's CMake files call `cmake_path()`, and ConanCenter's Linux image has CMake 3.15.
 
 ## What a ConanCenter reviewer may still object to
 
@@ -36,7 +36,7 @@ $ conan create . --version=1.0.0 --build="missing:~llvm-core/*"
 
 ## Tested
 
-Both runs used the command at the top of this file with `--build="hobbes/*"` added, so hobbes is built from the release archive even when a package of it is cached:
+All runs used the command at the top of this file with `--build="hobbes/*"` added, so hobbes is built from the release archive even when a package of it is cached:
 
 ```
 $ conan create . --version=1.0.0 --build="missing:~llvm-core/*" --build="hobbes/*"
@@ -61,4 +61,8 @@ No change to the recipe was needed.
 
 **x86-64 Linux under emulation, the machine's CMake.**  An earlier run in an x86-64 Ubuntu 24.04 container emulated on an Apple Silicon Mac, gcc 13.3.0, Conan 2.34.0, the same command and zlib pin.  Conan's CMake binary segfaulted under emulation, so Ubuntu's CMake 3.28.3 was given through `[platform_tool_requires]` (`cmake/3.28.3`).  It downloaded `llvm-core/19.1.7` and `zlib/1.3.1`, built `libxml2`, `readline` and `hobbes/1.0.0`, and the test program ran.
 
-**Not tried:** macOS, AArch64 (Linux or macOS), other compilers (clang, other gcc versions), `build_type=Debug`, `fPIC=False`, and ConanCenter's own CI.
+**ConanCenter's Linux image (2026-11-24).**  `conanio/gcc11-ubuntu16.04` under podman on x86-64: gcc 11.1.0, glibc 2.23, CMake 3.15.7, Conan 2.32.0, `compiler.cppstd=17`.  hobbes built and packaged, but `test_package` failed to configure with the image's CMake (`Unknown CMake command "cmake_path"`, from `llvm-core`'s CMake files); with the `tool_requires` above it built and ran.  Without the zlib pin the run stops at "Missing prebuilt package for 'llvm-core/19.1.7'": every `llvm-core` binary on ConanCenter was built against zlib 1.3.
+
+**macOS, Apple Silicon (2026-11-24).**  apple-clang 21, Conan 2.34.0, `--build=missing`.  ConanCenter has no `llvm-core` binary for this compiler, so LLVM and its dependencies were built from source, then hobbes; `test_package` ran.
+
+**Not tried:** AArch64 Linux, clang on Linux, `build_type=Debug`, `fPIC=False`, and ConanCenter's own CI.
