@@ -6,6 +6,8 @@
 #define HOBBES_EVENTS_NET_HPP_INCLUDED
 
 #include <hobbes/lang/type.H>
+#include <hobbes/netauth.H>
+#include <memory>
 #include <string>
 #include <map>
 #include <queue>
@@ -43,6 +45,16 @@ struct Server {
   virtual MonoTypePtr prepare   (int conn, exprid, const ExprPtr&, const MonoTypePtr&) = 0;
   virtual void        evaluate  (int conn, exprid) = 0;
   virtual void        disconnect(int conn) = 0;
+
+  // A peer has authenticated on this connection; called just before connect()
+  // on a listener installed with a shared secret or a NetREPLAuthenticator,
+  // and never on one installed without. 'mechanism' is the authenticator's
+  // name and 'identity' what its session reported for this peer (empty for a
+  // shared secret, which proves knowledge of the secret and nothing about who
+  // holds it). Throwing here drops the connection without calling connect --
+  // or disconnect, as when connect itself throws, so forget anything noted
+  // for 'conn' before throwing.
+  virtual void        authenticated(int /*conn*/, const std::string& /*mechanism*/, const std::string& /*identity*/) {}
 };
 
 // The port-only overload listens on IPv4 loopback. Use the host overload to
@@ -52,10 +64,65 @@ int installNetREPL(const std::string& host, int port, Server*);
 // install a net repl on a unix domain socket (using file paths)
 int installNetREPL(const std::string& /*filepath*/, Server*);
 
-// Authenticated variants require the client to prove knowledge of a shared
-// secret before Server::connect or any expression decoding occurs. The secret
-// is transport authentication, not encryption: for remote clients, terminate
-// TLS in a same-host proxy and keep the Hobbes listener on loopback.
+// The server's half of one authentication handshake, on one connection. The
+// handshake is an exchange of opaque tokens, begun by the client; the event
+// loop reads each client token without blocking and calls step() once a whole
+// one has arrived.
+//
+// step() runs on the event loop that serves every listener in the process, so
+// it must not block: no network calls, no waiting on another process. Work
+// from the token and local state (a keytab, a key, a table of tokens).
+struct NetREPLAuthSession {
+  virtual ~NetREPLAuthSession() = default;
+
+  enum class Result {
+    Continue, // send *reply; the client must answer with another token
+    Accept,   // the peer is authenticated; *reply, if not empty, is sent with the acceptance
+    Reject    // drop the peer
+  };
+  // Throwing rejects the peer.
+  virtual Result step(const std::string& token, std::string* reply) = 0;
+
+  // Who the peer is, read once after step() accepts and handed to
+  // Server::authenticated. Decide here in step() whether that peer is allowed
+  // at all: a Reject is reported to the client as a refused handshake.
+  virtual std::string peerIdentity() const { return std::string(); }
+};
+
+// How a listener authenticates its peers. One of these serves every connection
+// to the listener; newSession() is called once for each.
+struct NetREPLAuthenticator {
+  virtual ~NetREPLAuthenticator() = default;
+
+  // Names the mechanism; a client must use a NetREPLClientAuthenticator with
+  // the same name. Read once, when the listener is installed. Must not be
+  // empty, and at most net::maxNetREPLMechanismNameBytes.
+  virtual std::string mechanism() const = 0;
+
+  // The largest client token to buffer, at most
+  // net::maxNetREPLAuthTokenBytesLimit. A peer that announces a larger one is
+  // dropped before any of it is read. Read once, when the listener is installed.
+  virtual size_t maxTokenBytes() const { return net::defaultMaxNetREPLAuthTokenBytes; }
+
+  // 'conn' is the accepted connection, for inspection only (getpeername,
+  // SO_PEERCRED on a unix socket): do not read from, write to or close it.
+  // Returning null or throwing rejects the peer.
+  virtual std::unique_ptr<NetREPLAuthSession> newSession(int conn) = 0;
+};
+
+// Authenticated variants require the client to complete the authenticator's
+// handshake before Server::connect or any expression decoding occurs. This is
+// authentication of the peer, not encryption of the session: for remote
+// clients, terminate TLS in a same-host proxy and keep the Hobbes listener on
+// loopback. See doc/en/netrepl-custom-authentication.md.
+int installNetREPL(int port, Server*, const std::shared_ptr<NetREPLAuthenticator>&);
+int installNetREPL(const std::string& host, int port, Server*, const std::shared_ptr<NetREPLAuthenticator>&);
+int installNetREPL(const std::string& /*filepath*/, Server*, const std::shared_ptr<NetREPLAuthenticator>&);
+
+// The built-in authenticator: the client proves knowledge of a shared secret
+// (net::NetREPLSharedSecret on the client). The overloads taking a secret
+// install exactly this.
+std::shared_ptr<NetREPLAuthenticator> sharedSecretAuthenticator(const std::string& sharedSecret);
 int installNetREPL(int port, Server*, const std::string& sharedSecret);
 int installNetREPL(const std::string& host, int port, Server*, const std::string& sharedSecret);
 int installNetREPL(const std::string& /*filepath*/, Server*, const std::string& sharedSecret);
@@ -71,6 +138,10 @@ int installNetREPL(const std::string& /*filepath*/, cc*, ReWriteExprFn const& = 
 int installNetREPL(int port, cc*, const std::string& sharedSecret, ReWriteExprFn const& = [](ExprPtr const& e) -> ExprPtr { return e; });
 int installNetREPL(const std::string& host, int port, cc*, const std::string& sharedSecret, ReWriteExprFn const& = [](ExprPtr const& e) -> ExprPtr { return e; });
 int installNetREPL(const std::string& /*filepath*/, cc*, const std::string& sharedSecret, ReWriteExprFn const& = [](ExprPtr const& e) -> ExprPtr { return e; });
+
+int installNetREPL(int port, cc*, const std::shared_ptr<NetREPLAuthenticator>&, ReWriteExprFn const& = [](ExprPtr const& e) -> ExprPtr { return e; });
+int installNetREPL(const std::string& host, int port, cc*, const std::shared_ptr<NetREPLAuthenticator>&, ReWriteExprFn const& = [](ExprPtr const& e) -> ExprPtr { return e; });
+int installNetREPL(const std::string& /*filepath*/, cc*, const std::shared_ptr<NetREPLAuthenticator>&, ReWriteExprFn const& = [](ExprPtr const& e) -> ExprPtr { return e; });
 
 // How long to wait for a peer to answer a compile-time type query (the
 // (Connect ...)/(Invoke ...) exchanges), in milliseconds; 0 or less waits
@@ -88,6 +159,8 @@ public:
   /* init/compile-time methods */
   Client(const std::string& hostport);
   Client(const std::string& hostport, const std::string& sharedSecret);
+  // authenticate with any mechanism; the authenticator is used only during construction
+  Client(const std::string& hostport, const net::NetREPLClientAuthenticator&);
   ~Client();
   const std::string& remoteHost() const;
 

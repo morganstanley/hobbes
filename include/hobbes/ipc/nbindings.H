@@ -2,12 +2,14 @@
 #ifndef HOBBES_LANG_TYPEPREDS_NET_CONNECTION_HPP_INCLUDED
 #define HOBBES_LANG_TYPEPREDS_NET_CONNECTION_HPP_INCLUDED
 
+#include <memory>
 #include <set>
 #include <string>
 
 namespace hobbes {
 
 class cc;
+namespace net { class NetREPLClientAuthenticator; }
 void initNetworkDefs(cc&);
 
 // Resolving a (Connect "host:port" c) constraint opens a connection to a
@@ -19,6 +21,8 @@ void enableRemoteConnections(cc&, const std::set<std::string>& allowedHostPorts)
 void enableRemoteConnections(cc&);
 void setRemoteConnectionSharedSecret(cc&, const std::string& hostPort,
                                      const std::string& sharedSecret);
+void setRemoteConnectionAuthenticator(cc&, const std::string& hostPort,
+                                      const std::shared_ptr<const net::NetREPLClientAuthenticator>&);
 
 // Resolving an (Invoke ...) constraint ships code to a remote peer and
 // executes it there as a side effect of type-constraint resolution, not

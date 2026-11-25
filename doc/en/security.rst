@@ -112,12 +112,13 @@ Networking and RPC assume a trusted network
 
 The networking layer (``hobbes/ipc``, ``hobbes::net``, and ``hi -p``) lets a
 connected peer define and invoke expressions remotely — that is its purpose.
-An authenticated peer -- or any peer of a legacy listener installed without a
-shared secret -- can execute native code in the server process.
+An authenticated peer -- or any peer of a legacy listener installed without
+authentication -- can execute native code in the server process.
 
 There is no built-in end-user authorization or transport encryption. A
-netREPL listener can require a shared-secret handshake before it accepts a
-peer, and ``hi -p`` requires ``--netrepl-secret-file <path>``. This is intended
+netREPL listener can require a handshake before it accepts a peer: a shared
+secret, which is built in, or one the embedding application supplies (below).
+``hi -p`` requires ``--netrepl-secret-file <path>``. The shared secret is intended
 to authenticate the local proxy-to-Hobbes hop: terminate TLS and authenticate
 users in a same-host proxy, keep Hobbes on loopback, and keep the secret file
 readable only by the service account. Do not send the secret over an
@@ -129,20 +130,52 @@ request. The secret is static and is sent before the server proves anything
 about itself: a local user who can bind the port while the server is down
 (an unprivileged port, during a restart) receives the secret from the next
 client that connects. Run the server on a port or Unix socket path that other
-local accounts cannot claim. A challenge-response handshake that would close
-this gap is future work, as is a deadline for peers that connect and never
-finish the handshake.
+local accounts cannot claim, or use a handshake in which the server proves
+itself too (below). A deadline for peers that connect and never finish the
+handshake is future work.
+
+An embedding application can replace the shared secret with its own
+handshake: ``installNetREPL`` accepts a ``NetREPLAuthenticator``, and the
+clients (``DEFINE_NET_CLIENT``, ``hobbes::Client``,
+``cc::setRemoteConnectionAuthenticator`` for ``Connect``) accept the matching
+``NetREPLClientAuthenticator``. The handshake is an exchange of opaque tokens
+that Hobbes frames and carries but does not interpret, so a Kerberos/GSSAPI
+context, a signed token or a challenge-response needs no such dependency in
+Hobbes; see ``doc/en/netrepl-custom-authentication.md``. What this changes and
+what it does not:
+
+* It decides who may open a session, and tells the ``Server`` who that is
+  (``Server::authenticated``). The strength of that decision is the
+  mechanism's: Hobbes enforces only the framing -- that no command is read
+  before the handshake is accepted, that tokens and rounds are bounded, and
+  that a peer stalling in the handshake does not stall the event loop.
+* It does **not** encrypt or integrity-protect the session. After the
+  handshake the connection is the same plaintext socket, whatever the
+  mechanism negotiated; an attacker on the path can read and alter requests
+  made by an authenticated peer. Keep the listener on loopback and carry
+  remote connections through a same-host TLS proxy or tunnel, exactly as with
+  the shared secret.
+* The server's half of a custom handshake runs on the event loop shared by
+  every listener in the process. An authenticator that blocks there -- for
+  instance by calling out to a network service to validate a token -- stalls
+  them all. Validate from local state.
+* A listener speaks one mechanism. A client offering another, or none, is
+  refused before anything it sends is read as a request.
+* The ``cc``-backed listener evaluates whatever an authenticated peer sends;
+  per-identity policy is the authenticator's (reject the peer) or a custom
+  ``Server``'s to enforce.
 
 ``cc::setRemoteConnectionSharedSecret`` (and ``hi
 --netrepl-client-secret-file``) is keyed by the exact ``host:port`` text of the
 ``Connect`` constraint: a secret set for ``localhost:8080`` is not used for
 ``Connect "127.0.0.1:8080"``, which connects without one and is then rejected
-by an authenticated server.
+by an authenticated server. ``cc::setRemoteConnectionAuthenticator`` is keyed
+the same way.
 
 The port-only ``installNetREPL`` overload and ``hi -p`` bind to IPv4 loopback
 (``127.0.0.1``) by default. Listening on another interface requires the
 explicit-host overload. The legacy library overload without a shared secret
-is for already-trusted peers; prefer the authenticated overload whenever
+or authenticator is for already-trusted peers; prefer an authenticated overload whenever
 local accounts or a fronting proxy are part of the trust boundary.
 
 The port-only ``installHTTPD`` overload and ``hi -w`` therefore bind to IPv4
@@ -306,7 +339,8 @@ Guidance for embedding applications
   on IPv4 loopback by default; use the explicit-host overload only when remote
   access is required. Put remotely exposed HTTP and netREPL endpoints behind
   an authenticated, encrypted same-host fronting proxy. Configure the netREPL
-  shared secret on both sides of the local hop, and wrap other remotely exposed
+  shared secret (or a custom authenticator) on both sides of the local hop;
+  neither encrypts it. Wrap other remotely exposed
   endpoints in authenticated, encrypted transports.
 * Don't rely on ``option Safe`` to contain code you don't trust.
 * Only call ``cc::enableProcessSpawning``, ``cc::enableRemoteConnections``,

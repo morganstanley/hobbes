@@ -27,6 +27,10 @@ the loopback listener, and keep the secret file readable only by the service
 account. The secret authenticates the local proxy-to-Hobbes hop; it does not
 encrypt transport. We'll call this the *server*, and next we'll connect to it.
 
+.. note:: **Other ways to authenticate**
+
+  The shared secret is the only handshake *hi* offers. An application that embeds Hobbes can install its own (Kerberos/GSSAPI, a token) on a listener with ``installNetREPL`` and a ``NetREPLAuthenticator``, and have ``Connect`` use the matching client half with ``cc::setRemoteConnectionAuthenticator``; see :ref:`the C++ bindings <hobbes_networking_cpp>` and ``doc/en/netrepl-custom-authentication.md``.
+
 Opening a connection
 ====================
 
