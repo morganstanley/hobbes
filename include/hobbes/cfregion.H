@@ -136,9 +136,18 @@ struct cwbitstream {
 
       this->buffer = reinterpret_cast<cbatch*>(mapFileData(this->file, this->batchNode[1], sizeof(cbatch)));
 
-      // every write assumes that the stored position is inside the current segment
-      if (this->buffer->bitIndex >= csegm::maxBits) {
+      // every write assumes that the stored position is inside the current segment, or just at its end
+      // (where a writer that couldn't allocate the next segment leaves it, and where the next write tries again)
+      if (this->buffer->bitIndex > csegm::maxBits) {
         throw std::runtime_error("Compressed series has an invalid write position, can't append to it");
+      }
+
+      // and that the stored encoder range is one that the encoder itself leaves behind
+      // (its top bits settled and shifted out, so that it's wider than any model's interval)
+      arithn::code low  = this->buffer->low;
+      arithn::code high = this->buffer->high;
+      if (high > arithn::cmax || high < arithn::chalf || low >= arithn::chalf || (low >= arithn::cfourth && high < arithn::c3fourth)) {
+        throw std::runtime_error("Compressed series has an invalid encoder state, can't append to it");
       }
     } else {
       this->batchNode[0] = 1;
@@ -171,8 +180,10 @@ struct cwbitstream {
 
   // start a new segment within the current batch
   void stepSegment() {
-    this->seg->nextRef = findSpace(this->file, pagetype::data, sizeof(cbatchseg), sizeof(size_t));
-    auto* newseg = reinterpret_cast<cbatchseg*>(mapFileData(this->file, this->seg->nextRef, sizeof(cbatchseg)));
+    // (the new segment is linked only once it's allocated and mapped: if either step fails, this segment is still the last one)
+    uint64_t nextRef = findSpace(this->file, pagetype::data, sizeof(cbatchseg), sizeof(size_t));
+    auto* newseg = reinterpret_cast<cbatchseg*>(mapFileData(this->file, nextRef, sizeof(cbatchseg)));
+    this->seg->nextRef = nextRef;
     unmapFileData(this->file, this->seg, sizeof(cbatchseg));
     this->seg = newseg;
     this->buffer->bitIndex = 0;
@@ -216,6 +227,12 @@ struct cwbitstream {
 
   // put some bits into the current bit buffer (allocating new buffers as needed)
   inline void putbits(uint8_t v, uint8_t bc) {
+    // if an earlier attempt to start a new segment failed (e.g. no space available), the current segment is still full
+    // (never write past it, try again to start a new segment instead)
+    if (PRIV_HCFREGION_UNLIKELY(this->buffer->bitIndex >= csegm::maxBits)) {
+      stepSegment();
+    }
+
     uint8_t  oc  = this->buffer->bitIndex&0x07;
     uint8_t  ac  = 8-oc;
     uint32_t byi = this->buffer->bitIndex>>3;
@@ -296,10 +313,18 @@ struct cwbitstream {
 
   // arithmetic encoding
   inline void write(arithn::code clow, arithn::code chigh, arithn::code cinterval) {
-    arithn::code r = this->buffer->high - this->buffer->low + 1;
+    // narrow and shift a copy of the encoder state, and store it back only once all of its bits have been put
+    // (if we fail to put them, e.g. with no space for a new segment, the stored state stays one that we can validly encode from)
+    // (the bits that were put before the failure stay in the stream, so this keeps later writes in bounds and well formed,
+    //  but it does not take the failed value back out: what follows it in the same batch may not decode as it was written)
+    arithn::code low  = this->buffer->low;
+    arithn::code high = this->buffer->high;
+    uint32_t     roll = this->buffer->roll;
 
-    this->buffer->high = this->buffer->low + (r * chigh / cinterval) - 1;
-    this->buffer->low  = this->buffer->low + (r * clow  / cinterval);
+    arithn::code r = high - low + 1;
+
+    high = low + (r * chigh / cinterval) - 1;
+    low  = low + (r * clow  / cinterval);
 
     // we need to account for overflow here and shift out bits as our range narrows
     // if high's most significant bit (MSB) goes from 1 to 0, we can shift out a 0
@@ -310,41 +335,45 @@ struct cwbitstream {
     // so we check the count of leading 0s on high to step that many 0s
     // we check the count of 1s on low to step that many 1s
     while (true) {
-      arithn::code bc = PRIV_HCFREGION_COUNTLZ(this->buffer->high)-16; // how many 0s can we step through from 'high'?
+      arithn::code bc = PRIV_HCFREGION_COUNTLZ(high)-16; // how many 0s can we step through from 'high'?
       if (bc > 0) {
-        if (this->buffer->roll > 0) {
-          this->put0roll(this->buffer->roll);
-          this->buffer->roll = 0;
+        if (roll > 0) {
+          this->put0roll(roll);
+          roll = 0;
           this->putzeroes(bc-1);
         } else {
           this->putzeroes(bc);
         }
-        this->buffer->low  = (this->buffer->low << bc) & arithn::cmax;
-        this->buffer->high = ((this->buffer->high << bc) | ((1<<bc)-1)) & arithn::cmax;
+        low  = (low << bc) & arithn::cmax;
+        high = ((high << bc) | ((1<<bc)-1)) & arithn::cmax;
       } else {
-        bc = PRIV_HCFREGION_COUNTLZ(~(this->buffer->low | 0xFFFF0000))-16; // how many 1s can we step through from 'low'?
+        bc = PRIV_HCFREGION_COUNTLZ(~(low | 0xFFFF0000))-16; // how many 1s can we step through from 'low'?
         if (bc > 0) {
-          if (this->buffer->roll > 0) {
-            this->put1roll(this->buffer->roll);
-            this->buffer->roll = 0;
+          if (roll > 0) {
+            this->put1roll(roll);
+            roll = 0;
             this->putones(bc-1);
           } else {
             this->putones(bc);
           }
-          this->buffer->low  = (this->buffer->low << bc) & arithn::cmax;
-          this->buffer->high = ((this->buffer->high << bc) | ((1<<bc)-1)) & arithn::cmax;
-        } else if (this->buffer->low >= arithn::cfourth && this->buffer->high < arithn::c3fourth) { // are we failing to converge and narrowing our range?
-          ++this->buffer->roll;
-          this->buffer->low  -= arithn::cfourth;
-          this->buffer->high -= arithn::cfourth;
+          low  = (low << bc) & arithn::cmax;
+          high = ((high << bc) | ((1<<bc)-1)) & arithn::cmax;
+        } else if (low >= arithn::cfourth && high < arithn::c3fourth) { // are we failing to converge and narrowing our range?
+          ++roll;
+          low  -= arithn::cfourth;
+          high -= arithn::cfourth;
 
-          this->buffer->low  = (this->buffer->low << 1) & arithn::cmax;
-          this->buffer->high = ((this->buffer->high << 1) | 1) & arithn::cmax;
+          low  = (low << 1) & arithn::cmax;
+          high = ((high << 1) | 1) & arithn::cmax;
         } else {
           break;
         }
       }
     }
+
+    this->buffer->low  = low;
+    this->buffer->high = high;
+    this->buffer->roll = roll;
   }
 
   inline void flush() {
@@ -453,6 +482,20 @@ struct crbitstream {
  *
  *******************************************************/
 
+// a model's active frequencies come out of the file when a batch is loaded (or a stored series is resumed)
+// a writer only stores them as all 0 or summing to arithn::fmax, and the coder's 32-bit range arithmetic counts on that:
+// with a larger (or wrapped) sum the code interval outgrows the coder's range, decoding leaves that range, and an
+// "escaped" symbol is read from outside of the symbol set -- so a model that breaks this bound can't be used
+inline void checkActiveFreqs(const arithn::freq* activeFreqs, size_t symbolCount) {
+  arithn::freq total = 0;
+  for (size_t i = 0; i < symbolCount; ++i) {
+    if (activeFreqs[i] > arithn::fmax - total) {
+      throw std::runtime_error("Corrupt compressed series model, symbol frequencies exceed the coder's range");
+    }
+    total += activeFreqs[i];
+  }
+}
+
 template <uint8_t maxSymbol>
   struct cumFreqState {
     using index_t = uint16_t;
@@ -500,7 +543,7 @@ template <uint8_t maxSymbol>
           return;
         }
       }
-      assert(false && "failed to find point in interval, internal error");
+      throw std::runtime_error("Corrupt compressed series, code point outside of its model's interval");
     }
   };
 
@@ -524,6 +567,9 @@ template <uint8_t maxSymbol = 0xff>
     );
 
     static void init(const PModel& pm, CModel* cm) {
+      // don't build coding tables out of frequencies that the coder can't work with
+      checkActiveFreqs(pm.activeFreqs, symbolCount);
+
       // get symbol frequencies in decreasing order
       std::vector<index_t> idxs(static_cast<index_t>(maxSymbol)+1);
       std::iota(idxs.begin(), idxs.end(), 0);
@@ -626,6 +672,13 @@ template <uint8_t maxSym, typename AsSym>
 
     static void write(cwbitstream* bits, PModel* pm, CModel* cm, AsSym s) {
       auto c = static_cast<uint8_t>(s);
+
+      // a model only has table entries and a coding interval for its own symbols (fewer than 256 for bools and enumeration tags)
+      // so a value outside of them has to be refused before it indexes the tables or reaches the coder
+      if (static_cast<arithn::code>(c) >= escRange) {
+        throw std::runtime_error("Can't compress a value outside of its model's symbol set");
+      }
+
       arithn::code clow, chigh;
       if (M::find(cm, c, &clow, &chigh)) {
         bits->write(clow, chigh, M::interval(cm));
@@ -645,9 +698,13 @@ template <uint8_t maxSym, typename AsSym>
       rbits->shift(clow, chigh, M::interval(cm));
 
       if (s == M::esc) {
-        auto nc = static_cast<symbol>(rbits->svalue(escRange));
+        // check the escaped symbol at its full width, before it's narrowed and used as a table index
+        arithn::code nc = rbits->svalue(escRange);
+        if (nc >= escRange) {
+          throw std::runtime_error("Corrupt compressed series, escaped symbol outside of its symbol set");
+        }
         rbits->shift(nc, nc+1, escRange);
-        M::add(pm, cm, nc);
+        M::add(pm, cm, static_cast<symbol>(nc));
         *c = static_cast<AsSym>(static_cast<uint8_t>(nc));
       } else {
         M::add(pm, cm, s);
@@ -801,7 +858,7 @@ template <typename U, typename V>
 
     static void init(const PModel& pm, CModel* cm)                            { compress<TT>::init(pm, cm); }
     static void write(cwbitstream* bits,  PModel* pm, CModel* cm, const T& t) { compress<TT>::write(bits, pm, cm, *reinterpret_cast<const TT*>(&t)); }
-    static void read (crbitstream* rbits, PModel* pm, CModel* cm, T* t)       { compress<TT>::read(rbits, pm, cm,  reinterpret_cast<TT*>(&t));       }
+    static void read (crbitstream* rbits, PModel* pm, CModel* cm, T* t)       { compress<TT>::read(rbits, pm, cm,  reinterpret_cast<TT*>(t)); }
   };
 
 template <typename T>

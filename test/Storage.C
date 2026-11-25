@@ -1208,6 +1208,219 @@ TEST(Storage, CFRegion_RollAcrossSegments) {
   }
 }
 
+using CFLongPair  = std::pair<int64_t, int64_t>;
+using CFNamedPair = std::pair<std::string, int>;
+using CFLongPairs = std::vector<CFLongPair>;
+using CFIntOrPair = hobbes::variant<int, CFLongPair>;
+
+DEFINE_STRUCT(
+  CFPairTest,
+  (int,         id),
+  (CFLongPair,  span),
+  (CFNamedPair, name),
+  (CFLongPairs, spans),
+  (CFIntOrPair, alt)
+);
+
+TEST(Storage, CFRegion_Pairs) {
+  std::string fname = mkFName();
+  try {
+    // write some compressed data with pairs as a field, a sequence element and a variant case
+    {
+      hobbes::fregion::cwriter w(fname);
+      auto& xs = w.series<CFPairTest>("xs");
+      for (int i = 0; i < 100; ++i) {
+        CFPairTest s;
+        s.id   = i;
+        s.span = CFLongPair(i, 2*i);
+        s.name = CFNamedPair("pair #" + str::from(i), 3*i);
+        s.spans.resize(i%5, CFLongPair(4*i, 5*i));
+        if (i%2 == 0) {
+          s.alt = CFIntOrPair(i);
+        } else {
+          s.alt = CFIntOrPair(CFLongPair(6*i, 7*i));
+        }
+        xs(s);
+      }
+    }
+
+    // verify that it reads back in-order correctly
+    {
+      hobbes::fregion::creader r(fname);
+      auto& xs = r.series<CFPairTest>("xs");
+      int i = 0;
+      CFPairTest s;
+      while (xs.next(&s)) {
+        EXPECT_EQ(s.id, i);
+        EXPECT_TRUE(s.span == CFLongPair(i, 2*i));
+        EXPECT_TRUE(s.name == CFNamedPair("pair #" + str::from(i), 3*i));
+        EXPECT_TRUE(s.spans == CFLongPairs(i%5, CFLongPair(4*i, 5*i)));
+        if (i%2 == 0) {
+          EXPECT_TRUE(s.alt.get<int>() != nullptr && *s.alt.get<int>() == i);
+        } else {
+          EXPECT_TRUE(s.alt.get<CFLongPair>() != nullptr && *s.alt.get<CFLongPair>() == CFLongPair(6*i, 7*i));
+        }
+        ++i;
+      }
+      EXPECT_EQ(i, 100);
+    }
+
+    unlink(fname.c_str());
+  } catch (...) {
+    unlink(fname.c_str());
+    throw;
+  }
+}
+
+// while one of these is alive, the file can't get any new space: every
+// allocation in it fails the way it does when the disk is full
+// (the file's descriptor is swapped for a read-only one so that growing the
+//  file fails, and its free pages are hidden so that nothing fits without
+//  growing it; both come back unchanged afterwards)
+struct NoSpaceLeftIn {
+  hobbes::fregion::imagefile* f;
+  int                         fd;
+  hobbes::fregion::ptyorder   freespace;
+
+  NoSpaceLeftIn(hobbes::fregion::imagefile* f) : f(f), fd(f->fd) {
+    this->f->freespace.swap(this->freespace);
+    this->f->fd = open(f->path.c_str(), O_RDONLY);
+  }
+  ~NoSpaceLeftIn() {
+    if (this->f->fd >= 0) { close(this->f->fd); }
+    this->f->fd = this->fd;
+    this->f->freespace.swap(this->freespace);
+  }
+};
+
+// a compressed series stores its bits in a list of page-sized segments and
+// starts the next one as soon as the current one is full. If that fails (no
+// space left), the full segment is still the current one, and a writer that
+// outlives the error used to store its next bits behind that segment
+TEST(Storage, CFRegion_FailedSegmentSwitchStaysInSegment) {
+  using namespace hobbes::fregion;
+
+  std::string fname = mkFName();
+  imagefile* f = nullptr;
+  try {
+    f = openFile(fname, false);
+
+    cwbitstream w(f);
+    uint64_t root = w.initFresh(0, 0);
+
+    size_t put = 0, accepted = 0;
+    {
+      NoSpaceLeftIn full(f);
+
+      // whole bytes, so that the last one fills the segment exactly
+      try {
+        while (put < 2 * csegm::bitsLen) { ++put; w.putbits(0xFF, 8); }
+      } catch (std::exception&) {
+      }
+
+      // (without the check, these few bytes land in the segment's link to the next one)
+      for (size_t i = 0; i < sizeof(uint64_t); ++i) {
+        try { w.putbits(0xFF, 8); ++accepted; } catch (std::exception&) { }
+      }
+    }
+    EXPECT_EQ(put, size_t(csegm::bitsLen));
+    EXPECT_EQ(accepted, size_t(0));
+
+    // the writer is left at the end of its full segment, and a writer that
+    // opens the series later (as after a restart) has to be able to go on from there
+    EXPECT_EQ(w.buffer->bitIndex, uint32_t(csegm::maxBits));
+    cwbitstream w2(f);
+    w2.initFromRoot(root, 0);
+    EXPECT_EQ(w2.buffer->bitIndex, uint32_t(csegm::maxBits));
+
+    // with space to be had again, so is the next segment
+    const size_t more = 100;
+    for (size_t i = 0; i < more; ++i) { w2.putbits(0xA5, 8); }
+    EXPECT_EQ(w2.buffer->bitIndex, uint32_t(8 * more));
+
+    // a position past the end of the segment is still not one to write from
+    w2.buffer->bitIndex = csegm::maxBits + 1;
+    {
+      cwbitstream w3(f);
+      EXPECT_EXCEPTION(w3.initFromRoot(root, 0));
+    }
+    w2.buffer->bitIndex = 8 * more;
+
+    // and the bits read back across the two segments
+    crbitstream r(f);
+    r.seg      = reinterpret_cast<const cbatchseg*>(mapFileData(f, w.buffer->headBitBuffer, sizeof(cbatchseg)));
+    r.bitIndex = 0;
+
+    bool ok = true;
+    for (size_t i = 0; i < 8 * put; ++i) { ok = r.getbit() && ok; }
+    for (size_t i = 0; i < more; ++i) {
+      for (size_t b = 0; b < 8; ++b) { ok = (r.getbit() == (((0xA5 >> b) & 1) != 0)) && ok; }
+    }
+    EXPECT_TRUE(ok);
+
+    closeFile(f);
+    unlink(fname.c_str());
+  } catch (...) {
+    if (f != nullptr) { closeFile(f); }
+    unlink(fname.c_str());
+    throw;
+  }
+}
+
+// the encoder narrows its range for each symbol, then puts the bits that the
+// range has settled and shifts them out of it. If the bits can't be put, the
+// stored range has to stay as it was: left narrowed but not shifted, it is not
+// a range that the encoder can carry on from
+TEST(Storage, CFRegion_FailedWriteKeepsEncoderState) {
+  using namespace hobbes::fregion;
+
+  std::string fname = mkFName();
+  imagefile* f = nullptr;
+  try {
+    f = openFile(fname, false);
+
+    cwbitstream w(f);
+    w.initFresh(0, 0);
+
+    // the top quarter of the range settles two 1 bits each time, and leaves the whole range again
+    size_t wrote = 0;
+    bool failed = false;
+    {
+      NoSpaceLeftIn full(f);
+      try {
+        while (wrote < csegm::maxBits) { w.write(3, 4, 4); ++wrote; }
+      } catch (std::exception&) {
+        failed = true;
+      }
+
+      EXPECT_TRUE(failed);
+      EXPECT_EQ(w.buffer->low,  arithn::code(0));
+      EXPECT_EQ(w.buffer->high, arithn::cmax);
+      EXPECT_EQ(w.buffer->roll, uint32_t(0));
+
+      // and stays that way for as long as there's no space
+      EXPECT_EXCEPTION(w.write(3, 4, 4));
+      EXPECT_EXCEPTION(w.write(0, 1, 4));
+      EXPECT_EQ(w.buffer->low,  arithn::code(0));
+      EXPECT_EQ(w.buffer->high, arithn::cmax);
+      EXPECT_EQ(w.buffer->roll, uint32_t(0));
+    }
+
+    // with space again, encoding carries on in a new segment
+    w.write(3, 4, 4);
+    EXPECT_EQ(w.buffer->bitIndex, uint32_t(2));
+    EXPECT_EQ(w.buffer->low,  arithn::code(0));
+    EXPECT_EQ(w.buffer->high, arithn::cmax);
+
+    closeFile(f);
+    unlink(fname.c_str());
+  } catch (...) {
+    if (f != nullptr) { closeFile(f); }
+    unlink(fname.c_str());
+    throw;
+  }
+}
+
 TEST(Storage, FRegionCArrays) {
   std::string fname = mkFName();
   try {
@@ -2044,6 +2257,194 @@ TEST(Storage, CorruptStoredLengthsAreRejected) {
     EXPECT_EXCEPTION(readSeriesToEnd<int>(cyc, "s"));
     unlink(cyc.c_str());
 
+    unlink(fname.c_str());
+  } catch (...) {
+    unlink(fname.c_str());
+    throw;
+  }
+}
+
+DEFINE_STRUCT(
+  CFModelTest,
+  (uint8_t, sensor),
+  (uint8_t, level)
+);
+
+// change the stored state that the first batch of a compressed series is
+// decoded from (and appended to): its encoder state, its models and the
+// first segment of its bits
+template <typename T, typename F>
+  static void pokeFirstCBatch(const std::string& fname, const std::string& sname, const F& poke) {
+    using namespace hobbes::fregion;
+    using PModel = typename compress<T>::PModel;
+
+    imagefile* f = openFile(fname, false);
+
+    // the binding holds the head node, and a node is {1, batch, next}
+    auto* head    = reinterpret_cast<uint64_t*>(mapFileData(f, f->bindings.at(sname).offset, sizeof(uint64_t)));
+    auto* node    = reinterpret_cast<uint64_t*>(mapFileData(f, *head, 3*sizeof(uint64_t)));
+    auto* batch   = reinterpret_cast<cbatch*>(mapFileData(f, node[1], sizeof(cbatch)));
+    auto* model   = reinterpret_cast<PModel*>(mapFileData(f, batch->initModel, sizeof(PModel)));
+    auto* scratch = reinterpret_cast<PModel*>(mapFileData(f, batch->scratchModel, sizeof(PModel)));
+    auto* seg     = reinterpret_cast<cbatchseg*>(mapFileData(f, batch->headBitBuffer, sizeof(cbatchseg)));
+
+    poke(batch, model, scratch, seg);
+
+    unmapFileData(f, seg, sizeof(cbatchseg));
+    unmapFileData(f, scratch, sizeof(PModel));
+    unmapFileData(f, model, sizeof(PModel));
+    unmapFileData(f, batch, sizeof(cbatch));
+    unmapFileData(f, node, 3*sizeof(uint64_t));
+    unmapFileData(f, head, sizeof(uint64_t));
+    closeFile(f);
+  }
+
+static size_t readCFModelTests(const std::string& fname) {
+  hobbes::fregion::creader r(fname);
+  auto& xs = r.series<CFModelTest>("xs");
+  CFModelTest x;
+  size_t n = 0;
+  while (xs.next(&x)) { ++n; }
+  return n;
+}
+
+static void appendCFModelTest(const std::string& fname) {
+  hobbes::fregion::cwriter w(fname);
+  CFModelTest x;
+  x.sensor = 3;
+  x.level  = 4;
+  w.series<CFModelTest>("xs")(x);
+}
+
+TEST(Storage, CFRegionRejectsCorruptModelFrequencies) {
+  // a batch of a compressed series is decoded from symbol frequencies stored
+  // in the file, and the decoder's range arithmetic only holds while each
+  // table of them sums to at most arithn::fmax (a writer stores nothing
+  // else). Both readers used to build their tables from whatever was stored:
+  // the decoder's range then left its 16 bits, an escaped symbol was read
+  // from far outside of the symbol set, and counting it was a write past the
+  // end of the frequency table (or the range was empty, and divided by).
+  using PModel = hobbes::fregion::compress<CFModelTest>::PModel;
+  using hobbes::fregion::arithn;
+  using hobbes::fregion::cbatch;
+  using hobbes::fregion::cbatchseg;
+
+  std::string fname = mkFName();
+  std::string wide  = mkFName();
+  std::string empty = mkFName();
+  std::string late  = mkFName();
+  std::string state = mkFName();
+  auto cleanup = [&]() {
+    unlink(fname.c_str());
+    unlink(wide.c_str());
+    unlink(empty.c_str());
+    unlink(late.c_str());
+    unlink(state.c_str());
+  };
+  try {
+    {
+      hobbes::fregion::cwriter w(fname);
+      CFModelTest x;
+      x.sensor = 1;
+      x.level  = 2;
+      w.series<CFModelTest>("xs")(x);
+    }
+    EXPECT_EQ(readCFModelTests(fname), size_t(1));
+
+    // frequencies whose sum wraps around: the first byte widens the decoder's
+    // range past 16 bits, and the second byte's escaped symbol is 1575 of 256
+    copyFile(fname, wide);
+    pokeFirstCBatch<CFModelTest>(wide, "xs", [](cbatch*, PModel* m, PModel*, cbatchseg* s) {
+      memset(reinterpret_cast<void*>(m), 0, sizeof(PModel));
+      memset(s->bits, 0, sizeof(s->bits));
+      m->at<0>().activeFreqs[0] = 0xFFFFFFFF;
+      m->at<0>().activeFreqs[1] = 58336;
+      m->at<1>().activeFreqs[6] = 1;
+      s->bits[0] = 0x95;
+    });
+    EXPECT_EXCEPTION_MSG(readCFModelTests(wide), std::exception, "Corrupt compressed series model");
+
+    // one frequency as large as the decoder's whole range, which leaves it
+    // an empty range to divide by
+    copyFile(fname, empty);
+    pokeFirstCBatch<CFModelTest>(empty, "xs", [](cbatch*, PModel* m, PModel*, cbatchseg* s) {
+      memset(reinterpret_cast<void*>(m), 0, sizeof(PModel));
+      memset(s->bits, 0, sizeof(s->bits));
+      m->at<0>().activeFreqs[0] = 65536;
+    });
+    EXPECT_EXCEPTION_MSG(readCFModelTests(empty), std::exception, "Corrupt compressed series model");
+
+    // wrapping frequencies held back as the pending counts, which replace
+    // the active ones as soon as the first symbol is read
+    copyFile(fname, late);
+    pokeFirstCBatch<CFModelTest>(late, "xs", [](cbatch*, PModel* m, PModel* sm, cbatchseg* s) {
+      memset(reinterpret_cast<void*>(m), 0, sizeof(PModel));
+      memset(s->bits, 0, sizeof(s->bits));
+      m->at<0>().freqs[0] = 0xFFFFFFFF;
+      m->at<0>().freqs[1] = 58336;
+      m->at<0>().c        = arithn::fmax;
+
+      // and the same in the model that a writer resumes from
+      sm->at<1>().activeFreqs[0] = 0xFFFFFFFF;
+      sm->at<1>().activeFreqs[1] = 58336;
+    });
+    EXPECT_EXCEPTION_MSG(readCFModelTests(late), std::exception, "Corrupt compressed series model");
+    EXPECT_EXCEPTION_MSG(appendCFModelTest(late), std::exception, "Corrupt compressed series model");
+
+    // a writer also resumes from a stored encoder range, which has to be one
+    // that the encoder could have left there
+    copyFile(fname, state);
+    pokeFirstCBatch<CFModelTest>(state, "xs", [](cbatch* b, PModel*, PModel*, cbatchseg*) {
+      b->low  = arithn::chalf;
+      b->high = arithn::cmax;
+    });
+    EXPECT_EXCEPTION_MSG(appendCFModelTest(state), std::exception, "invalid encoder state");
+
+    // (the untouched file can still be appended to and read)
+    appendCFModelTest(fname);
+    EXPECT_EQ(readCFModelTests(fname), size_t(2));
+
+    // and the reader for scripts refuses them as well
+    // (a compiler per file, since each of these files has the same type)
+#if !defined(__APPLE__)
+    // (on macOS an exception can't be thrown through compiled code)
+    auto scriptRead = [](const std::string& path) {
+      hobbes::cc c;
+      c.define("cdb", "inputFile::(LoadFile \"" + path + "\" w)=>w");
+      return c.compileFn<long()>("size(cdb.xs[0:])")();
+    };
+    EXPECT_EXCEPTION_MSG(scriptRead(wide), std::exception, "Corrupt compressed series model");
+    EXPECT_EXCEPTION_MSG(scriptRead(late), std::exception, "Corrupt compressed series model");
+#endif
+
+    cleanup();
+  } catch (...) {
+    cleanup();
+    throw;
+  }
+}
+
+DEFINE_STRUCT(
+  CFColorTest,
+  (MyColor, color)
+);
+
+TEST(Storage, CFRegionRefusesSymbolsOutsideOfTheModel) {
+  // an enumeration is compressed with a model of just its own constructors,
+  // so a value that is none of them can't be looked up in that model
+  std::string fname = mkFName();
+  try {
+    {
+      hobbes::fregion::cwriter w(fname);
+      auto& xs = w.series<CFColorTest>("xs");
+
+      CFColorTest x;
+      x.color = MyColor::Blue();
+      xs(x);
+
+      x.color.value = static_cast<MyColor::Enum>(200);
+      EXPECT_EXCEPTION_MSG(xs(x), std::exception, "outside of its model's symbol set");
+    }
     unlink(fname.c_str());
   } catch (...) {
     unlink(fname.c_str());
