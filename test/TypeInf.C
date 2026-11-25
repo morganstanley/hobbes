@@ -1269,6 +1269,50 @@ TEST(TypeInf, LayoutOfATypeThatUnfoldsWithoutEndIsRefused) {
   EXPECT_TRUE(*repType(tapp(idf, list(deep))) == *deep);
 }
 
+// A variant's size is memoized on the type, and types are interned for the life
+// of the process, so a size must be remembered only once it has been worked out
+// in full. Sizing a member can fail -- always, for a member with no size, or just
+// this once, for a member reached past the layout nesting bound -- and the
+// variant used to keep the largest member it had got to as its payload size. The
+// next request for its size then succeeded with too small an answer: a 'hog -s'
+// peer could have a variant measured that way by describing it inside two types
+// that are refused, and the reader compiled for it afterwards copied a whole
+// payload into an allocation of the tag alone.
+TEST(TypeInf, VariantSizeIsNotMemoizedFromAFailedLayout) {
+  // a variant with a member that can't be sized can't be sized, however often
+  // it is asked
+  const MonoTypePtr unsizable(FixedArray::make(primty("long"), tlong(1L << 40)));
+  const MonoTypePtr never(
+    Variant::make(list(Variant::Member("n", primty("int"), 0), Variant::Member("u", unsizable, 1))));
+  EXPECT_EXCEPTION(sizeOf(never));
+  EXPECT_EXCEPTION(sizeOf(never));
+
+  // one whose members can be sized, first reached at the nesting bound so that
+  // its own layout is allowed and its member's is refused. Its alignment is
+  // taken beforehand, as laying out an enclosing record does, so that it is
+  // sizing the member and not aligning it that meets the bound
+  const MonoTypePtr sizable(
+    Variant::make(list(Variant::Member("blob", arrayty(primty("byte"), 123457), 0), Variant::Member("n", primty("int"), 1))));
+  EXPECT_EQ(alignment(sizable), 4U);
+
+  MonoTypePtr nested = sizable;
+  for (size_t i = 0; i < 199; ++i) {
+    nested = FixedArray::make(nested, tlong(1));
+  }
+  EXPECT_EXCEPTION_MSG(sizeOf(nested), std::runtime_error, "Type layout nests");
+
+  // asked for directly, it has the size of its tag and its largest member
+  EXPECT_EQ(sizeOf(sizable), 123464U);
+
+  // and so does what holds it, in allocation and in member offsets alike
+  const MonoTypePtr rty(
+    Record::make(list(Record::Member("a", sizable), Record::Member("b", primty("long")))));
+  const Record* rec = is<Record>(rty);
+  EXPECT_TRUE(rec != nullptr);
+  EXPECT_EQ(rec->mmember("b")->offset, 123464);
+  EXPECT_EQ(sizeOf(rty), 123472U);
+}
+
 // A reduction can finish within its step budget and still take unbounded time:
 // each step substitutes into the term it has so far, and that term can double at
 // every step while the type that holds it, whose parts are shared, stays small.

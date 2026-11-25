@@ -1158,10 +1158,14 @@ unsigned int Variant::payloadOffset() const {
 
 unsigned int Variant::payloadSize() const {
   if (this->payloadSizeM == static_cast<unsigned int>(-1)) {
-    this->payloadSizeM = 0;
+    // the memo is written once, with the finished maximum: sizing a member can
+    // throw (and variants are interned, so this one outlives the failure), and
+    // a running maximum kept in the memo would then be taken for the answer
+    unsigned int sz = 0;
     for (const auto& m : this->ms) {
-      this->payloadSizeM = std::max(this->payloadSizeM, sizeOf(m.type));
+      sz = std::max(sz, sizeOf(m.type));
     }
+    this->payloadSizeM = sz;
   }
   return this->payloadSizeM;
 }
