@@ -12,10 +12,12 @@ bvInit bs i x =
     do{bs[i] <- x; bvInit(bs, i+1, x);}
 {-# UNSAFE bvInit #-}
 
+// (a negative length is passed on to newArray as it is, which refuses it: rounded to bytes, -1 would
+//  ask for one byte and -8 for none, a vector with no room for the bits its user then sets)
 newBitvec :: long -> bitvec
 newBitvec n = do {
   t  = n % 8;
-  r  = newArray(1 + ((n / 8) + (if (t > 0L) then 1 else 0)));
+  r  = newArray(if (n < 0L) then n else (1 + ((n / 8) + (if (t > 0L) then 1 else 0))));
   r[0] <- tl2b(t);
   bvInit(r, 1L, 0X00);
   return (convert(r) :: bitvec)
@@ -225,9 +227,11 @@ class SeqDesc s d a | s -> d a, d a -> s
 class (Function f c a r, SeqDesc i d a, SeqDesc o p r) => Map f c a r d i p o | f -> c a r, c a r -> f, i -> d a, d a -> i, o -> p r, p r -> o, f i -> o, d -> p where
   fmap :: (f, i) -> o
 
+// the loops below end on the length of the result they fill, not on size(xs) read again at each step:
+// a stored batch is mapped where it lies in its file, and its size goes up while a writer appends to it
 fmapArrStep :: (Function f c a r, Array as a) => (f, as, long, [r]) -> [r]
 fmapArrStep f xs i rs =
-  if (i == size(xs)) then
+  if (i == length(rs)) then
     rs
   else
     do{rs[i] <- apply(f, element(xs,i)); return fmapArrStep(f, xs, i+1, rs)}
@@ -243,7 +247,7 @@ class (Function pf pc a bool, Function f c a r, SeqDesc i d a, SeqDesc o p r) =>
 
 ffilterArrStep :: (Function p c a bool, Array as a) => (p, as, long, bitvec) -> bitvec
 ffilterArrStep p xs i bv =
-  if (i == size(xs)) then
+  if (i == bvLength(bv)) then
     bv
   else
     (let _ = bvSet(bv, i, apply(p, element(xs,i))) in ffilterArrStep(p, xs, i+1, bv))
@@ -256,7 +260,7 @@ class (Function f c a (()+r), SeqDesc i d a, SeqDesc o p r) => FilterMMap f c a 
 
 ffilterMMapStep :: (Function f c a (()+b), Array as a) => (f, as, long, [()+b], long) -> long
 ffilterMMapStep f xs i mys j =
-  if (i == size(xs)) then
+  if (i == length(mys)) then
     j
   else do {
     y = apply(f, element(xs,i));

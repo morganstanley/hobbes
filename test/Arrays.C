@@ -191,6 +191,23 @@ TEST(Arrays, newArrayRefusesALengthItCannotAllocate) {
 #endif
 }
 
+TEST(Arrays, newBitvecRefusesANegativeLength) {
+  // a filter sizes its bit vector from the size its source reports, which for
+  // a stored sequence is a count out of a file. Rounded to whole bytes, -1
+  // came to one byte and -8 to none, so newArray saw nothing to refuse and the
+  // filter then set bits past the vector
+  EXPECT_EQ(c().compileFn<long()>("bvLength(newBitvec(0L))")(), 0L);
+  EXPECT_EQ(c().compileFn<long()>("bvLength(newBitvec(13L))")(), 13L);
+  EXPECT_EQ(c().compileFn<long()>("size([x | x <- [1..20], x % 3 == 0])")(), 6L);
+
+#if !defined(__APPLE__)
+  // (not on macOS, see newArrayRefusesALengthItCannotAllocate)
+  for (const char* n : {"-1L", "-7L", "-8L", "-15L", "-64L"}) {
+    EXPECT_EXCEPTION(c().compileFn<long()>(std::string("bvLength(newBitvec(") + n + "))")());
+  }
+#endif
+}
+
 // append concatenates two arrays, taking each length from its operand's own
 // header. Those headers come from arrays that may have been loaded from a
 // crafted db file (or forged with unsafeSetLength), so the sum c0 + c1 can
