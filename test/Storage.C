@@ -822,6 +822,13 @@ DEFINE_STRUCT(
   (strs,      f)
 );
 
+// gcc 14 false positive with ASAN enabled: assigning to a default-constructed variant
+// destroys the old payload by its tag, and gcc can't tell that there is none yet
+// (the same warning is turned off for the Tick variant below)
+#pragma GCC diagnostic push
+#if defined(__GNUC__) && !defined(__clang__)
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
+#endif
 TEST(Storage, CFRegion_C2C) {
   std::string fname = mkFName();
   try {
@@ -878,6 +885,8 @@ TEST(Storage, CFRegion_C2C) {
     throw;
   }
 }
+
+#pragma GCC diagnostic pop
 
 TEST(Storage, CFRegion_C2H) {
   std::string fname = mkFName();
@@ -1151,6 +1160,59 @@ TEST(Storage, FRegionCArrays) {
 
     EXPECT_TRUE(c.compileFn<bool()>("db.xs == [(i, i*3.14159) | i <- [0..9]]")());
     EXPECT_TRUE(c.compileFn<bool()>("db.ys == [(42, \"cowboy\", [|0=100|::(int+double), |1=3.14159|, |0=200|]), (8675, \"chicken\", [|1=2.1|, |1=4.2|, |0=29|])]")());
+
+    unlink(fname.c_str());
+  } catch (...) {
+    unlink(fname.c_str());
+    throw;
+  }
+}
+
+// A stored array is its length followed directly by its elements: that is the
+// space the writers allocate for one and where fregion.H reads and writes it.
+// Compiled code used to look for the elements of an [int128] 8 bytes further
+// on (see Arrays/Int128ElementsFollowTheLength), so it read such an array
+// shifted and, filling one in, wrote 8 bytes past the space allocated for it
+// in the file -- which is how a producer sending [int128] to 'hog -s' could
+// overwrite the element count of the batch stored next to it.
+TEST(Storage, Int128ArraysAreStoredBehindTheirLength) {
+  // values with something in both halves, so that a shift by 8 bytes shows
+  std::vector<int128_t> xs;
+  for (size_t i = 1; i <= 3; ++i) {
+    xs.push_back((static_cast<int128_t>(i) << 64) + static_cast<int128_t>(i));
+  }
+  const std::string hxs = "[18446744073709551617H, 36893488147419103234H, 55340232221128654851H]";
+
+  std::string fname = mkFName();
+  try {
+    // written by C++, read by compiled code
+    {
+      fregion::writer w(fname);
+      w.define("xs", xs);
+    }
+    {
+      cc rc;
+      rc.define("f", "inputFile :: (LoadFile \"" + fname + "\" w) => w");
+      EXPECT_TRUE(rc.compileFn<bool()>("f.xs == " + hxs)());
+    }
+    unlink(fname.c_str());
+
+    // written by compiled code, read by C++
+    {
+      cc wc;
+      wc.define("f", "writeFile(\"" + fname + "\") :: ((file _ {xs:[int128]@?}))");
+      wc.compileFn<void()>("f.xs <- allocateArray(3L)")();
+      wc.compileFn<void()>("do { xs = load(f.xs); ys = " + hxs + "; xs[0] <- ys[0]; xs[1] <- ys[1]; xs[2] <- ys[2]; unsafeSetLength(xs, 3L); }")();
+    }
+    {
+      fregion::reader r(fname);
+      std::vector<int128_t> rxs;
+      r.definition("xs", &rxs);
+      EXPECT_EQ(rxs.size(), xs.size());
+      for (size_t i = 0; i < rxs.size() && i < xs.size(); ++i) {
+        EXPECT_EQ(rxs[i], xs[i]);
+      }
+    }
 
     unlink(fname.c_str());
   } catch (...) {

@@ -1,4 +1,5 @@
 #include <limits>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <utility>
@@ -225,4 +226,65 @@ TEST(Arrays, appendRefusesALengthItCannotAllocate) {
   EXPECT_EQ(makeStdString(c().compileFn<const array<char>*()>(
     "show(append([1,2,3], [4,5,6]))")()),
     "[1, 2, 3, 4, 5, 6]");
+}
+
+// Everything that allocates an array leaves sizeof(long) for its length and
+// puts its contents directly behind it, whatever the element type, and
+// compiled code has to look for them there. int128 is the element type that
+// shows a disagreement: LLVM >= 18 aligns it to 16 bytes on x86-64, and an
+// array laid out by that rule has its contents 16 bytes in, so that the last
+// 8 bytes of every [int128] that compiled code filled were past the end of
+// its allocation, and an array made anywhere else was read 8 bytes off.
+static int128_t int128At(const array<int128_t>* xs, size_t i) {
+  // read at the stated offset and through the C++ view of the array, which must agree
+  int128_t x = 0;
+  memcpy(&x, reinterpret_cast<const char*>(xs) + sizeof(long) + i * sizeof(x), sizeof(x));
+  int128_t y = (*xs)[i];
+  EXPECT_TRUE(x == y);
+  int128_t z = begin(xs)[i];
+  EXPECT_TRUE(x == z);
+  EXPECT_TRUE(end(xs) - begin(xs) == static_cast<ptrdiff_t>(xs->size));
+  EXPECT_TRUE(begin(*xs) == begin(xs) && end(*xs) == end(xs));
+  return x;
+}
+
+static_assert(offsetof(array<int128_t>, data) == sizeof(size_t), "array contents must directly follow the length");
+static_assert(offsetof(array<char>, data) == sizeof(size_t), "array contents must directly follow the length");
+
+TEST(Arrays, Int128ElementsFollowTheLength) {
+  // a constant array, one filled in at run time, one made by concatenation,
+  // and ones written through element assignment
+  const char* exprs[] = {
+    "[1H, 2H, 3H]",
+    "[convert(i)::int128 | i <- [1L..3L]]",
+    "[1H] ++ [convert(i)::int128 | i <- [2L..3L]]",
+    "do { xs = newArray(3L)::[int128]; xs[0] <- 1H; xs[1] <- 2H; xs[2] <- 3H; return xs }",
+    "do { ys = [convert(i)::int128 | i <- [1L..3L]]; xs = newArray(3L)::[int128]; xs[0] <- ys[0]; xs[1] <- ys[1]; xs[2] <- ys[2]; return xs }"
+  };
+  for (const char* expr : exprs) {
+    const auto* xs = c().compileFn<const array<int128_t>*()>(expr)();
+    EXPECT_EQ(xs->size, size_t(3));
+    for (size_t i = 0; i < 3; ++i) {
+      EXPECT_EQ(int128At(xs, i), int128_t(i + 1));
+    }
+  }
+  EXPECT_EQ(makeStdString(c().compileFn<const array<char>*()>("show([1H, 2H, 3H])")()), "[1, 2, 3]");
+
+  // the same goes for an array of fixed-length arrays of them
+  using int128x2 = int128_t[2];
+  const auto* ps = c().compileFn<const array<int128x2>*()>(
+    "do { ps = newArray(2L)::[[:int128|2:]]; saelem(ps[0], 0L) <- 1H; saelem(ps[0], 1L) <- 2H; saelem(ps[1], 0L) <- 3H; saelem(ps[1], 1L) <- 4H; return ps }")();
+  EXPECT_EQ(ps->size, size_t(2));
+  for (size_t i = 0; i < 4; ++i) {
+    EXPECT_EQ(int128At(reinterpret_cast<const array<int128_t>*>(ps), i), int128_t(i + 1));
+  }
+
+  // and an array that compiled code did not make is read from the same place
+  auto* ys = reinterpret_cast<array<int128_t>*>(memalloc(sizeof(long) + 3 * sizeof(int128_t), alignof(int128_t)));
+  ys->size = 3;
+  for (size_t i = 0; i < 3; ++i) {
+    int128_t y = int128_t(i + 1);
+    memcpy(reinterpret_cast<char*>(ys) + sizeof(long) + i * sizeof(y), &y, sizeof(y));
+  }
+  EXPECT_TRUE(c().compileFn<bool(const array<int128_t>*)>("ys", "ys == [1H, 2H, 3H]")(ys));
 }
