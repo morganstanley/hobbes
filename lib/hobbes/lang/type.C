@@ -14,6 +14,7 @@
 #include <hobbes/util/str.H>
 #include <limits>
 #include <memory>
+#include <set>
 #include <sstream>
 #include <stdexcept>
 #include <unordered_map>
@@ -2140,6 +2141,19 @@ struct findEmbeddedExpr : public walkTy {
   UnitV with(const TExpr* v) const override {
     this->found = true;
     return walkTy::with(v);
+  }
+
+  // walkTy stops at a primitive, but a decoded primitive brings its own
+  // representation, which is a type like any other and is what the compiler
+  // sees once the primitive is unrolled. Each is looked at once: 'darray t'
+  // (db/file.C) mentions t in its representation as well as in its argument,
+  // and nested ones would otherwise be walked 2^depth times
+  mutable std::set<const Prim*> prims;
+  UnitV with(const Prim* v) const override {
+    if (v->representation() && this->prims.insert(v).second) {
+      switchOf(v->representation(), *this);
+    }
+    return unitv;
   }
 };
 }

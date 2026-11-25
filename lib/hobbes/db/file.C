@@ -99,6 +99,20 @@ reader::reader(imagefile* f) : fdata(f) {
     if (!b.first.empty() && b.first[0] != '.') {
       SBinding sb;
       sb.type   = decodeBindingByVersion(this->fdata->version, b.second.type);
+
+      // the type decoder accepts a type that carries a whole expression, and
+      // a file reference that names its file that way ('T@e') keeps it when a
+      // field is projected (injFileReferences only completes 'T@?', which is
+      // what every writer stores), so that 'load' and the other reference
+      // primitives (db/bindings.C) compile and run an expression that came
+      // out of the file. Nothing a writer stores needs one, so refuse it here
+      // as hog does for the types a producer sends. This is checked after the
+      // version translation, which drops the extra argument of a v0 reference
+      if (embedsExpression(sb.type)) {
+        std::string err = "Not a valid structured data file, the type of '" + b.first + "' carries an embedded expression: " + this->fdata->path;
+        closeFile(this->fdata); // no destructor runs for a constructor that throws
+        throw std::runtime_error(err);
+      }
       sb.offset = this->fdata->version==0 ? b.second.boffset : b.second.offset;
       this->sbindings[b.first] = sb;
     }
