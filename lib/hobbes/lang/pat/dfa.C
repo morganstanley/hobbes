@@ -625,10 +625,11 @@ MStatePtr makeRecordState(MDFA* dfa, const PatternRows& ps, size_t c) {
   // get the fields to load
   LoadVars::Defs defs;
 
-  if (const MatchRecord* mr = is<MatchRecord>(ps[0].patterns[c])) {
-    for (size_t fi = 0; fi < mr->size(); ++fi) {
-      const MatchRecord::Field& f = mr->pattern(fi);
-      defs.push_back(LoadVars::Def(f.second->name(), field(dfa, mr->name(), f.first)));
+  const MatchRecord* r0 = is<MatchRecord>(ps[0].patterns[c]);
+  if (r0 != nullptr) {
+    for (size_t fi = 0; fi < r0->size(); ++fi) {
+      const MatchRecord::Field& f = r0->pattern(fi);
+      defs.push_back(LoadVars::Def(f.second->name(), field(dfa, r0->name(), f.first)));
     }
   } else {
     throw annotated_error(*ps[0].patterns[c], "Internal error, can't make record state from non-record pattern");
@@ -639,6 +640,18 @@ MStatePtr makeRecordState(MDFA* dfa, const PatternRows& ps, size_t c) {
 
   for (const auto &p : ps) {
     if (const MatchRecord* mr = is<MatchRecord>(p.patterns[c])) {
+      // each row's field patterns become columns tested against the fields loaded for the
+      // first row, so every record here has to have those fields, in that order
+      // (validation pads and type-checks them to agree: this is a backstop, since rows
+      //  of different widths would be read out of bounds from here on)
+      bool sameFields = mr->size() == r0->size();
+      for (size_t fi = 0; sameFields && fi < mr->size(); ++fi) {
+        sameFields = mr->pattern(fi).first == r0->pattern(fi).first;
+      }
+      if (!sameFields) {
+        throw annotated_error(*p.patterns[c], "Internal error, record patterns in one column have different fields");
+      }
+
       copyRowWithoutColumn(&cdef, p, c);
       prependPatterns(&cdef.back(), recordFieldPatterns(*mr));
     } else if (is<MatchAny>(p.patterns[c]) != nullptr) {
@@ -1274,6 +1287,14 @@ stateidx_t makeDFAState(MDFA* dfa, const PatternRows& xps) {
   MatchDepth depth(dfa);
   if (dfa->stateDepth > maxMatchDFADepth) {
     throw annotated_error(dfa->rootLA, "match expression is too complex to compile (nests more than " + str::from(maxMatchDFADepth) + " states deep)");
+  }
+
+  // every row is indexed by the columns of the first from here on (starting with
+  // dropUnusedColumns), so a table that is not rectangular must not get any further
+  for (const auto& r : xps) {
+    if (r.patterns.size() != xps[0].patterns.size()) {
+      throw annotated_error(dfa->rootLA, "Internal error, pattern table rows have different numbers of columns");
+    }
   }
 
   PatternRows ps;
