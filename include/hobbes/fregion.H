@@ -824,6 +824,16 @@ inline void unmapFileData(imagefile* f, const void* p, size_t sz) {
     return;
   }
 
+  // never release more than mapFileData counted for this allocation: callers
+  // often work 'sz' out again from a length stored in the file, which need not
+  // be the length that was mapped (the shared empty array is mapped as just
+  // its length word, and a writer can change any length while it is mapped),
+  // and releasing too much drops the page mapping under everything else that
+  // is still loaded from it
+  if (sz > fa->second.size) {
+    sz = fa->second.size;
+  }
+
   // remember what page mapping this allocation was out of, but forget the mapping
   file_pageindex_t dpage = fa->second.page;
   f->allocs.erase(fa);
@@ -1079,7 +1089,20 @@ inline imagefile* openFile(const std::string& fname, bool readonly, uint16_t min
     if (!readonly) {
       auto za = f->bindings.find(".za");
       if (za != f->bindings.end()) {
-        f->empty_array = za->second.offset;
+        // every empty array stored from here on is a reference to this one, so
+        // it has to be what this writer would have made: a length word, inside
+        // the file, that says there is nothing behind it
+        size_t zaPos = za->second.offset;
+        if (zaPos % sizeof(size_t) != 0) {
+          throw std::runtime_error("The shared empty array of '" + fname + "' is at the unaligned offset " + hobbes::string::from(zaPos));
+        }
+        auto* zaLen = reinterpret_cast<size_t*>(mapFileDataInFile(f, zaPos, sizeof(size_t), "shared empty array"));
+        size_t len  = *zaLen;
+        unmapFileData(f, zaLen, sizeof(size_t));
+        if (len != 0) {
+          throw std::runtime_error("The shared empty array of '" + fname + "' claims " + hobbes::string::from(len) + " elements");
+        }
+        f->empty_array = zaPos;
       } else {
         f->empty_array = findSpace(f, pagetype::data, sizeof(size_t), sizeof(size_t));
         addBinding(f, ".za", bytes(), f->empty_array);
@@ -1977,12 +2000,31 @@ template <typename T>
     imagefile*         file()     const { return this->f; }
 
     void operator()(const T& x) {
+      // (there is always room for this value: this writer counts what it has put in the batch for itself,
+      //  and never leaves a full batch as the current one)
       store<T>::write(this->f, this->batchHead, x);
+
+      // if this value fills the batch, allocate the next batch before the value is counted
+      // (allocation can fail, and a full batch left as the current one has no room for the next value,
+      //  so in that case this value is not written and the write position stays where it is)
+      bool     batchFull = this->batchUsed + 1 >= this->batchSize;
+      newbatch nextBatch{};
+
+      if (batchFull) {
+        nextBatch = allocBatch(this->batchNextRef);
+      }
+
       this->writeCB(this->batchDataRef+(this->batchHead-reinterpret_cast<uint8_t*>(this->batchCount)));
       this->batchHead += store<T>::size();
-      if (++(*this->batchCount) == this->batchSize) {
-        unmapFileData(this->f, this->batchCount, batchByteCount<T>(this->batchSize));
-        promoteNullNode(this->batchNextRef);
+
+      // (the count in the file is for readers: this writer's own count is what it goes by,
+      //  as something else with the file open may have changed the stored one)
+      *this->batchCount = ++this->batchUsed;
+
+      if (batchFull) {
+        uint64_t* oldBatchCount = this->batchCount;
+        startBatch(nextBatch);
+        unmapFileData(this->f, oldBatchCount, batchByteCount<T>(this->batchSize));
       }
     }
   public:
@@ -2013,6 +2055,15 @@ template <typename T>
     uint64_t* batchCount;   // the count of values written in the current batch
     uint8_t*  batchHead;    // pointer to the next location to write a value
     uint64_t  batchNextRef; // file-pointer to the next batch node (should always point to a null node in the writer)
+    size_t    batchUsed;    // how many values this writer has put in the current batch (the stored count is never read back for this)
+
+    // a batch that has been allocated for a null node, but that the node doesn't refer to yet
+    struct newbatch {
+      batchdef* node;       // the (mapped) null node to promote
+      uint64_t  batchRef;   // file-pointer to the new batch array
+      uint64_t* batchCount; // the (mapped) new batch array
+      uint64_t  nextRef;    // file-pointer to the null node that will follow the promoted one
+    };
 
     // allocate an initial node (just used when defining a sequence variable for the first time)
     uint64_t initSeqNode() {
@@ -2056,8 +2107,11 @@ template <typename T>
           unmapFileData(this->f, n, sizeof(batchdef));
 
           // just if this local state leaves us at a full batch, then we'd need to jump to the next batch
-          if (*this->batchCount < this->batchSize) {
-            this->batchHead += *this->batchCount * store<T>::size();
+          // (the count is read once: it is in the file, where it can change between two reads)
+          size_t stored = *this->batchCount;
+          if (stored < this->batchSize) {
+            this->batchHead += stored * store<T>::size();
+            this->batchUsed  = stored;
             return;
           } else {
             unmapFileData(this->f, this->batchCount, batchByteCount<T>(this->batchSize));
@@ -2077,19 +2131,40 @@ template <typename T>
 
     // mutate a stored '()+((carray T n)*x@?)' value from the left '()' case to the right '(carray T n)*x@?' case
     void promoteNullNode(uint64_t nodeRef) {
+      startBatch(allocBatch(nodeRef));
+    }
+
+    // allocate what's needed to promote a null node, without touching the node or the state of this writer
+    // (any step of this can fail, and the writer has to be usable as it was if one does)
+    newbatch allocBatch(uint64_t nodeRef) {
       auto bsz = batchByteCount<T>(this->batchSize);
 
-      auto* n = reinterpret_cast<batchdef*>(mapFileData(this->f, nodeRef, sizeof(batchdef)));
-      n->batchRef = findSpace(this->f, pagetype::data, bsz, alignof(uint64_t));
-      n->nextRef  = allocNullNode();
-      n->varCtor  = 1;
+      newbatch b;
+      b.batchRef   = findSpace(this->f, pagetype::data, bsz, alignof(uint64_t));
+      b.nextRef    = allocNullNode();
+      b.node       = reinterpret_cast<batchdef*>(mapFileData(this->f, nodeRef, sizeof(batchdef)));
+      try {
+        b.batchCount = reinterpret_cast<uint64_t*>(mapFileData(this->f, b.batchRef, bsz));
+      } catch (...) {
+        unmapFileData(this->f, b.node, sizeof(batchdef));
+        throw;
+      }
+      return b;
+    }
 
-      this->batchDataRef = n->batchRef;
-      this->batchCount   = reinterpret_cast<uint64_t*>(mapFileData(this->f, this->batchDataRef, bsz));
+    // promote a null node to its allocated batch, and continue writing there
+    void startBatch(const newbatch& b) {
+      b.node->batchRef = b.batchRef;
+      b.node->nextRef  = b.nextRef;
+      b.node->varCtor  = 1;
+
+      this->batchDataRef = b.batchRef;
+      this->batchCount   = b.batchCount;
       this->batchHead    = reinterpret_cast<uint8_t*>(this->batchCount) + sizeof(uint64_t);
-      this->batchNextRef = n->nextRef;
+      this->batchNextRef = b.nextRef;
+      this->batchUsed    = 0;
 
-      unmapFileData(this->f, n, sizeof(batchdef));
+      unmapFileData(this->f, b.node, sizeof(batchdef));
     }
   };
 template <typename ... Wss>

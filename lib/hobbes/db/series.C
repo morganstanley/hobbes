@@ -327,20 +327,34 @@ void RawStoredSeries::clear(bool signal) {
 
 void RawStoredSeries::record(const void* v, bool signal) {
   // store this data at the stream head
+  //  (there is always room for it: this writer counts what it has put in the batch for itself,
+  //   and never leaves a full batch at the stream head)
   this->storeFn(this->outputFile, v, this->batchHead);
+
+  // if this value fills the batch, allocate a new batch cell before the value is counted
+  //  (allocation can fail, and a full batch left at the stream head has no room for the next value,
+  //   so in that case this value is not recorded and the stream head stays where it is)
+  bool  batchFull = this->batchUsed + 1 >= this->batchSize;
+  Batch nextBatch{};
+
+  if (batchFull) {
+    nextBatch = allocBatch(this->batchNode);
+  }
 
   // fence data storage and count increment
   std::atomic_thread_fence(std::memory_order_release);
 
   // then advance the stream head
-  //  (allocate a new batch cell if necessary)
+  //  (to the new batch cell if necessary)
   this->batchHead += this->storageSize;
 
-  // (the count is in the file, where something other than this writer may have moved it:
-  //  at or past the batch size, this batch is finished)
-  if (++(*reinterpret_cast<uint64_t*>(this->batchData)) >= this->batchSize) {
+  // (the count in the file is for readers: this writer's own count is what it goes by,
+  //  as something else with the file open may have changed the stored one)
+  *reinterpret_cast<uint64_t*>(this->batchData) = ++this->batchUsed;
+
+  if (batchFull) {
     void* oldBatchData = this->batchData;
-    consBatchNode(this->batchNode);
+    startBatch(nextBatch);
     this->outputFile->unsafeUnload(oldBatchData, this->batchStorageSize);
   }
 
@@ -413,10 +427,31 @@ void RawStoredSeries::bindAs(cc* c, const std::string& vname) {
 }
 
 void RawStoredSeries::consBatchNode(uint64_t nextPtr) {
-  this->batchDataRef = this->outputFile->unsafeStoreToOffset(this->batchStorageSize, sizeof(size_t));
-  this->batchData    = this->outputFile->unsafeLoad(this->batchDataRef, this->batchStorageSize);
+  startBatch(allocBatch(nextPtr));
+}
+
+// allocate a batch and its node without touching the state of the series
+// (any step of this can fail, and the series has to be usable as it was if one does)
+RawStoredSeries::Batch RawStoredSeries::allocBatch(uint64_t nextPtr) {
+  Batch b;
+  b.dataRef = this->outputFile->unsafeStoreToOffset(this->batchStorageSize, sizeof(size_t));
+  b.data    = this->outputFile->unsafeLoad(b.dataRef, this->batchStorageSize);
+  try {
+    b.node = allocBatchNode(this->outputFile, this->outputFile->unsafeOffsetOf(this->batchType, b.data), nextPtr);
+  } catch (...) {
+    this->outputFile->unsafeUnload(b.data, this->batchStorageSize);
+    throw;
+  }
+  return b;
+}
+
+// make an allocated batch the head of the series
+void RawStoredSeries::startBatch(const Batch& b) {
+  this->batchDataRef = b.dataRef;
+  this->batchData    = b.data;
   this->batchHead    = reinterpret_cast<uint8_t*>(this->batchData) + sizeof(long);
-  this->batchNode    = allocBatchNode(this->outputFile, this->outputFile->unsafeOffsetOf(this->batchType, this->batchData), nextPtr);
+  this->batchNode    = b.node;
+  this->batchUsed    = 0;
 
   *this->headNodeRef = this->batchNode;
 }
@@ -438,8 +473,33 @@ void RawStoredSeries::restartFromBatchNode() {
 
   this->batchDataRef = p->first.index;
   this->batchData    = this->outputFile->unsafeLoad(this->batchDataRef, this->batchStorageSize);
-  this->batchHead    = reinterpret_cast<uint8_t*>(this->batchData) + sizeof(long) + ((*reinterpret_cast<size_t*>(this->batchData))*this->storageSize);
   this->batchNode    = *this->headNodeRef;
+
+  // the count of values in this batch comes out of the file, and it decides where the next value goes,
+  // so it is only used while it leaves room in the batch
+  size_t stored = *reinterpret_cast<size_t*>(this->batchData);
+  if (stored < this->batchSize) {
+    this->batchHead = reinterpret_cast<uint8_t*>(this->batchData) + sizeof(long) + (stored*this->storageSize);
+    this->batchUsed = stored;
+    return;
+  }
+
+  // the head batch was left full (its writer stopped before it could start the next one), or its count
+  // is more than a batch holds (as a writer that ran out of space used to leave it, storing past the batch):
+  // either way nothing more goes in this batch, and the series continues in a new one
+  // (a batch holds no more than its size whatever its count says, and readers refuse a batch
+  //  that claims more, so once the series has moved on the count is put back to what the batch holds)
+  void* oldBatchData = this->batchData;
+  try {
+    consBatchNode(this->batchNode);
+  } catch (...) {
+    this->outputFile->unsafeUnload(oldBatchData, this->batchStorageSize);
+    throw;
+  }
+  if (stored > this->batchSize) {
+    *reinterpret_cast<size_t*>(oldBatchData) = this->batchSize;
+  }
+  this->outputFile->unsafeUnload(oldBatchData, this->batchStorageSize);
 }
 
 uint64_t RawStoredSeries::allocBatchNode(writer* file) {

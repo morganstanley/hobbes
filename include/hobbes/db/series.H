@@ -75,8 +75,23 @@ private:
   uint64_t  batchNode;
   uint64_t* headNodeRef;
 
+  // how many values this writer has put in the batch at the head of the series
+  // (the count in the file is written for readers, and never read back to decide
+  //  whether the batch has room: anything with the file open can change it)
+  size_t batchUsed;
+
   using StoreFn = void (*)(writer *, const void *, void *);
   StoreFn storeFn;
+
+  // a batch that has been allocated, but that isn't the head of the series yet
+  struct Batch {
+    uint64_t dataRef;
+    void*    data;
+    uint64_t node;
+  };
+
+  Batch allocBatch(uint64_t nextPtr);
+  void  startBatch(const Batch&);
 
   void consBatchNode(uint64_t nextPtr);
   void restartFromBatchNode();
