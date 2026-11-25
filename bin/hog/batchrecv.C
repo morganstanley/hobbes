@@ -179,14 +179,20 @@ void read(gzbuffer* in, storage::statements* stmts) {
     // as a symbol and spliced into hobbes source that gets compiled -- so it
     // has to be an identifier, which is all a producer emits. The type is
     // decoded with a decoder that accepts an embedded expression tree, which
-    // nothing legitimate needs. Both are re-checked in initStorageSession
+    // nothing legitimate needs, and other things that are not plain data
+    // (see session.H). All are re-checked in initStorageSession
     // (local sessions reach it another way); rejecting them here too keeps
     // the wire gate and the compile-sink gate enforcing the same invariant.
     if (!isValidStatementName(s.name)) {
       throw std::runtime_error("rejected log session: statement name is not an identifier");
     }
-    if (hobbes::embedsExpression(hobbes::decode(s.type))) {
+    const hobbes::MonoTypePtr sty = hobbes::decode(s.type);
+    if (hobbes::embedsExpression(sty)) {
       throw std::runtime_error("rejected log session: statement '" + s.name + "' has a type carrying an embedded expression");
+    }
+    const std::string notData = hobbes::whyNotPlainData(sty);
+    if (!notData.empty()) {
+      throw std::runtime_error("rejected log session: statement '" + s.name + "' has a type with " + notData);
     }
 
     stmts->push_back(s);

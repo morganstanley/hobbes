@@ -1019,6 +1019,24 @@ bool hasFreeVariables(const MonoTypes&);
 // checks this and refuses (hog's log-session init message is one).
 bool embedsExpression(const MonoTypePtr&);
 
+// is this type more than a description of plain data? If it is, what was
+// found is named (as in "a file reference"); if not, the result is empty.
+//
+// A consumer that takes values off a wire by a type description that came
+// with them (hog reads a producer's transactions this way, and stores them in
+// a file that says they have that type) can only do that for records,
+// variants and arrays of primitive values. A decoded description can also say:
+//  * a record field or variant constructor hidden by head/tail deconstruction
+//    (named with the ".p" prefix). The memory layout counts such a member, but
+//    instances that walk a type by head and tail never see it, so a reader
+//    derived that way accounts for fewer bytes than the value has
+//  * a file reference, which is a number to whoever stores it and a value of
+//    any type at all to whoever loads it from the file
+//  * a function, an existential type, a recursive type or an opaque C++
+//    type, whose values are addresses in the memory of one process
+// The representations of named types are looked at as well.
+std::string whyNotPlainData(const MonoTypePtr&);
+
 void show(const MonoTypeSubst& s, std::ostream& out);
 std::string show(const MonoTypeSubst& s);
 

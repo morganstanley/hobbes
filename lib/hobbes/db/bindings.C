@@ -177,9 +177,21 @@ char* dbloadarr(long db, long offset, long esz) {
   return reinterpret_cast<char*>(reinterpret_cast<reader*>(db)->unsafeLoadArray(offset, esz));
 }
 
+// the bytes of a file are handed out as a value of the type that is loaded,
+// and that type comes out of the file as well (a stored reference is loaded
+// as whatever the file says that it refers to), so before anything is
+// compiled to load it, it has to be a type that a file can hold
+static void requireStorableType(const MonoTypePtr& ty, const LexicalAnnotation& la) {
+  if (!isStorableType(ty)) {
+    throw annotated_error(la, "Not a type of stored values (can't be loaded out of a file): " + show(ty));
+  }
+}
+
 // load/store root values in storage files
 class dbloadVF : public op {
   llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr& rty, const Exprs& es) override {
+    requireStorableType(rty, es[0]->la());
+
     llvm::Value* db  = c->compile(es[0]);
     llvm::Value* off = c->compile(es[1]);
 
@@ -264,6 +276,7 @@ class dbstoreVF : public op {
 struct dbloadF : public op {
   llvm::Value* apply(jitcc* c, const MonoTypes& tys, const MonoTypePtr& rty, const Exprs& es) override {
     FRefT frt = assumeFRefT(tys[0], es[0]->la());
+    requireStorableType(rty, es[0]->la());
 
     llvm::Value* db  = c->compileAtGlobalScope(frt.second);
     llvm::Value* off = c->compile(es[0]);
@@ -317,6 +330,8 @@ struct dbloadF : public op {
 
 struct dbloadPF : public op {
   llvm::Value* apply(jitcc* c, const MonoTypes&, const MonoTypePtr& rty, const Exprs& es) override {
+    requireStorableType(rty, es[1]->la());
+
     llvm::Value* db  = c->compile(es[0]);
     llvm::Value* off = c->compile(es[1]);
 

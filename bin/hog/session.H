@@ -34,6 +34,14 @@ inline bool isValidStatementName(const std::string& n) {
 // hands the compiler an expression that came off the wire, so a type for
 // which hobbes::embedsExpression (lang/type.H) holds is rejected at the same
 // two points a bad name is.
+//
+// So is one for which hobbes::whyNotPlainData has an answer. The decoder takes
+// member names verbatim, and a field or constructor named as if head/tail
+// deconstruction had hidden it is counted by the memory layout but skipped by
+// the FixedWidth instances in boot/read.hob, so a reader would check for fewer
+// bytes than it goes on to load from the transaction. And a file reference is
+// stored as a number here but loaded as a value of the type it refers to by
+// whoever reads the log, whatever that type is.
 
 // make a storage file (via appendStorageSession) and produce a function to write transactions into it
 // support optionally merging log session data where type structures are identical

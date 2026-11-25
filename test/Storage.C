@@ -2912,6 +2912,140 @@ TEST(Storage, TransactionBlocksStayInsideTheFile) {
   }
 }
 
+// hog refuses a statement whose type is not a description of plain data
+// (whyNotPlainData in lang/type.H: hidden members, file references, functions,
+// ...), because it reads a producer's bytes by that type. That must not get in
+// the way of anything that a producer made with this header describes.
+DEFINE_HSTORE_STRUCT(
+  PlainDataStruct,
+  (int,                      x),
+  (std::string,              y),
+  (std::vector<double>,      z)
+);
+
+template <typename ... Ts>
+  static MonoTypePtr producedStatementType() {
+    hobbes::storage::bytes enc;
+    hobbes::storage::makeTyDescF<hobbes::storage::hstore_payload_types<Ts...>>(&enc, nullptr);
+    return decode(enc);
+  }
+
+TEST(Storage, WhatAProducerDescribesIsPlainData) {
+  EXPECT_EQ(whyNotPlainData(producedStatementType<>()), "");
+  EXPECT_EQ(whyNotPlainData(producedStatementType<int>()), "");
+  EXPECT_EQ(whyNotPlainData(producedStatementType<int, double, const char*, std::string>()), "");
+  EXPECT_EQ(whyNotPlainData(producedStatementType<std::vector<int>, std::vector<std::string>, std::vector<bool>>()), "");
+  EXPECT_EQ(whyNotPlainData(producedStatementType<std::array<int, 4>, FRStrArr>()), "");
+  EXPECT_EQ(whyNotPlainData(producedStatementType<std::pair<int, std::string>, std::tuple<char, short, int64_t>>()), "");
+  EXPECT_EQ(whyNotPlainData(producedStatementType<hobbes::variant<int, std::string>, std::vector<hobbes::variant<char, double>>>()), "");
+  EXPECT_EQ(whyNotPlainData(producedStatementType<Food, Vehicle, IntOrDouble>()), "");
+  EXPECT_EQ(whyNotPlainData(producedStatementType<FRTest, MyStruct, std::vector<MyStruct>>()), "");
+  EXPECT_EQ(whyNotPlainData(producedStatementType<PlainDataStruct, std::vector<PlainDataStruct>>()), "");
+  EXPECT_EQ(whyNotPlainData(producedStatementType<hobbes::datetimeT, hobbes::timespanT>()), "");
+
+  // (and the description of a variant numbers its constructors apart, or decode would have refused it)
+  EXPECT_TRUE(is<Record>(producedStatementType<Vehicle, MyColor>()) != nullptr);
+}
+
+// a stored value is loaded by handing out the bytes of the file as a value of
+// its type, and that type is read out of the file as well: in a log written by
+// hog, it is the type that a producer declared for its statement. A function, a
+// closure, an array inside of a value, ... is an address in the memory of one
+// process, nothing stores one, and with such a type the bytes of the file would
+// be called or followed by whoever loads them. A file reference is stored as an
+// offset whatever it refers to (hog accepted 'T@?' for any T, and logs that
+// have one are still about), so what it refers to has to be a type of stored
+// values when the reference is loaded.
+TEST(Storage, OnlyTypesOfStoredValuesAreLoaded) {
+  MonoTypePtr lng    = primty("long");
+  MonoTypePtr chars  = arrayty(primty("char"));
+  MonoTypePtr fn     = functy(list(primty("int")), primty("int"));
+  MonoTypePtr stream = Recursive::make("x", closty(primty("unit"), tuplety(list(primty("int"), tvar("x"))))); // 'stream int' in streams.hob
+  MonoTypePtr file   = tapp(primty("file"), list(tlong(1), primty("unit")));
+
+  // what files hold
+  MonoTypes stored;
+  stored.push_back(lng);
+  stored.push_back(chars);
+  stored.push_back(darrayty(lng));
+  stored.push_back(arrayty(lng, 4));
+  stored.push_back(primty("datetime", lng));
+  stored.push_back(tuplety(list(primty("int"), fileRefTy(chars), fileRefTy(stream)))); // (a reference is an offset, whatever it refers to)
+  stored.push_back(sumtype(primty("unit"), fileRefTy(arrayty(chars))));
+  stored.push_back(arrayty(tuplety(list(lng, fileRefTy(chars)))));
+  stored.push_back(storedListOf(lng));
+  stored.push_back(storedStreamOf(tuplety(list(lng, fileRefTy(chars))), 10));
+  stored.push_back(tuplety(list(lng, OpaquePtr::make("Blob", 16, true)))); // (a C++ object stored in place, as writer::define<T> stores any T)
+
+  // what only memory holds
+  MonoTypes unstored;
+  unstored.push_back(fn);
+  unstored.push_back(stream);
+  unstored.push_back(file);
+  unstored.push_back(arrayty(chars));
+  unstored.push_back(darrayty(chars));
+  unstored.push_back(arrayty(fn, 4));
+  unstored.push_back(primty("datetime", fn));
+  unstored.push_back(tuplety(list(primty("int"), chars)));
+  unstored.push_back(sumtype(primty("unit"), stream));
+  unstored.push_back(arrayty(tuplety(list(lng, fn))));
+  unstored.push_back(Recursive::make("x", sumtype(primty("unit"), tuplety(list(lng, tvar("x"))))));
+
+  // a C++ object that is known by address, and one that says it is stored in
+  // place but that every bound function takes apart as the pointers it is
+  unstored.push_back(tuplety(list(lng, OpaquePtr::make("Blob", 0, false))));
+  unstored.push_back(tuplety(list(lift<std::string, true>::type(nulltdb))));
+  unstored.push_back(arrayty(tuplety(list(OpaquePtr::make("std::string", 8, true)))));
+
+  // a darray is loaded as an array of its argument, by its name, whatever
+  // array a type description in a file says that it stands for
+  unstored.push_back(tapp(primty("darray", tabs(str::strings("x"), arrayty(lng))), list(stream)));
+  unstored.push_back(tapp(primty("darray", tabs(str::strings("x"), arrayty(fn))), list(lng)));
+
+  std::string fname = mkFName();
+  try {
+    {
+      writer w(fname);
+      for (size_t i = 0; i < stored.size(); ++i) {
+        w.unsafeDefine("s" + str::from(i), stored[i]);
+        w.unsafeDefine("sr" + str::from(i), fileRefTy(stored[i]));
+      }
+      for (size_t i = 0; i < unstored.size(); ++i) {
+        w.unsafeDefine("u" + str::from(i), unstored[i]);
+        w.unsafeDefine("ur" + str::from(i), fileRefTy(unstored[i]));
+      }
+    }
+
+    cc rc;
+    rc.define("f", "inputFile :: (LoadFile \"" + fname + "\" w) => w");
+
+    for (size_t i = 0; i < stored.size(); ++i) {
+      EXPECT_TRUE(isStorableType(stored[i]));
+      rc.compileFn<void()>("let x = f.s" + str::from(i) + " in ()");
+      rc.compileFn<void()>("let x = load(f.sr" + str::from(i) + ") in ()");
+    }
+    for (size_t i = 0; i < unstored.size(); ++i) {
+      EXPECT_FALSE(isStorableType(unstored[i]));
+      rc.compileFn<void()>("let x = f.ur" + str::from(i) + " in ()"); // the reference itself can be read
+      EXPECT_EXCEPTION_MSG(rc.compileFn<void()>("let x = f.u" + str::from(i) + " in ()"), std::exception, "Not a type of stored values");
+      EXPECT_EXCEPTION_MSG(rc.compileFn<void()>("let x = load(f.ur" + str::from(i) + ") in ()"), std::exception, "Not a type of stored values");
+    }
+
+    // what hi does with a series of a log: printing a reference loads it, and
+    // printing a stream calls it
+    EXPECT_EXCEPTION_MSG(rc.compileFn<void()>("print(f.ur1)"), std::exception, "Not a type of stored values");
+
+    // and a reference that is made to a type is loaded as that type
+    rc.compileFn<void()>("let x = pload(f, unsafeCast(0L) :: [char]@?) in ()");
+    EXPECT_EXCEPTION_MSG(rc.compileFn<void()>("let x = pload(f, unsafeCast(0L) :: (int -> int)@?) in ()"), std::exception, "Not a type of stored values");
+
+    unlink(fname.c_str());
+  } catch (...) {
+    unlink(fname.c_str());
+    throw;
+  }
+}
+
 // Resolving a (LoadFile "path" t) constraint for an outputFile-shaped t
 // (i.e. compiling a use of 'outputFile') creates/truncates the file at
 // "path" as a side effect of type-checking, not evaluation -- merely

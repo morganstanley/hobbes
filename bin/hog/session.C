@@ -325,8 +325,30 @@ static void checkStatements(const storage::statements& stmts) {
     // serialized expression tree inside a type; nothing a producer
     // legitimately stores needs one, and accepting it hands the compiler an
     // expression that came off the wire.
-    if (hobbes::embedsExpression(decode(stmt.type))) {
+    const MonoTypePtr sty = decode(stmt.type);
+    if (hobbes::embedsExpression(sty)) {
       throw std::runtime_error("rejected log session: statement '" + stmt.name + "' has a type carrying an embedded expression");
+    }
+
+    // The decoder also takes whatever else a description says, and a
+    // statement's values are read out of a transaction by its type and then
+    // stored in a file that says they have that type, so the type has to
+    // describe plain data, which is all a producer emits (storage.H):
+    //  * a record field or a variant constructor can arrive with the ".p"
+    //    prefix that head/tail deconstruction gives a member it has hidden.
+    //    The memory layout counts such a member, but the readers compiled
+    //    from boot/read.hob walk the type by head and tail and never see it:
+    //    they check a transaction for the bytes of the members they found
+    //    and then load the whole value, reading past the transaction by the
+    //    size of whatever was hidden
+    //  * a file reference 'T@?' is read and stored as the number it is,
+    //    whatever T is, but whoever reads the log loads it as a T: a number
+    //    the producer chose becomes a closure to call or an array to follow
+    //  * functions, existential types, recursive types and opaque C++ types
+    //    have no values that could arrive in a transaction
+    const std::string notData = hobbes::whyNotPlainData(sty);
+    if (!notData.empty()) {
+      throw std::runtime_error("rejected log session: statement '" + stmt.name + "' has a type with " + notData);
     }
   }
 }

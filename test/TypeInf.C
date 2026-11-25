@@ -777,6 +777,103 @@ TEST(TypeInf, EmbedsExpressionFindsATExprAnywhereInAType) {
   EXPECT_FALSE(embedsExpression(decode(enc)));
 }
 
+// hog reads a producer's values out of a transaction by the type description
+// that the producer sent, and stores them in a file that says they have that
+// type, so the description has to be one of plain data. The type decoder takes
+// more than that, and each of these has been a way to make hog or a reader of
+// its log follow the producer's bytes:
+//  * head/tail deconstruction hides the member it has taken by renaming it with
+//    a ".p" prefix, so that the tail keeps the layout of the whole: the layout
+//    counts a hidden member, and instances that walk a type by head and tail
+//    skip it. The decoder takes member names verbatim, so a description can
+//    arrive with members already hidden, and hog's readers then check for the
+//    bytes of the members they can see and load the whole value
+//  * a file reference is a number to whoever stores it, and a value of the type
+//    it refers to (any type) to whoever loads it
+//  * functions, existentials, recursive types and opaque C++ types are addresses
+// whyNotPlainData has to find them wherever in the type they sit, including in
+// the representation of a named type and after a round trip through the encoder
+// that an untrusted peer would have used.
+TEST(TypeInf, WhyNotPlainDataFindsWhatHogCannotStore) {
+  MonoTypePtr filler      = arrayty(primty("byte"), 4096);
+  MonoTypePtr hiddenField = Record::make(Record::Members{Record::Member(".pfiller", filler), Record::Member("y", primty("int"))});
+  MonoTypePtr hiddenCtor  = Variant::make(Variant::Members{Variant::Member(".pfiller", filler, 0), Variant::Member("tick", primty("unit"), 1)});
+
+  // this is what makes a hidden member dangerous to such a consumer: all that
+  // can be seen is an int or a payload-free constructor, in a value 4096 bytes larger
+  EXPECT_EQ(is<Record>(hiddenField)->headMember().field, "y");
+  EXPECT_TRUE(is<Record>(hiddenField)->tailType() == primty("unit"));
+  EXPECT_EQ(sizeOf(hiddenField), 4100U);
+  EXPECT_EQ(is<Variant>(hiddenCtor)->headMember().selector, "tick");
+  EXPECT_EQ(sizeOf(hiddenCtor), 4100U);
+
+  // what a producer stores (storage.H): primitives, strings and arrays, fixed
+  // arrays, tuples and sums (members ".f0", ".f1", ...), records, variants,
+  // enumerations and named types of those
+  MonoTypePtr rec = Record::make(Record::Members{Record::Member("a", primty("long")), Record::Member("b", arrayty(primty("byte")))});
+  MonoTypePtr var = Variant::make(Variant::Members{Variant::Member("l", primty("int"), 0), Variant::Member("r", primty("unit"), 1)});
+  EXPECT_EQ(whyNotPlainData(primty("int")), "");
+  EXPECT_EQ(whyNotPlainData(primty("unit")), "");
+  EXPECT_EQ(whyNotPlainData(arrayty(primty("char"))), "");
+  EXPECT_EQ(whyNotPlainData(arrayty(primty("double"), 8)), "");
+  EXPECT_EQ(whyNotPlainData(tuplety(list(primty("int"), arrayty(primty("char")), arrayty(rec)))), "");
+  EXPECT_EQ(whyNotPlainData(sumtype(primty("int"), primty("double"))), "");
+  EXPECT_EQ(whyNotPlainData(rec), "");
+  EXPECT_EQ(whyNotPlainData(var), "");
+  EXPECT_EQ(whyNotPlainData(primty("datetime", primty("long"))), "");
+  EXPECT_EQ(whyNotPlainData(tapp(primty("penum", tabs(str::strings("r", "v"), tvar("r"))), list(primty("short"), var))), "");
+
+  // the tails that deconstruction itself makes have hidden members
+  EXPECT_TRUE(whyNotPlainData(is<Record>(rec)->tailType()) != "");
+  EXPECT_TRUE(whyNotPlainData(is<Variant>(var)->tailType()) != "");
+
+  // each of the things that are not data, as hog would say it
+  MonoTypePtr stream = Recursive::make("x", closty(primty("unit"), tuplety(list(primty("int"), tvar("x"))))); // 'stream int' in streams.hob
+  EXPECT_EQ(whyNotPlainData(hiddenField), "the hidden field '.pfiller'");
+  EXPECT_EQ(whyNotPlainData(hiddenCtor), "the hidden constructor '.pfiller'");
+  EXPECT_EQ(whyNotPlainData(fileRefTy(primty("long"))), "a file reference");
+  EXPECT_EQ(whyNotPlainData(fileRefTy(stream)), "a file reference");
+  EXPECT_EQ(whyNotPlainData(functy(list(primty("int")), primty("int"))), "a function");
+  EXPECT_TRUE(whyNotPlainData(stream) != "");
+  EXPECT_EQ(whyNotPlainData(Exists::make("E", tuplety(list(tvar("E"), primty("int"))))), "an existential type");
+  EXPECT_EQ(whyNotPlainData(lift<std::string, true>::type(nulltdb)), "the opaque type <std::string>");
+  EXPECT_EQ(whyNotPlainData(Recursive::make("x", sumtype(primty("unit"), tuplety(list(primty("long"), tvar("x")))))), "a recursive type");
+
+  // buried at every kind of child position
+  MonoTypes bad = list(hiddenField, hiddenCtor, fileRefTy(arrayty(primty("char"))), functy(list(primty("int")), primty("int")), lift<std::string, true>::type(nulltdb));
+  for (const auto& b : bad) {
+    EXPECT_TRUE(whyNotPlainData(arrayty(b)) != "");
+    EXPECT_TRUE(whyNotPlainData(arrayty(b, 3)) != "");
+    EXPECT_TRUE(whyNotPlainData(tuplety(list(primty("long"), b))) != "");
+    EXPECT_TRUE(whyNotPlainData(Record::make(Record::Members{Record::Member("a", arrayty(primty("char"))), Record::Member("b", b)})) != "");
+    EXPECT_TRUE(whyNotPlainData(Variant::make(Variant::Members{Variant::Member("l", primty("int"), 0), Variant::Member("r", b, 1)})) != "");
+
+    // and in the representation of a named type, which is its layout
+    EXPECT_TRUE(whyNotPlainData(primty("alias", b)) != "");
+    EXPECT_TRUE(whyNotPlainData(arrayty(primty("alias", b))) != "");
+    EXPECT_TRUE(whyNotPlainData(tapp(primty("alias", tabs(str::strings("x"), tuplety(list(tvar("x"), b)))), list(primty("int")))) != "");
+
+    // and after the round trip an untrusted peer's bytes take
+    std::vector<unsigned char> enc;
+    encode(Record::make(Record::Members{Record::Member("a", primty("long")), Record::Member("b", primty("alias", b))}), &enc);
+    EXPECT_TRUE(whyNotPlainData(decode(enc)) != "");
+  }
+
+  // a stored sequence is a file reference by another name
+  EXPECT_EQ(whyNotPlainData(storedStreamOf(primty("long"), 10)), "a file reference");
+
+  // a named type's representation is looked at once, however often the type gets to it
+  MonoTypePtr nested = primty("long");
+  for (size_t i = 0; i < 60; ++i) {
+    nested = tapp(primty("p", tabs(str::strings("x"), arrayty(nested))), list(nested));
+  }
+  EXPECT_EQ(whyNotPlainData(nested), "");
+
+  std::vector<unsigned char> enc;
+  encode(rec, &enc);
+  EXPECT_EQ(whyNotPlainData(decode(enc)), "");
+}
+
 TEST(TypeInf, DecodeRejectsDeeplyNestedDescriptions) {
   // A type description nests as deeply as its bytes say, and the decoder recurs
   // once per level. The bytes are untrusted (a file, or a peer on the RPC path),
@@ -1170,6 +1267,96 @@ TEST(TypeInf, ADecodedFixedArrayLengthCannotBeNegative) {
   hobbes::MonoTypePtr t = hobbes::FixedArray::make(hobbes::primty("byte"), hobbes::tlong(4));
   hobbes::encode(t, &ok);
   EXPECT_TRUE(*hobbes::decode(ok) == *t);
+}
+
+// A std::vector is lifted to 'vector t s n', laid out as the bytes of the object
+// itself: its pointers, which the Array instance for the type follows. A type
+// description is decoded from a file or an untrusted peer (a hog producer's
+// statement type, the result type an RPC server answers with) and arrives with
+// bytes of their choosing, so it can't be allowed to lay one out.
+TEST(TypeInf, ADecodedTypeCannotLayOutAStdVector) {
+  auto decoded = [](const MonoTypePtr& ty) {
+    bytes enc;
+    encode(ty, &enc);
+    return decode(enc);
+  };
+  auto bytesOf = [](const char* name) {
+    return primty(name, tabs(str::strings("t", "s", "n"), FixedArray::make(primty("byte"), tvar("n"))));
+  };
+  MonoTypes longs = list(primty("long"), tlong(sizeof(long)), tlong(sizeof(std::vector<long>)));
+
+  // exactly as it is lifted, and as boot/amapping.hob declares it
+  MonoTypePtr lifted = lift<std::vector<long>*>::type(nulltdb);
+  EXPECT_EQ(sizeOf(lifted), sizeof(std::vector<long>));
+  EXPECT_EXCEPTION_MSG(decoded(lifted), std::runtime_error, "'vector'");
+  EXPECT_EXCEPTION_MSG(decoded(tapp(bytesOf("vector"), longs)), std::runtime_error, "'vector'");
+
+  // the name selects the Array instance whatever the representation is, and
+  // wherever in a type it appears
+  EXPECT_EXCEPTION(decoded(primty("vector", primty("long"))));
+  EXPECT_EXCEPTION(decoded(arrayty(tuplety(list(primty("int"), lifted)))));
+  EXPECT_EXCEPTION(decoded(primty("samples", lifted)));
+
+  // named without a representation it is still decoded, but has no layout
+  // for a value to be read through
+  EXPECT_EXCEPTION(sizeOf(decoded(tapp(primty("vector"), longs))));
+
+  // the same bytes under another name are just those bytes
+  MonoTypePtr buffer = tapp(bytesOf("buffer"), longs);
+  EXPECT_TRUE(*decoded(buffer) == *buffer);
+  EXPECT_EQ(sizeOf(decoded(buffer)), sizeof(std::vector<long>));
+
+  // two more prelude types are used by their name as the arrays the prelude
+  // says they are ('Print bitvec', 'Array (darray a) a'), so a description
+  // can't say that they are anything else, such as a number to be followed
+  EXPECT_EXCEPTION_MSG(decoded(primty("bitvec", primty("long"))), std::runtime_error, "'bitvec'");
+  EXPECT_EXCEPTION(decoded(primty("bitvec", arrayty(primty("long")))));
+  EXPECT_EXCEPTION(decoded(tuplety(list(primty("bitvec", fileRefTy(primty("long")))))));
+  MonoTypePtr bitvec = primty("bitvec", arrayty(primty("byte")));
+  EXPECT_TRUE(*decoded(bitvec) == *bitvec);
+
+  EXPECT_EXCEPTION_MSG(decoded(tapp(primty("darray", tabs(str::strings("x"), primty("long"))), list(primty("char")))), std::runtime_error, "'darray'");
+  EXPECT_EXCEPTION(decoded(primty("darray", arrayty(primty("char")))));
+  EXPECT_TRUE(*decoded(darrayty(primty("char"))) == *darrayty(primty("char")));
+  MonoTypePtr preludeDArray = tapp(primty("darray", tabs(str::strings("a"), arrayty(tvar("a")))), list(primty("char")));
+  EXPECT_TRUE(*decoded(preludeDArray) == *preludeDArray);
+}
+
+// A variant value carries its constructor's ID and nothing else of it, and the
+// ID is what the payload is read back by. A description that gives one ID to
+// two constructors with different payloads therefore describes values that are
+// made as one and taken apart as the other: hog, which reads a statement's
+// value by constructor position and stores it by ID, stored a 'long' sent by a
+// producer as the '[char]' sharing its ID, and followed it as a pointer. The
+// IDs come off the wire with the rest of the description, so this is refused
+// where they are read, wherever in the description the variant sits.
+TEST(TypeInf, ADecodedVariantCannotShareAnIDBetweenDifferentPayloads) {
+  auto roundTrip = [](const MonoTypePtr& t) {
+    hobbes::bytes enc;
+    hobbes::encode(t, &enc);
+    return hobbes::decode(enc);
+  };
+
+  MonoTypePtr ambiguous = Variant::make(Variant::Members{Variant::Member("a", arrayty(primty("char")), 5), Variant::Member("b", primty("long"), 5)});
+  EXPECT_EXCEPTION_MSG(roundTrip(ambiguous), std::runtime_error, "Variant constructor ID");
+  EXPECT_EXCEPTION(roundTrip(arrayty(ambiguous)));
+  EXPECT_EXCEPTION(roundTrip(Record::make(Record::Members{Record::Member("x", ambiguous), Record::Member("y", primty("int"))})));
+  EXPECT_EXCEPTION(roundTrip(primty("named", ambiguous)));
+
+  // a constructor without a payload is no exception: its ID would still pick
+  // out the payload of the one it shares with, whichever comes first
+  EXPECT_EXCEPTION(roundTrip(Variant::make(Variant::Members{Variant::Member("a", arrayty(primty("char")), 5), Variant::Member("c", primty("unit"), 5)})));
+  EXPECT_EXCEPTION(roundTrip(Variant::make(Variant::Members{Variant::Member("c", primty("unit"), 5), Variant::Member("a", arrayty(primty("char")), 5)})));
+  EXPECT_EXCEPTION(roundTrip(Variant::make(Variant::Members{Variant::Member("c", primty("unit"), 5), Variant::Member("d", primty("unit"), 5), Variant::Member("a", arrayty(primty("char")), 5)})));
+
+  // IDs need not be dense or ordered, only unambiguous
+  MonoTypePtr sparse = Variant::make(Variant::Members{Variant::Member("a", arrayty(primty("char")), 9), Variant::Member("b", primty("long"), 5)});
+  EXPECT_TRUE(*roundTrip(sparse) == *sparse);
+
+  // and two names for one value still round-trip, as an enumeration with
+  // aliases has them
+  MonoTypePtr aliases = Variant::make(Variant::Members{Variant::Member("a", primty("unit"), 1), Variant::Member("b", primty("unit"), 1), Variant::Member("c", primty("unit"), 2)});
+  EXPECT_TRUE(*roundTrip(aliases) == *aliases);
 }
 
 // A tuple's members and a sum's constructors are named .f0, .f1, ... in order,
