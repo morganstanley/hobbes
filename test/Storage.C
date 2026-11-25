@@ -9,6 +9,8 @@
 #include <hobbes/slmap.H>
 #include "test.H"
 
+#include <atomic>
+#include <chrono>
 #include <fstream>
 #include <limits>
 #include <memory>
@@ -2157,6 +2159,94 @@ TEST(Storage, CorruptQueueSegmentsAreRejected) {
   }
 }
 
+TEST(Storage, QueueHeaderIsReadOnceAndChecked) {
+  // readQueueHeader hands back a private copy of the segment's header, checked
+  // as a whole. This part is deterministic: the copy carries the values the
+  // segment held when it was taken, a later store to the segment does not
+  // reach it, and a header that does not fit the segment is refused.
+  TestQueueSegment s(64, 4, 16);
+  storage::QueueConnection qc = storage::consumeQueue(s.name);
+
+  const storage::ShQueueHeader h = storage::readQueueHeader(qc);
+  EXPECT_EQ(h.valsz,  size_t(64));
+  EXPECT_EQ(h.count,  size_t(4));
+  EXPECT_EQ(h.metasz, size_t(16));
+
+  s.header()->metasz = qc.datasz;
+  EXPECT_EQ(h.metasz, size_t(16));
+  EXPECT_EXCEPTION(storage::readQueueHeader(qc));
+
+  // a reader made while the header was good keeps what it was given
+  s.header()->metasz = 16;
+  {
+    storage::QueueConnection rqc = qc;
+    rqc.shfd = -1; // a reader closes its descriptor, the segment still needs it
+    storage::reader rd(rqc, storage::WaitPolicy::Spin);
+    s.header()->metasz = qc.datasz;
+    s.header()->count  = 0;
+    EXPECT_EQ(reinterpret_cast<uintptr_t>(rd.config().wstate), reinterpret_cast<uintptr_t>(qc.data + s.metaLen));
+    EXPECT_EQ(rd.config().count, size_t(4));
+  }
+
+  munmap(qc.data, qc.datasz);
+  close(qc.shfd);
+}
+
+TEST(Storage, ReaderUsesTheQueueHeaderItChecked) {
+  // The header stays in the shared segment after the reader has checked it,
+  // and the producer can store to it at any time. The reader used to load
+  // metasz, valsz and count from the segment once to check them and again to
+  // use them, so a producer switching metasz between a value that passes and
+  // one that does not could have the second load see the one that does not:
+  // the control block (wait state, read and write index) was then placed
+  // outside the mapping, and the reader stores to it. Every reader that comes
+  // out of the constructor must have its control block inside the segment,
+  // whatever the producer does to the header meanwhile. The pointer is only
+  // compared, never followed, so this fails cleanly where the check is missing.
+  //
+  // This is a race, so it can only catch a regression by chance: whether the
+  // old code loses it depends on the compiler keeping both loads and on the
+  // two threads interleaving within the time allowed.
+  TestQueueSegment s(64, 4, 16);
+  storage::QueueConnection qc = storage::consumeQueue(s.name);
+
+  std::atomic<bool> stop{false};
+  std::thread producer([&s, &qc, &stop]() {
+    volatile size_t* metasz = &s.header()->metasz;
+    while (!stop) {
+      *metasz = qc.datasz; // the control block would begin past the end of the segment
+      *metasz = 16;        // as laid out
+    }
+  });
+
+  storage::QueueConnection rqc = qc;
+  rqc.shfd = -1; // a reader closes its descriptor, and many are made here
+
+  const auto lo = reinterpret_cast<uintptr_t>(qc.data);
+  const auto hi = lo + qc.datasz;
+  size_t made = 0, outside = 0;
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(250);
+  while (made == 0 || std::chrono::steady_clock::now() < deadline) {
+    try {
+      storage::reader rd(rqc, storage::WaitPolicy::Spin);
+      const auto at = reinterpret_cast<uintptr_t>(rd.config().wstate);
+      ++made;
+      if (at < lo || at >= hi) {
+        ++outside;
+      }
+    } catch (std::exception&) {
+      // the check saw the metasz that does not fit
+    }
+  }
+  stop = true;
+  producer.join();
+
+  munmap(qc.data, qc.datasz);
+  close(qc.shfd);
+
+  EXPECT_EQ(outside, size_t(0));
+}
+
 TEST(Storage, WriterIgnoresAPoisonedSharedWriteIndex) {
   // The write index lives in the shared segment, which the peer -- and, with
   // the segment's 0666 permissions, any local user -- can overwrite with any
@@ -2208,6 +2298,58 @@ TEST(Storage, TransactionReadsAtAnUnalignedOffset) {
   // and the cursor advanced by exactly the field it read
   EXPECT_TRUE(txn.canRead(sizeof(buf) - 1 - sizeof(want)));
   EXPECT_TRUE(!txn.canRead(sizeof(buf)));
+}
+
+TEST(Storage, TransactionBlocksStayInsideTheFile) {
+  // A transaction is copied out of its queue in blocks of up to 1024 bytes, to
+  // a buffer that starts one size word into its file, and the producer decides
+  // where each block starts: a page it publishes alone is copied alone, so the
+  // write offset is a sum of the page byte counts it chose. The space check
+  // left the size word out, so a full block starting 1025..1031 bytes before a
+  // 1MB step of the file did not grow it and ran up to 7 bytes past the end:
+  // a SIGBUS here, and a write into the next mapping where the file fills its
+  // own (each 10MB).
+  const size_t pageSize = 64 * 1024;
+  const size_t valSize  = pageSize + sizeof(uint32_t);
+
+  // a first page of 1016 bytes makes the last block before 1MB end exactly at
+  // the end of the file, each byte more puts it one byte further past
+  for (size_t first = 1016; first < 1024; ++first) {
+    const std::string name = "/hobbes-unittest-txn." + str::from(getpid()) + "." + str::from(first);
+    // the transaction's file: "." + name + ".txn", with '/' as '_'
+    const std::string txnFile = "._" + name.substr(1) + ".txn";
+    unlink(txnFile.c_str());
+
+    storage::writer      w(storage::bytes(), name, valSize, 4, storage::WaitPolicy::Spin);
+    storage::reader      rd(storage::consumeQueue(name), storage::WaitPolicy::Spin);
+    storage::rpipe       p(&rd);
+    storage::Transaction txn(name);
+
+    // publish one page of n bytes and copy it out before the next one follows
+    auto publish = [&](size_t n, uint8_t state) {
+      uint8_t* page = w.next();
+      memset(page, 'x', n);
+      const uint32_t end = (static_cast<uint32_t>(state) << 24) | static_cast<uint32_t>(n);
+      memcpy(page + pageSize, &end, sizeof(end));
+      w.push();
+
+      bool done = false;
+      for (size_t i = 0; i < n; i += 1024) {
+        done = txn.readToCompletion(p, 0, []{});
+      }
+      return done;
+    };
+
+    EXPECT_TRUE(!publish(first, PRIV_HSTORE_PAGE_STATE_CONT));
+    for (size_t i = 0; i < 16; ++i) {
+      EXPECT_TRUE(!publish(pageSize, PRIV_HSTORE_PAGE_STATE_CONT));
+    }
+    EXPECT_TRUE(publish(1024, PRIV_HSTORE_PAGE_STATE_COMMIT));
+    EXPECT_EQ(txn.size(), first + 16 * pageSize + 1024);
+    EXPECT_EQ(txn.ptr()[txn.size() - 1], static_cast<uint8_t>('x'));
+
+    unlink(txnFile.c_str());
+  }
 }
 
 // Resolving a (LoadFile "path" t) constraint for an outputFile-shaped t

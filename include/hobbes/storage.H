@@ -931,6 +931,9 @@ inline QueueConnection consumeGroup(const std::string& gname, const ProcThread& 
   throw std::runtime_error("Invalid queue header in '" + qc.shmname + "': " + why);
 }
 
+// checks a header the caller owns. Given a pointer into the segment this
+// proves nothing about what a later load from the segment sees (the writer
+// can store to it in between): use readQueueHeader for that
 inline void checkQueueHeader(const QueueConnection& qc, const ShQueueHeader* hdr) {
   if (qc.datasz < sizeof(ShQueueHeader)) {
     badQueueHeader(qc, "segment is too small to hold a queue header");
@@ -951,6 +954,30 @@ inline void checkQueueHeader(const QueueConnection& qc, const ShQueueHeader* hdr
   if (hdr->valsz == 0 || hdr->valsz > avail / hdr->count) {
     badQueueHeader(qc, "queue values run past the end of the segment");
   }
+}
+
+// the writer can still store to the header after it has been checked, so a
+// field loaded from the segment for the check and loaded again to be used is
+// two values, and only the first was held to anything: a metasz switched
+// between the two loads placed the control block outside the mapping after
+// all, where the reader then stored its wait state and read index. Each field
+// is loaded from the segment exactly once (through a volatile lvalue, so that
+// a load is not repeated on our behalf), the copy is what gets checked, and
+// the copy is all the caller gets.
+inline ShQueueHeader readQueueHeader(const QueueConnection& qc) {
+  if (qc.datasz < sizeof(ShQueueHeader)) {
+    badQueueHeader(qc, "segment is too small to hold a queue header");
+  }
+
+  const auto* shhdr = reinterpret_cast<const volatile ShQueueHeader*>(qc.data);
+  ShQueueHeader hdr;
+  hdr.ready  = shhdr->ready;
+  hdr.valsz  = shhdr->valsz;
+  hdr.count  = shhdr->count;
+  hdr.metasz = shhdr->metasz;
+
+  checkQueueHeader(qc, &hdr);
+  return hdr;
 }
 
 // read data out of shared memory
@@ -981,16 +1008,15 @@ private:
 public:
   reader(const QueueConnection& qc, const WaitPolicy wp) : shfd(qc.shfd), waitFn(hobbes::storage::waitFn(wp)), wakeFn(hobbes::storage::wakeFn(wp)) {
     // prepare to read the queue description
-    auto* hdr     = reinterpret_cast<ShQueueHeader*>(qc.data);
-    checkQueueHeader(qc, hdr);
-    auto         metaLen = align<size_t>(sizeof(ShQueueHeader) + hdr->metasz, qc.pagesz);
+    const ShQueueHeader hdr = readQueueHeader(qc);
+    auto         metaLen = align<size_t>(sizeof(ShQueueHeader) + hdr.metasz, qc.pagesz);
     auto*   sqd     = reinterpret_cast<ShQueueData*>(qc.data + metaLen);
 
     // now we should have enough to read out of this queue
     this->metad           = qc.data + sizeof(ShQueueHeader);
-    this->metasz          = hdr->metasz;
-    this->cfg.valuesz     = hdr->valsz;
-    this->cfg.count       = hdr->count;
+    this->metasz          = hdr.metasz;
+    this->cfg.valuesz     = hdr.valsz;
+    this->cfg.count       = hdr.count;
     this->cfg.wstate      = &sqd->wstate;
     this->cfg.readerIndex = &sqd->ri;
     this->cfg.writerIndex = &sqd->wi;
@@ -2276,7 +2302,13 @@ public:
   bool readToCompletion(rpipe& p, size_t timeoutNS, const std::function<void()>& timeoutF) {
     static const size_t blockSize = 1024;
 
-    if (this->wi + blockSize >= this->file_size) {
+    // 'data' starts one size word into the file (see truncMapFile), so that
+    // word counts against the file too. 'wi' is the sum of the producer's page
+    // byte counts and need not be a multiple of blockSize: without the word, a
+    // block starting 1025..1031 bytes before the end of the file was let
+    // through and ran up to 7 bytes past it -- a SIGBUS, or a write into the
+    // next mapping where the file fills its own (each 10MB)
+    if (sizeof(size_t) + this->wi + blockSize > this->file_size) {
       truncMapFile(this->file_size + /*1MB*/1048576);
     }
 
