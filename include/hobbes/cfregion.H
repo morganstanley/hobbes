@@ -122,19 +122,26 @@ struct cwbitstream {
 
   // initialize from an already stored root node, return the final model reference found there
   uint64_t initFromRoot(uint64_t rootNode, size_t modelSize) {
-    this->batchNode = reinterpret_cast<size_t*>(mapFileData(this->file, rootNode, 3*sizeof(size_t)));
+    // the root, every link followed from it and the offsets in the batch
+    // found at the end all come out of the file, so each is checked against
+    // the file before it is mapped
+    this->batchNode = reinterpret_cast<size_t*>(mapFileDataInFile(this->file, rootNode, 3*sizeof(size_t), "compressed series node"));
 
     // seek to the last buffer (where the next pointer goes to the null batch node)
     if (this->batchNode[0] == 1) {
-      auto* nextNode = reinterpret_cast<size_t*>(mapFileData(this->file, this->batchNode[2], 3*sizeof(size_t)));
+      // (a walk that has to end even if the links do not)
+      size_t steps = 0;
+
+      auto* nextNode = reinterpret_cast<size_t*>(mapFileDataInFile(this->file, this->batchNode[2], 3*sizeof(size_t), "compressed series node"));
       while (nextNode[0] == 1) {
+        ensureLinksEndInFile(this->file, ++steps, 3*sizeof(size_t), "compressed series node");
         unmapFileData(this->file, this->batchNode, 3*sizeof(size_t));
         this->batchNode = nextNode;
-        nextNode = reinterpret_cast<size_t*>(mapFileData(this->file, this->batchNode[2], 3*sizeof(size_t)));
+        nextNode = reinterpret_cast<size_t*>(mapFileDataInFile(this->file, this->batchNode[2], 3*sizeof(size_t), "compressed series node"));
       }
       unmapFileData(this->file, nextNode, 3*sizeof(size_t));
 
-      this->buffer = reinterpret_cast<cbatch*>(mapFileData(this->file, this->batchNode[1], sizeof(cbatch)));
+      this->buffer = reinterpret_cast<cbatch*>(mapFileDataInFile(this->file, this->batchNode[1], sizeof(cbatch), "compressed series batch"));
 
       // every write assumes that the stored position is inside the current segment, or just at its end
       // (where a writer that couldn't allocate the next segment leaves it, and where the next write tries again)
@@ -167,9 +174,13 @@ struct cwbitstream {
     }
 
     // seek to the end of the bitstream
-    this->seg = reinterpret_cast<cbatchseg*>(mapFileData(this->file, this->buffer->headBitBuffer, sizeof(cbatchseg)));
+    // (the segments are a linked list in the file too, bounded the same way)
+    size_t segSteps = 0;
+
+    this->seg = reinterpret_cast<cbatchseg*>(mapFileDataInFile(this->file, this->buffer->headBitBuffer, sizeof(cbatchseg), "compressed series segment"));
     while (this->seg->nextRef != 0) {
-      auto* nextSeg = reinterpret_cast<cbatchseg*>(mapFileData(this->file, this->seg->nextRef, sizeof(cbatchseg)));
+      ensureLinksEndInFile(this->file, ++segSteps, sizeof(cbatchseg), "compressed series segment");
+      auto* nextSeg = reinterpret_cast<cbatchseg*>(mapFileDataInFile(this->file, this->seg->nextRef, sizeof(cbatchseg), "compressed series segment"));
       unmapFileData(this->file, this->seg, sizeof(cbatchseg));
       this->seg = nextSeg;
     }
@@ -412,7 +423,7 @@ struct crbitstream {
   // read bits
   bool getbit() {
     if (this->bitIndex == csegm::maxBits) {
-      this->seg      = reinterpret_cast<cbatchseg*>(mapFileData(this->file, this->seg->nextRef, sizeof(cbatchseg)));
+      this->seg      = reinterpret_cast<cbatchseg*>(mapFileDataInFile(this->file, this->seg->nextRef, sizeof(cbatchseg), "compressed series segment"));
       this->bitIndex = 0;
     }
     bool bit = (this->seg->bits[this->bitIndex>>3]&(1<<((this->bitIndex)%8))) != 0;
@@ -427,7 +438,7 @@ struct crbitstream {
     this->count    = 0;
     this->bitIndex = 0;
     this->buffer   = b;
-    this->seg      = reinterpret_cast<cbatchseg*>(mapFileData(this->file, b->headBitBuffer, sizeof(cbatchseg)));
+    this->seg      = reinterpret_cast<cbatchseg*>(mapFileDataInFile(this->file, b->headBitBuffer, sizeof(cbatchseg), "compressed series segment"));
 
     for (arithn::code k = 0; k < arithn::cbits; ++k) {
       this->value <<= 1;
@@ -1138,9 +1149,9 @@ template <typename T>
         throw std::runtime_error("Can't write to sequence " + seqname + " as type '" + ty::show(this->stdef) + "', already defined as type '" + ty::show(ty::decode(b->second.type)) + "'");
       } else {
         // load the head batch and initialize from it
-        auto* headNode      = reinterpret_cast<size_t*>(mapFileData(this->f, b->second.offset, sizeof(size_t)));
+        auto* headNode      = reinterpret_cast<size_t*>(mapFileDataInFile(this->f, b->second.offset, sizeof(size_t), "compressed series root"));
         this->scratchModelRef = this->out.initFromRoot(*headNode, sizeof(PModel));
-        this->scratchModel    = reinterpret_cast<PModel*>(mapFileData(this->f, this->scratchModelRef, sizeof(PModel)));
+        this->scratchModel    = reinterpret_cast<PModel*>(mapFileDataInFile(this->f, this->scratchModelRef, sizeof(PModel), "compressed series model"));
 
         compress<T>::init(*this->scratchModel, &this->scratchModelState);
         unmapFileData(this->f, headNode, sizeof(size_t));
@@ -1244,7 +1255,7 @@ template <typename T>
       }
 
       // load all nodes, prepare to walk in-order
-      auto* n = reinterpret_cast<uint64_t*>(mapFileData(this->f, b.offset, sizeof(size_t)));
+      auto* n = reinterpret_cast<uint64_t*>(mapFileDataInFile(this->f, b.offset, sizeof(size_t), "compressed series root"));
       loadReadState(*n);
       unmapFileData(this->f, n, sizeof(size_t));
     }
@@ -1291,8 +1302,13 @@ template <typename T>
     }
 
     void loadReadState(uint64_t root) {
+      // every node is remembered here before any is read, so a node that
+      // links back to one already seen would be queued without end
+      size_t steps = 0;
+
       while (root != 0) {
-        auto* d = reinterpret_cast<uint64_t*>(mapFileData(this->f, root, 3*sizeof(uint64_t)));
+        ensureLinksEndInFile(this->f, ++steps, 3*sizeof(uint64_t), "compressed series node");
+        auto* d = reinterpret_cast<uint64_t*>(mapFileDataInFile(this->f, root, 3*sizeof(uint64_t), "compressed series node"));
         if (d[0] == 0) {
           root = 0;
         } else {
@@ -1315,10 +1331,10 @@ template <typename T>
         return false;
       } else {
         // load this compressed data segment
-        this->readState.reset(reinterpret_cast<const cbatch*>(mapFileData(this->f, this->batches.front(), sizeof(cbatch))));
+        this->readState.reset(reinterpret_cast<const cbatch*>(mapFileDataInFile(this->f, this->batches.front(), sizeof(cbatch), "compressed series batch")));
 
         // initialize the model for this batch
-        const auto* modelState = reinterpret_cast<const uint8_t*>(mapFileData(this->f, this->readState.buffer->initModel, sizeof(PModel)));
+        const auto* modelState = reinterpret_cast<const uint8_t*>(mapFileDataInFile(this->f, this->readState.buffer->initModel, sizeof(PModel), "compressed series model"));
         memcpy(reinterpret_cast<void*>(&this->scratchModel), modelState, sizeof(PModel));
         unmapFileData(this->f, reinterpret_cast<const void*>(modelState), sizeof(PModel));
         compress<T>::init(this->scratchModel, &this->scratchModelState);

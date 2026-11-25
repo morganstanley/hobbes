@@ -277,8 +277,13 @@ private:
   crbitstream readState;
 
   void loadReadState(uint64_t root) {
+    // as in fregion::crseries: every node is queued before any is read, so
+    // links that form a cycle would be queued without end
+    size_t steps = 0;
+
     while (root != 0) {
-      auto* d = reinterpret_cast<uint64_t*>(mapFileData(this->readState.file, root, 3*sizeof(uint64_t)));
+      ensureLinksEndInFile(this->readState.file, ++steps, 3*sizeof(uint64_t), "compressed series node");
+      auto* d = reinterpret_cast<uint64_t*>(mapFileDataInFile(this->readState.file, root, 3*sizeof(uint64_t), "compressed series node"));
       if (d[0] == 0) {
         root = 0;
       } else {
@@ -301,7 +306,7 @@ private:
       return false;
     } else {
       // load this compressed data segment (the caller will then need to init from `this->readState.buffer->initModel`)
-      this->readState.reset(reinterpret_cast<const cbatch*>(mapFileData(this->readState.file, this->batches.front(), sizeof(cbatch))));
+      this->readState.reset(reinterpret_cast<const cbatch*>(mapFileDataInFile(this->readState.file, this->batches.front(), sizeof(cbatch), "compressed series batch")));
       this->batches.pop();
       return true;
     }
@@ -336,7 +341,7 @@ static long checkedUCArrayLength(long n) {
 UCWriter::UCWriter(writer* f, size_t root, size_t batchSize, size_t modelSize) : batchSize(batchSize), modelSize(modelSize), out(f->fileData()) {
   // load the head batch and initialize from it
   this->scratchModelRef = this->out.initFromRoot(root, modelSize);
-  this->scratchModel    = reinterpret_cast<uint8_t*>(mapFileData(this->out.file, this->scratchModelRef, this->modelSize));
+  this->scratchModel    = reinterpret_cast<uint8_t*>(mapFileDataInFile(this->out.file, this->scratchModelRef, this->modelSize, "compressed series model"));
 }
 
 void UCWriter::write(DynDModel0* dm, uint8_t c) {
