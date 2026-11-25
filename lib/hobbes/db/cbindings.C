@@ -222,6 +222,9 @@ public:
     if (s == dm->esc()) {
       auto escRange = dm->symbolCount();
       auto nc = static_cast<symbol>(this->readState.svalue(escRange));
+      if (nc >= escRange) {
+        throw std::runtime_error("Compressed escape symbol " + str::from(nc) + " is outside a model of " + str::from(escRange) + " symbols");
+      }
       this->readState.shift(nc, nc+1, escRange);
       dm->add(nc);
       return static_cast<uint8_t>(nc);
@@ -333,6 +336,13 @@ UCWriter::UCWriter(writer* f, size_t root, size_t batchSize, size_t modelSize) :
 }
 
 void UCWriter::write(DynDModel0* dm, uint8_t c) {
+  // a model only has table entries and a coding interval for symbols up to
+  // its own maxSymbol (less than 0xff for enumeration tags), so a symbol past
+  // that has to be refused before it indexes the tables or reaches the coder
+  if (c > dm->maxSymbol) {
+    throw std::runtime_error("Compressed symbol " + str::from(static_cast<int>(c)) + " is outside a model of " + str::from(dm->symbolCount()) + " symbols");
+  }
+
   arithn::code clow, chigh;
   if (dm->cm.find(c, &clow, &chigh)) {
     this->out.write(clow, chigh, dm->cm.interval());
@@ -344,6 +354,16 @@ void UCWriter::write(DynDModel0* dm, uint8_t c) {
     this->out.write(static_cast<arithn::code>(c), static_cast<arithn::code>(c)+1, escRange);
   }
   dm->add(c);
+}
+
+// write an enumeration tag as a symbol of its model
+// (checked at its full width, so that narrowing it to a symbol can't turn an
+// invalid tag like 256 into the valid tag 0)
+static void writeUCEnumTag(UCWriter* w, DynDModel0* dm, int tag) {
+  if (tag < 0 || tag > static_cast<int>(dm->maxSymbol)) {
+    throw std::runtime_error("Compressed enumeration tag " + str::from(tag) + " is outside a model of " + str::from(dm->symbolCount()) + " symbols");
+  }
+  w->write(dm, static_cast<uint8_t>(tag));
 }
 
 bool UCWriter::step() {
@@ -407,6 +427,7 @@ void initCStorageFileDefs(FieldVerifier*, cc& c) {
   c.bind("ucWriterModel",     memberfn(&UCWriter::currentInitModel));
   c.bind("ucWriterModelData", memberfn(&UCWriter::currentInitModelData));
   c.bind("ucWriterWrite",     memberfn(&UCWriter::write));
+  c.bind("ucWriterWriteTag",  &writeUCEnumTag);
   c.bind("ucWriterDestroy",   &destroyUCWriter);
 }
 

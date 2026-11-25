@@ -963,6 +963,50 @@ TEST(Storage, CFRegion_H2C) {
   }
 }
 
+DEFINE_STRUCT(
+  ColorTest,
+  (MyColor, c)
+);
+
+TEST(Storage, CSeriesRejectsEnumTagsOutsideModel) {
+  std::string fname = mkFName();
+  try {
+    // an enum tag is compressed as a symbol of a model sized for the enum's constructors,
+    // so a tag that isn't one of them has to be refused rather than written
+    writer f(fname);
+    series<ColorTest> cs(&c(), &f, "colors", 8, StoredSeries::Compressed);
+
+    ColorTest ct;
+    for (uint32_t i = 0; i < 4; ++i) {
+      ct.c = static_cast<MyColor::Enum>(i);
+      cs(ct);
+    }
+#if !defined(__APPLE__)
+    // (not on macOS: the refusal is thrown by a runtime function that JIT-compiled
+    //  code calls, and the JIT's frames can't be unwound there -- see
+    //  Arrays/newArrayRefusesALengthItCannotAllocate)
+    for (uint32_t tag : {4U, 200U, 256U, 0xffffffffU}) {
+      ct.c = static_cast<MyColor::Enum>(tag);
+      EXPECT_EXCEPTION(cs(ct));
+    }
+#endif
+    for (uint32_t i = 0; i < 4; ++i) {
+      ct.c = static_cast<MyColor::Enum>(i);
+      cs(ct);
+    }
+
+    // and only the valid values are there to read back
+    hobbes::cc rc;
+    rc.define("cf", "inputFile :: (LoadFile \"" + fname + "\" w) => w");
+    EXPECT_TRUE(rc.compileFn<bool()>("[(unsafeCast(c)::{t:int}).t|{c=c}<-cf.colors] == [0,1,2,3,0,1,2,3]")());
+
+    unlink(fname.c_str());
+  } catch (...) {
+    unlink(fname.c_str());
+    throw;
+  }
+}
+
 // disable inotify tests due to travis-ci/docker bug that breaks it
 // this code does actually work on Linux outside of travis-ci
 #ifndef BUILD_LINUX
