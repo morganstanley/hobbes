@@ -3092,10 +3092,37 @@ void encode(const QualTypePtr& qty, std::vector<unsigned char>* out) {
 
 MonoTypePtr decodeFrom(const bytes& in, unsigned int* n);
 
+// the layout of a built-in type is decided by its name -- by sizeOfF above and by
+// translateTypeF (eval/ctype.C), which don't go by name for the same set of type
+// constructors -- so a description that gives one of them a representation of its
+// own describes two layouts: what is allocated for it by name is then loaded and
+// stored by representation (or the reverse). Type descriptions are read from files
+// and from network peers, so such a description is rejected here, where it is read.
+//
+// Only two of these types are ever written with a representation, and it is the one
+// that their name already stands for: a file reference is a type function to 'long'
+// (fileRefTy) and a stored sequence is a type function to a file reference
+// (storedStreamOf).
+static bool validPrimRepresentation(const std::string& pname, const MonoTypePtr& hrep) {
+  if (pname == "fileref") {
+    const TAbs* f = is<TAbs>(hrep);
+    return f != nullptr && f->body() == primty("long");
+  } else if (pname == "fseq") {
+    const TAbs* f = is<TAbs>(hrep);
+    return f != nullptr && isFileRef(f->body());
+  } else {
+    return !isPrimName(pname);
+  }
+}
+
 MonoTypePtr decodePrim(const bytes& in, unsigned int* n) {
   std::string pname   = read<std::string>(in, n);
   bool        hasHRep = read<bool>(in, n);
   MonoTypePtr hrep    = hasHRep ? decodeFrom(in, n) : MonoTypePtr();
+
+  if (hrep && !validPrimRepresentation(pname, hrep)) {
+    throw std::runtime_error("Decoded type description redefines the built-in type '" + pname + "' with the representation: " + showBounded(hrep));
+  }
 
   // special case decoding logic for old files that don't provide the representation for fileref types
   if (pname == "fileref" && !hrep) {
