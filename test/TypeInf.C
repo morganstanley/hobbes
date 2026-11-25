@@ -1060,6 +1060,53 @@ TEST(TypeInf, WellFoundedRecursiveInstancesStillResolve) {
   EXPECT_EQ(lc.compileFn<int()>("peel(" + nested + ")")(), 7);
 }
 
+// a named type is a name and a representation, and a binary type description
+// pairs any name with any representation: two statements of one hog session
+// can each describe a 'blob', 40000 bytes long in one and 8 in the other. The
+// map that a class keeps its instances in ordered named types by name alone,
+// so the instance generated for the first 'blob' was the one found for the
+// second, and the reader compiled for 40000 bytes was run on the 8-byte value.
+TEST(TypeInf, InstancesOfANamedTypeAreKeptPerRepresentation) {
+  auto blob = [](long n) { return primty("blob", FixedArray::make(primty("byte"), tlong(n))); };
+  auto rec  = [&](long n) { return Record::make(list(Record::Member("x", blob(n)))); };
+
+  type_map<int> m;
+  m.insert(list(rec(40000)), 1);
+  m.insert(list(primty("blob")), 2);
+  EXPECT_TRUE(m.lookup(list(rec(40000))) != nullptr);
+  EXPECT_TRUE(m.lookup(list(rec(8))) == nullptr);
+  EXPECT_TRUE(m.lookup(list(blob(40000))) == nullptr);
+  EXPECT_EQ(*m.lookup(list(primty("blob"))), 2);
+
+  m.insert(list(rec(8)), 3);
+  EXPECT_EQ(*m.lookup(list(rec(40000))), 1);
+  EXPECT_EQ(*m.lookup(list(rec(8))), 3);
+
+  // and through instance resolution, where the generated instance is code
+  // that depends on the layout of the type it was generated for
+  cc lc;
+  compile(&lc, lc.readModule(
+    "class Width a where\n"
+    "  width :: a -> long\n"
+    "instance Width [:t|n:] where\n"
+    "  width x = salength(x)\n"
+    "instance (Data d t, Width t) => Width d where\n"
+    "  width x = width(unsafeCast(x)::t)\n"
+    "instance (r={h*t}, Width h) => Width r where\n"
+    "  width r = width(recordHeadValue(r))\n"
+  ));
+
+  std::vector<char> value(40000, 0);
+  auto width = [&](const MonoTypePtr& ty) {
+    using WidthFn = long (*)(const char*);
+    return rcast<WidthFn>(lc.unsafeCompileFn(primty("long"), str::strings("x"), list(ty), lc.readExpr("width(x)")))(value.data());
+  };
+  EXPECT_EQ(width(rec(40000)), 40000L);
+  EXPECT_EQ(width(rec(8)), 8L);
+  EXPECT_EQ(width(blob(16)), 16L);
+  EXPECT_EQ(width(blob(40000)), 40000L);
+}
+
 // The binary type descriptions a net REPL peer sends are decoded before the
 // peer is trusted (Server::prepare reads them straight off the wire), so a
 // length that cannot describe a value in memory has to be refused where it

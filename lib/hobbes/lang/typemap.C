@@ -15,7 +15,23 @@ struct mtyLT : public switchType<bool> {
       return r;
     }
 
-  bool with(const Prim*    v) const override { return v->name() < right<Prim>()->name(); }
+  // A named type is its name and its representation: Prim::make interns on
+  // both, and a binary type description can attach any representation to any
+  // name. Ordered by name alone, every type of one name was the same key, and
+  // the class instance generated for one of them was found for the others --
+  // code compiled for one layout, run on a value of another.
+  bool with(const Prim* v) const override {
+    const auto* r = right<Prim>();
+
+    if (v->name() != r->name()) {
+      return v->name() < r->name();
+    } else if (!v->representation() || !r->representation()) {
+      return !v->representation() && r->representation();
+    } else {
+      return MonoTypeLT()(v->representation(), r->representation());
+    }
+  }
+
   bool with(const TVar*    v) const override { return v->name() < right<TVar>()->name(); }
   bool with(const TGen*    v) const override { return v->id() < right<TGen>()->id(); }
   bool with(const Array*   v) const override { return MonoTypeLT()(v->type(), right<Array>()->type()); }
