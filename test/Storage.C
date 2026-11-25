@@ -1607,6 +1607,49 @@ TEST(Storage, AvoidTornRead) {
 }
 
 
+TEST(Storage, FRegionVariantTagIsStoredWithItsPayload) {
+  // a variant's tag in a structured data file comes straight out of the
+  // image. It used to be stored in the variant being read into before it was
+  // checked, so one that names no constructor was left there over the old
+  // payload, for the variant's destructor to dispatch on. (The variant is
+  // destroyed by hand here, after its tag has been checked: destroying one
+  // left with such a tag used to end the process.)
+  using IorS = hobbes::variant<int, std::string>; // read constructor by constructor
+  const std::string text(64, 'x');
+
+  std::vector<uint8_t> buf(hobbes::fregion::store<IorS>::size(), 0);
+  *reinterpret_cast<uint32_t*>(buf.data()) = 7;
+
+  alignas(IorS) char mem[sizeof(IorS)];
+  IorS* dst = new (mem) IorS(text);
+  EXPECT_EXCEPTION(hobbes::fregion::store<IorS>::read(nullptr, buf.data(), dst));
+  EXPECT_EQ(dst->unsafeTag(), uint32_t(1));
+  EXPECT_TRUE(*dst->get<std::string>() == text);
+
+  // ... while a tag that does name one replaces the payload
+  *reinterpret_cast<uint32_t*>(buf.data()) = 0;
+  *reinterpret_cast<int*>(buf.data() + hobbes::fregion::store<IorS>::tagOffset()) = 42;
+  hobbes::fregion::store<IorS>::read(nullptr, buf.data(), dst);
+  EXPECT_TRUE(dst->get<int>() != nullptr && *dst->get<int>() == 42);
+  dst->~IorS();
+}
+
+TEST(Storage, FRegionVariantWithBadTagIsDestructible) {
+  // a variant of plain data is read out of a file by copying its bytes, tag
+  // and all. Using one whose tag names no constructor fails, but destroying
+  // it must not (throwing from the destructor ended the process).
+  using IorD = hobbes::variant<int, double>;
+
+  std::vector<uint8_t> buf(sizeof(IorD), 0);
+  *reinterpret_cast<uint32_t*>(buf.data()) = 7;
+  {
+    IorD dst;
+    hobbes::fregion::store<IorD>::read(nullptr, buf.data(), &dst);
+    std::ostringstream ss;
+    EXPECT_EXCEPTION(ss << dst);
+  }
+}
+
 TEST(Storage, FRegionCArrayRejectsOversizedLength) {
   // the carray reader must reject a stored length larger than the fixed
   // capacity N instead of copying it into x->data[N] (a file-image-driven

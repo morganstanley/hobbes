@@ -368,7 +368,6 @@ template <size_t tag, typename T, typename M>
 template <size_t tag, typename T, typename M>
   struct variantGenRead {
     static void fn(T* vd, int s) {
-      new (vd) T();
       io<T>::read(s, vd);
     }
   };
@@ -378,11 +377,8 @@ template <typename T>
   };
 template <size_t tag, typename T, typename M>
   struct variantAsyncInit {
-    static void fn(T* p, void* rs) {
-      new (p) T();
-
+    static void fn(T*, void* rs) {
       using RSType = typename io<T>::async_read_state;
-      new (rs) RSType();
       io<T>::prepare(reinterpret_cast<RSType*>(rs));
     }
   };
@@ -403,9 +399,15 @@ template <typename ... Ctors>
       io<uint32_t>::write(s, x.unsafeTag());
       x.template apply<void, variantGenWrite, void, int>(s);
     }
+    // the tag is received outside of the variant being read into: it may
+    // never arrive whole, or may name no constructor, and until its payload
+    // has replaced the old one, the variant is still what it was (and will be
+    // destroyed as that if the read fails)
     static void read(int s, variant<Ctors...>* x) {
-      io<uint32_t>::read(s, &x->unsafeTag());
-      variantApp<void, variantGenRead, void, tuple<Ctors...>, int>::apply(x->unsafeTag(), x->unsafePayload(), s);
+      uint32_t tag = 0;
+      io<uint32_t>::read(s, &tag);
+      x->unsafeReset(tag);
+      variantApp<void, variantGenRead, void, tuple<Ctors...>, int>::apply(tag, x->unsafePayload(), s);
     }
 
     using TagState = typename io<uint32_t>::async_read_state;
@@ -415,18 +417,23 @@ template <typename ... Ctors>
     struct async_read_state {
       bool         readTag;
       TagState     tagState;
+      uint32_t     tag;
       PayloadState payloadState;
     };
     static void prepare(async_read_state* o) {
       o->readTag = true;
+      o->tag     = 0;
       io<uint32_t>::prepare(&o->tagState);
     }
     static bool accum(int s, async_read_state* o, variant<Ctors...>* x) {
       if (o->readTag) {
-        if (io<uint32_t>::accum(s, &o->tagState, &x->unsafeTag())) {
+        // as in 'read', the tag accumulates outside of the variant (and of
+        // the payload state, a variant too) until it can select their payloads
+        if (io<uint32_t>::accum(s, &o->tagState, &o->tag)) {
+          x->unsafeReset(o->tag);
+          o->payloadState.unsafeReset(o->tag);
+          variantApp<void, variantAsyncInit, void, tuple<Ctors...>, void*>::apply(o->tag, x->unsafePayload(), o->payloadState.unsafePayload());
           o->readTag = false;
-          o->payloadState.unsafeTag() = x->unsafeTag();
-          variantApp<void, variantAsyncInit, void, tuple<Ctors...>, void*>::apply(x->unsafeTag(), x->unsafePayload(), o->payloadState.unsafePayload());
         }
         return false;
       } else {

@@ -1795,6 +1795,263 @@ TEST(Net, aVariantTagFromTheWireIsChecked) {
   ::close(fds[1]);
 }
 
+// a variant payload that counts its live instances, so that a test can tell
+// (without a sanitizer) when a payload is destroyed that was never
+// constructed, or constructed and never destroyed
+struct CountedPayload {
+  static int live;
+  int value;
+
+  CountedPayload() : value(0) { ++live; }
+  explicit CountedPayload(int v) : value(v) { ++live; }
+  CountedPayload(const CountedPayload& rhs) : value(rhs.value) { ++live; }
+  CountedPayload& operator=(const CountedPayload&) = default;
+  ~CountedPayload() { --live; }
+};
+int CountedPayload::live = 0;
+
+namespace hobbes { namespace net {
+template <>
+  struct io<CountedPayload> {
+    static const bool can_memcpy = false;
+    static ty::desc type() { return io<int>::type(); }
+    static void write(int s, const CountedPayload& x) { io<int>::write(s, x.value); }
+    static void read(int s, CountedPayload* x) { io<int>::read(s, &x->value); }
+
+    using async_read_state = io<int>::async_read_state;
+    static void prepare(async_read_state* o) { io<int>::prepare(o); }
+    static bool accum(int s, async_read_state* o, CountedPayload* x) { return io<int>::accum(s, o, &x->value); }
+  };
+}}
+
+DEFINE_VARIANT(WireNumOrText,
+  (num,  int),
+  (text, std::string)
+);
+
+// read one value the way DEFINE_NET_CLIENT does (blocking), or the way
+// DEFINE_ASYNC_NET_CLIENT does (in steps, as bytes arrive)
+template <typename V>
+static void readReply(bool async, int s, V* v) {
+  if (async) {
+    typename net::io<V>::async_read_state st;
+    net::io<V>::prepare(&st);
+    while (!net::io<V>::accum(s, &st, v)) { }
+  } else {
+    net::io<V>::read(s, v);
+  }
+}
+
+// a variant is destroyed according to its tag, so its tag has to name the
+// payload it holds at every point where reading into it can fail. The tag in
+// a reply used to be received straight into the variant, ahead of the payload:
+// a reply that ended inside the tag's four bytes left part of a new tag over
+// the old payload, and that payload was then destroyed as another type (or a
+// payload it owned was never destroyed).
+template <typename V, typename Same>
+static void expectACutOffTagToLeave(const V& was, char tagByte, const Same& same) {
+  // the blocking read
+  {
+    int fds[2] = {-1, -1};
+    EXPECT_TRUE(::socketpair(AF_UNIX, SOCK_STREAM, 0, fds) == 0);
+    fdwrite(fds[1], &tagByte, 1);
+    ::close(fds[1]);
+
+    V got(was);
+    EXPECT_EXCEPTION(net::io<V>::read(fds[0], &got));
+    EXPECT_TRUE(same(got));
+    ::close(fds[0]);
+  }
+
+  // the incremental read, where the tag may also just be slow to arrive, and
+  // which may be stepped again after it has failed
+  {
+    int fds[2] = {-1, -1};
+    EXPECT_TRUE(::socketpair(AF_UNIX, SOCK_STREAM, 0, fds) == 0);
+
+    V got(was);
+    typename net::io<V>::async_read_state st;
+    net::io<V>::prepare(&st);
+
+    fdwrite(fds[1], &tagByte, 1);
+    EXPECT_FALSE(net::io<V>::accum(fds[0], &st, &got));
+    EXPECT_TRUE(same(got));
+
+    const char zero = 0;
+    fdwrite(fds[1], &zero, 1);
+    EXPECT_FALSE(net::io<V>::accum(fds[0], &st, &got));
+    EXPECT_TRUE(same(got));
+
+    ::close(fds[1]);
+    EXPECT_EXCEPTION(net::io<V>::accum(fds[0], &st, &got));
+    EXPECT_TRUE(same(got));
+    EXPECT_EXCEPTION(net::io<V>::accum(fds[0], &st, &got));
+    EXPECT_TRUE(same(got));
+    ::close(fds[0]);
+  }
+}
+
+TEST(Net, aReplyCutOffInsideAVariantTagLeavesTheVariantAsItWas) {
+  const std::string text(64, 'x'); // too long to be stored inside the string
+
+  // holding a string, and sent the first byte of the tag of an int
+  using IorS = variant<int, std::string>;
+  expectACutOffTagToLeave(IorS(text), '\x00', [&](const IorS& v) {
+    return v.get<std::string>() != nullptr && *v.get<std::string>() == text;
+  });
+
+  // holding an int, and sent the first byte of the tag of a payload with a
+  // destructor, which must not run for a payload that was never there
+  using IorC = variant<int, CountedPayload>;
+  CountedPayload::live = 0;
+  expectACutOffTagToLeave(IorC(42), '\x01', [](const IorC& v) {
+    return v.get<int>() != nullptr && *v.get<int>() == 42;
+  });
+  EXPECT_EQ(CountedPayload::live, 0);
+
+  // and the same for a variant with named constructors
+  expectACutOffTagToLeave(WireNumOrText::text(text), '\x00', [&](const WireNumOrText& v) {
+    return v == WireNumOrText::text(text);
+  });
+}
+
+TEST(Net, aRejectedVariantTagLeavesTheVariantAsItWas) {
+  // a whole tag that names no constructor is not stored either. (The variant
+  // is destroyed by hand here, after its tag has been checked: a variant left
+  // holding such a tag used to end the process when it was destroyed.)
+  using IorS = variant<int, std::string>;
+  const std::string text(64, 'x');
+
+  for (bool async : {false, true}) {
+    int fds[2] = {-1, -1};
+    EXPECT_TRUE(::socketpair(AF_UNIX, SOCK_STREAM, 0, fds) == 0);
+    fdwrite(fds[1], static_cast<uint32_t>(7));
+    fdwrite(fds[1], static_cast<int>(42));
+    ::close(fds[1]);
+
+    alignas(IorS) char mem[sizeof(IorS)];
+    IorS* got = new (mem) IorS(text);
+    EXPECT_EXCEPTION(readReply(async, fds[0], got));
+    EXPECT_EQ(got->unsafeTag(), uint32_t(1));
+    EXPECT_TRUE(*got->get<std::string>() == text);
+    got->~IorS();
+    ::close(fds[0]);
+  }
+}
+
+TEST(Net, aVariantThatIsReadIntoGivesUpItsOldPayload) {
+  // the payload that a variant holds when a reply is read into it is
+  // destroyed (once, as what it is) when the new tag is known, rather than
+  // being written over
+  using IorC = variant<int, CountedPayload>;
+  CountedPayload::live = 0;
+
+  for (bool async : {false, true}) {
+    int fds[2] = {-1, -1};
+
+    // a counted payload, replaced by an int
+    EXPECT_TRUE(::socketpair(AF_UNIX, SOCK_STREAM, 0, fds) == 0);
+    fdwrite(fds[1], static_cast<uint32_t>(0));
+    fdwrite(fds[1], static_cast<int>(7));
+    ::close(fds[1]);
+    {
+      IorC got{CountedPayload(3)};
+      EXPECT_EQ(CountedPayload::live, 1);
+      readReply(async, fds[0], &got);
+      EXPECT_TRUE(got.get<int>() != nullptr && *got.get<int>() == 7);
+      EXPECT_EQ(CountedPayload::live, 0);
+    }
+    ::close(fds[0]);
+
+    // ... and by another counted payload
+    EXPECT_TRUE(::socketpair(AF_UNIX, SOCK_STREAM, 0, fds) == 0);
+    fdwrite(fds[1], static_cast<uint32_t>(1));
+    fdwrite(fds[1], static_cast<int>(9));
+    ::close(fds[1]);
+    {
+      IorC got{CountedPayload(3)};
+      readReply(async, fds[0], &got);
+      EXPECT_TRUE(got.get<CountedPayload>() != nullptr && got.get<CountedPayload>()->value == 9);
+      EXPECT_EQ(CountedPayload::live, 1);
+    }
+    EXPECT_EQ(CountedPayload::live, 0);
+    ::close(fds[0]);
+
+    // a reply cut off after its tag leaves the (empty) payload that the tag
+    // names, to be destroyed as that
+    EXPECT_TRUE(::socketpair(AF_UNIX, SOCK_STREAM, 0, fds) == 0);
+    fdwrite(fds[1], static_cast<uint32_t>(1));
+    fdwrite(fds[1], "\x09", 1);
+    ::close(fds[1]);
+    {
+      IorC got(42);
+      EXPECT_EXCEPTION(readReply(async, fds[0], &got));
+      EXPECT_TRUE(got.get<CountedPayload>() != nullptr);
+      EXPECT_EQ(CountedPayload::live, 1);
+    }
+    EXPECT_EQ(CountedPayload::live, 0);
+    ::close(fds[0]);
+
+    // a variant with named constructors starts out holding nothing
+    const std::string text(64, 'x');
+    EXPECT_TRUE(::socketpair(AF_UNIX, SOCK_STREAM, 0, fds) == 0);
+    fdwrite(fds[1], static_cast<uint32_t>(1));
+    fdwrite(fds[1], text);
+    fdwrite(fds[1], static_cast<uint32_t>(0));
+    fdwrite(fds[1], static_cast<int>(7));
+    ::close(fds[1]);
+    {
+      WireNumOrText got;
+      readReply(async, fds[0], &got);
+      EXPECT_TRUE(got == WireNumOrText::text(text));
+      readReply(async, fds[0], &got);
+      EXPECT_TRUE(got == WireNumOrText::num(7));
+    }
+    ::close(fds[0]);
+  }
+}
+
+struct NoScheduler : net::AsyncScheduler {
+  void enqueue(net::AsyncReader*) override { }
+};
+
+TEST(Net, anAsyncRPCResultIsNotRetaggedByAReplyCutOffInsideItsTag) {
+  // an asynchronous RPC accumulates each reply into one result that it keeps
+  // between replies, so a reply that ends inside its tag must leave that
+  // result as it was (here an int, with no payload to destroy)
+  using IorC = variant<int, CountedPayload>;
+  CountedPayload::live = 0;
+
+  int fds[2] = {-1, -1};
+  EXPECT_TRUE(::socketpair(AF_UNIX, SOCK_STREAM, 0, fds) == 0);
+  char request[64];
+  {
+    NoScheduler sched;
+    int s = fds[0];
+    net::AsyncRPCFunc<IorC()> f(&sched, &s, 0);
+
+    // a whole reply
+    int seen = 0;
+    f([&](const IorC& r) { if (const auto* c = r.get<CountedPayload>()) { seen = c->value; } });
+    EXPECT_TRUE(::recv(fds[1], request, sizeof(request), 0) > 0);
+    fdwrite(fds[1], static_cast<uint32_t>(1));
+    fdwrite(fds[1], static_cast<int>(9));
+    for (size_t i = 0; i < 100 && !f.readAndFinish(); ++i) { }
+    EXPECT_EQ(seen, 9);
+    EXPECT_EQ(CountedPayload::live, 0);
+
+    // then one byte of the next reply's tag, and the end of the stream
+    f([](const IorC&) { });
+    EXPECT_TRUE(::recv(fds[1], request, sizeof(request), 0) > 0);
+    fdwrite(fds[1], "\x01", 1);
+    ::close(fds[1]);
+    EXPECT_FALSE(f.readAndFinish());
+    EXPECT_EXCEPTION(f.readAndFinish());
+  }
+  EXPECT_EQ(CountedPayload::live, 0);
+  ::close(fds[0]);
+}
+
 TEST(Net, aClaimedLengthDoesNotSizeTheReadBuffer) {
   // the length of a string or vector arrives before the data behind it, so a
   // peer can claim a size it will never send. Sizing the target from the

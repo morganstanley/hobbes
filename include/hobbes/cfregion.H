@@ -895,7 +895,6 @@ template <size_t tag, typename T, typename M>
     using CModel = typename M::second_type;
 
     static void fn(T* p, crbitstream* rbits, PModel* pm, CModel* cm) {
-      new (p) T();
       compress<T>::read(rbits, &pm->template at<tag>(), &cm->template at<tag>(), p);
     }
   };
@@ -927,7 +926,9 @@ template <typename ... Ctors>
     static void read(crbitstream* rbits, PModel* pm, CModel* cm, variant<Ctors...>* t) {
       TagElement tag = 0;
       TagC::read(rbits, &pm->first, &cm->first, &tag);
-      t->unsafeTag() = tag;
+      // the decoded tag goes in the variant only with the payload it names
+      // (see variant::unsafeReset)
+      t->unsafeReset(static_cast<uint32_t>(tag));
       variantApp<void, variantDecompressor, PayloadModels, tuple<Ctors...>, crbitstream*, PayloadPModel*, PayloadCModel*>::apply(tag, t->unsafePayload(), rbits, &pm->second, &cm->second);
     }
   };
