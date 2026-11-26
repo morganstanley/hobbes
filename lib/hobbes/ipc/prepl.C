@@ -169,14 +169,53 @@ void spawn(const std::string& cmd, proc* p, const FailToKillCallback& fn) {
       memset(&tmout, 0, sizeof(tmout));
       tmout.tv_sec = getLoadingTimeoutInSecs(1800);
 
+      // (select may count the timeout down, so the time to stop waiting is worked out before it)
+      const time_t initUntil = ::time(nullptr) + tmout.tv_sec;
+
       select(FD_SETSIZE, &fds, nullptr, nullptr, &tmout);
 
       if (FD_ISSET(c2p[0], &fds)) {
-        int success = 0;
-        auto rc = read(c2p[0], &success, sizeof(success));
-        if (rc > 0 && success != 1) {
+        // the init signal is one whole int with the value 1, and nothing less will do:
+        // a child that exits (or just closes its output) without sending it gives an end of file here,
+        // and that is not a process that can be used
+        int    success = 0;
+        size_t got     = 0;
+        bool   readErr = false;
+
+        while (got < sizeof(success)) {
+          if (got > 0) {
+            // the rest of a partial signal is waited for only as long as the signal itself
+            const time_t now = ::time(nullptr);
+            if (now >= initUntil) {
+              break;
+            }
+            fd_set ifds;
+            FD_ZERO(&ifds);
+            FD_SET(c2p[0], &ifds);
+
+            struct timeval itmout;
+            memset(&itmout, 0, sizeof(itmout));
+            itmout.tv_sec = initUntil - now;
+
+            if (select(c2p[0] + 1, &ifds, nullptr, nullptr, &itmout) <= 0) {
+              continue;
+            }
+          }
+
+          auto rc = read(c2p[0], reinterpret_cast<char*>(&success) + got, sizeof(success) - got);
+          if (rc < 0 && errno == EINTR) {
+            continue;
+          }
+          if (rc <= 0) {
+            readErr = rc < 0;
+            break;
+          }
+          got += static_cast<size_t>(rc);
+        }
+
+        if (got != sizeof(success) || success != 1) {
           std::ostringstream ss;
-          ss << std::string(reinterpret_cast<const char*>(&success), sizeof(success));
+          ss << std::string(reinterpret_cast<const char*>(&success), got);
 
           // drain whatever the child has to say about its failure, but do not
           // wait indefinitely for the end of it: EOF arrives only once every
@@ -184,7 +223,7 @@ void spawn(const std::string& cmd, proc* p, const FailToKillCallback& fn) {
           // grandchild that inherited the descriptor) holds one open for as
           // long as it lives
           const time_t drainUntil = ::time(nullptr) + 5;
-          while (::time(nullptr) < drainUntil) {
+          while (got > 0 && ::time(nullptr) < drainUntil) {
             fd_set dfds;
             FD_ZERO(&dfds);
             FD_SET(c2p[0], &dfds);
@@ -204,11 +243,42 @@ void spawn(const std::string& cmd, proc* p, const FailToKillCallback& fn) {
             }
             ss << std::string(buf, rc);
           }
+
           // reap this child specifically: waiting on -1 blocks on whatever
           // child happens to be slowest, and can reap one that belongs to
           // somebody else in the process
-          int s = 0;
-          waitpid(cpid, &s, 0);
+          //
+          // most likely it has exited, but it may also be running still (with
+          // its output closed, or waiting on its input after a wrong answer),
+          // so it is given a moment to go and is then stopped rather than
+          // waited for without end
+          std::string how = "could not be waited for";
+          int   s = 0;
+          pid_t w = 0;
+          for (int i = 0; i < 100 && w == 0; ++i) {
+            w = waitpid(cpid, &s, WNOHANG);
+            if (w == 0) {
+              usleep(10000);
+            }
+          }
+          if (w == cpid && WIFEXITED(s)) {
+            how = "exited with status " + std::to_string(WEXITSTATUS(s));
+          } else if (w == cpid && WIFSIGNALED(s)) {
+            how = "was killed by signal " + std::to_string(WTERMSIG(s));
+          } else if (w == 0) {
+            how = "did not exit and was stopped";
+            const TermResult r = killAndWait(cpid);
+            if (!r.ok && fn) {
+              fn(cpid, r.reason);
+            }
+          }
+
+          if (got == 0) {
+            // the child said nothing at all
+            throw std::runtime_error(
+              "Unable to launch process: " + cmd + " (" + (readErr ? "failed to read its init signal" : "no init signal") + ", the process " + how + ")"
+            );
+          }
           throw std::runtime_error("Unable to launch process: " + cmd + " (invalid init response), with output:\n" + ss.str());
         }
       } else {
