@@ -9,14 +9,6 @@
 #include <sys/resource.h>
 #include <fcntl.h>
 
-#ifdef BUILD_LINUX
-#include <sys/sendfile.h>
-#else
-ssize_t sendfile(int toFD, int fromFD, off_t* o, size_t sz) {
-  return -1;
-}
-#endif
-
 namespace hi {
 
 // blocking write shorthand
@@ -44,17 +36,6 @@ void write(int fd, const char* s, size_t n) {
 void write(int fd, const char* s)        { write(fd, s, strlen(s)); }
 void write(int fd, const std::string& s) { write(fd, s.data(), s.size()); }
 
-// determine whether a file can be opened and read
-bool fileExists(const std::string& x) {
-  int sfd = open(x.c_str(), O_RDONLY);
-  if (sfd == -1) {
-    return false;
-  } else {
-    close(sfd);
-    return true;
-  }
-}
-
 // find the target of a symlink
 std::string readLink(const std::string& path) {
   char buf[PATH_MAX];
@@ -74,48 +55,16 @@ std::string exeDir() {
 }
 
 // find a www file by category
-//
-// the path from the request line is substituted straight into a filesystem
-// path, so without reducing it first a request for "/../../etc/hosts" walked
-// out of every document root searched here -- including out of the working
-// directory that the first of them serves -- and it is also what decides
-// whether a request reaches a .hxp file, which hi compiles and runs. The path
-// is not percent-decoded anywhere on this route, so there is no encoded
-// spelling of a segment to consider. A NUL byte is refused outright: open()
-// would stop at it, so "/report.hxp\0.txt" would be classified by its whole
-// spelling but open (and disclose) report.hxp.
-bool catPathToFSPath(const std::string& cat, const std::string& urlPath, std::string* fsPath) {
-  std::string cpath;
-  if (urlPath.find('\0') != std::string::npos ||
-      !hobbes::str::relativePathInRoot(urlPath, &cpath)) {
-    return false;
-  }
-
-  *fsPath = "./" + cpath;
-  if (fileExists(*fsPath)) {
-    return true;
-  }
-
-  *fsPath = "./www/" + cat + "/" + cpath;
-  if (fileExists(*fsPath)) {
-    return true;
-  }
-
-  *fsPath = exeDir() + "/../common/www/" + cat + "/" + cpath;
-  if (fileExists(*fsPath)) {
-    return true;
-  }
-  
-  *fsPath = exeDir() + "/../../common/www/" + cat + "/" + cpath;
-  return fileExists(*fsPath);
+bool catPathToFSPath(const std::string& cat, const std::string& urlPath, WWWFile* file) {
+  return findWWWFile(wwwRoots(cat, exeDir()), urlPath, file);
 }
 
 // find a www 'system' file
-bool sysPathToFSPath(const std::string& sysPath, std::string* fsPath) { return catPathToFSPath("sys", sysPath, fsPath); }
+bool sysPathToFSPath(const std::string& sysPath, WWWFile* file) { return catPathToFSPath("sys", sysPath, file); }
 
-// convert a URL path to a local filesystem path, fail if the file isn't found
-//  (search in a few likely directories)
-bool urlPathToFSPath(const std::string& urlPath, std::string* fsPath) { return catPathToFSPath("htdocs", urlPath, fsPath); }
+// find and open the file a URL path names, fail if it isn't found in any of
+// the htdocs directories
+bool urlPathToFSPath(const std::string& urlPath, WWWFile* file) { return catPathToFSPath("htdocs", urlPath, file); }
 
 // translate a *.hxp file to an expression that compiles to a value in int -> ()
 void translateHxpFile(std::istream& in, std::ostream& out) {
@@ -200,38 +149,66 @@ void translateHxpFile(std::istream& in, std::ostream& out) {
   out << " in ()";
 }
 
-time_t lastModification(const std::string& fpath) {
-  int sfd = open(fpath.c_str(), O_RDONLY);
-  if (sfd == -1) {
-    throw std::runtime_error("Can't open file for reading: " + fpath);
-  }
+const WWWServer::HxpFile& WWWServer::hxpFile(const WWWFile& file) {
+  // The page is read from the descriptor that findWWWFile checked and opened,
+  // not by opening its name again, and what identifies the compiled page in
+  // the cache comes from the same descriptor, so the source compiled is the
+  // file that was checked and the one the cache entry describes. Errors name
+  // the page as it was requested: this text is sent to the client, which has
+  // no business learning where on the server the document root is.
   struct stat sb;
-  fstat(sfd, &sb);
-  close(sfd);
-  return sb.st_mtime;
-}
+  if (fstat(file.fd.get(), &sb) != 0 || !S_ISREG(sb.st_mode)) {
+    throw std::runtime_error("Can't read file: " + file.name);
+  }
+#ifdef __APPLE__
+  const long mtimeNsec = sb.st_mtimespec.tv_nsec;
+#else
+  const long mtimeNsec = sb.st_mtim.tv_nsec;
+#endif
 
-const WWWServer::HxpFile& WWWServer::hxpFile(const std::string& fpath) {
-  time_t modt = lastModification(fpath);
+  // The compiled page is reused only for the same file (device and inode) at
+  // the same size and modification time, to the resolution the filesystem
+  // keeps. The time in whole seconds alone missed an edit made within the
+  // second the page was last compiled in, and a different file moved into
+  // the name with an older or equal time. A rewrite that keeps the size and
+  // restores the modification time is still not noticed.
+  auto fe = this->hxpFiles.find(file.path);
+  if (fe != this->hxpFiles.end() &&
+      fe->second.dev == sb.st_dev && fe->second.ino == sb.st_ino && fe->second.size == sb.st_size &&
+      fe->second.mtime == sb.st_mtime && fe->second.mtimeNsec == mtimeNsec) {
+    return fe->second;
+  }
 
-  auto fe = this->hxpFiles.find(fpath);
-  if (fe != this->hxpFiles.end() && fe->second.ftime == modt) { return fe->second; }
+  std::string src;
+  char buf[4096];
+  ssize_t n = 0;
+  while ((n = ::read(file.fd.get(), buf, sizeof(buf))) != 0) {
+    if (n < 0) {
+      if (errno == EINTR) { continue; }
+      throw std::runtime_error("Can't read file: " + file.name);
+    }
+    src.append(buf, static_cast<size_t>(n));
+  }
 
-  std::ifstream in(fpath.c_str());
+  std::istringstream in(src);
   std::ostringstream out;
   translateHxpFile(in, out);
 
   PrintPageFn pf = this->c->compileFn<void(int, const hobbes::array<char>*)>("fd", "queryString", out.str());
 
-  HxpFile& file = this->hxpFiles[fpath];
-  file.ftime = modt;
-  file.f = pf;
-  return file;
+  HxpFile& page = this->hxpFiles[file.path];
+  page.dev = sb.st_dev;
+  page.ino = sb.st_ino;
+  page.size = sb.st_size;
+  page.mtime = sb.st_mtime;
+  page.mtimeNsec = mtimeNsec;
+  page.f = pf;
+  return page;
 }
 
-void WWWServer::evalHxpFile(const hobbes::HTTPRequest&, int fd, const std::string& fpath, const std::string& queryString) {
+void WWWServer::evalHxpFile(const hobbes::HTTPRequest&, int fd, const WWWFile& file, const std::string& queryString) {
   try {
-    const HxpFile& f = hxpFile(fpath);
+    const HxpFile& f = hxpFile(file);
 
     // redirect stdout for this evaluation
     int stdoutc = dup(STDOUT_FILENO);
@@ -322,9 +299,15 @@ WWWServer::WWWServer(int port, hobbes::cc* c, std::vector<std::string> opts,
   c->bind("webServer",   this);
   c->bind("varBindings", memberfn(&WWWServer::getVarBindingDescs));
 
-  std::string initScript;
+  // init.hob is found under the www/sys directories with the same containment
+  // check as a requested file, but it is then read by name: the module reader
+  // takes a path (the script's imports are resolved relative to it), so the
+  // descriptor is not what gets compiled. This happens once, at startup, on a
+  // file the person starting hi supplies, and not at a client's request.
+  WWWFile initScript;
   if (sysPathToFSPath("init.hob", &initScript)) {
-    hobbes::compile(this->c, this->c->readModuleFile(initScript));
+    initScript.fd.reset();
+    hobbes::compile(this->c, this->c->readModuleFile(initScript.path));
   }
 
   // start the HTTP server
@@ -454,34 +437,24 @@ void print404(int fd, const std::string&) {
   write(fd, "HTTP 404 OK\n\nFile not found. :(");
 }
 
-void WWWServer::printFileContents(int fd, const std::string& fpath) {
+// send the file that findWWWFile checked and opened (its descriptor, not
+// whatever its name refers to by now)
+void WWWServer::printFileContents(int fd, const WWWFile& file) {
   using namespace hobbes;
 
-  int sfd = open(fpath.c_str(), O_RDONLY);
-  if (sfd == -1) {
-    print404(fd, fpath);
-    return;
-  }
-
+  const int sfd = file.fd.get();
   struct stat sb;
-  if (fstat(sfd, &sb) != 0) {
-    close(sfd);
-    print404(fd, fpath);
+  if (fstat(sfd, &sb) != 0 || !S_ISREG(sb.st_mode)) {
+    print404(fd, file.name);
     return;
   }
 
-  write(fd, "HTTP 200 OK\nContent-Type: " + mimeType(fpath) + "\nContent-Length: " + str::from(sb.st_size) + "\n\n");
+  write(fd, "HTTP 200 OK\nContent-Type: " + mimeType(file.path) + "\nContent-Length: " + str::from(sb.st_size) + "\n\n");
 
-  off_t offset = 0;
-  while (offset < sb.st_size) {
-    if (sendfile(fd, sfd, &offset, sb.st_size) == -1) {
-      if (errno != EAGAIN) {
-        write(fd, "Failure sending file.");
-        break;
-      }
-    }
-  }
-  close(sfd);
+  // If this stops short (the file shrank, or the client went away) the
+  // response just ends there: text added after the bytes already sent would
+  // be taken for file content.
+  sendFileBytes(fd, sfd, sb.st_size);
 }
 
 void WWWServer::eval(const hobbes::HTTPRequest& req, int fd) {
@@ -491,7 +464,7 @@ void WWWServer::eval(const hobbes::HTTPRequest& req, int fd) {
 
   if (p.first == "/") {
     if (p.second.empty()) {
-      std::string defPage;
+      WWWFile defPage;
       if (urlPathToFSPath("/index.html", &defPage)) {
         printFileContents(fd, defPage);
       } else {
@@ -501,12 +474,12 @@ void WWWServer::eval(const hobbes::HTTPRequest& req, int fd) {
       printQueryResult(fd, urlDecode(p.second));
     }
   } else {
-    std::string fsPath;
-    if (urlPathToFSPath(p.first, &fsPath)) {
-      if (isHxpPath(fsPath)) {
-        evalHxpFile(req, fd, fsPath, p.second);
+    WWWFile file;
+    if (urlPathToFSPath(p.first, &file)) {
+      if (isHxpPath(file.path)) {
+        evalHxpFile(req, fd, file, p.second);
       } else {
-        printFileContents(fd, fsPath);
+        printFileContents(fd, file);
       }
     } else {
       print404(fd, p.first);
