@@ -8,6 +8,7 @@
 #include <map>
 #include <stdexcept>
 #include <algorithm>
+#include <functional>
 #include <string>
 #include <unistd.h>
 #include <vector>
@@ -348,6 +349,43 @@ inline void fdwrite(int fd, const std::vector<T>& xs) {
 
 // remove a 'bad' mark for an FD and return true iff it was previously marked bad
 bool unmarkBadFD(int fd);
+
+// Serve the BlockCodec descriptor primitives (fdRead*/fdReadBlockLen/fdWrite*,
+// the readFrom/writeTo of compiled code) for one descriptor from memory, on
+// the installing thread, instead of from the descriptor itself.
+//
+// Reads take bytes from [in + inPos, in + inLen). A read that wants more than
+// is there records the total it needs in 'needAtLeast' and calls 'refill',
+// which may update in/inLen (keeping inPos) and return true to try again. If
+// there is no refill, or it returns false, the read throws
+// FDMemoryChannelUnderrun. It does not zero-fill and carry on, as a failed
+// descriptor read does, so no decoded value is ever made from missing bytes.
+// Writes are appended to 'out'.
+//
+// 'malformed', if there is one, is called when what was read cannot be
+// accepted (an array length out of range), before the read throws.
+//
+// Either callback may also not return at all, and leave the read by other
+// means (siglongjmp, a switch of stack). One called from compiled code has to
+// where an exception cannot be unwound through compiled frames (macOS), and
+// the read primitives hold nothing a destructor would release so that it can.
+struct FDMemoryChannel {
+  int         fd = -1;
+  const char* in = nullptr;
+  size_t      inLen = 0;
+  size_t      inPos = 0;
+  size_t      needAtLeast = 0;
+  std::string out;
+  std::function<bool(FDMemoryChannel*)> refill;
+  std::function<void(FDMemoryChannel*)> malformed;
+};
+
+struct FDMemoryChannelUnderrun : public std::runtime_error {
+  FDMemoryChannelUnderrun() : std::runtime_error("input ended before a value was fully read") { }
+};
+
+// install a channel on this thread (nullptr for none); returns the previous one
+FDMemoryChannel* setFDMemoryChannel(FDMemoryChannel*);
 
 }
 

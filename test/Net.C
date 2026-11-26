@@ -18,6 +18,8 @@
 
 #include <fcntl.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <poll.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -2158,6 +2160,850 @@ TEST(Net, aPartialRequestDoesNotStallTheServer) {
 
   ::close(fd);
 }
+// net.C's knob for these tests, in no header: how many invocations may wait
+// suspended for their arguments on one event loop. Returns what it was.
+namespace hobbes {
+size_t setNetREPLMaxSuspendedInvocations(size_t);
+size_t setNetREPLMaxBufferedInput(size_t);
+bool   setNetREPLDirectInvocations(bool);
+}
+
+namespace {
+// what the server has been asked to note, in the order it was asked
+std::mutex       notedMtx;
+std::vector<int> noted;
+
+void netTestNote(int x) {
+  std::lock_guard<std::mutex> lk(notedMtx);
+  noted.push_back(x);
+}
+
+std::vector<int> notedSoFar() {
+  std::lock_guard<std::mutex> lk(notedMtx);
+  return noted;
+}
+
+// the test server, with netTestNote bound for its peers to call
+int testNotingServerPort() {
+  static std::once_flag bound;
+  std::call_once(bound, [] { c().bind("netTestNote", &netTestNote); });
+  return testServerPort();
+}
+
+// eids follow declaration order from 1: echo is 1, upTo is 2, note is 3,
+// countOf is 4, sumOf is 5, echoAll is 6.
+// int64_t rather than long: it is the 64-bit type with a codec on every
+// platform (on macOS it is long long, and long has none)
+DEFINE_NET_CLIENT(
+    PayloadClient, (echo, std::string(std::string), "\\s.s"),
+    (upTo, std::vector<int64_t>(int64_t), "\\n.[0L..n]"),
+    (note, void(int), "netTestNote"),
+    (countOf, int64_t(std::vector<std::string>), "\\xs.size(xs)"),
+    (sumOf, int64_t(std::vector<int64_t>), "\\xs.sum(xs)"),
+    (echoAll, std::vector<std::string>(std::vector<std::string>), "\\xs.xs"));
+
+const uint32_t echoExprID    = 1;
+const uint32_t upToExprID    = 2;
+const uint32_t noteExprID    = 3;
+const uint32_t countOfExprID = 4;
+const uint32_t sumOfExprID   = 5;
+const uint32_t echoAllExprID = 6;
+
+std::string invocationOf(uint32_t eid, const std::string& arg) {
+  std::string wire(1, static_cast<char>(HNET_CMD_INVOKE));
+  wire.append(reinterpret_cast<const char*>(&eid), sizeof(eid));
+  wire.append(arg);
+  return wire;
+}
+
+std::string encodedString(const std::string& s) {
+  const size_t n = s.size();
+  return std::string(reinterpret_cast<const char*>(&n), sizeof(n)) + s;
+}
+
+std::string encodedInt(int x) {
+  return std::string(reinterpret_cast<const char*>(&x), sizeof(x));
+}
+
+std::string encodedSize(size_t n) {
+  return std::string(reinterpret_cast<const char*>(&n), sizeof(n));
+}
+
+std::string encodedInt64(int64_t x) {
+  return std::string(reinterpret_cast<const char*>(&x), sizeof(x));
+}
+
+// a raw-socket write in these tests must fail rather than hang the suite if
+// the server ever stops taking what it is sent (see withReceiveTimeout)
+int withIOTimeouts(int fd) {
+  struct timeval tv;
+  tv.tv_sec  = 20;
+  tv.tv_usec = 0;
+  ::setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+  ::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+#if defined(SO_NOSIGPIPE)
+  int on = 1;
+  ::setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &on, sizeof(on));
+#endif
+  return fd;
+}
+
+// a connection to the test server that has those from the start, so that a
+// client's own handshake and prepares cannot hang either
+int timedConnection(int port) {
+  return withIOTimeouts(hobbes::net::makeConnection("localhost", static_cast<size_t>(port)));
+}
+
+bool sendAll(int fd, const std::string& x) {
+#if defined(MSG_NOSIGNAL)
+  const int flags = MSG_NOSIGNAL;
+#else
+  const int flags = 0;
+#endif
+  size_t i = 0;
+  while (i < x.size()) {
+    ssize_t r = ::send(fd, x.data() + i, x.size() - i, flags);
+    if (r <= 0) return false;
+    i += static_cast<size_t>(r);
+  }
+  return true;
+}
+
+// wait, but not forever, for the server to have noted 'n' things
+bool waitForNoted(size_t n, int seconds) {
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(seconds);
+  while (notedSoFar().size() < n) {
+    if (std::chrono::steady_clock::now() > deadline) {
+      return false;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  }
+  return true;
+}
+
+// the reply to an upTo(n) invocation
+bool readUpToReply(int fd, int64_t n) {
+  size_t len = 0;
+  fdread(fd, reinterpret_cast<char*>(&len), sizeof(len));
+  if (len != static_cast<size_t>(n + 1)) {
+    return false;
+  }
+  std::vector<int64_t> xs(len);
+  fdread(fd, reinterpret_cast<char*>(xs.data()), len * sizeof(int64_t));
+  return xs.front() == 0 && xs.back() == n;
+}
+
+// one exchange with a separate client, timed: the server answering it at all
+// while another peer is stuck mid-request is the point
+long msToServeAnotherClient(SyncClient& other, int x) {
+  auto t0 = std::chrono::steady_clock::now();
+  EXPECT_EQ(other.add(x, 1), x + 1);
+  return static_cast<long>(std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::steady_clock::now() - t0).count());
+}
+}
+
+TEST(Net, aPartialInvocationArgumentDoesNotStallTheServer) {
+  // the command byte and eid of an invocation were read without blocking, but
+  // its argument was then decoded by the compiled call straight off the
+  // socket, on the shared event loop: a peer that sent an invocation and only
+  // part of its argument parked every other connection in read() until it
+  // gave up (STRFR-434002). The argument is now decoded from what has arrived,
+  // waiting -- off the loop -- for the rest.
+  SyncClient other(timedConnection(testServerPort()));
+  PayloadClient p(timedConnection(testNotingServerPort()));
+  int fd = withIOTimeouts(p.fd());
+
+  // far longer than one read (64KB), and than all the reads of one wake-up
+  // (4MB), so it is buffered over many wake-ups. (Its decode stops only once:
+  // a string says how long it is, and is waited for whole. See
+  // anArgumentOfUnknownLengthIsDecodedAsItArrives for one that stops and
+  // resumes many times.) Its echo is more than a socket takes in one write, so
+  // the reply goes out in pieces too
+  std::string arg(6000000, 'q');
+  for (size_t i = 0; i < arg.size(); i += 4099) {
+    arg[i] = static_cast<char>('a' + (i % 26)); // a misplaced piece would show
+  }
+  const std::string wire = invocationOf(echoExprID, encodedString(arg));
+
+  size_t sent = 0;
+  auto sendThrough = [&](size_t upTo) {
+    EXPECT_TRUE(sendAll(fd, wire.substr(sent, upTo - sent)));
+    sent = upTo;
+    EXPECT_TRUE(msToServeAnotherClient(other, static_cast<int>(sent)) < 5000);
+  };
+  sendThrough(3);                                  // part of the eid
+  sendThrough(1 + sizeof(uint32_t) + 3);           // part of the string's length
+  sendThrough(1 + sizeof(uint32_t) + sizeof(size_t) + 70000); // some of the string
+  for (size_t i = 0; i < 5; ++i) {
+    sendThrough(sent + 1);                         // a byte at a time
+  }
+  sendThrough(wire.size() - 1);                    // all but the last byte
+
+  // and once it has all arrived, the invocation is answered like any other
+  EXPECT_TRUE(sendAll(fd, wire.substr(sent)));
+  std::string reply;
+  fdread(fd, &reply);
+  EXPECT_EQ(reply.size(), arg.size());
+  EXPECT_TRUE(reply == arg);
+
+  // the connection is in step afterwards, for an invocation that arrives whole
+  EXPECT_EQ(p.echo("again"), "again");
+}
+
+TEST(Net, aPeerLeavingMidArgumentDoesNotDisturbTheServer) {
+  // the decode of an argument that never finishes is abandoned when its peer
+  // goes, and nothing of it is left behind to run or to hold the loop
+  SyncClient other(timedConnection(testServerPort()));
+  for (size_t i = 0; i < 3; ++i) {
+    PayloadClient p(timedConnection(testNotingServerPort()));
+    // half of it: an invocation with a stack to wait on, though its decode
+    // has not begun on it (a string is waited for whole; for one that has,
+    // see aPeerLeavingMidDecodeDoesNotDisturbTheServer)
+    std::string wire = invocationOf(echoExprID, encodedString(std::string(1000000, 'z')));
+    EXPECT_TRUE(sendAll(withIOTimeouts(p.fd()), wire.substr(0, 500000)));
+    EXPECT_TRUE(msToServeAnotherClient(other, static_cast<int>(i)) < 5000);
+  }
+  EXPECT_TRUE(msToServeAnotherClient(other, 42) < 5000);
+  PayloadClient p(timedConnection(testNotingServerPort()));
+  EXPECT_EQ(p.echo("after"), "after");
+}
+
+namespace {
+// An argument that does not say how long it is: an array of strings, each
+// of which does, but only once the decode has reached it. '*cuts' are places
+// to split what is sent, one in the middle of each string, so that a decode
+// fed a piece at a time has to stop within every one of them.
+std::vector<std::string> stringsOfManyLengths() {
+  std::vector<std::string> xs;
+  for (size_t i = 0; i < 12; ++i) {
+    xs.push_back(std::string(1000 + 37 * i, static_cast<char>('a' + i)));
+  }
+  return xs;
+}
+std::string echoAllWire(const std::vector<std::string>& xs, std::vector<size_t>* cuts) {
+  std::string wire = invocationOf(echoAllExprID, encodedSize(xs.size()));
+  for (const auto& x : xs) {
+    cuts->push_back(wire.size() + sizeof(size_t) + x.size() / 2);
+    wire += encodedString(x);
+  }
+  return wire;
+}
+}
+
+TEST(Net, anArgumentOfUnknownLengthIsDecodedAsItArrives) {
+  // with a stack to wait on, an argument whose length cannot be told ahead is
+  // decoded as far as its bytes go, and the decode waits where it stopped --
+  // within a string, here, a dozen times over -- to carry on when more is in
+  SyncClient other(timedConnection(testServerPort()));
+  PayloadClient p(timedConnection(testNotingServerPort()));
+
+  const std::vector<std::string> xs = stringsOfManyLengths();
+  std::vector<size_t> cuts;
+  const std::string wire = echoAllWire(xs, &cuts);
+
+  // the exchange with 'other' after each piece gives the server every chance
+  // to have taken it before the next is sent (it is answered just the same
+  // if it has not)
+  size_t sent = 0;
+  for (size_t cut : cuts) {
+    EXPECT_TRUE(sendAll(p.fd(), wire.substr(sent, cut - sent)));
+    sent = cut;
+    EXPECT_TRUE(msToServeAnotherClient(other, static_cast<int>(sent)) < 5000);
+  }
+  EXPECT_TRUE(sendAll(p.fd(), wire.substr(sent)));
+
+  size_t n = 0;
+  fdread(p.fd(), reinterpret_cast<char*>(&n), sizeof(n));
+  EXPECT_EQ(n, xs.size());
+  bool same = n == xs.size();
+  for (size_t i = 0; same && i < n; ++i) {
+    std::string x;
+    fdread(p.fd(), &x);
+    same = x == xs[i];
+  }
+  EXPECT_TRUE(same);
+  EXPECT_EQ(p.echo("in step"), "in step");
+}
+
+TEST(Net, aPeerLeavingMidDecodeDoesNotDisturbTheServer) {
+  // ... and a peer that goes while its decode waits like that has the decode
+  // given up where it stopped, on its own stack, and the stack given back
+  SyncClient other(timedConnection(testServerPort()));
+
+  const std::vector<std::string> xs = stringsOfManyLengths();
+  std::vector<size_t> cuts;
+  const std::string wire = echoAllWire(xs, &cuts);
+
+  for (size_t i = 0; i < 3; ++i) {
+    PayloadClient p(timedConnection(testNotingServerPort()));
+    size_t sent = 0;
+    for (size_t c = 0; c < 4; ++c) {
+      EXPECT_TRUE(sendAll(p.fd(), wire.substr(sent, cuts[c] - sent)));
+      sent = cuts[c];
+      EXPECT_TRUE(msToServeAnotherClient(other, static_cast<int>(sent)) < 5000);
+    }
+  }
+  EXPECT_TRUE(msToServeAnotherClient(other, 42) < 5000);
+  PayloadClient p(timedConnection(testNotingServerPort()));
+  EXPECT_EQ(p.echoAll({"after", "that"}), std::vector<std::string>({"after", "that"}));
+}
+
+TEST(Net, aPeerThatDoesNotReadItsRepliesDoesNotStallTheServer) {
+  // replies went out with blocking sends, bounded only by a 10s SO_SNDTIMEO
+  // per send: a peer that asked for large results and never read them held
+  // the shared event loop in send() that long each time (STRFR-434002).
+  // Replies are now queued and sent as the peer takes them.
+  SyncClient other(timedConnection(testServerPort()));
+  PayloadClient p(timedConnection(testNotingServerPort()));
+  int fd = withReceiveTimeout(p.fd());
+
+  // each reply is about 16MB, far more than the socket buffers between us
+  const int64_t n = 2000000;
+  for (size_t i = 0; i < 4; ++i) {
+    EXPECT_TRUE(sendAll(fd, invocationOf(upToExprID, encodedInt64(n))));
+  }
+
+  for (int i = 0; i < 3; ++i) {
+    EXPECT_TRUE(msToServeAnotherClient(other, i) < 5000);
+  }
+
+  // the peer that was not reading is still served, in order, once it reads
+  for (size_t i = 0; i < 2; ++i) {
+    EXPECT_TRUE(readUpToReply(fd, n));
+  }
+
+  // and it leaves with replies still queued for it, which the server must
+  // survive trying to write
+}
+
+TEST(Net, requestsSentBeforeAPeerClosesAreStillServed) {
+  // a peer that sends invocations which return nothing and then closes has
+  // done all it meant to. The end of its input used to be taken as the end of
+  // the connection as soon as it was seen, with whatever requests had already
+  // been received and not yet acted on thrown away.
+  const size_t before = notedSoFar().size();
+  const int    count  = 500;
+  {
+    PayloadClient p(timedConnection(testNotingServerPort()));
+    std::string wire;
+    for (int i = 0; i < count; ++i) {
+      wire += invocationOf(noteExprID, encodedInt(i));
+    }
+    // and part of one more, which is never finished and must not run
+    wire += invocationOf(noteExprID, encodedInt(-1)).substr(0, 7);
+    EXPECT_TRUE(sendAll(withIOTimeouts(p.fd()), wire));
+  } // closed, with every request probably still unread by the server
+
+  EXPECT_TRUE(waitForNoted(before + count, 20));
+
+  // served by a later exchange on another connection, so anything the server
+  // was still going to do for the closed one has been done
+  PayloadClient q(timedConnection(testNotingServerPort()));
+  withIOTimeouts(q.fd());
+  EXPECT_EQ(q.echo("sync"), "sync");
+
+  const std::vector<int> got = notedSoFar();
+  EXPECT_EQ(got.size(), before + count);
+  bool inOrder = got.size() == before + count;
+  for (int i = 0; inOrder && i < count; ++i) {
+    inOrder = got[before + static_cast<size_t>(i)] == i;
+  }
+  EXPECT_TRUE(inOrder);
+}
+
+TEST(Net, aPeerThatHalfClosesGetsEveryReply) {
+  // the same, for a peer that sends its requests, shuts down its sending side
+  // and then reads: every reply comes back, in order, and then the end of the
+  // stream. One reply in the middle is far larger than the socket buffers, so
+  // the peer has long finished sending while the server still has that reply
+  // to get out and the requests behind it to act on.
+  PayloadClient p(timedConnection(testNotingServerPort()));
+  int fd = withIOTimeouts(p.fd());
+
+  const int64_t n     = 2000000;
+  const int     count = 40;
+  std::string wire;
+  for (int i = 0; i < count; ++i) {
+    wire += invocationOf(echoExprID, encodedString("before " + std::to_string(i)));
+  }
+  wire += invocationOf(upToExprID, encodedInt64(n));
+  for (int i = 0; i < count; ++i) {
+    wire += invocationOf(echoExprID, encodedString("after " + std::to_string(i)));
+  }
+  EXPECT_TRUE(sendAll(fd, wire));
+  EXPECT_EQ(::shutdown(fd, SHUT_WR), 0);
+
+  bool inOrder = true;
+  for (int i = 0; i < count; ++i) {
+    std::string reply;
+    fdread(fd, &reply);
+    inOrder = inOrder && reply == "before " + std::to_string(i);
+  }
+  EXPECT_TRUE(inOrder);
+  EXPECT_TRUE(readUpToReply(fd, n));
+  for (int i = 0; i < count; ++i) {
+    std::string reply;
+    fdread(fd, &reply);
+    inOrder = inOrder && reply == "after " + std::to_string(i);
+  }
+  EXPECT_TRUE(inOrder);
+
+  // and with nothing left to do for it, the server closes its side
+  char b = 0;
+  EXPECT_EQ(::recv(fd, &b, 1, 0), ssize_t(0));
+}
+
+TEST(Net, manyPipelinedRequestsAreServedInOrder) {
+  // many small requests sent in one go: each used to shift everything behind
+  // it down the connection's buffer, and all of them were read into memory
+  // before the first was acted on. Requests with replies are mixed in, read as
+  // they come, so the connection is also in step throughout.
+  const size_t before = notedSoFar().size();
+  PayloadClient p(timedConnection(testNotingServerPort()));
+  int fd = withIOTimeouts(p.fd());
+
+  const auto t0 = std::chrono::steady_clock::now();
+  const int rounds   = 20;
+  const int perRound = 1000;
+  for (int r = 0; r < rounds; ++r) {
+    std::string wire;
+    for (int i = 0; i < perRound; ++i) {
+      wire += invocationOf(noteExprID, encodedInt(r * perRound + i));
+    }
+    wire += invocationOf(echoExprID, encodedString("round " + std::to_string(r)));
+    EXPECT_TRUE(sendAll(fd, wire));
+  }
+  bool inOrder = true;
+  for (int r = 0; r < rounds; ++r) {
+    std::string reply;
+    fdread(fd, &reply);
+    inOrder = inOrder && reply == "round " + std::to_string(r);
+  }
+  EXPECT_TRUE(inOrder);
+  const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count();
+  EXPECT_TRUE(ms < 30000);
+
+  // the last reply follows the last note, so they have all been made
+  const std::vector<int> got = notedSoFar();
+  const size_t total = static_cast<size_t>(rounds) * static_cast<size_t>(perRound);
+  EXPECT_EQ(got.size(), before + total);
+  inOrder = got.size() == before + total;
+  for (size_t i = 0; inOrder && i < total; ++i) {
+    inOrder = got[before + i] == static_cast<int>(i);
+  }
+  EXPECT_TRUE(inOrder);
+}
+
+namespace {
+// for as long as one of these is in scope
+struct SuspendedInvocationCap {
+  explicit SuspendedInvocationCap(size_t n) : was(hobbes::setNetREPLMaxSuspendedInvocations(n)) { }
+  ~SuspendedInvocationCap() { hobbes::setNetREPLMaxSuspendedInvocations(this->was); }
+  SuspendedInvocationCap(const SuspendedInvocationCap&) = delete;
+  SuspendedInvocationCap& operator=(const SuspendedInvocationCap&) = delete;
+  size_t was;
+};
+
+// true if the server has closed this connection (and nothing else is left on
+// it to read); false if it has not within the socket's receive timeout
+bool closedByServer(int fd) {
+  char b = 0;
+  return ::recv(fd, &b, 1, 0) == 0;
+}
+}
+
+TEST(Net, moreWaitingInvocationsThanStacks) {
+  // an invocation whose argument has not all arrived waits on a stack of its
+  // own, and there are only so many of those. One that finds none free was
+  // dropped; now none is, and each is answered once its argument is complete
+  // -- with a stack or without, in whatever order they are completed.
+  SuspendedInvocationCap cap(2);
+  SyncClient other(timedConnection(testServerPort()));
+
+  const std::string arg(300000, 'f');
+  const std::string wire = invocationOf(echoExprID, encodedString(arg));
+  const size_t      part = 100000;
+
+  // three times as many part-sent arguments as there are stacks
+  std::vector<std::unique_ptr<PayloadClient>> ps;
+  for (int i = 0; i < 6; ++i) {
+    ps.emplace_back(new PayloadClient(timedConnection(testNotingServerPort())));
+    EXPECT_TRUE(sendAll(ps.back()->fd(), wire.substr(0, part)));
+    EXPECT_TRUE(msToServeAnotherClient(other, i) < 5000);
+  }
+  auto finish = [&](size_t i) { return sendAll(ps[i]->fd(), wire.substr(part)); };
+  auto answered = [&](size_t i) {
+    std::string reply;
+    fdread(ps[i]->fd(), &reply); // throws, failing the test, if it never comes
+    return reply == arg;
+  };
+
+  // one peer leaves; the others are finished last-come first
+  ps[1].reset();
+  for (size_t i : {size_t(5), size_t(4), size_t(0), size_t(3), size_t(2)}) {
+    EXPECT_TRUE(finish(i));
+    EXPECT_TRUE(answered(i));
+    EXPECT_TRUE(msToServeAnotherClient(other, 10 + static_cast<int>(i)) < 5000);
+  }
+
+  // and every one of them is still in step
+  for (size_t i : {size_t(0), size_t(2), size_t(3), size_t(4), size_t(5)}) {
+    EXPECT_EQ(ps[i]->echo("in step"), "in step");
+  }
+}
+
+namespace {
+// for as long as one of these is in scope
+struct BufferedInputCap {
+  explicit BufferedInputCap(size_t n) : was(hobbes::setNetREPLMaxBufferedInput(n)) { }
+  ~BufferedInputCap() { hobbes::setNetREPLMaxBufferedInput(this->was); }
+  BufferedInputCap(const BufferedInputCap&) = delete;
+  BufferedInputCap& operator=(const BufferedInputCap&) = delete;
+  size_t was;
+};
+struct NoDirectInvocations {
+  NoDirectInvocations() : was(hobbes::setNetREPLDirectInvocations(false)) { }
+  ~NoDirectInvocations() { hobbes::setNetREPLDirectInvocations(this->was); }
+  NoDirectInvocations(const NoDirectInvocations&) = delete;
+  NoDirectInvocations& operator=(const NoDirectInvocations&) = delete;
+  bool was;
+};
+
+// An invocation that takes a stack and keeps it: part of its argument is
+// sent, and the rest not until finishHeld. The server has answered 'other'
+// twice since those bytes were there to be read by the time this returns, so
+// it has been through its loop and has them.
+const size_t heldSize = 1000;
+std::string heldWire() {
+  return invocationOf(echoExprID, encodedString(std::string(heldSize, 'h')));
+}
+void holdAStack(PayloadClient& holder, SyncClient& other) {
+  EXPECT_TRUE(sendAll(holder.fd(), heldWire().substr(0, 100)));
+  EXPECT_TRUE(msToServeAnotherClient(other, 100) < 5000);
+  EXPECT_TRUE(msToServeAnotherClient(other, 101) < 5000);
+}
+bool finishHeld(PayloadClient& holder) {
+  if (!sendAll(holder.fd(), heldWire().substr(100))) {
+    return false;
+  }
+  std::string reply;
+  fdread(holder.fd(), &reply);
+  return reply == std::string(heldSize, 'h');
+}
+
+// With direct invocations off and every stack held, no invocation is served,
+// another client's included: what shows the loop is still serving is that a
+// new client is let in and has its expressions prepared.
+bool serverTakesANewClient() {
+  SyncClient probe(timedConnection(testServerPort())); // throws if it is not
+  return probe.fd() >= 0;
+}
+
+// true if nothing arrives on this connection, and it is not closed, for this long
+bool nothingToReadFor(int fd, int ms) {
+  struct pollfd p;
+  p.fd      = fd;
+  p.events  = POLLIN;
+  p.revents = 0;
+  return ::poll(&p, 1, ms) == 0;
+}
+
+// true if the server has dropped this connection, whatever was left unread
+// on either side of it; false if it has not within the socket's receive timeout
+bool droppedByServer(int fd) {
+  char b[4096];
+  for (;;) {
+    ssize_t r = ::recv(fd, b, sizeof(b), 0);
+    if (r == 0) {
+      return true;
+    } else if (r < 0 && errno != EINTR) {
+      return errno != EAGAIN && errno != EWOULDBLOCK;
+    }
+  }
+}
+}
+
+TEST(Net, aWaitingInvocationIsGivenAStackThatComesFree) {
+  // a connection waiting for a stack has sent all it has to say, so nothing
+  // on its socket will have the loop call it again: when a stack comes free,
+  // it has to be found and served by the server. (An invocation that is all
+  // there is served without a stack, which would hide that; it is turned off
+  // here.)
+  SuspendedInvocationCap cap(1);
+  SyncClient other(timedConnection(testServerPort()));
+
+  PayloadClient holder(timedConnection(testNotingServerPort()));
+  holdAStack(holder, other);
+  NoDirectInvocations noDirect;
+
+  // more of them than are served in one go when the stack comes free
+  const size_t waiting = 24;
+  std::vector<std::unique_ptr<PayloadClient>> ps;
+  for (size_t i = 0; i < waiting; ++i) {
+    ps.emplace_back(new PayloadClient(timedConnection(testNotingServerPort())));
+    EXPECT_TRUE(sendAll(ps.back()->fd(), invocationOf(echoExprID, encodedString("waiter " + std::to_string(i)))));
+  }
+  EXPECT_TRUE(serverTakesANewClient());
+
+  // not one is answered while the only stack is held ...
+  bool quiet = true;
+  for (size_t i = 0; i < waiting; ++i) {
+    quiet = quiet && nothingToReadFor(ps[i]->fd(), i == 0 ? 1500 : 0);
+  }
+  EXPECT_TRUE(quiet);
+  EXPECT_TRUE(serverTakesANewClient());
+
+  // ... and every one is once it is given up, having sent nothing more
+  EXPECT_TRUE(finishHeld(holder));
+  bool allAnswered = true;
+  for (size_t i = 0; i < waiting; ++i) {
+    std::string reply;
+    fdread(ps[i]->fd(), &reply);
+    allAnswered = allAnswered && reply == "waiter " + std::to_string(i);
+  }
+  EXPECT_TRUE(allAnswered);
+  EXPECT_TRUE(msToServeAnotherClient(other, 3) < 5000);
+}
+
+TEST(Net, aWaitingInvocationInManyPiecesIsServedOnceItIsWhole) {
+  // with no stack to wait on, an argument is decoded from its start again as
+  // it arrives, and so not for every piece of it. That must not leave one
+  // that has all arrived undecoded: a string says how long it is, and is
+  // decoded when that much is there -- however many pieces it came in, and
+  // with the only stack still held.
+  SuspendedInvocationCap cap(1);
+  SyncClient other(timedConnection(testServerPort()));
+
+  PayloadClient holder(timedConnection(testNotingServerPort()));
+  holdAStack(holder, other);
+
+  std::string arg(300000, 'm');
+  for (size_t i = 0; i < arg.size(); i += 1009) {
+    arg[i] = static_cast<char>('a' + (i % 26));
+  }
+  const std::string wire = invocationOf(echoExprID, encodedString(arg));
+
+  PayloadClient p(timedConnection(testNotingServerPort()));
+  int nodelay = 1;
+  ::setsockopt(p.fd(), IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay));
+  const size_t piece = 8000;
+  for (size_t sent = 0; sent < wire.size(); sent += piece) {
+    EXPECT_TRUE(sendAll(p.fd(), wire.substr(sent, piece)));
+    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+  }
+
+  std::string reply;
+  fdread(p.fd(), &reply); // throws, failing the test, if it never comes
+  EXPECT_TRUE(reply == arg);
+  EXPECT_TRUE(msToServeAnotherClient(other, 1) < 5000);
+
+  // the same for an argument of several such parts, sent a part at a time
+  const std::vector<std::string> xs = {std::string(50000, 'a'), "", std::string(70000, 'b'), "c"};
+  std::string parts = encodedSize(xs.size());
+  EXPECT_TRUE(sendAll(p.fd(), invocationOf(countOfExprID, parts)));
+  for (const auto& x : xs) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    EXPECT_TRUE(sendAll(p.fd(), encodedString(x)));
+  }
+  int64_t n = 0;
+  fdread(p.fd(), reinterpret_cast<char*>(&n), sizeof(n));
+  EXPECT_EQ(n, static_cast<int64_t>(xs.size()));
+
+  // and for elements of more than a byte each, in pieces that split them
+  const int64_t count = 30000;
+  std::string longs = encodedSize(static_cast<size_t>(count));
+  for (int64_t i = 1; i <= count; ++i) {
+    longs += encodedInt64(i);
+  }
+  const std::string sumWire = invocationOf(sumOfExprID, longs);
+  for (size_t sent = 0; sent < sumWire.size(); sent += 7001) {
+    EXPECT_TRUE(sendAll(p.fd(), sumWire.substr(sent, 7001)));
+    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+  }
+  int64_t sum = 0;
+  fdread(p.fd(), reinterpret_cast<char*>(&sum), sizeof(sum));
+  EXPECT_EQ(sum, count * (count + 1) / 2);
+
+  EXPECT_TRUE(finishHeld(holder));
+  EXPECT_EQ(p.echo("in step"), "in step");
+}
+
+TEST(Net, aWaitingInvocationThatFillsItsBufferIsSettledThere) {
+  // a connection waiting for a stack reads on, as its invocation is not known
+  // to be whole, up to the most that may be buffered. There it was left,
+  // unread, until it had a stack: asking the loop for nothing, so that its
+  // peer could go unnoticed -- or, if it reset the connection, be reported on
+  // every pass of the loop (on Linux) with nothing done about it. Now what is
+  // buffered is decoded there and then, and the connection served or dropped.
+  SuspendedInvocationCap cap(1);
+  BufferedInputCap       inputCap(256 * 1024);
+  SyncClient other(timedConnection(testServerPort()));
+
+  PayloadClient holder(timedConnection(testNotingServerPort()));
+  holdAStack(holder, other);
+  NoDirectInvocations noDirect;
+
+  // whole invocations, more of them than may be buffered: the first is there
+  // in full when the buffer fills, and is answered with the stack still held
+  {
+    const std::string arg(100000, 'w');
+    PayloadClient p(timedConnection(testNotingServerPort()));
+    std::string wire;
+    for (size_t i = 0; i < 5; ++i) {
+      wire += invocationOf(echoExprID, encodedString(arg));
+    }
+    EXPECT_TRUE(sendAll(p.fd(), wire));
+    std::string reply;
+    fdread(p.fd(), &reply);
+    EXPECT_TRUE(reply == arg);
+    EXPECT_TRUE(serverTakesANewClient());
+  }
+
+  // one invocation larger than may be buffered: dropped, as it would be if
+  // it had a stack, rather than held
+  PayloadClient q(timedConnection(testNotingServerPort()));
+  const std::string tooBig = invocationOf(echoExprID, encodedSize(1000000) + std::string(600000, 'x'));
+  sendAll(q.fd(), tooBig); // which may fail, as the server goes part-way through
+  EXPECT_TRUE(droppedByServer(q.fd()));
+  EXPECT_TRUE(serverTakesANewClient());
+
+  EXPECT_TRUE(finishHeld(holder));
+  EXPECT_EQ(holder.echo("in step"), "in step");
+  EXPECT_TRUE(msToServeAnotherClient(other, 1) < 5000);
+}
+
+TEST(Net, aWaitingInvocationSentInSliversIsStillServed) {
+  // an array of strings does not say how long it is, only how many: with no
+  // stack to wait on, the work of decoding it again as its pieces arrive is
+  // bounded, so it may or may not be decoded on arrival -- and is answered
+  // either way once a stack is free
+  SuspendedInvocationCap cap(1);
+  SyncClient other(timedConnection(testServerPort()));
+
+  PayloadClient holder(timedConnection(testNotingServerPort()));
+  holdAStack(holder, other);
+
+  // 40000 one-byte strings, the first 3000 bytes of them a byte at a time
+  std::vector<std::string> xs(40000, "x");
+  std::string arg = encodedSize(xs.size());
+  for (const auto& x : xs) {
+    arg += encodedString(x);
+  }
+  const std::string wire = invocationOf(countOfExprID, arg);
+
+  PayloadClient p(timedConnection(testNotingServerPort()));
+  int fd = p.fd();
+  size_t sent = 0;
+  for (; sent < 3000; ++sent) {
+    EXPECT_TRUE(sendAll(fd, wire.substr(sent, 1)));
+  }
+  EXPECT_TRUE(msToServeAnotherClient(other, 1) < 5000);
+  EXPECT_TRUE(sendAll(fd, wire.substr(sent)));
+  EXPECT_TRUE(msToServeAnotherClient(other, 2) < 5000);
+
+  EXPECT_TRUE(finishHeld(holder));
+
+  int64_t n = 0;
+  fdread(fd, reinterpret_cast<char*>(&n), sizeof(n));
+  EXPECT_EQ(n, static_cast<int64_t>(xs.size()));
+}
+
+TEST(Net, aMalformedArgumentDropsOnlyItsConnection) {
+  // an array length no array can have stops the decode of an argument. It
+  // did so with an exception thrown through the compiled invocation, which
+  // cannot be unwound on every platform: on macOS it ended the process.
+  SyncClient other(timedConnection(testServerPort()));
+
+  // found by an invocation run on what has arrived ...
+  {
+    PayloadClient p(timedConnection(testNotingServerPort()));
+    int fd = withIOTimeouts(p.fd());
+    EXPECT_TRUE(sendAll(fd, invocationOf(echoExprID, encodedSize(static_cast<size_t>(-1)))));
+    EXPECT_TRUE(closedByServer(fd));
+    EXPECT_TRUE(msToServeAnotherClient(other, 1) < 5000);
+  }
+  {
+    PayloadClient p(timedConnection(testNotingServerPort()));
+    int fd = withIOTimeouts(p.fd());
+    EXPECT_TRUE(sendAll(fd, invocationOf(echoExprID, encodedSize(static_cast<size_t>(1) << 40))));
+    EXPECT_TRUE(closedByServer(fd));
+    EXPECT_TRUE(msToServeAnotherClient(other, 2) < 5000);
+  }
+
+  // ... and by one suspended part-way through its argument
+  {
+    PayloadClient p(timedConnection(testNotingServerPort()));
+    int fd = withIOTimeouts(p.fd());
+    // (the decode starts on its stack when the second piece is in, and waits
+    // there for the rest of "three"; the third piece brings the bad length)
+    EXPECT_TRUE(sendAll(fd, invocationOf(countOfExprID, encodedSize(3) + encodedString("one"))));
+    EXPECT_TRUE(msToServeAnotherClient(other, 3) < 5000);
+    EXPECT_TRUE(sendAll(fd, encodedString("three").substr(0, sizeof(size_t) + 2)));
+    EXPECT_TRUE(msToServeAnotherClient(other, 4) < 5000);
+    EXPECT_TRUE(sendAll(fd, encodedString("three").substr(sizeof(size_t) + 2) + encodedSize(static_cast<size_t>(-1))));
+    EXPECT_TRUE(closedByServer(fd));
+    EXPECT_TRUE(msToServeAnotherClient(other, 5) < 5000);
+  }
+
+  PayloadClient q(timedConnection(testNotingServerPort()));
+  withIOTimeouts(q.fd());
+  EXPECT_EQ(q.countOf({"a", "b", "c"}), int64_t(3));
+}
+
+TEST(Net, manyPreparesOnOneConnectionAreAllAnswered) {
+  // each prepare's reply is queued, and the type memo is compacted (under the
+  // compiler lock) only once that reply has gone. Sent all at once, accepted
+  // and refused alike, every one is answered in full and in order, and the
+  // connection and the server are in step afterwards.
+  SyncClient other(timedConnection(testServerPort()));
+  PayloadClient p(timedConnection(testNotingServerPort()));
+  int fd = withIOTimeouts(p.fd());
+
+  auto encodedBytes = [](const hobbes::net::bytes& x) {
+    return encodedSize(x.size()) + std::string(x.begin(), x.end());
+  };
+  const std::string intys = encodedBytes(hobbes::net::RPCTyDef<int(int, int)>::inputType());
+  const std::string outty = encodedBytes(hobbes::net::RPCTyDef<int(int, int)>::outputType());
+
+  const uint32_t firstID = 100;
+  const int      count   = 40;
+  auto refused = [](int i) { return i % 5 == 3; };
+  std::string wire;
+  for (int i = 0; i < count; ++i) {
+    const uint32_t eid = firstID + static_cast<uint32_t>(i);
+    const std::string expr =
+      refused(i) ? "\\x y.netTestNoSuchFunction(x, y)" : "\\x y.x+y+" + std::to_string(i);
+    wire += std::string(1, static_cast<char>(HNET_CMD_DEFEXPR));
+    wire += std::string(reinterpret_cast<const char*>(&eid), sizeof(eid));
+    wire += encodedString(expr) + intys + outty;
+  }
+  EXPECT_TRUE(sendAll(fd, wire));
+
+  bool asExpected = true;
+  for (int i = 0; i < count; ++i) {
+    uint8_t status = 2;
+    fdread(fd, &status);
+    if (refused(i)) {
+      std::string why;
+      fdread(fd, &why);
+      asExpected = asExpected && status == 0 && !why.empty();
+    } else {
+      asExpected = asExpected && status == 1;
+    }
+  }
+  EXPECT_TRUE(asExpected);
+  EXPECT_TRUE(msToServeAnotherClient(other, 1) < 5000);
+
+  // the last one prepared is there to be invoked
+  const int last = count - 1;
+  EXPECT_TRUE(sendAll(fd, invocationOf(firstID + static_cast<uint32_t>(last), encodedInt(20) + encodedInt(22))));
+  int sum = 0;
+  fdread(fd, &sum);
+  EXPECT_EQ(sum, 42 + last);
+  EXPECT_EQ(p.echo("in step"), "in step");
+}
+
 // Resolving a (Connect "host:port" c) constraint opens a live outbound
 // connection, and an (Invoke ...) constraint ships code to the peer and
 // executes it there, both as a side effect of type-constraint resolution --

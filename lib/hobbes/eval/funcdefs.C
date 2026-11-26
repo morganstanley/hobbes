@@ -631,7 +631,49 @@ bool unmarkBadFD(int fd) {
   }
 }
 
+// the channel installed by setFDMemoryChannel, if any (see codec.H)
+static thread_local FDMemoryChannel* fdMemoryChannel = nullptr;
+
+FDMemoryChannel* setFDMemoryChannel(FDMemoryChannel* ch) {
+  FDMemoryChannel* prev = fdMemoryChannel;
+  fdMemoryChannel = ch;
+  return prev;
+}
+
+static FDMemoryChannel* memoryChannelFor(int fd) {
+  FDMemoryChannel* ch = fdMemoryChannel;
+  return (ch != nullptr && ch->fd == fd) ? ch : nullptr;
+}
+
+// NOTE: a channel's refill and malformed callbacks may not return (codec.H):
+// the net REPL's leave by siglongjmp, straight over the frames of whichever of
+// awaitChannelBytes, readFromChannel, readOrMark, fdRead<T>, fdReadBlockLen
+// and fdReadBlockLenOf called them, and
+// over the compiled code that called those. So none of these functions may
+// hold a local with a destructor (a std::string, a lock, ...) across a call
+// that can reach a callback: it would never run.
+static void awaitChannelBytes(FDMemoryChannel* ch, size_t end) {
+  while (ch->inLen < end) {
+    ch->needAtLeast = end;
+    if (!ch->refill || !ch->refill(ch)) {
+      throw FDMemoryChannelUnderrun();
+    }
+  }
+}
+
+static void readFromChannel(FDMemoryChannel* ch, char* b, size_t sz) {
+  awaitChannelBytes(ch, ch->inPos + sz);
+  if (sz != 0) {
+    memcpy(b, ch->in + ch->inPos, sz);
+  }
+  ch->inPos += sz;
+}
+
 void readOrMark(int fd, char* b, size_t sz) {
+  if (FDMemoryChannel* ch = memoryChannelFor(fd)) {
+    readFromChannel(ch, b, sz);
+    return;
+  }
   try {
     fdread(fd,b,sz);
   } catch (std::exception&) {
@@ -656,22 +698,58 @@ long fdReadBlockLen(int fd) {
   static constexpr long maxBlockCodecArrayLength = 1L << 28;
 
   long n = 0;
-  try {
-    fdread(fd, reinterpret_cast<char*>(&n), sizeof(n));
-  } catch (const std::exception&) {
-    markBadFD(fd);
-    throw std::runtime_error("BlockCodec array length is truncated");
+  if (FDMemoryChannel* ch = memoryChannelFor(fd)) {
+    readFromChannel(ch, reinterpret_cast<char*>(&n), sizeof(n));
+  } else {
+    try {
+      fdread(fd, reinterpret_cast<char*>(&n), sizeof(n));
+    } catch (const std::exception&) {
+      markBadFD(fd);
+      throw std::runtime_error("BlockCodec array length is truncated");
+    }
   }
 
   if (n < 0 || n > maxBlockCodecArrayLength) {
-    markBadFD(fd);
+    if (FDMemoryChannel* ch = memoryChannelFor(fd)) {
+      if (ch->malformed) {
+        ch->malformed(ch); // may not return (see readFromChannel)
+      }
+    } else {
+      markBadFD(fd);
+    }
     throw std::runtime_error(
       "BlockCodec array length is out of range: " + str::from(n));
   }
   return n;
 }
 
+// The length of an array whose every element encodes to exactly 'elemBytes'
+// bytes. Read from memory, the n elements that follow are then known to be
+// n*elemBytes more bytes, and are waited for here, all at once: the channel's
+// 'needAtLeast' says where the array ends rather than where its next element
+// does, and the array is not allocated before its contents have arrived.
+//
+// That is only sound if the decode does go on to read that many bytes: a
+// channel told to wait for more than its reader needs waits forever, for a
+// value that is all there. So the size is the prelude's to give, and it gives
+// it for arrays of primitives alone (BlockCodecPrim in proccodec.hob), each
+// read by one fdRead<T> of sizeof(T) bytes; an element size no primitive has
+// is ignored. From a descriptor this is fdReadBlockLen.
+long fdReadBlockLenOf(int fd, long elemBytes) {
+  const long n = fdReadBlockLen(fd);
+  if (elemBytes > 0 && elemBytes <= static_cast<long>(sizeof(int128_t))) {
+    if (FDMemoryChannel* ch = memoryChannelFor(fd)) {
+      awaitChannelBytes(ch, ch->inPos + static_cast<size_t>(n) * static_cast<size_t>(elemBytes));
+    }
+  }
+  return n;
+}
+
 void writeOrMark(int fd, const char* b, size_t sz) {
+  if (FDMemoryChannel* ch = memoryChannelFor(fd)) {
+    ch->out.append(b, sz);
+    return;
+  }
   try {
     fdwrite(fd, b, sz);
   } catch (std::exception&) {
@@ -911,6 +989,7 @@ void initStdFuncDefs(cc& ctx) {
   ctx.bind("fdReadLong",    &fdRead<long>);
   ctx.bind("fdWriteLong",   &fdWrite<long>);
   ctx.bind("fdReadBlockLen", &fdReadBlockLen);
+  ctx.bind("fdReadBlockLenOf", &fdReadBlockLenOf);
   ctx.bind("fdReadInt128",  &fdRead<int128_t>);
   ctx.bind("fdWriteInt128", &fdWrite<int128_t>);
   ctx.bind("fdReadFloat",   &fdRead<float>);
