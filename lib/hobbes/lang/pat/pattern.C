@@ -10,6 +10,7 @@
 #include <hobbes/util/str.H>
 #include <hobbes/eval/cc.H>
 #include <fstream>
+#include <unordered_map>
 
 namespace hobbes {
 
@@ -697,6 +698,145 @@ void assignNames(const str::seq& vns, PatternRows& ps, bool* mappedVs) {
   }
 }
 
+// The match compiler walks patterns by recursion, one stack frame (or
+// several) per level of nesting: validation, naming, and every DFA state's
+// choice of pivot column (scorePatternF) all recur through each pattern still
+// in its table. The parser cannot hand it a pattern nested more than ~200
+// deep before its own stack is exhausted, but a pattern built through the
+// C++ API (compileMatch takes PatternRows as given) has no such bound, and on
+// a release x86-64 build one level costs ~740 bytes for a record pattern,
+// ~1KB for a variant and ~1.7KB for an array: an 8MB stack overflowed at
+// ~4,900 nested arrays and ~11,000 nested records, a 512KB one at 311 and
+// 696, and the DFA depth bound in dfa.C was never reached (each of those
+// levels costs one DFA state as well, so the states were within budget when
+// the walk ran the stack out).
+//
+// So nesting is measured without recursion before anything walks it. The
+// bound sits well above the parser's own ceiling, so no pattern that parses
+// is turned away, and what it allows costs a few hundred KB of stack at most
+// even on top of the DFA's own recursion (see maxMatchDFADepth in dfa.C).
+const size_t maxPatternNestingDepth = 256;
+
+struct subPatternsF : public switchPattern<Patterns> {
+  Patterns with(const MatchLiteral*) const override { return Patterns(); }
+  Patterns with(const MatchAny*)     const override { return Patterns(); }
+  Patterns with(const MatchRegex*)   const override { return Patterns(); }
+  Patterns with(const MatchVariant* v) const override { return list(v->value()); }
+
+  Patterns with(const MatchArray* v) const override {
+    Patterns r;
+    for (size_t i = 0; i < v->size(); ++i) {
+      r.push_back(v->pattern(i));
+    }
+    return r;
+  }
+
+  Patterns with(const MatchRecord* v) const override {
+    Patterns r;
+    for (const auto& f : v->fields()) {
+      r.push_back(f.second);
+    }
+    return r;
+  }
+};
+
+// measure a pattern's nesting into *depth, or return false if the pattern
+// reaches itself and so has none
+static bool measurePatternNesting(const PatternPtr& root, size_t* depth) {
+  *depth = 0;
+  if (!root) {
+    return true;
+  }
+
+  // a pattern can reach the same sub-pattern by more than one path, so depths
+  // are memoized -- without that, a tree of shared sub-patterns takes
+  // exponential time to measure.
+  //
+  // What is memoized is a finished depth, and only that is ever read. A
+  // sub-pattern waiting on the stack is not finished: if a second parent left
+  // it there for the first to get to, that parent would be measured before it
+  // was (and one level short for each time that happened on the way up). So a
+  // parent pushes every child not yet finished, whoever else has pushed it,
+  // and a frame whose pattern was finished through another parent in the
+  // meantime is dropped. Each pattern is still expanded only once, so this
+  // pushes at most one frame per edge.
+  //
+  // A pattern is entered here at 0, which no finished pattern measures, when
+  // its children are pushed. The patterns in that state are exactly the ones
+  // on the path down to the frame on top, so a child found in it is its own
+  // ancestor. MatchRecord::fields can make such a pattern, and nothing that
+  // walks one would ever finish.
+  const size_t inProgress = 0;
+  std::unordered_map<const Pattern*, size_t> depths;
+
+  using Frame = std::pair<PatternPtr, bool>; // the pattern, and whether its children are on the stack
+  std::vector<Frame> stack;
+  stack.push_back(Frame(root, false));
+
+  while (!stack.empty()) {
+    const Pattern* top = stack.back().first.get();
+
+    if (!stack.back().second) {
+      if (depths.find(top) != depths.end()) {
+        // finished through another parent since this was pushed
+        stack.pop_back();
+        continue;
+      }
+      stack.back().second = true;
+      depths[top] = inProgress;
+
+      const Patterns cs = switchOf(stack.back().first, subPatternsF());
+      for (const auto& c : cs) {
+        if (!c) {
+          continue;
+        }
+        const auto d = depths.find(c.get());
+        if (d == depths.end()) {
+          stack.push_back(Frame(c, false));
+        } else if (d->second == inProgress) {
+          return false;
+        }
+      }
+    } else {
+      // every child was finished or pushed above this frame, and everything
+      // above it has since been popped, so every child is finished now
+      const PatternPtr p = stack.back().first;
+      stack.pop_back();
+
+      size_t d = 1;
+      for (const auto& c : switchOf(p, subPatternsF())) {
+        if (c) {
+          d = std::max(d, depths.at(c.get()) + 1);
+        }
+      }
+      depths[p.get()] = d;
+    }
+  }
+
+  *depth = depths.at(root.get());
+  return true;
+}
+
+static const char* const cyclicPatternMsg = "match pattern contains itself as a sub-pattern";
+
+size_t patternNestingDepth(const PatternPtr& p) {
+  size_t d = 0;
+  if (!measurePatternNesting(p, &d)) {
+    throw std::runtime_error(cyclicPatternMsg);
+  }
+  return d;
+}
+
+void checkPatternNestingDepth(const PatternPtr& p, const LexicalAnnotation& la) {
+  size_t d = 0;
+  if (!measurePatternNesting(p, &d)) {
+    throw annotated_error(la, cyclicPatternMsg);
+  }
+  if (d > maxPatternNestingDepth) {
+    throw annotated_error(la, "match pattern is too complex to compile (nests more than " + str::from(maxPatternNestingDepth) + " levels deep)");
+  }
+}
+
 ExprPtr compileMatch(cc* c, const Exprs& es, const PatternRows& ps, const LexicalAnnotation& rootLA) {
   // everything handed in is walked below (each row's result and guard are
   // renamed by substitution, for one), and every walk recurs through nesting.
@@ -711,6 +851,9 @@ ExprPtr compileMatch(cc* c, const Exprs& es, const PatternRows& ps, const Lexica
   for (const auto& p : ps) {
     checkNestingDepth(p.guard);
     checkNestingDepth(p.result);
+    for (const auto& pat : p.patterns) {
+      checkPatternNestingDepth(pat, rootLA);
+    }
   }
 
   validate(c->typeEnv(), es.size(), ps, rootLA);
@@ -764,7 +907,16 @@ ExprPtr compileRegexFn(cc* c, const std::string& regex, const LexicalAnnotation&
 }
 
 // a simple test to determine whether or not a pattern can possibly be refuted
+//
+// This and accessibleBindingNames below run from grammar actions before the
+// match compiler's nesting bound (checkPatternNestingDepth) is applied, so
+// they walk with an explicit stack rather than by recursion.
 struct refutableP : public switchPattern<bool> {
+  // a record is refuted if any of its fields can be, so its fields are
+  // queued here for the caller to test rather than tested by recursion
+  Patterns* pending;
+  explicit refutableP(Patterns* pending) : pending(pending) { }
+
   bool with(const MatchLiteral* v) const override { return sizeOf(v->equivConstant()->primType()) > 0; } // the only irrefutable literal is unit
   bool with(const MatchAny*      ) const override { return false; }
   bool with(const MatchArray*    ) const override { return true; }
@@ -773,16 +925,24 @@ struct refutableP : public switchPattern<bool> {
 
   bool with(const MatchRecord* x) const override {
     for (auto i : x->indexes()) {
-      if (switchOf(x->pattern(i).second, *this)) {
-        return true;
-      }
+      this->pending->push_back(x->pattern(i).second);
     }
     return false;
   }
 };
 
 bool refutable(const PatternPtr& p) {
-  return switchOf(p, refutableP());
+  Patterns pending;
+  refutableP f(&pending);
+  pending.push_back(p);
+  while (!pending.empty()) {
+    const PatternPtr q = pending.back();
+    pending.pop_back();
+    if (switchOf(q, f)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 bool isUnitPat(const PatternPtr& p) {
@@ -794,8 +954,10 @@ bool isUnitPat(const PatternPtr& p) {
 }
 
 struct accBindingNamesF : public switchPattern<UnitV> {
+  // sub-patterns are queued here for the caller to visit, not visited by recursion
   str::set* r;
-  accBindingNamesF(str::set* r) : r(r) { }
+  Patterns* pending;
+  accBindingNamesF(str::set* r, Patterns* pending) : r(r), pending(pending) { }
 
   UnitV with(const MatchLiteral*) const override {
     return unitv;
@@ -810,7 +972,7 @@ struct accBindingNamesF : public switchPattern<UnitV> {
 
   UnitV with(const MatchArray* ps) const override {
     for (size_t i = 0; i < ps->size(); ++i) {
-      switchOf(ps->pattern(i), *this);
+      this->pending->push_back(ps->pattern(i));
     }
     return unitv;
   }
@@ -822,13 +984,13 @@ struct accBindingNamesF : public switchPattern<UnitV> {
   }
 
   UnitV with(const MatchVariant* v) const override {
-    switchOf(v->value(), *this);
+    this->pending->push_back(v->value());
     return unitv;
   }
 
   UnitV with(const MatchRecord* ps) const override {
     for (auto i : ps->indexes()) {
-      switchOf(ps->pattern(i).second, *this);
+      this->pending->push_back(ps->pattern(i).second);
     }
     return unitv;
   }
@@ -836,7 +998,14 @@ struct accBindingNamesF : public switchPattern<UnitV> {
 
 str::set accessibleBindingNames(const PatternPtr& p) {
   str::set r;
-  switchOf(p, accBindingNamesF(&r));
+  Patterns pending;
+  accBindingNamesF f(&r, &pending);
+  pending.push_back(p);
+  while (!pending.empty()) {
+    const PatternPtr q = pending.back();
+    pending.pop_back();
+    switchOf(q, f);
+  }
   return r;
 }
 
