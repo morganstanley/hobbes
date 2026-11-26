@@ -1,4 +1,4 @@
-FROM rockylinux:9
+FROM rockylinux:10
 ARG  DEPS
 ENV  ARGS=-V
 RUN  dnf update -y
