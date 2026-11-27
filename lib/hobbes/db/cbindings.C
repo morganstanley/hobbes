@@ -68,7 +68,7 @@ struct DynCumFreqState {
           return;
         }
       }
-      assert(false && "failed to find point in interval, internal error");
+      throw std::runtime_error("Corrupt compressed series, code point outside of its model's interval");
     }
   };
 };
@@ -128,6 +128,9 @@ public:
   }
 
   void initWithState() {
+    // don't build coding tables out of frequencies that the coder can't work with
+    checkActiveFreqs(this->pm.activeFreqs, symbolCount());
+
     // get symbol frequencies in decreasing order
     std::vector<index_t> idxs(symbolCount());
     std::iota(idxs.begin(), idxs.end(), 0);
@@ -221,12 +224,13 @@ public:
 
     if (s == dm->esc()) {
       auto escRange = dm->symbolCount();
-      auto nc = static_cast<symbol>(this->readState.svalue(escRange));
+      // check the escaped symbol at its full width, before it's narrowed and used as a table index
+      arithn::code nc = this->readState.svalue(escRange);
       if (nc >= escRange) {
         throw std::runtime_error("Compressed escape symbol " + str::from(nc) + " is outside a model of " + str::from(escRange) + " symbols");
       }
       this->readState.shift(nc, nc+1, escRange);
-      dm->add(nc);
+      dm->add(static_cast<symbol>(nc));
       return static_cast<uint8_t>(nc);
     } else {
       dm->add(s);
