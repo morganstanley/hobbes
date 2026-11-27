@@ -21,6 +21,9 @@ const Array* storedAsArray(const MonoTypePtr&);
 bool storedAsDArray(const MonoTypePtr&);
 MonoTypePtr darrayty(const MonoTypePtr&);
 
+// can a value of this type be loaded out of a file (is all of it kept in the file, with file references to whatever is stored elsewhere)?
+bool isStorableType(const MonoTypePtr&);
+
 // a file reference is an index into a file where we can find a value of type T (like a pointer)
 template <typename T>
   struct fileref {

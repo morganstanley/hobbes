@@ -2164,6 +2164,70 @@ bool embedsExpression(const MonoTypePtr& t) {
   return f.found;
 }
 
+namespace {
+// looks for what a description of plain data has no use for (see
+// whyNotPlainData in lang/type.H), and remembers the first thing it finds
+struct findNotPlainData : public walkTy {
+  mutable std::string found;
+  void note(const std::string& what) const {
+    if (this->found.empty()) {
+      this->found = what;
+    }
+  }
+
+  // a named type is laid out as its representation, so that is looked at too
+  // (each one once, as findEmbeddedExpr does and for the same reason)
+  mutable std::set<const Prim*> prims;
+  UnitV with(const Prim* v) const override {
+    if (v->name() == "fileref") {
+      note("a file reference");
+    }
+    if (v->representation() && this->prims.insert(v).second) {
+      switchOf(v->representation(), *this);
+    }
+    return unitv;
+  }
+  UnitV with(const OpaquePtr* v) const override {
+    note("the opaque type <" + v->name() + ">");
+    return walkTy::with(v);
+  }
+  UnitV with(const Func* v) const override {
+    note("a function");
+    return walkTy::with(v);
+  }
+  UnitV with(const Exists* v) const override {
+    note("an existential type");
+    return walkTy::with(v);
+  }
+  UnitV with(const Recursive* v) const override {
+    note("a recursive type");
+    return walkTy::with(v);
+  }
+  UnitV with(const Variant* v) const override {
+    for (const auto& m : v->members()) {
+      if (isHiddenCtorName(m.selector)) {
+        note("the hidden constructor '" + m.selector + "'");
+      }
+    }
+    return walkTy::with(v);
+  }
+  UnitV with(const Record* v) const override {
+    for (const auto& m : v->members()) {
+      if (isHiddenFieldName(m.field)) {
+        note("the hidden field '" + m.field + "'");
+      }
+    }
+    return walkTy::with(v);
+  }
+};
+}
+
+std::string whyNotPlainData(const MonoTypePtr& t) {
+  findNotPlainData f;
+  switchOf(t, f);
+  return f.found;
+}
+
 bool hasFreeVariables(const MonoTypes& mts) {
   for (const auto &mt : mts) {
     if (hasFreeVariables(mt)) {
@@ -3117,6 +3181,20 @@ MonoTypePtr decodeFrom(const bytes& in, unsigned int* n);
 // that their name already stands for: a file reference is a type function to 'long'
 // (fileRefTy) and a stored sequence is a type function to a file reference
 // (storedStreamOf).
+//
+// Three types that the prelude defines are held to the same rule, because the
+// instances that are found for them by name cast a value to what the prelude says
+// it is, whatever the description that came with it says:
+//  * 'vector' is how a std::vector is lifted (liftVector, lang/tylift.H). It is laid
+//    out as the bytes of the object itself -- its begin and end pointers -- and its
+//    Array instance (boot/amapping.hob) follows them. Such a value only means
+//    something in the process that lifted it, but a description decoded here comes
+//    from a file or a peer together with the bytes that it lays out, so a
+//    description that lays out a 'vector' at all is refused. (Named without a
+//    representation it has no size, and no value of it is read.)
+//  * 'bitvec' (boot/farrfilt.hob) is an array of bytes, and is used as one.
+//  * 'darray' (boot/storage.hob, and darrayty in db/file.C) is a type function to an
+//    array, and is used as one.
 static bool validPrimRepresentation(const std::string& pname, const MonoTypePtr& hrep) {
   if (pname == "fileref") {
     const TAbs* f = is<TAbs>(hrep);
@@ -3124,6 +3202,14 @@ static bool validPrimRepresentation(const std::string& pname, const MonoTypePtr&
   } else if (pname == "fseq") {
     const TAbs* f = is<TAbs>(hrep);
     return f != nullptr && isFileRef(f->body());
+  } else if (pname == "vector") {
+    return false;
+  } else if (pname == "bitvec") {
+    const Array* a = is<Array>(hrep);
+    return a != nullptr && a->type() == primty("byte");
+  } else if (pname == "darray") {
+    const TAbs* f = is<TAbs>(hrep);
+    return f != nullptr && f->args().size() == 1 && is<Array>(f->body()) != nullptr;
   } else {
     return !isPrimName(pname);
   }
@@ -3135,7 +3221,7 @@ MonoTypePtr decodePrim(const bytes& in, unsigned int* n) {
   MonoTypePtr hrep    = hasHRep ? decodeFrom(in, n) : MonoTypePtr();
 
   if (hrep && !validPrimRepresentation(pname, hrep)) {
-    throw std::runtime_error("Decoded type description redefines the built-in type '" + pname + "' with the representation: " + showBounded(hrep));
+    throw std::runtime_error("Decoded type description redefines the type '" + pname + "' with the representation: " + showBounded(hrep));
   }
 
   // special case decoding logic for old files that don't provide the representation for fileref types
@@ -3270,11 +3356,32 @@ MonoTypePtr decodeVariant(const bytes& in, unsigned int* n) {
   Variant::Members ms;
   str::seq         names;
 
+  // A variant value records which constructor made it by that constructor's
+  // ID and nothing else, and whoever takes the value apart picks the payload
+  // type by that ID (variantSplit takes the first constructor that has it).
+  // The IDs here arrive with the rest of the description, before the peer is
+  // trusted -- hog compiles a reader and a store function out of each
+  // statement type a producer sends, and reads by position what it stores by
+  // ID -- so an ID given to two constructors with different payloads is
+  // refused here, where it enters: a value made by one of them would be taken
+  // apart as the other. Source text has no way to say this (makeVarType
+  // numbers the constructors, makePVarType refuses a repeated value).
+  //
+  // Constructors that share an ID and a payload type are two names for one
+  // value, as in an enumeration with aliases, and are left alone.
+  std::map<unsigned int, MonoTypePtr> payloads;
+
   auto c = read<size_t>(in, n);
   for (size_t i = 0; i < c; ++i) {
     std::string  ctor = read<std::string>(in, n);
     auto id   = read<unsigned int>(in, n);
     MonoTypePtr  ty   = decodeFrom(in, n);
+
+    auto known = payloads.emplace(id, ty);
+    if (!known.second && !(*known.first->second == *ty)) {
+      throw std::runtime_error(
+        "Variant constructor ID is shared by constructors with different payloads in a decoded type description: " + str::from(id));
+    }
 
     names.push_back(ctor);
     ms.push_back(Variant::Member(ctor, ty, id));

@@ -6,6 +6,7 @@
 #include <hobbes/eval/cc.H>
 #include <hobbes/util/str.H>
 #include <hobbes/util/ptr.H>
+#include <set>
 #include <stdexcept>
 #include <sstream>
 
@@ -197,6 +198,88 @@ bool storedAsDArray(const MonoTypePtr& ty) {
     return storedAsDArray(rty->recType());
   } else {
     return isDArray(ty);
+  }
+}
+
+// A value is loaded out of a file by handing out the bytes at its offset as a
+// value of its type, so that type has to be one whose values are held entirely
+// in those bytes: primitives, and records, variants and fixed-length arrays of
+// them, with a file reference (an offset into the same file) to whatever is
+// kept elsewhere. A function, a closure, an array or a recursive type inside
+// of a value, a file, a process, ... is an address in the memory of the
+// process that made it. No writer stores one of those, but the type of a
+// stored value is read out of the file too (and for a log, hog had it from
+// whoever sent the log statements), and with such a type the bytes of the
+// file would be called or followed as addresses by whoever loads them.
+namespace {
+struct storedInPlaceF : public switchType<bool> {
+  // (each type is looked at once, however many times it is shared)
+  mutable std::set<const MonoType*> seen;
+
+  bool storedInPlace(const MonoTypePtr& t) const {
+    // aliases and type functions are stored as what they stand for
+    // (so a file reference is the offset that it is, whatever it refers to)
+    MonoTypePtr rt = repType(t);
+    return !this->seen.insert(rt.get()).second || switchOf(rt, *this);
+  }
+
+  bool with(const Prim*        ) const override { return true; }
+  // a C++ object can be stored in place (writer::define<T> does that for any
+  // T it is given), but whether it is says the file, and the one such type
+  // that this library itself takes apart is a std::string, which is pointers
+  bool with(const OpaquePtr*  v) const override { return v->storedContiguously() && v->name() != "std::string"; }
+  bool with(const FixedArray* v) const override { return storedInPlace(v->type()); }
+  bool with(const Variant*    v) const override {
+    for (const auto& m : v->members()) {
+      if (!storedInPlace(m.type)) return false;
+    }
+    return true;
+  }
+  bool with(const Record*     v) const override {
+    for (const auto& m : v->members()) {
+      if (!storedInPlace(m.type)) return false;
+    }
+    return true;
+  }
+
+  // held by address
+  bool with(const Array*      ) const override { return false; }
+  bool with(const Func*       ) const override { return false; }
+  bool with(const Exists*     ) const override { return false; }
+  bool with(const Recursive*  ) const override { return false; }
+
+  // no representation at all (the built-in type constructors, for files,
+  // processes, lists, ..., are these: the type decoder lets no description
+  // give one of them a representation, see validPrimRepresentation)
+  bool with(const TApp*       ) const override { return false; }
+  bool with(const TVar*       ) const override { return false; }
+  bool with(const TGen*       ) const override { return false; }
+  bool with(const TAbs*       ) const override { return false; }
+  bool with(const TString*    ) const override { return false; }
+  bool with(const TLong*      ) const override { return false; }
+  bool with(const TExpr*      ) const override { return false; }
+};
+}
+
+bool isStorableType(const MonoTypePtr& ty) {
+  storedInPlaceF f;
+
+  // (following what reader::unsafeLoad does with each type)
+  if (const Array* a = storedAsArray(ty)) {
+    return f.storedInPlace(a->type());
+  } else if (storedAsDArray(ty)) {
+    // known by its name, and loaded as the array of its argument
+    MonoTypePtr dty = ty;
+    while (const Recursive* rty = is<Recursive>(dty)) {
+      dty = rty->recType();
+    }
+    MonoTypePtr  ety = is<TApp>(dty)->args()[0];
+    const Array* a   = is<Array>(repType(dty));
+    return a != nullptr && *a->type() == *ety && f.storedInPlace(ety);
+  } else if (is<Recursive>(ty) != nullptr) {
+    return f.storedInPlace(unroll(ty));
+  } else {
+    return f.storedInPlace(ty);
   }
 }
 
