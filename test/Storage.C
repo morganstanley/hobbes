@@ -9,6 +9,8 @@
 #include <hobbes/slmap.H>
 #include "test.H"
 
+#include <cstddef>
+#include <functional>
 #include <atomic>
 #include <chrono>
 #include <fstream>
@@ -2716,6 +2718,405 @@ TEST(Storage, CorruptQueueSegmentsAreRejected) {
     std::vector<uint8_t> buf(1024);
     uint8_t st = 0;
     EXPECT_EXCEPTION(p.read(buf.data(), buf.size(), &st, 0, []{}));
+  }
+}
+
+// a binding as the environment of a file has it: 'offset' is where its data
+// is, and 'boffset' is where the environment keeps that offset
+static fregion::binding storedBinding(const std::string& fname, const std::string& vname) {
+  fregion::reader r(fname);
+  return r.fileData()->bindings.at(vname);
+}
+
+using FileUse = std::function<void(const std::string&)>;
+
+// is a copy of a file with one word of it replaced refused with an error?
+// (a use that goes wrong in some other way has to say so with a logic_error)
+static bool rejectsWith(const std::string& fname, size_t off, uint64_t w, const FileUse& use) {
+  std::string bad = mkFName();
+  copyFile(fname, bad);
+  pokeWord(bad, off, w);
+
+  bool threw = false;
+  try {
+    use(bad);
+  } catch (std::runtime_error&) {
+    threw = true;
+  } catch (...) {
+    unlink(bad.c_str());
+    throw;
+  }
+  unlink(bad.c_str());
+  return threw;
+}
+
+// offsets that no file here holds: the first byte past its end, one far
+// beyond it, and one that wraps to a small number when a size is added to it
+static std::vector<uint64_t> offsetsOutside(const std::string& fname) {
+  fregion::reader r(fname);
+  return { r.fileData()->file_size, uint64_t(1) << 40, ~uint64_t(7) };
+}
+
+TEST(Storage, CorruptBindingOffsetsAreRejected) {
+  // the environment says where each binding's data is, and that offset is
+  // followed before any of the nodes, batches and lengths checked above. It
+  // comes out of the file just as they do, so one that points outside the file
+  // has to be refused rather than mapped -- by a reader, and by a writer that
+  // picks the file up again, which follows the same offsets to find where it
+  // left off.
+  std::string fname = mkFName();
+  try {
+    {
+      fregion::writer w(fname);
+      auto& s = w.series<int>("s", 4);
+      auto& t = w.series<int>("t", 4);
+      w.recordOrdering("log", s, t);
+      for (int i = 0; i < 6; ++i) { s(100 + i); t(i); }
+      *w.define<int64_t>("n") = 42;
+      w.define("str", std::string("hello"));
+      w.defineArray<int64_t>("a", 8)->data[0] = 7;
+    }
+
+    FileUse readSeries = [](const std::string& f) {
+      if (readSeriesToEnd<int>(f, "s") != 6) { throw std::logic_error("wrong series length"); }
+    };
+    FileUse readOrdering = [](const std::string& f) {
+      fregion::reader r(f);
+      auto log = r.ordering("log");
+      size_t n = 0;
+      log.match<int>("s", [&n](const int&) { ++n; });
+      log.match<int>("t", [&n](const int&) { ++n; });
+      while (log.next()) { }
+      if (n != 12) { throw std::logic_error("wrong ordering length"); }
+    };
+    FileUse readLong = [](const std::string& f) {
+      fregion::reader r(f);
+      if (*r.definition<int64_t>("n") != 42) { throw std::logic_error("wrong definition"); }
+    };
+    FileUse readString = [](const std::string& f) {
+      fregion::reader r(f);
+      std::string x;
+      r.definition("str", &x);
+      if (x != "hello") { throw std::logic_error("wrong definition"); }
+    };
+    FileUse readArray = [](const std::string& f) {
+      fregion::reader r(f);
+      const auto* a = r.arrayDefinition<int64_t>("a");
+      if (a->size != 8 || a->data[0] != 7) { throw std::logic_error("wrong array"); }
+    };
+    FileUse resumeSeries = [](const std::string& f) { fregion::writer w(f); w.series<int>("s", 4)(106); };
+    FileUse resumeLong   = [](const std::string& f) { fregion::writer w(f); *w.define<int64_t>("n") = 43; };
+    FileUse resumeString = [](const std::string& f) { fregion::writer w(f); w.define("str", std::string("world")); };
+    FileUse resumeArray  = [](const std::string& f) {
+      fregion::writer w(f);
+      auto* a = w.defineArray<int64_t>("a", 8);
+      if (a->size != 8 || a->data[0] != 7) { throw std::logic_error("wrong array"); }
+      a->data[0] = 8;
+    };
+
+    // every use of a binding starts from the offset that the environment has for it
+    const std::vector<std::pair<std::string, FileUse>> uses = {
+      { "s", readSeries }, { "log", readOrdering }, { "n", readLong }, { "str", readString }, { "a", readArray },
+      { "s", resumeSeries }, { "n", resumeLong }, { "str", resumeString }, { "a", resumeArray }
+    };
+    const std::vector<uint64_t> outside = offsetsOutside(fname);
+
+    for (const auto& u : uses) {
+      size_t at = storedBinding(fname, u.first).boffset;
+
+      // as written, the file is read and resumed without complaint
+      EXPECT_TRUE(!rejectsWith(fname, at, readWord(fname, at), u.second));
+
+      for (uint64_t bad : outside) {
+        EXPECT_TRUE(rejectsWith(fname, at, bad, u.second));
+      }
+    }
+
+    // an ordering is a series of (series, offset) pairs, and each offset is
+    // where the value written at that point is: the second word of an entry
+    size_t logNode  = readWord(fname, storedBinding(fname, "log").offset);
+    size_t logBatch = readWord(fname, logNode + sizeof(uint64_t));
+    for (uint64_t bad : outside) {
+      EXPECT_TRUE(rejectsWith(fname, logBatch + 2*sizeof(uint64_t), bad, readOrdering));
+    }
+
+    // a writer resuming a series walks the same nodes that a reader does, to
+    // the last batch with room in it: here node 1 is full and node 2 is not
+    size_t node1 = readWord(fname, storedBinding(fname, "s").offset);
+    size_t node2 = readWord(fname, node1 + 2*sizeof(uint64_t));
+    for (uint64_t bad : outside) {
+      EXPECT_TRUE(rejectsWith(fname, node1 + 2*sizeof(uint64_t), bad, resumeSeries));
+      EXPECT_TRUE(rejectsWith(fname, node2 + sizeof(uint64_t), bad, resumeSeries));
+    }
+
+    unlink(fname.c_str());
+  } catch (...) {
+    unlink(fname.c_str());
+    throw;
+  }
+}
+
+TEST(Storage, CorruptArrayLengthsAreRejected) {
+  // an array's stored length decides how much is mapped for it: one that the
+  // file cannot hold, and two whose byte count wraps -- to nothing, so that
+  // nothing was mapped and the array was returned anyway, and to two words, so
+  // that the array returned was far shorter than its length says
+  std::string fname = mkFName();
+  try {
+    {
+      fregion::writer w(fname);
+      w.defineArray<int64_t>("a", 8)->data[0] = 7;
+    }
+
+    FileUse readArray = [](const std::string& f) {
+      fregion::reader r(f);
+      const auto* a = r.arrayDefinition<int64_t>("a");
+      if (a->size != 8 || a->data[0] != 7) { throw std::logic_error("wrong array"); }
+    };
+    FileUse resumeArray = [](const std::string& f) { fregion::writer w(f); w.defineArray<int64_t>("a", 8)->data[0] = 8; };
+
+    size_t alen = storedBinding(fname, "a").offset;
+    EXPECT_EQ(readWord(fname, alen), uint64_t(8));
+    EXPECT_TRUE(!rejectsWith(fname, alen, 8, readArray));
+    EXPECT_TRUE(!rejectsWith(fname, alen, 8, resumeArray));
+
+    for (uint64_t bad : { uint64_t(1) << 40, (uint64_t(1) << 61) - 1, (uint64_t(1) << 61) + 1 }) {
+      EXPECT_TRUE(rejectsWith(fname, alen, bad, readArray));
+      EXPECT_TRUE(rejectsWith(fname, alen, bad, resumeArray));
+    }
+
+    // an array is still refused when it is not as long as the writer expects
+    // (it is mapped at the length it was stored with before the two are compared)
+    EXPECT_TRUE(rejectsWith(fname, alen, 8, [](const std::string& f) { fregion::writer w(f); w.defineArray<int64_t>("a", 4); }));
+    EXPECT_TRUE(rejectsWith(fname, alen, 8, [](const std::string& f) { fregion::writer w(f); w.defineArray<int64_t>("a", size_t(1) << 40); }));
+
+    unlink(fname.c_str());
+  } catch (...) {
+    unlink(fname.c_str());
+    throw;
+  }
+}
+
+TEST(Storage, CyclicSeriesLinksStopAResumingWriter) {
+  // a writer that picks a series up again walks its nodes to the last one,
+  // and each link is a stored offset: a node that links to itself (or back to
+  // an earlier node) has no last one, and the walk never ended
+  std::string fname = mkFName();
+  try {
+    {
+      fregion::writer w(fname);
+      auto& s = w.series<int>("s", 4);
+      for (int i = 0; i < 6; ++i) { s(100 + i); }
+    }
+    FileUse resumeSeries = [](const std::string& f) { fregion::writer w(f); w.series<int>("s", 4)(106); };
+
+    size_t node1 = readWord(fname, storedBinding(fname, "s").offset);
+    size_t node2 = readWord(fname, node1 + 2*sizeof(uint64_t));
+
+    EXPECT_TRUE(!rejectsWith(fname, node1 + 2*sizeof(uint64_t), node2, resumeSeries));
+    EXPECT_TRUE(rejectsWith(fname, node2 + 2*sizeof(uint64_t), node2, resumeSeries));
+    EXPECT_TRUE(rejectsWith(fname, node2 + 2*sizeof(uint64_t), node1, resumeSeries));
+
+    unlink(fname.c_str());
+  } catch (...) {
+    unlink(fname.c_str());
+    throw;
+  }
+}
+
+TEST(Storage, CorruptSkipListOffsetsAreRejected) {
+  // a skip-list map is found through its binding, and its entries through the
+  // file references that link one node to the next
+  std::string fname = mkFName();
+  try {
+    {
+      fregion::writer w(fname);
+      slmap<int64_t, int64_t> m("m", w);
+      m.insert(5, 50);
+      m.insert(7, 70);
+    }
+
+    FileUse walk = [](const std::string& f) {
+      fregion::writer w(f);
+      slmap<int64_t, int64_t> m("m", w);
+      size_t n = 0;
+      for (auto i = m.begin(); i; ++i) { ++n; }
+      if (n != 2 || m.size() != 2) { throw std::logic_error("wrong map size"); }
+    };
+
+    // the map is a count and then its root node, and a node starts with the
+    // links out of it: how many there are, and then the link at each level
+    fregion::binding b = storedBinding(fname, "m");
+    size_t rootLink  = b.offset + 2*sizeof(uint64_t);
+    size_t firstLink = readWord(fname, rootLink) + sizeof(uint64_t);
+
+    EXPECT_TRUE(!rejectsWith(fname, b.boffset, b.offset, walk));
+
+    for (uint64_t bad : offsetsOutside(fname)) {
+      EXPECT_TRUE(rejectsWith(fname, b.boffset, bad, walk));
+      EXPECT_TRUE(rejectsWith(fname, rootLink,  bad, walk));
+      EXPECT_TRUE(rejectsWith(fname, firstLink, bad, walk));
+    }
+
+    unlink(fname.c_str());
+  } catch (...) {
+    unlink(fname.c_str());
+    throw;
+  }
+}
+
+TEST(Storage, CorruptCompressedSeriesOffsetsAreRejected) {
+  // a compressed series is reached the same way as a plain one: the binding
+  // has the offset of the first node, each node has the offset of its batch
+  // and of the next node, and a batch has the offsets of its model states and
+  // of the first segment of its bits
+  std::string fname = mkFName();
+  try {
+    {
+      fregion::cwriter w(fname);
+      auto& cs = w.series<int>("cs", 4);
+      for (int i = 0; i < 6; ++i) { cs(i); }
+    }
+
+    FileUse read = [](const std::string& f) {
+      fregion::creader r(f);
+      auto& cs = r.series<int>("cs");
+      int x = 0;
+      size_t n = 0;
+      while (cs.next(&x)) { ++n; }
+      if (n != 6) { throw std::logic_error("wrong series length"); }
+    };
+    FileUse resume = [](const std::string& f) {
+      fregion::cwriter w(f);
+      w.series<int>("cs", 4)(6);
+    };
+
+    fregion::binding b = storedBinding(fname, "cs");
+    size_t node1  = readWord(fname, b.offset);
+    size_t batch1 = readWord(fname, node1 + sizeof(uint64_t));
+    size_t node2  = readWord(fname, node1 + 2*sizeof(uint64_t));
+    size_t batch2 = readWord(fname, node2 + sizeof(uint64_t));
+
+    const size_t nodeBatch = sizeof(uint64_t), nodeNext = 2*sizeof(uint64_t);
+    const size_t initModel = offsetof(fregion::cbatch, initModel), scratchModel = offsetof(fregion::cbatch, scratchModel), headBitBuffer = offsetof(fregion::cbatch, headBitBuffer);
+
+    EXPECT_TRUE(!rejectsWith(fname, b.boffset, b.offset, read));
+    EXPECT_TRUE(!rejectsWith(fname, b.boffset, b.offset, resume));
+
+    for (uint64_t bad : offsetsOutside(fname)) {
+      // a reader starts at the first batch
+      EXPECT_TRUE(rejectsWith(fname, b.boffset,              bad, read));
+      EXPECT_TRUE(rejectsWith(fname, node1 + nodeNext,       bad, read));
+      EXPECT_TRUE(rejectsWith(fname, node1 + nodeBatch,      bad, read));
+      EXPECT_TRUE(rejectsWith(fname, batch1 + initModel,     bad, read));
+      EXPECT_TRUE(rejectsWith(fname, batch1 + headBitBuffer, bad, read));
+
+      // and a resuming writer at the last
+      EXPECT_TRUE(rejectsWith(fname, b.boffset,              bad, resume));
+      EXPECT_TRUE(rejectsWith(fname, node1 + nodeNext,       bad, resume));
+      EXPECT_TRUE(rejectsWith(fname, node2 + nodeBatch,      bad, resume));
+      EXPECT_TRUE(rejectsWith(fname, batch2 + scratchModel,  bad, resume));
+      EXPECT_TRUE(rejectsWith(fname, batch2 + headBitBuffer, bad, resume));
+    }
+
+#if !defined(__APPLE__)
+    // a script reads the same file through lib/hobbes/db, and the same bits
+    // (not on macOS: the refusal is thrown by a runtime function that JIT-compiled
+    //  code calls, and the JIT's frames can't be unwound there -- see
+    //  Arrays/newArrayRefusesALengthItCannotAllocate)
+    FileUse script = [](const std::string& f) {
+      cc rc;
+      rc.define("cf", "inputFile :: (LoadFile \"" + f + "\" w) => w");
+      if (rc.compileFn<size_t()>("size([x | x <- cf.cs])")() != 6) { throw std::logic_error("wrong series length"); }
+    };
+    EXPECT_TRUE(!rejectsWith(fname, b.boffset, b.offset, script));
+    EXPECT_TRUE(rejectsWith(fname, batch1 + headBitBuffer, offsetsOutside(fname)[0], script));
+#endif
+
+    unlink(fname.c_str());
+  } catch (...) {
+    unlink(fname.c_str());
+    throw;
+  }
+
+  // the series API in lib/hobbes/db resumes a compressed series the same way
+  fname = mkFName();
+  try {
+    FileUse resume = [](const std::string& f) {
+      writer w(f);
+      series<Point> zs(&c(), &w, "zs", 4, StoredSeries::Compressed);
+      Point p;
+      p.x = 1;
+      p.y = 2;
+      zs(p);
+    };
+    resume(fname);
+
+    fregion::binding b = storedBinding(fname, "zs");
+    size_t node  = readWord(fname, b.offset);
+    size_t batch = readWord(fname, node + sizeof(uint64_t));
+
+    EXPECT_TRUE(!rejectsWith(fname, b.boffset, b.offset, resume));
+
+    for (uint64_t bad : offsetsOutside(fname)) {
+      EXPECT_TRUE(rejectsWith(fname, b.boffset, bad, resume));
+      EXPECT_TRUE(rejectsWith(fname, batch + offsetof(fregion::cbatch, scratchModel), bad, resume));
+    }
+
+    unlink(fname.c_str());
+  } catch (...) {
+    unlink(fname.c_str());
+    throw;
+  }
+}
+
+TEST(Storage, CyclicCompressedSeriesLinksAreRejected) {
+  // the nodes of a compressed series and the bit segments of each batch are
+  // linked lists in the file as well: a reader queues every node before it
+  // reads any, and a resuming writer walks both lists to their ends, so links
+  // that lead back to where they came from kept either going for good
+  std::string fname = mkFName();
+  try {
+    {
+      fregion::cwriter w(fname);
+      auto& cs = w.series<int>("cs", 4);
+      for (int i = 0; i < 6; ++i) { cs(i); }
+    }
+
+    FileUse read = [](const std::string& f) {
+      fregion::creader r(f);
+      auto& cs = r.series<int>("cs");
+      int x = 0;
+      size_t n = 0;
+      while (cs.next(&x)) { ++n; }
+      if (n != 6) { throw std::logic_error("wrong series length"); }
+    };
+    FileUse resume = [](const std::string& f) {
+      fregion::cwriter w(f);
+      w.series<int>("cs", 4)(6);
+    };
+
+    size_t node1  = readWord(fname, storedBinding(fname, "cs").offset);
+    size_t node2  = readWord(fname, node1 + 2*sizeof(uint64_t));
+    size_t batch2 = readWord(fname, node2 + sizeof(uint64_t));
+    size_t seg    = readWord(fname, batch2 + offsetof(fregion::cbatch, headBitBuffer));
+
+    const size_t nodeNext = 2*sizeof(uint64_t), segNext = offsetof(fregion::cbatchseg, nextRef);
+
+    EXPECT_TRUE(!rejectsWith(fname, node1 + nodeNext, node2, read));
+    EXPECT_TRUE(!rejectsWith(fname, node1 + nodeNext, node2, resume));
+    EXPECT_EQ(readWord(fname, seg + segNext), uint64_t(0));
+
+    for (size_t back : { node1, node2 }) {
+      EXPECT_TRUE(rejectsWith(fname, node2 + nodeNext, back, read));
+      EXPECT_TRUE(rejectsWith(fname, node2 + nodeNext, back, resume));
+    }
+    EXPECT_TRUE(rejectsWith(fname, seg + segNext, seg, resume));
+
+    unlink(fname.c_str());
+  } catch (...) {
+    unlink(fname.c_str());
+    throw;
   }
 }
 

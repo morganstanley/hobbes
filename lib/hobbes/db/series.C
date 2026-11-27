@@ -544,7 +544,7 @@ size_t makeCRootRef(writer* file, const std::string& fn, const MonoTypePtr& cseq
       throw std::runtime_error("Can't write to compressed series '" + fn + "' as type '" + show(cseqType) + "', already defined as type '" + show(storedType) + "'");
     }
 
-    auto* hnr = reinterpret_cast<size_t*>(mapFileData(fd, b->second.offset, sizeof(size_t)));
+    auto* hnr = reinterpret_cast<size_t*>(mapFileDataInFile(fd, b->second.offset, sizeof(size_t), "compressed series root"));
     size_t  hn  = *hnr;
 
     unmapFileData(fd, hnr, sizeof(size_t));

@@ -816,6 +816,24 @@ inline void ensureCountInFile(imagefile* f, size_t dataPos, size_t esz, size_t n
   );
 }
 
+// bound a walk along links read out of the file (the nodes of a series, the
+// segments of a compressed batch): a link is a stored offset like any other,
+// so a node that links back to one already visited is a list with no end. A
+// file cannot hold more distinct nodes of 'nodeSize' bytes than its size
+// allows, so a walk that has taken more steps than that is going in a circle.
+inline void ensureLinksEndInFile(imagefile* f, size_t steps, size_t nodeSize, const char* what) {
+  if (steps <= 1 + (f->file_size / nodeSize)) {
+    return;
+  }
+  // as in ensureDataInFile: the cached size goes stale under a writer that is
+  // still appending, so confirm against the file before refusing
+  if (loadFileSize(f) && steps <= 1 + (f->file_size / nodeSize)) {
+    return;
+  }
+
+  throw std::runtime_error(std::string(what) + " links form a cycle");
+}
+
 // deallocate memory mapped out of this file
 // (if this means that there are no outstanding references to the mapping, then the mapping itself is released)
 inline void unmapFileData(imagefile* f, const void* p, size_t sz) {
@@ -860,6 +878,22 @@ inline uint8_t* mapStoredSeq(imagefile* f, size_t dloc, size_t esz, size_t* coun
 
   *count = n;
   return reinterpret_cast<uint8_t*>(mapFileDataInFile(f, dloc + sizeof(size_t), n * esz, what));
+}
+
+// map a stored array: a count and 'esz' bytes of element data behind it, as
+// one block that starts at the count (mapStoredSeq maps the elements alone)
+//
+// the count is bounded the same way, before it is multiplied by anything, and
+// it is unmapped before the block is mapped: the two start at the same
+// address, so unmapping the count afterwards forgets the block instead.
+inline char* mapStoredArray(imagefile* f, size_t dloc, size_t esz, const char* what) {
+  auto* c = reinterpret_cast<size_t*>(mapFileDataInFile(f, dloc, sizeof(size_t), what));
+  size_t n = *c;
+  unmapFileData(f, c, sizeof(size_t));
+
+  ensureCountInFile(f, dloc + sizeof(size_t), esz, n, what);
+
+  return mapFileDataInFile(f, dloc, sizeof(size_t) + n * esz, what);
 }
 
 // we shouldn't ever work with files that have invalid page sizes
@@ -1196,7 +1230,7 @@ template <typename T>
     fileref<T>& operator=(const fileref<T>&) = default;
 
     T* load(imagefile* f) const {
-      return reinterpret_cast<T*>(mapFileData(f, this->index, sizeof(T)));
+      return reinterpret_cast<T*>(mapFileDataInFile(f, this->index, sizeof(T), "file reference"));
     }
   };
 
@@ -1964,7 +1998,7 @@ template <typename T>
             "  Actual:   " + ty::show(ty::decode(b->second.type))
           );
         } else {
-          const auto* rootRef = reinterpret_cast<const uint64_t*>(mapFileData(this->f, b->second.offset, sizeof(uint64_t)));
+          const auto* rootRef = reinterpret_cast<const uint64_t*>(mapFileDataInFile(this->f, b->second.offset, sizeof(uint64_t), "series root"));
           initFromSeqNode(*rootRef);
           unmapFileData(this->f, rootRef, sizeof(uint64_t));
         }
@@ -2023,7 +2057,7 @@ template <typename T>
 
     // does a node ref designate a null (uninitialized) node?
     bool isNullNode(uint64_t r) {
-      auto* n   = reinterpret_cast<batchdef*>(mapFileData(this->f, r, sizeof(batchdef)));
+      auto* n   = reinterpret_cast<batchdef*>(mapFileDataInFile(this->f, r, sizeof(batchdef), "series node"));
       bool  ret = n->varCtor == 0;
       unmapFileData(this->f, n, sizeof(batchdef));
       return ret;
@@ -2031,7 +2065,7 @@ template <typename T>
 
     // what node follows another?
     uint64_t nextNodeRef(uint64_t r) {
-      auto* n   = reinterpret_cast<batchdef*>(mapFileData(this->f, r, sizeof(batchdef)));
+      auto* n   = reinterpret_cast<batchdef*>(mapFileDataInFile(this->f, r, sizeof(batchdef), "series node"));
       auto  ret = n->nextRef;
       unmapFileData(this->f, n, sizeof(batchdef));
       return ret;
@@ -2039,21 +2073,27 @@ template <typename T>
 
     // load initial state from existing persisted sequence
     void initFromSeqNode(uint64_t r) {
+      // the links between nodes come out of the file, so this walk to the
+      // last node has to end even if they do not
+      size_t steps = 0;
+
       while (!isNullNode(r)) {
+        ensureLinksEndInFile(this->f, ++steps, sizeof(batchdef), "series node");
         auto s = nextNodeRef(r);
         if (!isNullNode(s)) {
           r = s;
         } else {
           // now 'r' must be the last node with data
           // initialize local state from it
-          auto* n = reinterpret_cast<batchdef*>(mapFileData(this->f, r, sizeof(batchdef)));
+          auto* n = reinterpret_cast<batchdef*>(mapFileDataInFile(this->f, r, sizeof(batchdef), "series node"));
 
           this->batchDataRef = n->batchRef;
-          this->batchCount   = reinterpret_cast<uint64_t*>(mapFileData(this->f, this->batchDataRef, batchByteCount<T>(this->batchSize)));
-          this->batchHead    = reinterpret_cast<uint8_t*>(this->batchCount) + sizeof(uint64_t);
           this->batchNextRef = n->nextRef;
 
           unmapFileData(this->f, n, sizeof(batchdef));
+
+          this->batchCount   = reinterpret_cast<uint64_t*>(mapFileDataInFile(this->f, this->batchDataRef, batchByteCount<T>(this->batchSize), "series batch"));
+          this->batchHead    = reinterpret_cast<uint8_t*>(this->batchCount) + sizeof(uint64_t);
 
           // just if this local state leaves us at a full batch, then we'd need to jump to the next batch
           if (*this->batchCount < this->batchSize) {
@@ -2193,7 +2233,7 @@ public:
             "  Actual:   " + ty::show(ty::decode(b->second.type))
           );
         }
-        return reinterpret_cast<T*>(mapFileData(this->f, b->second.offset, sizeof(T)));
+        return reinterpret_cast<T*>(mapFileDataInFile(this->f, b->second.offset, sizeof(T), "definition"));
       }
     }
 
@@ -2217,7 +2257,7 @@ public:
             "  Actual:   " + ty::show(ty::decode(b->second.type))
           );
         }
-        auto* p = reinterpret_cast<uint8_t*>(mapFileData(this->f, b->second.offset, store<T>::size()));
+        auto* p = reinterpret_cast<uint8_t*>(mapFileDataInFile(this->f, b->second.offset, store<T>::size(), "definition"));
         store<T>::write(this->f, p, x);
         unmapFileData(this->f, p, store<T>::size());
       }
@@ -2245,16 +2285,17 @@ public:
           );
         }
 
-        // optimistically map as much as needed for the requested array length
+        // map the array as it is stored (where it is and how long it is both come out of the file)
         // but make sure that the array is stored with the expected length
-        auto* result = reinterpret_cast<array<T>*>(mapFileData(this->f, b->second.offset, sizeof(size_t)+len*sizeof(T)));
+        auto* result = reinterpret_cast<array<T>*>(mapStoredArray(this->f, b->second.offset, sizeof(T), "array definition"));
 
         if (result->size != len) {
-          unmapFileData(this->f, result, sizeof(size_t)+len*sizeof(T));
+          size_t slen = result->size;
+          unmapFileData(this->f, result, sizeof(size_t)+slen*sizeof(T));
 
           throw std::runtime_error(
             "File defines '" + n + "' with type " + ty::show(ty::array(store<T>::storeType())) +
-            " but with length=" + hobbes::string::from(result->size) +
+            " but with length=" + hobbes::string::from(slen) +
             " though expected length=" + hobbes::string::from(len)
           );
         }
@@ -2411,7 +2452,7 @@ template <typename T>
       }
 
       // load the initial batch
-      auto* n = reinterpret_cast<uint64_t*>(mapFileData(this->f, b.offset, sizeof(size_t)));
+      auto* n = reinterpret_cast<uint64_t*>(mapFileDataInFile(this->f, b.offset, sizeof(size_t), "series root"));
       loadReadState(*n);
       unmapFileData(this->f, n, sizeof(size_t));
     }
@@ -2587,7 +2628,7 @@ public:
 
       // bind a function to process values out of this ordering
       this->logDef.varBindings[v->second.first] = [cfn](imagefile* f, uint64_t offset) {
-        void* d = mapFileData(f, offset, store<T>::size());
+        void* d = mapFileDataInFile(f, offset, store<T>::size(), "ordering entry");
         T     t;
 
         store<T>::read(f, d, &t);
@@ -2702,7 +2743,7 @@ public:
             "  Actual:   " + ty::show(ty::decode(b->second.type))
           );
         }
-        return reinterpret_cast<const T*>(mapFileData(this->f, b->second.offset, sizeof(T)));
+        return reinterpret_cast<const T*>(mapFileDataInFile(this->f, b->second.offset, sizeof(T), "definition"));
       }
     }
 
@@ -2724,7 +2765,7 @@ public:
             "  Actual:   " + ty::show(ty::decode(b->second.type))
           );
         }
-        const auto* p = reinterpret_cast<const uint8_t*>(mapFileData(this->f, b->second.offset, store<T>::size()));
+        const auto* p = reinterpret_cast<const uint8_t*>(mapFileDataInFile(this->f, b->second.offset, store<T>::size(), "definition"));
         store<T>::read(this->f, p, x);
         unmapFileData(f, p, store<T>::size());
       }
@@ -2740,27 +2781,14 @@ public:
           "Expected definition of '" + n + "' in file, but none was found"
         );
       } else if (b->second.type == ty::encoding(ty::array(store<T>::storeType()))) {
-        // map the array length to determine how much to map for the array
-        const auto* lenp = reinterpret_cast<const size_t*>(mapFileData(this->f, b->second.offset, sizeof(size_t)));
-        size_t        len  = *lenp;
-
-        // now that we know the stored length, we can map the array contents
-        const auto* result = reinterpret_cast<const array<T>*>(mapFileData(this->f, b->second.offset, sizeof(size_t)+len*sizeof(T)));
-
-        // and we can get rid of the map segment for the len
-        unmapFileData(this->f, lenp, sizeof(size_t));
-
-        return result;
+        // the stored array length determines how much to map for the array
+        return reinterpret_cast<const array<T>*>(mapStoredArray(this->f, b->second.offset, sizeof(T), "array definition"));
       } else if (b->second.type == ty::encoding(ty::fileRef(ty::array(store<T>::storeType())))) {
-        const auto* offp = reinterpret_cast<const size_t*>(mapFileData(this->f, b->second.offset, sizeof(size_t)));
+        const auto* offp = reinterpret_cast<const size_t*>(mapFileDataInFile(this->f, b->second.offset, sizeof(size_t), "array reference"));
         size_t off = *offp;
         unmapFileData(this->f, offp, sizeof(size_t));
 
-        const auto*   lenp   = reinterpret_cast<const size_t*>(mapFileData(this->f, off, sizeof(size_t)));
-        size_t          len    = *lenp;
-        const auto* result = reinterpret_cast<const array<T>*>(mapFileData(this->f, off, sizeof(size_t)+len*sizeof(T)));
-        unmapFileData(this->f, lenp, sizeof(size_t));
-        return result;
+        return reinterpret_cast<const array<T>*>(mapStoredArray(this->f, off, sizeof(T), "array definition"));
       } else {
         // binding defined, make sure that the types match
         throw std::runtime_error(

@@ -342,7 +342,7 @@ template <typename K, typename V>
         if (b->second.type != ty::encoding(mty)) {
           throw std::runtime_error("File already defines slmap '" + name + "' with type inconsistent with " + ty::show(mty));
         } else {
-          this->d = reinterpret_cast<slmapdata<K,V>*>(fregion::mapFileData(this->f, b->second.offset, sizeof(slmapdata<K,V>)));
+          this->d = reinterpret_cast<slmapdata<K,V>*>(fregion::mapFileDataInFile(this->f, b->second.offset, sizeof(slmapdata<K,V>), "slmap root"));
         }
       }
     }
@@ -393,7 +393,7 @@ template <typename K>
         if (b->second.type != ty::encoding(mty)) {
           throw std::runtime_error("File already defines slmap '" + name + "' with type inconsistent with " + ty::show(mty));
         } else {
-          this->d = reinterpret_cast<slmapdata<K,ufileref>*>(fregion::mapFileData(this->f, b->second.offset, sizeof(slmapdata<K,ufileref>)));
+          this->d = reinterpret_cast<slmapdata<K,ufileref>*>(fregion::mapFileDataInFile(this->f, b->second.offset, sizeof(slmapdata<K,ufileref>), "slmap root"));
         }
       }
     }
