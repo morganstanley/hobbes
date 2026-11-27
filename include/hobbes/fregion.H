@@ -196,6 +196,17 @@ inline size_t pageCount(const imagefile* f, size_t sz) { return (sz / f->page_si
 
 // basic file I/O primitives
 inline void closeFile(imagefile* f) {
+  // A reader/writer owns every mapping still recorded here. Individual
+  // allocations normally release mappings through unmapFileData, but closing
+  // a session must also release mappings that remain live in its object graph.
+  // Otherwise deleting a writer closes only the fd and leaks the VMAs.
+  for (const auto& mapping : f->mappings) {
+    const fregion& region = mapping.second;
+    (void)munmap(region.base, region.pages * f->page_size);
+  }
+  f->mappings.clear();
+  f->allocs.clear();
+
   if (f->fd > -1) {
     // give up a lock taken on this file (lockForWriting in db/file.H) explicitly:
     // closing alone doesn't release it on Linux while any part of the file is still mapped
