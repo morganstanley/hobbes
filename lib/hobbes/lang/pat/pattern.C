@@ -386,9 +386,17 @@ Patterns concatArrayPatterns(const Patterns& ps) {
 }
 
 void normalizeRecAccess(const Patterns& ps) {
-  if (ps.empty()) {
+  // a wildcard can stand beside any kind of pattern and has nothing to normalize,
+  // so the first pattern that isn't one decides what has to be normalized here
+  // (deciding from a leading wildcard left the partial records after it unpadded)
+  size_t k = 0;
+  while (k < ps.size() && is<MatchAny>(ps[k]) != nullptr) {
+    ++k;
+  }
+
+  if (k == ps.size()) {
     // nothing to normalize
-  } else if (is<MatchRecord>(ps[0]) != nullptr) {
+  } else if (is<MatchRecord>(ps[k]) != nullptr) {
     // this is actually the case we care about
     // first recursively normalize within each field's pattern
     auto gs = groupRecordPatterns(ps);
@@ -398,9 +406,9 @@ void normalizeRecAccess(const Patterns& ps) {
 
     // then normalize within patterns
     normalizeRecPatterns(ps, keys(gs));
-  } else if (is<MatchArray>(ps[0]) != nullptr) {
+  } else if (is<MatchArray>(ps[k]) != nullptr) {
     normalizeRecAccess(concatArrayPatterns(ps));
-  } else if (is<MatchVariant>(ps[0]) != nullptr) {
+  } else if (is<MatchVariant>(ps[k]) != nullptr) {
     for (const auto& g : groupVariantPatterns(ps)) {
       normalizeRecAccess(g.second);
     }
@@ -466,10 +474,25 @@ void validateDimensions(size_t c, const PatternRows& ps, const LexicalAnnotation
   }
 }
 
+// a variant pattern names just one constructor of the type that it matches, which isn't enough to say what that type is
+// so we infer a type variable for it and remember what the pattern assumes about that type
+struct VariantPatType {
+  const MatchVariant* pattern;
+  MonoTypePtr         ty;      // the variant type matched (a type variable, unless patterns disagree)
+  MonoTypePtr         payload; // the type that the pattern assumes for its constructor in that type
+};
+
+// the variant patterns of a match, grouped by how many variant patterns each one is nested inside of
+struct VariantPatTypes {
+  std::vector<std::vector<VariantPatType>> byDepth;
+  size_t depth = 0;
+};
+
 // infer the types assumed by patterns
 struct inferTypeF : public switchPattern<MonoTypePtr> {
   MonoTypeUnifier* s;
-  inferTypeF(MonoTypeUnifier* s) : s(s) { }
+  VariantPatTypes* vpts;
+  inferTypeF(MonoTypeUnifier* s, VariantPatTypes* vpts) : s(s), vpts(vpts) { }
 
   MonoTypePtr with(const MatchLiteral* v) const override {
     return v->equivConstant()->primType();
@@ -504,29 +527,72 @@ struct inferTypeF : public switchPattern<MonoTypePtr> {
     return MonoTypePtr(Record::make(ms));
   }
 
-  MonoTypePtr with(const MatchVariant*) const override {
-    // too broad, but for this purpose should be fine
-    return freshTypeVar();
+  MonoTypePtr with(const MatchVariant* v) const override {
+    // too broad on its own, 'unifyVariantPatTypes' relates this to the other patterns on the same type
+    MonoTypePtr ty = freshTypeVar();
+
+    const size_t d = this->vpts->depth;
+    if (this->vpts->byDepth.size() <= d) {
+      this->vpts->byDepth.resize(d + 1);
+    }
+
+    ++this->vpts->depth;
+    MonoTypePtr payload = switchOf(v->value(), *this);
+    --this->vpts->depth;
+
+    this->vpts->byDepth[d].push_back(VariantPatType{v, ty, payload});
+    return ty;
   }
 };
+
+// variant patterns are inferred as unrelated type variables, so unification alone can't tell that
+//   * a variant pattern is matched against a type that some other pattern needs to be a primitive, array or record, or
+//   * patterns for the same constructor of the same type disagree on the type of its payload
+// (the payloads of a constructor are deconstructed as one column, which has to be as consistent as any other:
+//  the match compiler indexes every row of that column by the fields of the first)
+//
+// The type variable of a variant pattern can only be identified with another's by unifying the columns or the
+// payloads that hold them, and a payload holds only patterns nested one level deeper. So once the patterns
+// nested less deeply have been unified, the types of the patterns at a level are settled, and one pass over each
+// level from the outside in visits every variant pattern exactly once.
+void unifyVariantPatTypes(const VariantPatTypes& vpts, MonoTypeUnifier* u) {
+  for (const auto& level : vpts.byDepth) {
+    std::map<std::pair<std::string, std::string>, MonoTypePtr> ctorTys;
+    for (const auto& vpt : level) {
+      MonoTypePtr ty = u->substitute(vpt.ty);
+      if (const TVar* tv = is<TVar>(ty)) {
+        auto ct = ctorTys.insert(std::make_pair(std::make_pair(tv->name(), vpt.pattern->label()), vpt.payload));
+        if (!ct.second) {
+          mgu(ct.first->second, vpt.payload, u);
+        }
+      } else {
+        throw annotated_error(*vpt.pattern, "Cannot match a variant pattern against the type " + show(ty));
+      }
+    }
+  }
+}
 
 // assume dimensions have already been validated
 MonoTypes matchRowType(const TEnvPtr& tenv, const PatternRows& ps) {
   MonoTypeUnifier u(tenv);
+  VariantPatTypes vpts;
 
   // determine the initial row type
   MonoTypes ts;
   const Patterns& pr = ps[0].patterns;
   for (const auto &p : pr) {
-    ts.push_back(switchOf(p, inferTypeF(&u)));
+    ts.push_back(switchOf(p, inferTypeF(&u, &vpts)));
   }
 
   // unify with subsequent rows
   for (unsigned int i = 1; i < ps.size(); ++i) {
     for (unsigned int c = 0; c < ps[i].patterns.size(); ++c) {
-      mgu(ts[c], switchOf(ps[i].patterns[c], inferTypeF(&u)), &u);
+      mgu(ts[c], switchOf(ps[i].patterns[c], inferTypeF(&u, &vpts)), &u);
     }
   }
+
+  // and unify within variant patterns
+  unifyVariantPatTypes(vpts, &u);
 
   return u.substitute(ts);
 }

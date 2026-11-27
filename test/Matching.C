@@ -1147,3 +1147,92 @@ TEST(Matching, literalsStayLiteralBesideRegexes) {
   EXPECT_EQ(h("7"), 0);
   EXPECT_EQ(h("zzz"), 5);
 }
+
+// A variant pattern only names one constructor of its type, so its inferred
+// type alone let a column mix variants with anything else, and left the
+// payloads under one constructor unchecked against each other. Where that
+// also kept partial record patterns from being padded, rows of different
+// widths were deconstructed together and read out of bounds while the match
+// was being read (before anything was compiled or run).
+TEST(Matching, variantPatternsAreTypeChecked) {
+  // a literal, regex or record beside a variant pattern
+  EXPECT_EXCEPTION_MSG(c().readExpr("\\v n.match v n with | 5 1 -> 0 | |A={x=1,y=2}| 2 -> 1 | |A={x=1}| 2 -> 2 | _ _ -> 3"),
+                       std::exception, "Cannot match a variant pattern against the type int");
+  EXPECT_EXCEPTION_MSG(c().readExpr("\\v u.match v u with | 'a.*' 1 -> 1 | |A={a=_,b=1}| 2 -> 2 | |A={a=_}| 2 -> 3 | _ _ -> 4"),
+                       std::exception, "Cannot match a variant pattern against the type [char]");
+  EXPECT_EXCEPTION_MSG(c().readExpr("\\v.match v with | [9,|A={a=_,b=1}|] -> 1 | [9,|A={a=_}|] -> 2 | _ -> 3"),
+                       std::exception, "Cannot match a variant pattern against the type int");
+  EXPECT_EXCEPTION_MSG(c().readExpr("\\v.match v with | {a=1} -> 0 | |A=1| -> 1 | _ -> 2"),
+                       std::exception, "Cannot match a variant pattern against the type");
+
+  // payloads of one constructor that disagree
+  EXPECT_EXCEPTION_MSG(c().readExpr("\\v n.match v n with | |A=5| 1 -> 0 | |A={x=1,y=2}| 2 -> 1 | |A={x=1}| 2 -> 2 | _ _ -> 3"),
+                       std::exception, "Cannot unify types");
+  EXPECT_EXCEPTION_MSG(c().readExpr("\\v.match v with | |A=1| -> 0 | |A='c'| -> 1 | _ -> 2"),
+                       std::exception, "Cannot unify types");
+  EXPECT_EXCEPTION_MSG(c().readExpr("\\v.match v with | |A=1| -> 0 | |A=1L| -> 1 | _ -> 2"),
+                       std::exception, "Cannot unify types");
+  EXPECT_EXCEPTION_MSG(c().readExpr("\\v.match v with | |A={a=1,a=2}| -> 1 | |A={a=3}| -> 2 | _ -> 3"),
+                       std::exception, "duplicate field name");
+
+  // the same, where the constructor is itself inside a constructor
+  EXPECT_EXCEPTION_MSG(c().readExpr("\\v.match v with | |A=|B=1|| -> 0 | |A=|B='c'|| -> 1 | _ -> 2"),
+                       std::exception, "Cannot unify types");
+  EXPECT_EXCEPTION_MSG(c().readExpr("\\v.match v with | [|A=|B=1||, _] -> 0 | [_, |A=|B='c'||] -> 1 | _ -> 2"),
+                       std::exception, "Cannot unify types");
+  EXPECT_EXCEPTION_MSG(c().readExpr("\\v.match v with | |A=|B=|C={x=1,y=2}||| -> 0 | |A=|B=|C=7||| -> 1 | |A=|B=|C={x=1}||| -> 2 | _ -> 3"),
+                       std::exception, "Cannot unify types");
+  EXPECT_EXCEPTION_MSG(c().readExpr("\\v.match v with | |A=|A=1|| -> 0 | |A=1| -> 1 | _ -> 2"),
+                       std::exception, "Cannot match a variant pattern against the type int");
+
+  // constructors of different types, or of the same type at different
+  // positions, still don't have to agree
+  EXPECT_EQ(c().compileFn<int()>(
+              "(\\v w.match v w with | |A={x=5}| _ -> 0 | |A={x=1,y=2}| |A='d'| -> 1 | |A={x=1}| |A='c'| -> 2 | |B=3| |B=4| -> 3 | _ _ -> 4)"
+              "(|A={x=1,y=2}|::|A:{x:int,y:int},B:int|, |A='c'|::|A:char,B:int|)")(),
+            2);
+  EXPECT_EQ(c().compileFn<int()>(
+              "(\\v.match v with | |A=|A=2|| -> 0 | |A=|B|| -> 1 | |A=|A=1|| -> 2 | _ -> 3)"
+              "(|A=(|A=1|::|A:int,B:()|)|::|A:|A:int,B:()|,B:()|)")(),
+            2);
+}
+
+// Partial record patterns are padded to the same fields wherever they share a
+// position, also where the first pattern in that position is a wildcard or a
+// variable: under a variant constructor that used to leave rows of different
+// widths (read out of bounds) or of the same width with the fields of one row
+// tested against the patterns of another, and anywhere else the match was
+// refused as ill-typed.
+TEST(Matching, partialRecordsArePaddedAfterWildcards) {
+  auto f = c().compileFn<int(int)>("n",
+    "match (|A={x=1,y=3}| :: |A:{x:int,y:int},B:int|) n with "
+    "| |A=_| 1 -> 10 | |A={x=1,y=2}| 2 -> 11 | |A={x=1}| 2 -> 12 | _ _ -> 13");
+  EXPECT_EQ(f(1), 10);
+  EXPECT_EQ(f(2), 12);
+  EXPECT_EQ(f(3), 13);
+
+  // the same number of fields, but not the same ones
+  auto g = c().compileFn<int(int,int)>("a", "b",
+    "match (|A={a=a,b=b}| :: |A:{a:int,b:int},B:int|) with "
+    "| |A=v| where (v.a == 99) -> 0 | |A={a=1}| -> 1 | |A={b=2}| -> 2 | _ -> 3");
+  EXPECT_EQ(g(99, 0), 0);
+  EXPECT_EQ(g(1, 7), 1);
+  EXPECT_EQ(g(5, 2), 2);
+  EXPECT_EQ(g(2, 7), 3);
+
+  // tuple patterns are records, and a short one is padded like any other
+  auto h = c().compileFn<int(int)>("n",
+    "match (|A=(1,2,n)| :: |A:(int*int*int),B:int|) with "
+    "| |A=v| where (v.0 == 9) -> 0 | |A=(1,2,3)| -> 1 | |A=(1,2)| -> 2 | _ -> 3");
+  EXPECT_EQ(h(3), 1);
+  EXPECT_EQ(h(4), 2);
+
+  EXPECT_EQ(c().compileFn<int()>("match {p={x=1,y=3}} 2 with | {p=_} 1 -> 10 | {p={x=1,y=2}} 2 -> 11 | {p={x=1}} 2 -> 12 | _ _ -> 13")(), 12);
+  EXPECT_EQ(
+    c().compileFn<int()>(
+      "let v = (|A={x=1,y=2}| :: |A:{x:int,y:int},B:int|) in "
+      "match [v,v] with | [_, |A={y=3}|] -> 1 | [|A={x=1}|, _] -> 2 | _ -> 3"
+    )(),
+    2
+  );
+}
