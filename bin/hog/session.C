@@ -1,3 +1,4 @@
+#include <atomic>
 #include <iostream>
 #include <map>
 #include <memory>
@@ -481,7 +482,8 @@ public:
   ProcessTxnF appendStorageSession(const std::string& dirPfx, hobbes::storage::PipeQOS qos, hobbes::storage::CommitMethod cm, const hobbes::storage::statements& stmts) override {
     std::lock_guard<std::mutex> slock(this->m);
     for (const auto& cs : this->sessions) {
-      if (dirPfx == cs->dirPfx && cm == cs->cm && sameLogSpace(stmts, cs->stmts)) {
+      // (a session that has failed is finished: this connection starts a new one, with a new file)
+      if (!cs->failed && dirPfx == cs->dirPfx && cm == cs->cm && sameLogSpace(stmts, cs->stmts)) {
         return csfn(cs.get());
       }
     }
@@ -504,6 +506,7 @@ private:
     std::shared_ptr<Session>      s;
     std::mutex                    sm;
     ProcessTxnF                   sproc;
+    std::atomic<bool>             failed{false}; // has storing a transaction thrown?
   };
   std::vector<std::unique_ptr<CSession>> sessions;
   std::mutex m;
@@ -532,7 +535,24 @@ private:
     return 
       [cs](storage::Transaction& txn) {
         std::lock_guard<std::mutex> slock(cs->sm);
-        cs->sproc(txn);
+
+        // An error while storing a transaction ends the connection that sent
+        // it, but this session is shared and would carry on: with whatever
+        // the interrupted transaction left half-written, and after an error
+        // that says its file can't be relied on (it could not grow, or what
+        // is stored in it could not be loaded). So the first error ends the
+        // session for every connection that has it, and it is not given to
+        // another one. It keeps its file open and locked, so the session
+        // that replaces it starts a fresh file.
+        if (cs->failed) {
+          throw std::runtime_error("this log session was stopped by an earlier error");
+        }
+        try {
+          cs->sproc(txn);
+        } catch (...) {
+          cs->failed = true;
+          throw;
+        }
       };
   }
 };

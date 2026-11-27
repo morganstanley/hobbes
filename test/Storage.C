@@ -11,9 +11,12 @@
 
 #include <atomic>
 #include <chrono>
+#include <csignal>
 #include <fstream>
 #include <limits>
 #include <memory>
+#include <sys/resource.h>
+#include <sys/stat.h>
 #include <thread>
 
 using namespace hobbes;
@@ -2418,6 +2421,263 @@ TEST(Storage, CorruptStoredLengthsAreRejected) {
     EXPECT_EXCEPTION(readSeriesToEnd<int>(cyc, "s"));
     unlink(cyc.c_str());
 
+    unlink(fname.c_str());
+  } catch (...) {
+    unlink(fname.c_str());
+    throw;
+  }
+}
+
+// while one of these is alive, this process can't grow a file past the size
+// that the given file has now -- which is how a full disk looks to a writer
+// that wants to allocate pages
+class NoFileGrowth {
+public:
+  NoFileGrowth(const std::string& fname) {
+    struct stat st;
+    if (stat(fname.c_str(), &st) != 0) {
+      throw std::runtime_error("can't stat " + fname);
+    }
+    this->oldSig = signal(SIGXFSZ, SIG_IGN);
+    getrlimit(RLIMIT_FSIZE, &this->oldLimit);
+
+    struct rlimit l = this->oldLimit;
+    l.rlim_cur = st.st_size;
+    setrlimit(RLIMIT_FSIZE, &l);
+  }
+  ~NoFileGrowth() {
+    setrlimit(RLIMIT_FSIZE, &this->oldLimit);
+    signal(SIGXFSZ, this->oldSig);
+  }
+private:
+  struct rlimit oldLimit;
+  void (*oldSig)(int);
+};
+
+DEFINE_STRUCT(BatchStepTest,
+  (int, x)
+);
+
+// does the series 's' of the file hold just the values [from..to], in the order they were written?
+static bool rawSeriesHolds(const std::string& fname, int from, int to) {
+  cc rc;
+  rc.define("f", "inputFile :: (LoadFile \"" + fname + "\" w) => w");
+  return rc.compileFn<bool()>("[x|{x=x}<-f.s][:0] == [" + str::from(from) + ".." + str::from(to) + "]")();
+}
+
+TEST(Storage, RawSeriesFailedBatchStep) {
+  // the value that fills a batch makes the series allocate the next batch,
+  // and that can fail. The series has to be left with room for the next
+  // value when it does: it was left at the end of the full batch, and every
+  // later value was stored past it
+  std::string fname = mkFName();
+  try {
+    const int bsize = 12345;
+    {
+      writer f(fname);
+      series<BatchStepTest> ss(&c(), &f, "s", bsize);
+
+      BatchStepTest v;
+      for (v.x = 0; v.x < bsize - 1; ++v.x) { ss(v); }
+      {
+        NoFileGrowth full(fname);
+        EXPECT_EXCEPTION(ss(v));
+        EXPECT_EXCEPTION(ss(v));
+      }
+      for (; v.x < 3*bsize; ++v.x) { ss(v); }
+    }
+    EXPECT_TRUE(rawSeriesHolds(fname, 0, 3*bsize - 1));
+
+    unlink(fname.c_str());
+  } catch (...) {
+    unlink(fname.c_str());
+    throw;
+  }
+}
+
+TEST(Storage, RawSeriesResumesFromItsStoredCount) {
+  // a writer that resumes a series takes its place in the head batch from the
+  // count stored there, so that count can't be taken as it comes
+  //
+  // a writer that stops between filling a batch and starting the next one
+  // leaves a full batch at the head of the series, and the writer that
+  // resumes the series has to start the next batch before it stores anything
+  //
+  // more values than a batch holds would put the next one outside of the batch
+  // (or anywhere else, with a large enough count), so the resuming writer
+  // leaves that batch alone as well and continues in a new one
+  // (a writer that ran out of space used to leave such a count behind, and
+  //  the series has to stay writable after it)
+  const int bsize = 12345;
+  for (uint64_t n : { uint64_t(bsize), uint64_t(bsize) + 1, uint64_t(1) << 31, uint64_t(1) << 62 }) {
+    std::string fname = mkFName();
+    try {
+      {
+        writer f(fname);
+        series<BatchStepTest> ss(&c(), &f, "s", bsize);
+
+        BatchStepTest v;
+        for (v.x = 1; v.x < bsize; ++v.x) { ss(v); }
+      }
+      size_t count = findWord(fname, bsize - 1);
+
+      pokeWord(fname, count, n);
+      {
+        writer f(fname);
+        series<BatchStepTest> ss(&c(), &f, "s", bsize);
+
+        BatchStepTest v;
+        for (v.x = bsize; v.x < 3*bsize; ++v.x) { ss(v); }
+      }
+
+      // the first batch is left as the full batch that it is, with nothing more stored in it
+      // (its last value was never written, so it reads as 0)
+      EXPECT_EQ(readWord(fname, count), uint64_t(bsize));
+
+      cc rc;
+      rc.define("f", "inputFile :: (LoadFile \"" + fname + "\" w) => w");
+      EXPECT_TRUE(rc.compileFn<bool()>("[x|{x=x}<-f.s][:0] == [1.." + str::from(bsize - 1) + "] ++ [0] ++ [" + str::from(bsize) + ".." + str::from(3*bsize - 1) + "]")());
+
+      unlink(fname.c_str());
+    } catch (...) {
+      unlink(fname.c_str());
+      throw;
+    }
+  }
+}
+
+TEST(Storage, FRegionSeriesFailedBatchStep) {
+  // as RawSeriesFailedBatchStep, for the series writer in fregion.H
+  std::string fname = mkFName();
+  try {
+    const int bsize = 12345;
+    {
+      fregion::writer w(fname);
+      auto& s = w.series<int>("s", bsize);
+
+      int i = 0;
+      for (; i < bsize - 1; ++i) { s(i); }
+      {
+        NoFileGrowth full(fname);
+        EXPECT_EXCEPTION(s(i));
+        EXPECT_EXCEPTION(s(i));
+      }
+      for (; i < 3*bsize; ++i) { s(i); }
+    }
+
+    fregion::reader r(fname);
+    auto& s = r.series<int>("s");
+    int x = 0;
+    int n = 0;
+    while (s.next(&x)) {
+      EXPECT_EQ(x, n);
+      ++n;
+    }
+    EXPECT_EQ(n, 3*bsize);
+
+    unlink(fname.c_str());
+  } catch (...) {
+    unlink(fname.c_str());
+    throw;
+  }
+}
+
+TEST(Storage, SeriesWritersKeepTheirOwnCount) {
+  // the count of values in a batch is stored in the file for readers, where
+  // anything else that has the file open can change it. A writer that went by
+  // it to decide when its batch was full could be made to store past the batch
+  // by setting it back, so a writer counts for itself
+  const int bsize = 100;
+  const int part  = 77;
+
+  std::string fname = mkFName();
+  try {
+    {
+      writer f(fname);
+      series<BatchStepTest> ss(&c(), &f, "s", bsize);
+
+      BatchStepTest v;
+      for (v.x = 1000; v.x < 1000 + part; ++v.x) { ss(v); }
+      pokeWord(fname, findWord(fname, part), 0);
+      for (; v.x < 1000 + 3*bsize; ++v.x) { ss(v); }
+    }
+    EXPECT_TRUE(rawSeriesHolds(fname, 1000, 1000 + 3*bsize - 1));
+
+    unlink(fname.c_str());
+  } catch (...) {
+    unlink(fname.c_str());
+    throw;
+  }
+
+  fname = mkFName();
+  try {
+    {
+      fregion::writer w(fname);
+      auto& s = w.series<int>("s", bsize);
+
+      int i = 1000;
+      for (; i < 1000 + part; ++i) { s(i); }
+      pokeWord(fname, findWord(fname, part), 0);
+      for (; i < 1000 + 3*bsize; ++i) { s(i); }
+    }
+
+    fregion::reader r(fname);
+    auto& s = r.series<int>("s");
+    int x = 0;
+    int n = 0;
+    while (s.next(&x)) {
+      EXPECT_EQ(x, 1000 + n);
+      ++n;
+    }
+    EXPECT_EQ(n, 3*bsize);
+
+    unlink(fname.c_str());
+  } catch (...) {
+    unlink(fname.c_str());
+    throw;
+  }
+}
+
+TEST(Storage, UnloadReleasesNoMoreThanWasMapped) {
+  // all empty arrays in a file share one, found through the '.za' binding. It
+  // is mapped as just its length word, but was released as however many
+  // elements that word claimed -- and with them the mapping of the whole file,
+  // under every other value loaded from it
+  std::string fname = mkFName();
+  try {
+    uint64_t za = 0;
+    {
+      writer w(fname);
+      *w.define<long>("x") = 42;
+      za = w.fileData()->empty_array;
+    }
+
+    // a writer does not take a file whose empty array is not empty ...
+    pokeWord(fname, za, uint64_t(1) << 40);
+    EXPECT_EXCEPTION(writer(fname).fileData());
+    pokeWord(fname, za, 0);
+
+    // ... and does not go by its length if that changes later
+    {
+      writer w(fname);
+      long* x = w.lookup<long>("x");
+      pokeWord(fname, za, uint64_t(1) << 40);
+      w.unsafeStoreArrayToOffset(1, 0);
+      EXPECT_EQ(w.fileData()->mappings.size(), size_t(1));
+      EXPECT_EQ(*x, 42L);
+    }
+    pokeWord(fname, za, 0);
+
+    // the same for an array whose length changes while it is mapped
+    {
+      writer w(fname);
+      long* x = w.lookup<long>("x");
+      array<int>* xs = w.store<int>(10);
+      xs->size = size_t(1) << 40;
+      w.unmap(xs);
+      EXPECT_EQ(w.fileData()->mappings.size(), size_t(1));
+      EXPECT_EQ(*x, 42L);
+    }
     unlink(fname.c_str());
   } catch (...) {
     unlink(fname.c_str());
