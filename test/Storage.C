@@ -723,6 +723,62 @@ TEST(Storage, Comprehensions) {
   }
 }
 
+// A comprehension over a stored series walks each batch where it lies in the
+// file mapping, and the count of the newest batch goes up under the reader
+// while a writer appends to it. The result used to be sized from that count
+// and the walk ended on the count as read again at every step, so a record
+// that arrived during the walk was stored past the end of the result.
+// Appending from inside the comprehension makes the race deterministic: a
+// walk must visit the records that were there when it began, and no more.
+using GrowingRecord = std::pair<size_t, size_t>;
+static series<GrowingRecord>* growingSeries       = nullptr;
+static size_t                 growingSeriesVisits = 0;
+
+static size_t appendToGrowingSeries(size_t x) {
+  ++growingSeriesVisits;
+  (*growingSeries)(GrowingRecord(x, 0));
+  return x;
+}
+
+TEST(Storage, ComprehensionsOverGrowingSeries) {
+  std::string fname = mkFName();
+  try {
+    writer w(fname);
+    cc rc;
+    series<GrowingRecord> xs(&rc, &w, "xs", 32);
+    growingSeries = &xs;
+
+    size_t n = 3;
+    for (size_t i = 0; i < n; ++i) {
+      xs(GrowingRecord(i, 0));
+    }
+
+    rc.bind("appendToGrowingSeries", &appendToGrowingSeries);
+    rc.define("f", "inputFile :: (LoadFile \"" + fname + "\" w) => w");
+
+    // a plain map, a guard and a refutable pattern each have a loop of their own
+    //  (every walk doubles the series, and all of it stays in the first batch)
+    const char* walks[] = {
+      "size([appendToGrowingSeries(x) | (x, _) <- f.xs])",
+      "size([x | (x, _) <- f.xs, appendToGrowingSeries(x) < 3L])",
+      "size([appendToGrowingSeries(x) | (x, 0L) <- f.xs])"
+    };
+    for (const char* walk : walks) {
+      growingSeriesVisits = 0;
+      EXPECT_EQ(rc.compileFn<size_t()>(walk)(), n);
+      EXPECT_EQ(growingSeriesVisits, n);
+      n += growingSeriesVisits;
+    }
+
+    growingSeries = nullptr;
+    unlink(fname.c_str());
+  } catch (...) {
+    growingSeries = nullptr;
+    unlink(fname.c_str());
+    throw;
+  }
+}
+
 TEST(Storage, Lift) {
   std::string fname = mkFName();
   try {
@@ -1674,6 +1730,66 @@ TEST(Storage, FRegionCArrayRejectsOversizedLength) {
   catch (const std::exception&) { threw = true; }
   EXPECT_TRUE(!threw);
   EXPECT_EQ(dst.size, size_t(3));
+}
+
+TEST(Storage, CArrayLengthOutsideCapacityIsRejected) {
+  // hobbes reads a carray in place, so the stored length is whatever the file
+  // (or the peer that logged it through hog) says: a length outside of the
+  // fixed capacity must be rejected where it's read as the size of the
+  // sequence, or comprehensions walk (and filters write) past the buffer
+  std::string fname = mkFName();
+  try {
+    hobbes::fregion::writer w(fname);
+
+    using XS = hobbes::carray<int, 8>;
+    auto& over = *w.define<XS>("over");
+    auto& neg  = *w.define<XS>("neg");
+    auto& part = *w.define<XS>("part");
+    auto& full = *w.define<XS>("full");
+    for (size_t i = 0; i < 8; ++i) {
+      over[i] = neg[i] = part[i] = full[i] = static_cast<int>(i + 1);
+    }
+    over.size = 9;
+    neg.size  = static_cast<size_t>(-1);
+    part.size = 3;
+    full.size = 8;
+
+    hobbes::cc c;
+    c.define("db", "inputFile::(LoadFile \"" + fname + "\" w)=>w");
+
+    // a length within the capacity is still accepted
+    EXPECT_EQ(c.compileFn<long()>("size(db.part)")(), 3L);
+    EXPECT_TRUE(c.compileFn<bool()>("[x | x <- db.part] == [1, 2, 3]")());
+    EXPECT_TRUE(c.compileFn<bool()>("[x | x <- db.full, x > 6] == [7, 8]")());
+
+#if !defined(__APPLE__)
+    // (not on macOS: the refusal is thrown by a runtime function that JIT-compiled
+    //  code calls, and the JIT's frames can't be unwound there -- see
+    //  Arrays/newArrayRefusesALengthItCannotAllocate)
+    // (compiled before they're run, so that it's the evaluation that is expected to throw)
+    for (const char* name : {"db.over", "db.neg"}) {
+      const std::string v(name);
+      auto len    = c.compileFn<long()>("size(" + v + ")");
+      auto map    = c.compileFn<long()>("size([x | x <- " + v + "])");
+      auto filter = c.compileFn<long()>("size([x | x <- " + v + ", x > 0])");
+      auto slice  = c.compileFn<long()>("size(" + v + "[0:])");
+      auto lookup = c.compileFn<bool()>("elementM(" + v + ", 8L) === nothing");
+      auto shown  = c.compileFn<long()>("size(show(" + v + "))");
+
+      EXPECT_EXCEPTION_MSG(len(), std::exception, "Not a valid carray");
+      EXPECT_EXCEPTION(map());
+      EXPECT_EXCEPTION(filter());
+      EXPECT_EXCEPTION(slice());
+      EXPECT_EXCEPTION(lookup());
+      EXPECT_EXCEPTION(shown());
+    }
+#endif
+
+    unlink(fname.c_str());
+  } catch (...) {
+    unlink(fname.c_str());
+    throw;
+  }
 }
 
 TEST(Storage, FRegionRejectsLengthBeyondFileSize) {

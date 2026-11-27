@@ -1200,6 +1200,11 @@ struct pageEntriesF : public op {
   }
 };
 
+// reject a stored carray length that isn't within the fixed capacity of its buffer
+[[noreturn]] static long invalidCArrayLength(long n, long capacity) {
+  throw std::runtime_error("Not a valid carray: length (" + str::from(n) + ") is not within capacity (" + str::from(capacity) + ")");
+}
+
 // load definitions for working with storage files into a compiler context
 void initStorageFileDefs(FieldVerifier* fv, cc& c) {
   // allow compile-time loading of files (to allow type-inference based on actual file contents)
@@ -1265,6 +1270,9 @@ void initStorageFileDefs(FieldVerifier* fv, cc& c) {
 
   c.bind(".pageEntries", &pageEntries);
   c.bindLLFunc("pageEntries", new pageEntriesF(".pageEntries"));
+
+  // report invalid lengths of stored fixed-capacity sequences
+  c.bind("invalidCArrayLength", &invalidCArrayLength);
 
   // import signalling functions on files as well
   initSignalsDefs(fv, c);

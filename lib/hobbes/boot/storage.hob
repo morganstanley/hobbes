@@ -185,8 +185,10 @@ instance FilterMMap f c a r ("fseq"*g) (^x.(()+([a]@g*x@g)))@g "mrope" (^x.(()+(
   ffilterMMap f xs = lreverse(flFFiltMMapRev(nil(), f, xs))
 
 // array comprehension support for sequences stored with compile-time buffer lengths
+// (the count is stored data and may not be within the buffer that the type gives it,
+//  so it's checked here where everything that walks the sequence takes its bound)
 instance Array (carray a n) a where
-  size     c     = c.t.avail
+  size     c     = let n = c.t.avail; cap = salength(c.t.buffer) in if (n < 0L or n > cap) then invalidCArrayLength(n, cap) else n
   element  c i   = element(c.t.buffer, i)
   elementM c i  = getElementByIndex(c, \x i.element(x, i), i, size(c))
   elements c i e = elements(c.t.buffer, i, e)
