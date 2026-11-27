@@ -8,6 +8,8 @@ struct Options {
   int timeout = -1;
   bool valid = false;
   bool writeStderr = false;
+  bool partial = false;
+  bool partialStay = false;
 };
 
 Options getOptions(int argc, char **argv) {
@@ -21,10 +23,12 @@ Options getOptions(int argc, char **argv) {
     return {};
   }
   const bool writeStderr = argc == 3 && std::string(argv[2]) == "stderr";
-  if (argc == 3 && !writeStderr) {
+  const bool partial     = argc == 3 && std::string(argv[2]) == "partial";
+  const bool partialStay = argc == 3 && std::string(argv[2]) == "partial-stay";
+  if (argc == 3 && !writeStderr && !partial && !partialStay) {
     return {};
   }
-  return {.timeout = t, .valid = true, .writeStderr = writeStderr};
+  return {.timeout = t, .valid = true, .writeStderr = writeStderr, .partial = partial, .partialStay = partialStay};
 }
 
 extern "C" [[noreturn]] void exitApp(int /* sig */) {
@@ -46,6 +50,21 @@ int main(int argc, char **argv) {
     if (write(STDERR_FILENO, diagnostic, sizeof(diagnostic) - 1) == -1) {
       return EXIT_FAILURE;
     }
+  }
+
+  if (o.partial || o.partialStay) {
+    // one byte of the init signal and no more: then either the end of the
+    // output, or silence for argv[1] seconds from a process that stays around
+    const char one = 1;
+    if (write(STDOUT_FILENO, &one, sizeof(one)) == -1) {
+      return EXIT_FAILURE;
+    }
+    if (o.partialStay) {
+      for (int i = 0; i < o.timeout; ++i) {
+        sleep(1);
+      }
+    }
+    return EXIT_SUCCESS;
   }
 
   for (int i = 0; i < o.timeout; ++i) {
