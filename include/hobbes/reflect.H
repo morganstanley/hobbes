@@ -591,6 +591,13 @@ template <size_t, typename T, typename U>
   };
 
 template <size_t, typename T, typename U>
+  struct variantPayloadDefCtor {
+    static void fn(T* p) {
+      new (p) T();
+    }
+  };
+
+template <size_t, typename T, typename U>
   struct variantPayloadDtor {
     static void fn(T* p) {
       p->~T();
@@ -649,17 +656,30 @@ template <typename ... Ctors>
         static_assert(CtorIndexOf<T, Ctors...>::value < sizeof...(Ctors), "Constructor type isn't part of variant");
         new (this->storage) T(t);
       }
+    // a tag that names no constructor (any tag >= count) stands for a variant
+    // with no payload, as the default state of a DEFINE_VARIANT type does. A
+    // variant gets there if constructing a payload throws in 'unsafeReset' or
+    // in assignment, or if its bytes were copied out of a data file. Such a
+    // variant can be destroyed, copied, assigned and reset, and 'apply' on it
+    // throws; in particular its destructor must not dispatch on the tag,
+    // since rejecting a tag by throwing from a destructor ends the process.
     variant(const variant<Ctors...>& rhs) : tag(rhs.tag) {
-      VCCtor::apply(this->tag, this->storage, rhs.storage);
+      if (this->tag < count) {
+        VCCtor::apply(this->tag, this->storage, rhs.storage);
+      }
     }
     ~variant() {
-      VDtor::apply(this->tag, this->storage);
+      if (this->tag < count) {
+        VDtor::apply(this->tag, this->storage);
+      }
     }
     variant<Ctors...>& operator=(const variant<Ctors...>& rhs) {
       if (this != &rhs) {
-        VDtor::apply(this->tag, this->storage);
+        this->unsafeClear();
+        if (rhs.tag < count) {
+          VCCtor::apply(rhs.tag, this->storage, rhs.storage);
+        }
         this->tag = rhs.tag;
-        VCCtor::apply(this->tag, this->storage, rhs.storage);
       }
       return *this;
     }
@@ -694,6 +714,31 @@ template <typename ... Ctors>
     uint32_t&       unsafeTag()           { return this->tag; }
     const void*     unsafePayload() const { return this->storage; }
     void*           unsafePayload()       { return this->storage; }
+
+    // destroy the payload (if there is one), leaving a variant with none
+    void unsafeClear() {
+      if (this->tag < count) {
+        uint32_t t = this->tag;
+        this->tag = count;
+        VDtor::apply(t, this->storage);
+      }
+    }
+
+    // replace the payload with a default-constructed one for constructor 'id'
+    //
+    // This is how a variant is prepared to be read into, from a socket or a
+    // file. The tag only ever names the payload that is actually there: an
+    // 'id' that names no constructor is rejected before anything changes, the
+    // old payload is destroyed as what it was, and the new tag is stored only
+    // once its payload exists. Storing a tag from outside first (or receiving
+    // it in place, a byte at a time) left it over a payload of another type,
+    // which the destructor then destroyed as the wrong one.
+    void unsafeReset(uint32_t id) {
+      checkVariantTag(id, count);
+      this->unsafeClear();
+      variantApp<void, variantPayloadDefCtor, void, tuple<Ctors...>>::apply(id, this->storage);
+      this->tag = id;
+    }
   private:
     uint32_t tag;
     union {
@@ -796,11 +841,12 @@ template <typename ... Ts>
       PRIV_HPPF_MAP(PRIV_HPPF_VARIANT_PDESTROY, CTORS) \
       default: break; \
       } \
-      this->tag = rhs.tag; \
-      switch (this->tag) { \
+      this->tag = Enum::COUNT; \
+      switch (rhs.tag) { \
       PRIV_HPPF_MAP(PRIV_HPPF_VARIANT_PCOPY, CTORS) \
       default: break; \
       } \
+      this->tag = rhs.tag; \
       return *this; \
     } \
     template <typename V> \
@@ -924,11 +970,12 @@ template <typename ... Ts>
       PRIV_HPPF_MAP(PRIV_HPPF_LBLVARIANT_PDESTROY, CTORS) \
       default: break; \
       } \
-      this->tag = rhs.tag; \
-      switch (this->tag) { \
+      this->tag = Enum::COUNT; \
+      switch (rhs.tag) { \
       PRIV_HPPF_MAP(PRIV_HPPF_LBLVARIANT_PCOPY, CTORS) \
       default: break; \
       } \
+      this->tag = rhs.tag; \
       return *this; \
     } \
     template <typename V> \

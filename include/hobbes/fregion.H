@@ -1812,7 +1812,6 @@ template <size_t tag, typename T, typename M>
 template <size_t tag, typename T, typename M>
   struct variantGenRead {
     static void fn(T* vd, imagefile* f, const void* p, size_t tagOffset) {
-      new (vd) T();
       store<T>::read(f, reinterpret_cast<const uint8_t*>(p) + tagOffset, vd);
     }
   };
@@ -1825,8 +1824,11 @@ template <typename ... Ts>
       x.template apply<void, variantGenWrite, void, imagefile*, void*, size_t>(f, p, Reflect::tagOffset());
     }
     static void read (imagefile* f, const void* p, variant<Ts...>* x) {
-      x->unsafeTag() = *reinterpret_cast<const uint32_t*>(p);
-      variantApp<void, variantGenRead, void, tuple<Ts...>, imagefile*, const void*, size_t>::apply(x->unsafeTag(), x->unsafePayload(), f, p, Reflect::tagOffset());
+      // the tag comes from the file: it goes in the variant only with the
+      // payload it names (see variant::unsafeReset)
+      const uint32_t tag = *reinterpret_cast<const uint32_t*>(p);
+      x->unsafeReset(tag);
+      variantApp<void, variantGenRead, void, tuple<Ts...>, imagefile*, const void*, size_t>::apply(tag, x->unsafePayload(), f, p, Reflect::tagOffset());
     }
   };
 

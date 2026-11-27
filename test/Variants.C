@@ -307,3 +307,49 @@ TEST(Variants, UnsafeCastUnitToUnloweredType) {
     EXPECT_EQ(vc.verifyCodeForExpr(vc.readExpr(e)), std::string());
   }
 }
+
+TEST(Variants, ATagThatNamesNoConstructorIsNoPayload) {
+  // a variant's tag can be set from outside (its bytes copied out of a data
+  // file, say), so it may name no constructor. Using such a variant fails, but
+  // it has no payload to destroy or copy, and its destructor in particular
+  // must not reject the tag by throwing: that ended the process.
+  using IorS = variant<int, std::string>;
+  const std::string text(64, 'x');
+  {
+    IorS bad(1);
+    bad.unsafeTag() = 7;
+    EXPECT_TRUE(bad.get<int>() == nullptr && bad.get<std::string>() == nullptr);
+
+    IorS copy(bad);
+    EXPECT_EQ(copy.unsafeTag(), uint32_t(7));
+
+    IorS assigned(text);
+    assigned = bad;
+    EXPECT_EQ(assigned.unsafeTag(), uint32_t(7));
+
+    assigned = IorS(text);
+    EXPECT_TRUE(assigned.get<std::string>() != nullptr && *assigned.get<std::string>() == text);
+
+    std::ostringstream ss;
+    EXPECT_EXCEPTION(ss << bad);
+  }
+}
+
+TEST(Variants, ResetReplacesThePayloadOrChangesNothing) {
+  using IorS = variant<int, std::string>;
+  const std::string text(64, 'x');
+
+  IorS var(text);
+  EXPECT_EXCEPTION(var.unsafeReset(2));
+  EXPECT_TRUE(var.get<std::string>() != nullptr && *var.get<std::string>() == text);
+
+  var.unsafeReset(0);
+  EXPECT_TRUE(var.get<int>() != nullptr && *var.get<int>() == 0);
+  var.unsafeReset(1);
+  EXPECT_TRUE(var.get<std::string>() != nullptr && var.get<std::string>()->empty());
+
+  var.unsafeClear();
+  EXPECT_EQ(var.unsafeTag(), uint32_t(2));
+  var.unsafeReset(1);
+  EXPECT_TRUE(var.get<std::string>() != nullptr);
+}
