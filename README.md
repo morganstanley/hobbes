@@ -27,6 +27,26 @@ The port-only `installNetREPL` API and `hi -p` bind to IPv4 loopback (`127.0.0.1
 
 The port-only `installHTTPD` API and `hi -w` bind to IPv4 loopback (`127.0.0.1`) by default. Embedding applications must use the explicit-host overload to listen on another interface. `hi -w` serves static diagnostics by default, but its `/?expr` and `.hxp` evaluation routes require both `--allow-web-eval` and `--web-eval-secret-file <path>`; a fronting proxy must replace `X-Hobbes-Proxy-Secret` with the value read from that file. Hobbes does not provide TLS or end-user authentication, so expose it beyond the local host only through an authenticated, encrypted fronting proxy.
 
+`hi -w` reads files from a fixed list of directories and nowhere else. Requests are served from the first of these that holds the file:
+
+1. `./www/htdocs`, relative to the directory `hi` was started in;
+2. `../common/www/htdocs`, relative to the directory holding the `hi` executable (for `/opt/hobbes/bin/hi`, `/opt/hobbes/common/www/htdocs`);
+3. `../../common/www/htdocs`, relative to the same directory.
+
+The executable's directory is read from `/proc/self/exe`, so entries 2 and 3 work only on Linux. Elsewhere (macOS included) it comes back empty, both entries become `/common/www/htdocs`, and in practice only `./www/htdocs` is used.
+
+What is in those directories is trusted. A `.hxp` file under an `htdocs` directory is compiled and run as a page when it is requested (through the evaluation gate above). When the web server starts, `hi` also compiles and runs `init.hob` from the first of the matching `www/sys` directories that has one (`./www/sys/init.hob` first), whether or not `--allow-web-eval` is given. So starting `hi -w` in a directory you do not trust is still unsafe if that directory contains a `www/` tree.
+
+A file is served only if it is a regular file, readable by `hi`, whose path after following symlinks stays inside the directory it was found in. On Linux and macOS `hi` needs only search permission on the web directory and the directories under it; on a system with neither `O_PATH` nor `O_SEARCH` it needs read permission on them as well. `hi` opens it without following symlinks and serves what it opened, so a file swapped for a symlink during a request is refused, not followed. A symlink that turns a `.hxp` name into a non-`.hxp` file, or the reverse, is refused, and a `.hxp` extension in any letter case is a page. An error from a page names it by its request path, not its location on the server.
+
+Changes from earlier releases:
+
+- The working directory itself is no longer searched. It often holds files that were never meant to be published, such as the web-eval secret. A file directly in it gets a 404, a `.hxp` file there is not run, and an `init.hob` there is not loaded. Move them to `./www/htdocs` and `./www/sys`.
+- A symlink inside a web directory that points outside it now gets a 404. Links that stay inside the directory still work, and so does a web directory that is itself a symlink.
+- FIFOs, devices and directories under a web directory get a 404, and a FIFO there no longer stalls the server.
+- A file that is truncated while it is being sent ends the response early, with a body shorter than its `Content-Length`. It used to stall the server.
+- Static files are sent on macOS and other non-Linux systems, where the body used to be the text `Failure sending file.`
+
 ## Building <a name="building"></a>
 
 To build hobbes, you will need [LLVM](http://llvm.org/) 3.3 or later, [cmake](http://cmake.org/) 3.19 or later, [GNU gcc](https://gcc.gnu.org/) 4.8 or later, and a version 2.5 or later Linux kernel.
