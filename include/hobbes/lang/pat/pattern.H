@@ -284,6 +284,19 @@ bool isUnitPat(const PatternPtr&);
 // what variable names are introduced by a pattern (excluding _)?
 str::set accessibleBindingNames(const PatternPtr&);
 
+// how deeply does a pattern nest (a pattern with no sub-patterns is 1 deep)?
+// measured with an explicit stack, so it is safe on a pattern of any depth.
+// A sub-pattern used in several places counts along the longest path to it.
+// A pattern that contains itself (MatchRecord::fields can make one) has no
+// depth, and this throws std::runtime_error for it.
+size_t patternNestingDepth(const PatternPtr&);
+
+// the deepest a pattern may nest before the match compiler rejects it
+extern const size_t maxPatternNestingDepth;
+
+// reject a pattern nested past maxPatternNestingDepth, or one that contains itself
+void checkPatternNestingDepth(const PatternPtr&, const LexicalAnnotation&);
+
 // simplify introducing list comprehensions
 struct CSelection {
   PatternPtr pat;

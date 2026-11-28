@@ -1236,3 +1236,266 @@ TEST(Matching, partialRecordsArePaddedAfterWildcards) {
     2
   );
 }
+
+// Patterns handed to compileMatch through the C++ API are not bounded by the
+// parser (whose own stack gives out at ~190 levels of nesting), and the match
+// compiler walks them by recursion. Nested arrays cost ~1.7KB of stack a
+// level on a release build, so ~4,900 of them overflowed an 8MB stack (~311 a
+// 512KB one) before anything checked how deep they went: the DFA depth bound
+// counted states, and every level was a state the walk had not yet finished
+// making. These build such patterns directly.
+namespace {
+// Pattern's destructor is the default one, so dropping the last reference to
+// the outside of a deep pattern destroys the rest by recursion, a frame or
+// three per level -- which is the very overflow these tests are here to rule
+// out of the walks, come back at scope exit. So every level made below is
+// also held here, and let go from the outside in: each is then destroyed
+// while its child still has this second reference, and no destructor recurs.
+// (Leaving that to ~vector will not do, the order it destroys in is its own
+// business.) Nothing else may hold a level for longer than this does.
+struct Nesting {
+  Patterns levels; // of each pattern made, from the inside out
+
+  Nesting() = default;
+  Nesting(const Nesting&) = delete;
+  Nesting& operator=(const Nesting&) = delete;
+  ~Nesting() {
+    while (!this->levels.empty()) {
+      this->levels.pop_back();
+    }
+  }
+
+  PatternPtr hold(const PatternPtr& p) {
+    this->levels.push_back(p);
+    return p;
+  }
+
+  PatternPtr literal() {
+    const LexicalAnnotation la = LexicalAnnotation::null();
+    return hold(PatternPtr(new MatchLiteral(PrimitivePtr(new Int(1, la)), la)));
+  }
+  PatternPtr array(const Patterns& ps) {
+    return hold(PatternPtr(new MatchArray(ps, LexicalAnnotation::null())));
+  }
+  PatternPtr record(const Patterns& ps) {
+    MatchRecord::Fields fs;
+    for (size_t i = 0; i < ps.size(); ++i) {
+      fs.push_back(MatchRecord::Field(".f" + str::from(i), ps[i]));
+    }
+    return hold(PatternPtr(new MatchRecord(fs, LexicalAnnotation::null())));
+  }
+  PatternPtr variant(const PatternPtr& p) {
+    return hold(PatternPtr(new MatchVariant("A", p, LexicalAnnotation::null())));
+  }
+
+  // a literal inside depth-1 arrays, records or variants
+  PatternPtr nested(char kind, size_t depth) {
+    PatternPtr p = literal();
+    for (size_t i = 1; i < depth; ++i) {
+      if (kind == 'r') {
+        p = record(list(p));
+      } else if (kind == 'v') {
+        p = variant(p);
+      } else {
+        p = array(list(p));
+      }
+    }
+    return p;
+  }
+};
+
+// a two-row match over one column per pattern: the patterns, then a fall-through
+ExprPtr compileNestedMatch(const Patterns& ps) {
+  const LexicalAnnotation la = LexicalAnnotation::null();
+  Exprs es;
+  Patterns any;
+  for (size_t i = 0; i < ps.size(); ++i) {
+    es.push_back(var("x" + str::from(i), la));
+    any.push_back(PatternPtr(new MatchAny("_", la)));
+  }
+  return compileMatch(&c(), es, list(PatternRow(ps, constant(1, la)), PatternRow(any, constant(0, la))), la);
+}
+}
+
+TEST(Matching, patternNestingIsBounded) {
+  {
+    Nesting n;
+    EXPECT_EQ(patternNestingDepth(n.nested('a', 1)), size_t(1));
+  }
+
+  for (char kind : {'a', 'r', 'v'}) {
+    Nesting n;
+
+    // as deep as the bound allows still compiles
+    EXPECT_EQ(patternNestingDepth(n.nested(kind, maxPatternNestingDepth)), maxPatternNestingDepth);
+    EXPECT_TRUE(static_cast<bool>(compileNestedMatch(list(n.nested(kind, maxPatternNestingDepth)))));
+
+    EXPECT_EXCEPTION_MSG(compileNestedMatch(list(n.nested(kind, maxPatternNestingDepth + 1))),
+                         std::exception, "match pattern is too complex to compile");
+    EXPECT_EXCEPTION_MSG(compileNestedMatch(list(n.nested(kind, 5000))),
+                         std::exception, "match pattern is too complex to compile");
+  }
+}
+
+// A pattern built through the C++ API can use one sub-pattern in several
+// places, and its depth is the longest path through that sharing. Measuring
+// used to read a shared sub-pattern's depth before it had been worked out
+// whenever a second parent came off the stack ahead of it, and came up one
+// level short each time -- enough, compounded, to walk a pattern of any depth
+// past the bound.
+TEST(Matching, sharedPatternNestingIsMeasured) {
+  Nesting n;
+
+  // the smallest case: [[1], [[1]]] with both [1]s the same pattern
+  const PatternPtr one = n.array(list(n.literal()));
+  const PatternPtr two = n.array(list(one));
+  EXPECT_EQ(patternNestingDepth(n.array(list(one, two))), size_t(4));
+  EXPECT_EQ(patternNestingDepth(n.array(list(two, one))), size_t(4));
+  EXPECT_EQ(patternNestingDepth(n.record(list(one, n.variant(one)))), size_t(4));
+
+  // the same again at every level, so each adds two levels where one was
+  // counted: this is 401 deep and measured 201, inside the bound
+  const size_t steps = 200;
+  PatternPtr p = n.literal();
+  for (size_t i = 0; i < steps; ++i) {
+    p = n.array(list(p, n.array(list(p))));
+  }
+  EXPECT_TRUE(2 * steps + 1 > maxPatternNestingDepth);
+  EXPECT_EQ(patternNestingDepth(p), 2 * steps + 1);
+  EXPECT_EXCEPTION_MSG(compileNestedMatch(list(p)),
+                       std::exception, "match pattern is too complex to compile");
+}
+
+// Depths are still memoized, though: each pattern is expanded once however
+// many ways there are to reach it. 40 levels that each use the level below
+// twice are 41 patterns and 2^40 paths, so this only returns at all if the
+// sharing is seen.
+TEST(Matching, sharedPatternNestingIsMeasuredOnce) {
+  Nesting n;
+  const auto t0 = std::chrono::steady_clock::now();
+
+  PatternPtr p = n.literal();
+  for (size_t i = 0; i < 40; ++i) {
+    p = n.array(list(p, p));
+  }
+  EXPECT_EQ(patternNestingDepth(p), size_t(41));
+
+  // through a bystander as well, so the level below is found unfinished,
+  // pushed again, and then finished through the other path
+  PatternPtr q = n.literal();
+  for (size_t i = 0; i < 40; ++i) {
+    q = n.record(list(q, n.variant(q), q));
+  }
+  EXPECT_EQ(patternNestingDepth(q), size_t(81));
+
+  // and wide: 1,000 levels of 1,000 uses each, a million edges
+  PatternPtr w = n.literal();
+  for (size_t i = 0; i < 1000; ++i) {
+    w = n.array(Patterns(1000, w));
+  }
+  EXPECT_EQ(patternNestingDepth(w), size_t(1001));
+
+  [[maybe_unused]] const auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - t0);
+#if !HOBBES_TEST_SKIP_TIMING_BOUNDS
+  EXPECT_TRUE(elapsed.count() < 30);
+#endif
+}
+
+// MatchRecord::fields can hand a record itself for a field, directly or
+// through something in between. Such a pattern has no depth to measure and no
+// walk of it ends, so it is turned away where depth is checked.
+TEST(Matching, selfContainingPatternIsRejected) {
+  const LexicalAnnotation la = LexicalAnnotation::null();
+
+  // a pattern that contains itself also owns itself, and is never freed: take
+  // the fields back out however the test is left
+  struct Emptied {
+    MatchRecord* r;
+    explicit Emptied(MatchRecord* r) : r(r) { }
+    Emptied(const Emptied&) = delete;
+    Emptied& operator=(const Emptied&) = delete;
+    ~Emptied() { this->r->fields(MatchRecord::Fields()); }
+  };
+
+  auto* direct = new MatchRecord(MatchRecord::Fields(), la);
+  const PatternPtr dp(direct);
+  const Emptied de(direct);
+  direct->fields(list(MatchRecord::Field(".f0", PatternPtr(new MatchAny("_", la))), MatchRecord::Field(".f1", dp)));
+
+  EXPECT_EXCEPTION_MSG(patternNestingDepth(dp), std::runtime_error, "match pattern contains itself");
+  EXPECT_EXCEPTION_MSG(compileNestedMatch(list(dp)), std::exception, "match pattern contains itself");
+
+  auto* outer = new MatchRecord(MatchRecord::Fields(), la);
+  const PatternPtr op(outer);
+  const Emptied oe(outer);
+  const PatternPtr inner(new MatchArray(list(PatternPtr(new MatchVariant("A", op, la))), la));
+  outer->fields(list(MatchRecord::Field(".f0", inner), MatchRecord::Field(".f1", inner)));
+
+  EXPECT_EXCEPTION_MSG(patternNestingDepth(op), std::runtime_error, "match pattern contains itself");
+  EXPECT_EXCEPTION_MSG(compileNestedMatch(list(op)), std::exception, "match pattern contains itself");
+
+  // sharing is not containing: the same array twice over, with the way back cut
+  outer->fields(list(MatchRecord::Field(".f0", inner)));
+  const PatternPtr twice(new MatchArray(list(inner, inner), la));
+  outer->fields(MatchRecord::Fields());
+  EXPECT_EQ(patternNestingDepth(twice), size_t(4));
+}
+
+// A nested pattern costs one DFA state per level and one table cell for each,
+// so rows of them reach a depth the cell budget does not stop: 300 columns of
+// records nested 5 deep are a chain of ~1,800 states from a few hundred
+// thousand cells. A state took ~760 bytes of stack on a release build, so the
+// bound of 10,000 states this replaced sat past an 8MB stack (~11,000) and
+// well past 4MB (~5,500).
+TEST(Matching, matchDFADepthIsBounded) {
+  Nesting n;
+  Patterns ps;
+  for (size_t i = 0; i < 300; ++i) {
+    ps.push_back(n.nested('r', 5));
+  }
+  EXPECT_EXCEPTION_MSG(compileNestedMatch(ps),
+                       std::exception, "match expression is too complex to compile (nests more than");
+}
+
+// Source text reaches that depth as well, with one row that tests many things:
+// this is `match t with | ((1, _), (1, _), ...) -> 1 | _ -> 0`, which is one
+// state to open the tuple, two for each pair (open it, compare the literal)
+// and one for the row's result. 499 pairs are 1,000 states and 500 are 1,002.
+// The comment on maxMatchDFADepth in dfa.C quotes this boundary.
+TEST(Matching, matchDFADepthBoundaryFromOneRow) {
+  const LexicalAnnotation la = LexicalAnnotation::null();
+  const auto tupleOfPairs = [&la](Nesting& n, size_t pairs) {
+    Patterns ps;
+    for (size_t i = 0; i < pairs; ++i) {
+      ps.push_back(n.record(list(n.literal(), PatternPtr(new MatchAny("_", la)))));
+    }
+    return n.record(ps);
+  };
+
+  Nesting n;
+  EXPECT_TRUE(static_cast<bool>(compileNestedMatch(list(tupleOfPairs(n, 499)))));
+  EXPECT_EXCEPTION_MSG(compileNestedMatch(list(tupleOfPairs(n, 500))),
+                       std::exception, "match expression is too complex to compile (nests more than 1000 states deep");
+}
+
+// refutable and accessibleBindingNames run from grammar actions before
+// compileMatch can bound a pattern, so they walk without recursion; they still
+// have to give the answers they did.
+TEST(Matching, patternQueriesWalkDeepPatterns) {
+  const LexicalAnnotation la = LexicalAnnotation::null();
+  const size_t depth = 20000;
+  Nesting n; // before anything that holds a level, so it lets go last
+
+  PatternPtr irr = n.hold(PatternPtr(new MatchAny("x", la)));
+  for (size_t i = 0; i < depth; ++i) {
+    irr = n.record(list(PatternPtr(new MatchAny("_", la)), irr));
+  }
+  EXPECT_FALSE(refutable(irr));
+  EXPECT_TRUE(accessibleBindingNames(irr) == str::set({"x"}));
+
+  EXPECT_TRUE(refutable(n.record(list(irr, n.literal()))));
+
+  PatternPtr arr = n.nested('a', depth);
+  EXPECT_TRUE(refutable(arr));
+  EXPECT_TRUE(accessibleBindingNames(arr).empty());
+}

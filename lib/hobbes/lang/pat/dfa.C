@@ -1263,14 +1263,50 @@ stateidx_t makeColPivotDFAState(MDFA* dfa, const PatternRows& ps) {
 // holding almost no table at once: a 400-row, 13-column limit table measures
 // 312 deep and 5,213 cells, and a 200-row one 171 deep and 2,613. Rows are
 // in turn capped near 600 by the parser's nesting limit, so ~470 is about as
-// deep as a match that parses can legitimately go, and a bound that merely
-// looked generous against the row-pivot suite maximum of 22 would sit right
-// on top of real code. So depth is a backstop against runaway recursion
-// eating the C stack, not a second opinion on size: to reach a chain deep
-// enough to trip it the cells above are long since spent, since a chain of D
-// states starts from a table of D rows and sums ~D^2/2 cells.
+// deep as a table of many flat rows can legitimately go, and a bound that
+// merely looked generous against the row-pivot suite maximum of 22 would sit
+// right on top of real code. For such tables depth is a backstop against
+// runaway recursion eating the C stack, not a second opinion on size: to
+// reach a chain deep enough to trip it the cells above are long since spent,
+// since a chain of D states starts from a table of D rows and sums ~D^2/2
+// cells.
+//
+// None of that holds for a row that tests many things, and such a row can
+// come from source text as well as from the C++ API (compileMatch takes
+// PatternRows as given). One level of depth is one test on the way to a row's
+// result: a literal compared, an array's length checked, a record, tuple or
+// variant taken apart. So a nested pattern costs one state per level of
+// nesting and only one cell for each, and rows of nested patterns reach depth
+// cheaply: k columns each nested P deep make a chain about k*P states deep
+// from about k^2*P/2 cells, which the cell budget allows up to ~22,000 states
+// deep at the pattern nesting bound (maxPatternNestingDepth in pattern.C).
+// For these the depth bound is the only one in the way, and it has to be set
+// by what the stack holds.
+//
+// Measured on a release x86-64 build, one state of that chain (makeDFAState
+// through makeColPivotDFAState and makeRecordState) takes ~760 bytes of
+// stack: a 512KB stack overflowed at ~670 states and a 1MB one at ~1,360, so
+// 8MB runs out near 11,000 and 4MB -- the headroom ClusterFuzz leaves -- near
+// 5,500. The bound this replaced, 10,000, was past the first and twice the
+// second. At that measured rate 1,000 states are ~760KB, which leaves room in
+// a few MB for the pattern walks each state makes on top of it (bounded
+// separately in pattern.C) and for frames several times larger in a sanitized
+// build. It does not fit a 512KB stack, and is not meant to.
+//
+// The price is that matches which used to compile are now turned away, ones
+// written as source text among them. Matching a tuple of N pairs against
+// ((1, _), (1, _), ...) with a fall-through row takes one state to open the
+// tuple, two for each pair (open it, compare the literal) and one for the
+// row's result, 2N+2 in all: 499 pairs are 1,000 states and compile, 500 are
+// 1,002 and do not (Matching/matchDFADepthBoundaryFromOneRow holds these
+// numbers to the code). Under the old bound 700 pairs, 1,402 states, compiled
+// and ran -- on an arm64 release build with an 8MB stack, which is all that
+// observation covers. A tuple of 500 [1]s is turned away the same way. That
+// is the shape of generated code more than of anything written by hand, and
+// the answer for it is to split the match (the error says so): a rejection
+// that names the limit, rather than a stack that may or may not hold.
 static const size_t maxMatchTableCells = 1000000;
-static const size_t maxMatchDFADepth   = 10000;
+static const size_t maxMatchDFADepth   = 1000;
 
 // count a state's recursion into the match being compiled, and back out again
 // however the state is left -- the budgets below are reported by throwing.
@@ -1286,7 +1322,7 @@ struct MatchDepth {
 stateidx_t makeDFAState(MDFA* dfa, const PatternRows& xps) {
   MatchDepth depth(dfa);
   if (dfa->stateDepth > maxMatchDFADepth) {
-    throw annotated_error(dfa->rootLA, "match expression is too complex to compile (nests more than " + str::from(maxMatchDFADepth) + " states deep)");
+    throw annotated_error(dfa->rootLA, "match expression is too complex to compile (nests more than " + str::from(maxMatchDFADepth) + " states deep; match fewer values at once, or split it into several smaller matches)");
   }
 
   // every row is indexed by the columns of the first from here on (starting with
