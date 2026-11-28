@@ -72,6 +72,26 @@ writeToArr fd xs i =
     (let _ = writeTo(fd, xs[i]) in writeToArr(fd, xs, i+1))
 {-# UNSAFE writeToArr #-}
 
+// An array of primitives says how long its elements are along with how many
+// there are (fdReadBlockLenOf), so that a reader fed from memory can wait for
+// all of them at once rather than for each in turn. Only for these: each is
+// read as exactly the bytes it occupies (the fdRead* above), and a size given
+// for an element that may encode to fewer would have its reader wait forever.
+class BlockCodecPrim a
+instance BlockCodecPrim bool
+instance BlockCodecPrim byte
+instance BlockCodecPrim char
+instance BlockCodecPrim short
+instance BlockCodecPrim int
+instance BlockCodecPrim long
+instance BlockCodecPrim int128
+instance BlockCodecPrim float
+instance BlockCodecPrim double
+
+instance (BlockCodecPrim a, SizeOf a n, BlockCodec a) => BlockCodec [a] where
+  readFrom fd = let r = newArray(fdReadBlockLenOf(fd, sizeOf::(SizeOf a _)=>_)); _ = readFromIntoArr(fd, r, 0L) in r
+  writeTo fd xs = let _ = writeTo(fd, length(xs)) in writeToArr(fd, xs, 0L)
+
 instance (BlockCodec a) => BlockCodec [a] where
   readFrom fd = let r = newArray(fdReadBlockLen(fd)); _ = readFromIntoArr(fd, r, 0L) in r
   writeTo fd xs = let _ = writeTo(fd, length(xs)) in writeToArr(fd, xs, 0L)

@@ -22,6 +22,8 @@ struct eventcbclosure {
   int                      fd;
   std::function<void(int)> fn;
   bool                     vnode   = false; // registered for file changes rather than readability
+  bool                     writable = false; // also called while the descriptor is writable (setEventWriteInterest)
+  bool                     readPaused = false; // not called for readability for now (setEventReadInterest)
   bool                     retired = false; // unregistered or replaced while a batch was being dispatched
 };
 using EventClosures = std::map<int, eventcbclosure *>;
@@ -165,6 +167,47 @@ void registerEventHandler(int fd, const std::function<void(int)>& fn, bool) {
   slot = c;
 }
 
+// change what a registered descriptor's handler is called for
+static void setEventInterest(int fd, const bool* wantReadable, const bool* wantWritable) {
+  if (epClosures == nullptr) {
+    return;
+  }
+  auto ec = epClosures->find(fd);
+  if (ec == epClosures->end()) {
+    return;
+  }
+  eventcbclosure* c = ec->second;
+  const bool readPaused = wantReadable != nullptr ? !*wantReadable : c->readPaused;
+  const bool writable   = wantWritable != nullptr ? *wantWritable : c->writable;
+  if (readPaused == c->readPaused && writable == c->writable) {
+    return;
+  }
+
+  struct epoll_event evt;
+  memset(&evt, 0, sizeof(evt));
+  evt.events = EPOLLERR;
+  if (!readPaused) {
+    evt.events |= EPOLLIN | EPOLLPRI;
+  }
+  if (writable) {
+    evt.events |= EPOLLOUT;
+  }
+  evt.data.ptr = reinterpret_cast<void*>(c);
+  if (epoll_ctl(threadEPollFD(), EPOLL_CTL_MOD, fd, &evt) != 0) {
+    throw std::runtime_error("Failed to change FD interest in epoll set: " + std::string(strerror(errno)));
+  }
+  c->readPaused = readPaused;
+  c->writable   = writable;
+}
+
+void setEventWriteInterest(int fd, bool wantWritable) {
+  setEventInterest(fd, nullptr, &wantWritable);
+}
+
+void setEventReadInterest(int fd, bool wantReadable) {
+  setEventInterest(fd, &wantReadable, nullptr);
+}
+
 void registerInterruptHandler(const std::function<void()>& fn) {
   threadEPollFD();
   auto* c = new eventcbclosure(-1, [fn](int){fn();});
@@ -306,6 +349,10 @@ void unregisterEventHandler(int fd) {
     struct kevent ke;
     EV_SET(&ke, fd, ec->second->vnode ? EVFILT_VNODE : EVFILT_READ, EV_DELETE, 0, 0, 0);
     kevent(threadKQFD(), &ke, 1, 0, 0, 0);
+    if (ec->second->writable) {
+      EV_SET(&ke, fd, EVFILT_WRITE, EV_DELETE, 0, 0, 0);
+      kevent(threadKQFD(), &ke, 1, 0, 0, 0);
+    }
     retireClosure(ec->second);
     kqClosures->erase(ec);
   }
@@ -340,6 +387,40 @@ void registerEventHandler(int fd, const std::function<void(int)>& fn, bool vn) {
   }
   retireClosure(slot); // a previous closure left under this key after its fd was closed unregistered
   slot = c;
+}
+
+void setEventWriteInterest(int fd, bool wantWritable) {
+  if (kqClosures == nullptr) {
+    return;
+  }
+  auto ec = kqClosures->find(fd);
+  if (ec == kqClosures->end() || ec->second->vnode || ec->second->writable == wantWritable) {
+    return;
+  }
+
+  struct kevent ke;
+  EV_SET(&ke, fd, EVFILT_WRITE, wantWritable ? EV_ADD : EV_DELETE, 0, 0, (void*)ec->second);
+  if (kevent(threadKQFD(), &ke, 1, 0, 0, 0) == -1) {
+    throw std::runtime_error("Failed to change FD interest in kqueue: " + std::string(strerror(errno)));
+  }
+  ec->second->writable = wantWritable;
+}
+
+void setEventReadInterest(int fd, bool wantReadable) {
+  if (kqClosures == nullptr) {
+    return;
+  }
+  auto ec = kqClosures->find(fd);
+  if (ec == kqClosures->end() || ec->second->vnode || ec->second->readPaused == !wantReadable) {
+    return;
+  }
+
+  struct kevent ke;
+  EV_SET(&ke, fd, EVFILT_READ, wantReadable ? EV_ENABLE : EV_DISABLE, 0, 0, (void*)ec->second);
+  if (kevent(threadKQFD(), &ke, 1, 0, 0, 0) == -1) {
+    throw std::runtime_error("Failed to change FD interest in kqueue: " + std::string(strerror(errno)));
+  }
+  ec->second->readPaused = !wantReadable;
 }
 
 void registerInterruptHandler(const std::function<void()>& fn) {
