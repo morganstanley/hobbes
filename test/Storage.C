@@ -11,13 +11,187 @@
 
 #include <atomic>
 #include <chrono>
+#include <csignal>
+#include <cstdlib>
+#include <cstring>
 #include <fstream>
+#include <functional>
+#include <future>
 #include <limits>
 #include <memory>
 #include <thread>
 
+#include <fcntl.h>
+#include <pthread.h>
+#include <sys/socket.h>
+#include <unistd.h>
+
 using namespace hobbes;
 static cc& c() { static cc x; return x; }
+
+// closes a descriptor on every way out of a test, including a failed EXPECT
+// (which throws)
+struct FdCloser {
+  int fd;
+  explicit FdCloser(int fd) : fd(fd) { }
+  ~FdCloser() { reset(); }
+  FdCloser(const FdCloser&) = delete;
+  FdCloser& operator=(const FdCloser&) = delete;
+  void reset() {
+    if (fd >= 0) {
+      close(fd);
+      fd = -1;
+    }
+  }
+};
+
+// run mqread(fd, buf, len) on its own thread, return whether it threw, and
+// fail (instead of hanging the suite) if it doesn't finish in time: a read
+// that spins on end of stream can't be interrupted, so the guard shuts the
+// socket down (waking a read() blocked on it) and then swaps fd for a
+// descriptor that can't be read, which makes any later read() fail
+//
+// 'started' is set by the reader thread just before it calls mqread
+static bool mqreadThrowsOnThread(int fd, uint8_t* buf, size_t len, const std::function<void(std::thread&)>& during, bool* timedOut, std::atomic<bool>* started = nullptr) {
+  std::promise<bool> done;
+  auto finished = done.get_future();
+  std::thread reader([&]() {
+    try {
+      if (started != nullptr) {
+        started->store(true);
+      }
+      storage::mqread(fd, buf, len);
+      done.set_value(false);
+    } catch (std::exception&) {
+      done.set_value(true);
+    }
+  });
+  during(reader);
+  *timedOut = finished.wait_for(std::chrono::seconds(5)) != std::future_status::ready;
+  if (*timedOut) {
+    shutdown(fd, SHUT_RDWR);
+    int w = open("/dev/null", O_WRONLY);
+    if (w < 0 || dup2(w, fd) < 0) {
+      // without the swap a spinning reader can't be stopped, and joining it
+      // would hang the suite
+      std::abort();
+    }
+    close(w);
+  }
+  reader.join();
+  return finished.get();
+}
+
+TEST(Storage, MQReadFailsOnEndOfStream) {
+  int fds[2] = {-1, -1};
+  EXPECT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+  FdCloser rd(fds[0]), wr(fds[1]);
+
+  // the peer sends part of what is expected and then closes
+  const uint8_t part[3] = {1, 2, 3};
+  ssize_t wrote = write(fds[1], part, sizeof(part));
+  wr.reset();
+  EXPECT_EQ(wrote, static_cast<ssize_t>(sizeof(part)));
+
+  uint8_t buf[8] = {};
+  bool timedOut = false;
+  bool threw = mqreadThrowsOnThread(fds[0], buf, sizeof(buf), [](std::thread&) {}, &timedOut);
+
+  EXPECT_FALSE(timedOut);
+  EXPECT_TRUE(threw);
+}
+
+// counts the signals the reader thread has handled (a lock-free atomic is safe
+// to touch from a signal handler)
+static_assert(ATOMIC_INT_LOCK_FREE == 2, "the signal handler needs std::atomic<int> to be lock-free");
+static std::atomic<int> mqreadSignals{0};
+static void countSignal(int) { mqreadSignals.fetch_add(1); }
+
+// installs a handler for a signal, and puts back what was there before on
+// every way out of a test, including a failed EXPECT (which throws)
+struct SignalHandlerScope {
+  int sig;
+  struct sigaction old;
+  bool installed;
+  SignalHandlerScope(int sig, void (*handler)(int), int flags) : sig(sig), installed(false) {
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = handler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = flags;
+    installed = sigaction(sig, &sa, &old) == 0;
+  }
+  ~SignalHandlerScope() {
+    if (installed) {
+      sigaction(sig, &old, nullptr);
+    }
+  }
+  SignalHandlerScope(const SignalHandlerScope&) = delete;
+  SignalHandlerScope& operator=(const SignalHandlerScope&) = delete;
+};
+
+TEST(Storage, MQReadRetriesInterruptedReads) {
+  int fds[2] = {-1, -1};
+  EXPECT_EQ(socketpair(AF_UNIX, SOCK_STREAM, 0, fds), 0);
+  FdCloser rd(fds[0]), wr(fds[1]);
+
+  // without SA_RESTART, a signal delivered while the reader is blocked makes
+  // its read() fail with EINTR, having read nothing
+  SignalHandlerScope handler(SIGUSR1, &countSignal, 0);
+  EXPECT_TRUE(handler.installed);
+
+  // the reader can't be seen to be blocked in read(), only to have reached the
+  // call to mqread. So nothing is written until it has handled this many
+  // signals after that point, sent 20ms apart: the first could land in the
+  // instant between 'started' and read(), but the reader has nothing else to
+  // do in the 20ms before each later one than to block in read()
+  const int wantSignals = 3;
+
+  const uint8_t msg[8] = {1, 2, 3, 4, 5, 6, 7, 8};
+  uint8_t buf[8] = {};
+  bool timedOut = false;
+  bool sawStart = false;
+  int delivered = 0;
+  ssize_t wrote = 0;
+  std::atomic<bool> started{false};
+  bool threw = mqreadThrowsOnThread(fds[0], buf, sizeof(buf), [&](std::thread& reader) {
+    // (no EXPECT here: a failure would throw past the unjoined reader, so
+    // every wait is bounded and what happened is checked afterwards)
+    for (int k = 0; k < 5000 && !started.load(); ++k) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    sawStart = started.load();
+
+    const int base = mqreadSignals.load();
+    for (int k = 0; sawStart && k < 100 && mqreadSignals.load() - base < wantSignals; ++k) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(20));
+      const int before = mqreadSignals.load();
+      if (pthread_kill(reader.native_handle(), SIGUSR1) != 0) {
+        break;
+      }
+      // the handler runs on the reader; give it up to 500ms to do so. If it
+      // doesn't, the reader has gone (mqread gave up early) and no later
+      // signal will be handled either
+      for (int j = 0; j < 500 && mqreadSignals.load() == before; ++j) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+      }
+      if (mqreadSignals.load() == before) {
+        break;
+      }
+    }
+    delivered = mqreadSignals.load() - base;
+
+    // only now is there anything to read
+    wrote = write(fds[1], msg, sizeof(msg));
+  }, &timedOut, &started);
+
+  EXPECT_TRUE(sawStart);
+  EXPECT_TRUE(delivered >= wantSignals);
+  EXPECT_EQ(wrote, static_cast<ssize_t>(sizeof(msg)));
+  EXPECT_FALSE(timedOut);
+  EXPECT_FALSE(threw);
+  EXPECT_EQ(memcmp(buf, msg, sizeof(msg)), 0);
+}
 
 TEST(Storage, ReflectDecoderRejectsTruncationAndDepth) {
   ty::bytes truncated(1, 0);

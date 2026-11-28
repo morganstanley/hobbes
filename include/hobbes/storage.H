@@ -335,20 +335,41 @@ inline void mqwrite(int fd, const uint8_t* x, size_t len) {
       if (errno != EINTR) {
         throw std::runtime_error("Couldn't write to socket: " + std::string(strerror(errno)));
       }
+    } else if (c == 0) {
+      throw std::runtime_error("Couldn't write to socket: no progress after " + std::to_string(i) + " of " + std::to_string(len) + " bytes");
     } else {
-      i += c;
+      i += static_cast<size_t>(c);
     }
   }
 }
 
+// read exactly len bytes from a blocking descriptor into x, or throw
+//
+// Returns only once all len bytes have been read, however many read() calls
+// that takes. Throws std::runtime_error if the stream ends first (read()
+// returning 0: the peer has closed, and no later read will make progress, so
+// this fails rather than looping on it) or if read() fails for any reason
+// other than EINTR; that includes EAGAIN, so fd must not be non-blocking. In
+// either case the bytes already read are in x but their count is not returned
+// (the end of stream message mentions it; nothing else does).
+// A read interrupted by a signal (-1 with EINTR) has read nothing and is
+// retried; its -1 must not be added to the count.
+//
+// Nothing in this library or its tools calls this: registration messages are
+// only ever written here (mqwrite), and hog reads them with its own
+// non-blocking reader. It is kept for applications that include this header.
 inline void mqread(int fd, uint8_t* x, size_t len) {
   size_t i = 0;
   while (i < len) {
-    auto ret = read(fd , x + i, len - i);
-    if (ret < 0 && errno != EINTR) {
-      throw std::runtime_error("Couldn't read from socket: " + std::string(strerror(errno)));
+    ssize_t ret = read(fd, x + i, len - i);
+    if (ret < 0) {
+      if (errno != EINTR) {
+        throw std::runtime_error("Couldn't read from socket: " + std::string(strerror(errno)));
+      }
+    } else if (ret == 0) {
+      throw std::runtime_error("Couldn't read from socket: connection closed after " + std::to_string(i) + " of " + std::to_string(len) + " bytes");
     } else {
-      i += ret;
+      i += static_cast<size_t>(ret);
     }
   }
 }

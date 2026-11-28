@@ -5,6 +5,7 @@
 #include <hobbes/util/str.H>
 #include <hobbes/util/os.H>
 
+#include <chrono>
 #include <iostream>
 #include <thread>
 #include <vector>
@@ -201,12 +202,15 @@ DEFINE_STRUCT(
 );
 
 void runRecvConnection(SessionGroup* sg, std::unique_ptr<NetConnection> connection, const std::string& dir, uint64_t maxSegmentBytes) {
-  std::vector<uint8_t> inb, outb, txn;
-  outb.resize(1 * 1024 * 1024); // reserve 1MB for buffering
+  std::vector<uint8_t> outb, txn;
 
   const uint8_t ack = 1;
 
+  // nothing may leave this function by exception: it is the whole of a detached
+  // thread, where an escaped exception terminates hog rather than this session
   try {
+    outb.resize(1 * 1024 * 1024); // reserve 1MB for buffering
+
     // get the log group for incoming data
     const std::string group = receiveString(*connection, maxSegmentBytes);
 
@@ -298,6 +302,8 @@ void runRecvConnection(SessionGroup* sg, std::unique_ptr<NetConnection> connecti
     }
   } catch (std::exception& ex) {
     out() << "terminating log session with error: " << ex.what() << std::endl;
+  } catch (...) {
+    out() << "terminating log session with error: unknown exception" << std::endl;
   }
 }
 
@@ -316,9 +322,26 @@ void startRecvConnection(SessionGroup* sg, std::unique_ptr<NetConnection> connec
   while (true) {
     auto conn = server->accept();
     if (conn) {
-      startRecvConnection(sg, std::move(conn), dir, maxSegmentBytes);
+      // a thread that can't be started (the process is out of threads or
+      // memory) costs only that connection, and this loop goes on accepting:
+      // whichever of 'conn' and the thread's own copy holds the connection
+      // when std::thread throws closes it. Unhandled, the exception would
+      // leave this function, which runs as the whole of a thread, and
+      // terminate hog.
+      try {
+        startRecvConnection(sg, std::move(conn), dir, maxSegmentBytes);
+      } catch (std::exception& ex) {
+        out() << "failed to start a thread for network connection: " << ex.what() << std::endl;
+      }
     } else {
-      out() << "failed to accept network connection: " << strerror(errno) << std::endl;
+      // (errno is read before out(), which may change it)
+      const int err = errno;
+      out() << "failed to accept network connection: " << strerror(err) << std::endl;
+
+      // a failure that persists (out of descriptors, say) would otherwise
+      // spin this loop for as long as it lasted; this holds it, and the line
+      // logged above, to ten a second
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
   }
 }
